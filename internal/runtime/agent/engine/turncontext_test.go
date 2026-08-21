@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -192,6 +193,34 @@ func TestSnapshotTurnSpecSelectsSkillsFromFrozenPrompt(t *testing.T) {
 		!spec.SkillSelection.QueryTruncated ||
 		!spec.SkillSelection.CandidateSetTruncated {
 		t.Fatalf("skill selection snapshot = %+v %+v", spec.Skills, spec.SkillSelection)
+	}
+}
+
+func TestSnapshotTurnSpecDegradesMemoryReadFailure(t *testing.T) {
+	options := Options{
+		Route: testRoute(t), Tools: tool.NewRegistry(nil, nil),
+		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		TurnSnapshots: TurnSnapshotSources{
+			Memory: func(string) (MemorySnapshot, error) {
+				return MemorySnapshot{}, errors.New("corrupt memory store")
+			},
+		},
+	}
+	spec, err := SnapshotTurnSpec(
+		options,
+		TurnIdentity{SessionID: "session", TurnID: "turn", ProfileRevision: 1},
+		TurnRequest{Prompt: "continue"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Memory.FailureReason != "retrieval_failed" {
+		t.Fatalf("memory snapshot=%+v", spec.Memory)
+	}
+	section, receipt, ok := (&Engine{}).memoryWorldSection(spec, 1)
+	if !ok || section.ID != "" || !receipt.Truncated ||
+		receipt.TruncationReason != "retrieval_failed" {
+		t.Fatalf("section=%+v receipt=%+v ok=%t", section, receipt, ok)
 	}
 }
 

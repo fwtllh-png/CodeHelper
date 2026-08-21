@@ -446,6 +446,102 @@ func (s *engineTurnKernel) invalidateCompletion(reason string) error {
 	})
 }
 
+func (s *engineTurnKernel) beginContextEffect(
+	kind turnkernel.EffectKind,
+	compactionID string,
+	planDigest string,
+) (turnkernel.Effect, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if effect, started, err := s.dispatcher.Routed(
+		kind,
+		compactionID,
+	); err == nil {
+		if started {
+			return effect, nil
+		}
+		from := s.state.Phase
+		effect, err = s.dispatcher.Start(kind, compactionID)
+		if err != nil {
+			return turnkernel.Effect{}, err
+		}
+		s.recordAcceptedLocked(turnkernel.EffectStarted{
+			EffectID: effect.ID,
+			Attempt:  effect.Attempt,
+		}, from)
+		return effect, nil
+	}
+	var command turnkernel.Command
+	switch kind {
+	case turnkernel.EffectGenerateNarrative:
+		command = turnkernel.ContextCompactionRequested{
+			CompactionID: compactionID,
+			PlanDigest:   planDigest,
+		}
+	case turnkernel.EffectCommitContextRebase:
+		command = turnkernel.ContextRebaseRequested{
+			CompactionID: compactionID,
+			PlanDigest:   planDigest,
+		}
+	default:
+		return turnkernel.Effect{}, errors.New("context effect kind is invalid")
+	}
+	if err := s.applyAuthoritativeLocked(command); err != nil {
+		return turnkernel.Effect{}, err
+	}
+	from := s.state.Phase
+	effect, err := s.dispatcher.Start(kind, compactionID)
+	if err != nil {
+		return turnkernel.Effect{}, err
+	}
+	s.recordAcceptedLocked(turnkernel.EffectStarted{
+		EffectID: effect.ID,
+		Attempt:  effect.Attempt,
+	}, from)
+	return effect, nil
+}
+
+func (s *engineTurnKernel) finishContextEffect(
+	effect turnkernel.Effect,
+	err error,
+) error {
+	return s.finishContextEffectWithCommit(
+		context.Background(),
+		effect,
+		err,
+		nil,
+	)
+}
+
+func (s *engineTurnKernel) finishContextEffectWithCommit(
+	ctx context.Context,
+	effect turnkernel.Effect,
+	err error,
+	commit turnkernel.DomainFactCommit,
+) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	command := turnkernel.EffectResultReceived{
+		EffectID: effect.ID,
+		Success:  err == nil,
+	}
+	if err != nil {
+		command.Error = err.Error()
+	}
+	from := s.state.Phase
+	var submit func(turnkernel.Command) error
+	if commit != nil {
+		submit = func(command turnkernel.Command) error {
+			return s.coordinator.SubmitWithCommit(ctx, command, commit)
+		}
+	}
+	if resolveErr := s.dispatcher.ResolveWith(command, submit); resolveErr != nil {
+		return resolveErr
+	}
+	s.recordAcceptedLocked(command, from)
+	return nil
+}
+
 func (s *engineTurnKernel) requireApproval(
 	requestID string,
 	callID string,

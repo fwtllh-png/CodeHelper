@@ -26,8 +26,11 @@ type State struct {
 }
 
 type Memory struct {
-	Enabled bool   `json:"enabled" toml:"enabled"`
-	Path    string `json:"path" toml:"path"`
+	Enabled        bool   `json:"enabled" toml:"enabled"`
+	Path           string `json:"path" toml:"path"`
+	MaxCandidates  int    `json:"max_candidates" toml:"max_candidates"`
+	MaxPromptBytes int    `json:"max_prompt_bytes" toml:"max_prompt_bytes"`
+	SemanticRerank bool   `json:"semantic_rerank" toml:"semantic_rerank"`
 }
 
 type Telemetry struct {
@@ -50,10 +53,31 @@ type Context struct {
 // AutoCompactTokens is the active-window threshold. Zero derives 65% of the
 // model window. Scope is total or body_after_prefix.
 type Compact struct {
-	AutoCompactTokens int    `json:"auto_compact_tokens" toml:"auto_compact_tokens"`
-	Scope             string `json:"scope" toml:"scope"`
-	SummaryMaxBytes   int    `json:"summary_max_bytes" toml:"summary_max_bytes"`
-	MaxDigestEntries  int    `json:"max_digest_entries" toml:"max_digest_entries"`
+	PrepareTokens                    int           `json:"prepare_tokens" toml:"prepare_tokens"`
+	AutoCompactTokens                int           `json:"auto_compact_tokens" toml:"auto_compact_tokens"`
+	EmergencyTokens                  int           `json:"emergency_tokens" toml:"emergency_tokens"`
+	Scope                            string        `json:"scope" toml:"scope"`
+	SummaryMaxBytes                  int           `json:"summary_max_bytes" toml:"summary_max_bytes"`
+	MaxDigestEntries                 int           `json:"max_digest_entries" toml:"max_digest_entries"`
+	TruthMaxBytes                    int           `json:"truth_max_bytes" toml:"truth_max_bytes"`
+	TruthMaxEntities                 int           `json:"truth_max_entities" toml:"truth_max_entities"`
+	MandatoryMaxEntities             int           `json:"mandatory_max_entities" toml:"mandatory_max_entities"`
+	FactMaxEntities                  int           `json:"fact_max_entities" toml:"fact_max_entities"`
+	VerifiedChangeRetentionTurns     int           `json:"verified_change_retention_turns" toml:"verified_change_retention_turns"`
+	FailureMaxEntities               int           `json:"failure_max_entities" toml:"failure_max_entities"`
+	HandleMaxEntities                int           `json:"handle_max_entities" toml:"handle_max_entities"`
+	OmissionSampleMaxEntities        int           `json:"omission_sample_max_entities" toml:"omission_sample_max_entities"`
+	RecentTailTurns                  int           `json:"recent_tail_turns" toml:"recent_tail_turns"`
+	RecentTailMaxTokens              int           `json:"recent_tail_max_tokens" toml:"recent_tail_max_tokens"`
+	SemanticNarrative                string        `json:"semantic_narrative" toml:"semantic_narrative"`
+	SemanticNarrativeMaxInputTokens  int           `json:"semantic_narrative_max_input_tokens" toml:"semantic_narrative_max_input_tokens"`
+	SemanticNarrativeMaxOutputTokens int           `json:"semantic_narrative_max_output_tokens" toml:"semantic_narrative_max_output_tokens"`
+	SemanticNarrativeMaxItems        int           `json:"semantic_narrative_max_items" toml:"semantic_narrative_max_items"`
+	SemanticNarrativeItemMaxBytes    int           `json:"semantic_narrative_item_max_bytes" toml:"semantic_narrative_item_max_bytes"`
+	SemanticNarrativeTimeout         time.Duration `json:"semantic_narrative_timeout" toml:"-"`
+	SemanticNarrativeRetryLimit      int           `json:"semantic_narrative_retry_limit" toml:"semantic_narrative_retry_limit"`
+	OwnerDeltaMaxSegments            int           `json:"owner_delta_max_segments" toml:"owner_delta_max_segments"`
+	OwnerDeltaMaxBytes               int           `json:"owner_delta_max_bytes" toml:"owner_delta_max_bytes"`
 }
 
 // RepoMap configures the repository overview appended to every request: which
@@ -289,32 +313,56 @@ type Config struct {
 }
 
 type Overrides struct {
-	OperationBuffer  *int
-	EventHistory     *int
-	SubscriberBuffer *int
-	StateDataDir     *string
-	StateBusyTimeout *time.Duration
-	StateRetention   *int
-	MemoryEnabled    *bool
-	MemoryPath       *string
-	IndexEnabled     *bool
-	IndexMaxBytes    *int64
-	IndexMaxFiles    *int
+	OperationBuffer      *int
+	EventHistory         *int
+	SubscriberBuffer     *int
+	StateDataDir         *string
+	StateBusyTimeout     *time.Duration
+	StateRetention       *int
+	MemoryEnabled        *bool
+	MemoryPath           *string
+	MemoryMaxCandidates  *int
+	MemoryMaxPromptBytes *int
+	MemorySemanticRerank *bool
+	IndexEnabled         *bool
+	IndexMaxBytes        *int64
+	IndexMaxFiles        *int
 
-	RepoMapEnabled        *bool
-	RepoMapMaxBytes       *int
-	RepoMapMaxDirectories *int
-	WorkingSetEnabled     *bool
-	WorkingSetMaxEntries  *int
-	WorkingSetMaxBytes    *int
-	EvidenceEnabled       *bool
-	EvidenceMaxEntries    *int
-	EvidenceMaxBytes      *int
-	CodingPolicyEnabled   *bool
-	CompactAutoTokens     *int
-	CompactScope          *string
-	CompactSummaryMax     *int
-	CompactMaxDigest      *int
+	RepoMapEnabled                          *bool
+	RepoMapMaxBytes                         *int
+	RepoMapMaxDirectories                   *int
+	WorkingSetEnabled                       *bool
+	WorkingSetMaxEntries                    *int
+	WorkingSetMaxBytes                      *int
+	EvidenceEnabled                         *bool
+	EvidenceMaxEntries                      *int
+	EvidenceMaxBytes                        *int
+	CodingPolicyEnabled                     *bool
+	CompactAutoTokens                       *int
+	CompactPrepareTokens                    *int
+	CompactEmergencyTokens                  *int
+	CompactScope                            *string
+	CompactSummaryMax                       *int
+	CompactMaxDigest                        *int
+	CompactTruthMaxBytes                    *int
+	CompactTruthMaxEntities                 *int
+	CompactMandatoryMaxEntities             *int
+	CompactFactMaxEntities                  *int
+	CompactVerifiedChangeRetentionTurns     *int
+	CompactFailureMaxEntities               *int
+	CompactHandleMaxEntities                *int
+	CompactOmissionSampleMaxEntities        *int
+	CompactRecentTailTurns                  *int
+	CompactRecentTailMaxTokens              *int
+	CompactSemanticNarrative                *string
+	CompactSemanticNarrativeMaxInputTokens  *int
+	CompactSemanticNarrativeMaxOutputTokens *int
+	CompactSemanticNarrativeMaxItems        *int
+	CompactSemanticNarrativeItemMaxBytes    *int
+	CompactSemanticNarrativeTimeout         *time.Duration
+	CompactSemanticNarrativeRetryLimit      *int
+	CompactOwnerDeltaMaxSegments            *int
+	CompactOwnerDeltaMaxBytes               *int
 
 	LogLevel              *string
 	CredentialKind        *string

@@ -284,9 +284,20 @@ Persistent Runtime Wiring 在创建 Engine 前注入 SQLite Turn Coordinator Sto
 使用可续租的 Active Turn Lease；无效或重复恢复 Fail Closed。
 
 Session Checkpoint 与 Plan Artifact 复用 Snapshot Index 和 CAS。Checkpoint 只保存
-经过校验的 Model-visible History Baseline 与 Profile Snapshot；Restore 不能执行历史
-Event。持久化 Restore/Fork Event 保证重启重建结果确定。Fork 血缘与当前 Active
-Session Thread 属于关系型 Lifecycle State，而不是 Host-local State。
+经过校验的 Context Manifest 与 Profile Snapshot；Manifest 将 History 拆为 Base/Tail，
+并将 Working Set、Evidence、Failures 和 Plan 拆为有界 Owner Segment。Restore 不能
+执行历史 Event，也不回退独立的 Usage/Cost Accounting。Checkpoint Restore/Fork 创建
+新的 State Epoch 和 Token Window，并用 Sparse Workspace Binding 重新核对文件相关
+Evidence；不匹配的验证声明会失效为 stale。持久化 Restore/Fork Event 保证重启重建
+结果确定；事件显式引用已提交的 Context Commit ID、Digest、Revision 和 Epoch。
+Workspace 对账同时重写 History 中已压缩的 Truth Capsule，不能让旧
+`verified/current` 声明继续进入下一次采样。Fork 血缘、子 Thread Context 基线与当前
+Active Session Thread 属于关系型 Lifecycle State，而不是 Host-local State。
+
+Terminal Envelope 不再重复写入完整 Session Snapshot，而是引用 CAS 中的 Context
+Manifest。CAS 先按 Digest 幂等 Stage，SQLite 再提交 Manifest 可达性和 Terminal
+事实。Inline Narrative 使用 `generate_narrative` 与 `commit_context_rebase` Durable
+Effect；Rebase 由 `runtime/app/persistence` 单点提交，提交成功后 Engine 才替换 History。
 
 ## Observation 架构
 
@@ -339,10 +350,26 @@ Graph；Support Bundle 构造会再次脱敏所选记录，并以独占 mode `06
 
 上限是正确性的一部分。无界上下文最终会变贵、变慢并降低一致性。
 
+长期 Session 的模型可见 Context 固定为三层：
+
+1. Runtime 生成、经过 Retention 和 Admission 的 Truth Capsule；
+2. 可选、非权威、带 Source Message Fence 的 Semantic Narrative；
+3. 保持原始 Role/Block 和 Tool Pair 完整性的 Recent Raw Tail。
+
+Authority Digest 只覆盖 Mandatory Truth。Protected 与 Refreshable Entity 按稳定优先级
+和类型配额保留，淘汰通过聚合 Omission 解释。Narrative 只能走 `summary` Route，禁用
+Tool 和 Native Search；Provider、解析、超时或 Staleness 失败都回退到 Truth + Tail，
+不能改写业务 Turn 终态。
+
 Execution Receipt 会逐条解释入选的 Working Set 文件或测试，包括选择来源、支撑
 Evidence、相关性分数和单条预算结果。`included=false` 加截断原因表示 Selector 选择了
 该路径，但渲染后的上下文预算裁掉了对应行。各 Host 投影同一份 Receipt，不自行反推
 选择原因。
+
+用户 Memory 是独立的非权威数据面。记录具有稳定 ID、Generation、来源、过期时间以及
+`user`、`workspace`、`repository` Scope；Workspace 和 Repository 使用规范化身份隔离。
+Turn Admission 冻结当前 Generation，按显式 Pin、精确 Scope、词法相关性、新鲜度和
+稳定 ID 选择记录。Memory 写入只影响下一 Turn，且 CRUD 工具全部经过统一 Guard。
 
 ## 安全模型
 

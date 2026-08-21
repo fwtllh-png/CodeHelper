@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -424,7 +425,7 @@ func (r *ArtifactService) RestoreCheckpoint(
 	ctx context.Context,
 	sessionID, checkpointID string,
 ) (protocol.CheckpointRestoreResult, error) {
-	current, checkpoint, history, err := r.checkpointState(
+	current, checkpoint, history, contextSnapshot, err := r.checkpointState(
 		ctx,
 		sessionID,
 		checkpointID,
@@ -451,7 +452,34 @@ func (r *ArtifactService) RestoreCheckpoint(
 	if err != nil {
 		return protocol.CheckpointRestoreResult{}, err
 	}
-	if err := manager.RestoreCheckpoint(current.ThreadID, decoded); err != nil {
+	var (
+		reconciliation  sessiondelta.ReconciliationReceipt
+		previousContext *sessiondelta.ContextSnapshot
+	)
+	if contextSnapshot != nil {
+		contextManager, supported := manager.(ContextCheckpointEngine)
+		if !supported {
+			return protocol.CheckpointRestoreResult{}, resourceProblem(
+				protocol.CodeUnavailable,
+				"Context checkpoint restore is unsupported by this engine",
+				false,
+				protocol.ProblemReasonUnsupported,
+				checkpointID,
+			)
+		}
+		value, exportErr := contextManager.ContextSnapshot(current.ThreadID)
+		if exportErr != nil {
+			return protocol.CheckpointRestoreResult{}, exportErr
+		}
+		previousContext = &value
+		reconciliation, err = contextManager.RestoreContext(
+			current.ThreadID,
+			*contextSnapshot,
+		)
+	} else {
+		err = manager.RestoreCheckpoint(current.ThreadID, decoded)
+	}
+	if err != nil {
 		return protocol.CheckpointRestoreResult{}, err
 	}
 	operationID := protocol.OperationID(stableArtifactID(
@@ -460,12 +488,72 @@ func (r *ArtifactService) RestoreCheckpoint(
 		checkpointID,
 		"restore",
 	))
+	currentCommitID := ""
+	var committedContext *sessiondelta.ContextSnapshot
+	if contextSnapshot != nil && r.durable {
+		store, supported := r.contextRebaseStore.(CurrentContextStore)
+		if !supported {
+			_, rollbackErr := manager.(ContextCheckpointEngine).RestoreContext(
+				current.ThreadID,
+				*previousContext,
+			)
+			return protocol.CheckpointRestoreResult{}, errors.Join(
+				errors.New("durable current context store is unavailable"),
+				rollbackErr,
+			)
+		}
+		restored, exportErr := manager.(ContextCheckpointEngine).ContextSnapshot(
+			current.ThreadID,
+		)
+		if exportErr != nil {
+			_, rollbackErr := manager.(ContextCheckpointEngine).RestoreContext(
+				current.ThreadID,
+				*previousContext,
+			)
+			return protocol.CheckpointRestoreResult{}, errors.Join(
+				exportErr,
+				rollbackErr,
+			)
+		}
+		currentCommitID = stableArtifactID(
+			"context",
+			string(operationID),
+			restored.Digest,
+		)
+		commitErr := store.CommitCurrentContext(
+			ctx,
+			sessiondelta.CurrentContextCommit{
+				ID:       currentCommitID,
+				ThreadID: current.ThreadID,
+				TurnID:   checkpoint.TurnID,
+				Snapshot: restored,
+			},
+		)
+		if commitErr != nil {
+			_, rollbackErr := manager.(ContextCheckpointEngine).RestoreContext(
+				current.ThreadID,
+				*previousContext,
+			)
+			return protocol.CheckpointRestoreResult{}, errors.Join(
+				commitErr,
+				rollbackErr,
+			)
+		}
+		committedContext = &restored
+	}
 	itemID := protocol.ItemID(stableArtifactID(
 		"item",
 		sessionID,
 		checkpointID,
 		"restore",
 	))
+	var contextDigest string
+	var contextRevision, stateEpoch uint64
+	if committedContext != nil {
+		contextDigest = committedContext.Digest
+		contextRevision = committedContext.Revision
+		stateEpoch = committedContext.Epoch
+	}
 	publishErr := r.publish(
 		operationID,
 		current.ThreadID,
@@ -481,10 +569,52 @@ func (r *ArtifactService) RestoreCheckpoint(
 				history...,
 			),
 			SideEffectsReplayed: false,
+			ExactContext:        contextSnapshot != nil,
+			WorkspaceClaimsValid: contextSnapshot != nil &&
+				reconciliation.Stale == 0,
+			InvalidatedClaims: reconciliation.Invalidated,
+			StaleClaims:       reconciliation.Stale,
+			ContextCommitID:   currentCommitID,
+			ContextDigest:     contextDigest,
+			ContextRevision:   contextRevision,
+			StateEpoch:        stateEpoch,
 		},
 	)
 	if publishErr != nil {
-		rollbackErr := manager.RestoreCheckpoint(current.ThreadID, previous)
+		var rollbackErr error
+		if previousContext != nil {
+			contextManager := manager.(ContextCheckpointEngine)
+			_, rollbackErr = contextManager.RestoreContext(
+				current.ThreadID,
+				*previousContext,
+			)
+			if rollbackErr == nil && currentCommitID != "" {
+				rollback, exportErr := contextManager.ContextSnapshot(
+					current.ThreadID,
+				)
+				if exportErr != nil {
+					rollbackErr = exportErr
+				} else {
+					store := r.contextRebaseStore.(CurrentContextStore)
+					rollbackErr = store.CommitCurrentContext(
+						ctx,
+						sessiondelta.CurrentContextCommit{
+							ID: stableArtifactID(
+								"context",
+								string(operationID),
+								"rollback",
+								rollback.Digest,
+							),
+							ThreadID: current.ThreadID,
+							TurnID:   checkpoint.TurnID,
+							Snapshot: rollback,
+						},
+					)
+				}
+			}
+		} else {
+			rollbackErr = manager.RestoreCheckpoint(current.ThreadID, previous)
+		}
 		return protocol.CheckpointRestoreResult{}, errors.Join(
 			publishErr,
 			rollbackErr,
@@ -496,6 +626,11 @@ func (r *ArtifactService) RestoreCheckpoint(
 		ThreadID:            current.ThreadID,
 		RestoredCursor:      checkpoint.Cursor,
 		SideEffectsReplayed: false,
+		ExactContext:        contextSnapshot != nil,
+		WorkspaceClaimsValid: contextSnapshot != nil &&
+			reconciliation.Stale == 0,
+		InvalidatedClaims: reconciliation.Invalidated,
+		StaleClaims:       reconciliation.Stale,
 	}, nil
 }
 
@@ -503,7 +638,7 @@ func (r *ArtifactService) ForkCheckpoint(
 	ctx context.Context,
 	sessionID, checkpointID, title string,
 ) (protocol.CheckpointForkResult, error) {
-	_, checkpoint, history, err := r.checkpointState(
+	_, checkpoint, history, contextSnapshot, err := r.checkpointState(
 		ctx,
 		sessionID,
 		checkpointID,
@@ -535,13 +670,6 @@ func (r *ArtifactService) ForkCheckpoint(
 		title = "Checkpoint Fork"
 	}
 	title = boundedArtifactText(title, 256)
-	if err := manager.ForkCheckpoint(
-		checkpoint.ThreadID,
-		newThreadID,
-		decoded,
-	); err != nil {
-		return protocol.CheckpointForkResult{}, err
-	}
 	operationID := protocol.OperationID(stableArtifactID(
 		"op",
 		sessionID,
@@ -554,6 +682,78 @@ func (r *ArtifactService) ForkCheckpoint(
 		checkpointID,
 		string(newThreadID),
 	))
+	var reconciliation sessiondelta.ReconciliationReceipt
+	currentCommitID := ""
+	var committedContext *sessiondelta.ContextSnapshot
+	if contextSnapshot != nil {
+		contextManager, supported := manager.(ContextCheckpointEngine)
+		if !supported {
+			return protocol.CheckpointForkResult{}, resourceProblem(
+				protocol.CodeUnavailable,
+				"Context checkpoint Fork is unsupported by this engine",
+				false,
+				protocol.ProblemReasonUnsupported,
+				checkpointID,
+			)
+		}
+		reconciliation, err = contextManager.ForkContext(
+			checkpoint.ThreadID,
+			newThreadID,
+			*contextSnapshot,
+		)
+		if err == nil && r.durable {
+			store, durable := r.contextRebaseStore.(CurrentContextStore)
+			if !durable {
+				manager.Release(newThreadID)
+				return protocol.CheckpointForkResult{},
+					errors.New("durable current context store is unavailable")
+			}
+			forked, exportErr := contextManager.ContextSnapshot(newThreadID)
+			if exportErr != nil {
+				manager.Release(newThreadID)
+				return protocol.CheckpointForkResult{}, exportErr
+			}
+			currentCommitID = stableArtifactID(
+				"context",
+				string(operationID),
+				forked.Digest,
+			)
+			err = store.CommitCurrentContext(
+				ctx,
+				sessiondelta.CurrentContextCommit{
+					ID:             currentCommitID,
+					ThreadID:       newThreadID,
+					TurnID:         checkpoint.TurnID,
+					SessionID:      sessionID,
+					ParentThreadID: checkpoint.ThreadID,
+					Title:          title,
+					SourceCursor:   checkpoint.Cursor,
+					Snapshot:       forked,
+				},
+			)
+			if err != nil {
+				manager.Release(newThreadID)
+				return protocol.CheckpointForkResult{}, err
+			}
+			committedContext = &forked
+		}
+	} else {
+		err = manager.ForkCheckpoint(
+			checkpoint.ThreadID,
+			newThreadID,
+			decoded,
+		)
+	}
+	if err != nil {
+		return protocol.CheckpointForkResult{}, err
+	}
+	var contextDigest string
+	var contextRevision, stateEpoch uint64
+	if committedContext != nil {
+		contextDigest = committedContext.Digest
+		contextRevision = committedContext.Revision
+		stateEpoch = committedContext.Epoch
+	}
 	if err := r.publish(
 		operationID,
 		checkpoint.ThreadID,
@@ -568,8 +768,29 @@ func (r *ArtifactService) ForkCheckpoint(
 				[]protocol.CompactedMessage(nil),
 				history...,
 			),
+			ExactContext: contextSnapshot != nil,
+			WorkspaceClaimsValid: contextSnapshot != nil &&
+				reconciliation.Stale == 0,
+			InvalidatedClaims: reconciliation.Invalidated,
+			StaleClaims:       reconciliation.Stale,
+			ContextCommitID:   currentCommitID,
+			ContextDigest:     contextDigest,
+			ContextRevision:   contextRevision,
+			StateEpoch:        stateEpoch,
 		},
 	); err != nil {
+		if currentCommitID != "" {
+			store := r.contextRebaseStore.(CurrentContextStore)
+			err = errors.Join(
+				err,
+				store.DeleteCurrentContext(
+					ctx,
+					newThreadID,
+					currentCommitID,
+					true,
+				),
+			)
+		}
 		manager.Release(newThreadID)
 		return protocol.CheckpointForkResult{}, err
 	}
@@ -581,11 +802,16 @@ func (r *ArtifactService) ForkCheckpoint(
 		return protocol.CheckpointForkResult{}, err
 	}
 	return protocol.CheckpointForkResult{
-		Version:    protocol.CheckpointProtocolVersion,
-		Checkpoint: checkpoint,
-		SessionID:  sessionID,
-		ThreadID:   newThreadID,
-		ParentID:   checkpoint.ThreadID,
+		Version:      protocol.CheckpointProtocolVersion,
+		Checkpoint:   checkpoint,
+		SessionID:    sessionID,
+		ThreadID:     newThreadID,
+		ParentID:     checkpoint.ThreadID,
+		ExactContext: contextSnapshot != nil,
+		WorkspaceClaimsValid: contextSnapshot != nil &&
+			reconciliation.Stale == 0,
+		InvalidatedClaims: reconciliation.Invalidated,
+		StaleClaims:       reconciliation.Stale,
 	}, nil
 }
 
@@ -828,26 +1054,27 @@ func (r *ArtifactService) checkpointState(
 	protocol.SessionSummary,
 	protocol.SessionCheckpoint,
 	[]protocol.CompactedMessage,
+	*sessiondelta.ContextSnapshot,
 	error,
 ) {
 	if r.sessionArtifacts == nil {
-		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil,
+		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil,
 			runtimeProblem(protocol.CodeUnavailable, "Session Checkpoints are unavailable", nil)
 	}
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
-		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, err
+		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil, err
 	}
 	if err := ensureSessionQuiescent(current, action); err != nil {
-		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, err
+		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil, err
 	}
 	checkpoint, history, checkpointProfile, err :=
 		r.sessionArtifacts.GetCheckpoint(ctx, checkpointID)
 	if err != nil {
-		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, err
+		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil, err
 	}
 	if checkpoint.SessionID != sessionID {
-		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil,
+		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil,
 			resourceProblem(
 				protocol.CodeInvalidArgument,
 				"Checkpoint does not belong to the Session",
@@ -858,11 +1085,11 @@ func (r *ArtifactService) checkpointState(
 	}
 	currentProfile, err := r.SessionProfile(ctx, sessionID)
 	if err != nil {
-		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, err
+		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil, err
 	}
 	if currentProfile.Profile.Revision != checkpoint.ProfileRevision ||
 		checkpointProfile.Revision != checkpoint.ProfileRevision {
-		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil,
+		return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil,
 			revisionProblem(
 				"Checkpoint Profile Revision is stale",
 				checkpointID,
@@ -870,7 +1097,27 @@ func (r *ArtifactService) checkpointState(
 				currentProfile.Profile.Revision,
 			)
 	}
-	return current, checkpoint, history, nil
+	var contextSnapshot *sessiondelta.ContextSnapshot
+	if checkpoint.ContextDigest != "" {
+		store, ok := r.sessionArtifacts.(ContextSessionArtifactStore)
+		if !ok {
+			return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil,
+				errors.New("context checkpoint store is unavailable")
+		}
+		contextCheckpoint, snapshot, storedProfile, contextErr :=
+			store.GetContextCheckpoint(ctx, checkpointID)
+		if contextErr != nil {
+			return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil,
+				contextErr
+		}
+		if contextCheckpoint.ID != checkpoint.ID ||
+			storedProfile.Revision != checkpointProfile.Revision {
+			return protocol.SessionSummary{}, protocol.SessionCheckpoint{}, nil, nil,
+				errors.New("context checkpoint lookup is inconsistent")
+		}
+		contextSnapshot = &snapshot
+	}
+	return current, checkpoint, history, contextSnapshot, nil
 }
 func stableArtifactID(prefix string, values ...string) string {
 	sum := sha256.Sum256([]byte(strings.Join(values, "\x00")))
@@ -1043,36 +1290,67 @@ func (r *ArtifactService) persistTerminalCheckpoint(
 	if summary == "" {
 		summary = fmt.Sprintf("%s Turn %s", status, event.TurnID)
 	}
-	saved, err := r.sessionArtifacts.SaveCheckpoint(
-		ctx,
-		protocol.SessionCheckpoint{
-			Version: protocol.CheckpointProtocolVersion,
-			ID: stableArtifactID(
-				"checkpoint",
-				sessionID,
-				string(event.ThreadID),
-				string(event.TurnID),
-				fmt.Sprint(event.Sequence),
-			),
-			SessionID:           sessionID,
-			ThreadID:            event.ThreadID,
-			TurnID:              event.TurnID,
-			Cursor:              event.Sequence,
-			Status:              status,
-			Summary:             summary,
-			ProfileRevision:     profile.Revision,
-			ParentCheckpointID:  parentCheckpointID,
-			ChangeReceipt:       receipt,
-			ChangedFiles:        changed,
-			ExternalSideEffects: external,
-			SideEffectNote:      note,
-			CanRestore:          true,
-			CanFork:             true,
-			CreatedAt:           event.CreatedAt,
-		},
-		encoded,
-		profile,
-	)
+	checkpoint := protocol.SessionCheckpoint{
+		Version: protocol.CheckpointProtocolVersion,
+		ID: stableArtifactID(
+			"checkpoint",
+			sessionID,
+			string(event.ThreadID),
+			string(event.TurnID),
+			fmt.Sprint(event.Sequence),
+		),
+		SessionID:           sessionID,
+		ThreadID:            event.ThreadID,
+		TurnID:              event.TurnID,
+		Cursor:              event.Sequence,
+		Status:              status,
+		Summary:             summary,
+		ProfileRevision:     profile.Revision,
+		ParentCheckpointID:  parentCheckpointID,
+		ChangeReceipt:       receipt,
+		ChangedFiles:        changed,
+		ExternalSideEffects: external,
+		SideEffectNote:      note,
+		CanRestore:          true,
+		CanFork:             true,
+		CreatedAt:           event.CreatedAt,
+	}
+	var saved protocol.SessionCheckpoint
+	if contextManager, ok := manager.(ContextCheckpointEngine); ok {
+		contextSnapshot, snapshotErr := contextManager.ContextSnapshot(
+			event.ThreadID,
+		)
+		if snapshotErr != nil {
+			r.logArtifactError("snapshot Checkpoint context", event, snapshotErr)
+			return
+		}
+		store, supported := r.sessionArtifacts.(ContextSessionArtifactStore)
+		if !supported {
+			r.logArtifactError(
+				"save Checkpoint context",
+				event,
+				errors.New("context checkpoint store is unavailable"),
+			)
+			return
+		}
+		checkpoint.StateEpoch = contextSnapshot.Epoch
+		checkpoint.ContextDigest = contextSnapshot.Digest
+		checkpoint.WorkspaceDigest = contextSnapshot.Workspace.SparseDigest
+		saved, err = store.SaveContextCheckpoint(
+			ctx,
+			checkpoint,
+			encoded,
+			contextSnapshot,
+			profile,
+		)
+	} else {
+		saved, err = r.sessionArtifacts.SaveCheckpoint(
+			ctx,
+			checkpoint,
+			encoded,
+			profile,
+		)
+	}
 	if err != nil {
 		r.logArtifactError("save Session Checkpoint", event, err)
 		return

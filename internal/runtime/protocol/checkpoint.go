@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const CheckpointProtocolVersion = 1
+const CheckpointProtocolVersion = 2
 
 type CheckpointStatus string
 
@@ -26,6 +26,9 @@ type SessionCheckpoint struct {
 	Status              CheckpointStatus  `json:"status"`
 	Summary             string            `json:"summary"`
 	ProfileRevision     uint64            `json:"profile_revision"`
+	StateEpoch          uint64            `json:"state_epoch,omitempty"`
+	ContextDigest       string            `json:"context_digest,omitempty"`
+	WorkspaceDigest     string            `json:"workspace_digest,omitempty"`
 	ParentCheckpointID  string            `json:"parent_checkpoint_id,omitempty"`
 	ChangeReceipt       *ReceiptReference `json:"change_receipt,omitempty"`
 	ChangedFiles        int               `json:"changed_files"`
@@ -75,6 +78,12 @@ func (c SessionCheckpoint) Validate() error {
 		!validProfileIdentifier(c.ParentCheckpointID) {
 		return errors.New("session checkpoint parent identity is invalid")
 	}
+	hasContext := c.StateEpoch != 0 || c.ContextDigest != "" ||
+		c.WorkspaceDigest != ""
+	if hasContext && (c.StateEpoch == 0 || c.ContextDigest == "" ||
+		c.WorkspaceDigest == "") {
+		return errors.New("session checkpoint context identity is incomplete")
+	}
 	if c.ChangeReceipt != nil {
 		if err := c.ChangeReceipt.Validate(); err != nil {
 			return err
@@ -116,19 +125,27 @@ func (l CheckpointList) Validate() error {
 }
 
 type CheckpointRestoreResult struct {
-	Version             int               `json:"version"`
-	Checkpoint          SessionCheckpoint `json:"checkpoint"`
-	ThreadID            ThreadID          `json:"thread_id"`
-	RestoredCursor      Cursor            `json:"restored_cursor"`
-	SideEffectsReplayed bool              `json:"side_effects_replayed"`
+	Version              int               `json:"version"`
+	Checkpoint           SessionCheckpoint `json:"checkpoint"`
+	ThreadID             ThreadID          `json:"thread_id"`
+	RestoredCursor       Cursor            `json:"restored_cursor"`
+	SideEffectsReplayed  bool              `json:"side_effects_replayed"`
+	ExactContext         bool              `json:"exact_context"`
+	WorkspaceClaimsValid bool              `json:"workspace_claims_valid"`
+	InvalidatedClaims    int               `json:"invalidated_claims,omitempty"`
+	StaleClaims          int               `json:"stale_claims,omitempty"`
 }
 
 type CheckpointForkResult struct {
-	Version    int               `json:"version"`
-	Checkpoint SessionCheckpoint `json:"checkpoint"`
-	SessionID  string            `json:"session_id"`
-	ThreadID   ThreadID          `json:"thread_id"`
-	ParentID   ThreadID          `json:"parent_thread_id"`
+	Version              int               `json:"version"`
+	Checkpoint           SessionCheckpoint `json:"checkpoint"`
+	SessionID            string            `json:"session_id"`
+	ThreadID             ThreadID          `json:"thread_id"`
+	ParentID             ThreadID          `json:"parent_thread_id"`
+	ExactContext         bool              `json:"exact_context"`
+	WorkspaceClaimsValid bool              `json:"workspace_claims_valid"`
+	InvalidatedClaims    int               `json:"invalidated_claims,omitempty"`
+	StaleClaims          int               `json:"stale_claims,omitempty"`
 }
 
 type PlanArtifactStatus string

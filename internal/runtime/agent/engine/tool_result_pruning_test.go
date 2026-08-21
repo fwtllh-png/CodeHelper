@@ -17,7 +17,7 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 		&scriptedProvider{},
 		tool.NewRegistry(nil, results),
 	)
-	engine.options.CompactWindow.AutoTokens = 1800
+	engine.options.Context.Window.AutoTokens = 1800
 	content := "HEAD-" + strings.Repeat("model-visible-result ", 700) + "-TAIL"
 	encoded, err := json.Marshal(tool.Result{Content: content})
 	if err != nil {
@@ -31,6 +31,7 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 	original := cloneMessages(history)
 	var receipt *CompactionReceipt
 	window, err := engine.runCompactGate(
+		t.Context(),
 		&history,
 		contextstore.New(contextstore.Input{}).Snapshot(),
 		128,

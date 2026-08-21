@@ -6,6 +6,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -232,13 +233,32 @@ func (e *Engine) finalizeTerminalContext(
 	scope.mu.Lock()
 	projectedWorld := contextstore.CloneWorldBaseline(scope.state.world)
 	window := contextstore.CloneWindowLedger(scope.state.window)
+	contextUsage := scope.state.contextUsage
+	contextCost := scope.state.contextCost
 	scope.mu.Unlock()
+	usage.Add(contextUsage)
+	cost += contextCost
 	world := contextstore.WorldBaseline{}
 	switch {
 	case contextstore.WorldBaselineValid(candidate, projectedWorld):
 		world = projectedWorld
 	case contextstore.WorldBaselineValid(candidate, e.world):
 		world = contextstore.CloneWorldBaseline(e.world)
+	}
+	retainedWorking := e.workingLedger().RetainedDelta(
+		e.turn,
+		e.options.WorkingSetLimit,
+		e.options.Context.TruthRetention.TruthMaxEntities,
+	)
+	retainedEvidence := e.evidenceSet().RetainedDelta(
+		e.options.Context.TruthRetention.FactMaxEntities,
+		e.options.Context.TruthRetention.VerifiedChangeRetentionTurns,
+		e.options.Context.TruthRetention.HandleMaxEntities,
+	)
+	workspace, workspaceErr := e.captureWorkspaceBindingFor(retainedEvidence)
+	if workspaceErr != nil {
+		return e.contextBudgetSnapshot(candidate),
+			errors.Join(maintenanceErr, workspaceErr)
 	}
 	delta, err := prepareSessionDelta(
 		scope.spec.Identity.TurnID,
@@ -247,15 +267,21 @@ func (e *Engine) finalizeTerminalContext(
 		usage,
 		cost,
 		SessionStateDelta{
+			Epoch:        e.stateEpoch,
 			Turn:         e.turn,
 			HistoryTurns: cloneHistoryTurns(e.historyTurns),
-			WorkingSet:   e.workingLedger().Delta(),
-			Evidence:     e.evidenceSet().Delta(),
+			WorkingSet:   retainedWorking,
+			Evidence:     retainedEvidence,
 			Failures:     e.failureLedger().Delta(),
-			Compaction:   CompactionDelta{Count: e.compactionTotal()},
+			Compaction:   e.compactionState(),
 			Plan:         &plan,
 			World:        world,
+			Workspace:    workspace,
 			Window:       window,
+			Manifest: sessiondelta.ManifestLimits{
+				OwnerDeltaMaxSegments: e.options.Context.OwnerDeltaMaxSegments,
+				OwnerDeltaMaxBytes:    e.options.Context.OwnerDeltaMaxBytes,
+			},
 		},
 	)
 	if err != nil {

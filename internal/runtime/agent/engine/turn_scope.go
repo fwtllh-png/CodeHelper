@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
@@ -68,6 +69,9 @@ type scopeState struct {
 	evidence            *evidence.Set
 	failures            *compact.Failures
 	compactions         int
+	contextCompaction   *sessiondelta.CompactionState
+	contextUsage        provider.Usage
+	contextCost         float64
 }
 
 type ScopeSnapshot struct {
@@ -90,7 +94,10 @@ func newScopeState(engine *Engine) scopeState {
 		evidence:    engine.evidence.Clone(),
 		failures:    engine.failures.Clone(),
 		compactions: engine.compactions,
-		window:      contextstore.CloneWindowLedger(engine.window),
+		contextCompaction: sessiondelta.CloneCompaction(
+			sessiondelta.Compaction{State: engine.contextCompaction},
+		).State,
+		window: contextstore.CloneWindowLedger(engine.window),
 	}
 }
 
@@ -113,6 +120,7 @@ func (s *Scope) Spec() TurnSpec {
 	spec.Skills = append([]SkillSummary(nil), spec.Skills...)
 	spec.MCP = append([]MCPHealthSnapshot(nil), spec.MCP...)
 	spec.ExtensionPlan = spec.ExtensionPlan.Clone()
+	spec.Memory.SelectedIDs = append([]string(nil), spec.Memory.SelectedIDs...)
 	return spec
 }
 
@@ -226,6 +234,30 @@ func (e *Engine) noteCompaction() {
 		return
 	}
 	e.compactions++
+}
+
+func (e *Engine) compactionState() sessiondelta.Compaction {
+	if scope := e.runningScope(); scope != nil {
+		return sessiondelta.CloneCompaction(sessiondelta.Compaction{
+			Count: e.compactionTotal(), State: scope.state.contextCompaction,
+		})
+	}
+	return sessiondelta.CloneCompaction(sessiondelta.Compaction{
+		Count: e.compactions, State: e.contextCompaction,
+	})
+}
+
+func (e *Engine) stageContextCompaction(
+	state *sessiondelta.CompactionState,
+) {
+	cloned := sessiondelta.CloneCompaction(
+		sessiondelta.Compaction{State: state},
+	).State
+	if scope := e.runningScope(); scope != nil {
+		scope.state.contextCompaction = cloned
+		return
+	}
+	e.contextCompaction = cloned
 }
 func (e *Engine) runningScope() *Scope {
 	if e == nil {

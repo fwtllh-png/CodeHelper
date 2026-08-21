@@ -1,6 +1,7 @@
 import * as assert from "node:assert/strict";
 import test from "node:test";
 import {
+  decodeCheckpointFork,
   decodeCheckpointList,
   decodeCheckpointRestore,
   decodeSessionPlan,
@@ -8,7 +9,7 @@ import {
 } from "./artifacts.js";
 
 const checkpoint = {
-  version: 1,
+  version: 2,
   id: "checkpoint_1",
   session_id: "session_1",
   thread_id: "thread_1",
@@ -17,6 +18,9 @@ const checkpoint = {
   status: "completed",
   summary: "Updated parser",
   profile_revision: 2,
+  state_epoch: 3,
+  context_digest: "sha256:context",
+  workspace_digest: "sha256:workspace",
   changed_files: 1,
   external_side_effects: true,
   side_effect_note: "Tool effects remain applied",
@@ -27,25 +31,50 @@ const checkpoint = {
 
 void test("strictly decodes Checkpoints and rejects side-effect replay", () => {
   const list = decodeCheckpointList({
-    version: 1,
+    version: 2,
     session_id: "session_1",
     checkpoints: [checkpoint],
   });
   assert.equal(list.checkpoints[0]?.changed_files, 1);
+  const restored = decodeCheckpointRestore({
+    version: 2,
+    checkpoint,
+    thread_id: "thread_1",
+    restored_cursor: 12,
+    side_effects_replayed: false,
+    exact_context: true,
+    workspace_claims_valid: false,
+    invalidated_claims: 1,
+    stale_claims: 1,
+  });
+  assert.equal(restored.exact_context, true);
+  assert.equal(restored.workspace_claims_valid, false);
+  assert.equal(restored.stale_claims, 1);
   assert.throws(() => decodeCheckpointRestore({
-    version: 1,
+    version: 2,
     checkpoint,
     thread_id: "thread_1",
     restored_cursor: 12,
     side_effects_replayed: true,
+    exact_context: true,
+    workspace_claims_valid: true,
   }), /replay side effects/);
+  assert.throws(() => decodeCheckpointFork({
+    version: 2,
+    checkpoint,
+    session_id: "session_1",
+    thread_id: "thread_2",
+    parent_thread_id: "thread_1",
+    exact_context: false,
+    workspace_claims_valid: true,
+  }), /require exact context/);
 });
 
 void test("decodes an immutable structured Plan Artifact", () => {
   const result = decodeSessionPlan({
-    version: 1,
+    version: 2,
     artifact: {
-      version: 1,
+      version: 2,
       id: "plan_1",
       session_id: "session_1",
       thread_id: "thread_1",

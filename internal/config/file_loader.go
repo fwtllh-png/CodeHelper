@@ -66,16 +66,15 @@ type executionFileConfig struct {
 	} `toml:"journal"`
 }
 
-// routeFileConfig spells out one field per purpose instead of decoding a map.
-// The decoder rejects unknown fields, so a misspelled purpose is refused at load
-// time rather than accepted as a slot nothing reads. The purposes that nothing
-// samples on yet (summary, judge) are absent for the same reason: a table that
-// accepts them would look like it took effect.
+// routeFileConfig spells out one field per wired purpose instead of decoding a
+// map. The decoder rejects unknown fields, so a misspelled or unwired purpose is
+// refused at load time rather than accepted as a slot nothing reads.
 type routeFileConfig struct {
 	Lock     *bool                `toml:"lock"`
 	Plan     *routeSlotFileConfig `toml:"plan"`
 	Vision   *routeSlotFileConfig `toml:"vision"`
 	Subquery *routeSlotFileConfig `toml:"subquery"`
+	Summary  *routeSlotFileConfig `toml:"summary"`
 }
 
 type routeSlotFileConfig struct {
@@ -100,8 +99,11 @@ type fileConfig struct {
 		EventRetention *int    `toml:"event_retention"`
 	} `toml:"state"`
 	Memory struct {
-		Enabled *bool   `toml:"enabled"`
-		Path    *string `toml:"path"`
+		Enabled        *bool   `toml:"enabled"`
+		Path           *string `toml:"path"`
+		MaxCandidates  *int    `toml:"max_candidates"`
+		MaxPromptBytes *int    `toml:"max_prompt_bytes"`
+		SemanticRerank *bool   `toml:"semantic_rerank"`
 	} `toml:"memory"`
 	Context struct {
 		Index struct {
@@ -128,10 +130,31 @@ type fileConfig struct {
 			Enabled *bool `toml:"enabled"`
 		} `toml:"coding_policy"`
 		Compact struct {
-			AutoCompactTokens *int    `toml:"auto_compact_tokens"`
-			Scope             *string `toml:"scope"`
-			SummaryMaxBytes   *int    `toml:"summary_max_bytes"`
-			MaxDigestEntries  *int    `toml:"max_digest_entries"`
+			PrepareTokens                    *int    `toml:"prepare_tokens"`
+			AutoCompactTokens                *int    `toml:"auto_compact_tokens"`
+			EmergencyTokens                  *int    `toml:"emergency_tokens"`
+			Scope                            *string `toml:"scope"`
+			SummaryMaxBytes                  *int    `toml:"summary_max_bytes"`
+			MaxDigestEntries                 *int    `toml:"max_digest_entries"`
+			TruthMaxBytes                    *int    `toml:"truth_max_bytes"`
+			TruthMaxEntities                 *int    `toml:"truth_max_entities"`
+			MandatoryMaxEntities             *int    `toml:"mandatory_max_entities"`
+			FactMaxEntities                  *int    `toml:"fact_max_entities"`
+			VerifiedChangeRetentionTurns     *int    `toml:"verified_change_retention_turns"`
+			FailureMaxEntities               *int    `toml:"failure_max_entities"`
+			HandleMaxEntities                *int    `toml:"handle_max_entities"`
+			OmissionSampleMaxEntities        *int    `toml:"omission_sample_max_entities"`
+			RecentTailTurns                  *int    `toml:"recent_tail_turns"`
+			RecentTailMaxTokens              *int    `toml:"recent_tail_max_tokens"`
+			SemanticNarrative                *string `toml:"semantic_narrative"`
+			SemanticNarrativeMaxInputTokens  *int    `toml:"semantic_narrative_max_input_tokens"`
+			SemanticNarrativeMaxOutputTokens *int    `toml:"semantic_narrative_max_output_tokens"`
+			SemanticNarrativeMaxItems        *int    `toml:"semantic_narrative_max_items"`
+			SemanticNarrativeItemMaxBytes    *int    `toml:"semantic_narrative_item_max_bytes"`
+			SemanticNarrativeTimeout         *string `toml:"semantic_narrative_timeout"`
+			SemanticNarrativeRetryLimit      *int    `toml:"semantic_narrative_retry_limit"`
+			OwnerDeltaMaxSegments            *int    `toml:"owner_delta_max_segments"`
+			OwnerDeltaMaxBytes               *int    `toml:"owner_delta_max_bytes"`
 		} `toml:"compact"`
 	} `toml:"context"`
 	Telemetry struct {
@@ -177,6 +200,9 @@ func applyFile(
 	applyInt(input.State.EventRetention, &config.State.EventRetention, fieldStateRetention, source, provenance)
 	applyBool(input.Memory.Enabled, &config.Memory.Enabled, fieldMemoryEnabled, source, provenance)
 	applyString(input.Memory.Path, &config.Memory.Path, fieldMemoryPath, source, provenance)
+	applyInt(input.Memory.MaxCandidates, &config.Memory.MaxCandidates, fieldMemoryMaxCandidates, source, provenance)
+	applyInt(input.Memory.MaxPromptBytes, &config.Memory.MaxPromptBytes, fieldMemoryMaxPromptBytes, source, provenance)
+	applyBool(input.Memory.SemanticRerank, &config.Memory.SemanticRerank, fieldMemorySemanticRerank, source, provenance)
 	index := &config.Context.Index
 	applyBool(input.Context.Index.Enabled, &index.Enabled, fieldIndexEnabled, source, provenance)
 	applyInt64(input.Context.Index.MaxFileBytes, &index.MaxFileBytes, fieldIndexMaxBytes, source, provenance)
@@ -220,8 +246,16 @@ func applyFile(
 	)
 	compaction := &config.Context.Compact
 	applyInt(
+		input.Context.Compact.PrepareTokens, &compaction.PrepareTokens,
+		fieldCompactPrepareTokens, source, provenance,
+	)
+	applyInt(
 		input.Context.Compact.AutoCompactTokens, &compaction.AutoCompactTokens,
 		fieldCompactAutoTokens, source, provenance,
+	)
+	applyInt(
+		input.Context.Compact.EmergencyTokens, &compaction.EmergencyTokens,
+		fieldCompactEmergencyTokens, source, provenance,
 	)
 	applyString(
 		input.Context.Compact.Scope, &compaction.Scope,
@@ -234,6 +268,42 @@ func applyFile(
 	applyInt(
 		input.Context.Compact.MaxDigestEntries, &compaction.MaxDigestEntries,
 		fieldCompactMaxDigest, source, provenance,
+	)
+	for _, value := range []struct {
+		source *int
+		target *int
+		field  string
+	}{
+		{input.Context.Compact.TruthMaxBytes, &compaction.TruthMaxBytes, fieldCompactTruthMaxBytes},
+		{input.Context.Compact.TruthMaxEntities, &compaction.TruthMaxEntities, fieldCompactTruthMaxEntities},
+		{input.Context.Compact.MandatoryMaxEntities, &compaction.MandatoryMaxEntities, fieldCompactMandatoryMaxEntities},
+		{input.Context.Compact.FactMaxEntities, &compaction.FactMaxEntities, fieldCompactFactMaxEntities},
+		{input.Context.Compact.VerifiedChangeRetentionTurns, &compaction.VerifiedChangeRetentionTurns, fieldCompactVerifiedChangeRetentionTurns},
+		{input.Context.Compact.FailureMaxEntities, &compaction.FailureMaxEntities, fieldCompactFailureMaxEntities},
+		{input.Context.Compact.HandleMaxEntities, &compaction.HandleMaxEntities, fieldCompactHandleMaxEntities},
+		{input.Context.Compact.OmissionSampleMaxEntities, &compaction.OmissionSampleMaxEntities, fieldCompactOmissionSampleMaxEntities},
+		{input.Context.Compact.RecentTailTurns, &compaction.RecentTailTurns, fieldCompactRecentTailTurns},
+		{input.Context.Compact.RecentTailMaxTokens, &compaction.RecentTailMaxTokens, fieldCompactRecentTailMaxTokens},
+		{input.Context.Compact.SemanticNarrativeMaxInputTokens, &compaction.SemanticNarrativeMaxInputTokens, fieldCompactSemanticNarrativeMaxInputTokens},
+		{input.Context.Compact.SemanticNarrativeMaxOutputTokens, &compaction.SemanticNarrativeMaxOutputTokens, fieldCompactSemanticNarrativeMaxOutputTokens},
+		{input.Context.Compact.SemanticNarrativeMaxItems, &compaction.SemanticNarrativeMaxItems, fieldCompactSemanticNarrativeMaxItems},
+		{input.Context.Compact.SemanticNarrativeItemMaxBytes, &compaction.SemanticNarrativeItemMaxBytes, fieldCompactSemanticNarrativeItemMaxBytes},
+		{input.Context.Compact.SemanticNarrativeRetryLimit, &compaction.SemanticNarrativeRetryLimit, fieldCompactSemanticNarrativeRetryLimit},
+		{input.Context.Compact.OwnerDeltaMaxSegments, &compaction.OwnerDeltaMaxSegments, fieldCompactOwnerDeltaMaxSegments},
+		{input.Context.Compact.OwnerDeltaMaxBytes, &compaction.OwnerDeltaMaxBytes, fieldCompactOwnerDeltaMaxBytes},
+	} {
+		applyInt(value.source, value.target, value.field, source, provenance)
+	}
+	applyString(
+		input.Context.Compact.SemanticNarrative, &compaction.SemanticNarrative,
+		fieldCompactSemanticNarrative, source, provenance,
+	)
+	applyDurationString(
+		input.Context.Compact.SemanticNarrativeTimeout,
+		&compaction.SemanticNarrativeTimeout,
+		fieldCompactSemanticNarrativeTimeout,
+		source,
+		provenance,
 	)
 	applyString(input.Telemetry.LogLevel, &config.Telemetry.LogLevel, fieldLogLevel, source, provenance)
 	if trusted {
@@ -376,6 +446,7 @@ func applyRouteFile(
 		{purpose: "plan", input: input.Plan},
 		{purpose: "vision", input: input.Vision},
 		{purpose: "subquery", input: input.Subquery},
+		{purpose: "summary", input: input.Summary},
 	}
 	for _, slot := range slots {
 		if slot.input == nil {

@@ -12,7 +12,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
@@ -182,17 +181,6 @@ type SessionArtifactStore interface {
 	) (protocol.SessionPlanArtifact, bool, error)
 }
 
-type CheckpointEngine interface {
-	History(protocol.ThreadID) ([]provider.Message, error)
-	RestoreCheckpoint(protocol.ThreadID, []provider.Message) error
-	ForkCheckpoint(
-		protocol.ThreadID,
-		protocol.ThreadID,
-		[]provider.Message,
-	) error
-	Release(protocol.ThreadID)
-}
-
 type Options struct {
 	OperationBuffer     int
 	EventHistory        int
@@ -211,6 +199,7 @@ type Options struct {
 	SessionWorkspaces   SessionWorkspaceManager
 	SessionArtifacts    SessionArtifactStore
 	TerminalStore       turnkernel.TerminalEnvelopeStore
+	ContextRebaseStore  ContextRebaseStore
 	Orchestration       OrchestrationController
 }
 
@@ -251,6 +240,7 @@ type Runtime struct {
 	sessionWorkspaces    SessionWorkspaceManager
 	sessionArtifacts     SessionArtifactStore
 	terminalStore        turnkernel.TerminalEnvelopeStore
+	contextRebaseStore   ContextRebaseStore
 	terminal             *TerminalPublisher
 	orchestration        OrchestrationController
 	orchestrationEffects sync.Mutex
@@ -276,6 +266,8 @@ type Runtime struct {
 	closed       bool
 
 	active *ActiveTurnRegistry
+
+	contextManifests sync.Map
 
 	observerMu   sync.Mutex
 	observers    map[uint64]func(protocol.Event)
@@ -1587,7 +1579,16 @@ func (s *runtimeSink) publishTerminalAs(
 	}
 	committed := *s.committed
 	committed.OperationID, committed.ItemID = operationID, itemID
-	return s.runtime.terminal.Publish(context.Background(), committed)
+	if err := s.runtime.terminal.Publish(context.Background(), committed); err != nil {
+		return err
+	}
+	s.publishPostTurnContextMaintenance(
+		operationID,
+		threadID,
+		turnID,
+		itemID,
+	)
+	return nil
 }
 func (r *Runtime) recoverPendingTurns(ctx context.Context) error {
 	if restorer, ok := r.engine.(interface {

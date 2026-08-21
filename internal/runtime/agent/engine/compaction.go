@@ -46,6 +46,7 @@ func (e *Engine) buildCompactSummary(removed []provider.Message) compact.Summary
 		summary.Changes = append(summary.Changes, compact.Change{
 			Path: change.Path, Turn: change.Turn, Read: change.Read,
 			Verified: change.Verified, Diagnostics: change.Diagnostics,
+			Stale: change.Stale,
 		})
 	}
 	compact.SortChanges(summary.Changes)

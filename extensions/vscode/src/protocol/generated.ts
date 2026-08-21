@@ -426,6 +426,7 @@ export type CheckpointList = {
             readonly "turn_id": string;
           };
       readonly "changed_files": number;
+      readonly "context_digest"?: string;
       readonly "created_at": string;
       readonly "cursor": number;
       readonly "external_side_effects": boolean;
@@ -434,11 +435,13 @@ export type CheckpointList = {
       readonly "profile_revision": number;
       readonly "session_id": string;
       readonly "side_effect_note"?: string;
+      readonly "state_epoch"?: number;
       readonly "status": string;
       readonly "summary": string;
       readonly "thread_id": string;
       readonly "turn_id": string;
       readonly "version": number;
+      readonly "workspace_digest"?: string;
     }>;
   readonly "session_id": string;
   readonly "version": number;
@@ -454,6 +457,7 @@ export type CheckpointRestore = {
             readonly "turn_id": string;
           };
       readonly "changed_files": number;
+      readonly "context_digest"?: string;
       readonly "created_at": string;
       readonly "cursor": number;
       readonly "external_side_effects": boolean;
@@ -462,16 +466,22 @@ export type CheckpointRestore = {
       readonly "profile_revision": number;
       readonly "session_id": string;
       readonly "side_effect_note"?: string;
+      readonly "state_epoch"?: number;
       readonly "status": string;
       readonly "summary": string;
       readonly "thread_id": string;
       readonly "turn_id": string;
       readonly "version": number;
+      readonly "workspace_digest"?: string;
     };
+  readonly "exact_context": boolean;
+  readonly "invalidated_claims"?: number;
   readonly "restored_cursor": number;
   readonly "side_effects_replayed": boolean;
+  readonly "stale_claims"?: number;
   readonly "thread_id": string;
   readonly "version": number;
+  readonly "workspace_claims_valid": boolean;
 };
 
 export type CheckpointFork = {
@@ -484,6 +494,7 @@ export type CheckpointFork = {
             readonly "turn_id": string;
           };
       readonly "changed_files": number;
+      readonly "context_digest"?: string;
       readonly "created_at": string;
       readonly "cursor": number;
       readonly "external_side_effects": boolean;
@@ -492,16 +503,22 @@ export type CheckpointFork = {
       readonly "profile_revision": number;
       readonly "session_id": string;
       readonly "side_effect_note"?: string;
+      readonly "state_epoch"?: number;
       readonly "status": string;
       readonly "summary": string;
       readonly "thread_id": string;
       readonly "turn_id": string;
       readonly "version": number;
+      readonly "workspace_digest"?: string;
     };
+  readonly "exact_context": boolean;
+  readonly "invalidated_claims"?: number;
   readonly "parent_thread_id": string;
   readonly "session_id": string;
+  readonly "stale_claims"?: number;
   readonly "thread_id": string;
   readonly "version": number;
+  readonly "workspace_claims_valid": boolean;
 };
 
 export type SessionPlan = {
@@ -933,6 +950,7 @@ export type CheckpointCreatedData = {
             readonly "turn_id": string;
           };
       readonly "changed_files": number;
+      readonly "context_digest"?: string;
       readonly "created_at": string;
       readonly "cursor": number;
       readonly "external_side_effects": boolean;
@@ -941,16 +959,23 @@ export type CheckpointCreatedData = {
       readonly "profile_revision": number;
       readonly "session_id": string;
       readonly "side_effect_note"?: string;
+      readonly "state_epoch"?: number;
       readonly "status": string;
       readonly "summary": string;
       readonly "thread_id": string;
       readonly "turn_id": string;
       readonly "version": number;
+      readonly "workspace_digest"?: string;
     };
 };
 
 export type CheckpointForkedData = {
   readonly "checkpoint_id": string;
+  readonly "context_commit_id"?: string;
+  readonly "context_digest"?: string;
+  readonly "context_revision"?: number;
+  readonly "exact_context": boolean;
+  readonly "invalidated_claims"?: number;
   readonly "new_thread_id": string;
   readonly "replacement_history": ReadonlyArray<{
       readonly "content": unknown;
@@ -958,11 +983,19 @@ export type CheckpointForkedData = {
       readonly "turn"?: number;
     }>;
   readonly "source_cursor": number;
+  readonly "stale_claims"?: number;
+  readonly "state_epoch"?: number;
   readonly "title": string;
+  readonly "workspace_claims_valid": boolean;
 };
 
 export type CheckpointRestoredData = {
   readonly "checkpoint_id": string;
+  readonly "context_commit_id"?: string;
+  readonly "context_digest"?: string;
+  readonly "context_revision"?: number;
+  readonly "exact_context": boolean;
+  readonly "invalidated_claims"?: number;
   readonly "replacement_history": ReadonlyArray<{
       readonly "content": unknown;
       readonly "role": string;
@@ -972,6 +1005,9 @@ export type CheckpointRestoredData = {
   readonly "source_cursor": number;
   readonly "source_thread_id": string;
   readonly "source_turn_id": string;
+  readonly "stale_claims"?: number;
+  readonly "state_epoch"?: number;
+  readonly "workspace_claims_valid": boolean;
 };
 
 export type CitationData = {
@@ -1242,13 +1278,22 @@ export type ThreadCompactedData = {
   readonly "critical_facts"?: number;
   readonly "downshift_policy"?: string;
   readonly "first_window_id"?: string;
+  readonly "mandatory_bytes"?: number;
+  readonly "mandatory_entities"?: number;
   readonly "model_downshifted"?: boolean;
   readonly "narrative_included"?: boolean;
+  readonly "omission_count"?: number;
   readonly "previous_window_id"?: string;
   readonly "replacement_history"?: ReadonlyArray<{
       readonly "content": unknown;
       readonly "role": string;
       readonly "turn"?: number;
+    }>;
+  readonly "retention"?: ReadonlyArray<{
+      readonly "candidates": number;
+      readonly "class": string;
+      readonly "omitted": number;
+      readonly "retained": number;
     }>;
   readonly "summary": string;
   readonly "truth_entities"?: number;
@@ -1427,12 +1472,21 @@ export type TurnCompactionData = {
   readonly "authority_digest"?: string;
   readonly "authority_equivalent"?: boolean;
   readonly "capsule_bytes"?: number;
+  readonly "compaction_id"?: string;
   readonly "compatibility_hash"?: string;
   readonly "compatibility_matched"?: boolean;
   readonly "critical_facts"?: number;
   readonly "downshift_policy"?: string;
+  readonly "fallback_reason"?: string;
+  readonly "mandatory_bytes"?: number;
+  readonly "mandatory_entities"?: number;
+  readonly "mode"?: string;
   readonly "model_downshifted"?: boolean;
+  readonly "narrative_bytes"?: number;
   readonly "narrative_included"?: boolean;
+  readonly "narrative_input_tokens"?: number;
+  readonly "narrative_output_tokens"?: number;
+  readonly "omission_count"?: number;
   readonly "original_bytes"?: number;
   readonly "phase": string;
   readonly "pruned_bytes"?: number;
@@ -1440,9 +1494,18 @@ export type TurnCompactionData = {
   readonly "removed_messages"?: number;
   readonly "removed_turns"?: ReadonlyArray<number>;
   readonly "retained_bytes"?: number;
+  readonly "retention"?: ReadonlyArray<{
+      readonly "candidates": number;
+      readonly "class": string;
+      readonly "omitted": number;
+      readonly "retained": number;
+    }>;
   readonly "sections"?: ReadonlyArray<string>;
+  readonly "source_window_id"?: string;
+  readonly "status"?: string;
   readonly "summary": string;
   readonly "summary_truncated"?: boolean;
+  readonly "target_window_id"?: string;
   readonly "truth_entities"?: number;
   readonly "truth_generation"?: number;
 };
@@ -1533,6 +1596,7 @@ export type TurnReceiptData = {
       readonly "auto_compact_tokens": number;
       readonly "body_tokens"?: number;
       readonly "compactions": number;
+      readonly "emergency_tokens"?: number;
       readonly "estimated_tokens"?: number;
       readonly "full_active_tokens"?: number;
       readonly "max_context_tokens"?: number;
@@ -1540,17 +1604,21 @@ export type TurnReceiptData = {
       readonly "output_reserve"?: number;
       readonly "pending_tokens"?: number;
       readonly "prefill_tokens"?: number;
+      readonly "prepare_tokens"?: number;
       readonly "tool_definition_tokens"?: number;
       readonly "window_id"?: string;
       readonly "window_number"?: number;
     };
   readonly "context_sections"?: ReadonlyArray<{
+      readonly "candidate_count"?: number;
       readonly "digest"?: string;
+      readonly "generation"?: number;
       readonly "kind": string;
       readonly "original_bytes": number;
       readonly "original_tokens"?: number;
       readonly "retained_bytes": number;
       readonly "retained_tokens"?: number;
+      readonly "selected_ids"?: ReadonlyArray<string>;
       readonly "truncated"?: boolean;
       readonly "truncation_reason"?: string;
     }>;

@@ -67,6 +67,8 @@ type Change struct {
 	Verified bool
 	// Diagnostics is whether a post-edit check still reports problems.
 	Diagnostics bool
+	// Stale means a restored workspace binding no longer supports the claim.
+	Stale bool
 }
 
 // Fact is one thing a lookup established, already rendered by its owner. The

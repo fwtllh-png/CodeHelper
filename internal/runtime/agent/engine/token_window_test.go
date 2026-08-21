@@ -53,7 +53,7 @@ func TestTokenWindowIncludesStableDynamicToolsAndOutputReserve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine.options.CompactWindow.Scope = compactScopeBodyAfterPrefix
+	engine.options.Context.Window.Scope = compactScopeBodyAfterPrefix
 	body, err := engine.measureTokenWindow(input, 128)
 	if err != nil {
 		t.Fatal(err)
@@ -114,6 +114,25 @@ func TestCompactionAndReplacementAdvanceTokenWindow(t *testing.T) {
 	}
 }
 
+func TestCompactionCutsPreserveConfiguredRecentTurns(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.Context.RecentTailTurns = 2
+	engine.options.Context.RecentTailMaxTokens = 1 << 20
+	history := []provider.Message{
+		messageWithText(provider.RoleSystem, "summary", 0),
+		messageWithText(provider.RoleUser, "one", 1),
+		messageWithText(provider.RoleAssistant, "done one", 1),
+		messageWithText(provider.RoleUser, "two", 2),
+		messageWithText(provider.RoleAssistant, "done two", 2),
+		messageWithText(provider.RoleUser, "three", 3),
+		messageWithText(provider.RoleAssistant, "done three", 3),
+	}
+	cuts := engine.retainedTailCuts(history, false)
+	if len(cuts) == 0 || cuts[len(cuts)-1] != 3 {
+		t.Fatalf("cuts=%v, want latest cut at start of final two turns", cuts)
+	}
+}
+
 func TestHeuristicEstimatorAccountsForImageTilesByKind(t *testing.T) {
 	imageBytes := encodePNG(t, 512, 512)
 	attachment := provider.Attachment{
@@ -171,7 +190,7 @@ func TestHeuristicEstimatorAccountsForImageTilesByKind(t *testing.T) {
 
 func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.CompactWindow.Scope = compactScopeBodyAfterPrefix
+	engine.options.Context.Window.Scope = compactScopeBodyAfterPrefix
 	engine.options.SummaryMaxBytes = 2 << 10
 	history := []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("h", 4000), 1),
@@ -183,7 +202,7 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 			provider.TextMessage(provider.RoleSystem, strings.Repeat("s", 13_000)),
 		},
 	}).Snapshot()
-	window, err := engine.runCompactGate(&history, input, 128, CompactionPhasePreSampling, false, func(_ State, event Event) error {
+	window, err := engine.runCompactGate(t.Context(), &history, input, 128, CompactionPhasePreSampling, false, func(_ State, event Event) error {
 		receipt = event.Compaction
 		return nil
 	})

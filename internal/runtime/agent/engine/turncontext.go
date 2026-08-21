@@ -17,6 +17,7 @@ import (
 // commit. These values never change after the Scope is opened.
 type TurnIdentity struct {
 	SessionID       string
+	ThreadID        string
 	TurnID          string
 	ProfileRevision uint64
 }
@@ -42,6 +43,18 @@ type TurnSnapshotSources struct {
 	ExtensionPlan  func() (runtimeextension.Plan, error)
 	Skills         func() []SkillSummary
 	SkillSelection func(string) ([]SkillSummary, SkillSelectionMetrics, error)
+	Memory         func(string) (MemorySnapshot, error)
+}
+
+type MemorySnapshot struct {
+	Generation     uint64
+	Body           string
+	Source         string
+	Digest         string
+	CandidateCount int
+	SelectedIDs    []string
+	Truncated      bool
+	FailureReason  string
 }
 
 // TurnSpec is the complete immutable input for one Engine Scope. Host profile,
@@ -73,6 +86,7 @@ type TurnSpec struct {
 	SkillSelection SkillSelectionMetrics
 	MCP            []MCPHealthSnapshot
 	ExtensionPlan  runtimeextension.Plan
+	Memory         MemorySnapshot
 }
 
 // SkillSummary is a turn-frozen skill catalog entry (N10).
@@ -223,6 +237,19 @@ func SnapshotTurnSpec(
 			return TurnSpec{}, fmt.Errorf("snapshot turn extension plan: %w", err)
 		}
 		spec.ExtensionPlan = spec.ExtensionPlan.Clone()
+	}
+	if options.TurnSnapshots.Memory != nil {
+		spec.Memory, err = options.TurnSnapshots.Memory(request.Prompt)
+		if err != nil {
+			spec.Memory = MemorySnapshot{
+				Source:        "memory://records",
+				FailureReason: "retrieval_failed",
+			}
+		}
+		spec.Memory.SelectedIDs = append(
+			[]string(nil),
+			spec.Memory.SelectedIDs...,
+		)
 	}
 	return spec, nil
 }

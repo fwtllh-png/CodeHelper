@@ -7,7 +7,6 @@ import (
 	"time"
 
 	memorystore "github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	memorytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/memory"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
@@ -28,7 +27,7 @@ func (*Extension) Descriptor() extension.Descriptor {
 		ID: "memory", Version: "builtin-v1",
 		FailurePolicy: extension.FailureFailClosed,
 		Budget: extension.Budget{
-			Timeout: 5 * time.Second, MaxOutputs: 1,
+			Timeout: 5 * time.Second, MaxOutputs: 5,
 		},
 	}
 }
@@ -45,12 +44,15 @@ func (e *Extension) ContributeTools(
 		return extension.ToolContribution{},
 			extension.Skip("disabled", "memory is disabled")
 	}
-	store, err := memorystore.Open(e.config.Path)
+	store, err := memorystore.Open(e.config.Path, memorystore.Options{
+		MaxCandidates:  e.config.MaxCandidates,
+		MaxPromptBytes: e.config.MaxPromptBytes,
+	})
 	if err != nil {
 		return extension.ToolContribution{},
 			extension.Failure("open_store", err)
 	}
-	registration, err := memorytool.Registration(store)
+	registrations, err := memorytool.Registrations(store)
 	if err != nil {
 		return extension.ToolContribution{},
 			extension.Failure("build_tool", err)
@@ -59,7 +61,7 @@ func (e *Extension) ContributeTools(
 	e.store = store
 	e.mu.Unlock()
 	return extension.ToolContribution{
-		Registrations: []tool.Registration{registration},
+		Registrations: registrations,
 	}, extension.Success()
 }
 

@@ -7,10 +7,12 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type recoveredInteraction[T any] struct {
@@ -149,9 +151,34 @@ func (e *Engine) takeRecoveredInput(
 	return e.inputRecovery.take(requestID)
 }
 
-func (e *Engine) ApplyPlan(plan interact.Plan) {
+func (e *Engine) ApplyPlan(plan interact.Plan) error {
+	current := e.buildTruthCapsule(e.buildCompactSummary(nil))
+	var resolved []string
+	for _, entity := range current.Entities {
+		if entity.Kind == compact.EntityGoal || entity.Kind == compact.EntityTodo {
+			resolved = append(resolved, entity.ID)
+		}
+	}
+	added := e.planTruthEntities(plan)
+	decision := (compact.ContextAdmissionController{
+		Policy: e.options.Context.TruthRetention,
+	}).Decide(current, compact.AdmissionRequest{
+		BaseContextRevision:  e.sessionRevision,
+		RouteCompatibility:   current.CompatibilityHash,
+		AddedMandatory:       added,
+		ResolvedMandatoryIDs: resolved,
+	})
+	if !decision.Allowed {
+		return protocol.NewProblem(
+			protocol.CodeResourceExhausted,
+			"context admission rejected plan update: "+decision.Reason,
+			false,
+			nil,
+		)
+	}
 	e.setPlan(plan)
 	e.observePaths(workingset.SourcePlan, plan.CriticalFiles)
+	return nil
 }
 
 func (e *Engine) setPlan(plan interact.Plan) {

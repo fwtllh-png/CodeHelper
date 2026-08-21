@@ -92,6 +92,9 @@ event_retention = 1000000
 
 [memory]
 enabled = false
+max_candidates = 32
+max_prompt_bytes = 16384
+semantic_rerank = false
 
 [telemetry]
 log_level = "info"
@@ -169,10 +172,31 @@ max_bytes = 4096
 enabled = true
 
 [context.compact]
+prepare_tokens = 0
 auto_compact_tokens = 0
+emergency_tokens = 0
 scope = "total"
 summary_max_bytes = 8192
 max_digest_entries = 120
+truth_max_bytes = 5632
+truth_max_entities = 256
+mandatory_max_entities = 128
+fact_max_entities = 96
+verified_change_retention_turns = 32
+failure_max_entities = 24
+handle_max_entities = 32
+omission_sample_max_entities = 8
+recent_tail_turns = 2
+recent_tail_max_tokens = 8192
+semantic_narrative = "off"
+semantic_narrative_max_input_tokens = 4096
+semantic_narrative_max_output_tokens = 512
+semantic_narrative_max_items = 32
+semantic_narrative_item_max_bytes = 512
+semantic_narrative_timeout = "30s"
+semantic_narrative_retry_limit = 1
+owner_delta_max_segments = 16
+owner_delta_max_bytes = 65536
 
 [route]
 lock = false

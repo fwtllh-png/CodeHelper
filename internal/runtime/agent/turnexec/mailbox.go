@@ -118,6 +118,19 @@ func (l *RequestLedger) Resolve(kind RequestKind, requestID string) error {
 	return nil
 }
 
+func (l *RequestLedger) Pending() map[string]RequestKind {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	result := make(map[string]RequestKind, len(l.pending))
+	for id, kind := range l.pending {
+		result[id] = kind
+	}
+	return result
+}
+
 func requestConflict(
 	requestID string,
 	kind RequestKind,

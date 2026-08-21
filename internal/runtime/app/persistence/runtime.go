@@ -73,23 +73,22 @@ func PreparePersistentRuntime(
 		return nil, fmt.Errorf("recover interrupted tasks: %w", err)
 	}
 	terminalStore := turnstate.NewSQLiteRepository(options.Store.SQLite())
+	contextRebases := NewContextRebaseRepository(options.Store)
 	orchestration, err := orchestrationstore.Open(ctx, options.Store.SQLite())
 	if err != nil {
 		return nil, fmt.Errorf("open work graph orchestration: %w", err)
 	}
-	if manager, ok := options.Engine.(*app.ThreadManager); ok {
-		manager.SetSessionDeltaRestorer(terminalStore.LatestSessionDelta)
-	}
 	runtimeOptions := app.Options{
-		Engine:           options.Engine,
-		EventStore:       options.Store,
-		ContentStore:     options.Store.Content(),
-		Lifecycle:        repositories.Lifecycle,
-		OperationBuffer:  options.OperationBuffer,
-		SubscriberBuffer: options.SubscriberBuffer,
-		Observability:    options.Observability,
-		TerminalStore:    terminalStore,
-		Orchestration:    orchestration,
+		Engine:             options.Engine,
+		EventStore:         options.Store,
+		ContentStore:       options.Store.Content(),
+		Lifecycle:          repositories.Lifecycle,
+		OperationBuffer:    options.OperationBuffer,
+		SubscriberBuffer:   options.SubscriberBuffer,
+		Observability:      options.Observability,
+		TerminalStore:      terminalStore,
+		ContextRebaseStore: contextRebases,
+		Orchestration:      orchestration,
 	}
 	if options.DefaultProfile.Version != 0 {
 		runtimeOptions.SessionProfiles = repositories.Sessions

@@ -15,10 +15,13 @@ code_paths:
   - internal/runtime/agent/engine
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
+  - internal/runtime/agent/compact/retention_test.go
+  - internal/runtime/agent/compact/narrative_test.go
   - internal/runtime/agent/engine/workingset_test.go
   - internal/runtime/agent/promptcontext/turn_test.go
 source_of_truth:
   - internal/adapter/provider/types.go
+  - internal/runtime/agent/compact/truth.go
   - internal/runtime/agent/engine/engine.go
   - internal/runtime/app/wire/route.go
 status: draft
@@ -101,20 +104,26 @@ Capability 是可执行契约：例如 Model 未声明 Tool Call 时，带 Tool 
 
 ## Context 架构
 
-Context 分为不同稳定度：
+Context 按稳定度和 Authority 组装：
 
 1. Base System Constraint 与 Coding Policy；
 2. Mode 与 Security Posture；
-3. Repository/File Context 与 Skill；
-4. Durable Conversation History；
-5. 动态 Repo Map、Working-set Ledger、Evidence 与 Reminder。
+3. 当前 Owner State 构造的 Bounded Truth Capsule；
+4. 可选且非权威的 Semantic Narrative；
+5. 保持 Tool Pair 完整的 Recent Raw Tail；
+6. 动态 Repo Map、Working-set Ledger、Evidence、Memory 与 Reminder。
+
+Mandatory Truth 在模型上下文过载前通过 Admission 保留；Narrative 只能解释设计动机，
+不能声明测试、修改、审批或权限事实。Authority Digest 只覆盖 Mandatory Truth。
+Compaction 每代都从当前 Owner State 和近期原文重建，不能递归总结旧 Narrative。
 
 `promptcontext.Assemble` 按显式 Byte/Token Budget 创建稳定 Partition 与 Receipt；
 `AssembleTurn` 在每次 Request 尾部渲染动态 Partition。动态尾部放在最后，可以保留
 Byte-identical Prefix 以利用 Provider Prompt Cache。
 
 Receipt 记录 Original/Retained Size 与 Truncation Reason，使 Missing、Empty 和
-Truncated 具有不同可观察语义。
+Truncated 具有不同可观察语义。Memory 在 Turn Admission 时按当前 Generation 和 Scope
+检索并冻结，因此本 Turn 的 Memory 写入只在下一 Turn 可见。
 
 ## Working Set 与 Evidence
 
@@ -149,6 +158,7 @@ Result 可以包含 Content、Metadata、File Change、Error Category 和大输�
 | HTTP Provider | `internal/adapter/provider/httpclient` |
 | Tool Registry/Claim | `internal/adapter/tool/tool.go` |
 | Context | `internal/runtime/agent/promptcontext` |
+| Truth/Narrative | `internal/runtime/agent/compact` |
 | Working Set/Evidence | `internal/runtime/agent/workingset`、`evidence` |
 | Collaboration Loop | `internal/runtime/agent/engine/engine.go` |
 | Default Budget | `internal/runtime/app/wire/route.go` |
@@ -168,6 +178,8 @@ Cache。Stable Prefix + Volatile Tail 在两者间平衡。
 - Unknown Tool Call 成为受控 Failure。
 - Unadvertised 或 Revoked Tool 不执行。
 - Context Truncation 写入 Receipt。
+- Mandatory Truth 无法 Admission 时在状态或副作用提交前失败。
+- Narrative 生成失败回退到 Truth + Recent Raw Tail。
 - Tool Schema/Count Budget 限制 Catalog 占用。
 - Tool Result 即使来自成功执行，仍是不可信 Model Input。
 - Credential Value 在 Provider Client 解析，不进入 Prompt。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +20,7 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	assertPragma(t, store.DB(), "user_version", "2")
+	assertPragma(t, store.DB(), "user_version", "3")
 	assertPragma(t, store.DB(), "journal_mode", "wal")
 	assertPragma(t, store.DB(), "foreign_keys", "1")
 	assertPragma(t, store.DB(), "busy_timeout", "137")
@@ -35,6 +36,7 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 		"repo_index_files", "repo_index_symbols", "repo_index_meta",
 		"task_attempts", "spans",
 		"provider_capabilities",
+		"context_rebases", "context_current",
 	}
 	for _, table := range wantTables {
 		var count int
@@ -152,45 +154,64 @@ func TestBusyTimeoutAcrossStores(t *testing.T) {
 	}
 }
 
-func TestOpenRejectsNewerSchemaWithoutChangingIt(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "future.db")
-	store, err := Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatal(err)
-	}
+func TestOpenRejectsUnsupportedSchemaWithoutChangingIt(t *testing.T) {
+	for _, version := range []int{2, 99} {
+		t.Run(fmt.Sprint(version), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "unsupported.db")
+			store, err := Open(t.Context(), path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Close(); err != nil {
+				t.Fatal(err)
+			}
 
-	raw, err := sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := raw.ExecContext(t.Context(), "PRAGMA user_version = 99"); err != nil {
-		t.Fatal(err)
-	}
-	if err := raw.Close(); err != nil {
-		t.Fatal(err)
-	}
+			raw, err := sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := raw.ExecContext(
+				t.Context(),
+				fmt.Sprintf("PRAGMA user_version = %d", version),
+			); err != nil {
+				t.Fatal(err)
+			}
+			if err := raw.Close(); err != nil {
+				t.Fatal(err)
+			}
 
-	_, err = Open(t.Context(), path)
-	var versionErr *SchemaVersionError
-	if !errors.As(err, &versionErr) {
-		t.Fatalf("Open error = %v, want SchemaVersionError", err)
-	}
-	if versionErr.Found != 99 || versionErr.Supported != SchemaVersion {
-		t.Fatalf("schema error = %+v", versionErr)
-	}
-	if !errors.Is(err, ErrUnsupportedSchema) {
-		t.Fatalf("schema error does not wrap ErrUnsupportedSchema: %v", err)
-	}
+			_, err = Open(t.Context(), path)
+			var versionErr *SchemaVersionError
+			if !errors.As(err, &versionErr) {
+				t.Fatalf("Open error = %v, want SchemaVersionError", err)
+			}
+			if versionErr.Found != version ||
+				versionErr.Supported != SchemaVersion {
+				t.Fatalf("schema error = %+v", versionErr)
+			}
+			if !errors.Is(err, ErrUnsupportedSchema) {
+				t.Fatalf(
+					"schema error does not wrap ErrUnsupportedSchema: %v",
+					err,
+				)
+			}
+			if version < SchemaVersion &&
+				!strings.Contains(err.Error(), "older than required") {
+				t.Fatalf("older schema error = %v", err)
+			}
+			if version > SchemaVersion &&
+				!strings.Contains(err.Error(), "newer than supported") {
+				t.Fatalf("newer schema error = %v", err)
+			}
 
-	raw, err = sql.Open("sqlite", path)
-	if err != nil {
-		t.Fatal(err)
+			raw, err = sql.Open("sqlite", path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer raw.Close()
+			assertPragma(t, raw, "user_version", fmt.Sprint(version))
+		})
 	}
-	defer raw.Close()
-	assertPragma(t, raw, "user_version", "99")
 }
 
 func TestOpenReportsCorruptDatabase(t *testing.T) {

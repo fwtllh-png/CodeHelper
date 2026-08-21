@@ -12,6 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -237,6 +238,13 @@ func (m *ThreadManager) StartTurn(
 	m.bindTurn(string(payload.TurnID), payload.ThreadID)
 	m.enter(payload.ThreadID)
 	defer m.leave(payload.ThreadID)
+	if engine := adapter.Underlying(); engine != nil {
+		_, _ = engine.RunPostTurnNarrative(
+			context.WithoutCancel(ctx),
+			payload.ThreadID,
+			payload.TurnID,
+		)
+	}
 	return adapter.StartTurn(ctx, payload, sink)
 }
 
@@ -519,6 +527,94 @@ func (m *ThreadManager) ForkCheckpoint(
 	return nil
 }
 
+func (m *ThreadManager) ContextSnapshot(
+	threadID protocol.ThreadID,
+) (sessiondelta.ContextSnapshot, error) {
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return sessiondelta.ContextSnapshot{}, err
+	}
+	engine := adapter.Underlying()
+	if engine == nil {
+		return sessiondelta.ContextSnapshot{},
+			errors.New("checkpoint Thread engine is unavailable")
+	}
+	return engine.ExportContextSnapshot()
+}
+
+func (m *ThreadManager) RunPostTurnNarrative(
+	ctx context.Context,
+	threadID protocol.ThreadID,
+	turnID protocol.TurnID,
+) (agentengine.NarrativeGenerationResult, error) {
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return agentengine.NarrativeGenerationResult{}, err
+	}
+	engine := adapter.Underlying()
+	if engine == nil {
+		return agentengine.NarrativeGenerationResult{},
+			errors.New("context maintenance engine is unavailable")
+	}
+	return engine.RunPostTurnNarrative(ctx, threadID, turnID)
+}
+
+func (m *ThreadManager) RestoreContext(
+	threadID protocol.ThreadID,
+	snapshot sessiondelta.ContextSnapshot,
+) (sessiondelta.ReconciliationReceipt, error) {
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return sessiondelta.ReconciliationReceipt{}, err
+	}
+	engine := adapter.Underlying()
+	if engine == nil {
+		return sessiondelta.ReconciliationReceipt{},
+			errors.New("checkpoint Thread engine is unavailable")
+	}
+	return engine.RestoreContextSnapshot(snapshot)
+}
+
+func (m *ThreadManager) ForkContext(
+	parentThreadID, newThreadID protocol.ThreadID,
+	snapshot sessiondelta.ContextSnapshot,
+) (sessiondelta.ReconciliationReceipt, error) {
+	if parentThreadID == "" || newThreadID == "" ||
+		parentThreadID == newThreadID {
+		return sessiondelta.ReconciliationReceipt{},
+			errors.New("checkpoint Fork identity is invalid")
+	}
+	parent, err := m.forThread(parentThreadID)
+	if err != nil {
+		return sessiondelta.ReconciliationReceipt{}, err
+	}
+	engine := parent.Underlying()
+	if engine == nil {
+		return sessiondelta.ReconciliationReceipt{},
+			errors.New("checkpoint parent engine is unavailable")
+	}
+	childEngine, receipt, err := engine.ForkFromContextSnapshot(snapshot)
+	if err != nil {
+		return sessiondelta.ReconciliationReceipt{}, err
+	}
+	child := AdaptEngineWithWorkspaceIdentity(
+		childEngine,
+		parent.workspaceIdentity,
+	)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, exists := m.threads[newThreadID]; exists {
+		return sessiondelta.ReconciliationReceipt{},
+			fmt.Errorf("checkpoint Fork target Thread %s already exists", newThreadID)
+	}
+	m.threads[newThreadID] = child
+	windowID, windowNumber := childEngine.TokenWindowIdentity()
+	m.windows[newThreadID] = &compactWindow{
+		Number: windowNumber, FirstID: windowID, Current: windowID,
+	}
+	return receipt, nil
+}
+
 func (m *ThreadManager) RevertTurn(
 	ctx context.Context, payload *protocol.RevertTurnPayload, sink EngineSink,
 ) error {
@@ -564,7 +660,7 @@ func (m *ThreadManager) FormatTurnDiff(threadID protocol.ThreadID) string {
 }
 
 // ApplyPlan applies a plan to every currently running thread engine (usually one).
-func (m *ThreadManager) ApplyPlan(plan interact.Plan) {
+func (m *ThreadManager) ApplyPlan(plan interact.Plan) error {
 	m.mu.Lock()
 	targets := make([]*EngineAdapter, 0, len(m.running))
 	for threadID, depth := range m.running {
@@ -578,9 +674,12 @@ func (m *ThreadManager) ApplyPlan(plan interact.Plan) {
 	m.mu.Unlock()
 	for _, adapter := range targets {
 		if engine := adapter.Underlying(); engine != nil {
-			engine.ApplyPlan(plan)
+			if err := engine.ApplyPlan(plan); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // RevertWorkspace routes workspace revert to the engine that owns targetTurnID.

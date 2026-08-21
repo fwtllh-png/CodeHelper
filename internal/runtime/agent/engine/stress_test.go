@@ -257,4 +257,3 @@ func TestStressCoordinatorRuntimeFactoryIsSet(t *testing.T) {
 		t.Error("BUG: stress coordinator runtime deadlocked")
 	}
 }
-

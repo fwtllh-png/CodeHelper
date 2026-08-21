@@ -38,6 +38,9 @@
             "changed_files": {
               "type": "integer"
             },
+            "context_digest": {
+              "type": "string"
+            },
             "created_at": {
               "type": "string",
               "format": "date-time"
@@ -63,6 +66,9 @@
             "side_effect_note": {
               "type": "string"
             },
+            "state_epoch": {
+              "type": "integer"
+            },
             "status": {
               "type": "string"
             },
@@ -77,6 +83,9 @@
             },
             "version": {
               "type": "integer"
+            },
+            "workspace_digest": {
+              "type": "string"
             }
           },
           "required": [
@@ -97,25 +106,39 @@
           ],
           "additionalProperties": false
         },
+        "exact_context": {
+          "type": "boolean"
+        },
+        "invalidated_claims": {
+          "type": "integer"
+        },
         "parent_thread_id": {
           "type": "string"
         },
         "session_id": {
           "type": "string"
         },
+        "stale_claims": {
+          "type": "integer"
+        },
         "thread_id": {
           "type": "string"
         },
         "version": {
           "type": "integer"
+        },
+        "workspace_claims_valid": {
+          "type": "boolean"
         }
       },
       "required": [
         "checkpoint",
+        "exact_context",
         "parent_thread_id",
         "session_id",
         "thread_id",
-        "version"
+        "version",
+        "workspace_claims_valid"
       ],
       "additionalProperties": false
     },
@@ -156,6 +179,9 @@
               "changed_files": {
                 "type": "integer"
               },
+              "context_digest": {
+                "type": "string"
+              },
               "created_at": {
                 "type": "string",
                 "format": "date-time"
@@ -181,6 +207,9 @@
               "side_effect_note": {
                 "type": "string"
               },
+              "state_epoch": {
+                "type": "integer"
+              },
               "status": {
                 "type": "string"
               },
@@ -195,6 +224,9 @@
               },
               "version": {
                 "type": "integer"
+              },
+              "workspace_digest": {
+                "type": "string"
               }
             },
             "required": [
@@ -265,6 +297,9 @@
             "changed_files": {
               "type": "integer"
             },
+            "context_digest": {
+              "type": "string"
+            },
             "created_at": {
               "type": "string",
               "format": "date-time"
@@ -290,6 +325,9 @@
             "side_effect_note": {
               "type": "string"
             },
+            "state_epoch": {
+              "type": "integer"
+            },
             "status": {
               "type": "string"
             },
@@ -304,6 +342,9 @@
             },
             "version": {
               "type": "integer"
+            },
+            "workspace_digest": {
+              "type": "string"
             }
           },
           "required": [
@@ -324,25 +365,39 @@
           ],
           "additionalProperties": false
         },
+        "exact_context": {
+          "type": "boolean"
+        },
+        "invalidated_claims": {
+          "type": "integer"
+        },
         "restored_cursor": {
           "type": "integer"
         },
         "side_effects_replayed": {
           "type": "boolean"
         },
+        "stale_claims": {
+          "type": "integer"
+        },
         "thread_id": {
           "type": "string"
         },
         "version": {
           "type": "integer"
+        },
+        "workspace_claims_valid": {
+          "type": "boolean"
         }
       },
       "required": [
         "checkpoint",
+        "exact_context",
         "restored_cursor",
         "side_effects_replayed",
         "thread_id",
-        "version"
+        "version",
+        "workspace_claims_valid"
       ],
       "additionalProperties": false
     },
@@ -3548,6 +3603,9 @@
             "changed_files": {
               "type": "integer"
             },
+            "context_digest": {
+              "type": "string"
+            },
             "created_at": {
               "type": "string",
               "format": "date-time"
@@ -3573,6 +3631,9 @@
             "side_effect_note": {
               "type": "string"
             },
+            "state_epoch": {
+              "type": "integer"
+            },
             "status": {
               "type": "string"
             },
@@ -3587,6 +3648,9 @@
             },
             "version": {
               "type": "integer"
+            },
+            "workspace_digest": {
+              "type": "string"
             }
           },
           "required": [
@@ -3619,6 +3683,21 @@
         "checkpoint_id": {
           "type": "string"
         },
+        "context_commit_id": {
+          "type": "string"
+        },
+        "context_digest": {
+          "type": "string"
+        },
+        "context_revision": {
+          "type": "integer"
+        },
+        "exact_context": {
+          "type": "boolean"
+        },
+        "invalidated_claims": {
+          "type": "integer"
+        },
         "new_thread_id": {
           "type": "string"
         },
@@ -3647,16 +3726,27 @@
         "source_cursor": {
           "type": "integer"
         },
+        "stale_claims": {
+          "type": "integer"
+        },
+        "state_epoch": {
+          "type": "integer"
+        },
         "title": {
           "type": "string"
+        },
+        "workspace_claims_valid": {
+          "type": "boolean"
         }
       },
       "required": [
         "checkpoint_id",
+        "exact_context",
         "new_thread_id",
         "replacement_history",
         "source_cursor",
-        "title"
+        "title",
+        "workspace_claims_valid"
       ],
       "additionalProperties": false
     },
@@ -3665,6 +3755,21 @@
       "properties": {
         "checkpoint_id": {
           "type": "string"
+        },
+        "context_commit_id": {
+          "type": "string"
+        },
+        "context_digest": {
+          "type": "string"
+        },
+        "context_revision": {
+          "type": "integer"
+        },
+        "exact_context": {
+          "type": "boolean"
+        },
+        "invalidated_claims": {
+          "type": "integer"
         },
         "replacement_history": {
           "type": "array",
@@ -3699,15 +3804,26 @@
         },
         "source_turn_id": {
           "type": "string"
+        },
+        "stale_claims": {
+          "type": "integer"
+        },
+        "state_epoch": {
+          "type": "integer"
+        },
+        "workspace_claims_valid": {
+          "type": "boolean"
         }
       },
       "required": [
         "checkpoint_id",
+        "exact_context",
         "replacement_history",
         "side_effects_replayed",
         "source_cursor",
         "source_thread_id",
-        "source_turn_id"
+        "source_turn_id",
+        "workspace_claims_valid"
       ],
       "additionalProperties": false
     },
@@ -4659,16 +4775,19 @@
         "first_window_id": {
           "type": "string"
         },
+        "mandatory_bytes": {
+          "type": "integer"
+        },
+        "mandatory_entities": {
+          "type": "integer"
+        },
         "model_downshifted": {
           "type": "boolean"
         },
         "narrative_included": {
           "type": "boolean"
         },
-        "omitted_facts": {
-          "type": "integer"
-        },
-        "omitted_handles": {
+        "omission_count": {
           "type": "integer"
         },
         "previous_window_id": {
@@ -4696,28 +4815,40 @@
             "additionalProperties": false
           }
         },
+        "retention": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "candidates": {
+                "type": "integer"
+              },
+              "class": {
+                "type": "string"
+              },
+              "omitted": {
+                "type": "integer"
+              },
+              "retained": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "candidates",
+              "class",
+              "omitted",
+              "retained"
+            ],
+            "additionalProperties": false
+          }
+        },
         "summary": {
           "type": "string"
-        },
-        "truth_candidates": {
-          "type": "integer"
         },
         "truth_entities": {
           "type": "integer"
         },
         "truth_generation": {
-          "type": "integer"
-        },
-        "truth_mandatory": {
-          "type": "integer"
-        },
-        "truth_omitted": {
-          "type": "integer"
-        },
-        "truth_protected": {
-          "type": "integer"
-        },
-        "truth_refreshable": {
           "type": "integer"
         },
         "window_id": {
@@ -5374,6 +5505,9 @@
         "capsule_bytes": {
           "type": "integer"
         },
+        "compaction_id": {
+          "type": "string"
+        },
         "compatibility_hash": {
           "type": "string"
         },
@@ -5386,16 +5520,34 @@
         "downshift_policy": {
           "type": "string"
         },
+        "fallback_reason": {
+          "type": "string"
+        },
+        "mandatory_bytes": {
+          "type": "integer"
+        },
+        "mandatory_entities": {
+          "type": "integer"
+        },
+        "mode": {
+          "type": "string"
+        },
         "model_downshifted": {
           "type": "boolean"
+        },
+        "narrative_bytes": {
+          "type": "integer"
         },
         "narrative_included": {
           "type": "boolean"
         },
-        "omitted_facts": {
+        "narrative_input_tokens": {
           "type": "integer"
         },
-        "omitted_handles": {
+        "narrative_output_tokens": {
+          "type": "integer"
+        },
+        "omission_count": {
           "type": "integer"
         },
         "original_bytes": {
@@ -5422,11 +5574,44 @@
         "retained_bytes": {
           "type": "integer"
         },
+        "retention": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "candidates": {
+                "type": "integer"
+              },
+              "class": {
+                "type": "string"
+              },
+              "omitted": {
+                "type": "integer"
+              },
+              "retained": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "candidates",
+              "class",
+              "omitted",
+              "retained"
+            ],
+            "additionalProperties": false
+          }
+        },
         "sections": {
           "type": "array",
           "items": {
             "type": "string"
           }
+        },
+        "source_window_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
         },
         "summary": {
           "type": "string"
@@ -5434,25 +5619,13 @@
         "summary_truncated": {
           "type": "boolean"
         },
-        "truth_candidates": {
-          "type": "integer"
+        "target_window_id": {
+          "type": "string"
         },
         "truth_entities": {
           "type": "integer"
         },
         "truth_generation": {
-          "type": "integer"
-        },
-        "truth_mandatory": {
-          "type": "integer"
-        },
-        "truth_omitted": {
-          "type": "integer"
-        },
-        "truth_protected": {
-          "type": "integer"
-        },
-        "truth_refreshable": {
           "type": "integer"
         }
       },
@@ -5797,6 +5970,9 @@
             "compactions": {
               "type": "integer"
             },
+            "emergency_tokens": {
+              "type": "integer"
+            },
             "estimated_tokens": {
               "type": "integer"
             },
@@ -5816,6 +5992,9 @@
               "type": "integer"
             },
             "prefill_tokens": {
+              "type": "integer"
+            },
+            "prepare_tokens": {
               "type": "integer"
             },
             "tool_definition_tokens": {
@@ -5840,8 +6019,14 @@
           "items": {
             "type": "object",
             "properties": {
+              "candidate_count": {
+                "type": "integer"
+              },
               "digest": {
                 "type": "string"
+              },
+              "generation": {
+                "type": "integer"
               },
               "kind": {
                 "type": "string"
@@ -5857,6 +6042,12 @@
               },
               "retained_tokens": {
                 "type": "integer"
+              },
+              "selected_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               },
               "truncated": {
                 "type": "boolean"

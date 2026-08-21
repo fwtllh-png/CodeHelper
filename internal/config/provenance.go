@@ -9,17 +9,20 @@ const (
 )
 
 const (
-	fieldOperationBuffer  = "runtime.operation_buffer"
-	fieldEventHistory     = "runtime.event_history"
-	fieldSubscriberBuffer = "runtime.subscriber_buffer"
-	fieldStateDataDir     = "state.data_dir"
-	fieldStateBusyTimeout = "state.busy_timeout"
-	fieldStateRetention   = "state.event_retention"
-	fieldMemoryEnabled    = "memory.enabled"
-	fieldMemoryPath       = "memory.path"
-	fieldIndexEnabled     = "context.index.enabled"
-	fieldIndexMaxBytes    = "context.index.max_file_bytes"
-	fieldIndexMaxFiles    = "context.index.max_files"
+	fieldOperationBuffer      = "runtime.operation_buffer"
+	fieldEventHistory         = "runtime.event_history"
+	fieldSubscriberBuffer     = "runtime.subscriber_buffer"
+	fieldStateDataDir         = "state.data_dir"
+	fieldStateBusyTimeout     = "state.busy_timeout"
+	fieldStateRetention       = "state.event_retention"
+	fieldMemoryEnabled        = "memory.enabled"
+	fieldMemoryPath           = "memory.path"
+	fieldMemoryMaxCandidates  = "memory.max_candidates"
+	fieldMemoryMaxPromptBytes = "memory.max_prompt_bytes"
+	fieldMemorySemanticRerank = "memory.semantic_rerank"
+	fieldIndexEnabled         = "context.index.enabled"
+	fieldIndexMaxBytes        = "context.index.max_file_bytes"
+	fieldIndexMaxFiles        = "context.index.max_files"
 
 	fieldRepoMapEnabled        = "context.repo_map.enabled"
 	fieldRepoMapMaxBytes       = "context.repo_map.max_bytes"
@@ -32,10 +35,31 @@ const (
 	fieldEvidenceMaxBytes      = "context.evidence.max_bytes"
 	fieldCodingPolicyEnabled   = "context.coding_policy.enabled"
 
-	fieldCompactAutoTokens = "context.compact.auto_compact_tokens"
-	fieldCompactScope      = "context.compact.scope"
-	fieldCompactSummaryMax = "context.compact.summary_max_bytes"
-	fieldCompactMaxDigest  = "context.compact.max_digest_entries"
+	fieldCompactAutoTokens                       = "context.compact.auto_compact_tokens"
+	fieldCompactPrepareTokens                    = "context.compact.prepare_tokens"
+	fieldCompactEmergencyTokens                  = "context.compact.emergency_tokens"
+	fieldCompactScope                            = "context.compact.scope"
+	fieldCompactSummaryMax                       = "context.compact.summary_max_bytes"
+	fieldCompactMaxDigest                        = "context.compact.max_digest_entries"
+	fieldCompactTruthMaxBytes                    = "context.compact.truth_max_bytes"
+	fieldCompactTruthMaxEntities                 = "context.compact.truth_max_entities"
+	fieldCompactMandatoryMaxEntities             = "context.compact.mandatory_max_entities"
+	fieldCompactFactMaxEntities                  = "context.compact.fact_max_entities"
+	fieldCompactVerifiedChangeRetentionTurns     = "context.compact.verified_change_retention_turns"
+	fieldCompactFailureMaxEntities               = "context.compact.failure_max_entities"
+	fieldCompactHandleMaxEntities                = "context.compact.handle_max_entities"
+	fieldCompactOmissionSampleMaxEntities        = "context.compact.omission_sample_max_entities"
+	fieldCompactRecentTailTurns                  = "context.compact.recent_tail_turns"
+	fieldCompactRecentTailMaxTokens              = "context.compact.recent_tail_max_tokens"
+	fieldCompactSemanticNarrative                = "context.compact.semantic_narrative"
+	fieldCompactSemanticNarrativeMaxInputTokens  = "context.compact.semantic_narrative_max_input_tokens"
+	fieldCompactSemanticNarrativeMaxOutputTokens = "context.compact.semantic_narrative_max_output_tokens"
+	fieldCompactSemanticNarrativeMaxItems        = "context.compact.semantic_narrative_max_items"
+	fieldCompactSemanticNarrativeItemMaxBytes    = "context.compact.semantic_narrative_item_max_bytes"
+	fieldCompactSemanticNarrativeTimeout         = "context.compact.semantic_narrative_timeout"
+	fieldCompactSemanticNarrativeRetryLimit      = "context.compact.semantic_narrative_retry_limit"
+	fieldCompactOwnerDeltaMaxSegments            = "context.compact.owner_delta_max_segments"
+	fieldCompactOwnerDeltaMaxBytes               = "context.compact.owner_delta_max_bytes"
 
 	fieldLogLevel              = "telemetry.log_level"
 	fieldCredentialKind        = "credential.kind"
@@ -123,32 +147,56 @@ type Snapshot struct {
 
 func defaultProvenance() map[string]Source {
 	return map[string]Source{
-		fieldOperationBuffer:  SourceDefault,
-		fieldEventHistory:     SourceDefault,
-		fieldSubscriberBuffer: SourceDefault,
-		fieldStateDataDir:     SourceDefault,
-		fieldStateBusyTimeout: SourceDefault,
-		fieldStateRetention:   SourceDefault,
-		fieldMemoryEnabled:    SourceDefault,
-		fieldMemoryPath:       SourceDefault,
-		fieldIndexEnabled:     SourceDefault,
-		fieldIndexMaxBytes:    SourceDefault,
-		fieldIndexMaxFiles:    SourceDefault,
+		fieldOperationBuffer:      SourceDefault,
+		fieldEventHistory:         SourceDefault,
+		fieldSubscriberBuffer:     SourceDefault,
+		fieldStateDataDir:         SourceDefault,
+		fieldStateBusyTimeout:     SourceDefault,
+		fieldStateRetention:       SourceDefault,
+		fieldMemoryEnabled:        SourceDefault,
+		fieldMemoryPath:           SourceDefault,
+		fieldMemoryMaxCandidates:  SourceDefault,
+		fieldMemoryMaxPromptBytes: SourceDefault,
+		fieldMemorySemanticRerank: SourceDefault,
+		fieldIndexEnabled:         SourceDefault,
+		fieldIndexMaxBytes:        SourceDefault,
+		fieldIndexMaxFiles:        SourceDefault,
 
-		fieldRepoMapEnabled:        SourceDefault,
-		fieldRepoMapMaxBytes:       SourceDefault,
-		fieldRepoMapMaxDirectories: SourceDefault,
-		fieldWorkingSetEnabled:     SourceDefault,
-		fieldWorkingSetMaxEntries:  SourceDefault,
-		fieldWorkingSetMaxBytes:    SourceDefault,
-		fieldEvidenceEnabled:       SourceDefault,
-		fieldEvidenceMaxEntries:    SourceDefault,
-		fieldEvidenceMaxBytes:      SourceDefault,
-		fieldCodingPolicyEnabled:   SourceDefault,
-		fieldCompactAutoTokens:     SourceDefault,
-		fieldCompactScope:          SourceDefault,
-		fieldCompactSummaryMax:     SourceDefault,
-		fieldCompactMaxDigest:      SourceDefault,
+		fieldRepoMapEnabled:                          SourceDefault,
+		fieldRepoMapMaxBytes:                         SourceDefault,
+		fieldRepoMapMaxDirectories:                   SourceDefault,
+		fieldWorkingSetEnabled:                       SourceDefault,
+		fieldWorkingSetMaxEntries:                    SourceDefault,
+		fieldWorkingSetMaxBytes:                      SourceDefault,
+		fieldEvidenceEnabled:                         SourceDefault,
+		fieldEvidenceMaxEntries:                      SourceDefault,
+		fieldEvidenceMaxBytes:                        SourceDefault,
+		fieldCodingPolicyEnabled:                     SourceDefault,
+		fieldCompactAutoTokens:                       SourceDefault,
+		fieldCompactPrepareTokens:                    SourceDefault,
+		fieldCompactEmergencyTokens:                  SourceDefault,
+		fieldCompactScope:                            SourceDefault,
+		fieldCompactSummaryMax:                       SourceDefault,
+		fieldCompactMaxDigest:                        SourceDefault,
+		fieldCompactTruthMaxBytes:                    SourceDefault,
+		fieldCompactTruthMaxEntities:                 SourceDefault,
+		fieldCompactMandatoryMaxEntities:             SourceDefault,
+		fieldCompactFactMaxEntities:                  SourceDefault,
+		fieldCompactVerifiedChangeRetentionTurns:     SourceDefault,
+		fieldCompactFailureMaxEntities:               SourceDefault,
+		fieldCompactHandleMaxEntities:                SourceDefault,
+		fieldCompactOmissionSampleMaxEntities:        SourceDefault,
+		fieldCompactRecentTailTurns:                  SourceDefault,
+		fieldCompactRecentTailMaxTokens:              SourceDefault,
+		fieldCompactSemanticNarrative:                SourceDefault,
+		fieldCompactSemanticNarrativeMaxInputTokens:  SourceDefault,
+		fieldCompactSemanticNarrativeMaxOutputTokens: SourceDefault,
+		fieldCompactSemanticNarrativeMaxItems:        SourceDefault,
+		fieldCompactSemanticNarrativeItemMaxBytes:    SourceDefault,
+		fieldCompactSemanticNarrativeTimeout:         SourceDefault,
+		fieldCompactSemanticNarrativeRetryLimit:      SourceDefault,
+		fieldCompactOwnerDeltaMaxSegments:            SourceDefault,
+		fieldCompactOwnerDeltaMaxBytes:               SourceDefault,
 
 		fieldLogLevel:              SourceDefault,
 		fieldCredentialKind:        SourceDefault,

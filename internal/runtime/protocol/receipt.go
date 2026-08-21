@@ -98,7 +98,10 @@ type ReceiptContextSection struct {
 	RetainedTokens uint64 `json:"retained_tokens,omitempty"`
 	Truncated      bool   `json:"truncated,omitempty"`
 	// TruncationReason is byte_budget or token_budget when Truncated is set.
-	TruncationReason string `json:"truncation_reason,omitempty"`
+	TruncationReason string   `json:"truncation_reason,omitempty"`
+	Generation       uint64   `json:"generation,omitempty"`
+	CandidateCount   int      `json:"candidate_count,omitempty"`
+	SelectedIDs      []string `json:"selected_ids,omitempty"`
 }
 
 type ReceiptContextSelectionEvidence struct {
@@ -180,6 +183,8 @@ type ReceiptContextBudget struct {
 	PendingTokens        uint64 `json:"pending_tokens,omitempty"`
 	OutputReserve        uint64 `json:"output_reserve,omitempty"`
 	AutoCompactTokens    uint64 `json:"auto_compact_tokens"`
+	PrepareTokens        uint64 `json:"prepare_tokens,omitempty"`
+	EmergencyTokens      uint64 `json:"emergency_tokens,omitempty"`
 	EstimatedTokens      uint64 `json:"estimated_tokens,omitempty"`
 	MaxContextTokens     uint64 `json:"max_context_tokens,omitempty"`
 	Compactions          int    `json:"compactions"`

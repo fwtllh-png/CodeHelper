@@ -182,6 +182,8 @@ func (r *receiptRecorder) observe(event agentengine.Event) {
 			PendingTokens:        event.ContextBudget.PendingTokens,
 			OutputReserve:        event.ContextBudget.OutputReserve,
 			AutoCompactTokens:    event.ContextBudget.AutoCompactTokens,
+			PrepareTokens:        event.ContextBudget.PrepareTokens,
+			EmergencyTokens:      event.ContextBudget.EmergencyTokens,
 			EstimatedTokens:      event.ContextBudget.EstimatedTokens,
 			MaxContextTokens:     event.ContextBudget.MaxContextTokens,
 			Compactions:          event.ContextBudget.Compactions,
@@ -462,6 +464,8 @@ func contextSections(receipts []promptcontext.Receipt) []protocol.ReceiptContext
 			OriginalBytes: receipt.OriginalBytes, RetainedBytes: receipt.RetainedBytes,
 			OriginalTokens: receipt.OriginalTokens, RetainedTokens: receipt.RetainedTokens,
 			Truncated: receipt.Truncated, TruncationReason: receipt.TruncationReason,
+			Generation: receipt.Generation, CandidateCount: receipt.CandidateCount,
+			SelectedIDs: append([]string(nil), receipt.SelectedIDs...),
 		})
 	}
 	return sections

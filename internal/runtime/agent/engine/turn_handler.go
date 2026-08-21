@@ -79,6 +79,7 @@ func (e *Engine) RunForTurnWithRequest(
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	spec, persistedTurnID, err := e.prepareTurnSpec(
+		ctx,
 		turnID,
 		request,
 	)
@@ -97,6 +98,7 @@ func (e *Engine) RunForTurnWithRequest(
 }
 
 func (e *Engine) prepareTurnSpec(
+	ctx context.Context,
 	turnID string,
 	request TurnRequest,
 ) (TurnSpec, string, error) {
@@ -139,7 +141,9 @@ func (e *Engine) prepareTurnSpec(
 	spec, err := SnapshotTurnSpec(
 		e.options,
 		TurnIdentity{
-			SessionID: e.options.SessionID, TurnID: turnID,
+			SessionID:       e.options.SessionID,
+			ThreadID:        tool.InvocationIdentityFrom(ctx).ThreadID,
+			TurnID:          turnID,
 			ProfileRevision: e.options.ProfileRevision,
 		},
 		request,

@@ -30,6 +30,9 @@ func (*Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedCal
 		err  error
 	)
 	if request.Route.Protocol() == model.ProtocolOpenAIResponses {
+		if request.ReasoningEffort == "off" {
+			request.ReasoningEffort = "none"
+		}
 		call, err = openai.PrepareResponses(
 			request,
 			model.AdapterDeepSeek,

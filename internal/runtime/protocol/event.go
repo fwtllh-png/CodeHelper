@@ -1080,21 +1080,32 @@ func validateApprovalSource(source *ApprovalSource) error {
 }
 
 type ThreadCompactedData struct {
-	Summary             string             `json:"summary"`
-	ReplacementHistory  []CompactedMessage `json:"replacement_history,omitempty"`
-	WindowNumber        uint64             `json:"window_number,omitempty"`
-	FirstWindowID       string             `json:"first_window_id,omitempty"`
-	PreviousWindowID    string             `json:"previous_window_id,omitempty"`
-	WindowID            string             `json:"window_id,omitempty"`
-	TruthGeneration     uint64             `json:"truth_generation,omitempty"`
-	TruthEntities       int                `json:"truth_entities,omitempty"`
-	CriticalFacts       int                `json:"critical_facts,omitempty"`
-	CompatibilityHash   string             `json:"compatibility_hash,omitempty"`
-	AuthorityDigest     string             `json:"authority_digest,omitempty"`
-	AuthorityEquivalent bool               `json:"authority_equivalent,omitempty"`
-	ModelDownshifted    bool               `json:"model_downshifted,omitempty"`
-	DownshiftPolicy     string             `json:"downshift_policy,omitempty"`
-	NarrativeIncluded   bool               `json:"narrative_included,omitempty"`
+	Summary             string                `json:"summary"`
+	ReplacementHistory  []CompactedMessage    `json:"replacement_history,omitempty"`
+	WindowNumber        uint64                `json:"window_number,omitempty"`
+	FirstWindowID       string                `json:"first_window_id,omitempty"`
+	PreviousWindowID    string                `json:"previous_window_id,omitempty"`
+	WindowID            string                `json:"window_id,omitempty"`
+	TruthGeneration     uint64                `json:"truth_generation,omitempty"`
+	TruthEntities       int                   `json:"truth_entities,omitempty"`
+	CriticalFacts       int                   `json:"critical_facts,omitempty"`
+	CompatibilityHash   string                `json:"compatibility_hash,omitempty"`
+	AuthorityDigest     string                `json:"authority_digest,omitempty"`
+	AuthorityEquivalent bool                  `json:"authority_equivalent,omitempty"`
+	ModelDownshifted    bool                  `json:"model_downshifted,omitempty"`
+	DownshiftPolicy     string                `json:"downshift_policy,omitempty"`
+	NarrativeIncluded   bool                  `json:"narrative_included,omitempty"`
+	MandatoryBytes      int                   `json:"mandatory_bytes,omitempty"`
+	MandatoryEntities   int                   `json:"mandatory_entities,omitempty"`
+	OmissionCount       int                   `json:"omission_count,omitempty"`
+	Retention           []TruthRetentionCount `json:"retention,omitempty"`
+}
+
+type TruthRetentionCount struct {
+	Class      string `json:"class"`
+	Candidates int    `json:"candidates"`
+	Retained   int    `json:"retained"`
+	Omitted    int    `json:"omitted"`
 }
 
 // CompactedMessage is durable model-visible history; Turn is retained for resume.
@@ -1142,6 +1153,11 @@ func (d *ThreadCompactedData) validate() error {
 // TurnCompactionData is emitted when an in-turn compact gate runs (pre-sampling
 // or mid-turn). Distinct from thread.compacted, which installs a durable window.
 type TurnCompactionData struct {
+	CompactionID    string `json:"compaction_id,omitempty"`
+	Status          string `json:"status,omitempty"`
+	Mode            string `json:"mode,omitempty"`
+	SourceWindowID  string `json:"source_window_id,omitempty"`
+	TargetWindowID  string `json:"target_window_id,omitempty"`
 	Phase           string `json:"phase"`
 	Summary         string `json:"summary"`
 	RemovedMessages int    `json:"removed_messages,omitempty"`
@@ -1154,21 +1170,29 @@ type TurnCompactionData struct {
 	Sections []string `json:"sections,omitempty"`
 	// SummaryTruncated reports that the summary budget cut sections, so a host can
 	// distinguish a complete account of the removed history from a partial one.
-	SummaryTruncated     bool     `json:"summary_truncated,omitempty"`
-	RemovedTurns         []uint64 `json:"removed_turns,omitempty"`
-	PrunedToolResults    int      `json:"pruned_tool_results,omitempty"`
-	PrunedBytes          int      `json:"pruned_bytes,omitempty"`
-	TruthGeneration      uint64   `json:"truth_generation,omitempty"`
-	TruthEntities        int      `json:"truth_entities,omitempty"`
-	CriticalFacts        int      `json:"critical_facts,omitempty"`
-	CompatibilityHash    string   `json:"compatibility_hash,omitempty"`
-	CompatibilityMatched bool     `json:"compatibility_matched,omitempty"`
-	AuthorityDigest      string   `json:"authority_digest,omitempty"`
-	AuthorityEquivalent  bool     `json:"authority_equivalent,omitempty"`
-	ModelDownshifted     bool     `json:"model_downshifted,omitempty"`
-	DownshiftPolicy      string   `json:"downshift_policy,omitempty"`
-	NarrativeIncluded    bool     `json:"narrative_included,omitempty"`
-	CapsuleBytes         int      `json:"capsule_bytes,omitempty"`
+	SummaryTruncated      bool                  `json:"summary_truncated,omitempty"`
+	RemovedTurns          []uint64              `json:"removed_turns,omitempty"`
+	PrunedToolResults     int                   `json:"pruned_tool_results,omitempty"`
+	PrunedBytes           int                   `json:"pruned_bytes,omitempty"`
+	TruthGeneration       uint64                `json:"truth_generation,omitempty"`
+	TruthEntities         int                   `json:"truth_entities,omitempty"`
+	CriticalFacts         int                   `json:"critical_facts,omitempty"`
+	CompatibilityHash     string                `json:"compatibility_hash,omitempty"`
+	CompatibilityMatched  bool                  `json:"compatibility_matched,omitempty"`
+	AuthorityDigest       string                `json:"authority_digest,omitempty"`
+	AuthorityEquivalent   bool                  `json:"authority_equivalent,omitempty"`
+	ModelDownshifted      bool                  `json:"model_downshifted,omitempty"`
+	DownshiftPolicy       string                `json:"downshift_policy,omitempty"`
+	NarrativeIncluded     bool                  `json:"narrative_included,omitempty"`
+	NarrativeBytes        int                   `json:"narrative_bytes,omitempty"`
+	NarrativeInputTokens  uint64                `json:"narrative_input_tokens,omitempty"`
+	NarrativeOutputTokens uint64                `json:"narrative_output_tokens,omitempty"`
+	FallbackReason        string                `json:"fallback_reason,omitempty"`
+	CapsuleBytes          int                   `json:"capsule_bytes,omitempty"`
+	MandatoryBytes        int                   `json:"mandatory_bytes,omitempty"`
+	MandatoryEntities     int                   `json:"mandatory_entities,omitempty"`
+	OmissionCount         int                   `json:"omission_count,omitempty"`
+	Retention             []TruthRetentionCount `json:"retention,omitempty"`
 }
 
 func (*TurnCompactionData) eventKind() EventKind { return EventTurnCompaction }
@@ -1179,6 +1203,14 @@ func (d *TurnCompactionData) validate() error {
 	}
 	if d.Summary == "" {
 		return errors.New("compaction summary is required")
+	}
+	if d.Status != "" {
+		switch d.Status {
+		case "started", "prepared", "summarizing", "rebasing",
+			"completed", "fallback":
+		default:
+			return errors.New("compaction status is invalid")
+		}
 	}
 	if d.TruthGeneration != 0 &&
 		(d.CompatibilityHash == "" || d.DownshiftPolicy == "" ||
@@ -1429,12 +1461,20 @@ type ThreadForkedData struct {
 }
 
 type CheckpointRestoredData struct {
-	CheckpointID        string             `json:"checkpoint_id"`
-	SourceThreadID      ThreadID           `json:"source_thread_id"`
-	SourceTurnID        TurnID             `json:"source_turn_id"`
-	SourceCursor        Cursor             `json:"source_cursor"`
-	ReplacementHistory  []CompactedMessage `json:"replacement_history"`
-	SideEffectsReplayed bool               `json:"side_effects_replayed"`
+	CheckpointID         string             `json:"checkpoint_id"`
+	SourceThreadID       ThreadID           `json:"source_thread_id"`
+	SourceTurnID         TurnID             `json:"source_turn_id"`
+	SourceCursor         Cursor             `json:"source_cursor"`
+	ReplacementHistory   []CompactedMessage `json:"replacement_history"`
+	SideEffectsReplayed  bool               `json:"side_effects_replayed"`
+	ExactContext         bool               `json:"exact_context"`
+	WorkspaceClaimsValid bool               `json:"workspace_claims_valid"`
+	InvalidatedClaims    int                `json:"invalidated_claims,omitempty"`
+	StaleClaims          int                `json:"stale_claims,omitempty"`
+	ContextCommitID      string             `json:"context_commit_id,omitempty"`
+	ContextDigest        string             `json:"context_digest,omitempty"`
+	ContextRevision      uint64             `json:"context_revision,omitempty"`
+	StateEpoch           uint64             `json:"state_epoch,omitempty"`
 }
 
 type CheckpointCreatedData struct {
@@ -1452,18 +1492,35 @@ func (d *CheckpointRestoredData) validate() error {
 		!validProfileIdentifier(string(d.SourceThreadID)) ||
 		!validProfileIdentifier(string(d.SourceTurnID)) ||
 		len(d.ReplacementHistory) == 0 ||
-		d.SideEffectsReplayed {
+		d.SideEffectsReplayed ||
+		d.WorkspaceClaimsValid && !d.ExactContext ||
+		!validContextCommitReference(
+			d.ExactContext,
+			d.ContextCommitID,
+			d.ContextDigest,
+			d.ContextRevision,
+			d.StateEpoch,
+		) ||
+		d.InvalidatedClaims < 0 || d.StaleClaims < 0 {
 		return errors.New("checkpoint restore data is invalid")
 	}
 	return validateCompactedHistory(d.ReplacementHistory)
 }
 
 type CheckpointForkedData struct {
-	CheckpointID       string             `json:"checkpoint_id"`
-	NewThreadID        ThreadID           `json:"new_thread_id"`
-	Title              string             `json:"title"`
-	SourceCursor       Cursor             `json:"source_cursor"`
-	ReplacementHistory []CompactedMessage `json:"replacement_history"`
+	CheckpointID         string             `json:"checkpoint_id"`
+	NewThreadID          ThreadID           `json:"new_thread_id"`
+	Title                string             `json:"title"`
+	SourceCursor         Cursor             `json:"source_cursor"`
+	ReplacementHistory   []CompactedMessage `json:"replacement_history"`
+	ExactContext         bool               `json:"exact_context"`
+	WorkspaceClaimsValid bool               `json:"workspace_claims_valid"`
+	InvalidatedClaims    int                `json:"invalidated_claims,omitempty"`
+	StaleClaims          int                `json:"stale_claims,omitempty"`
+	ContextCommitID      string             `json:"context_commit_id,omitempty"`
+	ContextDigest        string             `json:"context_digest,omitempty"`
+	ContextRevision      uint64             `json:"context_revision,omitempty"`
+	StateEpoch           uint64             `json:"state_epoch,omitempty"`
 }
 
 func (*CheckpointForkedData) eventKind() EventKind { return EventCheckpointForked }
@@ -1473,10 +1530,35 @@ func (d *CheckpointForkedData) validate() error {
 		!validProfileIdentifier(string(d.NewThreadID)) ||
 		strings.TrimSpace(d.Title) == "" || len(d.Title) > 256 ||
 		strings.ContainsAny(d.Title, "\x00\r\n") ||
-		len(d.ReplacementHistory) == 0 {
+		len(d.ReplacementHistory) == 0 ||
+		d.WorkspaceClaimsValid && !d.ExactContext ||
+		!validContextCommitReference(
+			d.ExactContext,
+			d.ContextCommitID,
+			d.ContextDigest,
+			d.ContextRevision,
+			d.StateEpoch,
+		) ||
+		d.InvalidatedClaims < 0 || d.StaleClaims < 0 {
 		return errors.New("checkpoint fork data is invalid")
 	}
 	return validateCompactedHistory(d.ReplacementHistory)
+}
+
+func validContextCommitReference(
+	exact bool,
+	commitID string,
+	digest string,
+	revision uint64,
+	epoch uint64,
+) bool {
+	present := commitID != "" || digest != "" || revision != 0 || epoch != 0
+	if !present {
+		return true
+	}
+	return exact && validProfileIdentifier(commitID) &&
+		strings.TrimSpace(digest) != "" && len(digest) <= 256 &&
+		revision != 0 && epoch != 0
 }
 
 func (*ThreadForkedData) eventKind() EventKind { return EventThreadForked }

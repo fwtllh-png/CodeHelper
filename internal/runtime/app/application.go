@@ -12,6 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/projection"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -549,29 +550,7 @@ func (a *EngineAdapter) StartTurn(
 			if event.Compaction == nil {
 				return nil
 			}
-			return sink.Emit(&protocol.TurnCompactionData{
-				Phase:                nonEmpty(event.Compaction.Phase, agentengine.CompactionPhasePreSampling),
-				Summary:              formatCompactionSummary(event.Compaction),
-				RemovedMessages:      event.Compaction.RemovedMessages,
-				OriginalBytes:        event.Compaction.OriginalBytes,
-				RetainedBytes:        event.Compaction.RetainedBytes,
-				Sections:             append([]string(nil), event.Compaction.Sections...),
-				SummaryTruncated:     event.Compaction.SummaryTruncated,
-				RemovedTurns:         append([]uint64(nil), event.Compaction.RemovedTurns...),
-				PrunedToolResults:    event.Compaction.PrunedToolResults,
-				PrunedBytes:          event.Compaction.PrunedBytes,
-				TruthGeneration:      event.Compaction.TruthGeneration,
-				TruthEntities:        event.Compaction.TruthEntities,
-				CriticalFacts:        event.Compaction.CriticalFacts,
-				CompatibilityHash:    event.Compaction.CompatibilityHash,
-				CompatibilityMatched: event.Compaction.CompatibilityMatched,
-				AuthorityDigest:      event.Compaction.AuthorityDigest,
-				AuthorityEquivalent:  event.Compaction.AuthorityEquivalent,
-				ModelDownshifted:     event.Compaction.ModelDownshifted,
-				DownshiftPolicy:      event.Compaction.DownshiftPolicy,
-				NarrativeIncluded:    event.Compaction.NarrativeIncluded,
-				CapsuleBytes:         event.Compaction.CapsuleBytes,
-			})
+			return sink.Emit(protocolCompactionData(event.Compaction))
 		}
 		return sink.Emit(&protocol.ToolStateData{State: string(event.State), Text: event.Text})
 	}
@@ -817,9 +796,78 @@ func applyThreadCompactionTruth(
 	data.ModelDownshifted = receipt.ModelDownshifted
 	data.DownshiftPolicy = receipt.DownshiftPolicy
 	data.NarrativeIncluded = receipt.NarrativeIncluded
+	data.MandatoryBytes = receipt.MandatoryBytes
+	data.MandatoryEntities = receipt.MandatoryEntities
+	data.OmissionCount = receipt.OmissionCount
+	data.Retention = protocolRetention(receipt.Retention)
+}
+
+func protocolCompactionData(
+	receipt *agentengine.CompactionReceipt,
+) *protocol.TurnCompactionData {
+	if receipt == nil {
+		return nil
+	}
+	return &protocol.TurnCompactionData{
+		CompactionID: receipt.CompactionID,
+		Status:       receipt.Status, Mode: receipt.Mode,
+		SourceWindowID: receipt.SourceWindowID,
+		TargetWindowID: receipt.TargetWindowID,
+		Phase: nonEmpty(
+			receipt.Phase,
+			agentengine.CompactionPhasePreSampling,
+		),
+		Summary:               formatCompactionSummary(receipt),
+		RemovedMessages:       receipt.RemovedMessages,
+		OriginalBytes:         receipt.OriginalBytes,
+		RetainedBytes:         receipt.RetainedBytes,
+		Sections:              append([]string(nil), receipt.Sections...),
+		SummaryTruncated:      receipt.SummaryTruncated,
+		RemovedTurns:          append([]uint64(nil), receipt.RemovedTurns...),
+		PrunedToolResults:     receipt.PrunedToolResults,
+		PrunedBytes:           receipt.PrunedBytes,
+		TruthGeneration:       receipt.TruthGeneration,
+		TruthEntities:         receipt.TruthEntities,
+		CriticalFacts:         receipt.CriticalFacts,
+		CompatibilityHash:     receipt.CompatibilityHash,
+		CompatibilityMatched:  receipt.CompatibilityMatched,
+		AuthorityDigest:       receipt.AuthorityDigest,
+		AuthorityEquivalent:   receipt.AuthorityEquivalent,
+		ModelDownshifted:      receipt.ModelDownshifted,
+		DownshiftPolicy:       receipt.DownshiftPolicy,
+		NarrativeIncluded:     receipt.NarrativeIncluded,
+		NarrativeBytes:        receipt.NarrativeBytes,
+		NarrativeInputTokens:  receipt.NarrativeInputTokens,
+		NarrativeOutputTokens: receipt.NarrativeOutputTokens,
+		FallbackReason:        receipt.FallbackReason,
+		CapsuleBytes:          receipt.CapsuleBytes,
+		MandatoryBytes:        receipt.MandatoryBytes,
+		MandatoryEntities:     receipt.MandatoryEntities,
+		OmissionCount:         receipt.OmissionCount,
+		Retention:             protocolRetention(receipt.Retention),
+	}
+}
+
+func protocolRetention(
+	values []compact.RetentionCount,
+) []protocol.TruthRetentionCount {
+	result := make([]protocol.TruthRetentionCount, len(values))
+	for index, value := range values {
+		result[index] = protocol.TruthRetentionCount{
+			Class: string(value.Class), Candidates: value.Candidates,
+			Retained: value.Retained, Omitted: value.Omitted,
+		}
+	}
+	return result
 }
 
 func formatCompactionSummary(receipt *agentengine.CompactionReceipt) string {
+	if receipt.Status == "completed" && receipt.NarrativeIncluded {
+		return "semantic narrative committed for the compacted context"
+	}
+	if receipt.Status == "fallback" {
+		return "semantic narrative unavailable; retained deterministic truth and raw tail"
+	}
 	if receipt.RemovedMessages == 0 && receipt.PrunedToolResults != 0 {
 		return fmt.Sprintf(
 			"pruned %d tool result surfaces (%d→%d bytes)",

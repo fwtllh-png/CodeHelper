@@ -1,6 +1,5 @@
-// Package memory owns the user-scoped durable note file used for prompt
-// injection and the remember tool. The configured path is a secure root
-// directory; the canonical note file is always <root>/memory.md.
+// Package memory owns the scoped durable records used for prompt injection and
+// memory tools. The configured path is a secure root directory.
 package memory
 
 import (
@@ -11,16 +10,15 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 	"unicode/utf8"
 )
 
 const (
-	FileName         = "memory.md"
-	MaxPromptBytes   = 100 << 10
-	MaxNoteBytes     = 2 << 10
-	MaxFileBytes     = 1 << 20
-	truncationPrefix = "\n<truncated bytes="
+	RecordsFileName = "records.json"
+	RecordsLockName = ".records.lock"
+	MaxPromptBytes  = 100 << 10
+	MaxNoteBytes    = 2 << 10
+	MaxFileBytes    = 1 << 20
 )
 
 var (
@@ -31,17 +29,26 @@ var (
 	ErrEscape       = errors.New("memory path escapes configured root")
 )
 
-// Store is a locked, user-owned memory root. Concurrent appends are serialized
-// per process; writes are flushed before the lock is released.
+// Store is a locked, user-owned memory root. Read-modify-write operations are
+// serialized across Store instances and processes that share the same root.
 type Store struct {
-	root string
-	file string
-	mu   sync.Mutex
+	root        string
+	recordsFile string
+	lockFile    string
+	options     Options
+	mu          sync.Mutex
+}
+
+type Options struct {
+	MaxCandidates  int
+	MaxPromptBytes int
+	WorkspaceID    string
+	RepositoryID   string
 }
 
 // Open validates and prepares a memory root. The root is created with 0700
 // permissions when missing. Symlink escapes out of root are rejected.
-func Open(root string) (*Store, error) {
+func Open(root string, options ...Options) (*Store, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
 		return nil, errors.New("memory root is required")
@@ -64,11 +71,31 @@ func Open(root string) (*Store, error) {
 	if !info.IsDir() {
 		return nil, errors.New("memory path must be a directory root")
 	}
-	file := filepath.Join(resolved, FileName)
-	if err := assertInside(resolved, file); err != nil {
+	opts := Options{MaxCandidates: 32, MaxPromptBytes: 16 << 10}
+	if len(options) > 1 {
+		return nil, errors.New("memory Open accepts at most one Options value")
+	}
+	if len(options) == 1 {
+		opts = options[0]
+		if opts.MaxCandidates <= 0 {
+			opts.MaxCandidates = 32
+		}
+		if opts.MaxPromptBytes <= 0 {
+			opts.MaxPromptBytes = 16 << 10
+		}
+	}
+	recordsFile := filepath.Join(resolved, RecordsFileName)
+	if err := assertInside(resolved, recordsFile); err != nil {
 		return nil, err
 	}
-	return &Store{root: resolved, file: file}, nil
+	lockFile := filepath.Join(resolved, RecordsLockName)
+	if err := assertInside(resolved, lockFile); err != nil {
+		return nil, err
+	}
+	return &Store{
+		root: resolved, recordsFile: recordsFile, lockFile: lockFile,
+		options: opts,
+	}, nil
 }
 
 func (s *Store) Root() string {
@@ -82,7 +109,7 @@ func (s *Store) Path() string {
 	if s == nil {
 		return ""
 	}
-	return s.file
+	return s.recordsFile
 }
 
 // Load returns the trimmed memory content, or ("", false) when missing/empty.
@@ -96,17 +123,14 @@ func (s *Store) Load() (string, bool, error) {
 }
 
 func (s *Store) loadLocked() (string, bool, error) {
-	if err := s.ensureCanonicalFile(); err != nil {
-		return "", false, err
-	}
-	data, err := os.ReadFile(s.file)
-	if errors.Is(err, os.ErrNotExist) {
-		return "", false, nil
-	}
+	records, found, err := s.loadRecordFileLocked()
 	if err != nil {
 		return "", false, err
 	}
-	content := string(data)
+	if !found {
+		return "", false, nil
+	}
+	content := renderRecords(records.Records)
 	if strings.TrimSpace(content) == "" {
 		return "", false, nil
 	}
@@ -116,87 +140,25 @@ func (s *Store) loadLocked() (string, bool, error) {
 // ComposeBlock builds the bounded <user_memory> system partition. Missing or
 // empty files yield ("", false, nil) so callers inject nothing.
 func (s *Store) ComposeBlock() (string, bool, error) {
-	content, ok, err := s.Load()
-	if err != nil || !ok {
-		return "", ok, err
-	}
-	return AsSystemBlock(content, s.file), true, nil
+	return s.ComposeBlockFor(Query{})
 }
 
-// Append adds one timestamped Markdown bullet. Notes are capped and the on-disk
-// file may not grow past MaxFileBytes.
+// Append preserves the original API while writing a user-scoped fact record.
 func (s *Store) Append(note string) error {
-	if s == nil {
-		return ErrDisabled
-	}
-	trimmed := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(note), "#"))
-	if trimmed == "" {
-		return ErrEmptyNote
-	}
-	if utf8.RuneCountInString(trimmed) == 0 {
-		return ErrEmptyNote
-	}
-	if len(trimmed) > MaxNoteBytes {
-		return ErrNoteTooLarge
-	}
-	if containsCredentialMaterial(trimmed) {
-		return errors.New("memory note must not contain secrets")
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.ensureCanonicalFile(); err != nil {
-		return err
-	}
-	info, err := os.Stat(s.file)
-	size := int64(0)
-	if err == nil {
-		size = info.Size()
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	line := fmt.Sprintf("- (%s) %s\n", time.Now().UTC().Format("2006-01-02 15:04 UTC"), trimmed)
-	if size+int64(len(line)) > MaxFileBytes {
-		return ErrFileTooLarge
-	}
-	if err := os.MkdirAll(s.root, 0o700); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(s.file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if _, err := file.WriteString(line); err != nil {
-		return err
-	}
-	return file.Sync()
+	_, _, err := s.Remember(CreateRequest{
+		Scope: ScopeUser, Category: CategoryFact,
+		Text: note, Source: "remember",
+	})
+	return err
 }
 
-func (s *Store) ensureCanonicalFile() error {
-	if err := assertInside(s.root, s.file); err != nil {
+func (s *Store) ensureRecordsFile() error {
+	if err := assertInside(s.root, s.recordsFile); err != nil {
 		return err
 	}
-	parent := filepath.Dir(s.file)
-	resolvedParent, err := filepath.EvalSymlinks(parent)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		resolvedParent = parent
-	}
-	if err := assertInside(s.root, filepath.Join(resolvedParent, filepath.Base(s.file))); err != nil {
-		return err
-	}
-	if info, err := os.Lstat(s.file); err == nil {
+	if info, err := os.Lstat(s.recordsFile); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			target, err := filepath.EvalSymlinks(s.file)
-			if err != nil {
-				return err
-			}
-			if err := assertInside(s.root, target); err != nil {
-				return err
-			}
+			return ErrEscape
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -206,36 +168,7 @@ func (s *Store) ensureCanonicalFile() error {
 
 // AsSystemBlock wraps content for prompt injection with a hard 100 KiB budget.
 func AsSystemBlock(content, source string) string {
-	trimmed := strings.TrimSpace(content)
-	if trimmed == "" {
-		return ""
-	}
-	payload := trimmed
-	if len(content) > MaxPromptBytes {
-		cutoff := truncationCutoff(content, source)
-		payload = content[:cutoff] + truncationMarker(len(content)-cutoff, source)
-	}
-	return fmt.Sprintf("<user_memory source=%q>\n%s\n</user_memory>", source, payload)
-}
-
-func truncationCutoff(content, source string) int {
-	cutoff := previousUTF8Boundary(content, MaxPromptBytes)
-	for {
-		omitted := len(content) - cutoff
-		maxHead := MaxPromptBytes - len(truncationMarker(omitted, source))
-		if maxHead < 0 {
-			maxHead = 0
-		}
-		next := previousUTF8Boundary(content, min(cutoff, maxHead))
-		if next == cutoff {
-			return cutoff
-		}
-		cutoff = next
-	}
-}
-
-func truncationMarker(omitted int, source string) string {
-	return fmt.Sprintf("%s%d source=%q>", truncationPrefix, omitted, source)
+	return AsSystemBlockBounded(content, source, MaxPromptBytes)
 }
 
 func previousUTF8Boundary(value string, index int) int {

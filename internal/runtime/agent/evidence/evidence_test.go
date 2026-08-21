@@ -292,3 +292,14 @@ func TestCloneIsIndependent(t *testing.T) {
 		t.Fatalf("clone turn is %d, want 2", snapshot.Turn)
 	}
 }
+
+func TestPassingVerificationClearsRestoredStaleChange(t *testing.T) {
+	set := ApplyDelta(Delta{Changes: []Change{{
+		Path: "a.go", Turn: 1, Read: true, Stale: true,
+	}}})
+	set.MarkVerified([]string{"a.go"})
+	changes := set.Changes()
+	if len(changes) != 1 || !changes[0].Verified || changes[0].Stale {
+		t.Fatalf("changes=%+v", changes)
+	}
+}

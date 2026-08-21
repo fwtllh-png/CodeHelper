@@ -80,15 +80,18 @@ func (HeuristicTokenCounter) Count(value string) uint64 {
 }
 
 type Receipt struct {
-	Kind             string `json:"kind"`
-	SourcePath       string `json:"source_path"`
-	OriginalBytes    int    `json:"original_bytes"`
-	RetainedBytes    int    `json:"retained_bytes"`
-	OriginalTokens   uint64 `json:"original_tokens"`
-	RetainedTokens   uint64 `json:"retained_tokens"`
-	Digest           string `json:"digest"`
-	Truncated        bool   `json:"truncated"`
-	TruncationReason string `json:"truncation_reason,omitempty"`
+	Kind             string   `json:"kind"`
+	SourcePath       string   `json:"source_path"`
+	OriginalBytes    int      `json:"original_bytes"`
+	RetainedBytes    int      `json:"retained_bytes"`
+	OriginalTokens   uint64   `json:"original_tokens"`
+	RetainedTokens   uint64   `json:"retained_tokens"`
+	Digest           string   `json:"digest"`
+	Truncated        bool     `json:"truncated"`
+	TruncationReason string   `json:"truncation_reason,omitempty"`
+	Generation       uint64   `json:"generation,omitempty"`
+	CandidateCount   int      `json:"candidate_count,omitempty"`
+	SelectedIDs      []string `json:"selected_ids,omitempty"`
 }
 
 type Context struct {

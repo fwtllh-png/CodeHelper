@@ -93,16 +93,20 @@ func TestLockRefusesToFallBackInsteadOfSubstitutingAct(t *testing.T) {
 	}
 }
 
-func TestAnUnwiredPurposeIsRefusedRatherThanServedTheActModel(t *testing.T) {
+func TestSummaryPurposeIsWiredAndJudgeRemainsRefused(t *testing.T) {
 	act := testRoute(t, "anthropic", "claude-sonnet")
 	summary := testRoute(t, "openai", "gpt-4.1")
 
-	_, err := NewRouteSet(act, map[Purpose]ReadyRoute{PurposeSummary: summary}, false)
-	if err == nil || !strings.Contains(err.Error(), "nothing samples on it yet") {
-		t.Fatalf("NewRouteSet() error = %v, want an unwired-purpose error", err)
+	routes, err := NewRouteSet(act, map[Purpose]ReadyRoute{PurposeSummary: summary}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := routes.For(PurposeSummary)
+	if err != nil || resolved.Model().ID != summary.Model().ID {
+		t.Fatalf("For(summary) = %q, %v", resolved.Model().ID, err)
 	}
 
-	routes, err := NewRouteSet(act, nil, false)
+	routes, err = NewRouteSet(act, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}

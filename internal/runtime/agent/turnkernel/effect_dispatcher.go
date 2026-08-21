@@ -124,6 +124,16 @@ func (d *DurableEffectDispatcher) ScheduleRetry(
 // it. Retrying after a sink failure resubmits the same command without
 // executing the side effect again.
 func (d *DurableEffectDispatcher) Resolve(command Command) error {
+	return d.ResolveWith(command, nil)
+}
+
+// ResolveWith persists the result through submit when it is non-nil. This is
+// used when an effect result must share one transaction with another durable
+// state transition.
+func (d *DurableEffectDispatcher) ResolveWith(
+	command Command,
+	submit func(Command) error,
+) error {
 	effectID := resultEffectID(command)
 	if effectID == "" {
 		return ErrEffectResultIdentity
@@ -151,7 +161,9 @@ func (d *DurableEffectDispatcher) Resolve(command Command) error {
 		return fmt.Errorf("effect %q result is already resolving", effectID)
 	}
 	entry.resolving = true
-	submit := entry.submit
+	if submit == nil {
+		submit = entry.submit
+	}
 	result := entry.result
 	d.mu.Unlock()
 
@@ -258,7 +270,8 @@ func C2RoutedEffect(kind EffectKind) bool {
 
 func C3RoutedEffect(kind EffectKind) bool {
 	switch kind {
-	case EffectSampleProvider, EffectRunVerification:
+	case EffectSampleProvider, EffectRunVerification,
+		EffectGenerateNarrative, EffectCommitContextRebase:
 		return true
 	default:
 		return false

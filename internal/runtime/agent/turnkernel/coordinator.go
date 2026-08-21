@@ -17,6 +17,14 @@ type DomainFactStore interface {
 	LoadDomainFacts(context.Context, string) ([]DomainFact, error)
 }
 
+type DomainFactBatch struct {
+	TurnID       string
+	ExpectedNext uint64
+	Facts        []DomainFact
+}
+
+type DomainFactCommit func(context.Context, DomainFactBatch) error
+
 type EffectExecutor interface {
 	ExecuteEffect(context.Context, Effect) (Command, error)
 }
@@ -186,7 +194,18 @@ func (c *TurnCoordinator) DomainFacts(
 }
 
 func (c *TurnCoordinator) Submit(ctx context.Context, command Command) error {
-	effects, err := c.transition(ctx, command)
+	return c.SubmitWithCommit(ctx, command, nil)
+}
+
+// SubmitWithCommit lets a persistence owner atomically append the resulting
+// facts with another state transition. A nil commit uses the coordinator's
+// configured DomainFactStore.
+func (c *TurnCoordinator) SubmitWithCommit(
+	ctx context.Context,
+	command Command,
+	commit DomainFactCommit,
+) error {
+	effects, err := c.transition(ctx, command, commit)
 	if err != nil {
 		return err
 	}
@@ -203,6 +222,7 @@ func (c *TurnCoordinator) Submit(ctx context.Context, command Command) error {
 func (c *TurnCoordinator) transition(
 	ctx context.Context,
 	command Command,
+	commit DomainFactCommit,
 ) ([]Effect, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -230,12 +250,21 @@ func (c *TurnCoordinator) transition(
 			})
 		}
 	}
-	if err := c.store.AppendDomainFacts(
-		ctx,
-		c.turnID,
-		c.nextFact,
-		facts,
-	); err != nil {
+	if commit == nil {
+		commit = func(ctx context.Context, batch DomainFactBatch) error {
+			return c.store.AppendDomainFacts(
+				ctx,
+				batch.TurnID,
+				batch.ExpectedNext,
+				batch.Facts,
+			)
+		}
+	}
+	if err := commit(ctx, DomainFactBatch{
+		TurnID:       c.turnID,
+		ExpectedNext: c.nextFact,
+		Facts:        cloneDomainFacts(facts),
+	}); err != nil {
 		return nil, protocol.NewFault(
 			protocol.CodeUnavailable,
 			"turn domain facts could not be persisted",

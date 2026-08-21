@@ -135,6 +135,9 @@ func (e *Engine) runToolsWithCache(
 			plannedCalls = append(plannedCalls, call)
 		}
 	}
+	if err := e.admitToolBatch(plannedCalls); err != nil {
+		return nil, err
+	}
 	if err := kernel.validateToolStarts(plannedCalls); err != nil {
 		return nil, err
 	}

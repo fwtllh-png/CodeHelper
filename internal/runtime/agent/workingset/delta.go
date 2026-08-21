@@ -36,6 +36,31 @@ func (l *Ledger) Delta() Delta {
 	return result
 }
 
+// RetainedDelta returns the bounded live projection used for context recovery.
+// Older observations remain available in the audit stream but no longer make
+// every terminal snapshot grow.
+func (l *Ledger) RetainedDelta(turn uint64, limit, maxTotal int) Delta {
+	if l == nil {
+		return Delta{}
+	}
+	selected := l.Select(turn, limit)
+	if maxTotal > 0 && len(selected) > maxTotal {
+		selected = selected[:maxTotal]
+	}
+	kept := make(map[string]struct{}, len(selected))
+	for _, entry := range selected {
+		kept[entry.Path] = struct{}{}
+	}
+	full := l.Delta()
+	result := Delta{}
+	for _, observation := range full.Observations {
+		if _, ok := kept[observation.Path]; ok {
+			result.Observations = append(result.Observations, observation)
+		}
+	}
+	return result
+}
+
 func ApplyDelta(delta Delta) *Ledger {
 	result := New()
 	for _, observation := range delta.Observations {

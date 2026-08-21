@@ -1,8 +1,6 @@
 package engine
 
 import (
-	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -37,29 +35,14 @@ func (e *Engine) buildTruthCapsule(
 	e.planMu.Lock()
 	plan := e.plan.Clone()
 	e.planMu.Unlock()
-	goal := strings.TrimSpace(plan.Objective)
-	goalSource := "runtime.plan"
-	if goal == "" {
-		goal = strings.TrimSpace(plan.Title)
-	}
-	if goal == "" {
-		goal = strings.TrimSpace(summary.Goal)
-		goalSource = "runtime.user_input"
-	}
-	if goal != "" {
+	capsule.Entities = append(capsule.Entities, e.planTruthEntities(plan)...)
+	if len(capsule.Entities) == 0 && strings.TrimSpace(summary.Goal) != "" {
 		capsule.Entities = append(capsule.Entities, compact.NewTruthEntity(
-			compact.EntityGoal, "active", goal, goalSource,
+			compact.EntityGoal,
+			"active",
+			strings.TrimSpace(summary.Goal),
+			"runtime.user_input",
 		))
-	}
-	for _, step := range plan.Steps {
-		entity := compact.NewTruthEntity(
-			compact.EntityTodo,
-			strings.Join(strings.Fields(step.Title), " "),
-			step.Title,
-			"runtime.plan",
-		)
-		entity.Status = step.Status
-		capsule.Entities = append(capsule.Entities, entity)
 	}
 	for _, failure := range summary.Failures {
 		key := strings.Join(
@@ -74,56 +57,32 @@ func (e *Engine) buildTruthCapsule(
 		entity.Turn, entity.Count = failure.Turn, failure.Count
 		capsule.Entities = append(capsule.Entities, entity)
 	}
-	for _, change := range summary.Changes {
-		entity := compact.NewTruthEntity(
-			compact.EntityChange, change.Path, change.Path,
-			"runtime.evidence",
-		)
-		entity.Turn, entity.Read = change.Turn, change.Read
-		entity.Verified, entity.Diagnostics = change.Verified, change.Diagnostics
-		if change.Verified {
-			entity.VerificationSource = "runtime.evidence"
+	evidenceDelta := e.evidenceSet().RetainedDelta(
+		e.options.Context.TruthRetention.FactMaxEntities,
+		e.options.Context.TruthRetention.VerifiedChangeRetentionTurns,
+		e.options.Context.TruthRetention.HandleMaxEntities,
+	)
+	workspaceDigests := make(map[string]string)
+	if binding, err := e.captureWorkspaceBindingFor(evidenceDelta); err == nil {
+		for _, path := range binding.BoundPaths {
+			workspaceDigests[path.Path] = path.ContentDigest
 		}
-		capsule.Entities = append(capsule.Entities, entity)
 	}
+	capsule.Entities = append(
+		capsule.Entities,
+		evidenceTruthEntities(summary, evidenceDelta, workspaceDigests)...,
+	)
 	for _, path := range summary.CriticalPaths {
 		capsule.Entities = append(capsule.Entities, compact.NewTruthEntity(
 			compact.EntityCriticalPath, path, path, "runtime.working_set",
 		))
 	}
-	evidenceDelta := e.evidenceSet().Delta()
-	for _, fact := range evidenceDelta.Facts {
-		value := fact.Describe()
-		capsule.Entities = append(capsule.Entities, compact.NewTruthEntity(
-			compact.EntityFact,
-			fmt.Sprintf("%s\x00%s\x00%d", fact.Kind, fact.Path, fact.Line),
-			value,
-			"runtime.evidence",
-		))
-	}
-	for _, handle := range evidenceDelta.Handles {
-		entity := compact.NewTruthEntity(
-			compact.EntityContentHandle,
-			handle.ID,
-			fmt.Sprintf("%s result handle %s", handle.Tool, handle.ID),
-			"runtime.evidence",
-		)
-		entity.Turn, entity.Consumed = handle.Turn, handle.Consumed
-		capsule.Entities = append(capsule.Entities, entity)
-	}
+	capsule.Entities = append(
+		capsule.Entities,
+		e.pendingInputTruthEntities()...,
+	)
 	capsule.Seal()
 	return capsule
-}
-
-func failureLine(value compact.Failure) string {
-	line := value.Kind + " " + value.Name
-	if value.Reason != "" {
-		line += ": " + value.Reason
-	}
-	if value.Count > 1 {
-		line += " (" + strconv.Itoa(value.Count) + " times)"
-	}
-	return line
 }
 
 func previousTruthCapsules(

@@ -109,6 +109,23 @@ func TestReasoningOffIsValidForNonReasoningChatModel(t *testing.T) {
 	}
 }
 
+func TestResponsesPrepareMapsReasoningOffToNone(t *testing.T) {
+	request := testRequest(t, model.ProtocolOpenAIResponses)
+	request.ReasoningEffort = "off"
+	call, err := NewAdapter().Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(call.Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	reasoning, _ := body["reasoning"].(map[string]any)
+	if reasoning["effort"] != "none" {
+		t.Fatalf("reasoning = %#v", body["reasoning"])
+	}
+}
+
 func TestResponsesPrepareScopesDeepSeekReplayRules(t *testing.T) {
 	request := testRequest(t, model.ProtocolOpenAIResponses)
 	request.ReasoningEffort = "max"

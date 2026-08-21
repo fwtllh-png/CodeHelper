@@ -33,117 +33,184 @@ func (s *Store) AppendDomainFacts(
 		return errors.New("domain fact append is incomplete")
 	}
 	return s.database.Transaction(ctx, func(tx *sql.Tx) error {
-		var terminal int
-		err := tx.QueryRowContext(
+		return s.appendDomainFactsTx(
 			ctx,
-			`SELECT COUNT(*) FROM turn_terminal_envelopes WHERE turn_id = ?`,
+			tx,
 			turnID,
-		).Scan(&terminal)
+			expectedNext,
+			facts,
+			false,
+		)
+	})
+}
+
+// AppendDomainFactsIdempotentTx appends a fact batch within a caller-owned
+// transaction. An exact previously committed batch is accepted so a rebase can
+// be retried after its transaction committed but before the caller observed it.
+func (s *Store) AppendDomainFactsIdempotentTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	turnID string,
+	expectedNext uint64,
+	facts []turnkernel.DomainFact,
+) error {
+	if s == nil || s.database == nil || tx == nil ||
+		turnID == "" || len(facts) == 0 {
+		return errors.New("domain fact append is incomplete")
+	}
+	return s.appendDomainFactsTx(
+		ctx,
+		tx,
+		turnID,
+		expectedNext,
+		facts,
+		true,
+	)
+}
+
+func (s *Store) appendDomainFactsTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	turnID string,
+	expectedNext uint64,
+	facts []turnkernel.DomainFact,
+	allowReplay bool,
+) error {
+	var count, lastSequence uint64
+	if err := tx.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*), COALESCE(MAX(sequence), 0)
+		 FROM turn_domain_facts WHERE turn_id = ?`,
+		turnID,
+	).Scan(&count, &lastSequence); err != nil {
+		return err
+	}
+	if count != lastSequence {
+		return errors.New("domain fact sequence is not contiguous")
+	}
+	if allowReplay && expectedNext > 0 &&
+		count >= expectedNext+uint64(len(facts))-1 {
+		encoded, err := loadEncodedFacts(ctx, tx, turnID)
 		if err != nil {
 			return err
 		}
-		if terminal != 0 {
-			return errors.New("terminal turn rejects new domain facts")
-		}
-		var count, lastSequence uint64
-		if err := tx.QueryRowContext(
-			ctx,
-			`SELECT COUNT(*), COALESCE(MAX(sequence), 0)
-			 FROM turn_domain_facts WHERE turn_id = ?`,
-			turnID,
-		).Scan(&count, &lastSequence); err != nil {
+		existing, err := decodeDomainFacts(encoded)
+		if err != nil {
 			return err
 		}
-		if count != lastSequence {
-			return errors.New("domain fact sequence is not contiguous")
-		}
-		if expectedNext != count+1 {
-			return fmt.Errorf(
-				"domain fact sequence conflict: got %d want %d",
-				expectedNext,
-				count+1,
-			)
-		}
-		var previous *turnkernel.State
-		var previousDigest string
-		if count != 0 {
-			snapshotSequence :=
-				((count - 1) / domainFactSnapshotEvery *
-					domainFactSnapshotEvery) + 1
-			if snapshotSequence > 1 {
-				var encodedPrevious []byte
-				if err := tx.QueryRowContext(
-					ctx,
-					`SELECT fact_json FROM turn_domain_facts
-					 WHERE turn_id = ? AND sequence = ?`,
-					turnID,
-					snapshotSequence-1,
-				).Scan(&encodedPrevious); err != nil {
-					return err
-				}
-				digest, err := decodeStoredFactDigest(encodedPrevious)
-				if err != nil {
-					return err
-				}
-				previousDigest = digest
-			}
-			encodedTail, err := loadEncodedFactsFrom(
-				ctx,
-				tx,
-				turnID,
-				snapshotSequence,
-			)
-			if err != nil {
-				return err
-			}
-			tail, err := decodeDomainFactSuffix(
-				encodedTail,
-				snapshotSequence,
-				previousDigest,
-			)
-			if err != nil {
-				return err
-			}
-			if len(tail) == 0 || tail[len(tail)-1].Sequence != count {
-				return errors.New("domain fact tail is incomplete")
-			}
-			state := tail[len(tail)-1].State
-			previous = &state
-			previousDigest = tail[len(tail)-1].StateDigest
+		start := int(expectedNext - 1)
+		if len(existing) < start+len(facts) {
+			return errors.New("domain fact replay is incomplete")
 		}
 		for index, fact := range facts {
-			if fact.TurnID != turnID ||
-				fact.Sequence != expectedNext+uint64(index) {
-				return fmt.Errorf("invalid domain fact at index %d", index)
+			left, marshalErr := json.Marshal(existing[start+index])
+			if marshalErr != nil {
+				return marshalErr
 			}
-			digest, err := turnkernel.Digest(fact.State)
-			if err != nil || digest != fact.StateDigest {
-				return fmt.Errorf("domain fact digest mismatch at index %d", index)
+			right, marshalErr := json.Marshal(fact)
+			if marshalErr != nil || !bytes.Equal(left, right) {
+				return errors.New("domain fact replay conflicts with stored state")
 			}
-			encoded, err := encodeDomainFact(
-				fact,
-				previous,
-				previousDigest,
-			)
+		}
+		return nil
+	}
+	if expectedNext != count+1 {
+		return fmt.Errorf(
+			"domain fact sequence conflict: got %d want %d",
+			expectedNext,
+			count+1,
+		)
+	}
+	var terminal int
+	if err := tx.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*) FROM turn_terminal_envelopes WHERE turn_id = ?`,
+		turnID,
+	).Scan(&terminal); err != nil {
+		return err
+	}
+	if terminal != 0 {
+		return errors.New("terminal turn rejects new domain facts")
+	}
+	var previous *turnkernel.State
+	var previousDigest string
+	if count != 0 {
+		snapshotSequence :=
+			((count - 1) / domainFactSnapshotEvery *
+				domainFactSnapshotEvery) + 1
+		if snapshotSequence > 1 {
+			var encodedPrevious []byte
+			if err := tx.QueryRowContext(
+				ctx,
+				`SELECT fact_json FROM turn_domain_facts
+				 WHERE turn_id = ? AND sequence = ?`,
+				turnID,
+				snapshotSequence-1,
+			).Scan(&encodedPrevious); err != nil {
+				return err
+			}
+			digest, err := decodeStoredFactDigest(encodedPrevious)
 			if err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(
-				ctx,
-				`INSERT INTO turn_domain_facts(turn_id, sequence, fact_json)
-				 VALUES (?, ?, ?)`,
-				turnID,
-				fact.Sequence,
-				string(encoded),
-			); err != nil {
-				return err
-			}
-			state := fact.State
-			previous = &state
-			previousDigest = fact.StateDigest
+			previousDigest = digest
 		}
-		return nil
-	})
+		encodedTail, err := loadEncodedFactsFrom(
+			ctx,
+			tx,
+			turnID,
+			snapshotSequence,
+		)
+		if err != nil {
+			return err
+		}
+		tail, err := decodeDomainFactSuffix(
+			encodedTail,
+			snapshotSequence,
+			previousDigest,
+		)
+		if err != nil {
+			return err
+		}
+		if len(tail) == 0 || tail[len(tail)-1].Sequence != count {
+			return errors.New("domain fact tail is incomplete")
+		}
+		state := tail[len(tail)-1].State
+		previous = &state
+		previousDigest = tail[len(tail)-1].StateDigest
+	}
+	for index, fact := range facts {
+		if fact.TurnID != turnID ||
+			fact.Sequence != expectedNext+uint64(index) {
+			return fmt.Errorf("invalid domain fact at index %d", index)
+		}
+		digest, err := turnkernel.Digest(fact.State)
+		if err != nil || digest != fact.StateDigest {
+			return fmt.Errorf("domain fact digest mismatch at index %d", index)
+		}
+		encoded, err := encodeDomainFact(
+			fact,
+			previous,
+			previousDigest,
+		)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO turn_domain_facts(turn_id, sequence, fact_json)
+			 VALUES (?, ?, ?)`,
+			turnID,
+			fact.Sequence,
+			string(encoded),
+		); err != nil {
+			return err
+		}
+		state := fact.State
+		previous = &state
+		previousDigest = fact.StateDigest
+	}
+	return nil
 }
 
 func (s *Store) LoadDomainFacts(

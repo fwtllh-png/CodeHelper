@@ -18,11 +18,11 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 var (
 	ErrCorrupt           = errors.New("sqlite database is corrupt")
-	ErrUnsupportedSchema = errors.New("sqlite schema is newer than supported")
+	ErrUnsupportedSchema = errors.New("sqlite schema version is unsupported")
 )
 
 func IsUniqueConstraintViolation(err error) bool {
@@ -74,13 +74,20 @@ func (e *CorruptionError) Unwrap() []error {
 }
 
 // SchemaVersionError is returned without migrating or otherwise writing the
-// database when its schema is newer than this binary understands.
+// database when its schema does not match the version this binary requires.
 type SchemaVersionError struct {
 	Found     int
 	Supported int
 }
 
 func (e *SchemaVersionError) Error() string {
+	if e.Found < e.Supported {
+		return fmt.Sprintf(
+			"sqlite schema version %d is older than required version %d; automatic migration is not supported",
+			e.Found,
+			e.Supported,
+		)
+	}
 	return fmt.Sprintf("sqlite schema version %d is newer than supported version %d", e.Found, e.Supported)
 }
 
@@ -167,7 +174,9 @@ func Open(ctx context.Context, path string, options ...Options) (*Store, error) 
 			return nil, err
 		}
 	} else if version != SchemaVersion {
-		return nil, fmt.Errorf("unsupported sqlite schema version %d", version)
+		return nil, &SchemaVersionError{
+			Found: version, Supported: SchemaVersion,
+		}
 	}
 	if err := store.verifyPragmas(ctx, opts.BusyTimeout); err != nil {
 		return nil, err
@@ -205,7 +214,7 @@ func (s *Store) initializeSchema(ctx context.Context) error {
 		if _, err := tx.ExecContext(ctx, schemaCurrent); err != nil {
 			return s.classify("create schema v1", err)
 		}
-		if _, err := tx.ExecContext(ctx, "PRAGMA user_version = 2"); err != nil {
+		if _, err := tx.ExecContext(ctx, "PRAGMA user_version = 3"); err != nil {
 			return s.classify("record schema version", err)
 		}
 		return nil
@@ -497,7 +506,30 @@ CREATE INDEX usage_turn ON usage(turn_id);
 
 ` + taskLifecycleSchema + usageContextSchema + automationSchema +
 	agentTopologySchema + repositoryIndexSchema + backgroundExecutionSchema +
-	traceSchema + providerCapabilitySchema + `
+	traceSchema + providerCapabilitySchema + contextRebaseSchema + `
+`
+
+const contextRebaseSchema = `
+CREATE TABLE context_rebases (
+    compaction_id TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+    turn_id TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    envelope_digest TEXT NOT NULL,
+    manifest_json TEXT NOT NULL CHECK (json_valid(manifest_json)),
+    created_at TEXT NOT NULL,
+    UNIQUE (thread_id, revision)
+);
+CREATE INDEX context_rebases_thread_revision
+ON context_rebases(thread_id, revision DESC);
+
+CREATE TABLE context_current (
+    thread_id TEXT PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
+    compaction_id TEXT NOT NULL REFERENCES context_rebases(compaction_id) ON DELETE CASCADE,
+    epoch INTEGER NOT NULL CHECK (epoch > 0),
+    revision INTEGER NOT NULL CHECK (revision > 0),
+    updated_at TEXT NOT NULL
+);
 `
 
 const taskLifecycleSchema = `

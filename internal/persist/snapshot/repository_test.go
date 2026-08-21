@@ -10,8 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -32,6 +35,76 @@ func TestSnapshotRoundTripVerifiesSchemaAndHash(t *testing.T) {
 		recovered.ContentHash != saved.ContentHash ||
 		string(recovered.Content) != `{"state":"ok"}` {
 		t.Fatalf("recovered snapshot = %+v", recovered)
+	}
+}
+
+func TestContextCheckpointRoundTripBindsEpochAndWorkspace(t *testing.T) {
+	repository, _, _ := testRepository(t)
+	profile := artifactProfile()
+	history := []protocol.CompactedMessage{{
+		Role: "user", Content: json.RawMessage(`["implement parser"]`), Turn: 1,
+	}}
+	window, err := contextstore.NewWindowLedger("window-1", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := sessiondelta.WorkspaceBinding{
+		WorkspaceIdentity: "workspace:test",
+		JournalRevision:   1,
+		BoundPaths: []sessiondelta.BoundPath{{
+			Path: "parser.go", ContentDigest: "sha256:content",
+		}},
+	}
+	binding.Seal()
+	contextSnapshot := sessiondelta.ContextSnapshot{
+		Version: sessiondelta.ContextSnapshotVersion,
+		Epoch:   3, Revision: 7, Turn: 1,
+		History: []provider.Message{
+			func() provider.Message {
+				message := provider.TextMessage(provider.RoleUser, "implement parser")
+				message.Turn = 1
+				return message
+			}(),
+		},
+		Workspace: binding, Window: window,
+	}
+	if err := contextSnapshot.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := protocol.SessionCheckpoint{
+		Version: protocol.CheckpointProtocolVersion,
+		ID:      "checkpoint-context", SessionID: "session-1",
+		ThreadID: "thread-1", TurnID: "turn-1", Cursor: 7,
+		Status: protocol.CheckpointCompleted, Summary: "Context checkpoint",
+		ProfileRevision: profile.Revision,
+		StateEpoch:      contextSnapshot.Epoch,
+		ContextDigest:   contextSnapshot.Digest,
+		WorkspaceDigest: contextSnapshot.Workspace.SparseDigest,
+		CreatedAt:       time.Now().UTC(),
+	}
+	if _, err := repository.SaveContextCheckpoint(
+		t.Context(),
+		checkpoint,
+		history,
+		contextSnapshot,
+		profile,
+	); err != nil {
+		t.Fatal(err)
+	}
+	recovered, gotContext, gotProfile, err :=
+		repository.GetContextCheckpoint(t.Context(), checkpoint.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.ContextDigest != contextSnapshot.Digest ||
+		gotContext.Digest != contextSnapshot.Digest ||
+		gotProfile.Revision != profile.Revision {
+		t.Fatalf(
+			"checkpoint=%+v context=%+v profile=%+v",
+			recovered,
+			gotContext,
+			gotProfile,
+		)
 	}
 }
 

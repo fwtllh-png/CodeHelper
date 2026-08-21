@@ -42,6 +42,15 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 		return err
 	}
 	applyEnvString(lookup, "CODEHELPER_MEMORY_PATH", fieldMemoryPath, &config.Memory.Path, provenance)
+	if err := applyEnvInt(lookup, "CODEHELPER_MEMORY_MAX_CANDIDATES", fieldMemoryMaxCandidates, &config.Memory.MaxCandidates, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvInt(lookup, "CODEHELPER_MEMORY_MAX_PROMPT_BYTES", fieldMemoryMaxPromptBytes, &config.Memory.MaxPromptBytes, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvBool(lookup, "CODEHELPER_MEMORY_SEMANTIC_RERANK", fieldMemorySemanticRerank, &config.Memory.SemanticRerank, provenance); err != nil {
+		return err
+	}
 	index := &config.Context.Index
 	if err := applyEnvBool(lookup, "CODEHELPER_INDEX_ENABLED", fieldIndexEnabled, &index.Enabled, provenance); err != nil {
 		return err
@@ -117,8 +126,20 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 	}
 	compaction := &config.Context.Compact
 	if err := applyEnvInt(
+		lookup, "CODEHELPER_COMPACT_PREPARE_TOKENS", fieldCompactPrepareTokens,
+		&compaction.PrepareTokens, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
 		lookup, "CODEHELPER_COMPACT_AUTO_TOKENS", fieldCompactAutoTokens,
 		&compaction.AutoCompactTokens, provenance,
+	); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup, "CODEHELPER_COMPACT_EMERGENCY_TOKENS", fieldCompactEmergencyTokens,
+		&compaction.EmergencyTokens, provenance,
 	); err != nil {
 		return err
 	}
@@ -135,6 +156,49 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 	if err := applyEnvInt(
 		lookup, "CODEHELPER_COMPACT_MAX_DIGEST_ENTRIES", fieldCompactMaxDigest,
 		&compaction.MaxDigestEntries, provenance,
+	); err != nil {
+		return err
+	}
+	for _, value := range []struct {
+		env    string
+		field  string
+		target *int
+	}{
+		{"CODEHELPER_COMPACT_TRUTH_MAX_BYTES", fieldCompactTruthMaxBytes, &compaction.TruthMaxBytes},
+		{"CODEHELPER_COMPACT_TRUTH_MAX_ENTITIES", fieldCompactTruthMaxEntities, &compaction.TruthMaxEntities},
+		{"CODEHELPER_COMPACT_MANDATORY_MAX_ENTITIES", fieldCompactMandatoryMaxEntities, &compaction.MandatoryMaxEntities},
+		{"CODEHELPER_COMPACT_FACT_MAX_ENTITIES", fieldCompactFactMaxEntities, &compaction.FactMaxEntities},
+		{"CODEHELPER_COMPACT_VERIFIED_CHANGE_RETENTION_TURNS", fieldCompactVerifiedChangeRetentionTurns, &compaction.VerifiedChangeRetentionTurns},
+		{"CODEHELPER_COMPACT_FAILURE_MAX_ENTITIES", fieldCompactFailureMaxEntities, &compaction.FailureMaxEntities},
+		{"CODEHELPER_COMPACT_HANDLE_MAX_ENTITIES", fieldCompactHandleMaxEntities, &compaction.HandleMaxEntities},
+		{"CODEHELPER_COMPACT_OMISSION_SAMPLE_MAX_ENTITIES", fieldCompactOmissionSampleMaxEntities, &compaction.OmissionSampleMaxEntities},
+		{"CODEHELPER_COMPACT_RECENT_TAIL_TURNS", fieldCompactRecentTailTurns, &compaction.RecentTailTurns},
+		{"CODEHELPER_COMPACT_RECENT_TAIL_MAX_TOKENS", fieldCompactRecentTailMaxTokens, &compaction.RecentTailMaxTokens},
+		{"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE_MAX_INPUT_TOKENS", fieldCompactSemanticNarrativeMaxInputTokens, &compaction.SemanticNarrativeMaxInputTokens},
+		{"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE_MAX_OUTPUT_TOKENS", fieldCompactSemanticNarrativeMaxOutputTokens, &compaction.SemanticNarrativeMaxOutputTokens},
+		{"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE_MAX_ITEMS", fieldCompactSemanticNarrativeMaxItems, &compaction.SemanticNarrativeMaxItems},
+		{"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE_ITEM_MAX_BYTES", fieldCompactSemanticNarrativeItemMaxBytes, &compaction.SemanticNarrativeItemMaxBytes},
+		{"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE_RETRY_LIMIT", fieldCompactSemanticNarrativeRetryLimit, &compaction.SemanticNarrativeRetryLimit},
+		{"CODEHELPER_COMPACT_OWNER_DELTA_MAX_SEGMENTS", fieldCompactOwnerDeltaMaxSegments, &compaction.OwnerDeltaMaxSegments},
+		{"CODEHELPER_COMPACT_OWNER_DELTA_MAX_BYTES", fieldCompactOwnerDeltaMaxBytes, &compaction.OwnerDeltaMaxBytes},
+	} {
+		if err := applyEnvInt(lookup, value.env, value.field, value.target, provenance); err != nil {
+			return err
+		}
+	}
+	applyEnvString(
+		lookup,
+		"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE",
+		fieldCompactSemanticNarrative,
+		&compaction.SemanticNarrative,
+		provenance,
+	)
+	if err := applyEnvDuration(
+		lookup,
+		"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE_TIMEOUT",
+		fieldCompactSemanticNarrativeTimeout,
+		&compaction.SemanticNarrativeTimeout,
+		provenance,
 	); err != nil {
 		return err
 	}

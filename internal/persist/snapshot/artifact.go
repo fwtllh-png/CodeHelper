@@ -10,7 +10,9 @@ import (
 	"io"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/durablecodec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -21,8 +23,9 @@ const (
 )
 
 type checkpointContent struct {
-	History []protocol.CompactedMessage `json:"history"`
-	Profile protocol.SessionProfile     `json:"profile"`
+	History         []protocol.CompactedMessage   `json:"history,omitempty"`
+	ContextManifest *sessiondelta.ContextManifest `json:"context_manifest,omitempty"`
+	Profile         protocol.SessionProfile       `json:"profile"`
 }
 
 type checkpointMetadata struct {
@@ -31,6 +34,9 @@ type checkpointMetadata struct {
 	Status              protocol.CheckpointStatus  `json:"status"`
 	Summary             string                     `json:"summary"`
 	ProfileRevision     uint64                     `json:"profile_revision"`
+	StateEpoch          uint64                     `json:"state_epoch,omitempty"`
+	ContextDigest       string                     `json:"context_digest,omitempty"`
+	WorkspaceDigest     string                     `json:"workspace_digest,omitempty"`
 	ParentCheckpointID  string                     `json:"parent_checkpoint_id,omitempty"`
 	ChangeReceipt       *protocol.ReceiptReference `json:"change_receipt,omitempty"`
 	ChangedFiles        int                        `json:"changed_files"`
@@ -52,6 +58,35 @@ func (r *Repository) SaveCheckpoint(
 	checkpoint protocol.SessionCheckpoint,
 	history []protocol.CompactedMessage,
 	profile protocol.SessionProfile,
+) (protocol.SessionCheckpoint, error) {
+	return r.saveCheckpoint(ctx, checkpoint, history, profile, nil)
+}
+
+func (r *Repository) SaveContextCheckpoint(
+	ctx context.Context,
+	checkpoint protocol.SessionCheckpoint,
+	history []protocol.CompactedMessage,
+	contextSnapshot sessiondelta.ContextSnapshot,
+	profile protocol.SessionProfile,
+) (protocol.SessionCheckpoint, error) {
+	if err := contextSnapshot.Validate(); err != nil {
+		return protocol.SessionCheckpoint{}, err
+	}
+	return r.saveCheckpoint(
+		ctx,
+		checkpoint,
+		history,
+		profile,
+		&contextSnapshot,
+	)
+}
+
+func (r *Repository) saveCheckpoint(
+	ctx context.Context,
+	checkpoint protocol.SessionCheckpoint,
+	history []protocol.CompactedMessage,
+	profile protocol.SessionProfile,
+	contextSnapshot *sessiondelta.ContextSnapshot,
 ) (protocol.SessionCheckpoint, error) {
 	if r.db == nil || r.content == nil {
 		return protocol.SessionCheckpoint{},
@@ -83,10 +118,39 @@ func (r *Repository) SaveCheckpoint(
 	if err := checkpoint.Validate(); err != nil {
 		return protocol.SessionCheckpoint{}, err
 	}
-	content, err := encodeCheckpointContent(checkpointContent{
+	contentState := checkpointContent{
 		History: append([]protocol.CompactedMessage(nil), history...),
 		Profile: profile,
-	})
+	}
+	if contextSnapshot != nil {
+		var previous *sessiondelta.ContextManifest
+		if checkpoint.ParentCheckpointID != "" {
+			parent, getErr := r.Get(ctx, checkpoint.ParentCheckpointID)
+			if getErr == nil {
+				var parentContent checkpointContent
+				if decodeCheckpointContent(parent.Content, &parentContent) == nil &&
+					parentContent.ContextManifest != nil {
+					value := *parentContent.ContextManifest
+					previous = &value
+				}
+			}
+		}
+		manifest, buildErr := sessiondelta.BuildContextManifest(
+			ctx,
+			r.content,
+			checkpoint.ThreadID,
+			checkpoint.TurnID,
+			*contextSnapshot,
+			previous,
+			sessiondelta.DefaultManifestLimits(),
+		)
+		if buildErr != nil {
+			return protocol.SessionCheckpoint{}, buildErr
+		}
+		contentState.History = nil
+		contentState.ContextManifest = &manifest
+	}
+	content, err := encodeCheckpointContent(contentState)
 	if err != nil {
 		return protocol.SessionCheckpoint{}, err
 	}
@@ -96,6 +160,9 @@ func (r *Repository) SaveCheckpoint(
 		Status:              checkpoint.Status,
 		Summary:             checkpoint.Summary,
 		ProfileRevision:     checkpoint.ProfileRevision,
+		StateEpoch:          checkpoint.StateEpoch,
+		ContextDigest:       checkpoint.ContextDigest,
+		WorkspaceDigest:     checkpoint.WorkspaceDigest,
 		ParentCheckpointID:  checkpoint.ParentCheckpointID,
 		ChangeReceipt:       checkpoint.ChangeReceipt,
 		ChangedFiles:        checkpoint.ChangedFiles,
@@ -149,7 +216,7 @@ func (r *Repository) GetCheckpoint(
 			&IntegrityError{ID: id, Err: err}
 	}
 	if content.Profile.Revision != checkpoint.ProfileRevision ||
-		len(content.History) == 0 {
+		len(content.History) == 0 && content.ContextManifest == nil {
 		return protocol.SessionCheckpoint{}, nil, protocol.SessionProfile{},
 			&IntegrityError{
 				ID:  id,
@@ -160,10 +227,97 @@ func (r *Repository) GetCheckpoint(
 		return protocol.SessionCheckpoint{}, nil, protocol.SessionProfile{},
 			&IntegrityError{ID: id, Err: err}
 	}
+	if len(content.History) == 0 && content.ContextManifest != nil {
+		snapshot, loadErr := sessiondelta.LoadContextManifest(
+			ctx,
+			r.content,
+			*content.ContextManifest,
+		)
+		if loadErr != nil {
+			return protocol.SessionCheckpoint{}, nil, protocol.SessionProfile{},
+				&IntegrityError{ID: id, Err: loadErr}
+		}
+		content.History, err = encodeContextHistory(snapshot.History)
+		if err != nil {
+			return protocol.SessionCheckpoint{}, nil, protocol.SessionProfile{},
+				&IntegrityError{ID: id, Err: err}
+		}
+	}
 	return checkpoint,
 		append([]protocol.CompactedMessage(nil), content.History...),
 		content.Profile,
 		nil
+}
+
+func (r *Repository) GetContextCheckpoint(
+	ctx context.Context,
+	id string,
+) (
+	protocol.SessionCheckpoint,
+	sessiondelta.ContextSnapshot,
+	protocol.SessionProfile,
+	error,
+) {
+	value, err := r.Get(ctx, id)
+	if err != nil {
+		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+			protocol.SessionProfile{}, err
+	}
+	if value.Kind != KindSessionCheckpoint {
+		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+			protocol.SessionProfile{}, ErrNotFound
+	}
+	checkpoint, err := decodeCheckpointSummary(value)
+	if err != nil {
+		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+			protocol.SessionProfile{}, err
+	}
+	var content checkpointContent
+	if err := decodeCheckpointContent(value.Content, &content); err != nil {
+		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+			protocol.SessionProfile{}, &IntegrityError{ID: id, Err: err}
+	}
+	if content.ContextManifest == nil {
+		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+			protocol.SessionProfile{}, &IntegrityError{
+				ID: id, Err: errors.New("checkpoint has no context snapshot"),
+			}
+	}
+	contextSnapshot, err := sessiondelta.LoadContextManifest(
+		ctx,
+		r.content,
+		*content.ContextManifest,
+	)
+	if err != nil {
+		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+			protocol.SessionProfile{}, &IntegrityError{ID: id, Err: err}
+	}
+	if contextSnapshot.Digest != checkpoint.ContextDigest ||
+		contextSnapshot.Epoch != checkpoint.StateEpoch ||
+		contextSnapshot.Workspace.SparseDigest != checkpoint.WorkspaceDigest ||
+		content.Profile.Revision != checkpoint.ProfileRevision {
+		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+			protocol.SessionProfile{}, &IntegrityError{
+				ID: id, Err: errors.New("checkpoint context identity is inconsistent"),
+			}
+	}
+	return checkpoint, contextSnapshot, content.Profile, nil
+}
+
+func encodeContextHistory(
+	messages []provider.Message,
+) ([]protocol.CompactedMessage, error) {
+	result := make([]protocol.CompactedMessage, 0, len(messages))
+	for _, message := range messages {
+		content, err := json.Marshal(message.Blocks)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, protocol.CompactedMessage{
+			Role: string(message.Role), Content: content, Turn: message.Turn,
+		})
+	}
+	return result, nil
 }
 
 func encodeCheckpointContent(value checkpointContent) ([]byte, error) {
@@ -417,6 +571,9 @@ func decodeCheckpointSummary(
 		Status:              metadata.Status,
 		Summary:             metadata.Summary,
 		ProfileRevision:     metadata.ProfileRevision,
+		StateEpoch:          metadata.StateEpoch,
+		ContextDigest:       metadata.ContextDigest,
+		WorkspaceDigest:     metadata.WorkspaceDigest,
 		ParentCheckpointID:  metadata.ParentCheckpointID,
 		ChangeReceipt:       metadata.ChangeReceipt,
 		ChangedFiles:        metadata.ChangedFiles,

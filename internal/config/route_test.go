@@ -71,20 +71,40 @@ model = "gpt-4.1"
 	}
 }
 
-func TestAPurposeNothingSamplesOnCannotBeConfigured(t *testing.T) {
-	// summary and judge exist in the purpose enum so that documentation and error
-	// messages can name them, but the file has no table for them: a slot that
-	// loaded and then went unread would look like it had taken effect.
+func TestSummaryRouteComesOffTheFile(t *testing.T) {
 	path := writeConfig(t, `
 [route.summary]
 provider = "openai"
 model = "gpt-4.1"
 `)
 
+	snapshot, err := Load(LoadOptions{Path: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := snapshot.Config.Route.Slots["summary"]
+	if summary.Provider != "openai" || summary.Model != "gpt-4.1" {
+		t.Fatalf("summary slot = %+v", summary)
+	}
+	if snapshot.Provenance[fieldRouteProvider("summary")] != SourceFile {
+		t.Fatalf(
+			"summary provider provenance = %q",
+			snapshot.Provenance[fieldRouteProvider("summary")],
+		)
+	}
+}
+
+func TestAnUnwiredPurposeCannotBeConfigured(t *testing.T) {
+	path := writeConfig(t, `
+[route.judge]
+provider = "openai"
+model = "gpt-4.1"
+`)
+
 	_, err := Load(LoadOptions{Path: path})
 
-	if err == nil {
-		t.Fatal("a summary route loaded; nothing samples on it yet, so it must be refused")
+	if err == nil || !strings.Contains(err.Error(), "strict mode") {
+		t.Fatalf("Load() error = %v, want unwired purpose refusal", err)
 	}
 }
 

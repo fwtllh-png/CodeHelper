@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
@@ -40,6 +41,8 @@ func prepareSessionDelta(
 	}
 	delta := SessionDelta{
 		TurnID:         turnID,
+		Version:        sessiondelta.ContextEnvelopeVersion,
+		Epoch:          sessionState.Epoch,
 		BaseRevision:   baseRevision,
 		History:        cloneMessages(history),
 		MessageTurns:   make([]uint64, len(history)),
@@ -49,8 +52,10 @@ func prepareSessionDelta(
 		WorkingSet:     sessionState.WorkingSet, Evidence: sessionState.Evidence,
 		Failures: sessionState.Failures, Compaction: sessionState.Compaction,
 		Plan: sessionState.Plan, World: contextstore.CloneWorldBaseline(sessionState.World),
-		Window: contextstore.CloneWindowLedger(sessionState.Window),
-		Turn:   sessionState.Turn,
+		Workspace:      sessionState.Workspace,
+		Window:         contextstore.CloneWindowLedger(sessionState.Window),
+		ManifestLimits: sessionState.Manifest,
+		Turn:           sessionState.Turn,
 	}
 	for _, message := range history {
 		delta.Turn = max(delta.Turn, message.Turn)
@@ -142,6 +147,8 @@ func (e *Engine) applyDurableSessionDelta(delta SessionDelta) error {
 	e.evidence = evidence.ApplyDelta(delta.Evidence)
 	e.failures = compact.ApplyFailureDelta(delta.Failures)
 	e.compactions = delta.Compaction.Count
+	e.contextCompaction =
+		sessiondelta.CloneCompaction(delta.Compaction).State
 	if delta.Plan != nil && len(delta.Plan.Steps) != 0 {
 		e.setPlan(delta.Plan.Clone())
 	}
@@ -151,6 +158,7 @@ func (e *Engine) applyDurableSessionDelta(delta SessionDelta) error {
 		e.world = contextstore.WorldBaseline{}
 	}
 	e.window = window
+	e.stateEpoch = max(uint64(1), delta.Epoch)
 	e.sessionRevision++
 	e.appliedDeltas[key] = delta.Digest
 	return nil
@@ -172,6 +180,7 @@ func (e *Engine) PreparedSessionDelta() (SessionDelta, bool) {
 	delta.HistoryTurns = cloneHistoryTurns(delta.HistoryTurns)
 	delta.World = contextstore.CloneWorldBaseline(delta.World)
 	delta.Window = contextstore.CloneWindowLedger(delta.Window)
+	delta.Compaction = sessiondelta.CloneCompaction(delta.Compaction)
 	return delta, true
 }
 
@@ -184,6 +193,12 @@ func (e *Engine) RestoreSessionDelta(raw json.RawMessage) error {
 	var delta SessionDelta
 	if err := json.Unmarshal(raw, &delta); err != nil {
 		return fmt.Errorf("decode session delta: %w", err)
+	}
+	if delta.Version != sessiondelta.ContextEnvelopeVersion {
+		return fmt.Errorf(
+			"unsupported session delta version %d",
+			delta.Version,
+		)
 	}
 	digest := delta.Digest
 	delta.Digest = ""
@@ -206,4 +221,38 @@ func (e *Engine) SessionRevision() uint64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.sessionRevision
+}
+
+func (e *Engine) captureWorkspaceBinding() (sessiondelta.WorkspaceBinding, error) {
+	return e.captureWorkspaceBindingFor(e.evidenceSet().RetainedDelta(
+		e.options.Context.TruthRetention.FactMaxEntities,
+		e.options.Context.TruthRetention.VerifiedChangeRetentionTurns,
+		e.options.Context.TruthRetention.HandleMaxEntities,
+	))
+}
+
+func (e *Engine) captureWorkspaceBindingFor(
+	delta evidence.Delta,
+) (sessiondelta.WorkspaceBinding, error) {
+	paths := make(map[string]struct{})
+	for _, fact := range delta.Facts {
+		paths[fact.Path] = struct{}{}
+	}
+	for _, change := range delta.Changes {
+		paths[change.Path] = struct{}{}
+	}
+	for _, read := range delta.Reads {
+		paths[read.Path] = struct{}{}
+	}
+	values := make([]string, 0, len(paths))
+	for path := range paths {
+		values = append(values, path)
+	}
+	sort.Strings(values)
+	return sessiondelta.CaptureWorkspaceBinding(
+		e.options.Workspace,
+		e.options.WorkspaceIdentity,
+		e.sessionRevision,
+		values,
+	)
 }

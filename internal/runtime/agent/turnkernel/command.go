@@ -94,6 +94,24 @@ type SupplementalUsageRecorded struct {
 	Usage    UsageState
 }
 
+type ContextCompactionRequested struct {
+	CompactionID string
+	PlanDigest   string
+}
+
+func (ContextCompactionRequested) commandName() string {
+	return "context_compaction_requested"
+}
+
+type ContextRebaseRequested struct {
+	CompactionID string
+	PlanDigest   string
+}
+
+func (ContextRebaseRequested) commandName() string {
+	return "context_rebase_requested"
+}
+
 func (SupplementalUsageRecorded) commandName() string {
 	return "supplemental_usage_recorded"
 }
@@ -399,14 +417,16 @@ type Event struct {
 type EffectKind string
 
 const (
-	EffectSampleProvider  EffectKind = "sample_provider"
-	EffectExecuteTool     EffectKind = "execute_tool"
-	EffectAwaitApproval   EffectKind = "await_approval"
-	EffectAwaitInput      EffectKind = "await_input"
-	EffectRunVerification EffectKind = "run_verification"
-	EffectCommitJournal   EffectKind = "commit_journal"
-	EffectSuspendJournal  EffectKind = "suspend_journal"
-	EffectRollbackJournal EffectKind = "rollback_journal"
+	EffectSampleProvider      EffectKind = "sample_provider"
+	EffectExecuteTool         EffectKind = "execute_tool"
+	EffectAwaitApproval       EffectKind = "await_approval"
+	EffectAwaitInput          EffectKind = "await_input"
+	EffectRunVerification     EffectKind = "run_verification"
+	EffectCommitJournal       EffectKind = "commit_journal"
+	EffectSuspendJournal      EffectKind = "suspend_journal"
+	EffectRollbackJournal     EffectKind = "rollback_journal"
+	EffectGenerateNarrative   EffectKind = "generate_narrative"
+	EffectCommitContextRebase EffectKind = "commit_context_rebase"
 )
 
 type Effect struct {

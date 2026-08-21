@@ -464,6 +464,11 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 					root,
 					"internal/runtime/app/wire/modules_runtime.go",
 				)
+				contextPolicy := parseProductionFile(
+					t,
+					root,
+					"internal/runtime/app/wire/context_policy.go",
+				)
 				function := findFunction(
 					engineKernel,
 					"newEngineTurnKernelForTurn",
@@ -479,7 +484,11 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 						"TurnCoordinatorRuntime",
 						"CoordinatorRuntime",
 					) ||
-					!fileCalls(wire, "newDurableCoordinatorRuntime")
+					!(fileCalls(wire, "newDurableCoordinatorRuntime") ||
+						fileCalls(
+							contextPolicy,
+							"newDurableCoordinatorRuntime",
+						))
 			},
 		},
 		{

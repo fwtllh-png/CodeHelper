@@ -21,6 +21,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -58,9 +59,9 @@ type Options struct {
 	MaxSteps              int
 	MaxRetries            int
 	MaxRetryDelay         time.Duration
-	CompactWindow         CompactWindowPolicy
 	SummaryMaxBytes       int
 	MaxDigestEntries      int
+	Context               ContextPolicy
 	ReasoningEffort       string
 	NativeSearch          bool
 	Budget                Budget
@@ -78,6 +79,7 @@ type Options struct {
 	// OnNetworkAllow grants approved egress to the session Gate.
 	OnNetworkAllow     toolguard.NetworkAllow
 	Workspace          string
+	WorkspaceIdentity  string
 	WorkspaceIsolation string
 	Metrics            Metrics
 	Observability      trace.Runtime
@@ -144,6 +146,7 @@ type Engine struct {
 	usage           provider.Usage
 	costUSD         float64
 	sessionRevision uint64
+	stateEpoch      uint64
 	appliedDeltas   map[string]string
 	guard           *toolguard.Guard
 	journal         *workspacejournal.Manager
@@ -167,7 +170,8 @@ type Engine struct {
 	approvalRecovery recoveredInteraction[toolguard.ApprovalDecision]
 	inputRecovery    recoveredInteraction[interact.Reply]
 
-	compactions int
+	compactions       int
+	contextCompaction *sessiondelta.CompactionState
 
 	activeScope *Scope
 	lastScope   *Scope
@@ -178,7 +182,9 @@ var testTurnCoordinatorRuntimeFactory func() turnkernel.CoordinatorRuntime
 // activeRoute is the single source for sampling, limits, and pricing.
 func (e *Engine) activeRoute() model.ReadyRoute {
 	if scope := e.runningScope(); scope != nil {
-		return scope.spec.Route
+		if route := scope.spec.Route; route.Validate() == nil {
+			return route
+		}
 	}
 	return e.options.Route
 }
@@ -262,7 +268,6 @@ func New(options Options) (*Engine, error) {
 			testTurnCoordinatorRuntimeFactory()
 	}
 	if options.Verify.Mode == "" {
-
 		options.Verify.Mode = VerifyModeSoft
 	}
 	if options.Verify.OnFailure == "" {
@@ -305,6 +310,7 @@ func New(options Options) (*Engine, error) {
 		profileReadOnly: profileReadOnlyFromOptions(options),
 		turnIDs:         make(map[string]uint64),
 		appliedDeltas:   make(map[string]string),
+		stateEpoch:      1,
 		working:         workingset.New(),
 		evidence:        evidence.New(),
 		failures:        compact.NewFailures(),

@@ -50,6 +50,18 @@ func (s Snapshot) Validate() error {
 	if strings.TrimSpace(s.Config.Memory.Path) == "" {
 		return fieldError(fieldMemoryPath, s.Provenance, "must not be empty")
 	}
+	if err := checkRange(fieldMemoryMaxCandidates, s.Config.Memory.MaxCandidates, 1024); err != nil {
+		return err
+	}
+	if s.Config.Memory.MaxPromptBytes < 256 ||
+		s.Config.Memory.MaxPromptBytes > 100<<10 {
+		return fieldError(fieldMemoryMaxPromptBytes, s.Provenance,
+			"must be between 256 and 102400")
+	}
+	if s.Config.Memory.SemanticRerank {
+		return fieldError(fieldMemorySemanticRerank, s.Provenance,
+			"is not available; use deterministic lexical retrieval")
+	}
 	if index := s.Config.Context.Index; index.Enabled {
 
 		if index.MaxFileBytes < 1024 || index.MaxFileBytes > 64<<20 {
@@ -90,10 +102,29 @@ func (s Snapshot) Validate() error {
 	}
 
 	compaction := s.Config.Context.Compact
-	if compaction.AutoCompactTokens != 0 &&
-		(compaction.AutoCompactTokens < 256 || compaction.AutoCompactTokens > 64<<20) {
-		return fieldError(fieldCompactAutoTokens, s.Provenance,
-			"must be zero or between 256 and 67108864")
+	for _, threshold := range []struct {
+		field string
+		value int
+	}{
+		{fieldCompactPrepareTokens, compaction.PrepareTokens},
+		{fieldCompactAutoTokens, compaction.AutoCompactTokens},
+		{fieldCompactEmergencyTokens, compaction.EmergencyTokens},
+	} {
+		if threshold.value != 0 &&
+			(threshold.value < 256 || threshold.value > 64<<20) {
+			return fieldError(threshold.field, s.Provenance,
+				"must be zero or between 256 and 67108864")
+		}
+	}
+	if compaction.PrepareTokens != 0 && compaction.AutoCompactTokens != 0 &&
+		compaction.PrepareTokens >= compaction.AutoCompactTokens {
+		return fieldError(fieldCompactPrepareTokens, s.Provenance,
+			"must be smaller than auto_compact_tokens")
+	}
+	if compaction.AutoCompactTokens != 0 && compaction.EmergencyTokens != 0 &&
+		compaction.AutoCompactTokens >= compaction.EmergencyTokens {
+		return fieldError(fieldCompactEmergencyTokens, s.Provenance,
+			"must be greater than auto_compact_tokens")
 	}
 	if compaction.Scope != "total" && compaction.Scope != "body_after_prefix" {
 		return fieldError(fieldCompactScope, s.Provenance,
@@ -106,6 +137,73 @@ func (s Snapshot) Validate() error {
 	}
 	if err := checkRange(fieldCompactMaxDigest, compaction.MaxDigestEntries, 4096); err != nil {
 		return err
+	}
+	if compaction.TruthMaxBytes < 256 ||
+		compaction.TruthMaxBytes >= compaction.SummaryMaxBytes-256 {
+		return fieldError(fieldCompactTruthMaxBytes, s.Provenance,
+			"must leave at least 256 bytes inside summary_max_bytes")
+	}
+	if err := checkRange(fieldCompactTruthMaxEntities, compaction.TruthMaxEntities, 4096); err != nil {
+		return err
+	}
+	for _, quota := range []struct {
+		field string
+		value int
+	}{
+		{fieldCompactMandatoryMaxEntities, compaction.MandatoryMaxEntities},
+		{fieldCompactFactMaxEntities, compaction.FactMaxEntities},
+		{fieldCompactFailureMaxEntities, compaction.FailureMaxEntities},
+		{fieldCompactHandleMaxEntities, compaction.HandleMaxEntities},
+		{fieldCompactOmissionSampleMaxEntities, compaction.OmissionSampleMaxEntities},
+	} {
+		if quota.value < 1 || quota.value > compaction.TruthMaxEntities {
+			return fieldError(quota.field, s.Provenance,
+				"must be between 1 and truth_max_entities")
+		}
+	}
+	if compaction.VerifiedChangeRetentionTurns < 1 {
+		return fieldError(fieldCompactVerifiedChangeRetentionTurns, s.Provenance,
+			"must be positive")
+	}
+	if err := checkRange(fieldCompactRecentTailTurns, compaction.RecentTailTurns, 128); err != nil {
+		return err
+	}
+	if compaction.RecentTailMaxTokens < 256 ||
+		compaction.RecentTailMaxTokens > 64<<20 {
+		return fieldError(fieldCompactRecentTailMaxTokens, s.Provenance,
+			"must be between 256 and 67108864")
+	}
+	switch compaction.SemanticNarrative {
+	case "off", "post_turn", "inline":
+	default:
+		return fieldError(fieldCompactSemanticNarrative, s.Provenance,
+			"must be off, post_turn, or inline")
+	}
+	for _, limit := range []struct {
+		field   string
+		value   int
+		maximum int
+	}{
+		{fieldCompactSemanticNarrativeMaxInputTokens, compaction.SemanticNarrativeMaxInputTokens, 64 << 20},
+		{fieldCompactSemanticNarrativeMaxOutputTokens, compaction.SemanticNarrativeMaxOutputTokens, 1 << 20},
+		{fieldCompactSemanticNarrativeMaxItems, compaction.SemanticNarrativeMaxItems, 1024},
+		{fieldCompactSemanticNarrativeItemMaxBytes, compaction.SemanticNarrativeItemMaxBytes, 64 << 10},
+		{fieldCompactOwnerDeltaMaxSegments, compaction.OwnerDeltaMaxSegments, 1024},
+		{fieldCompactOwnerDeltaMaxBytes, compaction.OwnerDeltaMaxBytes, 16 << 20},
+	} {
+		if err := checkRange(limit.field, limit.value, limit.maximum); err != nil {
+			return err
+		}
+	}
+	if compaction.SemanticNarrativeTimeout <= 0 ||
+		compaction.SemanticNarrativeTimeout > 10*time.Minute {
+		return fieldError(fieldCompactSemanticNarrativeTimeout, s.Provenance,
+			"must be between 1ns and 10m")
+	}
+	if compaction.SemanticNarrativeRetryLimit < 0 ||
+		compaction.SemanticNarrativeRetryLimit > 10 {
+		return fieldError(fieldCompactSemanticNarrativeRetryLimit, s.Provenance,
+			"must be between 0 and 10")
 	}
 	switch s.Config.Telemetry.LogLevel {
 	case "debug", "info", "warn", "error":
@@ -384,10 +482,9 @@ func (s Snapshot) validateVision() error {
 	return nil
 }
 
-// routeSlotPurposes are the purposes a slot may be configured for, in the order
-// they are reported. It matches routeFileConfig: the purposes nothing samples on
-// yet have no field there and no entry here.
-var routeSlotPurposes = []string{"plan", "vision", "subquery"}
+// routeSlotPurposes are the wired purposes a slot may be configured for, in the
+// order they are reported. It matches routeFileConfig.
+var routeSlotPurposes = []string{"plan", "vision", "subquery", "summary"}
 
 // validateRoute checks the slots configuration named. A half-named slot is the
 // error worth catching here: a provider without a model resolves to nothing, and

@@ -57,6 +57,9 @@ event_retention = 1000000
 [memory]
 enabled = false
 path = ".codehelper/memory"
+max_candidates = 32
+max_prompt_bytes = 16384
+semantic_rerank = false
 
 [telemetry]
 log_level = "info"
@@ -146,10 +149,31 @@ max_bytes = 4096
 enabled = true
 
 [context.compact]
+prepare_tokens = 0 # 0 表示使用当前模型窗口的 55%
 auto_compact_tokens = 0 # 0 表示使用当前模型窗口的 65%
+emergency_tokens = 0 # 0 表示使用当前模型窗口的 85%
 scope = "total" # 或 "body_after_prefix"
 summary_max_bytes = 8192
 max_digest_entries = 120
+truth_max_bytes = 5632
+truth_max_entities = 256
+mandatory_max_entities = 128
+fact_max_entities = 96
+verified_change_retention_turns = 32
+failure_max_entities = 24
+handle_max_entities = 32
+omission_sample_max_entities = 8
+recent_tail_turns = 2
+recent_tail_max_tokens = 8192
+semantic_narrative = "off" # off | post_turn | inline
+semantic_narrative_max_input_tokens = 4096
+semantic_narrative_max_output_tokens = 512
+semantic_narrative_max_items = 32
+semantic_narrative_item_max_bytes = 512
+semantic_narrative_timeout = "30s"
+semantic_narrative_retry_limit = 1
+owner_delta_max_segments = 16
+owner_delta_max_bytes = 65536
 
 [route]
 lock = false
@@ -163,6 +187,10 @@ provider = "openai-responses"
 model = "gpt-4.1"
 
 [route.subquery]
+provider = "openai"
+model = "gpt-4.1-mini"
+
+[route.summary]
 provider = "openai"
 model = "gpt-4.1-mini"
 
@@ -269,6 +297,18 @@ follow-up 的生命周期上限；每次 follow-up 只预留该 Agent 的剩余�
 
 未知 TOML 字段会被拒绝。这是有意设计：拼错的安全或预算字段不能“看起来已配置但
 实际没有生效”。
+
+`context.compact` 先为 Mandatory Truth 和未闭合因果组分配空间，再保留
+Protected/Refreshable Truth、Raw Tail 和可选 Narrative。新增计划、Pending Input
+或写工具预留如果会超过 Mandatory 上界，会在状态或副作用提交前返回
+`resource_exhausted`。`post_turn` Narrative 在业务终态提交后维护 Context；
+`inline` 在安全 Tool Pair 边界提交独立 Context Rebase。两种模式都使用
+`route.summary`，禁用工具和原生搜索，失败时保留确定性的 Truth + Tail。
+
+Memory 使用带稳定 ID 和 Generation 的记录存储。`user`、`workspace` 和
+`repository` Scope 按规范化身份隔离；`remember`、`memory_list`、`memory_get`、
+`memory_update` 和 `forget` 都经过 Tool Guard。检索首先匹配精确 Scope，再按词法相关性、
+更新时间和稳定 ID 排序；`semantic_rerank` 目前必须保持关闭。
 
 ## Provider 与模型
 

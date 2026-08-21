@@ -9,6 +9,7 @@ import (
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -162,30 +163,43 @@ type ToolOutput struct {
 }
 
 type CompactionReceipt struct {
-	Phase                string `json:"phase,omitempty"`
-	OriginalMessages     int    `json:"original_messages"`
-	RemovedMessages      int    `json:"removed_messages"`
-	OriginalBytes        int    `json:"original_bytes"`
-	RetainedBytes        int    `json:"retained_bytes"`
-	OriginalTokens       uint64 `json:"original_tokens"`
-	RetainedTokens       uint64 `json:"retained_tokens"`
-	SummaryOriginalBytes int    `json:"summary_original_bytes"`
-	SummaryRetainedBytes int    `json:"summary_retained_bytes"`
-	SummaryTruncated     bool   `json:"summary_truncated"`
-	TruncationReason     string `json:"truncation_reason,omitempty"`
-	PrunedToolResults    int    `json:"pruned_tool_results,omitempty"`
-	PrunedBytes          int    `json:"pruned_bytes,omitempty"`
-	TruthGeneration      uint64 `json:"truth_generation,omitempty"`
-	TruthEntities        int    `json:"truth_entities,omitempty"`
-	CriticalFacts        int    `json:"critical_facts,omitempty"`
-	CompatibilityHash    string `json:"compatibility_hash,omitempty"`
-	CompatibilityMatched bool   `json:"compatibility_matched,omitempty"`
-	AuthorityDigest      string `json:"authority_digest,omitempty"`
-	AuthorityEquivalent  bool   `json:"authority_equivalent,omitempty"`
-	ModelDownshifted     bool   `json:"model_downshifted,omitempty"`
-	DownshiftPolicy      string `json:"downshift_policy,omitempty"`
-	NarrativeIncluded    bool   `json:"narrative_included,omitempty"`
-	CapsuleBytes         int    `json:"capsule_bytes,omitempty"`
+	CompactionID          string                   `json:"compaction_id,omitempty"`
+	Status                string                   `json:"status,omitempty"`
+	Mode                  string                   `json:"mode,omitempty"`
+	SourceWindowID        string                   `json:"source_window_id,omitempty"`
+	TargetWindowID        string                   `json:"target_window_id,omitempty"`
+	Phase                 string                   `json:"phase,omitempty"`
+	OriginalMessages      int                      `json:"original_messages"`
+	RemovedMessages       int                      `json:"removed_messages"`
+	OriginalBytes         int                      `json:"original_bytes"`
+	RetainedBytes         int                      `json:"retained_bytes"`
+	OriginalTokens        uint64                   `json:"original_tokens"`
+	RetainedTokens        uint64                   `json:"retained_tokens"`
+	SummaryOriginalBytes  int                      `json:"summary_original_bytes"`
+	SummaryRetainedBytes  int                      `json:"summary_retained_bytes"`
+	SummaryTruncated      bool                     `json:"summary_truncated"`
+	TruncationReason      string                   `json:"truncation_reason,omitempty"`
+	PrunedToolResults     int                      `json:"pruned_tool_results,omitempty"`
+	PrunedBytes           int                      `json:"pruned_bytes,omitempty"`
+	TruthGeneration       uint64                   `json:"truth_generation,omitempty"`
+	TruthEntities         int                      `json:"truth_entities,omitempty"`
+	CriticalFacts         int                      `json:"critical_facts,omitempty"`
+	CompatibilityHash     string                   `json:"compatibility_hash,omitempty"`
+	CompatibilityMatched  bool                     `json:"compatibility_matched,omitempty"`
+	AuthorityDigest       string                   `json:"authority_digest,omitempty"`
+	AuthorityEquivalent   bool                     `json:"authority_equivalent,omitempty"`
+	ModelDownshifted      bool                     `json:"model_downshifted,omitempty"`
+	DownshiftPolicy       string                   `json:"downshift_policy,omitempty"`
+	NarrativeIncluded     bool                     `json:"narrative_included,omitempty"`
+	NarrativeBytes        int                      `json:"narrative_bytes,omitempty"`
+	NarrativeInputTokens  uint64                   `json:"narrative_input_tokens,omitempty"`
+	NarrativeOutputTokens uint64                   `json:"narrative_output_tokens,omitempty"`
+	FallbackReason        string                   `json:"fallback_reason,omitempty"`
+	CapsuleBytes          int                      `json:"capsule_bytes,omitempty"`
+	MandatoryBytes        int                      `json:"mandatory_bytes,omitempty"`
+	MandatoryEntities     int                      `json:"mandatory_entities,omitempty"`
+	OmissionCount         int                      `json:"omission_count,omitempty"`
+	Retention             []compact.RetentionCount `json:"retention,omitempty"`
 	// Sections names the parts of the summary that survived the budget, so a host
 	// can tell a compaction that carried the goal from one that only had room for
 	// a transcript.
@@ -217,6 +231,8 @@ type ContextBudgetSnapshot struct {
 	PendingTokens        uint64 `json:"pending_tokens,omitempty"`
 	OutputReserve        uint64 `json:"output_reserve,omitempty"`
 	AutoCompactTokens    uint64 `json:"auto_compact_tokens"`
+	PrepareTokens        uint64 `json:"prepare_tokens,omitempty"`
+	EmergencyTokens      uint64 `json:"emergency_tokens,omitempty"`
 	EstimatedTokens      uint64 `json:"estimated_tokens,omitempty"`
 	MaxContextTokens     uint64 `json:"max_context_tokens,omitempty"`
 	Compactions          int    `json:"compactions"`
@@ -228,8 +244,10 @@ type Budget struct {
 }
 
 type CompactWindowPolicy struct {
-	AutoTokens uint64
-	Scope      string
+	PrepareTokens   uint64
+	AutoTokens      uint64
+	EmergencyTokens uint64
+	Scope           string
 }
 
 type TokenEstimator interface {

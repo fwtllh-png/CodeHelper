@@ -403,9 +403,17 @@ func (s *MemoryTerminalEnvelopeStore) LatestSessionDelta(
 		}
 		var header struct {
 			BaseRevision uint64 `json:"base_revision"`
+			Manifest     struct {
+				Revision uint64 `json:"revision"`
+			} `json:"manifest"`
 		}
-		if matches && json.Unmarshal(envelope.SessionDelta, &header) == nil &&
-			(latest.TurnID == "" || header.BaseRevision > latestRevision) {
+		decodeErr := json.Unmarshal(envelope.SessionDelta, &header)
+		if decodeErr == nil &&
+			header.Manifest.Revision != 0 {
+			header.BaseRevision = header.Manifest.Revision
+		}
+		if matches && decodeErr == nil && (latest.TurnID == "" ||
+			header.BaseRevision > latestRevision) {
 			latest = envelope
 			latestRevision = header.BaseRevision
 		}

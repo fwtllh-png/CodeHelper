@@ -126,6 +126,30 @@ func (Reducer) Apply(current State, command Command) (Transition, error) {
 			return Transition{}, err
 		}
 
+	case ContextCompactionRequested:
+		if err := applyContextEffectRequested(
+			&transition,
+			current,
+			command,
+			value.CompactionID,
+			value.PlanDigest,
+			EffectGenerateNarrative,
+		); err != nil {
+			return Transition{}, err
+		}
+
+	case ContextRebaseRequested:
+		if err := applyContextEffectRequested(
+			&transition,
+			current,
+			command,
+			value.CompactionID,
+			value.PlanDigest,
+			EffectCommitContextRebase,
+		); err != nil {
+			return Transition{}, err
+		}
+
 	case ProviderRetryRequested:
 		if err := applyProviderRetry(&transition, current, value); err != nil {
 			return Transition{}, err
@@ -605,6 +629,49 @@ func applySupplementalUsage(
 	transition.Events = append(transition.Events, Event{
 		Kind: EventUsageRecorded, SampleID: command.SampleID,
 	})
+	return nil
+}
+
+func applyContextEffectRequested(
+	transition *Transition,
+	current State,
+	command Command,
+	compactionID string,
+	planDigest string,
+	kind EffectKind,
+) error {
+	if err := requirePhase(current, command, PhaseSampling); err != nil {
+		return err
+	}
+	if strings.TrimSpace(compactionID) == "" ||
+		strings.TrimSpace(planDigest) == "" {
+		return illegal(
+			current,
+			command,
+			"context compaction identity is incomplete",
+		)
+	}
+	if current.ActiveSampleID != "" || len(current.OpenCalls) != 0 ||
+		len(current.PendingApprovals) != 0 || current.PendingInput != nil {
+		return illegal(
+			current,
+			command,
+			"context compaction requires a quiescent sample boundary",
+		)
+	}
+	requestEffect(
+		transition,
+		kind,
+		struct {
+			CompactionID string `json:"compaction_id"`
+			PlanDigest   string `json:"plan_digest"`
+		}{
+			CompactionID: compactionID,
+			PlanDigest:   planDigest,
+		},
+		"context:"+string(kind)+":"+compactionID,
+		compactionID,
+	)
 	return nil
 }
 

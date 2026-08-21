@@ -75,6 +75,8 @@ type Fact struct {
 	Tool string `json:"tool,omitempty"`
 	// Turn is the turn the fact was first observed.
 	Turn uint64 `json:"turn"`
+	// Stale means the fact was restored against a different workspace binding.
+	Stale bool `json:"stale,omitempty"`
 }
 
 // Describe renders the fact for a model to read. It lives here so the volatile
@@ -86,6 +88,9 @@ func (f Fact) Describe() string {
 		location = fmt.Sprintf("%s:%d", f.Path, f.Line)
 	}
 	line := fmt.Sprintf("%s %s", location, f.Kind)
+	if f.Stale {
+		line += " [stale; re-read required]"
+	}
 	if f.Symbol != "" {
 		line += " " + f.Symbol
 	}
@@ -167,6 +172,7 @@ type change struct {
 	turn     uint64
 	read     bool
 	verified bool
+	stale    bool
 	// diagnostics is true while a post-edit check reports problems on the path.
 	diagnostics bool
 }
@@ -176,6 +182,7 @@ type change struct {
 type read struct {
 	digest string
 	turn   uint64
+	stale  bool
 	// repeatTurn is the turn the path was last re-read unchanged.
 	repeatTurn uint64
 	repeats    int
@@ -253,6 +260,7 @@ func (s *Set) Observe(fact Fact) {
 		s.facts[key] = fact
 		return
 	}
+	existing.Stale = false
 	if fact.Turn < existing.Turn {
 		existing.Turn = fact.Turn
 	}
@@ -286,6 +294,7 @@ func (s *Set) MarkChanged(path string, turn uint64, read bool) {
 	// A new write invalidates the old verdict: what was verified two turns ago
 	// says nothing about the content that just replaced it.
 	existing.turn, existing.verified = turn, false
+	existing.stale = false
 	if read {
 		existing.read = true
 	}
@@ -302,6 +311,7 @@ func (s *Set) MarkVerified(paths []string) {
 	for _, path := range paths {
 		if entry, found := s.changes[strings.TrimSpace(path)]; found {
 			entry.verified = true
+			entry.stale = false
 		}
 	}
 }
@@ -378,6 +388,7 @@ func (s *Set) NoteRead(path, digest string) {
 		existing.repeatTurn = s.turn
 	}
 	existing.digest, existing.turn = digest, s.turn
+	existing.stale = false
 }
 
 // NoteHandle records that a truncated result was parked under handle.
@@ -569,6 +580,8 @@ type Change struct {
 	Verified bool
 	// Diagnostics is whether a post-edit check still reports problems.
 	Diagnostics bool
+	// Stale means the workspace no longer matches the content this claim covered.
+	Stale bool `json:"stale,omitempty"`
 }
 
 // Changes returns every path the thread wrote, sorted, with what has since been
@@ -589,6 +602,7 @@ func (s *Set) Changes() []Change {
 		changes = append(changes, Change{
 			Path: path, Turn: entry.turn, Read: entry.read,
 			Verified: entry.verified, Diagnostics: entry.diagnostics,
+			Stale: entry.stale,
 		})
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })

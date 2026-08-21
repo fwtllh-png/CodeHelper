@@ -9,6 +9,9 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyInt(overrides.StateRetention, &config.State.EventRetention, fieldStateRetention, SourceCLI, provenance)
 	applyBool(overrides.MemoryEnabled, &config.Memory.Enabled, fieldMemoryEnabled, SourceCLI, provenance)
 	applyString(overrides.MemoryPath, &config.Memory.Path, fieldMemoryPath, SourceCLI, provenance)
+	applyInt(overrides.MemoryMaxCandidates, &config.Memory.MaxCandidates, fieldMemoryMaxCandidates, SourceCLI, provenance)
+	applyInt(overrides.MemoryMaxPromptBytes, &config.Memory.MaxPromptBytes, fieldMemoryMaxPromptBytes, SourceCLI, provenance)
+	applyBool(overrides.MemorySemanticRerank, &config.Memory.SemanticRerank, fieldMemorySemanticRerank, SourceCLI, provenance)
 	index := &config.Context.Index
 	applyBool(overrides.IndexEnabled, &index.Enabled, fieldIndexEnabled, SourceCLI, provenance)
 	applyInt64(overrides.IndexMaxBytes, &index.MaxFileBytes, fieldIndexMaxBytes, SourceCLI, provenance)
@@ -46,8 +49,16 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	)
 	compaction := &config.Context.Compact
 	applyInt(
+		overrides.CompactPrepareTokens, &compaction.PrepareTokens,
+		fieldCompactPrepareTokens, SourceCLI, provenance,
+	)
+	applyInt(
 		overrides.CompactAutoTokens, &compaction.AutoCompactTokens,
 		fieldCompactAutoTokens, SourceCLI, provenance,
+	)
+	applyInt(
+		overrides.CompactEmergencyTokens, &compaction.EmergencyTokens,
+		fieldCompactEmergencyTokens, SourceCLI, provenance,
 	)
 	applyString(
 		overrides.CompactScope, &compaction.Scope,
@@ -60,6 +71,45 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyInt(
 		overrides.CompactMaxDigest, &compaction.MaxDigestEntries,
 		fieldCompactMaxDigest, SourceCLI, provenance,
+	)
+	for _, value := range []struct {
+		source *int
+		target *int
+		field  string
+	}{
+		{overrides.CompactTruthMaxBytes, &compaction.TruthMaxBytes, fieldCompactTruthMaxBytes},
+		{overrides.CompactTruthMaxEntities, &compaction.TruthMaxEntities, fieldCompactTruthMaxEntities},
+		{overrides.CompactMandatoryMaxEntities, &compaction.MandatoryMaxEntities, fieldCompactMandatoryMaxEntities},
+		{overrides.CompactFactMaxEntities, &compaction.FactMaxEntities, fieldCompactFactMaxEntities},
+		{overrides.CompactVerifiedChangeRetentionTurns, &compaction.VerifiedChangeRetentionTurns, fieldCompactVerifiedChangeRetentionTurns},
+		{overrides.CompactFailureMaxEntities, &compaction.FailureMaxEntities, fieldCompactFailureMaxEntities},
+		{overrides.CompactHandleMaxEntities, &compaction.HandleMaxEntities, fieldCompactHandleMaxEntities},
+		{overrides.CompactOmissionSampleMaxEntities, &compaction.OmissionSampleMaxEntities, fieldCompactOmissionSampleMaxEntities},
+		{overrides.CompactRecentTailTurns, &compaction.RecentTailTurns, fieldCompactRecentTailTurns},
+		{overrides.CompactRecentTailMaxTokens, &compaction.RecentTailMaxTokens, fieldCompactRecentTailMaxTokens},
+		{overrides.CompactSemanticNarrativeMaxInputTokens, &compaction.SemanticNarrativeMaxInputTokens, fieldCompactSemanticNarrativeMaxInputTokens},
+		{overrides.CompactSemanticNarrativeMaxOutputTokens, &compaction.SemanticNarrativeMaxOutputTokens, fieldCompactSemanticNarrativeMaxOutputTokens},
+		{overrides.CompactSemanticNarrativeMaxItems, &compaction.SemanticNarrativeMaxItems, fieldCompactSemanticNarrativeMaxItems},
+		{overrides.CompactSemanticNarrativeItemMaxBytes, &compaction.SemanticNarrativeItemMaxBytes, fieldCompactSemanticNarrativeItemMaxBytes},
+		{overrides.CompactSemanticNarrativeRetryLimit, &compaction.SemanticNarrativeRetryLimit, fieldCompactSemanticNarrativeRetryLimit},
+		{overrides.CompactOwnerDeltaMaxSegments, &compaction.OwnerDeltaMaxSegments, fieldCompactOwnerDeltaMaxSegments},
+		{overrides.CompactOwnerDeltaMaxBytes, &compaction.OwnerDeltaMaxBytes, fieldCompactOwnerDeltaMaxBytes},
+	} {
+		applyInt(value.source, value.target, value.field, SourceCLI, provenance)
+	}
+	applyString(
+		overrides.CompactSemanticNarrative,
+		&compaction.SemanticNarrative,
+		fieldCompactSemanticNarrative,
+		SourceCLI,
+		provenance,
+	)
+	applyDuration(
+		overrides.CompactSemanticNarrativeTimeout,
+		&compaction.SemanticNarrativeTimeout,
+		fieldCompactSemanticNarrativeTimeout,
+		SourceCLI,
+		provenance,
 	)
 	applyString(overrides.LogLevel, &config.Telemetry.LogLevel, fieldLogLevel, SourceCLI, provenance)
 	applyString(overrides.CredentialKind, &config.Credential.Kind, fieldCredentialKind, SourceCLI, provenance)

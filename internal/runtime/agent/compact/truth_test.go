@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestTruthCapsuleRetainsCriticalFactsAcrossThreeCompactions(t *testing.T) {
+func TestTruthCapsuleUsesCurrentOwnerSnapshotAcrossCompactions(t *testing.T) {
 	compatibility := Compatibility{
 		SchemaVersion: TruthSchemaVersion,
 		Adapter:       "deepseek", Provider: "deepseek", Model: "deepseek-chat",
@@ -36,7 +36,8 @@ func TestTruthCapsuleRetainsCriticalFactsAcrossThreeCompactions(t *testing.T) {
 			facts++
 		}
 	}
-	if facts != 3 || final.Generation != 3 {
+	if facts != 1 || final.Generation != 3 ||
+		final.Entities[0].Value != "definition c.go:30" {
 		t.Fatalf("final capsule=%+v", final)
 	}
 }
@@ -82,6 +83,31 @@ func TestTruthCapsuleAuthorityEquivalenceRejectsLossOrMutation(t *testing.T) {
 	mutated := testTruthCapsule(2, changed)
 	if err := mutated.ContainsAuthority(required); err == nil {
 		t.Fatal("mutated authority entity was accepted")
+	}
+}
+
+func TestTruthCapsuleAuthorityIgnoresProtectedAndRefreshableRetention(t *testing.T) {
+	required := testTruthCapsule(1, []TruthEntity{
+		NewTruthEntity(EntityGoal, "active", "finish recovery", "runtime.plan"),
+		NewTruthEntity(EntityCriticalPath, "runtime.go", "runtime.go", "runtime.working_set"),
+		NewTruthEntity(EntityFact, "fact", "refreshable", "runtime.evidence"),
+	})
+	retained := testTruthCapsule(2, []TruthEntity{
+		NewTruthEntity(EntityGoal, "active", "finish recovery", "runtime.plan"),
+	})
+	if err := retained.ContainsAuthority(required); err != nil {
+		t.Fatal(err)
+	}
+	first, err := required.AuthorityDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := retained.AuthorityDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("optional retention changed authority digest: %q != %q", first, second)
 	}
 }
 
@@ -165,7 +191,7 @@ func TestTruthMergeDetectsCompatibilityAndModelDownshift(t *testing.T) {
 		t.Fatal(err)
 	}
 	if receipt.CompatibilityMatched || !receipt.ModelDownshifted ||
-		receipt.CriticalEntityCount != 1 || len(merged.Entities) != 1 {
+		receipt.CriticalEntityCount != 0 || len(merged.Entities) != 0 {
 		t.Fatalf("merged=%+v receipt=%+v", merged, receipt)
 	}
 }

@@ -8,11 +8,9 @@ import (
 	reverttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/revert"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
@@ -43,53 +41,40 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		ToolPrefix:    toolPrefix,
 		Budgets:       budgets,
 		WorkingSet:    promptWorkingSet(state.options.WorkingSet),
-		MemoryEnabled: snapshot.Config.Memory.Enabled,
-		Memory:        session.memory,
+		MemoryEnabled: false,
 		Constitution:  session.constitutionPrompt,
 	})
 	if err != nil {
 		return fmt.Errorf("assemble prompt context: %w", err)
+	}
+	workspaceID, err := bindMemoryScopes(
+		session.memory,
+		execution.Workspace,
+		state.options.WorkspaceIdentity.RootID,
+	)
+	if err != nil {
+		return err
 	}
 	repoContext := newRepoContext(
 		state.platform.repositoryIndex,
 		snapshot.Config.Context,
 		budgets,
 	)
-	var workspaceTurnGate *agentengine.WorkspaceTurnGate
-	if state.security.journal != nil {
-		workspaceTurnGate = agentengine.NewWorkspaceTurnGate()
-	}
-	approvalPosture := policy.PermissionBypass
-	if state.security.runtime != nil {
-		approvalPosture = state.security.runtime.Permission
-	} else if state.options.Permission != "" {
-		approvalPosture = policy.Permission(state.options.Permission)
-	}
+	workspaceTurnGate, approvalPosture := engineSecurityPolicy(state)
 	route := state.provider.route
-	modelCapabilities := route.Model().Capabilities
 	reasoningEffort := execution.ReasoningEffort
-	if reasoningEffort != "" && !modelCapabilities.Reasoning {
-		return fmt.Errorf("execution.reasoning_effort requires a reasoning model")
+	if err := validateRouteReasoning(route, reasoningEffort); err != nil {
+		return err
 	}
-	var coordinatorRuntime turnkernel.CoordinatorRuntime
-	if state.options.PersistentStore != nil {
-		session.turnCoordinators, err = newDurableCoordinatorRuntime(
-			turnstate.NewSQLiteRepository(
-				state.options.PersistentStore.SQLite(),
-			),
-			state.config.hookSessionID,
-			defaultTurnCoordinatorLease,
-		)
-		if err != nil {
-			return fmt.Errorf(
-				"create durable turn coordinator runtime: %w",
-				err,
-			)
-		}
-		coordinatorRuntime = session.turnCoordinators
-	} else {
-		coordinatorRuntime = turnkernel.NewEphemeralCoordinatorRuntime()
+	modelCapabilities := route.Model().Capabilities
+	contextRuntime, err := buildContextRuntime(
+		state.options.PersistentStore,
+		state.config.hookSessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("create context runtime: %w", err)
 	}
+	session.turnCoordinators = contextRuntime.durable
 	catalog := state.tools.skillCatalog
 	seedOptions := agentengine.Options{
 		Provider:                 state.provider.provider,
@@ -103,6 +88,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		Security:                 state.security.runtime,
 		ProfilePermissionCeiling: approvalPosture,
 		Workspace:                execution.Workspace,
+		WorkspaceIdentity:        workspaceID,
 		WorkspaceIsolation:       "shared",
 		OnNetworkAllow:           state.security.guardFactory.onNetworkAllow,
 		Journal:                  state.security.journal,
@@ -119,7 +105,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		RequireCompletionDeclaration: execution.Tools,
 		Metrics:                      session.metrics,
 		Observability:                engineObservability(state),
-		TurnCoordinatorRuntime:       coordinatorRuntime,
+		TurnCoordinatorRuntime:       contextRuntime.coordinator,
 		ReleaseTurnResources: session.turnProcessReleaser(
 			session.processes,
 			"main",
@@ -137,12 +123,16 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		RepoContext:           repoContext,
 		WorkingSetLimit:       snapshot.Config.Context.WorkingSet.MaxEntries,
 		EvidenceLimit:         snapshot.Config.Context.Evidence.MaxEntries,
-		CompactWindow:         agentengine.CompactWindowPolicy{AutoTokens: uint64(snapshot.Config.Context.Compact.AutoCompactTokens), Scope: snapshot.Config.Context.Compact.Scope},
 		SummaryMaxBytes:       snapshot.Config.Context.Compact.SummaryMaxBytes,
 		MaxDigestEntries:      snapshot.Config.Context.Compact.MaxDigestEntries,
-		Hooks:                 session.hooks,
-		SessionID:             state.config.hookSessionID,
-		InputHost:             session.inputHost,
+		Context: engineContextPolicy(
+			snapshot.Config.Context.Compact,
+			contextRuntime.commit,
+			contextRuntime.commitWithFacts,
+		),
+		Hooks:     session.hooks,
+		SessionID: state.config.hookSessionID,
+		InputHost: session.inputHost,
 		PromptCacheKey: promptcontext.StickyCacheKey(
 			state.config.hookSessionID,
 			execution.Workspace,
@@ -154,6 +144,11 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 			return session.mcpPrewarm.SyncCatalog()
 		},
 		TurnSnapshots: agentengine.TurnSnapshotSources{
+			Memory: memorySnapshotSource(
+				session.memory,
+				snapshot.Config.Memory,
+				budgets[promptcontext.PartitionUserMemory],
+			),
 			MCP: func() []agentengine.MCPHealthSnapshot {
 				if session.mcpPool == nil {
 					return nil
@@ -334,7 +329,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	}
 	state.agent = agentBuildState{
 		workspaceTurnGate:   workspaceTurnGate,
-		coordinatorRuntime:  coordinatorRuntime,
+		coordinatorRuntime:  contextRuntime.coordinator,
 		seedOptions:         seedOptions,
 		defaultProfile:      defaultProfile,
 		profileCapabilities: profileCapabilities,

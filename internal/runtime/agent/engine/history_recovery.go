@@ -25,6 +25,7 @@ func (e *Engine) compact() *CompactionReceipt {
 }
 
 func (e *Engine) runCompactGate(
+	ctx context.Context,
 	history *[]provider.Message,
 	input contextstore.Snapshot,
 	outputReserve uint64,
@@ -45,6 +46,19 @@ func (e *Engine) runCompactGate(
 		if err := send(Compacting, Event{Compaction: receipt}); err != nil {
 			return tokenWindow{}, err
 		}
+		if inlineReceipt, inlineErr := e.completeInlineNarrative(
+			ctx,
+			history,
+		); inlineErr != nil {
+			return tokenWindow{}, inlineErr
+		} else if inlineReceipt != nil {
+			inlineReceipt.Phase = phase
+			if err := send(Compacting, Event{
+				Compaction: inlineReceipt,
+			}); err != nil {
+				return tokenWindow{}, err
+			}
+		}
 		input = input.WithHistory(*history)
 		window, err = e.measureTokenWindow(input, outputReserve)
 	}
@@ -58,6 +72,7 @@ func (e *Engine) runTerminalCompactGate(
 ) error {
 	input := contextstore.New(contextstore.Input{Stable: e.promptMessages()}).Snapshot()
 	window, err := e.runCompactGate(
+		context.Background(),
 		history, input, 0,
 		CompactionPhasePostTurn, allowCurrentTurn, send,
 	)
@@ -82,7 +97,7 @@ func (e *Engine) measureTokenWindow(
 	}
 	projected := e.projectTokenWindow(&measured, outputReserve)
 	active := projected.FullActiveTokens
-	if e.options.CompactWindow.Scope == compactScopeBodyAfterPrefix {
+	if e.options.Context.Window.Scope == compactScopeBodyAfterPrefix {
 		active = projected.BodyTokens
 		if !projected.Observed {
 			active = projected.PendingTokens
@@ -114,6 +129,8 @@ func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudget
 	window, _ := e.measureTokenWindow(input, e.maxOutputFor(e.activeRoute()))
 	return ContextBudgetSnapshot{
 		ActiveTokens: window.active, AutoCompactTokens: window.compactLimit,
+		PrepareTokens:   e.prepareCompactLimit(),
+		EmergencyTokens: e.emergencyCompactLimit(),
 		EstimatedTokens: window.estimated, MaxContextTokens: window.hardLimit,
 		WindowID: window.accounting.ID, WindowNumber: window.accounting.Number,
 		Observed:             window.accounting.Observed,
@@ -190,6 +207,7 @@ func (e *Engine) compactHistoryWithPolicy(
 		return receipt
 	}
 	input = input.WithHistory(*history)
+	sourceContextDigest, _ := input.Digest()
 	originalWindow, err := e.measureTokenWindow(input, outputReserve)
 	if err != nil || !force && originalWindow.active < originalWindow.compactLimit &&
 		originalWindow.total <= originalWindow.hardLimit {
@@ -244,7 +262,7 @@ func (e *Engine) compactHistoryWithPolicy(
 		workingWindow = prunedWindow
 	}
 	target := originalWindow.compactLimit
-	cuts := compactionCuts(workingHistory, allowCurrentTurn)
+	cuts := e.retainedTailCuts(workingHistory, allowCurrentTurn)
 	if len(cuts) == 0 {
 		if pruned.results != 0 {
 			return finish(pruningReceipt())
@@ -297,9 +315,11 @@ func (e *Engine) compactHistoryWithPolicy(
 			continue
 		}
 		candidate.authorityDigest = authorityDigest
+		candidate.sourceWindowID = originalWindow.accounting.ID
+		candidate.sourceContextDigest = sourceContextDigest
 		candidate.retainedTokens = window.active
 		if force || window.active <= target ||
-			e.options.CompactWindow.Scope == compactScopeBodyAfterPrefix &&
+			e.options.Context.Window.Scope == compactScopeBodyAfterPrefix &&
 				originalWindow.total > originalWindow.hardLimit &&
 				window.total <= window.hardLimit {
 			selected = &candidate
@@ -337,6 +357,10 @@ func (e *Engine) compactHistoryWithPolicy(
 		DownshiftPolicy:      compact.DownshiftRuntimeTruthOnly,
 		NarrativeIncluded:    selected.narrativeIncluded,
 		CapsuleBytes:         selected.capsuleBytes,
+		MandatoryBytes:       selected.retention.MandatoryBytes,
+		MandatoryEntities:    selected.retention.MandatoryEntities,
+		OmissionCount:        selected.retention.OmissionCount,
+		Retention:            append([]compact.RetentionCount(nil), selected.retention.ByClass...),
 
 		ContextReceipts: e.contextReceipts(),
 		WorkingSet:      workingSet, CriticalPaths: criticalPaths,
@@ -344,26 +368,41 @@ func (e *Engine) compactHistoryWithPolicy(
 	if selected.summaryTruncated {
 		receipt.TruncationReason = "summary_byte_budget"
 	}
-	return finish(receipt)
+	finished := finish(receipt)
+	if e.options.Context.SemanticNarrative != "off" &&
+		originalWindow.active < e.emergencyCompactLimit() {
+		if state := e.stageNarrativeCandidate(*selected); state != nil {
+			receipt.CompactionID = state.ID
+			receipt.Status = state.Phase
+			receipt.Mode = e.options.Context.SemanticNarrative
+			receipt.SourceWindowID = state.SourceWindowID
+			receipt.TargetWindowID = state.TargetWindowID
+			receipt.FallbackReason = state.FallbackReason
+		}
+	}
+	return finished
 }
 
 type compactionCandidate struct {
-	cut               int
-	history           []provider.Message
-	removed           []provider.Message
-	toSummarize       []provider.Message
-	rendered          string
-	retainedBytes     int
-	retainedTokens    uint64
-	summaryTruncated  bool
-	sections          []string
-	truth             compact.MergeReceipt
-	capsule           compact.TruthCapsule
-	authority         compact.TruthCapsule
-	compatibilityHash string
-	authorityDigest   string
-	narrativeIncluded bool
-	capsuleBytes      int
+	cut                 int
+	history             []provider.Message
+	removed             []provider.Message
+	toSummarize         []provider.Message
+	rendered            string
+	retainedBytes       int
+	retainedTokens      uint64
+	summaryTruncated    bool
+	sections            []string
+	truth               compact.MergeReceipt
+	capsule             compact.TruthCapsule
+	authority           compact.TruthCapsule
+	compatibilityHash   string
+	authorityDigest     string
+	narrativeIncluded   bool
+	capsuleBytes        int
+	retention           compact.RetentionReceipt
+	sourceWindowID      string
+	sourceContextDigest string
 }
 
 func (e *Engine) buildCompactionCandidate(
@@ -391,11 +430,7 @@ func (e *Engine) buildCompactionCandidate(
 		return compactionCandidate{}, err
 	}
 	current := e.buildTruthCapsule(summary)
-	authority := current
-	authority.Entities = append(
-		[]compact.TruthEntity(nil),
-		current.Entities...,
-	)
+	authority := compact.MandatoryCapsule(current)
 	capsule, mergeReceipt, err := compact.MergeTruthCapsules(
 		current,
 		previous...,
@@ -403,10 +438,23 @@ func (e *Engine) buildCompactionCandidate(
 	if err != nil {
 		return compactionCandidate{}, err
 	}
-	narrative := compact.Narrative{Lines: append([]string(nil), summary.Digest...)}
-	if mergeReceipt.ModelDownshifted {
-		narrative = compact.Narrative{}
+	capsule, retention, err := compact.PlanRetention(
+		capsule,
+		e.options.Context.TruthRetention,
+		e.turn,
+	)
+	if err != nil {
+		return compactionCandidate{}, err
 	}
+	mergeReceipt.EntityCount = len(capsule.Entities)
+	mergeReceipt.CriticalEntityCount = 0
+	for _, entity := range capsule.Entities {
+		if entity.Kind == compact.EntityFact ||
+			entity.Kind == compact.EntityCriticalPath {
+			mergeReceipt.CriticalEntityCount++
+		}
+	}
+	narrative := compact.Narrative{}
 	renderSummary := summary
 	if !includeNarrative {
 		narrative = compact.Narrative{}
@@ -448,6 +496,7 @@ func (e *Engine) buildCompactionCandidate(
 		compatibilityHash: capsule.CompatibilityHash,
 		narrativeIncluded: rendered.NarrativeIncluded,
 		capsuleBytes:      rendered.CapsuleBytes,
+		retention:         retention,
 	}, nil
 }
 
@@ -493,6 +542,61 @@ func compactionCuts(
 		}
 	}
 	return cuts
+}
+
+func (e *Engine) retainedTailCuts(
+	history []provider.Message,
+	allowCurrentTurn bool,
+) []int {
+	cuts := compactionCuts(history, allowCurrentTurn)
+	if len(cuts) == 0 ||
+		(e.options.Context.RecentTailTurns <= 0 &&
+			e.options.Context.RecentTailMaxTokens == 0) {
+		return cuts
+	}
+	minimumStart := recentTurnStart(
+		history,
+		e.options.Context.RecentTailTurns,
+	)
+	filtered := cuts[:0]
+	for _, cut := range cuts {
+		if minimumStart >= 0 && cut > minimumStart {
+			continue
+		}
+		if e.options.Context.RecentTailMaxTokens != 0 &&
+			estimateMessageTokens(history[cut:]) >
+				e.options.Context.RecentTailMaxTokens &&
+			(minimumStart < 0 || cut < minimumStart) {
+			continue
+		}
+		filtered = append(filtered, cut)
+	}
+	return filtered
+}
+
+func recentTurnStart(history []provider.Message, count int) int {
+	if count <= 0 {
+		return -1
+	}
+	seen := make(map[uint64]struct{}, count)
+	start := -1
+	for index := len(history) - 1; index >= 0; index-- {
+		turn := history[index].Turn
+		if turn == 0 {
+			continue
+		}
+		if _, exists := seen[turn]; !exists {
+			if len(seen) == count {
+				break
+			}
+			seen[turn] = struct{}{}
+		}
+		start = index
+	}
+	if len(seen) == 0 {
+		return -1
+	}
+	return start
 }
 
 func safeToolBoundary(history []provider.Message, cut int) bool {

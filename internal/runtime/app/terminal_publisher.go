@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -37,18 +38,35 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 	if string(turnID) != material.DomainFacts[0].TurnID {
 		return CommittedTerminal{}, errors.New("terminal material turn identity mismatch")
 	}
+	sessionDelta, manifest, staged, err := p.prepareContextManifest(
+		ctx,
+		threadID,
+		turnID,
+		material.SessionDelta,
+	)
+	if err != nil {
+		return CommittedTerminal{}, err
+	}
+	releaseStaged := func() {
+		for _, ref := range staged {
+			_ = p.runtime.content.Release(context.Background(), ref.Handle)
+		}
+	}
 	receiptPayload, err := json.Marshal(material.Receipt)
 	if err != nil {
+		releaseStaged()
 		return CommittedTerminal{}, err
 	}
 	terminalPayload, err := json.Marshal(material.Terminal)
 	if err != nil {
+		releaseStaged()
 		return CommittedTerminal{}, err
 	}
 	operationReceipt, err := json.Marshal(
 		p.runtime.operationCommitReceipt(request.Operation.ID),
 	)
 	if err != nil {
+		releaseStaged()
 		return CommittedTerminal{}, err
 	}
 	projectionOperationID := request.Operation.ID
@@ -87,7 +105,7 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 		FrozenState: material.FrozenState, DomainFacts: material.DomainFacts,
 		Measurement:  material.Measurement,
 		Receipt:      material.Receipt,
-		SessionDelta: append(json.RawMessage(nil), material.SessionDelta...),
+		SessionDelta: append(json.RawMessage(nil), sessionDelta...),
 		FinalOutput:  append([]string(nil), material.FrozenState.FinalOutput...),
 		TerminalEvent: turnkernel.Event{
 			Kind: turnkernel.EventTerminalCommitted, Terminal: &decision,
@@ -127,6 +145,9 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 		committed.OperationCommitted = err == nil
 	}
 	if err == nil {
+		if manifest != nil {
+			p.runtime.contextManifests.Store(threadID, *manifest)
+		}
 		p.runtime.opts.Observability.Runtime.ObserveTerminal(
 			context.Background(),
 			trace.TerminalCommitted,
@@ -139,7 +160,104 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 			observationOutcome,
 		)
 	}
+	if err != nil {
+		releaseStaged()
+	}
 	return committed, err
+}
+
+func (p *TerminalPublisher) prepareContextManifest(
+	ctx context.Context,
+	threadID protocol.ThreadID,
+	turnID protocol.TurnID,
+	raw json.RawMessage,
+) (
+	json.RawMessage,
+	*sessiondelta.ContextManifest,
+	[]sessiondelta.ContentRef,
+	error,
+) {
+	if len(raw) == 0 {
+		return nil, nil, nil, nil
+	}
+	var delta sessiondelta.Delta
+	if err := json.Unmarshal(raw, &delta); err != nil {
+		return nil, nil, nil, fmt.Errorf("decode prepared session delta: %w", err)
+	}
+	if delta.Version != sessiondelta.ContextEnvelopeVersion {
+		return nil, nil, nil, fmt.Errorf(
+			"unsupported session delta version %d",
+			delta.Version,
+		)
+	}
+	snapshot, err := delta.ContextSnapshot()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("build context snapshot: %w", err)
+	}
+	previousValue, hasPrevious := p.runtime.contextManifests.Load(threadID)
+	previous, validPrevious := previousValue.(sessiondelta.ContextManifest)
+	hasPrevious = hasPrevious && validPrevious
+	var prior *sessiondelta.ContextManifest
+	if hasPrevious {
+		prior = &previous
+	}
+	manifest, err := sessiondelta.BuildContextManifest(
+		ctx,
+		p.runtime.content,
+		threadID,
+		turnID,
+		snapshot,
+		prior,
+		delta.ManifestLimits,
+	)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("stage context manifest: %w", err)
+	}
+	encoded, err := sessiondelta.EncodeContextEnvelope(
+		manifest,
+		delta.AccountingDelta(),
+	)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	staged := newManifestRefs(prior, manifest)
+	return encoded, &manifest, staged, nil
+}
+
+func newManifestRefs(
+	previous *sessiondelta.ContextManifest,
+	current sessiondelta.ContextManifest,
+) []sessiondelta.ContentRef {
+	existing := make(map[string]struct{})
+	if previous != nil {
+		for _, ref := range contextManifestRefs(*previous) {
+			existing[ref.Handle] = struct{}{}
+		}
+	}
+	var result []sessiondelta.ContentRef
+	for _, ref := range contextManifestRefs(current) {
+		if _, reused := existing[ref.Handle]; !reused {
+			result = append(result, ref)
+		}
+	}
+	return result
+}
+
+func contextManifestRefs(
+	manifest sessiondelta.ContextManifest,
+) []sessiondelta.ContentRef {
+	result := []sessiondelta.ContentRef{manifest.History.BaseRef}
+	result = append(result, manifest.History.TailRefs...)
+	for _, owner := range []sessiondelta.OwnerManifest{
+		manifest.Working,
+		manifest.Evidence,
+		manifest.Failures,
+		manifest.Plan,
+	} {
+		result = append(result, owner.BaseRef)
+		result = append(result, owner.DeltaRefs...)
+	}
+	return result
 }
 func (p *TerminalPublisher) Publish(ctx context.Context, committed CommittedTerminal) error {
 	_, turnID, _ := protocol.OperationReferences(committed.Operation)

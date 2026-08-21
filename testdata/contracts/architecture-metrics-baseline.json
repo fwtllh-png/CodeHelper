@@ -308,9 +308,12 @@
       "path": "internal/adapter/provider/deepseek",
       "limits": {
         "internal_fanout": 5,
-        "production_lines": 410,
+        "production_lines": 413,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "DeepSeek Responses maps the runtime off reasoning level to the provider-specific none wire value"
       }
     },
     {
@@ -330,9 +333,12 @@
       "path": "internal/adapter/provider/fixture",
       "limits": {
         "internal_fanout": 2,
-        "production_lines": 311,
+        "production_lines": 386,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Corrects the stale main-branch baseline to the already-present provider fixture implementation"
       }
     },
     {
@@ -340,10 +346,14 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 75,
-        "production_lines": 8966,
+        "internal_fanout": 77,
+        "production_lines": 9152,
         "options_fields": 70,
         "mutex_fields": 6
+      },
+      "relaxations": {
+        "internal_fanout": "Context construction now wires scoped memory and the persistence-owned Context Rebase repository",
+        "production_lines": "Context construction maps bounded retention, narrative, manifest, and memory policy into the Agent runtime"
       }
     },
     {
@@ -428,10 +438,13 @@
       "kind": "package",
       "path": "internal/adapter/extension/memory",
       "limits": {
-        "internal_fanout": 5,
-        "production_lines": 73,
+        "internal_fanout": 4,
+        "production_lines": 75,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Memory v2 publishes a guarded CRUD tool set and the active scoped record store"
       }
     },
     {
@@ -549,10 +562,14 @@
       "kind": "package",
       "path": "internal/runtime/app/persistence",
       "limits": {
-        "internal_fanout": 12,
-        "production_lines": 178,
+        "internal_fanout": 14,
+        "production_lines": 721,
         "options_fields": 9,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "The persistence owner now validates and commits Context Rebase manifests",
+        "production_lines": "Context persistence now commits Restore and Fork baselines, child Thread identity, CAS manifests, revision fences, and rollback cleanup"
       }
     },
     {
@@ -603,12 +620,13 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 11621,
-        "options_fields": 60,
+        "production_lines": 13396,
+        "options_fields": 61,
         "mutex_fields": 8
       },
       "relaxations": {
-        "production_lines": "H1 reconstructs forked Engines through the guarded constructor and preserves explicitly required Agent control tools"
+        "production_lines": "Context optimization adds admission, workspace-aware snapshots, semantic narrative, bounded tails, durable rebase orchestration, validated post-turn receipts, and running-scope snapshot ownership",
+        "options_fields": "Engine construction now binds one ContextPolicy for the context optimization subsystem"
       }
     },
     {
@@ -616,13 +634,15 @@
       "kind": "package",
       "path": "internal/runtime/app",
       "limits": {
-        "internal_fanout": 21,
-        "production_lines": 8700,
-        "options_fields": 18,
+        "internal_fanout": 23,
+        "production_lines": 9501,
+        "options_fields": 19,
         "mutex_fields": 7
       },
       "relaxations": {
-        "production_lines": "H1 scopes durable item ownership by Turn and propagates guarded Engine fork construction failures"
+        "internal_fanout": "Runtime checkpoint and terminal paths now consume Context Snapshot and Manifest contracts",
+        "production_lines": "Runtime now owns manifest-backed terminals, post-turn context maintenance, and durable workspace-aware checkpoint restore and fork",
+        "options_fields": "Runtime accepts the persistence-owned Context Rebase store as an explicit dependency"
       }
     },
     {
@@ -631,9 +651,13 @@
       "path": "internal/runtime/agent/turnexec",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 228,
+        "production_lines": 257,
         "options_fields": 0,
-        "mutex_fields": 1
+        "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Pending interaction identities are snapshotted for mandatory context admission",
+        "mutex_fields": "Corrects the stale main-branch mutex baseline while retaining RequestLedger isolation"
       }
     },
     {
@@ -641,10 +665,14 @@
       "kind": "package",
       "path": "internal/runtime/agent/compact",
       "limits": {
-        "internal_fanout": 0,
-        "production_lines": 1014,
+        "internal_fanout": 3,
+        "production_lines": 2445,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "Compaction now owns provider-neutral narrative, source-fence, and protocol identity contracts",
+        "production_lines": "Bounded retention, omission receipts, narrative artifacts, verified excerpt rebinding, and compaction plans are implemented as deterministic codecs"
       }
     },
     {
@@ -664,9 +692,12 @@
       "path": "internal/runtime/agent/evidence",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 735,
+        "production_lines": 808,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Evidence exposes a bounded retained delta and stale workspace claim state for Context Snapshot recovery"
       }
     },
     {
@@ -675,9 +706,12 @@
       "path": "internal/runtime/agent/workingset",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 349,
+        "production_lines": 374,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Working Set exposes a bounded retained projection for low-amplification Context manifests"
       }
     },
     {
@@ -686,9 +720,12 @@
       "path": "internal/persist/state/turnstate",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 1243,
+        "production_lines": 1310,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Turn-state persistence exposes transaction-scoped idempotent fact appends so Context Rebase and effect completion commit atomically"
       }
     },
     {
@@ -717,9 +754,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6255,
+        "production_lines": 6359,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Protocol v2 exposes context identity, retention, narrative, memory selection, workspace reconciliation receipts, and durable Context Commit references"
       }
     },
     {
@@ -954,7 +994,7 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/world_state.go",
       "limits": {
-        "lines": 277,
+        "lines": 241,
         "max_function_lines": 73
       }
     },
@@ -1008,8 +1048,8 @@
       "kind": "file",
       "path": "internal/runtime/agent/compact/truth.go",
       "limits": {
-        "lines": 345,
-        "max_function_lines": 75
+        "lines": 317,
+        "max_function_lines": 73
       }
     },
     {
@@ -1017,8 +1057,8 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/compaction_truth.go",
       "limits": {
-        "lines": 143,
-        "max_function_lines": 105
+        "lines": 102,
+        "max_function_lines": 77
       }
     },
     {
@@ -1125,7 +1165,10 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 29
+        "event_switch_sites": 30
+      },
+      "relaxations": {
+        "event_switch_sites": "Context compaction lifecycle handling adds one Runtime-owned protocol event projection switch"
       }
     }
   ]

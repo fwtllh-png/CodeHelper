@@ -13,7 +13,7 @@ func TestExtensionContributesRememberToolThroughTypedContract(t *testing.T) {
 	harness := extensiontest.New(t, value)
 	result := harness.Tool(t.Context(), "memory", extension.ToolInput{})
 	if result.Outcome.Status != extension.OutcomeSucceeded ||
-		len(result.Value.Registrations) != 1 ||
+		len(result.Value.Registrations) != 5 ||
 		result.Value.Registrations[0].Descriptor().Name != "remember" {
 		t.Fatalf("memory contribution = %+v", result)
 	}

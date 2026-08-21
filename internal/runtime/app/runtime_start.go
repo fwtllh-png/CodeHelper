@@ -82,24 +82,25 @@ func prepareRuntime(
 		profiles: options.SessionProfiles, defaultProfile: options.DefaultProfile,
 		profileCapabilities: options.ProfileCapabilities,
 		toolCatalog:         options.ToolCatalog, sessionLifecycle: options.SessionLifecycle,
-		sessionWorkspaces: options.SessionWorkspaces,
-		sessionArtifacts:  options.SessionArtifacts,
-		terminalStore:     options.TerminalStore,
-		orchestration:     options.Orchestration,
-		operations:        make(chan acceptedOperation, options.OperationBuffer),
-		done:              make(chan struct{}),
-		terminals:         make(map[protocol.TurnID]protocol.EventKind),
-		approvals:         make(map[string]PendingApproval),
-		inputs:            make(map[string]PendingInput),
-		accepted:          make(map[protocol.OperationID]PendingOperation),
-		acceptedKeys:      make(map[string]protocol.OperationID),
-		committed:         make(map[protocol.OperationID]PendingOperation),
-		active:            NewActiveTurnRegistry(),
-		observers:         make(map[uint64]func(protocol.Event)),
-		toolItems:         make(map[EventItemOwner]protocol.ItemID),
-		approvalItems:     make(map[EventItemOwner]protocol.ItemID),
-		inputItems:        make(map[EventItemOwner]protocol.ItemID),
-		durable:           recoverDurable,
+		sessionWorkspaces:  options.SessionWorkspaces,
+		sessionArtifacts:   options.SessionArtifacts,
+		terminalStore:      options.TerminalStore,
+		contextRebaseStore: options.ContextRebaseStore,
+		orchestration:      options.Orchestration,
+		operations:         make(chan acceptedOperation, options.OperationBuffer),
+		done:               make(chan struct{}),
+		terminals:          make(map[protocol.TurnID]protocol.EventKind),
+		approvals:          make(map[string]PendingApproval),
+		inputs:             make(map[string]PendingInput),
+		accepted:           make(map[protocol.OperationID]PendingOperation),
+		acceptedKeys:       make(map[string]protocol.OperationID),
+		committed:          make(map[protocol.OperationID]PendingOperation),
+		active:             NewActiveTurnRegistry(),
+		observers:          make(map[uint64]func(protocol.Event)),
+		toolItems:          make(map[EventItemOwner]protocol.ItemID),
+		approvalItems:      make(map[EventItemOwner]protocol.ItemID),
+		inputItems:         make(map[EventItemOwner]protocol.ItemID),
+		durable:            recoverDurable,
 	}
 	runtime.hub = newEventHub(runtimeContext, runtime)
 	runtime.terminal = &TerminalPublisher{runtime: runtime}
@@ -109,19 +110,6 @@ func prepareRuntime(
 		runtime.restore(*recovery)
 	}
 	return runtime, nil
-}
-
-func configureThreadManager(options Options) {
-	manager, ok := options.Engine.(*ThreadManager)
-	if !ok {
-		return
-	}
-	if store, ok := options.TerminalStore.(turnkernel.SessionDeltaRecoveryStore); ok {
-		manager.SetSessionDeltaRestorer(store.LatestSessionDelta)
-	}
-	if options.SessionLifecycle != nil {
-		manager.SetSessionResolver(options.SessionLifecycle.SessionForThread)
-	}
 }
 
 // Start activates a prepared Runtime exactly once. Durable projection and Turn

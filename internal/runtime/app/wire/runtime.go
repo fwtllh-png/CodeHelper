@@ -118,7 +118,7 @@ type Session struct {
 	ephemeralTasksDir  string
 	hooks              *hooks.Manager
 	inputHost          *interacttool.Host
-	applyPlan          func(interacttool.Plan)
+	applyPlan          func(interacttool.Plan) error
 	security           *policy.Runtime
 	rlmStore           *rlm.Store
 	children           *childRuntime

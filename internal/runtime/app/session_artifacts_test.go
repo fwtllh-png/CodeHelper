@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -18,6 +20,7 @@ type memoryArtifactStore struct {
 	history    []protocol.CompactedMessage
 	profile    protocol.SessionProfile
 	plan       protocol.SessionPlanArtifact
+	context    sessiondelta.ContextSnapshot
 }
 
 func (s *memoryArtifactStore) SaveCheckpoint(
@@ -42,6 +45,28 @@ func (s *memoryArtifactStore) GetCheckpoint(
 		append([]protocol.CompactedMessage(nil), s.history...),
 		s.profile,
 		nil
+}
+
+func (s *memoryArtifactStore) SaveContextCheckpoint(
+	context.Context,
+	protocol.SessionCheckpoint,
+	[]protocol.CompactedMessage,
+	sessiondelta.ContextSnapshot,
+	protocol.SessionProfile,
+) (protocol.SessionCheckpoint, error) {
+	return protocol.SessionCheckpoint{}, errors.New("unexpected Context Checkpoint save")
+}
+
+func (s *memoryArtifactStore) GetContextCheckpoint(
+	context.Context,
+	string,
+) (
+	protocol.SessionCheckpoint,
+	sessiondelta.ContextSnapshot,
+	protocol.SessionProfile,
+	error,
+) {
+	return s.checkpoint, sessiondelta.CloneContextSnapshot(s.context), s.profile, nil
 }
 
 func (s *memoryArtifactStore) ListCheckpoints(
@@ -88,6 +113,7 @@ type artifactTestEngine struct {
 	restoreErrAt int
 	restoreErr   error
 	forks        map[protocol.ThreadID][]provider.Message
+	contexts     map[protocol.ThreadID]sessiondelta.ContextSnapshot
 }
 
 type artifactFailingEventStore struct {
@@ -138,6 +164,206 @@ func (e *artifactTestEngine) ForkCheckpoint(
 
 func (e *artifactTestEngine) Release(threadID protocol.ThreadID) {
 	delete(e.forks, threadID)
+	delete(e.contexts, threadID)
+}
+
+func (e *artifactTestEngine) ContextSnapshot(
+	threadID protocol.ThreadID,
+) (sessiondelta.ContextSnapshot, error) {
+	snapshot, ok := e.contexts[threadID]
+	if !ok {
+		return sessiondelta.ContextSnapshot{}, errors.New("context snapshot is unavailable")
+	}
+	return sessiondelta.CloneContextSnapshot(snapshot), nil
+}
+
+func (e *artifactTestEngine) RestoreContext(
+	threadID protocol.ThreadID,
+	snapshot sessiondelta.ContextSnapshot,
+) (sessiondelta.ReconciliationReceipt, error) {
+	if e.contexts == nil {
+		e.contexts = make(map[protocol.ThreadID]sessiondelta.ContextSnapshot)
+	}
+	e.contexts[threadID] = sessiondelta.CloneContextSnapshot(snapshot)
+	e.history = append([]provider.Message(nil), snapshot.History...)
+	return sessiondelta.ReconciliationReceipt{BindingMatch: true}, nil
+}
+
+func (e *artifactTestEngine) ForkContext(
+	_ protocol.ThreadID,
+	threadID protocol.ThreadID,
+	snapshot sessiondelta.ContextSnapshot,
+) (sessiondelta.ReconciliationReceipt, error) {
+	if e.contexts == nil {
+		e.contexts = make(map[protocol.ThreadID]sessiondelta.ContextSnapshot)
+	}
+	e.contexts[threadID] = sessiondelta.CloneContextSnapshot(snapshot)
+	if e.forks == nil {
+		e.forks = make(map[protocol.ThreadID][]provider.Message)
+	}
+	e.forks[threadID] = append([]provider.Message(nil), snapshot.History...)
+	return sessiondelta.ReconciliationReceipt{BindingMatch: true}, nil
+}
+
+type artifactCurrentContextStore struct {
+	current map[protocol.ThreadID]sessiondelta.CurrentContextCommit
+}
+
+func (s *artifactCurrentContextStore) CommitContextRebase(
+	context.Context,
+	sessiondelta.ContextRebaseEnvelope,
+) error {
+	return nil
+}
+
+func (s *artifactCurrentContextStore) LatestContextSnapshot(
+	_ context.Context,
+	threadID protocol.ThreadID,
+) (sessiondelta.ContextSnapshot, bool, error) {
+	commit, ok := s.current[threadID]
+	return sessiondelta.CloneContextSnapshot(commit.Snapshot), ok, nil
+}
+
+func (s *artifactCurrentContextStore) CommitCurrentContext(
+	_ context.Context,
+	commit sessiondelta.CurrentContextCommit,
+) error {
+	if err := commit.Validate(); err != nil {
+		return err
+	}
+	if s.current == nil {
+		s.current = make(map[protocol.ThreadID]sessiondelta.CurrentContextCommit)
+	}
+	s.current[commit.ThreadID] = commit
+	return nil
+}
+
+func (s *artifactCurrentContextStore) DeleteCurrentContext(
+	_ context.Context,
+	threadID protocol.ThreadID,
+	commitID string,
+	_ bool,
+) error {
+	if current, ok := s.current[threadID]; ok && current.ID == commitID {
+		delete(s.current, threadID)
+	}
+	return nil
+}
+
+func TestExactContextRestoreAndForkPersistCurrentBaselines(t *testing.T) {
+	profile := runtimeTestProfile()
+	window, err := contextstore.NewWindowLedger("checkpoint-window", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := sessiondelta.WorkspaceBinding{
+		WorkspaceIdentity: "workspace:test",
+	}
+	binding.Seal()
+	message := provider.TextMessage(provider.RoleUser, "checkpoint context")
+	message.Turn = 1
+	checkpointContext := sessiondelta.ContextSnapshot{
+		Version: sessiondelta.ContextSnapshotVersion,
+		Epoch:   1, Revision: 1, Turn: 1,
+		History:   []provider.Message{message},
+		Workspace: binding,
+		Window:    window,
+	}
+	if err := checkpointContext.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := EncodeCompactedHistory(checkpointContext.History)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts := &memoryArtifactStore{
+		checkpoint: protocol.SessionCheckpoint{
+			Version: protocol.CheckpointProtocolVersion,
+			ID:      "checkpoint-context", SessionID: "session-profile",
+			ThreadID: "thread-profile", TurnID: "turn-checkpoint",
+			Cursor: 8, Status: protocol.CheckpointCompleted,
+			ProfileRevision: profile.Revision, CanRestore: true, CanFork: true,
+			ContextDigest: checkpointContext.Digest,
+		},
+		profile: profile,
+		context: checkpointContext,
+		history: encoded,
+	}
+	engine := &artifactTestEngine{
+		contexts: map[protocol.ThreadID]sessiondelta.ContextSnapshot{
+			"thread-profile": checkpointContext,
+		},
+	}
+	current := &artifactCurrentContextStore{}
+	lifecycle := artifactLifecycle()
+	runtime := NewRuntime(Options{
+		Engine:              engine,
+		SessionProfiles:     &memoryProfileStore{profile: profile},
+		DefaultProfile:      profile,
+		ProfileCapabilities: runtimeTestCapabilities(profile),
+		SessionLifecycle:    lifecycle,
+		SessionArtifacts:    artifacts,
+		ContextRebaseStore:  current,
+	})
+	runtime.durable = true
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	restored, err := runtime.RestoreCheckpoint(
+		t.Context(),
+		"session-profile",
+		"checkpoint-context",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored.ExactContext ||
+		current.current["thread-profile"].Snapshot.Digest != checkpointContext.Digest {
+		t.Fatalf("restore=%+v current=%+v", restored, current.current)
+	}
+	forked, err := runtime.ForkCheckpoint(
+		t.Context(),
+		"session-profile",
+		"checkpoint-context",
+		"Child",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, ok := current.current[forked.ThreadID]
+	if !forked.ExactContext || !ok ||
+		commit.ParentThreadID != "thread-profile" ||
+		commit.SessionID != "session-profile" ||
+		commit.Snapshot.Digest != checkpointContext.Digest {
+		t.Fatalf("fork=%+v commit=%+v", forked, commit)
+	}
+	events, _, err := runtime.ReplayEvents(t.Context(), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restoreReferenced, forkReferenced bool
+	for _, event := range events {
+		switch data := event.Data.(type) {
+		case *protocol.CheckpointRestoredData:
+			saved := current.current["thread-profile"]
+			restoreReferenced = data.ContextCommitID == saved.ID &&
+				data.ContextDigest == saved.Snapshot.Digest &&
+				data.ContextRevision == saved.Snapshot.Revision &&
+				data.StateEpoch == saved.Snapshot.Epoch
+		case *protocol.CheckpointForkedData:
+			forkReferenced = data.ContextCommitID == commit.ID &&
+				data.ContextDigest == commit.Snapshot.Digest &&
+				data.ContextRevision == commit.Snapshot.Revision &&
+				data.StateEpoch == commit.Snapshot.Epoch
+		}
+	}
+	if !restoreReferenced || !forkReferenced {
+		t.Fatalf(
+			"context references restore=%t fork=%t events=%+v",
+			restoreReferenced,
+			forkReferenced,
+			events,
+		)
+	}
 }
 
 func TestCheckpointRestoreIsStateOnlyAndForkPreservesLineage(t *testing.T) {

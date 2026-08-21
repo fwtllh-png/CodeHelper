@@ -19,7 +19,10 @@ func Defaults() Config {
 			BusyTimeout:    5 * time.Second,
 			EventRetention: 1_000_000,
 		},
-		Memory: Memory{Path: defaultMemoryPath()},
+		Memory: Memory{
+			Path: defaultMemoryPath(), MaxCandidates: 32,
+			MaxPromptBytes: 16 << 10,
+		},
 
 		Context: Context{
 			Index: Index{Enabled: true, MaxFileBytes: 1 << 20, MaxFiles: 20000},
@@ -32,6 +35,23 @@ func Defaults() Config {
 
 			Compact: Compact{
 				Scope: "total", SummaryMaxBytes: 8 << 10, MaxDigestEntries: 120,
+				TruthMaxBytes: 5632, TruthMaxEntities: 256,
+				MandatoryMaxEntities: 128, FactMaxEntities: 96,
+				VerifiedChangeRetentionTurns:     32,
+				FailureMaxEntities:               24,
+				HandleMaxEntities:                32,
+				OmissionSampleMaxEntities:        8,
+				RecentTailTurns:                  2,
+				RecentTailMaxTokens:              8192,
+				SemanticNarrative:                "off",
+				SemanticNarrativeMaxInputTokens:  4096,
+				SemanticNarrativeMaxOutputTokens: 512,
+				SemanticNarrativeMaxItems:        32,
+				SemanticNarrativeItemMaxBytes:    512,
+				SemanticNarrativeTimeout:         30 * time.Second,
+				SemanticNarrativeRetryLimit:      1,
+				OwnerDeltaMaxSegments:            16,
+				OwnerDeltaMaxBytes:               64 << 10,
 			},
 		},
 		Telemetry: Telemetry{LogLevel: "info"},

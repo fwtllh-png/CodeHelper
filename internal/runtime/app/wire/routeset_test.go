@@ -44,7 +44,8 @@ func TestASessionWithoutSlotsRoutesEveryPurposeToAct(t *testing.T) {
 	}
 
 	for _, purpose := range []model.Purpose{
-		model.PurposeAct, model.PurposePlan, model.PurposeVision, model.PurposeSubquery,
+		model.PurposeAct, model.PurposePlan, model.PurposeVision,
+		model.PurposeSubquery, model.PurposeSummary,
 	} {
 		route, err := routes.For(purpose)
 		if err != nil {

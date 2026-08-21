@@ -3,9 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"sort"
-	"strconv"
-	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -150,6 +147,12 @@ func (e *Engine) frozenWorldSections(
 			coding.Digest(),
 		)
 	}
+	if section, receipt, ok := e.memoryWorldSection(spec, turn); ok {
+		if section.ID != "" {
+			sections = append(sections, section)
+		}
+		receipts = append(receipts, receipt)
+	}
 	if body := renderSkillWorld(spec.Skills); body != "" {
 		appendSection(
 			promptcontext.PartitionSkills,
@@ -159,47 +162,6 @@ func (e *Engine) frozenWorldSections(
 		)
 	}
 	return sections, receipts
-}
-
-func renderSkillWorld(values []SkillSummary) string {
-	if len(values) == 0 {
-		return ""
-	}
-	values = append([]SkillSummary(nil), values...)
-	sort.Slice(values, func(i, j int) bool {
-		if values[i].Name != values[j].Name {
-			return values[i].Name < values[j].Name
-		}
-		if values[i].Source != values[j].Source {
-			return values[i].Source < values[j].Source
-		}
-		return values[i].Path < values[j].Path
-	})
-	var builder strings.Builder
-	builder.WriteString(
-		"Selected skills (metadata only). Use load_skill by name or skills_read with any exact advertised handle (handle, package, or resource) before following instructions. Use skills_list for more.\n",
-	)
-	for _, value := range values {
-		builder.WriteString("- name=")
-		builder.WriteString(strconv.Quote(value.Name))
-		builder.WriteString(" description=")
-		description := strings.TrimSpace(value.Description)
-		runes := []rune(description)
-		if len(runes) > 160 {
-			description = string(runes[:157]) + "..."
-		}
-		builder.WriteString(strconv.Quote(description))
-		builder.WriteString(" source=")
-		builder.WriteString(strconv.Quote(value.Source))
-		builder.WriteString(" handle=")
-		builder.WriteString(strconv.Quote(value.Handle))
-		builder.WriteString(" package=")
-		builder.WriteString(strconv.Quote(value.PackageHandle))
-		builder.WriteString(" resource=")
-		builder.WriteString(strconv.Quote(value.ResourceHandle))
-		builder.WriteByte('\n')
-	}
-	return strings.TrimSuffix(builder.String(), "\n")
 }
 
 func (e *Engine) contextBudget(kind string) promptcontext.Budget {
@@ -217,6 +179,8 @@ func (e *Engine) contextBudget(kind string) promptcontext.Budget {
 			MaxBytes:  promptcontext.MaxSkillsPromptBytes,
 			MaxTokens: promptcontext.MaxFragmentTokens,
 		}
+	case promptcontext.PartitionUserMemory:
+		return promptcontext.Budget{MaxBytes: 16 << 10, MaxTokens: 4 << 10}
 	case promptcontext.PartitionToolCatalog:
 		return promptcontext.Budget{MaxBytes: 16 << 10, MaxTokens: 4 << 10}
 	default:

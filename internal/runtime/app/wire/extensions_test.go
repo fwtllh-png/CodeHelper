@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"testing"
 
@@ -184,8 +185,12 @@ func TestMemoryContributorUsesTypedExtensionContract(t *testing.T) {
 		receipt.Typed == nil ||
 		receipt.Typed.Kind != runtimeextension.KindTool ||
 		receipt.Typed.Status != runtimeextension.OutcomeSucceeded ||
-		len(receipt.Tools) != 1 ||
-		receipt.Tools[0] != "remember" ||
+		len(receipt.Tools) != 5 ||
+		!slices.Contains(receipt.Tools, "remember") ||
+		!slices.Contains(receipt.Tools, "memory_list") ||
+		!slices.Contains(receipt.Tools, "memory_get") ||
+		!slices.Contains(receipt.Tools, "memory_update") ||
+		!slices.Contains(receipt.Tools, "forget") ||
 		output.memory == nil {
 		t.Fatalf("memory contribution = %+v, store=%v", receipt, output.memory)
 	}

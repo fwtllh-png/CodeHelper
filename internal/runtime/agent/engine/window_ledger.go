@@ -164,11 +164,8 @@ func (e *Engine) RestoreTokenWindow(id string, number uint64) error {
 
 func (e *Engine) autoCompactLimit() uint64 {
 	limit := e.activeRoute().Model().Limits.ContextTokens
-	compact := e.options.CompactWindow.AutoTokens
-	if compact == 0 {
-		compact = limit * 65 / 100
-	}
-	return min(compact, limit)
+	_, compact, _ := contextWindowThresholds(e.options.Context.Window, limit)
+	return compact
 }
 
 func applyWindowProjection(

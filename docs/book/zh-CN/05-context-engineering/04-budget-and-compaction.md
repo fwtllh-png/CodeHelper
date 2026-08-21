@@ -13,7 +13,10 @@ code_paths:
   - internal/runtime/agent/engine
 test_paths:
   - internal/runtime/agent/compact/compact_test.go
+  - internal/runtime/agent/compact/retention_test.go
+  - internal/runtime/agent/compact/narrative_test.go
   - internal/runtime/agent/engine/engine_test.go
+  - internal/runtime/agent/engine/narrative_test.go
   - internal/runtime/app/compact_window_test.go
 source_of_truth:
   - internal/runtime/agent/compact/compact.go
@@ -38,14 +41,15 @@ last_verified: null
 任意截断字节可能切开 UTF-8、Tool Pair 或 List，并让“缺失”看起来像“完整”。让 Model
 自行总结还可能凭空写出“测试已通过”等声明。
 
-## 两层预算
+## 三层 Context 与分级预算
 
 ```mermaid
 flowchart TD
     P[Partition Byte/Token Budget] --> R[Context Receipt]
     H[History Size + Model Limit] --> G[Compaction Gate]
-    G --> S[Deterministic Summary]
-    S --> T[Recent Whole-Turn Tail]
+    G --> S[Bounded Truth Capsule]
+    S --> N[Optional Semantic Narrative]
+    N --> T[Recent Causal Tail]
     R --> Q[ModelRequest]
     T --> Q
 ```
@@ -84,22 +88,45 @@ History。
 Compaction 是 Model-context Loss，不一定删除 Durable Data。Audit/Reconstruction 仍可
 保留不再进入 Next Sample 的 Event。
 
-## Deterministic Summary
+模型可见顺序固定为 Stable Prefix、Truth Capsule、非权威 Narrative、Recent Raw Tail、
+Dynamic World State 和 Continuation。预算按 Mandatory Truth、未闭合因果组、其他
+Truth、Additional Tail、Narrative 的顺序分配，Narrative 永远不能挤占 Authority。
 
-Compaction 不调用 Model，而从 Observed Goal、Open Todo、Failure、Change、Critical
-Path、Lookup Fact 与 Bounded Digest 构造 Summary。保留优先级为：
+`prepare`、`compact`、`emergency` 默认分别位于模型 Hard Limit 的 55%、65% 和 85%。
+Emergency 路径跳过 Narrative，并限制继续扩大 Context 的工具调用。
+
+## Truth Retention 与 Admission
+
+确定性 Compaction 从 Observed Goal、Open Todo、Failure、Change、Critical Path、
+Lookup Fact 与 Content Handle 构造 Truth。Entity 分成：
 
 ```text
-goals -> todos -> failures -> changes -> critical paths -> facts -> digest
+mandatory -> protected by kind quota -> refreshable by rank -> omission
 ```
 
-放不下时从尾部整节删除；Digest 可删除最旧的独立行。即使预算极小，Marker 与
-Truncation Notice 仍保留。Previous Summary 作为 Carried Content 继续存在，避免二次
-Compaction 将其压平为含义不明的一行。
+Goal、Open Todo、Pending Input、未验证 Change 和开放 Diagnostic 属于 Mandatory。
+Mandatory 放不下时在状态或副作用提交前拒绝；Protected/Refreshable 超预算时按稳定
+顺序淘汰，并用有界聚合 Omission 解释。每次压缩重新读取当前 Owner Snapshot，不再把
+前代 Capsule 永久并集。
+
+写工具在 Guard 执行前预留 Mandatory 容量；`update_plan` 在替换 Plan 前执行同一
+Canonical Admission。Authority Digest 只覆盖 Mandatory Entity，Narrative、Tail 或
+可刷新 Fact 的变化不能伪造 Authority 等价。
+
+## Semantic Narrative
+
+Narrative 只表达方案选择原因、偏好、约束关系和未决方向。输入是有界、可持久化的
+Artifact，每个 Excerpt 有稳定 Message ID 和 Digest；输出必须是严格 JSON，并为每项
+引用已知 Source ID。它不能声明测试、修改、审批或权限事实。
+
+`post_turn` 在业务 Terminal 提交后维护 Context；`inline` 在安全 Sample 边界通过
+`generate_narrative` 和 `commit_context_rebase` Durable Effect 执行。两者都通过
+`summary` Route，禁用 Tool 与 Native Search。Provider、解析、Timeout 或 Staleness
+失败只产生 `fallback=truth_tail`。
 
 ## Turn Integrity
 
-Cut 发生在 Whole-turn Group 边界，保持 Assistant Tool Call 与 Tool Result 配对。
+Cut 发生在 Causal Group 边界，保持 Assistant Tool Call 与 Tool Result 配对。
 Skill/Constitution Fragment 从旧 History 删除并重新注入；Recent Tail 原样保留。
 
 ## Receipts
@@ -112,14 +139,16 @@ Section、Truncation Reason、Working Set、Critical Path 和 Prompt Context Rec
 | 关注点 | 源码 |
 | --- | --- |
 | Partition Retain | `promptcontext/context.go` |
-| Summary Render | `agent/compact/compact.go` |
-| Cut/Replacement | `agent/engine/engine.go`、`compaction.go` |
+| Truth/Retention | `agent/compact/truth.go`、`retention.go` |
+| Narrative Artifact | `agent/compact/narrative.go` |
+| Cut/Replacement | `agent/engine/history_recovery.go` |
+| Narrative Effect | `agent/engine/narrative.go`、`agent/turnkernel` |
 | Thread Compact | `runtime/app/compact_window.go` |
 
 ## 设计取舍
 
-Model-generated Summary 流畅但不是可信 Evidence，且增加成本；直接删除最旧 Message
-可重复，却会破坏 Tool Pair 并丢失 Goal。结构化 Observed-state Summary 优先正确性。
+Model-generated Narrative 流畅但不是可信 Evidence；纯结构化事实可靠，却不能完整保留
+设计动机。CodeHelper 将两者分层，并保留近期原始因果历史，而不是让任一层替代其他层。
 
 ## 失败模式与安全边界
 
@@ -128,13 +157,15 @@ Model-generated Summary 流畅但不是可信 Evidence，且增加成本；直�
 - Tool Pair 与 Whole Turn 保持原子性。
 - Tiny Budget 保留 Wrapper/Provenance，而非静默空 Context。
 - Context Limit 包含 Requested Output Capacity。
-- Summary 不得发明 Verification。
+- Narrative 不得发明 Verification，也不能改变 Authority Digest。
+- Context Rebase 提交失败时不能继续在旧 Window 上采样。
 
 ## 测试与验证
 
 ```bash
 go test ./internal/runtime/agent/compact
 go test ./internal/runtime/agent/engine -run 'TestEngineCompact|TestEngineCompaction'
+go test ./internal/runtime/agent/turnkernel -run TestContextCompaction
 go test ./internal/runtime/app -run 'TestCompact(Window|Fork)'
 ```
 

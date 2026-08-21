@@ -8,6 +8,7 @@ type ReadState struct {
 	Turn       uint64 `json:"turn"`
 	RepeatTurn uint64 `json:"repeat_turn,omitempty"`
 	Repeats    int    `json:"repeats,omitempty"`
+	Stale      bool   `json:"stale,omitempty"`
 }
 
 type HandleState struct {
@@ -39,12 +40,14 @@ func (s *Set) Delta() Delta {
 		result.Changes = append(result.Changes, Change{
 			Path: path, Turn: entry.turn, Read: entry.read,
 			Verified: entry.verified, Diagnostics: entry.diagnostics,
+			Stale: entry.stale,
 		})
 	}
 	for path, entry := range s.reads {
 		result.Reads = append(result.Reads, ReadState{
 			Path: path, Digest: entry.digest, Turn: entry.turn,
 			RepeatTurn: entry.repeatTurn, Repeats: entry.repeats,
+			Stale: entry.stale,
 		})
 	}
 	for id, entry := range s.handles {
@@ -75,6 +78,63 @@ func (s *Set) Delta() Delta {
 	return result
 }
 
+// RetainedDelta returns the bounded live evidence projection. Mandatory change
+// risks are never removed here; admission is responsible for refusing growth
+// that would make that set unrepresentable.
+func (s *Set) RetainedDelta(
+	factLimit int,
+	verifiedChangeRetentionTurns uint64,
+	handleLimit int,
+) Delta {
+	if s == nil {
+		return Delta{}
+	}
+	full := s.Delta()
+	snapshot := s.Snapshot(factLimit)
+	result := Delta{Turn: full.Turn, Facts: snapshot.Facts}
+	paths := make(map[string]struct{})
+	for _, fact := range result.Facts {
+		paths[fact.Path] = struct{}{}
+	}
+	verified := 0
+	for _, change := range full.Changes {
+		mandatory := !change.Verified || change.Diagnostics || change.Stale
+		recent := full.Turn < change.Turn ||
+			full.Turn-change.Turn <= verifiedChangeRetentionTurns
+		if !mandatory && (!recent || factLimit > 0 && verified == factLimit) {
+			continue
+		}
+		if !mandatory {
+			verified++
+		}
+		result.Changes = append(result.Changes, change)
+		paths[change.Path] = struct{}{}
+	}
+	for _, read := range full.Reads {
+		if _, retained := paths[read.Path]; retained {
+			result.Reads = append(result.Reads, read)
+		}
+	}
+	handles := append([]HandleState(nil), full.Handles...)
+	sort.Slice(handles, func(i, j int) bool {
+		if handles[i].Consumed != handles[j].Consumed {
+			return !handles[i].Consumed
+		}
+		if handles[i].Turn != handles[j].Turn {
+			return handles[i].Turn > handles[j].Turn
+		}
+		return handles[i].ID < handles[j].ID
+	})
+	for _, handle := range handles {
+		if handle.Consumed || handleLimit > 0 &&
+			len(result.Handles) == handleLimit {
+			continue
+		}
+		result.Handles = append(result.Handles, handle)
+	}
+	return result
+}
+
 func ApplyDelta(delta Delta) *Set {
 	result := New()
 	result.turn = delta.Turn
@@ -87,12 +147,14 @@ func ApplyDelta(delta Delta) *Set {
 		result.changes[value.Path] = &change{
 			turn: value.Turn, read: value.Read,
 			verified: value.Verified, diagnostics: value.Diagnostics,
+			stale: value.Stale,
 		}
 	}
 	for _, value := range delta.Reads {
 		result.reads[value.Path] = &read{
 			digest: value.Digest, turn: value.Turn,
 			repeatTurn: value.RepeatTurn, repeats: value.Repeats,
+			stale: value.Stale,
 		}
 	}
 	for _, value := range delta.Handles {

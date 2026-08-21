@@ -159,10 +159,22 @@ export function decodeCheckpoint(value: unknown): SessionCheckpoint {
     "version", "id", "session_id", "thread_id", "turn_id", "cursor", "status",
     "summary", "profile_revision", "changed_files", "external_side_effects",
     "can_restore", "can_fork", "created_at",
-  ], ["parent_checkpoint_id", "change_receipt", "side_effect_note"]);
+  ], [
+    "state_epoch", "context_digest", "workspace_digest",
+    "parent_checkpoint_id", "change_receipt", "side_effect_note",
+  ]);
   const status = boundedText(object["status"], "Checkpoint status", 32);
   if (status !== "completed" && status !== "interrupted") {
     throw new Error("Checkpoint status is invalid");
+  }
+  const contextFields = [
+    object["state_epoch"],
+    object["context_digest"],
+    object["workspace_digest"],
+  ];
+  const hasContext = contextFields.some((field) => field !== undefined);
+  if (hasContext && contextFields.some((field) => field === undefined)) {
+    throw new Error("Checkpoint context identity is incomplete");
   }
   return {
     version: version(object["version"]),
@@ -176,6 +188,19 @@ export function decodeCheckpoint(value: unknown): SessionCheckpoint {
     profile_revision: integer(
       object["profile_revision"], "Checkpoint Profile Revision", 1,
     ),
+    ...(hasContext
+      ? {
+          state_epoch: integer(
+            object["state_epoch"], "Checkpoint state epoch", 1,
+          ),
+          context_digest: boundedText(
+            object["context_digest"], "Checkpoint context digest", 256,
+          ),
+          workspace_digest: boundedText(
+            object["workspace_digest"], "Checkpoint workspace digest", 256,
+          ),
+        }
+      : {}),
     ...(object["parent_checkpoint_id"] === undefined
       ? {}
       : {
@@ -234,13 +259,20 @@ export function decodeCheckpointRestore(value: unknown): CheckpointRestore {
   const object = requireObject(value, "Checkpoint restore");
   requireKeys(object, [
     "version", "checkpoint", "thread_id", "restored_cursor",
-    "side_effects_replayed",
-  ]);
+    "side_effects_replayed", "exact_context", "workspace_claims_valid",
+  ], ["invalidated_claims", "stale_claims"]);
   const replayed = boolean(
     object["side_effects_replayed"], "side effects replayed",
   );
   if (replayed) {
     throw new Error("Checkpoint Restore attempted to replay side effects");
+  }
+  const exactContext = boolean(object["exact_context"], "exact context");
+  const workspaceClaimsValid = boolean(
+    object["workspace_claims_valid"], "workspace claims valid",
+  );
+  if (workspaceClaimsValid && !exactContext) {
+    throw new Error("Checkpoint Restore claims require exact context");
   }
   return {
     version: version(object["version"]),
@@ -250,6 +282,9 @@ export function decodeCheckpointRestore(value: unknown): CheckpointRestore {
       object["restored_cursor"], "restored cursor", 0,
     ),
     side_effects_replayed: false,
+    exact_context: exactContext,
+    workspace_claims_valid: workspaceClaimsValid,
+    ...optionalClaimCounts(object),
   };
 }
 
@@ -257,11 +292,19 @@ export function decodeCheckpointFork(value: unknown): CheckpointFork {
   const object = requireObject(value, "Checkpoint Fork");
   requireKeys(object, [
     "version", "checkpoint", "session_id", "thread_id", "parent_thread_id",
-  ]);
+    "exact_context", "workspace_claims_valid",
+  ], ["invalidated_claims", "stale_claims"]);
   const checkpoint = decodeCheckpoint(object["checkpoint"]);
   const sessionId = identifier(object["session_id"], "Fork Session id");
   if (checkpoint.session_id !== sessionId) {
     throw new Error("Checkpoint Fork crosses Session identity");
+  }
+  const exactContext = boolean(object["exact_context"], "exact context");
+  const workspaceClaimsValid = boolean(
+    object["workspace_claims_valid"], "workspace claims valid",
+  );
+  if (workspaceClaimsValid && !exactContext) {
+    throw new Error("Checkpoint Fork claims require exact context");
   }
   return {
     version: version(object["version"]),
@@ -271,6 +314,29 @@ export function decodeCheckpointFork(value: unknown): CheckpointFork {
     parent_thread_id: identifier(
       object["parent_thread_id"], "parent Thread id",
     ),
+    exact_context: exactContext,
+    workspace_claims_valid: workspaceClaimsValid,
+    ...optionalClaimCounts(object),
+  };
+}
+
+function optionalClaimCounts(object: JsonObject): {
+  readonly invalidated_claims?: number;
+  readonly stale_claims?: number;
+} {
+  return {
+    ...(object["invalidated_claims"] === undefined
+      ? {}
+      : {
+          invalidated_claims: integer(
+            object["invalidated_claims"], "invalidated claims", 0,
+          ),
+        }),
+    ...(object["stale_claims"] === undefined
+      ? {}
+      : {
+          stale_claims: integer(object["stale_claims"], "stale claims", 0),
+        }),
   };
 }
 
@@ -387,7 +453,7 @@ function timestamp(value: unknown, name: string): string {
   return text;
 }
 
-function version(value: unknown): 1 {
-  if (value !== 1) throw new Error("Artifact version is unsupported");
-  return 1;
+function version(value: unknown): 2 {
+  if (value !== 2) throw new Error("Artifact version is unsupported");
+  return 2;
 }

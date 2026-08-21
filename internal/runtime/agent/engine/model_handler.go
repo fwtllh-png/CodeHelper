@@ -194,16 +194,19 @@ func (e *Engine) modelStep(
 			phase = CompactionPhasePreSampling
 		}
 		window, err := e.runCompactGate(
+			ctx,
 			history, snapshot, 0, phase, true, send,
 		)
 		if err != nil {
 			return nil, nil, totalUsage, window.estimated, err
 		}
 		snapshot = project()
-		if window.hardLimit > 0 && window.active >= window.hardLimit*55/100 {
+		if window.hardLimit > 0 &&
+			window.active >= e.prepareCompactLimit() {
 			turnContext = append(turnContext, contextWindowFeedback(e.turn))
 			snapshot = project()
 			window, err = e.runCompactGate(
+				ctx,
 				history, snapshot, 0, phase, true, send,
 			)
 			if err != nil {
@@ -211,7 +214,8 @@ func (e *Engine) modelStep(
 			}
 		}
 		finishOnly = finishOnly || convergenceOnly || budgetFinishOnly ||
-			window.hardLimit > 0 && window.active >= window.hardLimit*85/100
+			window.hardLimit > 0 &&
+				window.active >= e.emergencyCompactLimit()
 		if finishOnly {
 			requestTools = slices.DeleteFunc(
 				append([]provider.ToolDefinition(nil), requestTools...),

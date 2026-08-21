@@ -213,7 +213,7 @@ func buildInteractionOrchestration(
 	session := state.session
 	applyPlan := func(plan interacttool.Plan) error {
 		if session.applyPlan != nil {
-			session.applyPlan(plan)
+			return session.applyPlan(plan)
 		}
 		return nil
 	}

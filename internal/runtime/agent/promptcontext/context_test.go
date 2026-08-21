@@ -3,6 +3,7 @@ package promptcontext
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -75,7 +76,7 @@ func TestAssembleBudgetsAreDeterministicUTF8SafeAndReceipted(t *testing.T) {
 			receipt.OriginalTokens < receipt.RetainedTokens {
 			t.Fatalf("receipt %d = %+v", index, receipt)
 		}
-		if receipt != second.Receipts[index] {
+		if !reflect.DeepEqual(receipt, second.Receipts[index]) {
 			t.Fatalf("receipt is not deterministic: %+v != %+v", receipt, second.Receipts[index])
 		}
 	}

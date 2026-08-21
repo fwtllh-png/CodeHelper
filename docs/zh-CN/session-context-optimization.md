@@ -2,7 +2,22 @@
 
 简体中文
 
-> 状态：提案。本文描述目标架构、数据契约和分阶段实施顺序，不代表这些能力已经交付。
+> 状态：已实施。Semantic Narrative 默认关闭；`post_turn` 和 `inline` 需显式配置。
+> 本次格式切换将 SQLite Schema 提升为 v3、Truth Capsule 提升为 v2、Checkpoint
+> Protocol 提升为 v2；项目尚未稳定发布，因此不保留旧格式双写或自动迁移。
+
+实现入口：
+
+- `internal/runtime/agent/compact`：Retention、Admission、Narrative Artifact 和
+  Compaction Plan；
+- `internal/runtime/agent/sessiondelta`：Context Snapshot、Workspace Binding、
+  Base/Tail Manifest 和 Rebase Envelope；
+- `internal/runtime/agent/engine`：三层 Context、Summary Route、Inline/Post-turn
+  Rebase 与 Turn Kernel Effect；
+- `internal/runtime/app/persistence`、`internal/persist/snapshot`：原子 Rebase 和
+  Manifest-backed Checkpoint；
+- `internal/adapter/memory`、`internal/adapter/tool/memory`：Scoped Memory Record、
+  Lexical Retrieval 和受 Guard 的 CRUD。
 
 ## 1. 决策摘要
 
@@ -349,8 +364,9 @@ Narrative 不得声明测试、修改、权限、审批或发布结果。相关�
 Narrative 不参与“让当前 Provider Request 能够放入窗口”的必要路径。确定性 Compaction
 必须先独立成功。支持两种生成模式：
 
-- `post_turn`：可靠性优先。Terminal Commit 后创建 Durable Maintenance Job，生成结果从
-  下一 Turn 开始生效；
+- `post_turn`：可靠性优先。Terminal Commit 将待处理的 Compaction State 和 Input
+  Artifact 一并持久化，Runtime 随后执行维护；进程中断时由下一次 Thread 激活重试，
+  生成结果从下一 Turn 开始生效；
 - `inline`：连续性优先。达到阻塞阈值时暂停当前 Agent Loop，通过 Durable Provider
   Effect 生成 Narrative，原子 Rebase 后继续当前 Turn。
 
@@ -603,7 +619,8 @@ LLM 不直接接收全部 Removed History。Builder 在独立预算内选择语�
 -> 方案选择或拒绝理由
 -> Open Question 和未完成方向
 -> Error/Failure 的有界说明
--> Tool Result 的 Head/Tail Excerpt
+- 通过独立 Privacy Admission 的 Tool Result Head/Tail Excerpt；首版默认排除全部
+  Tool Result
 -> 普通 Assistant 叙述
 ```
 
@@ -733,13 +750,15 @@ Compaction Receipt
 ```
 
 唯一提交 Owner 是 `internal/runtime/app/persistence`。它提供单一的
-`CommitContextRebase(ContextRebaseEnvelope)` 接口，并在一个 SQLite 事务中提交：
+`CommitContextRebase(ContextRebaseEnvelope)` 接口。Inline 路径在一个 SQLite 事务中
+提交：
 
-1. Context Rebase Domain Fact；
-2. 新 Context Manifest/CAS Ref；
-3. Window Revision；
-4. `turn.compaction` Outbox Entry；
-5. Effect Completion Marker。
+1. 新 Context Manifest 的可达记录；
+2. Window Revision；
+3. `EffectCommitContextRebase` 的完成 Domain Fact。
+
+`turn.compaction` 是提交成功后的 Projection；它不能反向改变 Rebase 结果。Terminal
+自身的 Receipt/Terminal Event 继续使用现有 Terminal Outbox 原子提交与恢复。
 
 CAS Blob 在事务前按 Digest 幂等 Stage；SQLite 事务只提交 Manifest 可达性和 Ref
 Ownership。事务失败留下的不可达 Blob 由启动恢复或 Retention GC 清理，不能假设文件
@@ -756,13 +775,14 @@ Crash，恢复过程会从新 Window 继续，而不是再次把旧历史发送�
 Ephemeral Runtime 使用相同 State Machine 和 Digest 校验，只把 Store 替换为 Memory
 实现，避免形成第二套语义。
 
-### 8.13 Post-turn Job、重启与多代压缩
+### 8.13 Post-turn 维护、重启与多代压缩
 
-`post_turn` 模式在 Terminal Commit 后，由 Runtime Outbox 提交 Typed Context
-Maintenance Operation。该 Operation 必须进入现有 Runtime/WorkGraph 所有权边界，Host
-不能直接启动后台 Provider 调用。
+`post_turn` 模式在 Terminal Commit 中持久化 `prepared` Compaction State 和完整
+Narrative Input Artifact。Runtime 在 Terminal 投影完成后执行维护；若进程在其间退出，
+Thread 恢复会重新装载该状态，并在接受下一 Turn 前完成或降级。维护调用始终由 Runtime
+触发，Host 不能直接启动 Provider 调用。
 
-Job Identity：
+Maintenance Identity：
 
 ```text
 thread_id
@@ -775,11 +795,11 @@ route_digest
 
 重启后：
 
-- `requested` Job 可重新 Claim；
-- `running` Job Lease 过期后可重试；
+- `prepared` 或 `generating_narrative` 状态可按稳定 Identity 重试；
+- 已进入 `rebasing` 且进程内仍持有 Artifact 时只重试提交，不重复采样；
 - 已有相同 Artifact Digest 时幂等完成；
-- Window 或 Authority 已变化时标记 `stale`，不再调用 Provider；
-- Artifact Commit 成功但 Event 未发布时由 Outbox 补发。
+- Window 或 Authority 已变化时拒绝旧结果并记录失败原因；
+- Context Rebase 先于完成事件投影；投影失败不回滚已提交 Context。
 
 多代压缩时，旧 Narrative Item 只能：
 
@@ -890,7 +910,7 @@ Restore 必须原子执行：
 4. 恢复 History、Context-only Working Set、Failures 和 Plan；
 5. 比较 Checkpoint Workspace Binding 与当前 Workspace；
 6. 对匹配的 Workspace-dependent Evidence 保持 Authority，对不匹配项清除
-   `verified` 并标记 `stale`；
+   `verified` 并标记 `stale`，同时重写 History 中对应的结构化 Truth Capsule；
 7. 校验 World Baseline，不匹配时清空并在下一 Sample Full Project；
 8. 创建新的 Token Window，不能复用旧 Provider Observation；
 9. 通过 Persistence Owner 原子提交 Restore Fact、Context Manifest、Reconciliation
@@ -899,7 +919,9 @@ Restore 必须原子执行：
 11. 永不执行历史 Tool，也不修改 Workspace。
 
 Restore 返回 `exact_context=true` 只表示 Context-only State 与 Checkpoint 相同；只有全部
-Bound Path 仍匹配时才能返回 `workspace_claims_valid=true`。Host 必须分别展示这两个事实。
+Bound Path 仍匹配时才能返回 `workspace_claims_valid=true`。Host 必须分别展示这两个
+事实。返回成功前，新的 Context Manifest 必须成为 `context_current`；Restore/Fork
+Event 必须引用其 Commit ID、Digest、Revision 和 Epoch，不能依赖后续 Turn 补写。
 
 ### 9.3 Fork 语义
 
@@ -919,6 +941,10 @@ Parent Engine。支持两种显式模式：
 - 显式 Parent Session/Thread/Checkpoint Lineage；
 - 当前合法 Profile 的快照；
 - 零共享可变账本。
+
+Shared Workspace Fork 在一个 SQLite 事务中创建子 Thread 行和初始 Context Manifest
+指针。即使子 Thread 尚无 Terminal Delta，重启恢复也必须从该当前 Manifest 构造
+Session Delta，而不是退化为 History-only。
 
 ## 10. 低写放大的持久化
 
@@ -1204,7 +1230,7 @@ Host 只能展示这些 Runtime-owned Receipt。
 
 - 定义 `CompactedContext`、`CompactionPlan`、Narrative Item 和 Artifact Codec；
 - 正式接线 `PurposeSummary`，通过 Provider Router 执行无 Tool、低预算模型调用；
-- 实现 Durable Narrative Input Artifact、`post_turn` Job、Source ID Validator、
+- 实现 Durable Narrative Input Artifact、`post_turn` Maintenance State、Source ID Validator、
   Staleness Fence 和确定性降级；
 - 首版不启用 Inline；
 - 扩展 `turn.compaction` Lifecycle，并让 TUI、CLI、ACP 和 VS Code 只投影 Runtime
@@ -1212,7 +1238,7 @@ Host 只能展示这些 Runtime-owned Receipt。
 - Feature Flag 默认 `off`。
 
 退出条件：关闭时 Digest 与 Phase 3 完全一致；开启后 Narrative 失败不改变 Turn 终态；
-任何 Narrative Claim 都不能改变 Authority Digest；Job 重启不丢失或重新猜测 Input。
+任何 Narrative Claim 都不能改变 Authority Digest；重启不丢失或重新猜测 Input。
 
 ### Phase 5：Inline Rebase
 
