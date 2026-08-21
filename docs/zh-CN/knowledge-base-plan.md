@@ -1,7 +1,5 @@
 # Agent 工程知识文档体系建设方案
 
-简体中文 | [English](../en/knowledge-base-plan.md)
-
 ## 1. 文档状态
 
 本文定义 CodeHelper 知识书籍的目标、信息架构、写作契约、建设顺序和验收标准。它是
@@ -40,7 +38,7 @@ CodeHelper 的文档不应只回答“命令怎么运行”，还应系统回答
 
 ### 4.1 产品手册
 
-位置：`docs/en`、`docs/zh-CN`
+位置：`docs/zh-CN`
 
 负责回答当前版本“是什么、怎么用、怎么配置、怎么排障”，包括：
 
@@ -57,7 +55,6 @@ CodeHelper 的文档不应只回答“命令怎么运行”，还应系统回答
 
 ```text
 docs/book/
-├── en/
 └── zh-CN/
 ```
 
@@ -272,7 +269,7 @@ last_verified: null
 - **事实与规划分离**：未交付内容标记为 Planned，不能写成现状。
 - **避免源码复刻**：只摘录理解设计所需的最小代码，避免文档随重构整体失效。
 - **安全默认**：示例不包含真实 Secret，不引导绕过 Guard 或 Sandbox。
-- **双语同等完整**：中英文具有相同章节结构、代码事实和验收标准。
+- **中文单一事实源**：只维护中文正文，代码标识和协议术语保留源码形式。
 
 ## 9. 图表体系
 
@@ -289,21 +286,20 @@ last_verified: null
 
 图表必须有正文解释，不能以图片替代语义。复杂图应拆分为“全景图 + 局部图”。
 
-## 10. 双语策略
+## 10. 语言策略
 
-- `docs/book/en` 与 `docs/book/zh-CN` 使用相同相对路径和章节 ID；
-- 一个功能变更不能只更新单一语言的事实描述；
-- 术语表维护唯一英文术语、推荐中文译法和禁用歧义；
+- 产品手册只维护 `docs/zh-CN`，知识书籍只维护 `docs/book/zh-CN`；
+- Catalog 的 `languages` 固定为 `["zh-CN"]`；
+- 术语表维护源码术语、推荐中文译法和禁用歧义；
 - 代码标识、协议名和 CLI 参数保持原文；
-- 翻译应保持技术语义，不要求机械逐句对应；
-- 文档检查应拒绝缺失镜像、章节 ID 不一致和目录漂移。
+- 文档检查应拒绝重新出现的英文文档树、章节 ID 不一致和目录漂移。
 
 ## 11. 自动化与质量门禁
 
 在现有 `make docs-check` 基础上逐步增加 `make book-check`：
 
 1. Markdown Link 和图片目标存在；
-2. 中英文目录与文件镜像；
+2. 中文文档目录存在，英文文档目录不存在；
 3. Front Matter 字段和章节 ID 合法；
 4. `code_paths`、`test_paths`、`source_of_truth` 存在；
 5. 目录中的章节顺序与文件一致；
@@ -321,20 +317,20 @@ last_verified: null
 
 状态：已完成。
 
-- 创建 `docs/book/en` 与 `docs/book/zh-CN`；
+- 创建 `docs/book/zh-CN`；
 - 定义章节模板、Front Matter Schema、术语表和导航；
-- 扩展文档检查，支持递归双语镜像；
+- 扩展文档检查，支持递归中文目录校验；
 - 建立 `planned`、`draft`、`verified` 状态标记。
 
-验收：空缺章节可见但不会被误认为已交付；中英文骨架和自动检查通过。
+验收：空缺章节可见但不会被误认为已交付；中文骨架和自动检查通过。
 
 已交付：
 
 - `docs/book/catalog.json` 作为书籍结构与状态的事实来源；
-- 双语书籍入口、生成导航、章节模板和术语表；
+- 中文书籍入口、生成导航、章节模板和术语表；
 - `docs/book/schema/chapter.schema.json`；
 - `make book-navigation` 与 `make book-check`；
-- `make docs-check` 中的递归双语镜像检查。
+- `make docs-check` 中的中文单一文档树检查。
 
 ### 阶段 1：全景阅读闭环
 
@@ -352,7 +348,7 @@ last_verified: null
 
 验收：新读者可以在不预读源码的情况下建立正确心智模型，并完成第一个实验。
 
-已交付六章双语正文，覆盖受治理 Runtime 的必要性、全局架构、Turn 生命周期、
+已交付六章中文正文，覆盖受治理 Runtime 的必要性、全局架构、Turn 生命周期、
 Model/Context/Tool 协作、安全控制和 Hermetic 首个 Turn 实验。内容完整，验证待完成。
 
 2026-08-06 已完成质量提升：第一部分现在形成从 Chatbot 到反馈闭环 Agent、LLM/Token/
@@ -385,7 +381,7 @@ Catalog Authority、Resource/Effect Envelope、Guard Trust Transition、Write Cr
 Evidence Strength、Verification Status，以及 Failure Feedback 所需的 No-side-effect Proof；
 过时验证命令已纠正。
 
-2026-08-06 已完成第七部分质量提升：安全与治理现为完整 7 章双语部分，覆盖 Runtime
+2026-08-06 已完成第七部分质量提升：安全与治理现为完整 7 章中文部分，覆盖 Runtime
 Threat Model、Mode/Posture/Policy、Approval/Constitution、OS Process Isolation、
 Egress/Credential、Extension Supply-chain Trust，以及可测试的 Fail-closed Platform
 Claim；原先仅有单章的缺口已补齐。
@@ -424,7 +420,7 @@ Reconstruction 和 Capability Rollout 的无网络实践路径。
 ### 阶段 2：Runtime 核心
 
 状态：进行中。Runtime Kernel、Model/Provider、Context Engineering 和 Tool/Execution
-共 24 章双语正文均已交付，但 `docs/book/catalog.json` 中均未标记为 `verified`。
+共 24 章中文正文均已交付，但 `docs/book/catalog.json` 中均未标记为 `verified`。
 
 - Protocol、App、Agent、Wire；
 - Provider 与 Model；
@@ -436,7 +432,7 @@ Reconstruction 和 Capability Rollout 的无网络实践路径。
 
 ### 阶段 3：持久化与编排
 
-状态：进行中。状态与可观测性、Task 与编排共 12 章双语正文均已交付，其中 4 章在
+状态：进行中。状态与可观测性、Task 与编排共 12 章中文正文均已交付，其中 4 章在
 `docs/book/catalog.json` 中标记为 `verified`（state-trace-usage-cost、
 task-lease-retry、task-checkpoint-recovery、task-lane-fleet）。
 
@@ -449,7 +445,7 @@ task-lease-retry、task-checkpoint-recovery、task-lane-fleet）。
 
 ### 阶段 4：Host 与扩展生态
 
-状态：进行中。Host 与协议、扩展生态共 10 章双语正文均已交付，其中 1 章在
+状态：进行中。Host 与协议、扩展生态共 10 章中文正文均已交付，其中 1 章在
 `docs/book/catalog.json` 中标记为 `verified`（host-acp）。
 
 - CLI、TUI、ACP、VS Code；
@@ -460,7 +456,7 @@ task-lease-retry、task-checkpoint-recovery、task-lane-fleet）。
 
 ### 阶段 5：工程实践与 Lab
 
-状态：进行中。7 章双语工程实践正文和全部 10 个双语动手实验均已交付，其中 3 章在
+状态：进行中。7 章中文工程实践正文和全部 10 个中文动手实验均已交付，其中 3 章在
 `docs/book/catalog.json` 中标记为 `verified`（lab-recoverable-workflow、
 lab-worker-retry、lab-trace-failure）。
 
@@ -478,7 +474,7 @@ lab-worker-retry、lab-trace-failure）。
 - `docs/book/governance.json` 将 13 个源码责任域和全部已交付章节映射到维护者、
   新鲜度策略、发布事实、截图和外链例外；
 - PR Impact Gate 将 Source/Test/Fact 路径变更映射到受影响 Chapter ID，要求同一
-  PR 同步修改中英文，或提供经过 Review 的 No-impact 理由；
+  PR 更新对应中文章节，或提供经过 Review 的 No-impact 理由；
 - `make release-fact-check` 在 Release 前验证文档、书籍元数据、Runtime Help、
   Protocol Schema 和 Compatibility 事实；
 - 每周治理检查执行 Source/Verification Drift、180 天 Freshness SLA、截图摘要和
@@ -493,7 +489,7 @@ lab-worker-retry、lab-trace-failure）。
 
 一章只有同时满足以下条件才标记为 `verified`：
 
-- 中英文版本均存在；
+- 中文版本存在；
 - 学习目标和前置知识明确；
 - 核心结论关联当前代码或协议；
 - 关键流程有文本说明，必要时有图；
@@ -530,7 +526,7 @@ lab-worker-retry、lab-trace-failure）。
 | --- | --- |
 | 文档规模增长后与代码漂移 | 元数据、路径检查、模块变更 Checklist |
 | 书籍与产品手册重复 | 明确“原理教学”和“任务参考”边界 |
-| 中英文长期不一致 | 镜像检查、相同章节 ID、同变更更新 |
+| 英文文档树意外恢复 | 中文单一目录检查、Catalog Language 约束 |
 | 章节只讲概念不落地 | 强制代码地图、测试和 Lab |
 | 章节只讲实现缺少背景 | 强制问题背景、取舍和延伸阅读 |
 | 图表复杂且难维护 | Mermaid 源码、分层视图、正文解释 |

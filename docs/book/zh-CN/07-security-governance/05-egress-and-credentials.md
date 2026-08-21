@@ -25,8 +25,6 @@ last_verified: null
 
 # Egress、Credential 与数据泄漏
 
-简体中文 | [English](../../en/07-security-governance/05-egress-and-credentials.md)
-
 ## 学习目标
 
 追踪 Secret Reference 到 Governed HTTP Header，理解 Host-scoped Egress Approval，并

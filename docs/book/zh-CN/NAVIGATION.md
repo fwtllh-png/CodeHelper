@@ -1,14 +1,12 @@
 # CodeHelper Agent 工程知识书籍：导航
 
-简体中文 | [English](../en/NAVIGATION.md)
-
 本导航由 `docs/book/catalog.json` 生成。规划章节可以清晰可见，但不会通过空占位文件伪装成已完成内容。
 
 ## 状态
 
 - `planned`：只有 Catalog 条目，正文尚未开始。
-- `draft`：中英文正文已存在，但尚未完成全部验证。
-- `verified`：双语内容、源码引用和验证命令均通过章节门禁。
+- `draft`：中文正文已存在，但尚未完成全部验证。
+- `verified`：中文内容、源码引用和验证命令均通过章节门禁。
 
 ## 核心阅读路径
 

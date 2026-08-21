@@ -26,8 +26,6 @@ last_verified: null
 
 # Agent、Workflow 与 Automation 的边界
 
-简体中文 | [English](../../en/01-agent-engineering/04-agent-workflow-boundaries.md)
-
 ## 学习目标
 
 能够在 Adaptive Agent、Deterministic Workflow、Scheduled Automation 与普通代码之间

@@ -25,8 +25,6 @@ last_verified: null
 
 # Streaming、Cancellation 与 Error Taxonomy
 
-简体中文 | [English](../../en/03-runtime-kernel/05-streaming-cancellation-errors.md)
-
 ## 学习目标
 
 理解 Partial Output 如何保持可观察、Cancellation 如何传播，以及 Machine Error

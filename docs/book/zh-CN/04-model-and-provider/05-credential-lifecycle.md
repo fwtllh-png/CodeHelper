@@ -25,8 +25,6 @@ last_verified: null
 
 # Credential Reference 与 Secret Lifecycle
 
-简体中文 | [English](../../en/04-model-and-provider/05-credential-lifecycle.md)
-
 ## 学习目标
 
 理解 Config 为什么只保存 Reference、Secret Value 在哪里解析，以及如何避免 Credential

@@ -24,8 +24,6 @@ last_verified: null
 
 # 新增 Host 而不复制 Runtime
 
-简体中文 | [English](../../en/11-extension-ecosystem/05-adding-host.md)
-
 ## 学习目标
 
 将新 UI/Transport 构建为 Operation Submitter 与 Event/Read-model Projector，同时保持

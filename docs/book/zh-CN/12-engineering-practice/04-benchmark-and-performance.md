@@ -24,8 +24,6 @@ last_verified: null
 
 # Benchmark、性能预算与回归
 
-简体中文 | [English](../../en/12-engineering-practice/04-benchmark-and-performance.md)
-
 ## 学习目标
 
 用 Deterministic Scenario 和 Explicit Budget 发现回归，不把噪声 Timing 当作正确性。

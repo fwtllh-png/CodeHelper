@@ -15,10 +15,8 @@ last_verified: null
 
 # 章节标题
 
-简体中文 | 英文镜像：`docs/book/en/<part>/<chapter>.md`
-
 > 起草说明：把此模板复制到 `docs/book/catalog.json` 声明的路径，替换所有占位内容，
-> 并在同一变更中创建中英文版本。
+> 并在同一变更中更新 Catalog 和导航。
 
 ## 学习目标
 

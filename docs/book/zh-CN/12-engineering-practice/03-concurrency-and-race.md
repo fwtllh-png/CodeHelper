@@ -21,8 +21,6 @@ last_verified: null
 
 # 并发测试、Race 与确定性同步
 
-简体中文 | [English](../../en/12-engineering-practice/03-concurrency-and-race.md)
-
 ## 学习目标
 
 确定性构造 Interleaving，并正确理解 Race Detector 的证据边界。

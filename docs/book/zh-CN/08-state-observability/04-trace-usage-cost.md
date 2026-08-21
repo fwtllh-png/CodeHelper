@@ -37,8 +37,6 @@ last_verified: 2026-08-17
 
 # Trace、Span、Usage 与 Cost
 
-简体中文 | [English](../../en/08-state-observability/04-trace-usage-cost.md)
-
 ## 学习目标
 
 理解版本化 Observation、冻结终态 Measurement、Phase Span、Multi-sample Usage、

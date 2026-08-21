@@ -32,8 +32,6 @@ last_verified: 2026-08-17
 
 # Durable State 的必要性
 
-简体中文 | [English](../../en/08-state-observability/01-why-durable-state.md)
-
 ## 学习目标
 
 解释哪些 Runtime Fact 必须跨 Process Loss 保留、Replay 与 Retry 的区别，以及 Durable

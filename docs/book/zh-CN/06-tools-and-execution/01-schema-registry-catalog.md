@@ -30,8 +30,6 @@ last_verified: null
 
 # Tool Schema、Registry 与 Dynamic Catalog
 
-简体中文 | [English](../../en/06-tools-and-execution/01-schema-registry-catalog.md)
-
 ## 学习目标
 
 理解 Tool Descriptor、Registry Authority、Immutable Sampling Snapshot、Deferred

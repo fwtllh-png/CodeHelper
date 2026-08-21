@@ -28,8 +28,6 @@ last_verified: 2026-08-17
 
 # Lease、Heartbeat、Retry 与幂等性
 
-简体中文 | [English](../../en/09-task-orchestration/02-lease-heartbeat-retry.md)
-
 ## 学习目标
 
 理解 Ownership Fencing、Lease Loss、Attempt Accounting、Bounded Backoff 与 Retry

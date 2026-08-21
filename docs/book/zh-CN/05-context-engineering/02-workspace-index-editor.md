@@ -25,8 +25,6 @@ last_verified: null
 
 # Workspace、Repository Index 与 Editor Context
 
-简体中文 | [English](../../en/05-context-engineering/02-workspace-index-editor.md)
-
 ## 学习目标
 
 理解 Workspace Identity、Repository 全局索引、Editor 显式焦点，以及防止 Context

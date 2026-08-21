@@ -23,8 +23,6 @@ last_verified: null
 
 # 从 Chatbot 到 Agent
 
-简体中文 | [English](../../en/01-agent-engineering/01-from-chatbot-to-agent.md)
-
 ## 学习目标
 
 读完本章后，你可以：

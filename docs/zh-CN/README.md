@@ -1,9 +1,8 @@
 # CodeHelper 文档
 
-简体中文 | [English](../en/README.md)
-
 这里是面向当前代码树持续维护的文档集合。历史实现 RFC 不再作为产品文档保留；仍然
 有效的架构决策会以“当前约束”的形式写入对应指南，而不是要求读者重放开发过程。
+产品手册只维护中文版本，`docs/en` 和 `docs/book/en` 不属于允许的仓库结构。
 
 CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背景概念、系统设计、
 源码导读、测试、故障和动手实验组织为一条渐进式学习路径。信息架构与建设阶段见
@@ -50,7 +49,7 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 6. [源码阅读路线指南](./reading-guide.md)
 7. [Agent 指南](./agent-guide.md)
 8. [TUI 与 VS Code 体验契约](./experience.md)
-9. [CONTRIBUTING.zh-CN.md](../../CONTRIBUTING.zh-CN.md)
+9. [CONTRIBUTING.md](../../CONTRIBUTING.md)
 10. [文档治理](./documentation-governance.md)
 11. [后续规划](./roadmap.md)
 

@@ -1,43 +1,40 @@
-# Repository Scripts
+# 仓库脚本
 
-[简体中文](./README.zh-CN.md) | English
+本目录保存稳定的验证、冒烟、本地配置和发布打包入口。除非脚本明确说明，否则从仓库
+Root 运行。
 
-Scripts in this directory are stable command-line entry points for validation,
-smoke tests, local setup, and release packaging. Run them from the repository
-root unless a script explicitly states otherwise.
-
-| Script | Network | Output / side effect |
+| 脚本 | 网络 | 输出或副作用 |
 | --- | --- | --- |
-| `check-docs.sh` | no | validates Markdown links and bilingual mirrors |
-| `check-book.sh` | no | validates book catalog, metadata, mirrors, paths, and navigation |
-| `check-doc-governance.py` | external-link mode only | validates ownership, PR impact, freshness, release facts, images, and external links |
-| `render-book-navigation.py` | no | regenerates bilingual navigation from the book catalog |
-| `check-brand.sh` | no | scans tracked source for stale branding |
-| `test-brand-check.sh` | no | self-tests brand scanner behavior |
-| `test-secret-leak.sh` | no | validates binary redaction behavior |
-| `run-test-lane.py` | command-dependent | writes passed, failed, or unavailable JSON lane evidence |
-| `check-hotspot-baseline.go` | no | validates current hotspot responsibility owners and size budgets |
-| `commanddocs` | no | generates or checks bilingual command lists from the Cobra tree |
-| `experiencecontract` | no | validates the shared experience baseline |
-| `live-model-smoke.sh` | yes | single- or Multi-Agent real provider smoke; no persistent secret |
-| `package-release.sh` | no | `dist/release`: binaries, checksums, SBOM, manifest |
-| `deepseek-local.sh` | setup/package may use network | local DeepSeek build, Keychain config, TUI, and VS Code |
-| `setup-vscode-local.sh` | package build may install dependencies | installs a target VSIX into official macOS VS Code |
+| `check-docs.sh` | 无 | 检查 Markdown Link 与中文单一文档树 |
+| `check-book.sh` | 无 | 检查书籍 Catalog、元数据、路径和导航 |
+| `check-doc-governance.py` | 仅外链模式联网 | 检查 Ownership、PR Impact、Freshness、Release Fact、图片和外链 |
+| `render-book-navigation.py` | 无 | 根据书籍 Catalog 重新生成中文导航 |
+| `check-brand.sh` | 无 | 扫描已跟踪源码中的历史品牌 |
+| `test-brand-check.sh` | 无 | Brand Scanner 自测 |
+| `test-secret-leak.sh` | 无 | 验证 Binary Redaction |
+| `run-test-lane.py` | 取决于被测命令 | 写入 Passed、Failed 或 Unavailable JSON Lane 证据 |
+| `check-hotspot-baseline.go` | 无 | 校验当前热点职责归属与体积预算 |
+| `commanddocs` | 无 | 从 Cobra Command Tree 生成或校验中文命令清单 |
+| `experiencecontract` | 无 | 校验共享 Experience Baseline |
+| `live-model-smoke.sh` | 有 | 单 Agent 或 Multi Agent 真实 Provider Smoke，不持久化 Secret |
+| `package-release.sh` | 无 | `dist/release` Binary、Checksum、SBOM、Manifest |
+| `deepseek-local.sh` | 配置或打包可能联网 | 本机 DeepSeek 编译、Keychain 配置、TUI 与 VS Code |
+| `setup-vscode-local.sh` | Package Build 可能安装依赖 | 把 Target VSIX 安装到 macOS 官方 VS Code |
 
-## Conventions
+## 约定
 
-Scripts must:
+脚本必须：
 
-- resolve the repository root instead of assuming the caller's directory;
-- use strict error handling and preserve failure exit codes;
-- expose machine-specific paths through environment variables;
-- avoid printing secrets or reading them from tracked repository documents;
-- treat the explicitly ignored local DeepSeek runbook as secret input only;
-- write generated artifacts only to documented build directories;
-- clean temporary files with traps;
-- provide `--help` when they accept options.
+- 解析 Repository Root，不假设调用目录；
+- 使用严格错误处理并保留失败退出码；
+- 通过环境变量暴露机器相关路径；
+- 不打印 Secret，也不从受 Git 跟踪的仓库文档读取 Secret；
+- Git 忽略的本机 DeepSeek Runbook 只能作为 Secret Input；
+- 只向约定的 Build Directory 写生成产物；
+- 使用 Trap 清理临时文件；
+- 接受参数时提供 `--help`。
 
-## Common Commands
+## 常用命令
 
 ```bash
 make docs-check
@@ -65,5 +62,5 @@ make deepseek-vscode
 make vscode-local-setup
 ```
 
-Full development and release context is documented in
-[docs/en/development.md](../docs/en/development.md).
+完整开发与发布背景见
+[docs/zh-CN/development.md](../docs/zh-CN/development.md)。

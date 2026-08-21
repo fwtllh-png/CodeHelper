@@ -25,8 +25,6 @@ last_verified: null
 
 # Tool Guard 执行管线
 
-简体中文 | [English](../../en/06-tools-and-execution/03-tool-guard-pipeline.md)
-
 ## 学习目标
 
 追踪 Tool Call 从 Catalog Resolution 到 Validation、Policy、Approval、Resource Claim、

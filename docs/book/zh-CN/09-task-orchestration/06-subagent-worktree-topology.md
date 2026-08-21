@@ -31,8 +31,6 @@ last_verified: null
 
 # Subagent、Worktree 与拓扑关系
 
-简体中文 | [English](../../en/09-task-orchestration/06-subagent-worktree-topology.md)
-
 ## 学习目标
 
 理解 Child Agent Role、Topology、Mailbox/Control、Budget、Isolated Worktree、Write

@@ -24,8 +24,6 @@ last_verified: null
 
 # ReAct、Planning、Tool Calling 与 Reflection
 
-简体中文 | [English](../../en/01-agent-engineering/03-react-planning-and-tools.md)
-
 ## 学习目标
 
 理解 Agent 的主要控制模式、典型失败，并理解 CodeHelper 如何把 Model Proposal 转化为

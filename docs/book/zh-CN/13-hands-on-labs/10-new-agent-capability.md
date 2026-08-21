@@ -23,8 +23,6 @@ last_verified: null
 
 # 设计并验证新的 Agent 能力
 
-简体中文 | [English](../../en/13-hands-on-labs/10-new-agent-capability.md)
-
 ## 目标与前置条件
 
 产出 Implementation-ready Capability Design 和最小 Fixture Proof，保持 Runtime Ownership/
@@ -38,7 +36,7 @@ Governance。
    Retry、Failure Isolation。
 4. 定义 Compatibility、Rollout、Observability、Rollback。
 5. 实现最小 Vertical Fixture Path。
-6. 添加 Unit/Contract/Integration Test 和双语文档。
+6. 添加 Unit/Contract/Integration Test 和中文文档。
 7. 先 Focused Check，再按 Blast Radius 扩大。
 
 ## Design Artifact
@@ -70,7 +68,7 @@ Governance。
 ## Go/No-go Review
 
 Go 需要 Named Owner、Bounded IO、Stable Identity/Error、Deterministic Fixture、
-Rollback/Recovery、双语文档和全部 Required Gate。Authority 模糊、只能 Live Test、
+Rollback/Recovery、中文文档和全部 Required Gate。Authority 模糊、只能 Live Test、
 Platform Security Unknown、Rollback 依赖删除 User State 时 No-Go。
 
 ## 预期结果

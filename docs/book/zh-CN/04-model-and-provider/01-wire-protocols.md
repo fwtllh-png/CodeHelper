@@ -22,8 +22,6 @@ last_verified: null
 
 # Chat Completion 与 Responses 协议
 
-简体中文 | [English](../../en/04-model-and-provider/01-wire-protocols.md)
-
 ## 学习目标
 
 区分 CodeHelper Normalized Provider Contract 与 Vendor Wire Protocol，追踪 Chat、

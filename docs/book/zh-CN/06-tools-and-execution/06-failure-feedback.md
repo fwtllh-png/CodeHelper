@@ -25,8 +25,6 @@ last_verified: null
 
 # Tool Failure 如何反馈给模型
 
-简体中文 | [English](../../en/06-tools-and-execution/06-failure-feedback.md)
-
 ## 学习目标
 
 区分 Recoverable Call Feedback、Soft Tool Result、Cancellation 与 Terminal

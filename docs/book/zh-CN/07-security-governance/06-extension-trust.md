@@ -32,8 +32,6 @@ last_verified: null
 
 # MCP、Skill、Plugin 与 Hook Trust
 
-简体中文 | [English](../../en/07-security-governance/06-extension-trust.md)
-
 ## 学习目标
 
 区分 Extension Content、Code、Transport、Lifecycle Trust，理解 Capability Receipt、

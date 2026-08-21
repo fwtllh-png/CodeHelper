@@ -26,8 +26,6 @@ last_verified: null
 
 # 构建并追踪第一个 Agent Turn
 
-简体中文 | [English](../../en/13-hands-on-labs/01-first-agent-turn.md)
-
 ## 学习目标
 
 编译 CodeHelper，通过真实 Runtime 运行无网络 Turn，阅读 Event Stream，将 Event

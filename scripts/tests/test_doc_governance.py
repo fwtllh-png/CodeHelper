@@ -45,13 +45,17 @@ class DocumentationGovernanceTest(unittest.TestCase):
         self.assertIn("overview-runtime-vocabulary", impacted)
         self.assertNotIn("host-vscode", impacted)
 
-    def test_chapter_update_requires_both_languages(self) -> None:
-        english = "docs/book/en/03-runtime-kernel/01-protocol.md"
+    def test_chapter_update_requires_chinese_document(self) -> None:
         chinese = "docs/book/zh-CN/03-runtime-kernel/01-protocol.md"
-        self.assertEqual(governance.documentation_ids([english]), set())
         self.assertEqual(
-            governance.documentation_ids([english, chinese]),
+            governance.documentation_ids([chinese]),
             {"runtime-protocol"},
+        )
+        self.assertEqual(
+            governance.documentation_ids(
+                ["docs/book/en/03-runtime-kernel/01-protocol.md"]
+            ),
+            set(),
         )
 
     def test_set_front_matter_fields_rewrites_scalars(self) -> None:
@@ -116,7 +120,7 @@ class DocumentationGovernanceTest(unittest.TestCase):
             mock.patch.object(
                 governance,
                 "source_changes_after",
-                side_effect=lambda chapter, verified: drift[
+                side_effect=lambda chapter, _: drift[
                     chapter["metadata"]["id"]
                 ],
             )
@@ -127,16 +131,15 @@ class DocumentationGovernanceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             book = pathlib.Path(tmp) / "book"
             catalog = book / "catalog.json"
-            for language in ("en", "zh-CN"):
-                part = book / language / "01-runtime-kernel"
-                part.mkdir(parents=True)
-                for name in ("01-c1.md", "02-c2.md"):
-                    part.joinpath(name).write_text(
-                        "---\nid: "
-                        + name[3:5]
-                        + "\nstatus: verified\nlast_verified: 2020-01-01\n---\n",
-                        encoding="utf-8",
-                    )
+            part = book / "zh-CN" / "01-runtime-kernel"
+            part.mkdir(parents=True)
+            for name in ("01-c1.md", "02-c2.md"):
+                part.joinpath(name).write_text(
+                    "---\nid: "
+                    + name[3:5]
+                    + "\nstatus: verified\nlast_verified: 2020-01-01\n---\n",
+                    encoding="utf-8",
+                )
             catalog.write_text(
                 '{"chapters": [{"id": "c1", "slug": "01-c1", "status": "verified"}, '
                 '{"id": "c2", "slug": "02-c2", "status": "verified"}]}\n',
@@ -150,7 +153,7 @@ class DocumentationGovernanceTest(unittest.TestCase):
                     out.getvalue(),
                 )
             self.assertEqual(
-                (book / "en" / "01-runtime-kernel" / "01-c1.md").read_text(
+                (book / "zh-CN" / "01-runtime-kernel" / "01-c1.md").read_text(
                     encoding="utf-8"
                 ),
                 "---\nid: c1\nstatus: verified\nlast_verified: 2020-01-01\n---\n",
@@ -160,16 +163,15 @@ class DocumentationGovernanceTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             book = pathlib.Path(tmp) / "book"
             catalog = book / "catalog.json"
-            for language in ("en", "zh-CN"):
-                part = book / language / "01-runtime-kernel"
-                part.mkdir(parents=True)
-                for name in ("01-c1.md", "02-c2.md"):
-                    part.joinpath(name).write_text(
-                        "---\nid: "
-                        + name[3:5]
-                        + "\nstatus: verified\nlast_verified: 2020-01-01\n---\n",
-                        encoding="utf-8",
-                    )
+            part = book / "zh-CN" / "01-runtime-kernel"
+            part.mkdir(parents=True)
+            for name in ("01-c1.md", "02-c2.md"):
+                part.joinpath(name).write_text(
+                    "---\nid: "
+                    + name[3:5]
+                    + "\nstatus: verified\nlast_verified: 2020-01-01\n---\n",
+                    encoding="utf-8",
+                )
             catalog.write_text(
                 '{"chapters": [{"id": "c1", "slug": "01-c1", "status": "verified"}, '
                 '{"id": "c2", "slug": "02-c2", "status": "verified"}]}\n',
@@ -178,21 +180,17 @@ class DocumentationGovernanceTest(unittest.TestCase):
             with self._run_reverify_patches(book, catalog):
                 with mock.patch("sys.stdout", new_callable=io.StringIO):
                     self.assertEqual(governance.run_reverify(dry_run=False), 0)
-            en_c1 = book / "en" / "01-runtime-kernel" / "01-c1.md"
             zh_c1 = book / "zh-CN" / "01-runtime-kernel" / "01-c1.md"
-            en_c2 = book / "en" / "01-runtime-kernel" / "02-c2.md"
-            self.assertEqual(
-                governance.parse_front_matter(en_c1)["status"], "draft"
-            )
-            self.assertIsNone(governance.parse_front_matter(en_c1)["last_verified"])
+            zh_c2 = book / "zh-CN" / "01-runtime-kernel" / "02-c2.md"
             self.assertEqual(
                 governance.parse_front_matter(zh_c1)["status"], "draft"
             )
+            self.assertIsNone(governance.parse_front_matter(zh_c1)["last_verified"])
             self.assertEqual(
-                governance.parse_front_matter(en_c2)["status"], "verified"
+                governance.parse_front_matter(zh_c2)["status"], "verified"
             )
             self.assertEqual(
-                governance.parse_front_matter(en_c2)["last_verified"],
+                governance.parse_front_matter(zh_c2)["last_verified"],
                 dt.date.today().isoformat(),
             )
             chapters = governance.load_json(catalog)["chapters"]

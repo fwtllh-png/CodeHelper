@@ -15,7 +15,7 @@ test_paths:
   - internal/host/cli/run_test.go
   - internal/runtime/app/application_e2e_test.go
 source_of_truth:
-  - README.zh-CN.md
+  - README.md
   - docs/zh-CN/overview.md
   - docs/zh-CN/roadmap.md
 status: draft
@@ -23,8 +23,6 @@ last_verified: null
 ---
 
 # 项目定位、价值与非目标
-
-简体中文 | [English](../../en/02-codehelper-overview/01-positioning-and-non-goals.md)
 
 ## 学习目标
 

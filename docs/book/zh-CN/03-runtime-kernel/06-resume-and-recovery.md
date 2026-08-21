@@ -43,8 +43,6 @@ last_verified: 2026-08-17
 
 # Resume、Recovery 与幂等边界
 
-简体中文 | [English](../../en/03-runtime-kernel/06-resume-and-recovery.md)
-
 ## 学习目标
 
 区分 Resume 与 Recovery，理解 Durable Lifecycle Reconstruction，并识别防止重复

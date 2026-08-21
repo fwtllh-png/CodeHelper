@@ -25,8 +25,6 @@ last_verified: null
 
 # Agent Runtime Threat Model
 
-简体中文 | [English](../../en/07-security-governance/01-threat-model.md)
-
 ## 学习目标
 
 识别本地 Coding Agent Runtime 的 Asset、Authority Root、Untrusted Input、Trust

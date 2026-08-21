@@ -34,8 +34,6 @@ last_verified: null
 
 # SQLite、Event Log 与 Projection
 
-简体中文 | [English](../../en/08-state-observability/02-sqlite-event-projection.md)
-
 ## 学习目标
 
 理解 SQLite Schema、权威 Runtime Event Evidence、Transactional Projection，以及

@@ -31,8 +31,6 @@ last_verified: null
 
 # Extension Failure 与隔离策略
 
-简体中文 | [English](../../en/11-extension-ecosystem/06-failure-isolation.md)
-
 ## 学习目标
 
 设计 Extension Failure Domain、Stable Error Category、Revocation、Timeout、Resource

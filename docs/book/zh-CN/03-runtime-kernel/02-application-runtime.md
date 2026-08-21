@@ -44,8 +44,6 @@ last_verified: 2026-08-17
 
 # Application Runtime 与状态投影
 
-简体中文 | [English](../../en/03-runtime-kernel/02-application-runtime.md)
-
 ## 学习目标
 
 理解 Operation Acceptance、Dispatch、Event Sequence、Subscriber Projection、

@@ -1,7 +1,5 @@
 # 配置说明
 
-简体中文 | [English](../en/configuration.md)
-
 ## 配置优先级
 
 配置从低到高按以下顺序解析：

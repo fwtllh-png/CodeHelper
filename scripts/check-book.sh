@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate the bilingual Agent engineering book catalog and chapter contract.
+# Validate the Chinese Agent engineering book catalog and chapter contract.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -43,10 +43,10 @@ languages = catalog.get("languages")
 statuses = catalog.get("statuses")
 parts = catalog.get("parts")
 
-if catalog.get("schema_version") != 1:
-    error("docs/book/catalog.json: schema_version must be 1")
-if languages != ["en", "zh-CN"]:
-    error("docs/book/catalog.json: languages must be exactly ['en', 'zh-CN']")
+if catalog.get("schema_version") != 2:
+    error("docs/book/catalog.json: schema_version must be 2")
+if languages != ["zh-CN"]:
+    error("docs/book/catalog.json: languages must be exactly ['zh-CN']")
 if statuses != ["planned", "draft", "verified"]:
     error("docs/book/catalog.json: unsupported status contract")
 if not isinstance(parts, list) or not parts:
@@ -94,7 +94,7 @@ for part in parts:
     else:
         part_orders.add(order)
     if not isinstance(titles, dict) or set(titles) != set(languages or []):
-        error(f"catalog part {part_id}: titles must cover both languages")
+        error(f"catalog part {part_id}: titles must cover the configured language")
     if not isinstance(chapters, list) or not chapters:
         error(f"catalog part {part_id}: chapters must be a non-empty array")
         continue
@@ -124,7 +124,7 @@ for part in parts:
         if status not in (statuses or []):
             error(f"catalog chapter {chapter_id}: invalid status {status!r}")
         if not isinstance(chapter_titles, dict) or set(chapter_titles) != set(languages or []):
-            error(f"catalog chapter {chapter_id}: titles must cover both languages")
+            error(f"catalog chapter {chapter_id}: titles must cover the configured language")
         elif any(not isinstance(title, str) or not title.strip() for title in chapter_titles.values()):
             error(f"catalog chapter {chapter_id}: titles must be non-empty strings")
         core_reading = chapter.get("core_reading")
@@ -153,13 +153,7 @@ def markdown_map(language: str) -> dict[pathlib.PurePosixPath, pathlib.Path]:
     }
 
 
-english = markdown_map("en")
 chinese = markdown_map("zh-CN")
-for relative in sorted(set(english) | set(chinese), key=str):
-    if relative not in english:
-        error(f"English book mirror missing: docs/book/en/{relative}")
-    if relative not in chinese:
-        error(f"Chinese book mirror missing: docs/book/zh-CN/{relative}")
 
 required_book_files = {
     pathlib.PurePosixPath("README.md"),
@@ -168,12 +162,12 @@ required_book_files = {
     pathlib.PurePosixPath("_templates/chapter.md"),
 }
 for relative in required_book_files:
-    if relative not in english or relative not in chinese:
-        error(f"book skeleton missing bilingual file: {relative}")
+    if relative not in chinese:
+        error(f"book skeleton missing Chinese file: {relative}")
 
 actual_chapter_paths = {
     relative
-    for relative in set(english) | set(chinese)
+    for relative in set(chinese)
     if relative not in required_book_files and "_templates" not in relative.parts
 }
 for relative in sorted(actual_chapter_paths - catalog_paths, key=str):
@@ -236,17 +230,11 @@ def path_matches(pattern: str) -> bool:
     return bool(glob.glob(str(root / pattern), recursive=True))
 
 
-def verify_footer(language: str, path: pathlib.Path, metadata: dict) -> None:
-    if language == "en":
-        heading = "Sources and Verification"
-        status_label = "Status"
-        date_label = "Last verified"
-        pending = "Not yet verified"
-    else:
-        heading = "事实来源与验证"
-        status_label = "状态"
-        date_label = "最后验证"
-        pending = "尚未验证"
+def verify_footer(path: pathlib.Path, metadata: dict) -> None:
+    heading = "事实来源与验证"
+    status_label = "状态"
+    date_label = "最后验证"
+    pending = "尚未验证"
     section = f"## {heading}"
     text = path.read_text(encoding="utf-8")
     if text.count(section) != 1:
@@ -324,20 +312,19 @@ def validate_chapter(language: str, relative: pathlib.PurePosixPath, part: dict,
                 error(f"{path.relative_to(root)}: invalid last_verified date")
     elif last_verified is not None:
         error(f"{path.relative_to(root)}: draft chapter last_verified must be null")
-    verify_footer(language, path, metadata)
+    verify_footer(path, metadata)
 
 
 for chapter_id, (part, chapter) in catalog_chapters.items():
     relative = pathlib.PurePosixPath(part["id"]) / f"{chapter['slug']}.md"
-    present = relative in english or relative in chinese
+    present = relative in chinese
     if chapter["status"] == "planned":
         if present:
             error(f"planned chapter must not have placeholder files: {chapter_id}")
         continue
-    if relative not in english or relative not in chinese:
-        error(f"{chapter['status']} chapter requires bilingual files: {chapter_id}")
+    if relative not in chinese:
+        error(f"{chapter['status']} chapter requires a Chinese file: {chapter_id}")
         continue
-    validate_chapter("en", relative, part, chapter)
     validate_chapter("zh-CN", relative, part, chapter)
 
 secret_pattern = re.compile(
@@ -360,19 +347,19 @@ for path in sorted(book.rglob("*")):
             error(f"{path.relative_to(root)}: empty Mermaid block")
 
 template_requirements = (
-    "## Learning Objectives",
-    "## Problem Background",
-    "## CodeHelper Design",
-    "## Code Map",
-    "## Failure Modes and Security Boundaries",
-    "## Tests and Verification",
-    "## Hands-On Lab",
-    "## Sources and Verification",
+    "## 学习目标",
+    "## 问题背景",
+    "## CodeHelper 设计",
+    "## 代码地图",
+    "## 失败模式与安全边界",
+    "## 测试与验证",
+    "## 动手实验",
+    "## 事实来源与验证",
 )
-english_template = (book / "en" / "_templates" / "chapter.md").read_text(encoding="utf-8")
+chinese_template = (book / "zh-CN" / "_templates" / "chapter.md").read_text(encoding="utf-8")
 for heading in template_requirements:
-    if heading not in english_template:
-        error(f"English chapter template missing section: {heading}")
+    if heading not in chinese_template:
+        error(f"Chinese chapter template missing section: {heading}")
 
 if errors:
     print("book check failed:", file=sys.stderr)
@@ -383,6 +370,6 @@ if errors:
 print(
     "book check passed: "
     f"{len(parts)} parts, {len(chapter_ids)} planned/delivered chapters, "
-    f"{len(actual_chapter_paths)} bilingual chapter pairs"
+    f"{len(actual_chapter_paths)} Chinese chapters"
 )
 PY

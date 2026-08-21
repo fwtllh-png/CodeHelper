@@ -21,8 +21,6 @@ last_verified: null
 
 # 实现通过 Guard 的 Tool
 
-简体中文 | [English](../../en/13-hands-on-labs/04-governed-tool.md)
-
 ## 目标与前置条件
 
 实现 Read-only Fixture Tool，证明不能绕过 Catalog Binding、Schema、Policy、Resource Claim。

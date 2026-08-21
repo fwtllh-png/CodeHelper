@@ -35,8 +35,6 @@ last_verified: null
 
 # 编写 Skill、Plugin 与 Hook
 
-简体中文 | [English](../../en/11-extension-ecosystem/04-skill-plugin-hook.md)
-
 ## 学习目标
 
 选择正确扩展机制，理解其 Authority、Lifecycle、Integrity 与 Execution Limit。

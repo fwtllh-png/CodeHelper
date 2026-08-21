@@ -26,8 +26,6 @@ last_verified: null
 
 # Edit Plan、Journal 与 Receipt
 
-简体中文 | [English](../../en/06-tools-and-execution/04-edit-journal-receipt.md)
-
 ## 学习目标
 
 理解 Preview-bound Edit、Read-before-edit Fingerprint、Durable Before-image、

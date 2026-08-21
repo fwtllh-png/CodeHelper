@@ -26,8 +26,6 @@ last_verified: null
 
 # Memory、Snapshot 与恢复
 
-简体中文 | [English](../../en/05-context-engineering/05-memory-and-snapshot.md)
-
 ## 学习目标
 
 区分 User Memory、Conversation History、Compact Summary、Session Metadata 与 State

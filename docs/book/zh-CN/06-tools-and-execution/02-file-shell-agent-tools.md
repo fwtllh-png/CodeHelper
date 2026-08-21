@@ -26,8 +26,6 @@ last_verified: null
 
 # File、Shell 与 Agent Tool
 
-简体中文 | [English](../../en/06-tools-and-execution/02-file-shell-agent-tools.md)
-
 ## 学习目标
 
 理解主要 Built-in Tool Family、Declared Resource，以及它们为何必须通过 Registry/Guard。

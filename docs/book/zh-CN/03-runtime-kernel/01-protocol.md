@@ -26,8 +26,6 @@ last_verified: null
 
 # Protocol 与稳定数据契约
 
-简体中文 | [English](../../en/03-runtime-kernel/01-protocol.md)
-
 ## 学习目标
 
 理解 Runtime Protocol 为什么必须独立，Tagged Union 与 Identity 如何消除歧义，

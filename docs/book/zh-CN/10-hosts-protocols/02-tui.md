@@ -25,8 +25,6 @@ last_verified: null
 
 # TUI State Projection
 
-简体中文 | [English](../../en/10-hosts-protocols/02-tui.md)
-
 ## 学习目标
 
 理解 Runtime Event 如何成为 Bubble Tea Interactive Model，而不把 Business Logic 移入

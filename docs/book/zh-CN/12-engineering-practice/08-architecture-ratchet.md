@@ -25,8 +25,6 @@ last_verified: 2026-08-12
 
 # 架构度量与回归棘轮
 
-简体中文 | [English](../../en/12-engineering-practice/08-architecture-ratchet.md)
-
 ## 学习目标
 
 本章之后，读者可以：

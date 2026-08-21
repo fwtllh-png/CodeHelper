@@ -25,8 +25,6 @@ last_verified: null
 
 # VSIX、SBOM、Provenance 与 Release Evidence
 
-简体中文 | [English](../../en/12-engineering-practice/06-release-evidence.md)
-
 ## 学习目标
 
 理解 Build Artifact 如何形成可检查的 Release Evidence。

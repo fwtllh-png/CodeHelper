@@ -27,8 +27,6 @@ last_verified: null
 
 # 新增受治理 Tool
 
-简体中文 | [English](../../en/11-extension-ecosystem/02-adding-tool.md)
-
 ## 学习目标
 
 实现具有完整 Schema、Resource、Capability、Sandbox、Parallelism、Result 与 Test

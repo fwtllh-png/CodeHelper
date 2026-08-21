@@ -29,8 +29,6 @@ last_verified: null
 
 # 接入 MCP Server
 
-简体中文 | [English](../../en/11-extension-ecosystem/03-integrating-mcp.md)
-
 ## 学习目标
 
 配置 Stdio/HTTP MCP、Discovery、Catalog Reconcile、Auth、Permission、Health Isolation

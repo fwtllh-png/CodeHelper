@@ -20,8 +20,6 @@ last_verified: null
 
 # 使用 Fixture 观察 Streaming Event
 
-简体中文 | [English](../../en/13-hands-on-labs/02-streaming-fixture.md)
-
 ## 目标与前置条件
 
 将确定性 SSE Frame 追踪到 Normalized Runtime Event；只需 Go/仓库，不需网络和凭证。

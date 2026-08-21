@@ -23,8 +23,6 @@ last_verified: null
 
 # OS Sandbox 与 Process Isolation
 
-简体中文 | [English](../../en/07-security-governance/04-process-isolation.md)
-
 ## 学习目标
 
 理解 Capability Probe、Policy Binding、Platform Backend、Safe Workspace I/O、Process

@@ -24,8 +24,6 @@ last_verified: null
 
 # Retry、Rate Limit、Timeout 与故障分类
 
-简体中文 | [English](../../en/04-model-and-provider/06-provider-failures.md)
-
 ## 学习目标
 
 理解 Provider Failure Phase、保守 Retry、Local Rate Limit、Timeout Propagation 与

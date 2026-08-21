@@ -1,7 +1,5 @@
 # VS Code 插件
 
-简体中文 | [English](../en/vscode.md)
-
 ## 设计
 
 插件是运行在本地 UI Extension Host 中的 TypeScript Client。它负责编辑器上下文和

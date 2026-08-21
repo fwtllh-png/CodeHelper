@@ -27,8 +27,6 @@ last_verified: null
 
 # Model、Context 与 Tool 如何协作
 
-简体中文 | [English](../../en/02-codehelper-overview/06-model-context-and-tool.md)
-
 ## 学习目标
 
 理解 Model 与 Provider 的边界、稳定和动态 Context 的组装方式、Tool Definition 如何

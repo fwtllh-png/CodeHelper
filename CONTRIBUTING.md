@@ -1,25 +1,22 @@
-# Contributing to CodeHelper
+# 参与 CodeHelper 开发
 
-[简体中文](./CONTRIBUTING.zh-CN.md) | English
+## 原则
 
-## Principles
+- 保持一套 Runtime 和一条受 Guard 保护的执行路径。
+- 当前代码事实优先于历史设计叙事。
+- 变更限定在所属 Package。
+- 只有已发布契约需要时才增加兼容逻辑。
+- 文档、测试、生成文件和运维行为都属于实现的一部分。
 
-- Preserve one runtime and one guarded execution path.
-- Prefer current code facts over historical design narrative.
-- Keep changes scoped to the owning package.
-- Add compatibility only when a published contract requires it.
-- Treat documentation, tests, generated files, and operational behavior as part
-  of the implementation.
+## 修改代码前
 
-## Before You Change Code
+1. 阅读[架构设计](./docs/zh-CN/architecture.md)。
+2. 检查 `git status`，保留无关改动。
+3. 找到 Package Test 和所有权边界。
+4. 判断是否影响 Protocol、Persistence、Security、Configuration、Release Artifact
+   或中文文档。
 
-1. Read [Architecture](./docs/en/architecture.md).
-2. Check `git status` and preserve unrelated work.
-3. Locate package tests and ownership boundaries.
-4. Decide whether the change affects protocol, persistence, security,
-   configuration, release artifacts, or both documentation languages.
-
-## Development Workflow
+## 开发流程
 
 ```bash
 make build
@@ -28,68 +25,64 @@ make docs-check
 git diff --check
 ```
 
-Broaden tests according to blast radius. See
-[Local Development](./docs/en/development.md).
+根据影响面扩大测试，详见[本地开发](./docs/zh-CN/development.md)。
 
-## Change Requirements
+## 变更要求
 
-### Runtime and protocol
+### Runtime 与 Protocol
 
-- Define operation, event, cancellation, error, and replay semantics.
-- Update schema/golden data and both ACP/HTTP contracts.
-- Regenerate committed artifacts through repository commands.
+- 定义 Operation、Event、Cancel、Error 与 Replay 语义。
+- 更新 Schema/Golden 和 ACP/HTTP Contract。
+- 通过仓库命令重新生成并提交 Artifact。
 
 ### Persistence
 
-- Keep initialization at the latest shape.
-- Public schema changes require transactional migrations and migration tests.
-- Test reopen, rollback, constraints, and corruption behavior.
+- 初始化始终等于最新结构。
+- 公开 Schema 变更必须使用事务 Migration 与 Migration Test。
+- 测试 Reopen、Rollback、Constraint 与 Corruption。
 
 ### Security
 
-- Describe attacker-controlled inputs.
-- Preserve fail-closed behavior and the guard path.
-- Test denial, malformed input, cleanup, and redaction.
-- Do not broaden platform support claims without evidence.
+- 说明攻击者可控输入。
+- 保持 Fail-closed 与 Guard 路径。
+- 测试 Deny、Malformed Input、Cleanup 与 Redaction。
+- 没有证据时不扩大平台支持声明。
 
 ### Documentation
 
-- Update English and Chinese versions together.
-- Use commands verified against `--help`.
-- Remove superseded documents instead of leaving conflicting copies.
-- Run `make docs-check`.
-- For `docs/book`, update `catalog.json`, regenerate navigation, and run
-  `make book-check`; never create empty files for planned chapters.
-- Complete the PR documentation-impact block. Source facts require mirrored
-  chapter updates or a concrete `Documentation-impact: none` rationale.
-- Run `make release-fact-check` before preparing a release.
+- 只维护中文产品文档和知识书籍，不创建英文镜像。
+- 示例命令需通过 `--help` 核对。
+- 删除被替代文档，不保留冲突副本。
+- 运行 `make docs-check`。
+- 修改 `docs/book` 时更新 `catalog.json`、重新生成导航并运行
+  `make book-check`；不能为规划章节创建空文件。
+- 完整填写 PR Documentation Impact 区块。事实来源变化必须同步更新中文章节，
+  或给出具体的 `Documentation-impact: none` 理由。
+- 准备 Release 前运行 `make release-fact-check`。
 
-## Commit Quality
+## Commit 质量
 
-Use a subject that describes behavior, for example:
+使用描述行为的 Subject，例如：
 
 ```text
 fix: preserve task lease across worker restart
-docs: add bilingual provider configuration guide
+docs: add provider configuration guide
 ```
 
-Avoid phase-only messages and unrelated refactors. Generated output should be
-committed with the source that produced it.
+避免只写阶段号，也不要夹带无关重构。生成文件应与生成它的源变更一起提交。
 
-## Review Checklist
+## Review 检查表
 
-- [ ] Behavior and failure semantics are clear.
-- [ ] Ownership boundaries are preserved.
-- [ ] Security checks cannot be bypassed.
-- [ ] Persisted/protocol compatibility is intentional.
-- [ ] Tests match risk and pass in the supported environment.
-- [ ] Documentation impact is declared and affected chapter IDs are listed.
-- [ ] English and Chinese docs are synchronized.
-- [ ] No credential, machine path, or unrelated generated file is included.
+- [ ] 行为和失败语义清晰。
+- [ ] 所有权边界未破坏。
+- [ ] Security Check 无法绕过。
+- [ ] Persistence/Protocol Compatibility 是有意设计。
+- [ ] 测试与风险匹配，并在支持环境中通过。
+- [ ] 已声明文档影响并列出受影响 Chapter ID。
+- [ ] 中文文档与代码事实同步。
+- [ ] 未提交 Credential、个人路径或无关生成文件。
 
-## Reporting Environment-Limited Tests
+## 报告环境受限测试
 
-Do not hide a failing full suite. State the exact failing package/test and
-environment reason, then rerun the focused test in isolation. Platform
-limitations such as missing strong sandbox capability are not application
-success and not necessarily an application regression.
+不能隐藏 Full Suite 失败。应说明具体 Package/Test 和环境原因，再单独重跑聚焦测试。
+缺少强 Sandbox 等平台限制不代表应用成功，也不必然是应用回归。

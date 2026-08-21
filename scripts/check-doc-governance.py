@@ -75,7 +75,7 @@ def parse_front_matter(path: pathlib.Path) -> dict[str, object]:
 
 def chapters() -> dict[str, dict]:
     result: dict[str, dict] = {}
-    for path in sorted((BOOK / "en").glob("*/*.md")):
+    for path in sorted((BOOK / "zh-CN").glob("*/*.md")):
         if "_templates" in path.parts:
             continue
         metadata = parse_front_matter(path)
@@ -83,7 +83,7 @@ def chapters() -> dict[str, dict]:
         if isinstance(chapter_id, str):
             result[chapter_id] = {
                 "path": path,
-                "relative": path.relative_to(BOOK / "en"),
+                "relative": path.relative_to(BOOK / "zh-CN"),
                 "metadata": metadata,
             }
     return result
@@ -282,8 +282,8 @@ def run_reverify(dry_run: bool) -> int:
     """Reconcile verified chapters with their sources.
 
     A chapter whose declared source paths changed after ``last_verified`` is
-    downgraded to ``draft`` in both language files and in the catalog; a
-    chapter whose sources are unchanged is re-stamped with today's date.
+    downgraded to ``draft`` in the Chinese file and catalog; a chapter whose
+    sources are unchanged is re-stamped with today's date.
     """
     today = dt.date.today()
     restamped: list[str] = []
@@ -323,23 +323,20 @@ def run_reverify(dry_run: bool) -> int:
             else:
                 restamped.append(chapter_id)
             continue
-        en_path = BOOK / "en" / chapter["relative"]
         zh_path = BOOK / "zh-CN" / chapter["relative"]
         try:
-            en_metadata = parse_front_matter(en_path)
             zh_metadata = parse_front_matter(zh_path)
         except ValueError as exc:
             skipped.append(chapter_id)
             print(f"reverify: {chapter['relative']}: {exc}", file=sys.stderr)
             continue
-        if not fields.keys() <= en_metadata.keys() or not fields.keys() <= zh_metadata.keys():
+        if not fields.keys() <= zh_metadata.keys():
             skipped.append(chapter_id)
             print(
                 f"reverify: {chapter['relative']}: Front Matter fields not found",
                 file=sys.stderr,
             )
             continue
-        set_front_matter_fields(en_path, fields)
         set_front_matter_fields(zh_path, fields)
         if drifted:
             set_catalog_status(chapter_id, "draft")
@@ -398,17 +395,16 @@ def impacted_chapters(paths: list[str]) -> set[str]:
 
 
 def documentation_ids(paths: list[str]) -> set[str]:
-    by_language: dict[str, set[str]] = {"en": set(), "zh-CN": set()}
-    for language in ("en", "zh-CN"):
-        prefix = f"docs/book/{language}/"
-        for path in paths:
-            if path.startswith(prefix) and path.endswith(".md"):
-                file_path = ROOT / path
-                if file_path.is_file():
-                    chapter_id = parse_front_matter(file_path).get("id")
-                    if isinstance(chapter_id, str):
-                        by_language[language].add(chapter_id)
-    return by_language["en"] & by_language["zh-CN"]
+    result: set[str] = set()
+    prefix = "docs/book/zh-CN/"
+    for path in paths:
+        if path.startswith(prefix) and path.endswith(".md"):
+            file_path = ROOT / path
+            if file_path.is_file():
+                chapter_id = parse_front_matter(file_path).get("id")
+                if isinstance(chapter_id, str):
+                    result.add(chapter_id)
+    return result
 
 
 def pr_body() -> str:
@@ -441,7 +437,7 @@ def run_impact(base: str, head: str, body: str) -> int:
     print("updated chapters:", ", ".join(sorted(updated)) or "none")
     if missing and not (override and valid_rationale):
         print(
-            "documentation impact check failed; update both language chapters or "
+            "documentation impact check failed; update the Chinese chapter or "
             "declare Documentation-impact: none with a rationale",
             file=sys.stderr,
         )

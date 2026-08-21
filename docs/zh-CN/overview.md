@@ -1,7 +1,5 @@
 # 项目介绍、价值与定位
 
-简体中文 | [English](../en/overview.md)
-
 ## 项目定义
 
 CodeHelper 是本地 Coding Agent Runtime，而不仅是一个聊天界面。用户表达工程目标后，

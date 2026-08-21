@@ -28,8 +28,6 @@ last_verified: 2026-08-12
 
 # 模型与工具执行循环
 
-简体中文 | [English](../../en/03-runtime-kernel/03-agent-loop.md)
-
 ## 学习目标
 
 追踪一次 Engine Step，理解 Sampling Snapshot 与 Tool Scheduling，并识别终止 Iterative

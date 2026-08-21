@@ -29,8 +29,6 @@ last_verified: null
 
 # Guard、Approval、Constitution 与 Sandbox
 
-简体中文 | [English](../../en/07-security-governance/03-approval-constitution-sandbox.md)
-
 ## 学习目标
 
 理解 Agent Security 为什么需要多层控制、Tool Call 如何经过 Guard、Approval

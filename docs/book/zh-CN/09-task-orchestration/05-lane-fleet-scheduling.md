@@ -25,8 +25,6 @@ last_verified: 2026-08-16
 
 # Lane、Fleet 与调度
 
-简体中文 | [English](../../en/09-task-orchestration/05-lane-fleet-scheduling.md)
-
 ## 学习目标
 
 理解 Lane Placement、Fleet WorkGraph Projection、Profile Limit 与唯一执行权威。

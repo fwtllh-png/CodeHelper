@@ -22,8 +22,6 @@ last_verified: null
 
 # Prompt、Message 与 Context
 
-简体中文 | [English](../../en/05-context-engineering/01-prompt-message-context.md)
-
 ## 学习目标
 
 区分 User Prompt、Normalized Message History 与 Assembled Context，理解 Context

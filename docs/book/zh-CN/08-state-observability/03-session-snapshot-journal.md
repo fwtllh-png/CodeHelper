@@ -38,8 +38,6 @@ last_verified: null
 
 # Session、Snapshot、CAS 与 Workspace Journal
 
-简体中文 | [English](../../en/08-state-observability/03-session-snapshot-journal.md)
-
 ## 学习目标
 
 区分 Session Metadata、Snapshot Checkpoint、Immutable Content Store 与 Workspace

@@ -22,8 +22,6 @@ last_verified: null
 
 # Package 所有权与依赖方向
 
-简体中文 | [English](../../en/02-codehelper-overview/03-package-ownership.md)
-
 ## 学习目标
 
 能够定位 Change Owner，区分 Contract、Construction、Execution，并拒绝形成替代 Authority

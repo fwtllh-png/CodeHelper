@@ -27,8 +27,6 @@ last_verified: null
 
 # Automation 与 Workflow
 
-简体中文 | [English](../../en/09-task-orchestration/03-automation-and-workflow.md)
-
 ## 学习目标
 
 理解 Recurring Automation Slot、DAG Workflow、Capability Default、Structured Output

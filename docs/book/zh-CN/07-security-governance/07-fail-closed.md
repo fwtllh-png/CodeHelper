@@ -25,8 +25,6 @@ last_verified: null
 
 # Fail-closed 与平台能力声明
 
-简体中文 | [English](../../en/07-security-governance/07-fail-closed.md)
-
 ## 学习目标
 
 判断 Missing Evidence 何时必须 Deny，区分 Unavailable/Disabled/Failed，并使 Platform

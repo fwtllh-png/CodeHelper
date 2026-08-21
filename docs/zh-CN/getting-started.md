@@ -1,7 +1,5 @@
 # 快速开始
 
-简体中文 | [English](../en/getting-started.md)
-
 ## 1. 前置条件
 
 | 依赖 | 说明 |

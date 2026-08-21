@@ -25,8 +25,6 @@ last_verified: null
 
 # Streaming、Reasoning、Tool Call 与 Usage
 
-简体中文 | [English](../../en/04-model-and-provider/04-streaming-reasoning-and-usage.md)
-
 ## 学习目标
 
 理解 Normalized Stream、Tool Call Assembly、Reasoning Separation，以及 Multi-sample

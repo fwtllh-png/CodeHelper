@@ -24,8 +24,6 @@ last_verified: null
 
 # 完成 VS Code 端到端功能
 
-简体中文 | [English](../../en/13-hands-on-labs/08-vscode-feature.md)
-
 ## 目标与前置条件
 
 新增一条有界 Native Chat Journey，贯穿 Host Intent、ACP、Runtime Authority、增量

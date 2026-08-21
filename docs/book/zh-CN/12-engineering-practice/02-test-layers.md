@@ -23,8 +23,6 @@ last_verified: null
 
 # Unit、Contract、Integration 与 Electron Test
 
-简体中文 | [English](../../en/12-engineering-practice/02-test-layers.md)
-
 ## 学习目标
 
 选择能证明行为的最低成本 Test Layer，并识别何时需要 Real Binary、Transport、

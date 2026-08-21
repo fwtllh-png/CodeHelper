@@ -21,8 +21,6 @@ last_verified: null
 
 # Hermetic Fixture 与真实 Provider Smoke
 
-简体中文 | [English](../../en/12-engineering-practice/01-fixtures-and-smoke.md)
-
 ## 学习目标
 
 使用 Deterministic Fixture 验证正确性，用最小 Live Smoke 验证 Provider/Environment，

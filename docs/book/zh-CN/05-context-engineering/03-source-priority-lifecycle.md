@@ -24,8 +24,6 @@ last_verified: null
 
 # Context Source、优先级与生命周期
 
-简体中文 | [English](../../en/05-context-engineering/03-source-priority-lifecycle.md)
-
 ## 学习目标
 
 按 Authority、Stability 与 Lifetime 分类 Context，理解 Ordering、Digest Skip、

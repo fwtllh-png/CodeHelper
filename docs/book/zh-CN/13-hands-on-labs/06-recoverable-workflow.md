@@ -22,8 +22,6 @@ last_verified: 2026-08-16
 
 # 构建可恢复 Workflow
 
-简体中文 | [English](../../en/13-hands-on-labs/06-recoverable-workflow.md)
-
 ## 目标与前置条件
 
 运行小型 DAG，在 Durable WorkGraph Settlement 后失败并恢复，避免重复已完成工作。

@@ -34,8 +34,6 @@ last_verified: null
 
 # Task、Worker 与 Executor
 
-简体中文 | [English](../../en/09-task-orchestration/01-task-worker-executor.md)
-
 ## 学习目标
 
 理解 Durable WorkGraph Lifecycle、Worker Claim、Executor Contract、Task 兼容

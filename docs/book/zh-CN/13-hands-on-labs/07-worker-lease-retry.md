@@ -27,8 +27,6 @@ last_verified: 2026-08-17
 
 # 调试 Worker Lease 与 Retry
 
-简体中文 | [English](../../en/13-hands-on-labs/07-worker-lease-retry.md)
-
 ## 目标与前置条件
 
 强制 Lease Expiry 并分类 Retry，同时保证至多一个 Active Claim 和 Idempotent Outcome。

@@ -1,7 +1,5 @@
 # 排障指南
 
-简体中文 | [English](../en/troubleshooting.md)
-
 ## 首轮检查
 
 修改配置前先收集事实：
@@ -217,7 +215,7 @@ go test ./path/to/package -run TestName -count=1
 `make docs-check` 会报告：
 
 - 本地 Markdown Broken Link；
-- 缺少中英文镜像；
+- 英文文档目录被重新引入；
 - 指向已删除历史文档的链接。
 
 应修复源文档或补充有内容的维护版本，不能只创建空文件满足检查。

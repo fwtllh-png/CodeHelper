@@ -22,8 +22,6 @@ last_verified: null
 
 # 如何阅读和修改大型 Agent 工程
 
-简体中文 | [English](../../en/12-engineering-practice/07-reading-codebase.md)
-
 ## 学习目标
 
 按 Ownership/Contract 导航，先取得 Evidence 再编辑，并按风险扩大验证。
@@ -37,7 +35,7 @@ last_verified: null
 5. 阅读 Ordering、Persistence、Security、Platform Test。
 6. 做最小 Ownership-aligned Change。
 7. 添加 Focused Test，再按 Blast Radius 扩大。
-8. 执行 Docs/Book/Diff Check，并同步双语事实。
+8. 执行 Docs/Book/Diff Check，并同步中文文档事实。
 
 ```mermaid
 flowchart LR
@@ -72,7 +70,7 @@ Edit 前记录 Claim、Owner、Invariant 与 Disconfirming Evidence：
 ```text
 observe -> hypothesize -> locate authority -> reproduce
  -> edit smallest owner -> focused verify -> adversarial verify
- -> inspect diff -> update bilingual docs/evidence
+ -> inspect diff -> update Chinese docs/evidence
 ```
 
 Reproduction 保留 Identity、Input、Environment、Failure Phase。Static Defect 用 Focused

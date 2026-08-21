@@ -32,8 +32,6 @@ last_verified: null
 
 # VS Code Native Agent Chat 与 Runtime Authority
 
-简体中文 | [English](../../en/10-hosts-protocols/06-vscode.md)
-
 ## 学习目标
 
 理解 Native Agent Chat 如何在集成 Session 管理、Composer、Editor Context、增量渲染、

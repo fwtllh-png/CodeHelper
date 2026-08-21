@@ -23,8 +23,6 @@ last_verified: null
 
 # LLM、Token、Context Window 与 Sampling
 
-简体中文 | [English](../../en/01-agent-engineering/02-llm-token-and-context.md)
-
 ## 学习目标
 
 理解模型是概率序列组件，能够计算 Agent Turn 的实际 Context Budget，并区分 Model

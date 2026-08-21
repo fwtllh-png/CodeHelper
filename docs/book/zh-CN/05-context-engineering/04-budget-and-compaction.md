@@ -24,8 +24,6 @@ last_verified: null
 
 # Token Budget、Compaction 与信息损失
 
-简体中文 | [English](../../en/05-context-engineering/04-budget-and-compaction.md)
-
 ## 学习目标
 
 理解 Partition Budget、Context Window Check、Deterministic Compaction，以及 Receipt

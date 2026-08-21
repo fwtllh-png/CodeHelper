@@ -26,8 +26,6 @@ last_verified: null
 
 # Operation、Event、Receipt 与 Projection
 
-简体中文 | [English](../../en/02-codehelper-overview/04-runtime-vocabulary.md)
-
 ## 学习目标
 
 准确使用 CodeHelper Protocol 词汇，理解 Identity/Durability Rule，不再混淆 Command、

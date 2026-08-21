@@ -30,8 +30,6 @@ last_verified: 2026-08-17
 
 # 从 Trace 复盘一次失败
 
-简体中文 | [English](../../en/13-hands-on-labs/09-trace-failure.md)
-
 ## 目标与前置条件
 
 用 Runtime Event、Observation Envelope、Semantic Replay、Span、Usage、Receipt 与

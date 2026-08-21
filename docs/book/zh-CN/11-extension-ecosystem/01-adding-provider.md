@@ -22,8 +22,6 @@ last_verified: null
 
 # 新增 Provider
 
-简体中文 | [English](../../en/11-extension-ecosystem/01-adding-provider.md)
-
 ## 学习目标
 
 新增 Provider Adapter，同时保持 Credential、Capability、Streaming 与 Failure Contract，

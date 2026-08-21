@@ -30,8 +30,6 @@ last_verified: null
 
 # Diagnostics、Maturity 与 Verification
 
-简体中文 | [English](../../en/08-state-observability/05-diagnostics-and-verification.md)
-
 ## 学习目标
 
 区分 Diagnostics 与 Verification，理解 Affected-test Mapping，以及 Passed、Failed、

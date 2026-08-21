@@ -20,8 +20,6 @@ last_verified: null
 
 # 实现 Provider Adapter
 
-简体中文 | [English](../../en/13-hands-on-labs/03-provider-adapter.md)
-
 ## 目标与前置条件
 
 先实现 Fixture-only Stream Decoder，不接入网络客户端。

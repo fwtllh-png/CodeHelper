@@ -25,8 +25,6 @@ last_verified: 2026-08-16
 
 # Checkpoint 与恢复
 
-简体中文 | [English](../../en/09-task-orchestration/04-checkpoint-and-recovery.md)
-
 ## 学习目标
 
 理解 WorkGraph Fact、Snapshot、Command Receipt、Effect Outbox、Fingerprint

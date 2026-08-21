@@ -32,8 +32,6 @@ last_verified: null
 
 # 从失败运行还原系统行为
 
-简体中文 | [English](../../en/08-state-observability/06-reconstructing-failures.md)
-
 ## 学习目标
 
 使用 Event、Projection、Snapshot、Journal、Trace、Usage、Evidence 与 Receipt 还原

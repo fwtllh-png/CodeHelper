@@ -25,8 +25,6 @@ last_verified: null
 
 # 如何评估 Context Quality
 
-简体中文 | [English](../../en/05-context-engineering/06-context-quality.md)
-
 ## 学习目标
 
 用 Coverage、Precision、Freshness、Provenance、Budget Efficiency 与 Outcome Evidence

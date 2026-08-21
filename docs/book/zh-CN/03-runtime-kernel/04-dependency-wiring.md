@@ -46,8 +46,6 @@ last_verified: null
 
 # 依赖构造与能力装配
 
-简体中文 | [English](../../en/03-runtime-kernel/04-dependency-wiring.md)
-
 ## 学习目标
 
 理解 Construction 为什么隔离、Config 如何成为 Runtime，以及 Turn 开始前 Wiring

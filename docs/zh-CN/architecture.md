@@ -1,7 +1,5 @@
 # 架构与安全设计
 
-简体中文 | [English](../en/architecture.md)
-
 ## 架构目标
 
 CodeHelper 保持一个权威执行 Runtime，同时允许多种呈现和集成入口。Host 提交
@@ -466,5 +464,5 @@ Command(expected revision)
 3. 定义 Cancel、Retry 与 Terminal 行为。
 4. 保持 Guard 与 Sandbox 路径。
 5. 增加 Contract 或 Architecture Test。
-6. 同步更新中英文文档。
+6. 同步更新中文文档。
 7. 必要时重新生成 Protocol、Observation Trait 与 Compatibility Artifact。

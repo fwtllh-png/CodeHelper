@@ -1,7 +1,5 @@
 # 本机 DeepSeek 一键编译、配置与运行
 
-简体中文 | [English](../en/deepseek-local.md)
-
 本文为人和 Coding Agent 提供 macOS 上确定性的一键编译、配置、TUI 与官方 VS Code
 入口。
 

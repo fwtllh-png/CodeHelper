@@ -1,7 +1,5 @@
 # TUI 与 VS Code 体验契约
 
-简体中文 | [English](../en/experience.md)
-
 本文定义 TUI 与 VS Code Host 共同遵循的交互和呈现基线。机器可读的权威来源是
 [`experience-contract.json`](../../testdata/contracts/experience-contract.json)。
 Host 可以使用各自的原生

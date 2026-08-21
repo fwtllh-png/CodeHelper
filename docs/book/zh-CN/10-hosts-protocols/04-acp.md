@@ -21,8 +21,6 @@ last_verified: 2026-08-10
 
 # ACP Stdio 与编辑器互操作
 
-简体中文 | [English](../../en/10-hosts-protocols/04-acp.md)
-
 ## 学习目标
 
 理解 Stdio JSON-RPC Framing、Initialize/Capability Negotiation、Session Binding、

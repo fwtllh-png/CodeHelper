@@ -41,12 +41,12 @@ Documentation-rationale: N/A
 - [ ] The change is scoped to the owning package or document.
 - [ ] Tests cover success, failure, and relevant security behavior.
 - [ ] Documentation impact metadata above is complete and accurate.
-- [ ] English and Chinese documentation are updated together.
+- [ ] Chinese documentation matches the current implementation.
 - [ ] Generated files were produced with repository commands.
 - [ ] No credential, private source, machine path, or unrelated change is included.
 - [ ] 变更限定在对应的 Package 或文档范围内。
 - [ ] 测试覆盖成功、失败和相关安全行为。
 - [ ] 上述文档影响元数据完整且准确。
-- [ ] 中英文文档已同步更新。
+- [ ] 中文文档已与当前实现同步。
 - [ ] 生成文件通过仓库标准命令产生。
 - [ ] 未包含凭证、私有源码、本机路径或无关改动。

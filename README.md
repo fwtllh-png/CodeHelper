@@ -1,69 +1,61 @@
 # CodeHelper
 
-[简体中文](./README.zh-CN.md) | English
-
 [![CI](https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml/badge.svg)](https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
 [![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](./go.mod)
 [![Release](https://img.shields.io/github/v/release/fwtllh-png/CodeHelper?display_name=tag&sort=semver)](https://github.com/fwtllh-png/CodeHelper/releases)
 [![Discussions](https://img.shields.io/github/discussions/fwtllh-png/CodeHelper)](https://github.com/fwtllh-png/CodeHelper/discussions)
 
-**A local, guarded AI coding-agent runtime and executable Agent engineering
-book, written in Go.**
+**一个使用 Go 实现的、本地运行、受控执行的 AI Coding Agent Runtime，也是一套
+可执行的 Agent 工程知识书籍。**
 
-CodeHelper puts repository understanding, model calls, guarded tools, approval,
-verification, durable sessions, and orchestration behind one runtime protocol.
-Use the same runtime from the CLI, TUI, VS Code, ACP, automation, and worker
-surfaces.
+CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、持久化会话与编排统一放在
+一套 Runtime 协议之后，并同时服务 CLI、TUI、VS Code、ACP、自动化与 Worker。
 
-> Project status: initial development release. Interfaces and persisted formats
-> may still change before the first public stable release.
+> 项目状态：初始开发版本。首次公开稳定发布前，接口和持久化格式仍可能调整。
 
-## Runtime and Executable Book
+## Runtime 与可执行的知识书籍
 
-| Deliverable | What it provides |
+| 交付物 | 提供的价值 |
 | --- | --- |
-| **Production-oriented Agent runtime** | Model access, context engineering, governed tools, durable state, orchestration, observability, and multiple hosts |
-| **Executable Agent engineering book** | A bilingual path from first principles to real source, tests, diagrams, failure modes, and reproducible labs |
+| **面向真实工程的 Agent Runtime** | 模型接入、上下文工程、受控工具、持久化状态、任务编排、可观测性和多种 Host |
+| **可执行的 Agent 工程知识书籍** | 从基础原理进入真实源码、测试、架构图、失败模式和可复现实验的中文路径 |
 
-The product manuals under `docs/en` and `docs/zh-CN` document shipped behavior.
-The [Agent Engineering Book](./docs/book/en/README.md) connects design reasoning
-to CodeHelper implementation and hands-on exercises. Its structure and delivery
-rules are defined in the
-[Knowledge Documentation Plan](./docs/en/knowledge-base-plan.md).
+`docs/zh-CN` 下的中文产品手册描述已交付行为。
+[Agent 工程知识书籍](./docs/book/zh-CN/README.md)把设计推理与 CodeHelper 实现和
+动手实验关联起来。建设边界、全书目录、章节规范和阶段计划见
+[知识文档体系建设方案](./docs/zh-CN/knowledge-base-plan.md)。
 
-## Why CodeHelper
+## 为什么建设 CodeHelper
 
-Most coding-agent prototypes optimize for a convincing demo. CodeHelper focuses
-on the engineering properties required after the demo:
+多数 Coding Agent 原型优先追求演示效果，CodeHelper 更关注产品长期运行后必须具备
+的工程属性：
 
-- **Local authority:** source code and execution remain in the user's workspace.
-- **One runtime, multiple hosts:** terminal, editor, automation, and API clients
-  share the same operation/event model.
-- **Guarded execution:** every mutating tool passes policy, permission,
-  constitution, journal, and OS-sandbox checks.
-- **Evidence over claims:** searches, edits, approvals, verification, usage, and
-  traces are recorded as inspectable runtime facts.
-- **Extensible without a second control plane:** MCP, skills, plugins, hooks,
-  background workers, workflows, and subagents enter through governed adapters.
-- **Fail closed:** unavailable security capabilities are reported explicitly;
-  CodeHelper does not silently pretend an unsafe operation is isolated.
+- **本地控制权**：源码和执行仍在用户工作区中。
+- **一套 Runtime，多种 Host**：终端、编辑器、自动化和 API 客户端共享同一套
+  Operation/Event 模型。
+- **受控执行**：所有修改型工具都经过 policy、permission、constitution、journal
+  与操作系统沙箱检查。
+- **证据优先**：搜索、编辑、审批、验证、用量和 trace 都形成可检查的运行事实。
+- **扩展但不分叉控制面**：MCP、Skill、Plugin、Hook、后台 Worker、Workflow 和
+  Subagent 都通过受治理的 Adapter 接入。
+- **默认关闭而不是假装安全**：安全能力不可用时明确报告，不静默降级为“看起来已隔离”。
 
-## Quick Start
+## 快速开始
 
-Requirements:
+环境要求：
 
-- Go 1.26 or newer
+- Go 1.26 或更高版本
 - Git
-- Node.js and npm only when developing the VS Code extension
+- 仅开发 VS Code 插件时需要 Node.js 和 npm
 
-Supported platform boundary:
+支持平台边界：
 
-| Platform | Runtime | Sandbox boundary |
+| 平台 | Runtime | 沙箱边界 |
 | --- | --- | --- |
-| macOS | Supported | Strong when the Seatbelt backend is available |
-| Linux | Supported | Strong when Bubblewrap and Landlock requirements are available |
-| Windows | Supported with platform-specific limits | Partial; operations requiring a strong sandbox fail closed |
+| macOS | 支持 | Seatbelt Backend 可用时为 Strong |
+| Linux | 支持 | 满足 Bubblewrap 和 Landlock 要求时为 Strong |
+| Windows | 支持，但存在平台特定限制 | Partial；需要 Strong Sandbox 的操作会拒绝执行 |
 
 ```bash
 git clone https://github.com/fwtllh-png/CodeHelper.git
@@ -74,7 +66,7 @@ make build
 ./bin/codehelper doctor
 ```
 
-Run a network-free fixture:
+先运行不访问网络的 fixture：
 
 ```bash
 ./bin/codehelper exec \
@@ -85,7 +77,7 @@ Run a network-free fixture:
   "say hello"
 ```
 
-Run against a configured model:
+调用已配置的真实模型：
 
 ```bash
 export OPENAI_API_KEY='...'
@@ -97,98 +89,96 @@ export OPENAI_API_KEY='...'
   --enable-tools \
   --mode act \
   --posture suggest \
-  "Find the highest-risk defect and propose a fix"
+  "找到风险最高的缺陷并提出修复方案"
 ```
 
-Start the terminal UI:
+启动终端界面：
 
 ```bash
 ./bin/codehelper tui --workspace . --config ./codehelper.toml
 ```
 
-For the repository owner's macOS DeepSeek environment, build, configure, and
-run the TUI or official VS Code with one command:
+仓库所有者在 macOS 上使用 DeepSeek 时，可以一条命令完成编译、配置并启动 TUI
+或官方 VS Code：
 
 ```bash
 make deepseek-tui
 make deepseek-vscode
 ```
 
-See [One-Click Local DeepSeek](./docs/en/deepseek-local.md) for credential
-lookup, generated files, Agent usage, and verification.
+密钥来源、生成文件、Agent 执行方式和校验说明见
+[本机 DeepSeek 一键配置与运行](./docs/zh-CN/deepseek-local.md)。
 
-See [Getting Started](./docs/en/getting-started.md) for installation, initial
-configuration, credentials, persistence, and VS Code setup.
+安装、初始配置、凭证、持久化和 VS Code 使用方式见
+[快速开始](./docs/zh-CN/getting-started.md)。
 
-## Product Surfaces
+## 产品入口
 
-| Surface | Command or path | Primary use |
+| 入口 | 命令或路径 | 主要用途 |
 | --- | --- | --- |
-| One-shot CLI | `codehelper exec` | scripts, CI experiments, machine-readable event streams |
-| Terminal UI | `codehelper tui` | interactive repository work |
-| ACP runtime | `codehelper host --adapter acp` | editor/agent protocol clients |
-| VS Code extension | `extensions/vscode` | editor-native chat, context, changes, approvals, jobs |
-| Worker and automation | `worker`, `automation`, `workflow`, `lane`, `fleet` | durable and multi-step execution |
+| 单次 CLI | `codehelper exec` | 脚本、CI 实验、机器可读事件流 |
+| 终端界面 | `codehelper tui` | 交互式仓库开发 |
+| ACP Runtime | `codehelper host --adapter acp` | 编辑器与 Agent 协议客户端 |
+| VS Code 插件 | `extensions/vscode` | 编辑器原生对话、上下文、变更、审批和任务 |
+| Worker 与编排 | `worker`、`automation`、`workflow`、`lane`、`fleet` | 持久化、多步骤执行 |
 
-## Safety in One Minute
+## 一分钟理解安全模型
 
-`--mode` controls what class of work the agent is attempting:
+`--mode` 描述 Agent 正在进行的工作类型：
 
-- `plan`: inspect and plan
-- `act`: normal coding work
-- `operate`: operational workflows
+- `plan`：只读分析与计划
+- `act`：常规编码工作
+- `operate`：运维型工作流
 
-`--posture` controls how tool decisions are handled:
+`--posture` 描述工具决策方式：
 
-- `never`: read-only posture
-- `suggest`: request approval for risky actions
-- `auto`: apply policy automatically, denying actions that are not allowed
-- `bypass`: broad local permission, still subject to hard constitution and
-  sandbox boundaries
+- `never`：只读
+- `suggest`：风险操作请求用户审批
+- `auto`：按策略自动判断，不被允许的操作直接拒绝
+- `bypass`：宽松的本地权限，但仍不能绕过 constitution 和沙箱硬边界
 
-Use `suggest` for normal interactive work. Use `bypass` only in an isolated,
-trusted workspace. Credentials are stored as references to environment
-variables, files, or OS keyrings; raw secrets do not belong in TOML files.
+日常交互推荐 `suggest`。`bypass` 只应用于隔离且可信的工作区。凭证应保存为环境变量、
+文件或系统 Keyring 的引用，TOML 中不应出现原始密钥。
 
-## Repository Map
+## 仓库结构
 
 ```text
-cmd/codehelper/          process entry point
-internal/host/           CLI, TUI, ACP
-internal/runtime/        operation/event runtime and agent engine
-internal/adapter/        providers, models, tools, MCP, skills, plugins, hooks
-internal/security/       policy, permissions, constitution, sandbox
-internal/orchestration/  tasks, workers, workflows, lanes, fleet, subagents
-internal/persist/        SQLite, event log, sessions, snapshots, journals
-internal/observability/  usage, traces, verification, diagnostics, telemetry
-internal/platform/       process and OS integration
-extensions/vscode/       TypeScript VS Code extension
-docs/                    maintained bilingual documentation
-scripts/                 repeatable build, validation, setup, and release scripts
-testdata/                hermetic provider and benchmark fixtures
+cmd/codehelper/          进程入口
+internal/host/           CLI、TUI、ACP
+internal/runtime/        Operation/Event Runtime 与 Agent Engine
+internal/adapter/        Provider、Model、Tool、MCP、Skill、Plugin、Hook
+internal/security/       Policy、Permission、Constitution、Sandbox
+internal/orchestration/  Task、Worker、Workflow、Lane、Fleet、Subagent
+internal/persist/        SQLite、Event Log、Session、Snapshot、Journal
+internal/observability/  Usage、Trace、Verify、Diagnostics、Telemetry
+internal/platform/       进程和操作系统集成
+extensions/vscode/       TypeScript VS Code 插件
+docs/                    持续维护的中文文档
+scripts/                 构建、验证、配置和发布脚本
+testdata/                Hermetic Provider 与 Benchmark Fixture
 ```
 
-## Documentation
+## 文档
 
-| Audience | English | 简体中文 |
-| --- | --- | --- |
-| Documentation index | [docs/en](./docs/en/README.md) | [docs/zh-CN](./docs/zh-CN/README.md) |
-| Product and positioning | [Overview](./docs/en/overview.md) | [项目介绍](./docs/zh-CN/overview.md) |
-| Installation | [Getting started](./docs/en/getting-started.md) | [快速开始](./docs/zh-CN/getting-started.md) |
-| Configuration | [Configuration](./docs/en/configuration.md) | [配置说明](./docs/zh-CN/configuration.md) |
-| Commands and workflows | [Usage](./docs/en/usage.md) | [使用指南](./docs/zh-CN/usage.md) |
-| Architecture | [Architecture](./docs/en/architecture.md) | [架构设计](./docs/zh-CN/architecture.md) |
-| Security | [Security](./docs/en/security.md) | [安全指南](./docs/zh-CN/security.md) |
-| Local development | [Development](./docs/en/development.md) | [本地开发](./docs/zh-CN/development.md) |
-| Local DeepSeek | [One-click setup](./docs/en/deepseek-local.md) | [一键配置运行](./docs/zh-CN/deepseek-local.md) |
-| AI agent context | [Agent guide](./docs/en/agent-guide.md) | [Agent 指南](./docs/zh-CN/agent-guide.md) |
-| Agent engineering book | [Book and navigation](./docs/book/en/README.md) | [书籍与导航](./docs/book/zh-CN/README.md) |
-| Knowledge system plan | [Documentation plan](./docs/en/knowledge-base-plan.md) | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) |
-| Documentation governance | [Ownership and gates](./docs/en/documentation-governance.md) | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) |
-| Runtime reliability | [Hardening program](./docs/en/reliability-hardening.md) | [系统治理](./docs/zh-CN/reliability-hardening.md) |
-| Product direction | [Roadmap](./docs/en/roadmap.md) | [后续规划](./docs/zh-CN/roadmap.md) |
+| 主题 | 文档 |
+| --- | --- |
+| 文档总览 | [docs/zh-CN](./docs/zh-CN/README.md) |
+| 产品介绍与定位 | [项目介绍](./docs/zh-CN/overview.md) |
+| 安装与上手 | [快速开始](./docs/zh-CN/getting-started.md) |
+| 配置 | [配置说明](./docs/zh-CN/configuration.md) |
+| 命令与工作流 | [使用指南](./docs/zh-CN/usage.md) |
+| 架构 | [架构设计](./docs/zh-CN/architecture.md) |
+| 安全 | [安全指南](./docs/zh-CN/security.md) |
+| 本地开发 | [本地开发](./docs/zh-CN/development.md) |
+| 本机 DeepSeek | [一键配置运行](./docs/zh-CN/deepseek-local.md) |
+| Agent 上下文 | [Agent 指南](./docs/zh-CN/agent-guide.md) |
+| Agent 工程知识书籍 | [书籍与导航](./docs/book/zh-CN/README.md) |
+| 知识体系方案 | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) |
+| 文档治理 | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) |
+| 运行时可靠性 | [系统治理](./docs/zh-CN/reliability-hardening.md) |
+| 产品方向 | [后续规划](./docs/zh-CN/roadmap.md) |
 
-## Development
+## 开发
 
 ```bash
 make build
@@ -197,16 +187,13 @@ make docs-check
 make verify
 ```
 
-`make verify` is intentionally broad and may require platform security
-capabilities. Use the focused targets documented in
-[Development](./docs/en/development.md) when working on one subsystem.
+`make verify` 覆盖面很广，部分测试依赖平台安全能力。修改单个子系统时，应优先使用
+[本地开发指南](./docs/zh-CN/development.md)列出的聚焦命令。
 
-## Contributing, Security, and License
+修改 Runtime 契约、安全边界、持久化状态或生成协议文件前，请阅读
+[CONTRIBUTING.md](./CONTRIBUTING.md)。
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before changing runtime contracts,
-security boundaries, persisted state, or generated protocol files.
+疑似安全漏洞必须按照 [SECURITY.md](./SECURITY.md) 私下报告，不应创建
+公开 Issue。
 
-Report suspected vulnerabilities privately according to
-[SECURITY.md](./SECURITY.md), not through a public issue.
-
-CodeHelper is licensed under the [Apache License 2.0](./LICENSE).
+CodeHelper 使用 [Apache License 2.0](./LICENSE)。

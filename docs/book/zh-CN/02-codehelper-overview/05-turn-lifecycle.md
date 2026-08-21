@@ -36,8 +36,6 @@ last_verified: 2026-08-17
 
 # 一次 Agent Turn 的完整生命周期
 
-简体中文 | [English](../../en/02-codehelper-overview/05-turn-lifecycle.md)
-
 ## 学习目标
 
 能够从 Operation 创建开始，追踪 Context、Model Streaming、Tool、Verification、

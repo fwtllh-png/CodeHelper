@@ -22,8 +22,6 @@ last_verified: null
 
 # 构造 Approval 与 Denial
 
-简体中文 | [English](../../en/13-hands-on-labs/05-approval-and-denial.md)
-
 ## 目标与前置条件
 
 观察 Allow、Ask、Deny、Stale Decision 与 Post-approval Revalidation，不执行真实写入。

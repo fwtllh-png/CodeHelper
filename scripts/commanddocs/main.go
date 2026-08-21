@@ -29,7 +29,6 @@ func main() {
 		path   string
 		locale string
 	}{
-		{path: "docs/en/usage.md", locale: "en"},
 		{path: "docs/zh-CN/usage.md", locale: "zh-CN"},
 	}
 	stale := false

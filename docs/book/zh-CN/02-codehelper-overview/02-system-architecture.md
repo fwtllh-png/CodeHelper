@@ -32,8 +32,6 @@ last_verified: null
 
 # CodeHelper 全局架构
 
-简体中文 | [English](../../en/02-codehelper-overview/02-system-architecture.md)
-
 ## 学习目标
 
 理解主要分层、依赖方向、Runtime Protocol，以及 CodeHelper 为什么让多种 Host 共享

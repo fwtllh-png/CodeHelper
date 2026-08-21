@@ -23,8 +23,6 @@ last_verified: null
 
 # CLI 与 Machine-readable Output
 
-简体中文 | [English](../../en/10-hosts-protocols/01-cli.md)
-
 ## 学习目标
 
 理解 CLI Command Surface、Formal JSON Output、Streaming Execution、Config
@@ -67,7 +65,7 @@ Onboarding Path 是可执行契约：
 - `quickstart` 在无网络、无 Secret 条件下运行带 Verification 与 Receipt 的受治理 Turn；
 - Readiness 返回 `ready`、`degraded` 或 `blocked` 及 Repair Action。
 
-Cobra 是命令事实源。Root Help 与双语命令清单由 `make command-docs-check` 生成和检查；
+Cobra 是命令事实源。Root Help 与中文命令清单由 `make command-docs-check` 生成和检查；
 只增加隐藏实现而不更新 Command Tree，不构成受支持的 CLI Feature。
 
 ## 三个 Output Channel

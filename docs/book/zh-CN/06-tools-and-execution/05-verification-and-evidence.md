@@ -24,8 +24,6 @@ last_verified: null
 
 # Verification Gate 与证据
 
-简体中文 | [English](../../en/06-tools-and-execution/05-verification-and-evidence.md)
-
 ## 学习目标
 
 理解 Post-edit Diagnostics、Scoped Verification、Repair Round、Soft/Hard Outcome、

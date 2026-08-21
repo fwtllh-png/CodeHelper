@@ -22,8 +22,6 @@ last_verified: null
 
 # 跨平台构建与能力探测
 
-简体中文 | [English](../../en/12-engineering-practice/05-cross-platform.md)
-
 ## 学习目标
 
 区分 Compile Support 与 Runtime Capability，并显式表达平台降级。

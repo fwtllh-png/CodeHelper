@@ -1,7 +1,5 @@
 # AI Coding Agent 指南
 
-简体中文 | [English](../en/agent-guide.md)
-
 本文给 AI Coding Agent 提供在本仓库可靠工作的最小上下文，也可作为人工 Review
 检查表。
 
@@ -12,7 +10,7 @@
 
 ## 开始工作
 
-1. 阅读根目录 `README.zh-CN.md`。
+1. 阅读根目录 `README.md`。
 2. 阅读[架构设计](./architecture.md)。
 3. 修改实现前先读最近的 Package Test。
 4. 从 `Makefile` 查找标准验证命令。
@@ -77,7 +75,7 @@
 - 做最小且完整的变更；
 - 使用领域语义名称；
 - 只为不明显约束添加注释；
-- 中英文文档同步更新；
+- 中文文档与代码事实同步更新；
 - 使用仓库命令重新生成 Artifact。
 
 ### 验证
@@ -102,7 +100,7 @@ cd extensions/vscode && npm run check && npm test -- relevant-area
 2. 重新生成 JSON Schema；
 3. 重新生成 VS Code Protocol Type；
 4. 运行 ACP 与 HTTP Contract Test；
-5. 更新中英文文档。
+5. 更新中文文档。
 
 ### Persistence
 
@@ -173,15 +171,15 @@ Trust 时：
 - 操作仓库所有者的本机 DeepSeek 环境时，调用 `make deepseek-init`、
   `make deepseek-tui` 或 `make deepseek-vscode`，不检查被忽略的 Runbook；
 - 保持本地链接有效；
-- 同步更新 `docs/en` 与 `docs/zh-CN`；
+- 更新 `docs/zh-CN`，不创建英文镜像；
 - 删除过时材料，不保留互相矛盾的副本。
 
 建设 Agent 工程知识书籍时：
 
 - 把 `docs/book/catalog.json` 作为结构、标题、路径、里程碑和交付状态的事实来源；
 - 不为 `planned` 章节创建 Markdown 占位文件；
-- 章节进入 `draft` 时同时创建中英文文件；
-- 从对应语言模板开始，并保持 Front Matter 与 Catalog 一致；
+- 章节进入 `draft` 时创建中文文件；
+- 从中文模板开始，并保持 Front Matter 与 Catalog 一致；
 - 使用 `docs/book/governance.json` 管理 Ownership、Freshness 和 Release Fact；
 - 在 PR Documentation Impact 区块声明受影响 Chapter ID；
 - Catalog 变化后运行 `make book-navigation`；

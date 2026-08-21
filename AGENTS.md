@@ -2,8 +2,7 @@
 
 This file is the repository entry point for coding agents.
 
-中文说明见 [docs/zh-CN/agent-guide.md](./docs/zh-CN/agent-guide.md). Full English
-guidance is in [docs/en/agent-guide.md](./docs/en/agent-guide.md).
+完整说明见 [docs/zh-CN/agent-guide.md](./docs/zh-CN/agent-guide.md)。
 
 ## Objective
 
@@ -13,7 +12,7 @@ TUI, VS Code, ACP, workers, and orchestration.
 ## Read Before Editing
 
 1. `README.md`
-2. `docs/en/architecture.md`
+2. `docs/zh-CN/architecture.md`
 3. the nearest package tests
 4. `Makefile`
 5. `git status --short`
@@ -30,12 +29,13 @@ TUI, VS Code, ACP, workers, and orchestration.
   `deepseek-*` Make targets when operating the owner's local environment.
 - Do not overwrite unrelated worktree changes.
 - Do not add pre-release compatibility migrations without an explicit need.
-- Update `docs/en` and `docs/zh-CN` together.
+- Product documentation and book chapters are maintained in Chinese only under
+  `docs/zh-CN` and `docs/book/zh-CN`.
 - Treat `docs/book/catalog.json` as the book structure and status source of
   truth. Do not create empty files for `planned` chapters.
 - Treat `docs/book/governance.json` as the ownership, freshness, and release
   fact source of truth.
-- Book chapters move to `draft` or `verified` only with mirrored files and
+- Book chapters move to `draft` or `verified` only with a Chinese file and
   valid Front Matter; regenerate navigation through the repository command.
 - Use repository commands for generated protocol and compatibility files.
 

@@ -14,7 +14,7 @@ body:
         - Broken link or image / 链接或图片失效
         - Missing prerequisite / 缺少前置知识
         - Reading order or navigation / 阅读顺序或导航
-        - Translation divergence / 双语不一致
+        - Terminology inconsistency / 术语不一致
         - Other / 其他
     validations:
       required: true
@@ -24,7 +24,7 @@ body:
     attributes:
       label: Document and section / 文档与章节
       description: Provide the path, chapter ID, heading, or URL.
-      placeholder: docs/book/en/03-runtime-kernel/01-protocol.md, runtime-protocol
+      placeholder: docs/book/zh-CN/03-runtime-kernel/01-protocol.md, runtime-protocol
     validations:
       required: true
 

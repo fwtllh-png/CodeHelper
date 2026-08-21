@@ -23,8 +23,6 @@ last_verified: null
 
 # Capability Negotiation 与 Route Resolution
 
-简体中文 | [English](../../en/04-model-and-provider/03-capability-and-routing.md)
-
 ## 学习目标
 
 理解 Requested Behavior 如何根据 Model Capability 检查，以及不同 Agent Purpose 如何

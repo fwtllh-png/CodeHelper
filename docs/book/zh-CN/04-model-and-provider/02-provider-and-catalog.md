@@ -21,8 +21,6 @@ last_verified: null
 
 # Provider Adapter、Model Catalog 与 Wire ID
 
-简体中文 | [English](../../en/04-model-and-provider/02-provider-and-catalog.md)
-
 ## 学习目标
 
 理解 Provider/Model 分离、Catalog Validation，以及 Public Model ID 为什么可能不同于

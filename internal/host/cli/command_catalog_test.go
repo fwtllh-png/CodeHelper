@@ -43,7 +43,6 @@ func TestGeneratedCommandListsMatchCobraTree(t *testing.T) {
 		path   string
 		locale string
 	}{
-		{path: "docs/en/usage.md", locale: "en"},
 		{path: "docs/zh-CN/usage.md", locale: "zh-CN"},
 	}
 	for _, target := range targets {

@@ -23,8 +23,6 @@ last_verified: null
 
 # Mode、Posture、Policy 与 Permission
 
-简体中文 | [English](../../en/07-security-governance/02-mode-posture-policy.md)
-
 ## 学习目标
 
 区分 Work Intent（Mode）、Interaction Posture（Permission）、Resource Scope

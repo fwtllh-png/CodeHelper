@@ -1,55 +1,49 @@
-# Security Policy
+# 安全政策
 
-[简体中文](./SECURITY.zh-CN.md) | English
+## 支持版本
 
-## Supported Versions
+CodeHelper 目前处于初始开发阶段。安全修复应用于最新标签版本和 `main` 分支。
+除非 Release Notes 另有说明，不维护更早的预发布版本。
 
-CodeHelper is in initial development. Security fixes are applied to the latest
-tagged release and the `main` branch. Older pre-release versions are not
-maintained unless a release note states otherwise.
-
-| Version | Supported |
+| 版本 | 是否支持 |
 | --- | --- |
-| Latest tagged release | Yes |
-| `main` | Yes, development branch |
-| Older pre-release versions | No |
+| 最新标签版本 | 是 |
+| `main` | 是，开发分支 |
+| 更早的预发布版本 | 否 |
 
-## Reporting a Vulnerability
+## 报告安全漏洞
 
-Report vulnerabilities privately through
-[GitHub Security Advisories](https://github.com/fwtllh-png/CodeHelper/security/advisories/new).
-Do not open a public issue for a suspected vulnerability.
+请通过
+[GitHub Security Advisories](https://github.com/fwtllh-png/CodeHelper/security/advisories/new)
+私下报告安全漏洞。不要为疑似漏洞创建公开 Issue。
 
-Include only the information needed to reproduce and assess the problem:
+报告只应包含复现和评估问题所需的信息：
 
-- affected version or commit;
-- operating system and sandbox backend;
-- affected host, provider, tool, or protocol;
-- minimal reproduction steps;
-- expected and observed security boundary;
-- potential impact;
-- a suggested fix, when available.
+- 受影响版本或 Commit；
+- 操作系统和 Sandbox Backend；
+- 受影响的 Host、Provider、Tool 或 Protocol；
+- 最小复现步骤；
+- 预期和实际安全边界；
+- 潜在影响；
+- 可用时提供建议修复方式。
 
-Do not include credentials, private source code, production data, or other
-secrets. Use synthetic fixtures where possible.
+不要提交凭证、私有源码、生产数据或其他 Secret。应尽可能使用合成 Fixture。
 
-The maintainers aim to acknowledge a report within three business days and
-provide an initial assessment within seven business days. Complex issues may
-require additional time. Coordinated disclosure timing will be agreed with the
-reporter after the impact and remediation path are understood.
+维护者目标是在三个工作日内确认收到报告，并在七个工作日内给出初步评估。
+复杂问题可能需要更多时间。理解影响范围和修复路径后，维护者会与报告者协商
+披露时间。
 
-## Scope
+## 安全范围
 
-Security-sensitive areas include:
+安全敏感区域包括：
 
-- tool guard, policy, approval, permissions, and constitution enforcement;
-- workspace file boundaries, edit journal, and recovery;
-- process execution and OS sandbox isolation;
-- credential references, redaction, and logs;
-- provider, MCP, plugin, hook, and network boundaries;
-- HTTP/SSE, ACP, web, CLI, TUI, and VS Code trust boundaries;
-- persisted sessions, events, snapshots, and traces;
-- release artifacts, checksums, updates, and supply-chain metadata.
+- Tool Guard、Policy、Approval、Permission 和 Constitution Enforcement；
+- Workspace 文件边界、Edit Journal 和 Recovery；
+- Process Execution 和 OS Sandbox Isolation；
+- Credential Reference、Redaction 和 Log；
+- Provider、MCP、Plugin、Hook 和 Network Boundary；
+- HTTP/SSE、ACP、Web、CLI、TUI 和 VS Code Trust Boundary；
+- 持久化 Session、Event、Snapshot 和 Trace；
+- Release Artifact、Checksum、Update 和 Supply-chain Metadata。
 
-General hardening suggestions without a demonstrated security impact may be
-reported through a regular issue or Discussion.
+没有明确安全影响的一般加固建议，可以通过普通 Issue 或 Discussion 提交。

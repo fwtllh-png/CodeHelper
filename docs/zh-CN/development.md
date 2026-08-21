@@ -1,7 +1,5 @@
 # 本地开发、测试与脚本
 
-简体中文 | [English](../en/development.md)
-
 ## 开发环境
 
 必需：
@@ -83,9 +81,9 @@ make brand-check
 | `make architecture-freeze` | 执行四热点 Characterization、Golden、Schema 与聚焦 Race 门禁 |
 | `make race` | 串行 Race Go 测试 |
 | `make smoke` | 构建并验证 Help/Version |
-| `make docs-check` | 检查 Markdown 本地链接与双语结构 |
-| `make book-check` | 检查知识书籍 Catalog、元数据、镜像和路径 |
-| `make book-navigation` | 根据 Catalog 重新生成双语书籍导航 |
+| `make docs-check` | 检查 Markdown 本地链接与中文单一文档树 |
+| `make book-check` | 检查知识书籍 Catalog、元数据和路径 |
+| `make book-navigation` | 根据 Catalog 重新生成中文书籍导航 |
 | `make verify` | Docs、Brand、VS Code、Vet、Test、Race 综合门禁 |
 | `make clean` | 删除生成的 Build/Release 目录 |
 
@@ -135,14 +133,14 @@ make brand-check
 
 | 脚本 | 行为 |
 | --- | --- |
-| `scripts/check-docs.sh` | 检查本地 Markdown 链接与双语镜像 |
+| `scripts/check-docs.sh` | 检查本地 Markdown 链接与中文单一文档树 |
 | `scripts/check-book.sh` | 检查 Agent 工程知识书籍契约 |
 | `scripts/render-book-navigation.py` | 根据书籍 Catalog 生成导航 |
 | `scripts/check-brand.sh` | 拒绝历史产品品牌残留 |
 | `scripts/test-brand-check.sh` | Brand Scanner 自测 |
 | `scripts/test-secret-leak.sh` | 对已构建二进制执行脱敏测试 |
 | `scripts/run-test-lane.py` | 执行 Test Lane 并写入结构化证据 |
-| `scripts/commanddocs` | 生成或校验双语命令清单 |
+| `scripts/commanddocs` | 生成或校验中文命令清单 |
 | `scripts/observationtraitgen` | 从单一 Manifest 生成 Observation Trait 与公开 Schema |
 | `scripts/live-model-smoke.sh` | 调用一个显式配置的真实模型 |
 | `scripts/package-release.sh` | 构建五个平台、Checksum、SBOM、Manifest 与 Smoke |

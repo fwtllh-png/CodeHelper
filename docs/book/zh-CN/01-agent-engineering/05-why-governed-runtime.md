@@ -18,7 +18,7 @@ test_paths:
   - internal/runtime/app/runtime_test.go
   - internal/adapter/tool/guard/guard_test.go
 source_of_truth:
-  - README.zh-CN.md
+  - README.md
   - docs/zh-CN/architecture.md
   - docs/zh-CN/security.md
 status: draft
@@ -26,8 +26,6 @@ last_verified: null
 ---
 
 # 为什么 Agent 需要受治理的 Runtime
-
-简体中文 | [English](../../en/01-agent-engineering/05-why-governed-runtime.md)
 
 ## 学习目标
 
