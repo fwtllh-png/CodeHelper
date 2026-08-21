@@ -163,7 +163,6 @@ internal/persist/        SQLite, event log, sessions, snapshots, journals
 internal/observability/  usage, traces, verification, diagnostics, telemetry
 internal/platform/       process and OS integration
 extensions/vscode/       TypeScript VS Code extension
-evaluation/              production evaluation contracts, runner, scenarios, and reports
 docs/                    maintained bilingual documentation
 scripts/                 repeatable build, validation, setup, and release scripts
 testdata/                hermetic provider and benchmark fixtures
@@ -187,7 +186,6 @@ testdata/                hermetic provider and benchmark fixtures
 | Knowledge system plan | [Documentation plan](./docs/en/knowledge-base-plan.md) | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) |
 | Documentation governance | [Ownership and gates](./docs/en/documentation-governance.md) | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) |
 | Runtime reliability | [Hardening program](./docs/en/reliability-hardening.md) | [系统治理](./docs/zh-CN/reliability-hardening.md) |
-| Production evaluation | [Technical specification](./docs/en/production-evaluation.md) and [implementation plan](./docs/en/production-evaluation-implementation-plan.md) | [技术规格](./docs/zh-CN/production-evaluation.md)与[实施计划](./docs/zh-CN/production-evaluation-implementation-plan.md) |
 | Product direction | [Roadmap](./docs/en/roadmap.md) | [后续规划](./docs/zh-CN/roadmap.md) |
 
 ## Development

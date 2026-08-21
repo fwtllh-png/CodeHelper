@@ -44,7 +44,6 @@ CLI / TUI / VS Code / ACP
 | Observability | `internal/observability` | versioned observations, usage, traces, diagnostics, verification, telemetry |
 | Platform | `internal/platform` | processes, PTY, OS-specific behavior |
 | Configuration | `internal/config` | defaults, TOML, environment, validation, provenance |
-| Evaluation | `evaluation` | developer/CI contracts, scenarios, runners, and release evidence |
 
 ## Hard Dependency Rules
 
@@ -56,8 +55,6 @@ CLI / TUI / VS Code / ACP
 5. Every consequential tool call passes through `adapter/tool/guard`.
 6. UI state is a projection, not the source of runtime truth.
 7. Persistent writes are transactional or journaled at their ownership boundary.
-8. Production packages do not import `evaluation`; evaluation drives supported
-   Host/Runtime contracts and never becomes a second execution path.
 
 Architecture tests enforce important import restrictions. A design change that
 requires violating one of these rules needs an explicit architecture update,

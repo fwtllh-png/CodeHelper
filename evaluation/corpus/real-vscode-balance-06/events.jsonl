@@ -1,1 +1,0 @@
-{"schema_version":1,"sequence":1,"offset_ms":0,"source":"acp","kind":"acp.request.started","identity":{"capture":"capture-001","session":"session-001","request":"request-001"},"causality":{},"policy":{"class":"operational","redaction":"applied"},"data":{"method":"session/status"},"digest":"sha256:38f324c10a3a8eebc8e9c70675a7617408c247b0665b153bfb67d8e378771328"}

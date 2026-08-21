@@ -60,7 +60,6 @@ run_case() {
   local fake_failure=$3
   local expected_status=$4
   local expected_reason=$5
-  local evidence="$temporary/$scenario.json"
   set +e
   LIVE_MODEL_BASE_URL=https://example.invalid \
     LIVE_MODEL_WIRE_MODEL=deepseek-v4-flash \
@@ -69,13 +68,6 @@ run_case() {
     LIVE_MODEL_PROTOCOL=openai_responses \
     LIVE_MODEL_MULTI_AGENT="$multi" \
     FAKE_LIVE_FAILURE="$fake_failure" \
-    CODEHELPER_STAGE=h2_live \
-    CODEHELPER_STAGE_RUN_ID=h2-smoke-test \
-    CODEHELPER_STAGE_SOURCE_DIGEST=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-    CODEHELPER_STAGE_LOCK_IDENTITY=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
-    CODEHELPER_H2_SCENARIO_ID="$scenario" \
-    CODEHELPER_H2_SAMPLE_INDEX=1 \
-    CODEHELPER_STAGE_EVIDENCE_PATH="$evidence" \
     "$root/scripts/live-model-smoke.sh" "$fake" >/dev/null 2>"$temporary/$scenario.stderr"
   local command_status=$?
   set -e
@@ -83,27 +75,8 @@ run_case() {
     [ "$command_status" -eq 0 ]
   else
     [ "$command_status" -ne 0 ]
+    grep -q "failure_reason=$expected_reason" "$temporary/$scenario.stderr"
   fi
-  ruby -rjson -e '
-    evidence = JSON.parse(File.read(ARGV[0]))
-    abort "wrong stage" unless evidence["stage"] == "h2_live"
-    abort "wrong status" unless evidence["status"] == ARGV[1]
-    abort "wrong failure reason" unless evidence["failure_reason"] == ARGV[2]
-    unless %w[usage_missing runtime_command_failed].include?(ARGV[2])
-      abort "usage missing" unless evidence["usage_samples"] == 1 &&
-        evidence["input_tokens"] == 100 &&
-        evidence["output_tokens"] == 10 &&
-        evidence["cost_microunits"] == 42
-      expected_cost_known = ARGV[2] != "cost_unknown"
-      abort "wrong cost-known state" unless evidence["cost_known"] == expected_cost_known
-    end
-    abort "duration missing" unless evidence["duration_ms"] >= 1
-    abort "digest missing" unless %w[
-      endpoint_host_sha256 config_sha256 text_assertion_sha256 event_shape_sha256
-    ].all? { |key| evidence.fetch(key).match?(/\Asha256:[0-9a-f]{64}\z/) }
-  ' "$evidence" "$expected_status" "$expected_reason"
-  mode="$(stat -f '%Lp' "$evidence" 2>/dev/null || stat -c '%a' "$evidence")"
-  [ "$mode" = "600" ]
 }
 
 run_case exact-response 0 "" passed none

@@ -108,7 +108,6 @@ ruby -rjson -e '
 ' "$model_metadata" "$wire_model" "$context_tokens" \
 	"$model_max_output_tokens" "$input_price" "$cached_input_price" \
 	"$output_price" "$pricing_currency"
-started_ms=$(ruby -e 'puts((Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000).to_i)')
 command_status=0
 
 if [ "$multi_agent" = "1" ]; then
@@ -164,16 +163,11 @@ else
 		command_status=$?
 	fi
 fi
-ended_ms=$(ruby -e 'puts((Process.clock_gettime(Process::CLOCK_MONOTONIC) * 1000).to_i)')
-duration_ms=$((ended_ms - started_ms))
-[ "$duration_ms" -ge 1 ] || duration_ms=1
-
-ruby -rjson -rdigest -ruri -e '
+ruby -rjson -e '
 	text = +""
 	terminal = []
 	spawned = []
 	agent_terminal = {}
-	kinds = Hash.new(0)
 	usage_by_sample = {}
 	parse_failed = false
 	File.foreach(ARGV[0]) do |line|
@@ -183,7 +177,6 @@ ruby -rjson -rdigest -ruri -e '
 			parse_failed = true
 			next
 		end
-		kinds[event["kind"]] += 1
 		text << event.fetch("data", {}).fetch("text", "") if event["kind"] == "output.delta"
 		terminal << event["kind"] if %w[turn.completed turn.failed turn.canceled].include?(event["kind"])
 		if event["kind"] == "usage"
@@ -206,7 +199,7 @@ ruby -rjson -rdigest -ruri -e '
 		end
 	end
 	multi_agent = ENV["LIVE_MODEL_MULTI_AGENT"] == "1"
-	command_status = Integer(ARGV[14], 10)
+	command_status = Integer(ARGV[1], 10)
 	failure_reason =
 		if parse_failed
 			"event_parse_failed"
@@ -233,95 +226,8 @@ ruby -rjson -rdigest -ruri -e '
 		else
 			"none"
 		end
-	status = failure_reason == "none" ? "passed" : "failed"
-	if (path = ENV["CODEHELPER_STAGE_EVIDENCE_PATH"]) && !path.empty?
-		stage = ENV.fetch("CODEHELPER_STAGE")
-		run_id = ENV.fetch("CODEHELPER_STAGE_RUN_ID")
-		source_digest = ENV.fetch("CODEHELPER_STAGE_SOURCE_DIGEST")
-		uri = URI.parse(ARGV[1])
-		host = uri.host
-		abort "live model base URL has no host" if host.nil? || host.empty?
-		if stage == "h2_live"
-			usage = usage_by_sample.values.each_with_object({
-				input_tokens: 0,
-				output_tokens: 0,
-				reasoning_tokens: 0,
-				cached_tokens: 0,
-				cost_microunits: 0
-			}) do |sample, total|
-				total.keys.each { |key| total[key] += sample.fetch(key.to_s, 0).to_i }
-			end
-			cost_known = !usage_by_sample.empty? &&
-				usage_by_sample.values.all? { |sample| sample["cost_known"] == true }
-			config = [
-				ARGV[3], ARGV[2], ARGV[4], ARGV[5], ARGV[6], ARGV[7],
-				ARGV[8], ARGV[9], ARGV[10], ARGV[11], ARGV[12]
-			]
-			evidence = {
-				schema_version: 2,
-				stage: stage,
-				status: status,
-				failure_reason: failure_reason,
-				qualification_id: run_id,
-				scenario_id: ENV.fetch("CODEHELPER_H2_SCENARIO_ID"),
-				sample_index: Integer(ENV.fetch("CODEHELPER_H2_SAMPLE_INDEX"), 10),
-				source_digest: source_digest,
-				lock_identity: ENV.fetch("CODEHELPER_STAGE_LOCK_IDENTITY"),
-				endpoint_host_sha256: "sha256:" + Digest::SHA256.hexdigest(host.downcase),
-				provider: ARGV[3],
-				model: ARGV[2],
-				protocol: ARGV[4],
-				pricing_window: ARGV[12],
-				config_sha256: "sha256:" + Digest::SHA256.hexdigest(JSON.generate(config)),
-				multi_agent: multi_agent,
-				terminal_event: terminal.first || "missing",
-				terminal_count: terminal.length,
-				text_assertion_sha256: "sha256:" + Digest::SHA256.hexdigest(text.strip),
-				event_shape_sha256: "sha256:" + Digest::SHA256.hexdigest(JSON.generate(kinds.keys.sort)),
-				usage_samples: usage_by_sample.length,
-				input_tokens: usage.fetch(:input_tokens),
-				output_tokens: usage.fetch(:output_tokens),
-				reasoning_tokens: usage.fetch(:reasoning_tokens),
-				cached_tokens: usage.fetch(:cached_tokens),
-				cost_microunits: usage.fetch(:cost_microunits),
-				cost_known: cost_known,
-				duration_ms: Integer(ARGV[13], 10),
-				agent_spawn_count: spawned.uniq.length,
-				agent_terminal_count: agent_terminal.length,
-				agent_completed_count: agent_terminal.values.count { |item| item.fetch(:status) == "completed" }
-			}
-		else
-			evidence = {
-				schema_version: 1,
-				stage: stage,
-				status: status,
-				failure_reason: failure_reason,
-				run_id: run_id,
-				source_digest: source_digest,
-				kind: "live-model",
-				endpoint_host_sha256: Digest::SHA256.hexdigest(host.downcase),
-				model: ARGV[2],
-				model_sha256: Digest::SHA256.hexdigest(ARGV[2]),
-				provider: ARGV[3],
-				multi_agent: multi_agent,
-				agent_spawn_count: spawned.uniq.length,
-				agent_terminal_count: agent_terminal.length,
-				agent_completed_count: agent_terminal.values.count { |item| item.fetch(:status) == "completed" },
-				terminal_event: terminal.first || "missing",
-				terminal_count: terminal.length,
-				text_assertion_sha256: Digest::SHA256.hexdigest(text.strip)
-			}
-		end
-		File.open(path, File::WRONLY | File::CREAT | File::TRUNC, 0o600) do |file|
-			file.write(JSON.generate(evidence))
-			file.write("\n")
-		end
-	end
-		warn "live model failure_reason=#{failure_reason}" unless failure_reason == "none"
-		exit 1 unless failure_reason == "none"
-' "$output" "$base_url" "$wire_model" "$model_name" "$protocol" \
-	"$context_tokens" "$model_max_output_tokens" "$model_capabilities" \
-	"$input_price" "$cached_input_price" "$output_price" "$pricing_currency" \
-		"$pricing_window" "$duration_ms" "$command_status"
+	warn "live model failure_reason=#{failure_reason}" unless failure_reason == "none"
+	exit 1 unless failure_reason == "none"
+' "$output" "$command_status"
 
 cat "$output"

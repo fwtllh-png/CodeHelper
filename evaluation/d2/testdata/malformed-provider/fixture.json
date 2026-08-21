@@ -1,7 +1,0 @@
-{
-  "protocol": "openai_chat",
-  "path": "/chat/completions",
-  "model": "fixture-model",
-  "expected_prompt": "trigger malformed provider",
-  "streams": ["malformed.sse"]
-}

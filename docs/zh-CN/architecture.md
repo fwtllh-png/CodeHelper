@@ -41,7 +41,6 @@ CLI / TUI / VS Code / ACP
 | Observability | `internal/observability` | 版本化 Observation、Usage、Trace、Diagnostics、Verify、Telemetry |
 | Platform | `internal/platform` | 进程、PTY、操作系统差异 |
 | Configuration | `internal/config` | 默认值、TOML、环境变量、校验、Provenance |
-| Evaluation | `evaluation` | 开发者/CI 契约、Scenario、Runner 与发布证据 |
 
 ## 硬依赖规则
 
@@ -52,8 +51,6 @@ CLI / TUI / VS Code / ACP
 5. 所有有副作用工具都经过 `adapter/tool/guard`。
 6. UI State 是 Projection，不是 Runtime 事实来源。
 7. 持久化写入在所属边界内使用事务或 Journal。
-8. 生产 Package 不导入 `evaluation`；测评只驱动受支持的 Host/Runtime 契约，不建立
-   第二条执行路径。
 
 Architecture Test 会检查重要 Import 限制。需要违反这些规则的设计必须先进行显式架构
 调整，不能用局部捷径绕过。

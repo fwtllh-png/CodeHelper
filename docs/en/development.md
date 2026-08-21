@@ -80,10 +80,6 @@ make brand-check
 | `make test-platform-capability` | run real host sandbox capability tests |
 | `make test-integration` | run ACP and VS Code against a real binary |
 | `make test-release` | run race, packaging, redaction, and release dry-run gates |
-| `make eval-contract-check` | run the candidate evaluation contract and Runner diagnostics; not release evidence |
-| `make eval-foundation-check` | validate F1-F3 contracts, nine Oracles, seven Mutations, and production Provider/Runtime/Host Replay; not Qualification evidence |
-| `make eval-replay` | run candidate structural Replay and Corpus diagnostics; not Runtime/Host Replay evidence |
-| `make eval-oracle` | run the F3 candidate Core Pack, Oracle, Impact, and structural flake diagnostics; not Qualification evidence |
 | `make hotspot-baseline` | validate the IMP-006 responsibility, dependency, size, and test-asset contract |
 | `make architecture-freeze` | run the four hotspot characterization, golden, schema, and focused race gates |
 | `make race` | serial race-enabled Go tests |
@@ -154,10 +150,10 @@ make brand-check
 | `scripts/deepseek-local.sh` | builds/configures local DeepSeek and launches TUI or VS Code |
 | `scripts/setup-vscode-local.sh` | macOS official-VS-Code local installation |
 
-Benchmark and evaluation reports are transient `.tmp` or CI artifacts. Every
-rate carries its numerator and denominator; an empty denominator produces
-`null`, not a misleading zero. `make bench` remains the strict release gate
-and does not accept unavailable tasks as passed.
+Benchmark reports are transient `.tmp` or CI artifacts. Every rate carries its
+numerator and denominator; an empty denominator produces `null`, not a
+misleading zero. `make bench` remains the strict release gate and does not
+accept unavailable tasks as passed.
 
 Extension scripts under `extensions/vscode/scripts` own TypeScript build,
 protocol/compatibility generation, Electron/remote integration, VSIX packaging,

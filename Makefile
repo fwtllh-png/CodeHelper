@@ -16,8 +16,6 @@ LDFLAGS := -s -w \
 	test-release integration-gate release-gate race build cross-build smoke \
 	docs-check book-check experience-check experience-baseline \
 	experience-electron-baseline host-journey-contract \
-	eval-contract-check eval-foundation-check eval-replay eval-oracle \
-	eval-q1-artifacts eval-q1 eval-d1 eval-h1 eval-h2 eval-h3 eval-h4 \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	multi-agent-performance \
 	observation-traits observation-traits-check \
@@ -45,33 +43,6 @@ LDFLAGS := -s -w \
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
 ARCHITECTURE_METRICS_BASELINE := testdata/contracts/architecture-metrics-baseline.json
 RELIABILITY_MATRIX := testdata/contracts/reliability-matrix.json
-EVALUATION_MANIFEST := evaluation/manifest.json
-EVALUATION_BINARY := bin/codehelper-eval
-Q1_ID ?= foundation-v2-q1
-Q1_BUILD_DATE ?= 2026-08-19T00:00:00Z
-Q1_COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || printf unknown)
-Q1_VERSION ?= 0.0.1
-Q1_OUTPUT ?= .tmp/evaluation/q1/$(Q1_ID)
-D1_ID ?= product-discovery-d1-01
-D1_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
-D1_OUTPUT ?= .tmp/evaluation/d1/$(D1_ID)
-H1_ID ?= production-admission-h1-01
-H1_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
-H1_OUTPUT ?= .tmp/evaluation/h1/$(H1_ID)
-H2_ID ?= production-admission-h2-01
-H2_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
-H2_OUTPUT ?= .tmp/evaluation/h2/$(H2_ID)
-H3_ID ?= production-admission-h3-01
-H3_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
-H3_H1_REPORT ?= .tmp/evaluation/h1/$(H1_ID)/qualification.json
-H3_H2_REPORT ?= .tmp/evaluation/h2/$(H2_ID)/qualification.json
-H3_OUTPUT ?= .tmp/evaluation/h3/$(H3_ID)
-H4_ID ?= production-admission-h4-01
-H4_LOCK ?= $(Q1_OUTPUT)/harness-lock.json
-H4_H3_REPORT ?= $(H3_OUTPUT)/qualification.json
-H4_H3_RELEASE ?= $(H3_OUTPUT)/release-evidence.json
-H4_H3_PACKAGE ?= $(H3_OUTPUT)/package
-H4_OUTPUT ?= .tmp/evaluation/h4/$(H4_ID)
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
@@ -102,8 +73,6 @@ endif
 fmt:
 	$(GO) fmt ./...
 
-# Evaluation gates remain diagnostic until the Convergence Review re-entry
-# contract is satisfied; do not make them release-authoritative by dependency.
 verify: architecture-ratchet docs-check book-check brand-check \
 	vscode-check vscode-test multi-agent-performance reliability-gate
 	@test -z "$$(gofmt -l .)" || { echo "gofmt required:"; gofmt -l .; exit 1; }
@@ -112,102 +81,6 @@ verify: architecture-ratchet docs-check book-check brand-check \
 	$(GO) test -race -p 1 ./...
 
 test: test-hermetic
-
-eval-contract-check:
-	$(GO) test -count=1 ./evaluation/...
-	$(GO) run ./evaluation/cmd/codehelper-eval contract check \
-		--root . --manifest '$(EVALUATION_MANIFEST)'
-
-eval-foundation-check:
-	$(GO) run ./evaluation/cmd/codehelper-eval foundation check \
-		--root . --manifest evaluation/spec/foundation.json
-
-eval-q1-artifacts:
-	$(MAKE) build VERSION='$(Q1_VERSION)' COMMIT='$(Q1_COMMIT)' BUILD_DATE='$(Q1_BUILD_DATE)'
-	@mkdir -p bin
-	$(GO) build -trimpath -o '$(EVALUATION_BINARY)' ./evaluation/cmd/codehelper-eval
-	$(MAKE) vscode-package-universal
-
-eval-q1: eval-q1-artifacts
-	'$(EVALUATION_BINARY)' qualification q1 \
-		--root . \
-		--id '$(Q1_ID)' \
-		--evaluation-binary '$(EVALUATION_BINARY)' \
-		--runtime '$(BINARY)' \
-		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
-		--runtime-version '$(Q1_VERSION)' \
-		--build-date '$(Q1_BUILD_DATE)' \
-		--output '$(Q1_OUTPUT)'
-
-eval-d1:
-	'$(EVALUATION_BINARY)' discovery d1 \
-		--root . \
-		--id '$(D1_ID)' \
-		--lock '$(D1_LOCK)' \
-		--evaluation-binary '$(EVALUATION_BINARY)' \
-		--runtime '$(BINARY)' \
-		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
-		--output '$(D1_OUTPUT)'
-
-eval-h1:
-	'$(EVALUATION_BINARY)' admission h1 \
-		--root . \
-		--id '$(H1_ID)' \
-		--lock '$(H1_LOCK)' \
-		--evaluation-binary '$(EVALUATION_BINARY)' \
-		--runtime '$(BINARY)' \
-		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
-		--output '$(H1_OUTPUT)'
-
-eval-h2:
-	'$(EVALUATION_BINARY)' admission h2 \
-		--root . \
-		--id '$(H2_ID)' \
-		--lock '$(H2_LOCK)' \
-		--evaluation-binary '$(EVALUATION_BINARY)' \
-		--runtime '$(BINARY)' \
-		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
-		--output '$(H2_OUTPUT)'
-
-eval-h3:
-	'$(EVALUATION_BINARY)' admission h3 \
-		--root . \
-		--id '$(H3_ID)' \
-		--lock '$(H3_LOCK)' \
-		--h1-report '$(H3_H1_REPORT)' \
-		--h2-report '$(H3_H2_REPORT)' \
-		--evaluation-binary '$(EVALUATION_BINARY)' \
-		--runtime '$(BINARY)' \
-		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
-		--runtime-version '$(Q1_VERSION)' \
-		--build-date '$(Q1_BUILD_DATE)' \
-		--output '$(H3_OUTPUT)'
-
-eval-h4:
-	'$(EVALUATION_BINARY)' admission h4 \
-		--root . \
-		--id '$(H4_ID)' \
-		--lock '$(H4_LOCK)' \
-		--h3-report '$(H4_H3_REPORT)' \
-		--h3-release '$(H4_H3_RELEASE)' \
-		--h3-package '$(H4_H3_PACKAGE)' \
-		--evaluation-binary '$(EVALUATION_BINARY)' \
-		--runtime '$(BINARY)' \
-		--vsix '$(VSCODE_DIR)/dist/codehelper-vscode-0.0.1.vsix' \
-		--output '$(H4_OUTPUT)'
-
-eval-replay:
-	$(GO) run ./evaluation/cmd/codehelper-eval replay check \
-		--corpus evaluation/corpus --minimum 12
-
-eval-oracle:
-	$(GO) run ./evaluation/cmd/codehelper-eval oracle check \
-		--root . \
-		--pack evaluation/scenarios/core/pack.json \
-		--impact-map evaluation/impact-map.json \
-		--corpus evaluation/corpus \
-		--minimum 30 \
-		--replay-runs 500
 
 hotspot-baseline:
 	$(GO) test -count=1 ./scripts -run 'Test(RepositoryHotspotBaseline|CheckHotspot)'

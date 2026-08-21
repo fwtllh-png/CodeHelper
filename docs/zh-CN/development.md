@@ -79,10 +79,6 @@ make brand-check
 | `make test-platform-capability` | 执行真实宿主机 Sandbox 能力测试 |
 | `make test-integration` | 用真实 Binary 执行 ACP 与 VS Code 集成测试 |
 | `make test-release` | 执行 Race、打包、脱敏与发布 Dry-run 门禁 |
-| `make eval-contract-check` | 执行候选 Evaluation Contract 和 Runner 诊断；不构成 Release Evidence |
-| `make eval-foundation-check` | 校验 F1-F3 Contract、九类 Oracle、七类 Mutation 和 Production Provider/Runtime/Host Replay；不构成 Qualification Evidence |
-| `make eval-replay` | 执行候选 Structural Replay 和 Corpus 诊断；不构成 Runtime/Host Replay Evidence |
-| `make eval-oracle` | 执行 F3 候选 Core Pack、Oracle、Impact 和 Structural Flake 诊断；不构成 Qualification Evidence |
 | `make hotspot-baseline` | 校验 IMP-006 职责、依赖、体积与测试资产契约 |
 | `make architecture-freeze` | 执行四热点 Characterization、Golden、Schema 与聚焦 Race 门禁 |
 | `make race` | 串行 Race Go 测试 |
@@ -153,9 +149,9 @@ make brand-check
 | `scripts/deepseek-local.sh` | 编译配置本机 DeepSeek，并启动 TUI 或 VS Code |
 | `scripts/setup-vscode-local.sh` | macOS 官方 VS Code 本地安装 |
 
-Benchmark 与评估报告是临时 `.tmp` 或 CI Artifact。每个比率都携带分子与分母；
-分母为空时输出 `null`，不会用 0 冒充已测量结果。`make bench` 仍是严格 Release
-Gate，不会把 Unavailable 任务视为 Passed。
+Benchmark 报告是临时 `.tmp` 或 CI Artifact。每个比率都携带分子与分母；分母为空时
+输出 `null`，不会用 0 冒充已测量结果。`make bench` 仍是严格 Release Gate，不会把
+Unavailable 任务视为 Passed。
 
 `extensions/vscode/scripts` 管理 TypeScript Build、Protocol/Compatibility 生成、
 Electron/Remote Integration、VSIX、Release Manifest、Provenance、Matrix Evidence 和

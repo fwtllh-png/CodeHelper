@@ -7,11 +7,10 @@ import {
   mkdir,
   mkdtemp,
   readFile,
-  rename,
   rm,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
@@ -36,21 +35,6 @@ import type { RuntimePosture } from "../security/trust.js";
 const integrationBinary = process.env["CODEHELPER_VSCODE_BINARY"];
 const integrationFixture = process.env["CODEHELPER_VSCODE_FIXTURE"];
 const contextFixture = process.env["CODEHELPER_VSCODE_CONTEXT_FIXTURE"];
-const cleanupReportPath = process.env["CODEHELPER_Q1_CLEANUP_REPORT"];
-const cleanupQualificationID = process.env["CODEHELPER_Q1_QUALIFICATION_ID"];
-const cleanupTaskID = process.env["CODEHELPER_Q1_TASK_ID"];
-
-interface OwnedResource {
-  readonly kind: "process" | "temporary_directory";
-  readonly owner: string;
-  readonly identity: string;
-  readonly pid?: number;
-  cleanup_attempted: boolean;
-  cleanup_succeeded: boolean;
-}
-
-const ownedResources = new Map<string, OwnedResource>();
-let cleanupWrite = Promise.resolve();
 
 void test(
   "real Runtime restarts, replays its cursor, and denies writes when untrusted",
@@ -62,7 +46,6 @@ void test(
     assert.ok(integrationBinary);
     assert.ok(integrationFixture);
     const root = await mkdtemp(join(tmpdir(), "codehelper-vscode-runtime-"));
-    await registerTemporaryRoot("restart", root);
     const workspace = join(root, "workspace");
     const dataDirectory = join(root, "state");
     await mkdir(workspace);
@@ -77,7 +60,6 @@ void test(
     try {
       assert.equal((await verifyBinary(wrapper)).name, "codehelper");
       first = await start(wrapper, workspace, dataDirectory);
-      await registerRuntime("restart-first", first);
       await negotiateRuntime(first.client);
       firstSession = await connectSession(
         first.client,
@@ -102,7 +84,6 @@ void test(
       first = undefined;
 
       second = await start(wrapper, workspace, dataDirectory);
-      await registerRuntime("restart-second", second);
       await negotiateRuntime(second.client);
       const hydrated: number[] = [];
       secondSession = await connectSession(
@@ -157,7 +138,6 @@ void test(
     assert.ok(integrationBinary);
     assert.ok(integrationFixture);
     const root = await mkdtemp(join(tmpdir(), "codehelper-vscode-approval-"));
-    await registerTemporaryRoot("approval", root);
     const workspace = join(root, "workspace");
     const dataDirectory = join(root, "state");
     await mkdir(workspace);
@@ -174,7 +154,6 @@ void test(
       5,
       rules,
     );
-    await registerRuntime("approval", runtime);
     const store = new BindingStore(new MemoryMemento());
     const projector = new ChatProjector();
     const approval = deferred<ApprovalCard>();
@@ -268,7 +247,6 @@ void test(
     assert.ok(integrationBinary);
     assert.ok(contextFixture);
     const root = await mkdtemp(join(tmpdir(), "codehelper-vscode-context-"));
-    await registerTemporaryRoot("context", root);
     const workspace = join(root, "workspace");
     const dataDirectory = join(root, "state");
     await mkdir(workspace);
@@ -278,7 +256,6 @@ void test(
     await writeFile(contextPath, content);
     const wrapper = await fixtureWrapper(root, integrationBinary, contextFixture);
     const runtime = await start(wrapper, workspace, dataDirectory, "suggest");
-    await registerRuntime("context", runtime);
     const projector = new ChatProjector();
     const completed = deferred<true>();
     let startedContext: unknown;
@@ -356,7 +333,6 @@ void test(
     assert.ok(integrationBinary);
     assert.ok(integrationFixture);
     const root = await mkdtemp(join(tmpdir(), "codehelper-vscode-plan-drift-"));
-    await registerTemporaryRoot("plan-drift", root);
     const workspace = join(root, "workspace");
     const dataDirectory = join(root, "state");
     await mkdir(workspace);
@@ -371,7 +347,6 @@ void test(
       2,
       rules,
     );
-    await registerRuntime("plan-drift", runtime);
     const projector = new ChatProjector();
     const approval = deferred<ApprovalCard>();
     const terminal = deferred<true>();
@@ -490,38 +465,6 @@ async function approvalRules(root: string): Promise<string> {
   return path;
 }
 
-async function registerTemporaryRoot(owner: string, path: string): Promise<void> {
-  if (cleanupReportPath === undefined) return;
-  const identity = digestIdentity(path);
-  ownedResources.set(`temporary_directory:${identity}`, {
-    kind: "temporary_directory",
-    owner,
-    identity,
-    cleanup_attempted: false,
-    cleanup_succeeded: false,
-  });
-  await writeCleanupEvidence();
-}
-
-async function registerRuntime(
-  owner: string,
-  runtime: RuntimeProcess,
-): Promise<void> {
-  if (cleanupReportPath === undefined) return;
-  assert.notEqual(runtime.pid, undefined, "tracked Runtime must have a PID");
-  const pid = runtime.pid as number;
-  const identity = digestIdentity(`pid:${String(pid)}:${owner}`);
-  ownedResources.set(`process:${identity}`, {
-    kind: "process",
-    owner,
-    identity,
-    pid,
-    cleanup_attempted: false,
-    cleanup_succeeded: false,
-  });
-  await writeCleanupEvidence();
-}
-
 async function cleanupIntegrationResources(
   sessions: readonly (ConnectedSession | undefined)[],
   runtimes: readonly (readonly [string, RuntimeProcess | undefined])[],
@@ -551,88 +494,14 @@ async function cleanupIntegrationResources(
 }
 
 async function stopOwnedRuntime(
-  owner: string,
+  _owner: string,
   runtime: RuntimeProcess,
 ): Promise<void> {
-  const resource = ownedRuntime(owner, runtime);
-  if (resource !== undefined) {
-    resource.cleanup_attempted = true;
-    await writeCleanupEvidence();
-  }
-  try {
-    await runtime.stop();
-    if (resource !== undefined) {
-      resource.cleanup_succeeded = true;
-    }
-  } finally {
-    await writeCleanupEvidence();
-  }
+  await runtime.stop();
 }
 
-async function removeOwnedRoot(owner: string, path: string): Promise<void> {
-  const resource = ownedTemporaryRoot(owner, path);
-  if (resource !== undefined) {
-    resource.cleanup_attempted = true;
-    await writeCleanupEvidence();
-  }
-  try {
-    await rm(path, { recursive: true, force: true });
-    if (resource !== undefined) {
-      resource.cleanup_succeeded = true;
-    }
-  } finally {
-    await writeCleanupEvidence();
-  }
-}
-
-function ownedRuntime(
-  owner: string,
-  runtime: RuntimeProcess,
-): OwnedResource | undefined {
-  if (runtime.pid === undefined) return undefined;
-  const identity = digestIdentity(`pid:${String(runtime.pid)}:${owner}`);
-  return ownedResources.get(`process:${identity}`);
-}
-
-function ownedTemporaryRoot(
-  owner: string,
-  path: string,
-): OwnedResource | undefined {
-  const identity = digestIdentity(path);
-  const resource = ownedResources.get(`temporary_directory:${identity}`);
-  return resource?.owner === owner ? resource : undefined;
-}
-
-function digestIdentity(value: string): string {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
-}
-
-async function writeCleanupEvidence(): Promise<void> {
-  if (cleanupReportPath === undefined) return;
-  if (cleanupQualificationID === undefined || cleanupTaskID === undefined) {
-    throw new Error("Q1 cleanup evidence identity is incomplete");
-  }
-  cleanupWrite = cleanupWrite.then(async () => {
-    const resources = [...ownedResources.values()].sort((left, right) =>
-      `${left.kind}:${left.identity}`.localeCompare(`${right.kind}:${right.identity}`)
-    );
-    const report = {
-      schema_version: 1,
-      qualification_id: cleanupQualificationID,
-      task_id: cleanupTaskID,
-      resources,
-      outstanding: resources.filter((resource) =>
-        !resource.cleanup_attempted || !resource.cleanup_succeeded
-      ).length,
-    };
-    const temporary = `${cleanupReportPath}.tmp-${String(process.pid)}`;
-    await mkdir(dirname(cleanupReportPath), { recursive: true, mode: 0o700 });
-    await writeFile(temporary, `${JSON.stringify(report, null, 2)}\n`, {
-      mode: 0o600,
-    });
-    await rename(temporary, cleanupReportPath);
-  });
-  await cleanupWrite;
+async function removeOwnedRoot(_owner: string, path: string): Promise<void> {
+  await rm(path, { recursive: true, force: true });
 }
 
 class MemoryMemento implements Memento {

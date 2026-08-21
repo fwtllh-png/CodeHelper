@@ -39,7 +39,6 @@ maintainability over feature count.
 | durable data | `internal/persist` |
 | observations, usage, traces | `internal/observability` |
 | VS Code | `extensions/vscode` |
-| production evaluation | `evaluation` |
 
 ## Non-Negotiable Invariants
 

@@ -155,7 +155,6 @@ internal/persist/        SQLite、Event Log、Session、Snapshot、Journal
 internal/observability/  Usage、Trace、Verify、Diagnostics、Telemetry
 internal/platform/       进程和操作系统集成
 extensions/vscode/       TypeScript VS Code 插件
-evaluation/              生产测评契约、Runner、Scenario 与 Report
 docs/                    持续维护的双语文档
 scripts/                 构建、验证、配置和发布脚本
 testdata/                Hermetic Provider 与 Benchmark Fixture
@@ -179,7 +178,6 @@ testdata/                Hermetic Provider 与 Benchmark Fixture
 | 知识体系方案 | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) | [Documentation plan](./docs/en/knowledge-base-plan.md) |
 | 文档治理 | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) | [Ownership and gates](./docs/en/documentation-governance.md) |
 | 运行时可靠性 | [系统治理](./docs/zh-CN/reliability-hardening.md) | [Hardening program](./docs/en/reliability-hardening.md) |
-| 生产测评 | [技术规格](./docs/zh-CN/production-evaluation.md)与[实施计划](./docs/zh-CN/production-evaluation-implementation-plan.md) | [Technical specification](./docs/en/production-evaluation.md) and [implementation plan](./docs/en/production-evaluation-implementation-plan.md) |
 | 产品方向 | [后续规划](./docs/zh-CN/roadmap.md) | [Roadmap](./docs/en/roadmap.md) |
 
 ## 开发
