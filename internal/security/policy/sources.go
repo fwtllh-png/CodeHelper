@@ -25,13 +25,9 @@ func (r *Runtime) ReloadSources(user, repository []Rule) (uint64, error) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.Revision == 0 {
-		r.Revision = 1
-	}
-	r.Revision++
 	r.User = append([]Rule(nil), user...)
 	r.Repository = append([]Rule(nil), repository...)
-	return r.Revision, nil
+	return r.bumpRevisionLocked(), nil
 }
 
 func (r *Runtime) AppendUserRule(rule Rule) (uint64, error) {
@@ -43,12 +39,8 @@ func (r *Runtime) AppendUserRule(rule Rule) (uint64, error) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.Revision == 0 {
-		r.Revision = 1
-	}
-	r.Revision++
 	r.User = append(append([]Rule(nil), r.User...), rule)
-	return r.Revision, nil
+	return r.bumpRevisionLocked(), nil
 }
 
 func ValidateRules(source AuthoritySource, rules []Rule) error {

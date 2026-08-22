@@ -2,8 +2,12 @@ package rlm
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"sync"
@@ -12,6 +16,8 @@ import (
 
 // MaxSubQueryBatch is the hard concurrency ceiling for sub_query_batch.
 const MaxSubQueryBatch = 16
+
+const maxSubQueryRequestBytes = 64 << 10
 
 // SubQueryClient answers one-shot child prompts from inside an RLM Python REPL.
 type SubQueryClient interface {
@@ -33,6 +39,7 @@ type subQueryBridge struct {
 	server    *http.Server
 	listener  net.Listener
 	baseURL   string
+	token     string
 	closeOnce sync.Once
 }
 
@@ -53,6 +60,10 @@ func startSubQueryBridge(
 	if timeoutSecs > 600 {
 		timeoutSecs = 600
 	}
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, err
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
@@ -64,10 +75,18 @@ func startSubQueryBridge(
 		sem:      make(chan struct{}, MaxSubQueryBatch),
 		listener: listener,
 		baseURL:  "http://" + listener.Addr().String(),
+		token:    base64.RawURLEncoding.EncodeToString(tokenBytes),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/sub_query", bridge.handle)
-	bridge.server = &http.Server{Handler: mux}
+	bridge.server = &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 2 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      605 * time.Second,
+		IdleTimeout:       5 * time.Second,
+		MaxHeaderBytes:    8 << 10,
+	}
 	go func() { _ = bridge.server.Serve(listener) }()
 	return bridge, nil
 }
@@ -88,13 +107,51 @@ func (b *subQueryBridge) handle(writer http.ResponseWriter, request *http.Reques
 		http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	expected := "Bearer " + b.token
+	authorization := request.Header.Get("Authorization")
+	if subtle.ConstantTimeCompare(
+		[]byte(authorization),
+		[]byte(expected),
+	) != 1 {
+		writeSubQueryError(writer, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 	var input struct {
 		Prompt      string `json:"prompt"`
 		Slice       string `json:"slice"`
 		TimeoutSecs int    `json:"timeout_secs"`
 	}
-	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
+	request.Body = http.MaxBytesReader(
+		writer,
+		request.Body,
+		maxSubQueryRequestBytes,
+	)
+	decoder := json.NewDecoder(request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeSubQueryError(
+				writer,
+				http.StatusRequestEntityTooLarge,
+				"request body exceeds 64 KiB",
+			)
+			return
+		}
 		writeSubQueryError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeSubQueryError(
+				writer,
+				http.StatusRequestEntityTooLarge,
+				"request body exceeds 64 KiB",
+			)
+			return
+		}
+		writeSubQueryError(writer, http.StatusBadRequest, "request body must contain one JSON object")
 		return
 	}
 	if input.Prompt == "" && input.Slice == "" {

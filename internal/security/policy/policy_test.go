@@ -3,11 +3,73 @@ package policy
 import (
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
+
+func TestRuntimeModePermissionUpdateIsAtomic(t *testing.T) {
+	runtime := DefaultRuntime(ModePlan, PermissionNever)
+	var wait sync.WaitGroup
+	wait.Add(2)
+	invalid := make(chan struct{}, 1)
+	done := make(chan struct{})
+	go func() {
+		defer wait.Done()
+		for range 10_000 {
+			runtime.SetModePermission(ModeAct, PermissionAuto)
+			runtime.SetModePermission(ModePlan, PermissionNever)
+		}
+		close(done)
+	}()
+	go func() {
+		defer wait.Done()
+		for {
+			snapshot := runtime.CloneSampling()
+			if (snapshot.Mode == ModeAct && snapshot.Permission != PermissionAuto) ||
+				(snapshot.Mode == ModePlan && snapshot.Permission != PermissionNever) {
+				select {
+				case invalid <- struct{}{}:
+				default:
+				}
+				return
+			}
+			select {
+			case <-done:
+				return
+			default:
+			}
+		}
+	}()
+	wait.Wait()
+	select {
+	case <-invalid:
+		t.Fatal("observed a mixed policy update")
+	default:
+	}
+}
+
+func TestRuntimePermissionCeilingUsesCurrentValueUnderLock(t *testing.T) {
+	runtime := DefaultRuntime(ModeAct, PermissionSuggest)
+
+	runtime.SetPermission(PermissionNever)
+	runtime.SetModePermissionWithinCeiling(ModePlan, PermissionBypass, "")
+	snapshot := runtime.CloneSampling()
+	if snapshot.Mode != ModePlan {
+		t.Fatalf("mode = %q, want %q", snapshot.Mode, ModePlan)
+	}
+	if snapshot.Permission != PermissionNever {
+		t.Fatalf("permission = %q, want revoked ceiling %q", snapshot.Permission, PermissionNever)
+	}
+
+	runtime.SetPermission(PermissionAuto)
+	runtime.SetPermissionWithinCeiling(PermissionBypass, PermissionSuggest)
+	if got := runtime.PermissionValue(); got != PermissionSuggest {
+		t.Fatalf("permission = %q, want explicit ceiling %q", got, PermissionSuggest)
+	}
+}
 
 func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 	now := time.Unix(1000, 0)

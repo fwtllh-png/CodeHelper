@@ -100,9 +100,10 @@ flowchart TB
 图中的箭头不是“上层可任意调用所有下层”。Host 可以使用 Protocol 和 Application
 Facade，但不能直接依赖 Tool、Provider、Agent Engine 或 Sandbox 实现。
 
-受支持的产品 Host 是 CLI、TUI、Web 和 Web Transport。Provider HTTP、MCP HTTP/SSE 与本地
-Fixture Listener 是集成 Transport，不是产品 Host。Root `web`/`serve`、Embedded UI、
-Pairing/QR 和 REST/SSE 不属于受支持的产品面。
+受支持的产品 Host 是 CLI、TUI 和 Web。Web Host 在单一 `codehelper web` 进程中通过
+loopback HTTP/WebSocket 连接 Embedded UI 与共享 Runtime；Provider HTTP、MCP HTTP/SSE
+与本地 Fixture Listener 是集成 Transport，不是产品 Host。远程绑定、Pairing/QR 和
+公网 REST/SSE 不属于受支持的产品面。
 
 ## Package 分层
 
@@ -117,14 +118,13 @@ Pairing/QR 和 REST/SSE 不属于受支持的产品面。
 | Persistence | `internal/persist` | SQLite、Event、CAS、Session、Journal |
 | Observability | `internal/observability` | 版本化 Observation、Trace、Usage、Diagnostics、Verification、OTLP |
 | Platform | `internal/platform` | Process 与 OS Integration |
-| Web | `web` | Editor UI 与 Web Transport Client |
+| Web | `web` | Browser UI、Projection 与 Web Transport Client |
 
-Web 是 Local UI Extension，Webview 与 Extension Host 之间有物理边界。Webview 只接收
-Immutable Projection 并提交 Finite Intent；Extension Host 拥有 Web Transport、Local
-Workspace Identity、SecretStorage、Native Control 与 Web Transport Transport；Runtime 是
-Session、Profile、Tool Policy、Lifecycle、Artifact 与 Execution 的唯一 Owner。
-产品只支持 Local `file:` Single-root/Multi-root；Remote SSH、Dev Container、Codespaces
-不属于该产品面。
+Web Browser 只接收 Immutable Projection 并提交 Finite Intent；loopback Web Host 负责
+Origin/Host Fence、Capability Token、Owner Lease 与本地 Workspace 接入，但不执行
+Provider、Tool 或 Agent Loop。Runtime 是 Session、Profile、Tool Policy、Lifecycle、
+Artifact 与 Execution 的唯一 Owner。产品只支持 Local `file:` Workspace；Remote SSH、
+Dev Container 和 Codespaces 不属于该产品面。
 
 ## 硬依赖规则
 
@@ -238,8 +238,8 @@ Protocol 会增加版本管理成本；显式契约仍优于终端、插件和 E
 - `wire` 中的业务逻辑难以在不构造全部依赖时测试。
 - 把 Projection 当事实会破坏 Replay 与 Recovery。
 - 绕过 Persistence Owner 写入会分裂关系状态与 Event/Journal。
-- Extension 直接执行会形成未治理控制面。
-- 把 Webview State 当成 Session Truth 会破坏 Revision、Replay 与 Recovery Contract。
+- Browser 直接执行会形成未治理控制面。
+- 把 Browser Projection 当成 Session Truth 会破坏 Revision、Replay 与 Recovery Contract。
 
 ## 测试与验证
 

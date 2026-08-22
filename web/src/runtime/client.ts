@@ -72,6 +72,7 @@ export interface RuntimeSnapshot {
   contextResources: readonly EditorContextReference[];
   sessions: readonly SessionSummary[];
   selectedSessionID: string;
+  hydratingSessionID: string;
   events: readonly RuntimeEvent[];
   historyMoreBefore: boolean;
   providers: readonly ProviderCatalogEntry[];
@@ -104,6 +105,7 @@ const emptySnapshot: RuntimeSnapshot = {
   contextResources: [],
   sessions: [],
   selectedSessionID: "",
+  hydratingSessionID: "",
   events: [],
   historyMoreBefore: false,
   providers: [],
@@ -266,8 +268,9 @@ export class RuntimeClient {
       this.hydration = undefined;
       this.update({
         selectedSessionID: "",
+        hydratingSessionID: "",
         events: [],
-      historyMoreBefore: false,
+        historyMoreBefore: false,
         profile: undefined,
         tools: [],
         checkpoints: [],
@@ -283,9 +286,27 @@ export class RuntimeClient {
   }
 
   async selectSession(sessionID: string): Promise<void> {
+    const previousSessionID = this.state.selectedSessionID;
     const generation = ++this.selectionGeneration;
     const hydration: Hydration = {generation, sessionID, events: []};
     this.hydration = hydration;
+    this.update({
+      selectedSessionID: sessionID,
+      hydratingSessionID: sessionID,
+      events: [],
+      historyMoreBefore: false,
+      profile: undefined,
+      tools: [],
+      checkpoints: [],
+      plan: undefined,
+      tasks: [],
+      agents: [],
+      usage: undefined,
+      extensions: [],
+      mergePlan: undefined,
+      contextResources: [],
+      problem: undefined
+    });
     try {
     const summary = this.state.sessions.find((item) => item.session_id === sessionID);
     await this.call<SessionBinding>("session/activate", {
@@ -336,6 +357,7 @@ export class RuntimeClient {
     this.hydration = undefined;
     this.update({
       selectedSessionID: sessionID,
+      hydratingSessionID: "",
       events: [...(snapshot.events ?? []), ...liveEvents],
       historyMoreBefore: Boolean(snapshot.history_truncated_before),
       profile,
@@ -357,6 +379,10 @@ export class RuntimeClient {
     } catch (error) {
       if (this.hydration === hydration) {
         this.hydration = undefined;
+        this.update({
+          selectedSessionID: previousSessionID,
+          hydratingSessionID: ""
+        });
       }
       throw error;
     }
@@ -956,6 +982,7 @@ export class RuntimeClient {
     this.update({
       events: [],
       historyMoreBefore: false,
+      hydratingSessionID: "",
       profile: undefined,
       tools: [],
       checkpoints: [],
@@ -1081,6 +1108,9 @@ export class RuntimeClient {
   }
 
   private requireSession(): string {
+    if (this.state.hydratingSessionID) {
+      throw new Error("Session is still loading");
+    }
     if (!this.state.selectedSessionID) {
       throw new Error("No active session");
     }

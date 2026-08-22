@@ -127,6 +127,12 @@ func TestStaticAssetsRejectTraversalAndSupportETag(t *testing.T) {
 		"assets/app.js": &fstest.MapFile{
 			Data: []byte("void 0"), Mode: fs.FileMode(0o444),
 		},
+		"assets/app.js.br": &fstest.MapFile{
+			Data: []byte("brotli"), Mode: fs.FileMode(0o444),
+		},
+		"assets/app.js.gz": &fstest.MapFile{
+			Data: []byte("gzip"), Mode: fs.FileMode(0o444),
+		},
 	})
 	request := httptest.NewRequest(
 		http.MethodGet,
@@ -151,6 +157,58 @@ func TestStaticAssetsRejectTraversalAndSupportETag(t *testing.T) {
 	server.Handler().ServeHTTP(cachedResponse, cached)
 	if cachedResponse.Code != http.StatusNotModified {
 		t.Fatalf("cached status = %d", cachedResponse.Code)
+	}
+
+	compressed := httptest.NewRequest(
+		http.MethodGet,
+		"http://"+host+"/assets/app.js",
+		nil,
+	)
+	compressed.Host = host
+	compressed.Header.Set("Accept-Encoding", "gzip, br")
+	compressedResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(compressedResponse, compressed)
+	if compressedResponse.Code != http.StatusOK ||
+		compressedResponse.Header().Get("Content-Encoding") != "br" ||
+		compressedResponse.Header().Get("Vary") != "Accept-Encoding" ||
+		compressedResponse.Header().Get("Content-Type") != "text/javascript; charset=utf-8" ||
+		compressedResponse.Body.String() != "brotli" {
+		t.Fatalf(
+			"compressed status=%d headers=%v body=%q",
+			compressedResponse.Code,
+			compressedResponse.Header(),
+			compressedResponse.Body.String(),
+		)
+	}
+
+	gzipOnly := httptest.NewRequest(
+		http.MethodGet,
+		"http://"+host+"/assets/app.js",
+		nil,
+	)
+	gzipOnly.Host = host
+	gzipOnly.Header.Set("Accept-Encoding", "*;q=1, br;q=0")
+	gzipResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(gzipResponse, gzipOnly)
+	if gzipResponse.Header().Get("Content-Encoding") != "gzip" ||
+		gzipResponse.Body.String() != "gzip" {
+		t.Fatalf(
+			"gzip headers=%v body=%q",
+			gzipResponse.Header(),
+			gzipResponse.Body.String(),
+		)
+	}
+
+	directCompressed := httptest.NewRequest(
+		http.MethodGet,
+		"http://"+host+"/assets/app.js.br",
+		nil,
+	)
+	directCompressed.Host = host
+	directCompressedResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(directCompressedResponse, directCompressed)
+	if directCompressedResponse.Code != http.StatusNotFound {
+		t.Fatalf("direct compressed status = %d", directCompressedResponse.Code)
 	}
 
 	traversal := httptest.NewRequest(

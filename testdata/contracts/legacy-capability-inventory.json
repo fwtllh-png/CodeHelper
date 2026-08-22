@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "source_hash": "265c83e4788bb7d023e726762247b381ff9b7718558ebd1cddf1e905fdb774f3",
+  "source_hash": "d09495c7a1ae0f5ec70f9f3c36d132d7ad3f529b5129d61d749c7909340f26f4",
   "items": [
     {
       "id": "acp_dynamic_method.tool-call-result",
@@ -689,6 +689,202 @@
       "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
     },
     {
+      "id": "vscode_configuration.codehelper-binarypath",
+      "kind": "vscode_configuration",
+      "name": "codehelper.binaryPath",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_configuration.codehelper-binarysource",
+      "kind": "vscode_configuration",
+      "name": "codehelper.binarySource",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_configuration.codehelper-runtime-autostart",
+      "kind": "vscode_configuration",
+      "name": "codehelper.runtime.autoStart",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_configuration.codehelper-runtime-configpath",
+      "kind": "vscode_configuration",
+      "name": "codehelper.runtime.configPath",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_configuration.codehelper-runtime-maxsteps",
+      "kind": "vscode_configuration",
+      "name": "codehelper.runtime.maxSteps",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_configuration.codehelper-runtime-mcpconfigpath",
+      "kind": "vscode_configuration",
+      "name": "codehelper.runtime.mcpConfigPath",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_configuration.codehelper-update-channel",
+      "kind": "vscode_configuration",
+      "name": "codehelper.update.channel",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_configuration.codehelper-update-policy",
+      "kind": "vscode_configuration",
+      "name": "codehelper.update.policy",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_menu.editor-context:codehelper-editselection",
+      "kind": "vscode_menu",
+      "name": "editor/context:codehelper.editSelection",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_menu.editor-context:codehelper-explainselection",
+      "kind": "vscode_menu",
+      "name": "editor/context:codehelper.explainSelection",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_menu.editor-context:codehelper-generatetestsforselection",
+      "kind": "vscode_menu",
+      "name": "editor/context:codehelper.generateTestsForSelection",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_menu.editor-context:codehelper-refactorselection",
+      "kind": "vscode_menu",
+      "name": "editor/context:codehelper.refactorSelection",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_menu.view-item-context:codehelper-disableextension",
+      "kind": "vscode_menu",
+      "name": "view/item/context:codehelper.disableExtension",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_menu.view-item-context:codehelper-enableextension",
+      "kind": "vscode_menu",
+      "name": "view/item/context:codehelper.enableExtension",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_menu.view-title:codehelper-refreshextensions",
+      "kind": "vscode_menu",
+      "name": "view/title:codehelper.refreshExtensions",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.matrix:report",
+      "kind": "vscode_package_script",
+      "name": "matrix:report",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.package",
+      "kind": "vscode_package_script",
+      "name": "package",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.package:vsix",
+      "kind": "vscode_package_script",
+      "name": "package:vsix",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.package:vsix:universal",
+      "kind": "vscode_package_script",
+      "name": "package:vsix:universal",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.release:binary",
+      "kind": "vscode_package_script",
+      "name": "release:binary",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.release:vscode:channels",
+      "kind": "vscode_package_script",
+      "name": "release:vscode:channels",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.release:vscode:dry-run",
+      "kind": "vscode_package_script",
+      "name": "release:vscode:dry-run",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.release:vscode:rc",
+      "kind": "vscode_package_script",
+      "name": "release:vscode:rc",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.test:electron",
+      "kind": "vscode_package_script",
+      "name": "test:electron",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.test:performance",
+      "kind": "vscode_package_script",
+      "name": "test:performance",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.test:runtime-performance",
+      "kind": "vscode_package_script",
+      "name": "test:runtime-performance",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.test:security",
+      "kind": "vscode_package_script",
+      "name": "test:security",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_package_script.test:update",
+      "kind": "vscode_package_script",
+      "name": "test:update",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
       "id": "vscode_view.codehelper-agents",
       "kind": "vscode_view",
       "name": "codehelper.agents",
@@ -727,6 +923,13 @@
       "id": "vscode_view.codehelper-usage",
       "kind": "vscode_view",
       "name": "codehelper.usage",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_view_container.activitybar:codehelper",
+      "kind": "vscode_view_container",
+      "name": "activitybar:codehelper",
       "source": "extensions/vscode/package.json",
       "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
     }

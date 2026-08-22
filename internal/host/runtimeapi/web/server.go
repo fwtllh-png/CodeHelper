@@ -49,6 +49,28 @@ type Options struct {
 	Capacity     Capacity
 }
 
+type TaskQuery interface {
+	List(
+		context.Context,
+		taskstate.Filter,
+		int,
+	) ([]taskstate.Task, error)
+}
+
+type UsageQuery interface {
+	QueryAggregates(
+		context.Context,
+		usagestate.Query,
+	) ([]usagestate.Aggregate, error)
+}
+
+type RepositorySymbolQuery interface {
+	Symbols(
+		context.Context,
+		repoindex.Query,
+	) ([]repoindex.Symbol, repoindex.Snapshot, error)
+}
+
 type Dependencies struct {
 	Runtime           *app.Runtime
 	WorkspaceRoot     string
@@ -58,12 +80,12 @@ type Dependencies struct {
 	ModelCatalog      protocol.ModelCatalog
 	MCPHealth         func() []mcp.HealthSnapshot
 	Diagnostics       io.Writer
-	Tasks             *taskstate.Repository
-	Usage             *usagestate.Repository
+	Tasks             TaskQuery
+	Usage             UsageQuery
 	Agents            *subagent.AgentControl
 	SessionWorkspaces app.SessionWorkspaceManager
 	Workspace         *workspacequery.Service
-	RepositoryIndex   *repoindex.Index
+	RepositoryIndex   RepositorySymbolQuery
 	Credentials       *credential.Service
 	Extensions        interface {
 		Submit(
@@ -2251,10 +2273,34 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 	if name == "." || name == "" {
 		name = "index.html"
 	}
-	data, err := fs.ReadFile(s.assets, name)
+	if strings.HasSuffix(name, ".br") || strings.HasSuffix(name, ".gz") {
+		http.NotFound(w, r)
+		return
+	}
+	originalName := name
+	data, err := fs.ReadFile(s.assets, originalName)
 	if err != nil {
 		data = s.index
-		name = "index.html"
+		originalName = "index.html"
+	} else if path.Ext(originalName) == ".js" || path.Ext(originalName) == ".css" {
+		w.Header().Set("Vary", "Accept-Encoding")
+		for _, candidate := range []struct {
+			encoding string
+			suffix   string
+		}{
+			{encoding: "br", suffix: ".br"},
+			{encoding: "gzip", suffix: ".gz"},
+		} {
+			if !acceptsEncoding(r.Header.Get("Accept-Encoding"), candidate.encoding) {
+				continue
+			}
+			compressed, readErr := fs.ReadFile(s.assets, originalName+candidate.suffix)
+			if readErr == nil {
+				data = compressed
+				w.Header().Set("Content-Encoding", candidate.encoding)
+				break
+			}
+		}
 	}
 	digest := sha256.Sum256(data)
 	etag := `"` + hex.EncodeToString(digest[:]) + `"`
@@ -2264,13 +2310,13 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	switch path.Ext(name) {
+	switch path.Ext(originalName) {
 	case ".html":
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 	case ".js":
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-		if name == "theme-bootstrap.js" {
+		if originalName == "theme-bootstrap.js" {
 			w.Header().Set("Cache-Control", "no-cache")
 		} else {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -2288,6 +2334,41 @@ func (s *Server) static(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = w.Write(data)
+}
+
+func acceptsEncoding(header, target string) bool {
+	explicit := false
+	explicitQuality := 0.0
+	wildcardQuality := 0.0
+	for _, value := range strings.Split(header, ",") {
+		parts := strings.Split(value, ";")
+		encoding := strings.TrimSpace(strings.ToLower(parts[0]))
+		if encoding != target && encoding != "*" {
+			continue
+		}
+		quality := 1.0
+		for _, parameter := range parts[1:] {
+			name, raw, found := strings.Cut(strings.TrimSpace(parameter), "=")
+			if found && strings.EqualFold(name, "q") {
+				parsed, err := strconv.ParseFloat(raw, 64)
+				if err != nil {
+					quality = 0
+					break
+				}
+				quality = parsed
+			}
+		}
+		if encoding == target {
+			explicit = true
+			explicitQuality = quality
+		} else {
+			wildcardQuality = quality
+		}
+	}
+	if explicit {
+		return explicitQuality > 0
+	}
+	return wildcardQuality > 0
 }
 
 func (s *Server) browserFence(next http.Handler) http.Handler {

@@ -80,14 +80,18 @@ Vite 清空 `web/dist` 时 Go 编译器正在读取资源。
 
 Web 入口发布还会运行 `make web-release-drill`。该门禁用当前 Binary 创建真实
 Session 和已完成 Turn，在进程停止后复制 Data Dir 并逐文件校验 SHA-256，再让
-`PREVIOUS_RELEASE_REF`（默认 `BASE_REF`）构建出的上一 Binary 完成 Session List、Load
-和 History。正式发布应显式传入上一发布提交，或通过 `PREVIOUS_BINARY` 指向保留的
-上一发布产物；报告写入 `.tmp/release/web-downgrade-drill.json`。
+`PREVIOUS_RELEASE_REF` 构建出的上一正式发布 Binary 完成 Session List、Load、History
+和 Turn Recovery。该参数没有分支或上一提交回退值：CI 必须通过仓库变量
+`CODEHELPER_PREVIOUS_RELEASE_REF` 配置不可变的上一正式发布 Tag 或 Commit，手工发布
+必须显式传入；也可通过 `PREVIOUS_BINARY` 指向保留的上一发布产物。报告写入
+`.tmp/release/web-downgrade-drill.json`。
 
 Release Lane 还会执行 `make web-streaming-soak`，持续一小时验证 WebSocket Event
 完整性及 Heap、Goroutine、文件描述符收敛。`make test-release` 必须从 clean Commit
 运行；最终工作树不 clean 时门禁失败，Parity Report 不能以 `qualified_dirty` 代替
-`verified`。
+`verified`。Release Lane 同时执行 `make web-supply-chain-check` 和
+`make web-vulnerability-check`，校验前端依赖许可证 allowlist、raw/gzip/brotli
+Bundle Budget，并拒绝 npm Audit 报告中的 High 或 Critical 漏洞。
 
 ## 生成文件
 

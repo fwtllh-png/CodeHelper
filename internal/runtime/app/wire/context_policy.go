@@ -61,7 +61,7 @@ func engineSecurityPolicy(
 	}
 	posture := policy.PermissionBypass
 	if state.security.runtime != nil {
-		posture = state.security.runtime.Permission
+		posture = state.security.runtime.PermissionValue()
 	} else if state.options.Permission != "" {
 		posture = policy.Permission(state.options.Permission)
 	}

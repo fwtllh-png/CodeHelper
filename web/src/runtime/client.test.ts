@@ -860,6 +860,31 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
+  it("changes operation ownership immediately while a Session hydrates", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+    let releaseSnapshot = (): void => {};
+    snapshotGate = new Promise<void>((resolve) => {
+      releaseSnapshot = resolve;
+    });
+
+    const selecting = client.selectSession("session-b");
+    expect(client.getSnapshot()).toMatchObject({
+      selectedSessionID: "session-b",
+      hydratingSessionID: "session-b",
+      events: [],
+      profile: undefined
+    });
+    await expect(client.submitPrompt("must not reach session-a")).rejects.toThrow(
+      "Session is still loading"
+    );
+
+    releaseSnapshot();
+    await selecting;
+    expect(client.getSnapshot().hydratingSessionID).toBe("");
+    client.stop();
+  });
+
   it("advances the replay cursor from payload-free watermark frames", async () => {
     vi.useFakeTimers();
     const client = new RuntimeClient();

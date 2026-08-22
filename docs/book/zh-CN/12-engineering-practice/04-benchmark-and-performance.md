@@ -30,9 +30,8 @@ last_verified: null
 
 Hermetic Coding Suite 覆盖 Context Truncation、Compaction、Working Set、Evidence、
 Index Degradation、Edit Transaction 与 Verification Gate；每个 Task 具有 Assertion。
-Catalog Benchmark 测量大 Tool Set 的时间与 Allocation。Web Gate 约束 10k Delta、
-1000 Background Row、Runtime Ready、Incremental Transcript、Hidden View 与 Electron
-Interaction。
+Catalog Benchmark 测量大 Tool Set 的时间与 Allocation。Web Gate 约束 10k Streaming
+Delta、500 Turn Retained Transcript 与发布 Bundle 的 raw/gzip/brotli 大小。
 
 ```mermaid
 flowchart LR
@@ -71,26 +70,23 @@ Parity 与 Review。先按 Trace/Profile 优化 Dominant Phase。
 Cache 需要 Invalidation/Capacity；Parallelism 需要 Cancellation/Admission；Deferred
 Loading 必须保持 Catalog Authority。
 
-## Native Chat Performance Contract
+## Web Performance Contract
 
 Release Gate 同时测量行为和耗时：
 
 | Metric | RC Budget |
 | --- | --- |
-| Extension Activation | 小于 20 ms |
-| First Interactive Chat | 小于 300 ms，不含 Runtime Startup |
-| 200-Turn Full Snapshot | 小于 100 ms |
-| Single-Turn Patch | 小于 100 ms，且 Byte 小于 Snapshot 四分之一 |
-| Affected/Virtual DOM | 最多 2 个 Affected Turn、30 个 Virtual Turn Node |
-| Scroll-anchor Error | 最多 1 px |
-| Hidden Webview Post | 必须为 0 |
-| Hidden Resume | 小于 300 ms |
-| 1000-Session Search/Virtual Paint | 小于 150 ms |
-| Runtime Ready P95 | 小于 5 s |
+| 10k Streaming Delta Projection | 小于 1 s |
+| 500 Turn Retained Transcript Projection | 小于 1 s |
+| JavaScript Raw | 不超过 400,000 Bytes |
+| JavaScript gzip | 不超过 120,000 Bytes |
+| JavaScript brotli | 不超过 105,000 Bytes |
+| CSS Raw | 不超过 30,000 Bytes |
+| 全部未压缩 Web Asset | 不超过 450,000 Bytes |
 
-RC 先要求每个 Metric 存在且为有限非负数，再比较 Budget，避免缺失 JSON Field 因比较
-语义意外通过。Patch Operation、Payload Byte、Affected Node、Virtual Node 与 Scroll
-Stability 是不同证据；即使耗时快，重建完整 DOM 仍应失败。
+`web/src/ui/performance.test.ts` 固定 Projection Fixture；
+`testdata/contracts/web-supply-chain-policy.json` 是 Bundle Budget 与许可证 allowlist 的
+权威输入。提高预算必须提交因果说明和前后对比证据。
 
 ## 失败边界
 
@@ -120,12 +116,13 @@ make benchmark-v2
 make bench
 make catalog-bench
 make web-build
-make web-build
+make web-performance
+make web-supply-chain-check
 ```
 
 Platform-capability Journey 只在声明的 Sandbox 前置条件可用时运行。Capability 缺失要
-报告为 Unavailable，不能通过关闭 Sandbox Enforcement 转成 Passed。Electron/
-Runtime-ready Budget 同样保持为 Environment-acquired Gate。
+报告为 Unavailable，不能通过关闭 Sandbox Enforcement 转成 Passed。Browser E2E 和
+一小时 Streaming Soak 同样保持为 Release Gate。
 
 ## 复习问题
 

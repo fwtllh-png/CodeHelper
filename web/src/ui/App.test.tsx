@@ -449,6 +449,73 @@ describe("projectTranscript", () => {
     );
   });
 
+  it("resets approval submission state for a new request id", async () => {
+    const firstClient = mockClient(snapshot([
+      event(1, "approval.required", {
+        request_id: "approval-1",
+        tool: "write_file"
+      })
+    ]));
+    vi.mocked(firstClient.decideApproval).mockImplementation(
+      () => new Promise(() => {})
+    );
+    const view = render(<App client={firstClient} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Approve"}));
+    expect(screen.getByRole("button", {name: "Approve"}))
+      .toHaveProperty("disabled", true);
+
+    const secondClient = mockClient(snapshot([
+      event(2, "approval.required", {
+        request_id: "approval-2",
+        tool: "exec_command"
+      })
+    ]));
+    view.rerender(<App client={secondClient} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", {name: "Approve"}))
+        .toHaveProperty("disabled", false);
+    });
+  });
+
+  it("resets input submission state for a new request id", async () => {
+    const firstClient = mockClient(snapshot([
+      event(1, "input.required", {
+        request_id: "input-1",
+        prompt: "First input"
+      })
+    ]));
+    vi.mocked(firstClient.replyInput).mockImplementation(
+      () => new Promise(() => {})
+    );
+    const view = render(<App client={firstClient} />);
+    const firstInput = screen.getByLabelText("Input answer");
+    fireEvent.change(firstInput, {target: {value: "first"}});
+    fireEvent.click(screen.getByRole("button", {name: "Submit"}));
+    expect(screen.getByRole("button", {name: "Submit"}))
+      .toHaveProperty("disabled", true);
+
+    const secondClient = mockClient(snapshot([
+      event(2, "input.required", {
+        request_id: "input-2",
+        prompt: "Second input"
+      })
+    ]));
+    view.rerender(<App client={secondClient} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Input answer")).toHaveProperty("value", "");
+      expect(screen.getByRole("button", {name: "Submit"}))
+        .toHaveProperty("disabled", true);
+    });
+    fireEvent.change(screen.getByLabelText("Input answer"), {
+      target: {value: "second"}
+    });
+    expect(screen.getByRole("button", {name: "Submit"}))
+      .toHaveProperty("disabled", false);
+  });
+
   it("restores and persists the selected Session draft", async () => {
     const client = mockClient(snapshot());
     vi.mocked(client.loadDraft).mockResolvedValue("restored draft");
@@ -459,6 +526,18 @@ describe("projectTranscript", () => {
     await waitFor(() => {
       expect(client.saveDraft).toHaveBeenCalledWith("edited draft", "session");
     });
+  });
+
+  it("disables Session-bound controls while the selected Session hydrates", () => {
+    const value = snapshot([]);
+    value.hydratingSessionID = value.selectedSessionID;
+    render(<App client={mockClient(value)} />);
+
+    expect(screen.getByText("Loading")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Ask CodeHelper"))
+      .toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", {name: "Export session"}))
+      .toHaveProperty("disabled", true);
   });
 
   it("opens external Markdown links safely and never loads model images", () => {
@@ -527,6 +606,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
     contextResources: [],
     sessions: [session],
     selectedSessionID: session.session_id,
+    hydratingSessionID: "",
     events,
     historyMoreBefore: false,
     providers: [

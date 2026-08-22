@@ -160,7 +160,7 @@ func (s *Session) SetPolicyMode(mode policy.Mode) {
 	// Applies to the next turn's SnapshotTurnContext; in-flight turns use a
 	// CloneSampling policy installed on Guard for the turn duration.
 	if s != nil && s.security != nil {
-		s.security.Mode = mode
+		s.security.SetMode(mode)
 		if s.threads != nil {
 			s.threads.SetPolicyMode(mode)
 		}
@@ -170,7 +170,7 @@ func (s *Session) SetPolicyMode(mode policy.Mode) {
 func (s *Session) SetPermission(permission policy.Permission) {
 	// Applies to the next turn only; see SetPolicyMode.
 	if s != nil && s.security != nil {
-		s.security.Permission = permission
+		s.security.SetPermission(permission)
 		if s.threads != nil {
 			s.threads.SetPermission(permission)
 		}
@@ -180,7 +180,7 @@ func (s *Session) SetPermission(permission policy.Permission) {
 func (s *Session) SetGranular(granular policy.Granular) {
 	// Applies to the next turn only; see SetPolicyMode.
 	if s != nil && s.security != nil {
-		s.security.Granular = granular
+		s.security.SetGranular(granular)
 		if s.threads != nil {
 			s.threads.SetGranular(granular)
 		}

@@ -81,7 +81,17 @@ type vscodePackage struct {
 		Views map[string][]struct {
 			ID string `json:"id"`
 		} `json:"views"`
+		Menus map[string][]struct {
+			Command string `json:"command"`
+		} `json:"menus"`
+		Configuration struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"configuration"`
+		ViewsContainers map[string][]struct {
+			ID string `json:"id"`
+		} `json:"viewsContainers"`
 	} `json:"contributes"`
+	Scripts map[string]string `json:"scripts"`
 }
 
 type hostJourney struct {
@@ -180,6 +190,49 @@ func collect(root string) ([]inventoryItem, error) {
 			if err := add("vscode_view", view.ID, "extensions/vscode/package.json"); err != nil {
 				return nil, err
 			}
+		}
+	}
+	for location, entries := range extension.Contributes.Menus {
+		for _, entry := range entries {
+			if err := add(
+				"vscode_menu",
+				location+":"+entry.Command,
+				"extensions/vscode/package.json",
+			); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for name := range extension.Contributes.Configuration.Properties {
+		if err := add(
+			"vscode_configuration",
+			name,
+			"extensions/vscode/package.json",
+		); err != nil {
+			return nil, err
+		}
+	}
+	for location, entries := range extension.Contributes.ViewsContainers {
+		for _, entry := range entries {
+			if err := add(
+				"vscode_view_container",
+				location+":"+entry.ID,
+				"extensions/vscode/package.json",
+			); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for name := range extension.Scripts {
+		if !legacyCapabilityScript(name) {
+			continue
+		}
+		if err := add(
+			"vscode_package_script",
+			name,
+			"extensions/vscode/package.json",
+		); err != nil {
+			return nil, err
 		}
 	}
 
@@ -295,11 +348,47 @@ func classify(item inventoryItem) (string, string) {
 		return "view-" + stableID(strings.TrimPrefix(item.Name, "codehelper.")), "required"
 	case "vscode_command":
 		return classifyVSCodeCommand(item.Name), "required"
+	case "vscode_menu":
+		_, command, _ := strings.Cut(item.Name, ":")
+		return classifyVSCodeCommand(command), "required"
+	case "vscode_configuration":
+		switch {
+		case strings.Contains(item.Name, "binary"),
+			strings.Contains(item.Name, "update"):
+			return "binary-update", "required"
+		case strings.Contains(item.Name, "runtime"):
+			return "runtime-readiness", "required"
+		default:
+			return "workspace-binding", "required"
+		}
+	case "vscode_view_container":
+		return "view-chat", "required"
+	case "vscode_package_script":
+		if item.Name == "release:binary" {
+			return "release-packaging", "retained_secondary"
+		}
+		if strings.Contains(item.Name, "binary") ||
+			strings.Contains(item.Name, "update") {
+			return "binary-update", "required"
+		}
+		return "legacy-vscode-acp-build-chain", "intentional_drop"
 	case "acp_method":
 		return classifyACPMethod(item.Name)
 	default:
 		return "unclassified", "required"
 	}
+}
+
+func legacyCapabilityScript(name string) bool {
+	for _, marker := range []string{
+		"release", "package", "update", "security", "performance",
+		"electron", "matrix",
+	} {
+		if strings.Contains(name, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func classifyVSCodeCommand(name string) string {

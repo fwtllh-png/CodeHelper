@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -144,12 +145,20 @@ func runWeb(
 		if err != nil {
 			var held *ownerlease.HeldError
 			if errors.As(err, &held) && held.Metadata.PublicURL != "" {
-				_, _ = fmt.Fprintf(
-					stderr,
-					"codehelper: %v; open %s\n",
-					err,
-					held.Metadata.PublicURL,
-				)
+				if probeErr := probeWebReadiness(ctx, held.Metadata.PublicURL); probeErr == nil {
+					_, _ = fmt.Fprintf(
+						stderr,
+						"codehelper: %v; open %s\n",
+						err,
+						held.Metadata.PublicURL,
+					)
+				} else {
+					_, _ = fmt.Fprintf(
+						stderr,
+						"codehelper: web owner lease URL failed readiness probe: %v\n",
+						probeErr,
+					)
+				}
 			} else {
 				_, _ = fmt.Fprintf(stderr, "codehelper: web owner lease: %v\n", err)
 			}
@@ -208,6 +217,7 @@ func runWeb(
 			return shutdownBootServer(httpServer, serveErr, nil, nil, stderr, 1)
 		}
 	}
+
 	if options.open && !options.noOpen {
 		if err := openWebBrowser(publicURL); err != nil {
 			_, _ = fmt.Fprintf(stderr, "codehelper: open browser: %v\n", err)
@@ -349,6 +359,61 @@ func runWeb(
 		stderr,
 		0,
 	)
+}
+
+func probeWebReadiness(ctx context.Context, rawURL string) error {
+	target, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+	if target.Scheme != "http" || target.Hostname() != "127.0.0.1" ||
+		target.User != nil {
+		return errors.New("owner URL is not a trusted loopback HTTP endpoint")
+	}
+	target.Path = "/healthz"
+	target.RawPath = ""
+	target.RawQuery = ""
+	target.Fragment = ""
+	probeContext, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(
+		probeContext,
+		http.MethodGet,
+		target.String(),
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{
+		Transport: &http.Transport{Proxy: nil},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return errors.New("owner readiness redirects are forbidden")
+		},
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	var readiness struct {
+		Version int    `json:"version"`
+		Status  string `json:"status"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<10)).Decode(&readiness); err != nil {
+		return err
+	}
+	if response.StatusCode != http.StatusOK ||
+		readiness.Version != 1 ||
+		readiness.Status != "ready" {
+		return fmt.Errorf(
+			"owner endpoint is not ready (HTTP %d, protocol %d, status %q)",
+			response.StatusCode,
+			readiness.Version,
+			readiness.Status,
+		)
+	}
+	return nil
 }
 
 func loadWebConfig(options webCommandOptions) (config.Snapshot, error) {

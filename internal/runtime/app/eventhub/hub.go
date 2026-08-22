@@ -63,6 +63,7 @@ type Hub struct {
 	last        protocol.Cursor
 	next        uint64
 	subscribers map[uint64]*subscription
+	pending     map[protocol.EventID]struct{}
 	closed      bool
 }
 
@@ -70,6 +71,7 @@ func New(config Config) *Hub {
 	h := &Hub{
 		config:      config,
 		subscribers: make(map[uint64]*subscription),
+		pending:     make(map[protocol.EventID]struct{}),
 	}
 	if last, err := config.Store.LastSequence(context.Background()); err == nil {
 		h.last = last
@@ -159,8 +161,9 @@ func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time
 	}
 	last := h.last
 	h.mu.Unlock()
-	identity, stable := h.config.Store.(IdentityStore)
-	if id != "" && !stable {
+	identity, identityCapable := h.config.Store.(IdentityStore)
+	stable := id != ""
+	if stable && !identityCapable {
 		return errors.New("stable event requires identity store")
 	}
 	if stable {
@@ -170,7 +173,8 @@ func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time
 			h.mu.Lock()
 			h.last = max(h.last, event.Sequence)
 			h.mu.Unlock()
-			return project(event)
+			_, announce := h.pending[event.ID]
+			return h.projectAndAnnounce(event, true, announce, project)
 		}
 	}
 	for attempt := 0; ; attempt++ {
@@ -189,14 +193,7 @@ func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time
 			h.mu.Lock()
 			h.last = event.Sequence
 			h.mu.Unlock()
-			if err = project(event); err != nil {
-				return err
-			}
-			if h.config.OnEvent != nil {
-				h.config.OnEvent(event)
-			}
-			h.fanout(event)
-			return nil
+			return h.projectAndAnnounce(event, stable, true, project)
 		}
 		if stable {
 			if existing, exists, lookupErr := identity.EventByID(context.Background(), id); lookupErr != nil {
@@ -205,7 +202,7 @@ func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time
 				h.mu.Lock()
 				h.last = max(h.last, existing.Sequence)
 				h.mu.Unlock()
-				return project(existing)
+				return h.projectAndAnnounce(existing, true, true, project)
 			}
 		}
 		storedLast, sequenceErr := h.config.Store.LastSequence(
@@ -220,6 +217,25 @@ func (h *Hub) publish(meta protocol.EventMeta, id protocol.EventID, at time.Time
 		h.mu.Unlock()
 	}
 }
+
+func (h *Hub) projectAndAnnounce(event protocol.Event, trackPending, announce bool, project func(protocol.Event) error) error {
+	if err := project(event); err != nil {
+		if trackPending && announce && event.ID != "" {
+			h.pending[event.ID] = struct{}{}
+		}
+		return err
+	}
+	if !announce {
+		return nil
+	}
+	delete(h.pending, event.ID)
+	if h.config.OnEvent != nil {
+		h.config.OnEvent(event)
+	}
+	h.fanout(event)
+	return nil
+}
+
 func (h *Hub) fanout(event protocol.Event) {
 	h.mu.Lock()
 	dropped := 0

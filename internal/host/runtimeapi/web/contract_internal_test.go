@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -191,6 +192,23 @@ func TestHostContractReturnsDetachedSortedRoutes(t *testing.T) {
 	for index := 1; index < len(second.Routes); index++ {
 		if second.Routes[index-1].Path > second.Routes[index].Path {
 			t.Fatalf("routes are not sorted at %d", index)
+		}
+	}
+}
+
+func TestWebDependenciesExposeNarrowQueryPorts(t *testing.T) {
+	dependencies := reflect.TypeOf(Dependencies{})
+	for _, name := range []string{"Tasks", "Usage", "RepositoryIndex"} {
+		field, exists := dependencies.FieldByName(name)
+		if !exists {
+			t.Fatalf("Dependencies.%s is missing", name)
+		}
+		if field.Type.Kind() != reflect.Interface {
+			t.Errorf(
+				"Dependencies.%s type = %s, want a narrow query interface",
+				name,
+				field.Type,
+			)
 		}
 	}
 }

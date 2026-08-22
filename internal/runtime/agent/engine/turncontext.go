@@ -143,6 +143,8 @@ func SnapshotTurnSpec(
 	security := options.Security
 	if security == nil {
 		security = policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
+	} else {
+		security = security.CloneSampling()
 	}
 	routes, err := effectiveRoutes(options)
 	if err != nil {
@@ -209,7 +211,7 @@ func SnapshotTurnSpec(
 		Provider: route.ProviderID(), Model: route.Model().ID,
 		Mode: security.Mode, Posture: security.Permission,
 		Workspace: options.Workspace, Sandbox: sandboxIdentity(options.Tools),
-		Policy: security.CloneSampling(),
+		Policy: security,
 		Kernel: kernelPolicy,
 		Limits: TurnLimits{
 			MaxSteps:        options.MaxSteps,

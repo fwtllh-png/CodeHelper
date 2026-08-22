@@ -361,11 +361,10 @@ func childEngineOptions(
 		// Plan mode is the existing, tested read-only enforcement: everything
 		// that is not a read capability is denied with mode_denied. A read-only
 		// stance that only shaped the prompt would not be a stance at all.
-		options.Security.Mode = policy.ModePlan
-		options.Security.Permission = policy.PermissionNever
+		options.Security.SetModePermission(policy.ModePlan, policy.PermissionNever)
 	}
 	if options.Security != nil {
-		options.ProfilePermissionCeiling = options.Security.Permission
+		options.ProfilePermissionCeiling = options.Security.PermissionValue()
 	}
 	return options
 }
@@ -389,7 +388,7 @@ func restrictChildTools(
 		if inherited && childRoleAllowsTool(spec, descriptor) {
 			continue
 		}
-		security.Grants = append(security.Grants, policy.Rule{
+		_, _ = security.AppendManagedRule(policy.Rule{
 			Tool: descriptor.Name, Resource: "*", Action: policy.ActionDeny,
 			Code: "child_authority_denied",
 		})

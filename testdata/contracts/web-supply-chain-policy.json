@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "allowed_licenses": [
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC-BY-4.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0"
+  ],
+  "bundle_budgets": {
+    "total_raw_bytes": 450000,
+    "javascript_raw_bytes": 400000,
+    "javascript_gzip_bytes": 120000,
+    "javascript_brotli_bytes": 105000,
+    "css_raw_bytes": 30000
+  }
+}

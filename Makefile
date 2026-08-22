@@ -11,7 +11,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Date=$(BUILD_DATE)
 
 .PHONY: fmt verify test test-hermetic test-platform-capability reliability-gate test-integration \
-	test-release integration-gate release-gate race build cross-build smoke \
+	test-release release-baseline-check integration-gate release-gate race build cross-build smoke \
 	docs-check book-check experience-check web-experience-check experience-baseline \
 	host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
@@ -31,7 +31,7 @@ LDFLAGS := -s -w \
 		canary-adversarial canary-adversarial-quick \
 	cli-smoke tui-smoke protocol-contract protocol-schema \
 	web-install web-check web-test web-build web-assets-check web-e2e web-parity-check web-parity-report \
-		web-release-drill web-streaming-soak web-performance \
+		web-release-drill web-streaming-soak web-performance web-supply-chain-check web-vulnerability-check \
 	deepseek-init deepseek-tui deepseek-web deepseek-live-smoke \
 	deepseek-multi-agent-smoke \
 	bench catalog-bench package clean
@@ -100,7 +100,7 @@ ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
 BASE_REF ?= $(ARCHITECTURE_BASE_REF)
 
 RELEASE_STAGE ?= experimental
-PREVIOUS_RELEASE_REF ?= $(BASE_REF)
+PREVIOUS_RELEASE_REF ?=
 PREVIOUS_BINARY ?=
 TEST_LANE_REPORT_DIR ?= .tmp/test-lanes
 TEST_PACKAGE_PARALLELISM ?= 1
@@ -122,7 +122,7 @@ fmt:
 	$(GO) fmt ./...
 
 verify: architecture-ratchet docs-check book-check brand-check web-protocol-check web-parity-check \
-	web-check web-test web-performance web-assets-check \
+	web-check web-test web-performance web-assets-check web-supply-chain-check \
 	reliability-gate
 	@unformatted="$$(git ls-files --cached --others --exclude-standard '*.go' | \
 		while IFS= read -r file; do \
@@ -215,7 +215,7 @@ test-integration:
 integration-gate: build web-build
 	$(GO) test -count=1 ./internal/host/runtimeapi/web ./internal/host/cli
 
-test-release:
+test-release: release-baseline-check
 	python3 scripts/run-test-lane.py release \
 		--report '$(TEST_LANE_REPORT_DIR)/release.json' \
 		--requires-command go --requires-command npm \
@@ -223,8 +223,18 @@ test-release:
 		--require-available \
 		-- $(MAKE) release-gate
 
-release-gate: cross-build smoke race secret-leak-test reliability-gate benchmark-v2 web-performance web-streaming-soak \
-	web-parity-report web-release-drill
+release-baseline-check:
+	@if test -n '$(PREVIOUS_BINARY)'; then \
+		test -x '$(PREVIOUS_BINARY)' || { \
+			echo "PREVIOUS_BINARY is not executable: $(PREVIOUS_BINARY)" >&2; \
+			exit 2; \
+		}; \
+	else \
+		./scripts/validate-release-ref.sh '$(PREVIOUS_RELEASE_REF)' >/dev/null; \
+	fi
+
+release-gate: cross-build smoke race secret-leak-test reliability-gate benchmark-v2 web-performance \
+	web-streaming-soak web-parity-report web-release-drill web-supply-chain-check web-vulnerability-check
 	@dirty="$$(git status --porcelain --untracked-files=all)"; \
 		test -z "$$dirty" || { \
 			echo "release gate requires a clean worktree:"; \
@@ -250,6 +260,16 @@ web-test:
 
 web-performance:
 	$(NPM) --prefix web test -- --run src/ui/performance.test.ts
+
+web-supply-chain-check: web-build
+	node scripts/web-supply-chain-check.mjs .
+
+web-vulnerability-check:
+	@mkdir -p .tmp
+	@$(NPM) --prefix web audit --audit-level=high --json > .tmp/web-npm-audit.json || { \
+		cat .tmp/web-npm-audit.json; \
+		exit 1; \
+	}
 
 web-build:
 	$(NPM) --prefix web run build
@@ -277,6 +297,11 @@ web-release-drill: build
 	trap 'rm -rf "$$tmp"' EXIT; \
 	previous='$(PREVIOUS_BINARY)'; \
 	if test -z "$$previous"; then \
+		test -n '$(PREVIOUS_RELEASE_REF)' || { \
+			echo "PREVIOUS_RELEASE_REF or PREVIOUS_BINARY is required" >&2; \
+			exit 2; \
+		}; \
+		./scripts/validate-release-ref.sh '$(PREVIOUS_RELEASE_REF)' >/dev/null; \
 		git archive '$(PREVIOUS_RELEASE_REF)' | tar -x -C "$$tmp"; \
 		(cd "$$tmp" && $(GO) build -trimpath -o "$$tmp/codehelper-previous" ./cmd/codehelper); \
 		previous="$$tmp/codehelper-previous"; \

@@ -56,6 +56,8 @@ make doc-external-links
 make brand-check
 make secret-leak-test
 make web-release-drill PREVIOUS_RELEASE_REF=<上一发布提交>
+make web-supply-chain-check
+make web-vulnerability-check
 make live-model-smoke
 make live-multi-agent-smoke
 make deepseek-multi-agent-smoke

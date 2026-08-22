@@ -63,7 +63,7 @@ func buildChatWorkspaces(
 		return nil
 	}
 	allowApply := state.security.runtime != nil &&
-		state.security.runtime.Permission != policy.PermissionNever
+		state.security.runtime.PermissionValue() != policy.PermissionNever
 	merger := chatmerge.New(
 		state.config.execution.Workspace, state.orchestration.chatTrees.root,
 		state.orchestration.parentFiles, state.security.journal,

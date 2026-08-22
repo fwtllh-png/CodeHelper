@@ -125,6 +125,8 @@ export function App({client}: Props) {
   const visibleEntries = entries.slice(transcriptStart, transcriptEnd);
   const pendingApproval = latestPending(snapshot.events, "approval");
   const pendingInput = latestPending(snapshot.events, "input");
+  const pendingApprovalKey = pendingRequestKey(snapshot.selectedSessionID, pendingApproval);
+  const pendingInputKey = pendingRequestKey(snapshot.selectedSessionID, pendingInput);
   const activeTurn = latestActiveTurn(snapshot.events);
   const selectedProvider = snapshot.profile?.profile.provider ?? "";
   const selectedModel = snapshot.profile?.profile.model ?? "";
@@ -409,10 +411,14 @@ export function App({client}: Props) {
             <p>{snapshot.workspaceRoot}</p>
           </div>
           <div className="headerActions">
-            {activeTurn && <span className="workingLabel">Working</span>}
+            {snapshot.hydratingSessionID ? (
+              <span className="workingLabel">Loading</span>
+            ) : activeTurn ? (
+              <span className="workingLabel">Working</span>
+            ) : null}
             <IconButton
               label="Export session"
-              disabled={!selected}
+              disabled={!selected || Boolean(snapshot.hydratingSessionID)}
               icon={<Download size={17} />}
               onClick={() => void exportSession()}
             />
@@ -504,16 +510,26 @@ export function App({client}: Props) {
             </div>
           )}
           {pendingApproval ? (
-            <ApprovalComposer event={pendingApproval} client={client} activeTurn={activeTurn} />
+            <ApprovalComposer
+              key={pendingApprovalKey}
+              event={pendingApproval}
+              client={client}
+              activeTurn={activeTurn}
+            />
           ) : pendingInput ? (
-            <InputComposer event={pendingInput} client={client} activeTurn={activeTurn} />
+            <InputComposer
+              key={pendingInputKey}
+              event={pendingInput}
+              client={client}
+              activeTurn={activeTurn}
+            />
           ) : (
             <div className="composer">
               <textarea
                 value={draft}
                 rows={1}
                 placeholder={selected ? "Ask CodeHelper" : "Create a chat to begin"}
-                disabled={!selected || submitting}
+                disabled={!selected || Boolean(snapshot.hydratingSessionID) || submitting}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
@@ -533,7 +549,12 @@ export function App({client}: Props) {
                 <IconButton
                   label="Send"
                   primary
-                  disabled={!selected || !draft.trim() || submitting}
+                  disabled={
+                    !selected ||
+                    Boolean(snapshot.hydratingSessionID) ||
+                    !draft.trim() ||
+                    submitting
+                  }
                   icon={submitting ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}
                   onClick={() => void submit()}
                 />
@@ -1899,6 +1920,10 @@ export function projectTranscript(events: readonly RuntimeEvent[]): TranscriptEn
     }
   }
   return entries;
+}
+
+function pendingRequestKey(sessionID: string, event?: RuntimeEvent): string {
+  return `${sessionID}:${String(event?.data.request_id ?? "")}`;
 }
 
 function latestActiveTurn(events: readonly RuntimeEvent[]): string {

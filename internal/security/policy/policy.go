@@ -102,6 +102,131 @@ func DefaultRuntime(mode Mode, permission Permission) *Runtime {
 	}
 }
 
+func (r *Runtime) SetMode(mode Mode) uint64 {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Mode = mode
+	return r.bumpRevisionLocked()
+}
+
+func (r *Runtime) SetPermission(permission Permission) uint64 {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Permission = permission
+	return r.bumpRevisionLocked()
+}
+
+func (r *Runtime) SetModePermission(mode Mode, permission Permission) uint64 {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Mode = mode
+	r.Permission = permission
+	return r.bumpRevisionLocked()
+}
+
+func (r *Runtime) SetModePermissionWithinCeiling(
+	mode Mode,
+	requested Permission,
+	ceiling Permission,
+) uint64 {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ceiling == "" {
+		ceiling = r.Permission
+	}
+	r.Mode = mode
+	r.Permission = TightenPermission(requested, ceiling)
+	return r.bumpRevisionLocked()
+}
+
+func (r *Runtime) SetPermissionWithinCeiling(
+	requested Permission,
+	ceiling Permission,
+) uint64 {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ceiling == "" {
+		ceiling = r.Permission
+	}
+	r.Permission = TightenPermission(requested, ceiling)
+	return r.bumpRevisionLocked()
+}
+
+func (r *Runtime) SetGranular(granular Granular) uint64 {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Granular = granular
+	return r.bumpRevisionLocked()
+}
+
+func (r *Runtime) SetDisableAutoReview(disabled bool) uint64 {
+	if r == nil {
+		return 0
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.DisableAutoReview == disabled {
+		return r.Revision
+	}
+	r.DisableAutoReview = disabled
+	return r.bumpRevisionLocked()
+}
+
+func (r *Runtime) AppendManagedRule(rule Rule) (uint64, error) {
+	if r == nil {
+		return 0, errors.New("policy runtime is required")
+	}
+	if err := ValidateRules(SourceManaged, []Rule{rule}); err != nil {
+		return 0, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Grants = append(append([]Rule(nil), r.Grants...), rule)
+	return r.bumpRevisionLocked(), nil
+}
+
+func (r *Runtime) PermissionValue() Permission {
+	snapshot := r.CloneSampling()
+	if snapshot == nil {
+		return PermissionNever
+	}
+	return snapshot.Permission
+}
+
+func (r *Runtime) ModeValue() Mode {
+	snapshot := r.CloneSampling()
+	if snapshot == nil {
+		return ModePlan
+	}
+	return snapshot.Mode
+}
+
+func (r *Runtime) bumpRevisionLocked() uint64 {
+	if r.Revision == 0 {
+		r.Revision = 1
+	}
+	r.Revision++
+	return r.Revision
+}
+
 func TightenPermission(requested, ceiling Permission) Permission {
 	ranks := map[Permission]int{
 		PermissionNever: 0, PermissionSuggest: 1,
@@ -338,6 +463,7 @@ func Validate(runtime *Runtime) error {
 	if runtime == nil {
 		return errors.New("runtime is required")
 	}
+	runtime = runtime.CloneSampling()
 	if err := modeDecision(runtime.Mode, tool.CapabilityRead); err != nil {
 		return fmt.Errorf("mode: %w", err)
 	}

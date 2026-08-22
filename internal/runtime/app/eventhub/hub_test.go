@@ -80,6 +80,81 @@ func TestHubStableIdentityIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestHubStableRetryAnnouncesAfterProjectionRecovers(t *testing.T) {
+	store := app.NewMemoryEventStore(8)
+	observed := 0
+	hub := eventhub.New(eventhub.Config{
+		Store: store, Buffer: 2, Context: t.Context(),
+		OnEvent: func(protocol.Event) {
+			observed++
+		},
+	})
+	events, err := hub.Events(t.Context(), 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := protocol.EventMeta{
+		OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}
+	projections := 0
+	project := func(protocol.Event) error {
+		projections++
+		if projections == 1 {
+			return errors.New("projection unavailable")
+		}
+		return nil
+	}
+	if err := hub.PublishStable(
+		meta,
+		"evt_retry",
+		&protocol.TurnCompletedData{},
+		project,
+	); err == nil {
+		t.Fatal("initial projection unexpectedly succeeded")
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("failed projection announced event %s", event.ID)
+	default:
+	}
+	if err := hub.PublishStable(
+		meta,
+		"evt_retry",
+		&protocol.TurnCompletedData{},
+		project,
+	); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		if event.ID != "evt_retry" {
+			t.Fatalf("announced event = %s", event.ID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("recovered projection was not announced")
+	}
+	if observed != 1 {
+		t.Fatalf("observed events = %d, want 1", observed)
+	}
+	if err := hub.PublishStable(
+		meta,
+		"evt_retry",
+		&protocol.TurnCompletedData{},
+		project,
+	); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("idempotent retry re-announced event %s", event.ID)
+	default:
+	}
+	if observed != 1 {
+		t.Fatalf("observed events after duplicate = %d, want 1", observed)
+	}
+}
+
 func TestHubObservesAfterProjectionWithoutSubscriber(t *testing.T) {
 	var phases []string
 	hub := eventhub.New(eventhub.Config{

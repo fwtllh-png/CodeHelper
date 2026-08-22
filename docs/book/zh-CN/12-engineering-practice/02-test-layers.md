@@ -23,8 +23,8 @@ last_verified: null
 
 ## 学习目标
 
-选择能证明行为的最低成本 Test Layer，并识别何时需要 Real Binary、Transport、
-Extension Host 或 Electron。
+选择能证明行为的最低成本 Test Layer，并识别何时需要 Real Binary、Transport 或
+Browser。
 
 | Layer | 证明 | 命令 |
 | --- | --- | --- |
@@ -61,8 +61,8 @@ Platform、Duration、Exit Code、Status 和 Reason。
 | Consequential Tool | Guard/Policy/Sandbox/Effect/Rollback |
 | Concurrency/Lease | Forced Interleaving + Race |
 | Process/Transport | Real Binary Lifecycle/Cancellation |
-| Web Trust/Context | TS + Web Transport Integration；Platform API 用 Electron |
-| Web Recovery/Projection | Runtime Artifact + Electron Retry/Continue/Plan + Patch Resync |
+| Web Trust/Context | TS + Web Transport Integration + Playwright |
+| Web Recovery/Projection | Runtime Artifact + Browser Retry/Continue/Plan + Snapshot/Event Resync |
 | Release/Update | Artifact/Digest/Install/Rollback/Revoke |
 
 Test Breadth 取决于 Changed Contract，不取决于 Changed Line Count。一行 Protocol/Security
@@ -81,20 +81,15 @@ Skipped、Unavailable、Failed、Passed 是不同结果。外部环境 Gate 记�
 - Mock Transport 不能证明 Binary Framing。
 - Skipped Environment Gate 不能称 Passed。
 - Generated Protocol/Compatibility Drift 失败。
-- Electron 不进入普通 `verify`。
+- Browser E2E 不替代 Runtime Package 与 Race Test。
 - Remote SSH/Dev Container 结果不能替代 Local-only Product Matrix。
 
-## Native Chat Journey Matrix
+## Web Journey Matrix
 
-Electron ARM64 覆盖 Empty、Local Workspace、Forced Colors、Native Runtime 与 Local
-Multi-root；Rosetta x64 覆盖 Native Runtime/Multi-root。共享 Journey Manifest 包含
-19 个 Automated ID 和 1 个 Documented Manual Panel-move Journey。缺少 Automated ID
-时 Matrix 失败；Manual Journey 未记录时 RC 失败。
-
-动态证据覆盖七类 Native Context、Resource Navigation、Light/Dark/High Contrast、
-Forced Colors、约 200% Zoom、IME、Hidden Resume、Streaming Cancel、Retry/Continue、
-Model Picker、Thinking、Tools、Credential Validation、Approval/Verification Receipt、
-Session Lifecycle/Search 与三种 Plan Destination。
+Playwright 通过发布 Binary 的随机 loopback Port 验证 Bootstrap、Session、Prompt、
+Approval/Input、Retry/Continue、Workspace Context、Credential、Profile、History、
+Reconnect、Accessibility 和响应式布局。Parity Ledger 将每项旧 Host 能力绑定到精确的
+Go/TypeScript/Playwright Selector；缺少 Selector、路由或已删除能力的负向证据时报告失败。
 
 ## 验证
 

@@ -226,8 +226,14 @@ jobs:
 
       - name: Run release lane
         env:
-          PREVIOUS_RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_release_ref || github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: make test-release PREVIOUS_RELEASE_REF="$PREVIOUS_RELEASE_REF"
+          PREVIOUS_RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_release_ref || vars.CODEHELPER_PREVIOUS_RELEASE_REF }}
+        run: |
+          test -n "$PREVIOUS_RELEASE_REF" || {
+            echo "Configure CODEHELPER_PREVIOUS_RELEASE_REF to the immutable ref of the previous official release" >&2
+            exit 2
+          }
+          ./scripts/validate-release-ref.sh "$PREVIOUS_RELEASE_REF" >/dev/null
+          make test-release PREVIOUS_RELEASE_REF="$PREVIOUS_RELEASE_REF"
 
       - name: Upload lane evidence
         if: always()
@@ -237,4 +243,6 @@ jobs:
           path: |
             .tmp/test-lanes/release.json
             .tmp/release/web-downgrade-drill.json
+            .tmp/web-supply-chain-report.json
+            .tmp/web-npm-audit.json
           if-no-files-found: error

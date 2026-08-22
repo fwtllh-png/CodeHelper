@@ -2,20 +2,44 @@
   "version": 1,
   "files": [
     {
+      "path": "assets/index-6tcVtO7G.js",
+      "sha256": "7e8cce02b5f8237520e674f1d0b707d15afca06662213dfe68d2b9296119b477",
+      "bytes": 371812,
+      "media_type": "text/javascript; charset=utf-8"
+    },
+    {
+      "path": "assets/index-6tcVtO7G.js.br",
+      "sha256": "ab3d6b4acff1c0e3da1c2359b55071ed29e656ebfa9c83f6c403ac324b620d7a",
+      "bytes": 97878,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "assets/index-6tcVtO7G.js.gz",
+      "sha256": "c075b5d89568d847ce86453e4700f18f8f03d23ec23cb457e23e23cd4bb3b6c7",
+      "bytes": 111821,
+      "media_type": "application/octet-stream"
+    },
+    {
       "path": "assets/index-CFKuW6_9.css",
       "sha256": "4eb162a67e33c5c5cf639f34aea844909ff26d63f650648fa2fb42dfe2e1f43a",
       "bytes": 21035,
       "media_type": "text/css; charset=utf-8"
     },
     {
-      "path": "assets/index-DUhx_pdG.js",
-      "sha256": "b3f00d4e49a365e2d53f2396f60d82298affa9d2503e3fc53bc077f7ac035c8a",
-      "bytes": 371015,
-      "media_type": "text/javascript; charset=utf-8"
+      "path": "assets/index-CFKuW6_9.css.br",
+      "sha256": "0e071b9ddbb0c058777ebdacb717e096d2b9afec655b84055e4251bfc6b4e644",
+      "bytes": 4133,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "assets/index-CFKuW6_9.css.gz",
+      "sha256": "dc961a56c9db786d927377e47f47d48039906d0c24e76d5673262564c1e56388",
+      "bytes": 4739,
+      "media_type": "application/octet-stream"
     },
     {
       "path": "index.html",
-      "sha256": "928f181168eaa5f907574dccd3b4658cf94095f67fdfa35f5d76be201ff83842",
+      "sha256": "265299a69bae639263f1f5f4ac9dc4b0390de3d99e63d3a6209720800e022447",
       "bytes": 481,
       "media_type": "text/html; charset=utf-8"
     },
@@ -24,6 +48,18 @@
       "sha256": "4b2621f97c2adc983d10523dbccd23cb24ce6c0da7b490461049807a1cb56df0",
       "bytes": 412,
       "media_type": "text/javascript; charset=utf-8"
+    },
+    {
+      "path": "theme-bootstrap.js.br",
+      "sha256": "541e3cac921d6ad71ee0c2637bf2b68e314162484f82d345e67e7a565e3a0966",
+      "bytes": 176,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "theme-bootstrap.js.gz",
+      "sha256": "3b1170437600e1c4031c2e8c7ca92d1c8be55446dc40fbcf000be509d1092c4f",
+      "bytes": 239,
+      "media_type": "application/octet-stream"
     }
   ]
 }

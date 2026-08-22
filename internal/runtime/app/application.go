@@ -180,7 +180,7 @@ func (a *EngineAdapter) AllowIdleTurn() error {
 		return nil
 	}
 	seed := a.engine.OptionsSeed()
-	if seed.Security != nil && seed.Security.Mode == policy.ModePlan {
+	if seed.Security != nil && seed.Security.ModeValue() == policy.ModePlan {
 		return protocol.NewProblem(
 			protocol.CodeConflict,
 			"plan mode rejects automatic idle turns",

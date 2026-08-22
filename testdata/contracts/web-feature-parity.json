@@ -36,7 +36,12 @@
       "id": "binary-update",
       "disposition": "retained_secondary",
       "legacy_inventory_ids": [
-        "vscode_command.codehelper-checkbinaryupdates"
+        "vscode_command.codehelper-checkbinaryupdates",
+        "vscode_configuration.codehelper-binarypath",
+        "vscode_configuration.codehelper-binarysource",
+        "vscode_configuration.codehelper-update-channel",
+        "vscode_configuration.codehelper-update-policy",
+        "vscode_package_script.test:update"
       ],
       "legacy_evidence": [
         "extensions/vscode/package.json"
@@ -135,7 +140,10 @@
         "acp_method.extension-list",
         "vscode_command.codehelper-disableextension",
         "vscode_command.codehelper-enableextension",
-        "vscode_command.codehelper-refreshextensions"
+        "vscode_command.codehelper-refreshextensions",
+        "vscode_menu.view-item-context:codehelper-disableextension",
+        "vscode_menu.view-item-context:codehelper-enableextension",
+        "vscode_menu.view-title:codehelper-refreshextensions"
       ],
       "legacy_evidence": [
         "extensions/vscode/package.json",
@@ -410,10 +418,22 @@
         "legacy_make_target.vscode-security",
         "legacy_make_target.vscode-subagent-integration",
         "legacy_make_target.vscode-test",
-        "legacy_make_target.vscode-update-integration"
+        "legacy_make_target.vscode-update-integration",
+        "vscode_package_script.matrix:report",
+        "vscode_package_script.package",
+        "vscode_package_script.package:vsix",
+        "vscode_package_script.package:vsix:universal",
+        "vscode_package_script.release:vscode:channels",
+        "vscode_package_script.release:vscode:dry-run",
+        "vscode_package_script.release:vscode:rc",
+        "vscode_package_script.test:electron",
+        "vscode_package_script.test:performance",
+        "vscode_package_script.test:runtime-performance",
+        "vscode_package_script.test:security"
       ],
       "legacy_evidence": [
-        "Makefile"
+        "Makefile",
+        "extensions/vscode/package.json"
       ],
       "drop_rationale": "legacy host-specific surface",
       "replacement": "Web primary entry or retained CLI surface"
@@ -490,6 +510,21 @@
       ]
     },
     {
+      "id": "release-packaging",
+      "disposition": "retained_secondary",
+      "legacy_inventory_ids": [
+        "vscode_package_script.release:binary"
+      ],
+      "legacy_evidence": [
+        "extensions/vscode/package.json"
+      ],
+      "secondary_surface": "make package",
+      "required_qualifications": [
+        "internal/host/cli/run_test.go#TestRunVersionJSON",
+        "scripts/package-release.sh"
+      ]
+    },
+    {
       "id": "runtime-readiness",
       "disposition": "required",
       "legacy_inventory_ids": [
@@ -499,7 +534,11 @@
         "vscode_command.codehelper-runsetup",
         "vscode_command.codehelper-showstatus",
         "vscode_command.codehelper-startruntimecapture",
-        "vscode_command.codehelper-stopruntimecapture"
+        "vscode_command.codehelper-stopruntimecapture",
+        "vscode_configuration.codehelper-runtime-autostart",
+        "vscode_configuration.codehelper-runtime-configpath",
+        "vscode_configuration.codehelper-runtime-maxsteps",
+        "vscode_configuration.codehelper-runtime-mcpconfigpath"
       ],
       "legacy_evidence": [
         "extensions/vscode/package.json"
@@ -563,7 +602,9 @@
       "required_qualifications": [
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
         "internal/runtime/app/session_lifecycle_test.go#TestSessionControlCreatesActivatesAndSubmitsWithStableIdentity",
+        "web/src/runtime/client.test.ts#changes operation ownership immediately while a Session hydrates",
         "web/src/runtime/client.test.ts#retries session creation with one stable idempotency key",
+        "web/src/ui/App.test.tsx#disables Session-bound controls while the selected Session hydrates",
         "web/tests/e2e/web.spec.ts#browses workspace resources and restores an archived Session"
       ]
     },
@@ -670,7 +711,9 @@
       "required_qualifications": [
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
         "testdata/contracts/host-journey-contract.json",
-        "web/src/ui/App.test.tsx#renders full approval decisions and structured input options"
+        "web/src/ui/App.test.tsx#renders full approval decisions and structured input options",
+        "web/src/ui/App.test.tsx#resets approval submission state for a new request id",
+        "web/src/ui/App.test.tsx#resets input submission state for a new request id"
       ]
     },
     {
@@ -700,7 +743,8 @@
       "id": "view-chat",
       "disposition": "required",
       "legacy_inventory_ids": [
-        "vscode_view.codehelper-chat"
+        "vscode_view.codehelper-chat",
+        "vscode_view_container.activitybar:codehelper"
       ],
       "legacy_evidence": [
         "extensions/vscode/package.json"
@@ -793,7 +837,10 @@
       "required_qualifications": [
         "internal/host/runtimeapi/web/server_test.go#TestWebSocketDownlinkConcurrencyAndShutdown",
         "internal/host/runtimeapi/web/server_test.go#TestBootstrapIsLoopbackFencedAndDoesNotCacheToken",
+        "internal/host/runtimeapi/web/contract_internal_test.go#TestWebDependenciesExposeNarrowQueryPorts",
+        "internal/host/runtimeapi/web/server_test.go#TestStaticAssetsRejectTraversalAndSupportETag",
         "internal/host/runtimeapi/web/capacity_integration_test.go#TestWebSocketSlowReaderReleasesConnectionSlotAfterWriteTimeout",
+        "internal/host/cli/web_readiness_test.go#TestProbeWebReadinessRequiresTrustedReadyEndpoint",
         "internal/platform/ownerlease/lease_test.go#TestPathCanonicalizesDataDirectoryAliases",
         "scripts/webprotocolgen/main_test.go#TestGenerateProducesDeterministicGuardedRoutes",
         "scripts/webexperiencecheck/main_test.go#TestRepositoryWebExperienceContract",
@@ -859,7 +906,11 @@
         "vscode_command.codehelper-editselection",
         "vscode_command.codehelper-explainselection",
         "vscode_command.codehelper-generatetestsforselection",
-        "vscode_command.codehelper-refactorselection"
+        "vscode_command.codehelper-refactorselection",
+        "vscode_menu.editor-context:codehelper-editselection",
+        "vscode_menu.editor-context:codehelper-explainselection",
+        "vscode_menu.editor-context:codehelper-generatetestsforselection",
+        "vscode_menu.editor-context:codehelper-refactorselection"
       ],
       "legacy_evidence": [
         "extensions/vscode/package.json"

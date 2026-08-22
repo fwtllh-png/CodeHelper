@@ -13,7 +13,14 @@ func TestCaptureProducesClosedInventoryAndLedger(t *testing.T) {
 	writeFixture(t, root, "extensions/vscode/package.json", `{
   "contributes": {
     "commands": [{"command": "codehelper.newChat"}],
-    "views": {"codehelper": [{"id": "codehelper.chat"}]}
+    "views": {"codehelper": [{"id": "codehelper.chat"}]},
+    "menus": {"editor/context": [{"command": "codehelper.newChat"}]},
+    "configuration": {"properties": {"codehelper.runtime.autoStart": {"type": "boolean"}}},
+    "viewsContainers": {"activitybar": [{"id": "codehelper"}]}
+  },
+  "scripts": {
+    "release:binary": "node release.mjs",
+    "lint": "eslint ."
   }
 }`)
 	writeFixture(t, root, "internal/host/runtimeapi/acp/server.go", `
@@ -48,8 +55,8 @@ type Dependencies struct{}
 	); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Items) != 13 {
-		t.Fatalf("inventory items = %d, want 13", len(got.Items))
+	if len(got.Items) != 17 {
+		t.Fatalf("inventory items = %d, want 17", len(got.Items))
 	}
 	if got.SourceHash == "" {
 		t.Fatal("inventory source hash is empty")
@@ -62,6 +69,16 @@ func TestClassifyRequiresExplicitDynamicToolDrop(t *testing.T) {
 		Name: "tool/register",
 	})
 	if id != "acp-dynamic-tools" || disposition != "intentional_drop" {
+		t.Fatalf("classification = %q %q", id, disposition)
+	}
+}
+
+func TestClassifyPreservesBinaryReleaseAsSecondarySurface(t *testing.T) {
+	id, disposition := classify(inventoryItem{
+		Kind: "vscode_package_script",
+		Name: "release:binary",
+	})
+	if id != "release-packaging" || disposition != "retained_secondary" {
 		t.Fatalf("classification = %q %q", id, disposition)
 	}
 }

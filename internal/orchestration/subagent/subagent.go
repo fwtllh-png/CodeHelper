@@ -133,25 +133,33 @@ type Options struct {
 }
 
 type Manager struct {
-	mu           sync.Mutex
-	wait         *sync.Cond
-	root         string
-	budget       Budget
-	gate         ToolGate
-	runtime      RuntimeHost
-	trees        WorktreeProvider
-	roles        RoleCatalog
-	agents       map[string]*Agent
-	mailbox      *Mailbox
-	worktrees    map[string]*Worktree
-	claims       map[string]string // workspace-relative path -> owning agent id
-	integrations map[string]IntegrationCandidate
-	active       map[string]int
-	graph        Graph
-	workspace    string
-	sessionID    string
-	nextID       int
-	ledgers      map[string]BudgetLedger
+	mu            sync.Mutex
+	wait          *sync.Cond
+	root          string
+	budget        Budget
+	gate          ToolGate
+	runtime       RuntimeHost
+	trees         WorktreeProvider
+	roles         RoleCatalog
+	agents        map[string]*Agent
+	mailbox       *Mailbox
+	worktrees     map[string]*Worktree
+	claims        map[string]string // workspace-relative path -> owning agent id
+	integrations  map[string]IntegrationCandidate
+	active        map[string]int
+	graph         Graph
+	workspace     string
+	sessionID     string
+	nextID        int
+	ledgers       map[string]BudgetLedger
+	nextExecution uint64
+	executions    map[string]map[uint64]context.CancelFunc
+	closing       map[string]*agentCloseState
+}
+
+type agentCloseState struct {
+	done chan struct{}
+	err  error
 }
 
 type Agent struct {
@@ -230,6 +238,8 @@ func Open(options Options) (*Manager, error) {
 		integrations: make(map[string]IntegrationCandidate),
 		active:       make(map[string]int),
 		ledgers:      make(map[string]BudgetLedger),
+		executions:   make(map[string]map[uint64]context.CancelFunc),
+		closing:      make(map[string]*agentCloseState),
 	}
 	if manager.sessionID == "" {
 		manager.sessionID = "session-local"
@@ -525,14 +535,41 @@ func (m *Manager) ExecuteTool(ctx context.Context, agentID, callID, name string,
 	m.mu.Lock()
 	agent, ok := m.agents[agentID]
 	gate := m.gate
-	m.mu.Unlock()
-	if !ok || agent.Closed {
+	if !ok || agent.Closed || m.closing[agentID] != nil {
+		m.mu.Unlock()
 		return tool.Result{}, errors.New("agent not found")
 	}
 	if gate == nil {
+		m.mu.Unlock()
 		return tool.Result{}, errors.New("tool gate unavailable")
 	}
-	return gate.Execute(ctx, callID, name, raw)
+	executionContext, cancel := context.WithCancel(ctx)
+	m.nextExecution++
+	executionID := m.nextExecution
+	if m.executions[agentID] == nil {
+		m.executions[agentID] = make(map[uint64]context.CancelFunc)
+	}
+	m.executions[agentID][executionID] = cancel
+	m.mu.Unlock()
+	defer m.releaseExecution(agentID, executionID, cancel)
+	return gate.Execute(executionContext, callID, name, raw)
+}
+
+func (m *Manager) releaseExecution(
+	agentID string,
+	executionID uint64,
+	cancel context.CancelFunc,
+) {
+	cancel()
+	m.mu.Lock()
+	if executions := m.executions[agentID]; executions != nil {
+		delete(executions, executionID)
+		if len(executions) == 0 {
+			delete(m.executions, agentID)
+		}
+	}
+	m.wait.Broadcast()
+	m.mu.Unlock()
 }
 
 func (m *Manager) Takeover(ctx context.Context, agentID, prompt string) (string, error) {
@@ -621,12 +658,22 @@ func cloneAgent(agent *Agent) Agent {
 
 func (m *Manager) Close(agentID string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	if state := m.closing[agentID]; state != nil {
+		m.mu.Unlock()
+		<-state.done
+		return state.err
+	}
+	state := &agentCloseState{done: make(chan struct{})}
+	m.closing[agentID] = state
 	agent, ok := m.agents[agentID]
 	if !ok {
-		return errors.New("agent not found")
+		m.finishCloseLocked(agentID, state, errors.New("agent not found"))
+		m.mu.Unlock()
+		return state.err
 	}
 	if agent.Closed {
+		m.finishCloseLocked(agentID, state, nil)
+		m.mu.Unlock()
 		return nil
 	}
 	if occupiesSlot(agent.Status) {
@@ -634,6 +681,8 @@ func (m *Manager) Close(agentID string) error {
 			agent, StatusInterrupted, agent.TurnID, agent.LastMessage,
 			"parent", "agent closed while active", nil,
 		); err != nil {
+			m.finishCloseLocked(agentID, state, err)
+			m.mu.Unlock()
 			return err
 		}
 	}
@@ -641,18 +690,55 @@ func (m *Manager) Close(agentID string) error {
 		agent, StatusClosed, agent.TurnID, agent.LastMessage,
 		"parent", "agent closed", nil,
 	); err != nil {
+		m.finishCloseLocked(agentID, state, err)
+		m.mu.Unlock()
 		return err
 	}
 	agent.Closed = true
 	m.releaseClaimsLocked(agentID)
 	wt := m.worktrees[agentID]
-	if wt == nil {
-		return nil
+	var worktree *Worktree
+	var closeErr error
+	if wt != nil {
+		if err := m.checkWorktreeOverlapLocked(wt); err != nil {
+			closeErr = err
+		} else {
+			copy := *wt
+			worktree = &copy
+		}
 	}
-	if err := m.checkWorktreeOverlapLocked(wt); err != nil {
-		return err
+	cancels := make([]context.CancelFunc, 0, len(m.executions[agentID]))
+	for _, cancel := range m.executions[agentID] {
+		cancels = append(cancels, cancel)
 	}
-	return m.trees.Discard(*wt)
+	m.mu.Unlock()
+
+	for _, cancel := range cancels {
+		cancel()
+	}
+	m.mu.Lock()
+	for len(m.executions[agentID]) > 0 {
+		m.wait.Wait()
+	}
+	m.mu.Unlock()
+
+	if closeErr == nil && worktree != nil {
+		closeErr = m.trees.Discard(*worktree)
+	}
+	m.mu.Lock()
+	m.finishCloseLocked(agentID, state, closeErr)
+	m.mu.Unlock()
+	return closeErr
+}
+
+func (m *Manager) finishCloseLocked(
+	agentID string,
+	state *agentCloseState,
+	err error,
+) {
+	state.err = err
+	delete(m.closing, agentID)
+	close(state.done)
 }
 
 type Message struct {
@@ -681,6 +767,7 @@ const (
 
 type Mailbox struct {
 	mu             sync.Mutex
+	writeGate      chan struct{}
 	seq            map[string]uint64
 	pending        []Message
 	closed         bool
@@ -689,9 +776,18 @@ type Mailbox struct {
 	deliver        func(Message) error
 }
 
-func NewMailbox() *Mailbox { return &Mailbox{seq: make(map[string]uint64)} }
+func NewMailbox() *Mailbox {
+	mailbox := &Mailbox{
+		seq:       make(map[string]uint64),
+		writeGate: make(chan struct{}, 1),
+	}
+	mailbox.writeGate <- struct{}{}
+	return mailbox
+}
 
 func (m *Mailbox) Close() {
+	<-m.writeGate
+	defer func() { m.writeGate <- struct{}{} }()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.closed = true
@@ -710,6 +806,8 @@ func (m *Mailbox) Deliver(from, to string, body json.RawMessage) (Message, error
 }
 
 func (m *Mailbox) Enqueue(message Message) (Message, error) {
+	<-m.writeGate
+	defer func() { m.writeGate <- struct{}{} }()
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -750,6 +848,9 @@ func (m *Mailbox) Prepare(message Message) (Message, error) {
 func (m *Mailbox) Accept(message Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.closed {
+		return
+	}
 	key := mailboxKey(message.SessionID, message.To)
 	if message.Sequence > m.seq[key] {
 		m.seq[key] = message.Sequence

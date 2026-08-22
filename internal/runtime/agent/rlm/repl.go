@@ -320,22 +320,47 @@ func (s *Store) Eval(ctx context.Context, name, code string) (EvalResult, *Sessi
 	defer directoryFile.Close()
 
 	var bridge *subQueryBridge
+	bridgeURLPath := filepath.Join(dir, "bridge_url.txt")
+	bridgeTokenPath := filepath.Join(dir, "bridge_token.txt")
+	bridgeTimeoutPath := filepath.Join(dir, "bridge_timeout.txt")
 	if subQuery != nil {
 		started, startErr := startSubQueryBridge(subQuery, governor, subQueryTimeout)
 		if startErr != nil {
 			return EvalResult{}, nil, startErr
 		}
 		bridge = started
-		defer bridge.Close()
-		_ = os.WriteFile(filepath.Join(dir, "bridge_url.txt"), []byte(bridge.BaseURL()), 0o600)
-		_ = os.WriteFile(
-			filepath.Join(dir, "bridge_timeout.txt"),
-			[]byte(fmt.Sprintf("%d", subQueryTimeout)),
+		if err := os.WriteFile(bridgeURLPath, []byte(bridge.BaseURL()), 0o600); err != nil {
+			bridge.Close()
+			_ = os.Remove(bridgeURLPath)
+			return EvalResult{}, nil, err
+		}
+		if err := os.WriteFile(bridgeTokenPath, []byte(bridge.token), 0o600); err != nil {
+			bridge.Close()
+			_ = os.Remove(bridgeURLPath)
+			_ = os.Remove(bridgeTokenPath)
+			return EvalResult{}, nil, err
+		}
+		if err := os.WriteFile(
+			bridgeTimeoutPath,
+			[]byte(fmt.Sprintf("%d", int(bridge.timeout/time.Second))),
 			0o600,
-		)
+		); err != nil {
+			bridge.Close()
+			_ = os.Remove(bridgeURLPath)
+			_ = os.Remove(bridgeTokenPath)
+			_ = os.Remove(bridgeTimeoutPath)
+			return EvalResult{}, nil, err
+		}
+		defer func() {
+			bridge.Close()
+			_ = os.Remove(bridgeURLPath)
+			_ = os.Remove(bridgeTokenPath)
+			_ = os.Remove(bridgeTimeoutPath)
+		}()
 	} else {
-		_ = os.Remove(filepath.Join(dir, "bridge_url.txt"))
-		_ = os.Remove(filepath.Join(dir, "bridge_timeout.txt"))
+		_ = os.Remove(bridgeURLPath)
+		_ = os.Remove(bridgeTokenPath)
+		_ = os.Remove(bridgeTimeoutPath)
 	}
 
 	started := time.Now().UTC()
@@ -493,9 +518,16 @@ def _default_timeout():
     except ValueError:
         return 60
 
+def _bridge_token():
+    path = _session_dir / "bridge_token.txt"
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8").strip()
+
 def sub_query(prompt, slice=None, timeout_secs=None):
     url = _bridge_url()
-    if not url:
+    token = _bridge_token()
+    if not url or not token:
         raise RuntimeError("sub_query unavailable: no SubQueryClient configured")
     body = {"prompt": "" if prompt is None else str(prompt)}
     if slice is not None:
@@ -507,7 +539,10 @@ def sub_query(prompt, slice=None, timeout_secs=None):
     req = urllib.request.Request(
         url.rstrip("/") + "/v1/sub_query",
         data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+        },
         method="POST",
     )
     timeout = body["timeout_secs"] + 5

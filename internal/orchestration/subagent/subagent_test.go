@@ -3,10 +3,13 @@ package subagent_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
@@ -14,6 +17,48 @@ import (
 
 type fakeGate struct {
 	calls int
+}
+
+type blockingCancelGate struct {
+	started  chan struct{}
+	canceled chan struct{}
+	release  chan struct{}
+}
+
+type overlappingWorktrees struct {
+	root  string
+	count int
+}
+
+func (p *overlappingWorktrees) Provision(
+	agentID string,
+	_ subagent.Stance,
+) (subagent.Worktree, error) {
+	p.count++
+	path := filepath.Join(p.root, "shared")
+	if p.count > 1 {
+		path = filepath.Join(path, agentID)
+	}
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return subagent.Worktree{}, err
+	}
+	return subagent.Worktree{ID: agentID, Path: path}, nil
+}
+
+func (*overlappingWorktrees) Discard(subagent.Worktree) error {
+	return nil
+}
+
+func (g *blockingCancelGate) Execute(
+	ctx context.Context,
+	_, _ string,
+	_ json.RawMessage,
+) (tool.Result, error) {
+	close(g.started)
+	<-ctx.Done()
+	close(g.canceled)
+	<-g.release
+	return tool.Result{}, ctx.Err()
 }
 
 func (g *fakeGate) Execute(_ context.Context, _, name string, _ json.RawMessage) (tool.Result, error) {
@@ -129,6 +174,115 @@ func TestWorktreeCleanupDoesNotTouchSibling(t *testing.T) {
 	out, err := manager.Takeover(context.Background(), b.ID, "finish")
 	if err != nil || out == "" {
 		t.Fatalf("takeover=%q err=%v", out, err)
+	}
+}
+
+func TestCloseCancelsAndWaitsForToolExecutionLease(t *testing.T) {
+	gate := &blockingCancelGate{
+		started:  make(chan struct{}),
+		canceled: make(chan struct{}),
+		release:  make(chan struct{}),
+	}
+	manager, err := subagent.Open(subagent.Options{
+		Root: t.TempDir(), Gate: gate,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := manager.Spawn("", subagent.RoleGeneral, "execute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	executed := make(chan error, 1)
+	go func() {
+		_, executeErr := manager.ExecuteTool(
+			t.Context(),
+			agent.ID,
+			"call",
+			"read",
+			json.RawMessage(`{}`),
+		)
+		executed <- executeErr
+	}()
+	<-gate.started
+	closed := make(chan error, 1)
+	go func() {
+		closed <- manager.Close(agent.ID)
+	}()
+	<-gate.canceled
+	if _, err := manager.ExecuteTool(
+		t.Context(),
+		agent.ID,
+		"late",
+		"read",
+		json.RawMessage(`{}`),
+	); err == nil {
+		t.Fatal("tool execution acquired after close started")
+	}
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned before execution exited: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(gate.release)
+	if err := <-executed; !errors.Is(err, context.Canceled) {
+		t.Fatalf("ExecuteTool error = %v", err)
+	}
+	if err := <-closed; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCloseDrainsToolExecutionWhenWorktreeCleanupIsRefused(t *testing.T) {
+	gate := &blockingCancelGate{
+		started:  make(chan struct{}),
+		canceled: make(chan struct{}),
+		release:  make(chan struct{}),
+	}
+	root := t.TempDir()
+	manager, err := subagent.Open(subagent.Options{
+		Root: root, Gate: gate,
+		Worktrees: &overlappingWorktrees{root: root},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := manager.Spawn("", subagent.RoleExplore, "execute")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Spawn("", subagent.RoleExplore, "overlap"); err != nil {
+		t.Fatal(err)
+	}
+	executed := make(chan error, 1)
+	go func() {
+		_, executeErr := manager.ExecuteTool(
+			t.Context(),
+			agent.ID,
+			"call",
+			"read",
+			json.RawMessage(`{}`),
+		)
+		executed <- executeErr
+	}()
+	<-gate.started
+	closed := make(chan error, 1)
+	go func() {
+		closed <- manager.Close(agent.ID)
+	}()
+	<-gate.canceled
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned before execution exited: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(gate.release)
+	if err := <-executed; !errors.Is(err, context.Canceled) {
+		t.Fatalf("ExecuteTool error = %v", err)
+	}
+	if err := <-closed; err == nil ||
+		!strings.Contains(err.Error(), "overlapping worktree") {
+		t.Fatalf("Close error = %v", err)
 	}
 }
 

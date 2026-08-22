@@ -27,7 +27,7 @@ func (securityModule) Build(
 	session := state.session
 	execution := state.config.execution
 	securityRuntime := policy.DefaultRuntime(policy.Mode(execution.Mode), policy.Permission(state.options.Permission))
-	securityRuntime.DisableAutoReview = os.Getenv("CODEHELPER_DISABLE_APPROVAL_AUTO_REVIEW") == "1"
+	securityRuntime.SetDisableAutoReview(os.Getenv("CODEHELPER_DISABLE_APPROVAL_AUTO_REVIEW") == "1")
 	session.security = securityRuntime
 	journal, err := openWorkspaceJournal(
 		ctx,

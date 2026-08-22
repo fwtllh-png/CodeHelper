@@ -85,9 +85,12 @@
       "path": "internal/orchestration/subagent",
       "limits": {
         "internal_fanout": 7,
-        "production_lines": 4341,
+        "production_lines": 4443,
         "options_fields": 8,
         "mutex_fields": 3
+      },
+      "relaxations": {
+        "production_lines": "Subagent shutdown now owns cancellable tool execution leases and a persistence-ordered Mailbox close barrier"
       }
     },
     {
@@ -96,9 +99,12 @@
       "path": "internal/runtime/app/eventhub",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 274,
+        "production_lines": 292,
         "options_fields": 0,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Stable Event retry now tracks projection-complete fanout so terminal events reach live subscribers exactly once"
       }
     },
     {
@@ -612,12 +618,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 13428,
+        "production_lines": 13448,
         "options_fields": 61,
         "mutex_fields": 8
       },
       "relaxations": {
-        "production_lines": "Context optimization suppresses duplicate observable Compaction Receipts across repeated admission gates"
+      "production_lines": "Context optimization suppresses duplicate Compaction Receipts, and policy updates now snapshot Mode and Permission atomically"
       }
     },
     {
@@ -956,7 +962,7 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 520,
+        "lines": 496,
         "max_function_lines": 124
       }
     },

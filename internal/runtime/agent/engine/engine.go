@@ -340,38 +340,15 @@ func New(options Options) (*Engine, error) {
 	return engine, nil
 }
 
-func (e *Engine) ValidateSessionProfile(profile protocol.SessionProfile) error {
+func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 	if err := profile.Validate(); err != nil {
 		return err
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.runningScope() != nil {
-		return errors.New("session profile cannot change while a turn is active")
-	}
-	route := e.options.Routes.Act()
-	if profile.Provider != route.ProviderID() || profile.Model != route.Model().ID {
-		return errors.New("session profile route is unavailable in this runtime")
-	}
-	if profile.ReasoningEffort != "" && !route.Model().Capabilities.Reasoning {
-		return errors.New("session profile model does not support reasoning effort")
-	}
-	if len(profile.EnabledToolIDs) != 0 {
-		for _, id := range profile.EnabledToolIDs {
-			if _, _, ok := tool.ParseCatalogToolID(id); !ok {
-				return fmt.Errorf("session profile tool id %q is invalid", id)
-			}
-		}
-	}
-	return nil
-}
-
-func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
-	if err := e.ValidateSessionProfile(profile); err != nil {
+	if err := e.validateSessionProfileLocked(profile); err != nil {
 		return err
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
 	e.options.ReasoningEffort = profile.ReasoningEffort
 	e.options.MaxSteps = profile.MaxSteps
 	e.options.ProfileRevision = profile.Revision
@@ -385,11 +362,13 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 		profile.PromptCacheRevision,
 	)
 	if e.options.Security != nil {
-		e.options.Security.Mode = policy.Mode(profile.Mode)
-		e.options.Security.Permission = effectiveProfilePermissionWithCeiling(
-			e.profileReadOnly,
-			policy.Permission(profile.ApprovalPosture),
-			profilePermissionCeiling(e.options),
+		e.options.Security.SetModePermissionWithinCeiling(
+			policy.Mode(profile.Mode),
+			effectiveProfilePermission(
+				e.profileReadOnly,
+				policy.Permission(profile.ApprovalPosture),
+			),
+			e.options.ProfilePermissionCeiling,
 		)
 	}
 	return nil
@@ -460,7 +439,7 @@ func effectiveProfilePermissionWithCeiling(
 func profilePermissionCeiling(options Options) policy.Permission {
 	ceiling := options.ProfilePermissionCeiling
 	if ceiling == "" && options.Security != nil {
-		ceiling = options.Security.Permission
+		ceiling = options.Security.PermissionValue()
 	}
 	return ceiling
 }
@@ -473,7 +452,7 @@ func (e *Engine) SetPolicyMode(mode policy.Mode) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.options.Security != nil {
-		e.options.Security.Mode = mode
+		e.options.Security.SetMode(mode)
 	}
 }
 
@@ -481,10 +460,9 @@ func (e *Engine) SetPermission(permission policy.Permission) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.options.Security != nil {
-		e.options.Security.Permission = effectiveProfilePermissionWithCeiling(
-			e.profileReadOnly,
-			permission,
-			profilePermissionCeiling(e.options),
+		e.options.Security.SetPermissionWithinCeiling(
+			effectiveProfilePermission(e.profileReadOnly, permission),
+			e.options.ProfilePermissionCeiling,
 		)
 	}
 }
@@ -493,7 +471,7 @@ func (e *Engine) SetGranular(granular policy.Granular) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.options.Security != nil {
-		e.options.Security.Granular = granular
+		e.options.Security.SetGranular(granular)
 	}
 }
 

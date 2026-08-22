@@ -142,7 +142,7 @@ Cross-cutting 不等于 Ownerless。先选定一个 Invariant Owner，再围绕�
 - Engine 直接写 SQLite Table；
 - Projection/UI State 授权 Action；
 - Orchestration 直接调用 Provider；
-- Web 信任 Webview Workspace Identity；
+- Web Host 信任 Browser 提交的 Workspace Identity；
 - Protocol Import Host/Adapter。
 
 它们可能局部方便，却破坏系统保证。
