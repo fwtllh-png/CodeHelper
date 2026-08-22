@@ -75,3 +75,39 @@ func TestAcquireRejectsSymbolicLink(t *testing.T) {
 		t.Fatal("expected symbolic link rejection")
 	}
 }
+
+func TestPathCanonicalizesDataDirectoryAliases(t *testing.T) {
+	root := t.TempDir()
+	physical := filepath.Join(root, "state")
+	if err := os.Mkdir(physical, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "state-alias")
+	if err := os.Symlink(physical, alias); err != nil {
+		t.Skipf("symbolic links unavailable: %v", err)
+	}
+	if got, want := Path(alias, "workspace"), Path(physical, "workspace"); got != want {
+		t.Fatalf("lease path through alias = %q, want %q", got, want)
+	}
+}
+
+func TestPathCanonicalizesAliasBeforeMissingSuffix(t *testing.T) {
+	root := t.TempDir()
+	physical := filepath.Join(root, "state")
+	if err := os.Mkdir(physical, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "state-alias")
+	if err := os.Symlink(physical, alias); err != nil {
+		t.Skipf("symbolic links unavailable: %v", err)
+	}
+	if got, want := Path(
+		filepath.Join(alias, "future"),
+		"workspace",
+	), Path(
+		filepath.Join(physical, "future"),
+		"workspace",
+	); got != want {
+		t.Fatalf("lease path through missing alias suffix = %q, want %q", got, want)
+	}
+}

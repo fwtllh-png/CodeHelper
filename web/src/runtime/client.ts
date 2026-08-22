@@ -46,7 +46,11 @@ import type {
   WorkspaceSymbol,
   WorkspaceSymbolList
 } from "../protocol";
-import type {WebRPCRoute} from "../protocol/web-host.generated";
+import {
+  webEventKinds,
+  webProtocolVersion,
+  type WebRPCRoute
+} from "../protocol/web-host.generated";
 import {
   IndexedDBBrowserStorage,
   type BrowserProjectionState,
@@ -168,16 +172,19 @@ export class RuntimeClient {
       }
       await this.restoreBrowserState(bootstrap);
       this.update({
-        phase: "ready",
+        phase: "reconnecting",
         workspaceRoot: bootstrap.workspace_root ?? "",
         problem: undefined
       });
+      this.socket?.close(1000, "client reconnect");
+      await this.connect();
       await this.refreshModelCatalog();
       await this.refreshSessions();
-      this.socket?.close(1000, "client reconnect");
-      this.connect();
     } catch (error) {
-      this.fail(error);
+      if (this.state.phase !== "reconnecting" &&
+          this.state.phase !== "desynchronized") {
+        this.fail(error);
+      }
     }
   }
 
@@ -246,7 +253,7 @@ export class RuntimeClient {
       expected_revision: expectedRevision,
       patch
     });
-    await this.refreshSessions("", false);
+    await this.refreshSessions();
   }
 
   async deleteSession(sessionID: string, expectedRevision: number): Promise<void> {
@@ -452,6 +459,7 @@ export class RuntimeClient {
   }
 
   async updateProfile(patch: Record<string, unknown>): Promise<void> {
+    const generation = this.selectionGeneration;
     const snapshot = this.state.profile;
     const profile = snapshot?.profile;
     const session = this.state.sessions.find(
@@ -469,6 +477,10 @@ export class RuntimeClient {
     const authoritative = await this.call<SessionProfileSnapshot>("profile/get", {
       session_id: session.session_id
     });
+    if (generation !== this.selectionGeneration ||
+        session.session_id !== this.state.selectedSessionID) {
+      return;
+    }
     this.update({profile: authoritative});
   }
 
@@ -840,63 +852,120 @@ export class RuntimeClient {
     return envelope.result;
   }
 
-  private connect(): void {
+  private connect(): Promise<void> {
     const generation = ++this.generation;
     const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${scheme}//${window.location.host}/api/v1/events`);
     this.socket = socket;
-    socket.addEventListener("open", () => {
-      if (generation !== this.generation) return;
-      socket.send(JSON.stringify({
-        type: "authenticate",
-        token: this.token,
-        cursor: this.cursor
-      }));
-    });
-    socket.addEventListener("message", (message) => {
-      if (generation !== this.generation) return;
-      const frame = JSON.parse(String(message.data)) as EventFrame;
-      if (frame.type === "hello") {
-        this.update({socketConnected: true, phase: "ready"});
-        return;
-      }
-      if (frame.type === "desync") {
-        this.update({
-          phase: "desynchronized",
-          socketConnected: false,
-          problem: frame.problem
-        });
+    return new Promise<void>((resolve, reject) => {
+      let connected = false;
+      socket.addEventListener("open", () => {
+        if (generation !== this.generation) return;
+        socket.send(JSON.stringify({
+          type: "authenticate",
+          token: this.token,
+          cursor: this.cursor
+        }));
+      });
+      socket.addEventListener("message", (message) => {
+        if (generation !== this.generation) return;
+        let frame: EventFrame;
+        try {
+          frame = decodeEventFrame(message.data);
+        } catch (error) {
+          this.resetProjection();
+          this.update({
+            phase: "desynchronized",
+            socketConnected: false,
+            problem: protocolProblem(error)
+          });
+          socket.close();
+          if (!connected) reject(error);
+          return;
+        }
+        if (frame.type === "hello") {
+          connected = true;
+          this.update({socketConnected: true, phase: "ready"});
+          resolve();
+          return;
+        }
+        if (!connected) {
+          const error = new Error("Web event stream sent data before hello");
+          this.resetProjection();
+          this.update({
+            phase: "desynchronized",
+            socketConnected: false,
+            problem: protocolProblem(error)
+          });
+          socket.close();
+          reject(error);
+          return;
+        }
+        if (frame.type === "desync") {
+          this.resetProjection();
+          this.update({
+            phase: "desynchronized",
+            socketConnected: false,
+            problem: frame.problem
+          });
+          socket.close();
+          return;
+        }
+        if (frame.type === "resync") {
+          this.resetProjection();
+          this.update({
+            phase: "reconnecting",
+            socketConnected: false,
+            problem: frame.problem
+          });
+          socket.close();
+          return;
+        }
+        if (frame.type === "watermark") {
+          this.commitCursor(frame.sequence);
+          return;
+        }
+        if (frame.type === "event" && frame.event) {
+          this.applyEvent(frame.event, frame.session_id ?? "");
+        }
+      });
+      socket.addEventListener("close", () => {
+        if (generation !== this.generation) {
+          if (!connected) reject(new Error("Web event stream was superseded"));
+          return;
+        }
+        if (this.state.phase === "desynchronized") {
+          return;
+        }
+        this.update({socketConnected: false, phase: "reconnecting"});
+        if (!connected) {
+          reject(new Error("Web event stream closed before readiness"));
+        }
+        this.reconnectTimer = window.setTimeout(() => void this.start(), 700);
+      });
+      socket.addEventListener("error", () => {
         socket.close();
-        return;
-      }
-      if (frame.type === "resync") {
-        this.commitCursor(0, true);
-        this.update({
-          phase: "reconnecting",
-          socketConnected: false,
-          profile: undefined,
-          problem: frame.problem
-        });
-        socket.close();
-        return;
-      }
-      if (frame.type === "watermark") {
-        this.commitCursor(frame.sequence);
-        return;
-      }
-      if (frame.type === "event" && frame.event) {
-        this.applyEvent(frame.event, frame.session_id ?? "");
-      }
+      });
     });
-    socket.addEventListener("close", () => {
-      if (generation !== this.generation || this.state.phase === "desynchronized") {
-        return;
-      }
-      this.update({socketConnected: false, phase: "reconnecting"});
-      this.reconnectTimer = window.setTimeout(() => void this.start(), 700);
-    });
-    socket.addEventListener("error", () => {
-      socket.close();
+  }
+
+  private resetProjection(): void {
+    this.commitCursor(0, true);
+    this.selectionGeneration += 1;
+    this.hydration = undefined;
+    this.update({
+      events: [],
+      historyMoreBefore: false,
+      profile: undefined,
+      tools: [],
+      checkpoints: [],
+      plan: undefined,
+      tasks: [],
+      agents: [],
+      usage: undefined,
+      extensions: [],
+      mergePlan: undefined,
+      contextResources: []
     });
   }
 
@@ -1023,6 +1092,44 @@ export class RuntimeProblem extends Error {
   constructor(readonly problem: Problem) {
     super(problem.message);
   }
+}
+
+const eventKindSet = new Set<string>(webEventKinds);
+const eventFrameTypes = new Set(["hello", "event", "watermark", "resync", "desync"]);
+
+function decodeEventFrame(value: unknown): EventFrame {
+  const decoded = JSON.parse(String(value)) as unknown;
+  if (!decoded || typeof decoded !== "object") {
+    throw new Error("Web event frame must be an object");
+  }
+  const frame = decoded as Partial<EventFrame>;
+  if (frame.protocol_version !== webProtocolVersion) {
+    throw new Error(`Unsupported Web protocol version ${String(frame.protocol_version)}`);
+  }
+  if (typeof frame.type !== "string" || !eventFrameTypes.has(frame.type)) {
+    throw new Error(`Unknown Web event frame type ${String(frame.type)}`);
+  }
+  if (!Number.isSafeInteger(frame.sequence) || Number(frame.sequence) < 0) {
+    throw new Error("Web event frame sequence is invalid");
+  }
+  if (frame.type === "event") {
+    if (!frame.event || !eventKindSet.has(frame.event.kind) ||
+        frame.event.sequence !== frame.sequence) {
+      throw new Error("Web event frame contains an unknown or inconsistent event");
+    }
+  } else if (frame.event !== undefined) {
+    throw new Error("Non-event Web frame contains an event payload");
+  }
+  return frame as EventFrame;
+}
+
+function protocolProblem(error: unknown): Problem {
+  return {
+    version: 1,
+    code: "protocol_mismatch",
+    message: error instanceof Error ? error.message : String(error),
+    retryable: false
+  };
 }
 
 function fulfilled<T>(result: PromiseSettledResult<T>): T | undefined {

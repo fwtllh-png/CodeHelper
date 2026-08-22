@@ -68,6 +68,19 @@ func TestUnaryRouteRegistryMatchesDispatcher(t *testing.T) {
 			t.Errorf("dispatcher route %q is not registered", path)
 		}
 	}
+	for path, request := range map[string]string{
+		"task/list":                "task_query",
+		"agent/list":               "agent_query",
+		"usage/query":              "usage_query",
+		"extension/list":           "extension_query",
+		"credential/status":        "empty",
+		"credential/clear-keyring": "empty",
+		"credential/validate":      "empty",
+	} {
+		if got := declared[path].Request; got != request {
+			t.Errorf("route %q request = %q, want %q", path, got, request)
+		}
+	}
 }
 
 func TestWebInlineContextAcceptsOnlyPersistedToolResultForThread(t *testing.T) {

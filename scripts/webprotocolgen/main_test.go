@@ -17,7 +17,7 @@ func TestGenerateProducesDeterministicGuardedRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(first.schema) != string(second.schema) ||
+	if string(first.contract) != string(second.contract) ||
 		string(first.typeScript) != string(second.typeScript) {
 		t.Fatal("generated Web Host contract is not deterministic")
 	}
@@ -32,8 +32,18 @@ func TestGenerateProducesDeterministicGuardedRoutes(t *testing.T) {
 			RequiresCapability bool   `json:"requires_capability"`
 		} `json:"routes"`
 	}
-	if err := json.Unmarshal(first.schema, &contract); err != nil {
+	if err := json.Unmarshal(first.contract, &contract); err != nil {
 		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(first.contract, &document); err != nil {
+		t.Fatal(err)
+	}
+	if _, misleading := document["$schema"]; misleading {
+		t.Fatal("transport manifest must not claim to be a JSON Schema")
+	}
+	if document["contract_id"] == "" {
+		t.Fatal("transport manifest contract_id is missing")
 	}
 	if contract.ProtocolVersion != 1 || !contract.LoopbackOnly || !contract.SameOriginOnly {
 		t.Fatalf("transport guard = %+v", contract)
@@ -57,7 +67,7 @@ func TestGenerateProducesDeterministicGuardedRoutes(t *testing.T) {
 }
 
 func TestCheckFileRejectsDrift(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "web-host.schema.json")
+	path := filepath.Join(t.TempDir(), "web-host.contract.json")
 	if err := os.WriteFile(path, []byte("stale\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

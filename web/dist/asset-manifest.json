@@ -2,20 +2,20 @@
   "version": 1,
   "files": [
     {
-      "path": "assets/index-09o8ZH-X.js",
-      "sha256": "1d0805a4423a545e3c103eae256696aa02c3c4e93b5b87e7b1b13c5e4417ad2e",
-      "bytes": 368141,
-      "media_type": "text/javascript; charset=utf-8"
-    },
-    {
       "path": "assets/index-CFKuW6_9.css",
       "sha256": "4eb162a67e33c5c5cf639f34aea844909ff26d63f650648fa2fb42dfe2e1f43a",
       "bytes": 21035,
       "media_type": "text/css; charset=utf-8"
     },
     {
+      "path": "assets/index-DUhx_pdG.js",
+      "sha256": "b3f00d4e49a365e2d53f2396f60d82298affa9d2503e3fc53bc077f7ac035c8a",
+      "bytes": 371015,
+      "media_type": "text/javascript; charset=utf-8"
+    },
+    {
       "path": "index.html",
-      "sha256": "13ee5689db681202528e3dc2e71f053a2e0af7d5df5b1d5cfde8d84e647422f5",
+      "sha256": "928f181168eaa5f907574dccd3b4658cf94095f67fdfa35f5d76be201ff83842",
       "bytes": 481,
       "media_type": "text/html; charset=utf-8"
     },

@@ -314,7 +314,7 @@ Transaction、Task/Turn Lease、WorkGraph Epoch Fence 或 Workspace 写冲突控
 | `web/src/protocol` | 生成的类型、Trait 和边界 Decoder |
 | `web/tests` | Unit、Component、Replay、Playwright E2E |
 | `scripts/webprotocolgen` | Go Schema 到 TypeScript/Web Contract 生成 |
-| `docs/protocol/web-host.schema.json` | Web Host 传输契约 |
+| `docs/protocol/web-host.contract.json` | Web Host 传输契约清单 |
 
 不建议把 Web Server 放入 `internal/runtime/app`。HTTP、Header、Origin、WebSocket 和静态
 文件都属于 Host Transport；Runtime 只提供可调用的 Operation/Event/Query 能力。

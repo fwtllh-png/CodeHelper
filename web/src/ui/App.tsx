@@ -112,6 +112,10 @@ export function App({client}: Props) {
   const [diagnostics, setDiagnostics] = useState("");
   const [transcriptPage, setTranscriptPage] = useState(0);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const selectedSessionRef = useRef(snapshot.selectedSessionID);
+  const draftRef = useRef(draft);
+  selectedSessionRef.current = snapshot.selectedSessionID;
+  draftRef.current = draft;
   const selected = snapshot.sessions.find(
     (item) => item.session_id === snapshot.selectedSessionID
   );
@@ -202,12 +206,16 @@ export function App({client}: Props) {
   const submit = async () => {
     const prompt = draft.trim();
     if (!prompt || submitting) return;
+    const submittedSessionID = snapshot.selectedSessionID;
     setSubmitting(true);
     setLocalError("");
     try {
       await client.submitPrompt(prompt);
-      setDraft("");
-      client.saveDraft("", snapshot.selectedSessionID);
+      if (selectedSessionRef.current === submittedSessionID &&
+          draftRef.current.trim() === prompt) {
+        setDraft("");
+        client.saveDraft("", submittedSessionID);
+      }
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : String(error));
     } finally {

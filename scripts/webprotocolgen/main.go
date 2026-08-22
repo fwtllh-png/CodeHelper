@@ -13,18 +13,19 @@ import (
 	"strings"
 
 	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type generated struct {
-	schema     []byte
+	contract   []byte
 	typeScript []byte
 }
 
 func main() {
 	output := flag.String(
 		"output",
-		"docs/protocol/web-host.schema.json",
-		"generated Web Host schema output",
+		"docs/protocol/web-host.contract.json",
+		"generated Web Host contract manifest",
 	)
 	typeScript := flag.String(
 		"typescript",
@@ -37,12 +38,12 @@ func main() {
 	content, err := generate()
 	if err == nil {
 		if *check {
-			err = checkFile(*output, content.schema)
+			err = checkFile(*output, content.contract)
 			if err == nil {
 				err = checkFile(*typeScript, content.typeScript)
 			}
 		} else {
-			err = writeFile(*output, content.schema)
+			err = writeFile(*output, content.contract)
 			if err == nil {
 				err = writeFile(*typeScript, content.typeScript)
 			}
@@ -56,7 +57,7 @@ func main() {
 
 func generate() (generated, error) {
 	contract := webhost.Contract()
-	schema, err := json.MarshalIndent(contract, "", "  ")
+	manifest, err := json.MarshalIndent(contract, "", "  ")
 	if err != nil {
 		return generated{}, err
 	}
@@ -82,8 +83,16 @@ func generate() (generated, error) {
 	typeScript.WriteString(
 		"export type WebRPCRoute = (typeof webRPCRoutes)[number];\n",
 	)
+	typeScript.WriteString("\nexport const webEventKinds = [\n")
+	for _, kind := range protocol.EventKinds() {
+		fmt.Fprintf(&typeScript, "  %q,\n", kind)
+	}
+	typeScript.WriteString("] as const;\n\n")
+	typeScript.WriteString(
+		"export type WebEventKind = (typeof webEventKinds)[number];\n",
+	)
 	return generated{
-		schema:     append(schema, '\n'),
+		contract:   append(manifest, '\n'),
 		typeScript: []byte(typeScript.String()),
 	}, nil
 }

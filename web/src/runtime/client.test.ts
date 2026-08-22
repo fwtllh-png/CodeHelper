@@ -39,6 +39,25 @@ class FakeWebSocket {
   }
 }
 
+async function startClient(client: RuntimeClient): Promise<FakeWebSocket> {
+  const previousCount = FakeWebSocket.instances.length;
+  const started = client.start();
+  await vi.waitFor(() => {
+    expect(FakeWebSocket.instances.length).toBeGreaterThan(previousCount);
+  });
+  const socket = FakeWebSocket.instances[previousCount];
+  if (!socket) throw new Error("missing WebSocket");
+  socket.emit("open");
+  const authentication = JSON.parse(socket.sent.at(-1) ?? "{}") as {cursor?: number};
+  socket.emit("message", {
+    type: "hello",
+    protocol_version: 1,
+    sequence: authentication.cursor ?? 0
+  });
+  await started;
+  return socket;
+}
+
 describe("RuntimeClient", () => {
   const requests: Array<{
     route: string;
@@ -413,7 +432,7 @@ describe("RuntimeClient", () => {
 
   it("normalizes empty collections and submits act prompts as answers", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
 
     expect(client.getSnapshot().events).toEqual([]);
     expect(client.getSnapshot().providers.map((provider) => provider.id)).toEqual([
@@ -442,7 +461,7 @@ describe("RuntimeClient", () => {
 
   it("refreshes authoritative capabilities after changing the model", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
 
     await client.updateProfile({model: "reasoner"});
 
@@ -463,7 +482,7 @@ describe("RuntimeClient", () => {
   it("keeps the selected session usable when an auxiliary query fails", async () => {
     failToolCatalog = true;
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
 
     expect(client.getSnapshot()).toMatchObject({
       phase: "ready",
@@ -481,7 +500,7 @@ describe("RuntimeClient", () => {
       drafts: {session: "unfinished prompt"}
     });
     const client = new RuntimeClient(storage);
-    await client.start();
+    await startClient(client);
 
     const socket = FakeWebSocket.instances.at(-1);
     socket?.emit("open");
@@ -517,7 +536,7 @@ describe("RuntimeClient", () => {
       drafts: {"old-session": "stale"}
     });
     const client = new RuntimeClient(storage);
-    await client.start();
+    await startClient(client);
 
     const socket = FakeWebSocket.instances.at(-1);
     socket?.emit("open");
@@ -529,7 +548,7 @@ describe("RuntimeClient", () => {
 
   it("retries session creation with one stable idempotency key", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     failNextCreate = true;
 
     await client.createSession();
@@ -550,7 +569,7 @@ describe("RuntimeClient", () => {
 
   it("submits server-issued workspace context and clears it after acceptance", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const resource = await client.readWorkspaceResource("src/main.go");
     client.addWorkspaceContext(resource);
 
@@ -576,7 +595,7 @@ describe("RuntimeClient", () => {
 
   it("submits a server-issued selection range without trusting a browser path", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const resource = await client.readWorkspaceResource("src/main.go");
     client.addWorkspaceContext(resource, {
       start: {line: 0, character: 0},
@@ -608,7 +627,7 @@ describe("RuntimeClient", () => {
 
   it("submits only server-issued image metadata as native context", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const image = await client.readWorkspaceImage("diagram.png");
     client.addImageContext(image);
 
@@ -635,7 +654,7 @@ describe("RuntimeClient", () => {
 
   it("submits only a server-issued repository symbol range", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const result = await client.searchWorkspaceSymbols("main");
     client.addSymbolContext(result.symbols[0]!);
 
@@ -661,7 +680,7 @@ describe("RuntimeClient", () => {
 
   it("submits only a persisted diagnostic receipt context", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const result = await client.workspaceDiagnostics();
     client.addDiagnosticsContext(result.diagnostics[0]!);
 
@@ -686,7 +705,7 @@ describe("RuntimeClient", () => {
 
   it("downloads a signed content handle with the in-memory capability token", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
 
     const content = await client.downloadWorkspaceContent("signed.handle");
 
@@ -700,7 +719,7 @@ describe("RuntimeClient", () => {
 
   it("submits only the server-issued Git diff as inline context", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const diff = await client.workspaceDiff();
     client.addGitDiffContext(diff);
 
@@ -725,7 +744,7 @@ describe("RuntimeClient", () => {
 
   it("binds terminal context to the projected tool call and output digest", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
 
     await client.addTerminalContext("call-1", "terminal output");
     await client.submitPrompt("inspect this output");
@@ -762,7 +781,7 @@ describe("RuntimeClient", () => {
     ];
     moreBefore = true;
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
 
     expect(client.getSnapshot().historyMoreBefore).toBe(true);
     expect(await client.loadEarlierHistory()).toBe(2);
@@ -781,7 +800,7 @@ describe("RuntimeClient", () => {
 
   it("merges live events received while a session snapshot hydrates", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const socket = FakeWebSocket.instances.at(-1);
     if (!socket) throw new Error("missing WebSocket");
     snapshotSequence = 5;
@@ -812,7 +831,7 @@ describe("RuntimeClient", () => {
 
   it("buffers live events before the session snapshot returns", async () => {
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const socket = FakeWebSocket.instances.at(-1);
     if (!socket) throw new Error("missing WebSocket");
     snapshotSequence = 5;
@@ -844,7 +863,7 @@ describe("RuntimeClient", () => {
   it("advances the replay cursor from payload-free watermark frames", async () => {
     vi.useFakeTimers();
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const first = FakeWebSocket.instances.at(-1);
     if (!first) throw new Error("missing WebSocket");
     first.emit("message", {
@@ -864,7 +883,7 @@ describe("RuntimeClient", () => {
   it("bootstraps a fresh token before reconnecting the socket", async () => {
     vi.useFakeTimers();
     const client = new RuntimeClient();
-    await client.start();
+    await startClient(client);
     const first = FakeWebSocket.instances.at(-1);
     if (!first) throw new Error("missing first WebSocket");
     bootstrapToken = "rotated-token";
@@ -881,6 +900,83 @@ describe("RuntimeClient", () => {
       type: "authenticate",
       token: "rotated-token"
     });
+    client.stop();
+  });
+
+  it("authenticates the event stream before requesting hydration data", async () => {
+    const client = new RuntimeClient();
+    const starting = client.start();
+    await vi.waitFor(() => {
+      expect(FakeWebSocket.instances).toHaveLength(1);
+    });
+    expect(requests).toEqual([]);
+
+    const socket = FakeWebSocket.instances[0]!;
+    socket.emit("open");
+    socket.emit("message", {
+      type: "hello",
+      protocol_version: 1,
+      sequence: 0
+    });
+    await starting;
+
+    expect(requests.some((request) => request.route.endsWith("/session/snapshot")))
+      .toBe(true);
+    client.stop();
+  });
+
+  it("clears an expired cursor before reconnecting after desync", async () => {
+    const storage = new MemoryBrowserStorage();
+    storage.values.set("v1:build:workspace-id", {
+      cursor: 41,
+      selectedSessionID: "session",
+      drafts: {}
+    });
+    const client = new RuntimeClient(storage);
+    const first = await startClient(client);
+
+    first.emit("message", {
+      type: "desync",
+      protocol_version: 1,
+      sequence: 41,
+      problem: {
+        version: 1,
+        code: "conflict",
+        message: "cursor history expired",
+        retryable: false
+      }
+    });
+    expect(client.getSnapshot().phase).toBe("desynchronized");
+
+    const second = await startClient(client);
+    expect(JSON.parse(second.sent[0] ?? "{}")).toMatchObject({cursor: 0});
+    expect(client.getSnapshot().phase).toBe("ready");
+    client.stop();
+  });
+
+  it("fails closed on unknown protocol versions and event kinds", async () => {
+    const client = new RuntimeClient();
+    const socket = await startClient(client);
+
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 2,
+      session_id: "session",
+      sequence: 9,
+      event: runtimeEvent(9, "future.event")
+    });
+
+    expect(client.getSnapshot().phase).toBe("desynchronized");
+    const next = await startClient(client);
+    expect(JSON.parse(next.sent[0] ?? "{}")).toMatchObject({cursor: 0});
+    next.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "session",
+      sequence: 10,
+      event: runtimeEvent(10, "future.event")
+    });
+    expect(client.getSnapshot().phase).toBe("desynchronized");
     client.stop();
   });
 });

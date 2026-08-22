@@ -106,7 +106,8 @@ def run_previous(
     data_dir: str,
     session_id: str,
     thread_id: str,
-) -> tuple[int, int]:
+    source_turn_id: str,
+) -> tuple[int, int, str]:
     requests = [
         {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
         {
@@ -127,7 +128,18 @@ def run_previous(
             "method": "session/history",
             "params": {"sessionId": session_id, "turnLimit": 20},
         },
-        {"jsonrpc": "2.0", "id": 5, "method": "shutdown", "params": {}},
+        {
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "turn/recover",
+            "params": {
+                "sessionId": session_id,
+                "sourceTurnId": source_turn_id,
+                "action": "retry",
+                "idempotencyKey": "release-drill-recover",
+            },
+        },
+        {"jsonrpc": "2.0", "id": 6, "method": "shutdown", "params": {}},
     ]
     payload = "".join(json.dumps(value) + "\n" for value in requests)
     completed = subprocess.run(
@@ -158,7 +170,7 @@ def run_previous(
         value = json.loads(line)
         if "id" in value:
             responses[value["id"]] = value
-    for identifier in (1, 2, 3, 4, 5):
+    for identifier in (1, 2, 3, 4, 5, 6):
         if identifier not in responses or "error" in responses[identifier]:
             raise RuntimeError(f"previous binary request {identifier} failed")
     sessions = responses[2]["result"]["sessions"]
@@ -166,9 +178,20 @@ def run_previous(
         raise RuntimeError("previous binary could not list the Web RC session")
     latest = int(responses[3]["result"]["latestSeq"])
     events = responses[4]["result"]["events"]
-    if latest < 1 or not events:
-        raise RuntimeError("previous binary could not recover Session history")
-    return latest, len(events)
+    source_events = [
+        event for event in events if event.get("turn_id") == source_turn_id
+    ]
+    terminal_kinds = {"turn.completed", "turn.failed", "turn.canceled"}
+    if (
+        latest < 1
+        or not source_events
+        or not any(event.get("kind") in terminal_kinds for event in source_events)
+    ):
+        raise RuntimeError("previous binary could not recover the Web RC Turn")
+    recovery = responses[5]["result"]
+    if not recovery.get("accepted") or not recovery.get("turnId"):
+        raise RuntimeError("previous binary did not accept Turn recovery")
+    return latest, len(events), str(recovery["turnId"])
 
 
 def main() -> None:
@@ -229,7 +252,7 @@ def main() -> None:
                 raise RuntimeError("Web RC session create retry changed its binding")
             session_id = binding["session_id"]
             thread_id = binding["thread_id"]
-            request(
+            submitted = request(
                 url,
                 token,
                 "operation/submit",
@@ -240,6 +263,7 @@ def main() -> None:
                     "payload": {"prompt": "say hello"},
                 },
             )
+            source_turn_id = submitted["turn_id"]
             for _ in range(100):
                 status = request(
                     url, token, "session/status", {"session_id": session_id}
@@ -273,13 +297,14 @@ def main() -> None:
             ).fetchone()[0]
         finally:
             database.close()
-        latest, event_count = run_previous(
+        latest, event_count, recovery_turn_id = run_previous(
             args.previous_binary,
             workspace,
             args.fixture,
             str(restored),
             session_id,
             thread_id,
+            source_turn_id,
         )
         report = {
             "version": 1,
@@ -294,6 +319,9 @@ def main() -> None:
             "event_watermark": watermark,
             "previous_binary_latest_sequence": latest,
             "previous_binary_event_count": event_count,
+            "source_turn_id": source_turn_id,
+            "recovery_turn_id": recovery_turn_id,
+            "recovery_accepted": True,
             "session_id": session_id,
             "backup_file_count": len(source_manifest),
             "backup_digest": hashlib.sha256(

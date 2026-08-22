@@ -42,12 +42,39 @@ type Lease struct {
 }
 
 func Path(dataDir, workspaceRootID string) string {
-	root, err := filepath.Abs(dataDir)
+	root, err := physicalPath(dataDir)
 	if err != nil {
 		root = filepath.Clean(dataDir)
 	}
 	sum := sha256.Sum256([]byte(root + "\x00" + workspaceRootID))
 	return filepath.Join(root, "leases", "interactive-"+hex.EncodeToString(sum[:12])+".lock")
+}
+
+func physicalPath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	current := absolute
+	var missing []string
+	for {
+		resolved, resolveErr := filepath.EvalSymlinks(current)
+		if resolveErr == nil {
+			for index := len(missing) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, missing[index])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !errors.Is(resolveErr, os.ErrNotExist) {
+			return "", resolveErr
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", resolveErr
+		}
+		missing = append(missing, filepath.Base(current))
+		current = parent
+	}
 }
 
 func Acquire(path string, metadata Metadata) (*Lease, error) {

@@ -8,9 +8,8 @@ on:
   workflow_dispatch:
     inputs:
       previous_release_ref:
-        description: Previous release Git ref used by the downgrade drill
+        description: Previous released Git ref used by the downgrade drill
         required: true
-        default: HEAD^
 
 permissions:
   contents: read
@@ -198,8 +197,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    name: Release
-    if: github.event_name == 'workflow_dispatch'
+    name: Cutover and release
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -227,9 +225,9 @@ jobs:
           npm --prefix web exec -- playwright install --with-deps chromium
 
       - name: Run release lane
-        run: |
-          make test-release \
-            PREVIOUS_RELEASE_REF='${{ inputs.previous_release_ref }}'
+        env:
+          PREVIOUS_RELEASE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.previous_release_ref || github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: make test-release PREVIOUS_RELEASE_REF="$PREVIOUS_RELEASE_REF"
 
       - name: Upload lane evidence
         if: always()

@@ -2461,7 +2461,9 @@ func writeSocket(
 	if err != nil {
 		return err
 	}
-	return connection.Write(ctx, websocket.MessageText, data)
+	writeContext, cancel := context.WithTimeout(ctx, websocketTimeout)
+	defer cancel()
+	return connection.Write(writeContext, websocket.MessageText, data)
 }
 
 func writeApplicationError(w http.ResponseWriter, r *http.Request, err error) {

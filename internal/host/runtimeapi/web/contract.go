@@ -16,8 +16,7 @@ type RouteContract struct {
 
 // HostContract is the generated Web transport contract source.
 type HostContract struct {
-	Schema          string          `json:"$schema"`
-	ID              string          `json:"$id"`
+	ID              string          `json:"contract_id"`
 	Title           string          `json:"title"`
 	ProtocolVersion int             `json:"protocol_version"`
 	LoopbackOnly    bool            `json:"loopback_only"`
@@ -53,10 +52,10 @@ var unaryRouteContracts = []RouteContract{
 	rpc("turn/recover", "turn_recover", "operation_receipt", true, true),
 	rpc("plan/get", "session_identity", "session_plan", false, false),
 	rpc("plan/transition", "plan_transition", "operation_receipt", true, true),
-	rpc("task/list", "session_identity", "task_list", false, false),
-	rpc("agent/list", "session_identity", "agent_list", false, false),
-	rpc("usage/query", "session_identity", "usage_summary", false, false),
-	rpc("extension/list", "session_identity", "extension_list", false, false),
+	rpc("task/list", "task_query", "task_list", false, false),
+	rpc("agent/list", "agent_query", "agent_list", false, false),
+	rpc("usage/query", "usage_query", "usage_summary", false, false),
+	rpc("extension/list", "extension_query", "extension_list", false, false),
 	rpc("extension/control", "extension_control", "extension_control_result", true, true),
 	rpc("workspace/browse", "workspace_browse", "workspace_entries", false, false),
 	rpc("workspace/search", "workspace_search", "workspace_entries", false, false),
@@ -65,10 +64,10 @@ var unaryRouteContracts = []RouteContract{
 	rpc("workspace/symbols", "workspace_symbols", "workspace_symbol_list", false, false),
 	rpc("workspace/diagnostics", "session_identity", "workspace_diagnostics", false, false),
 	rpc("workspace/diff", "workspace_diff", "workspace_diff", false, false),
-	rpc("credential/status", "credential_provider", "credential_status", false, false),
+	rpc("credential/status", "empty", "credential_status", false, false),
 	rpc("credential/set-keyring", "credential_set", "credential_status", true, true),
-	rpc("credential/clear-keyring", "credential_provider", "credential_status", true, true),
-	rpc("credential/validate", "credential_validate", "credential_status", false, false),
+	rpc("credential/clear-keyring", "empty", "credential_status", true, true),
+	rpc("credential/validate", "empty", "credential_status", false, false),
 	rpc("mcp/health", "empty", "mcp_health_list", false, false),
 }
 
@@ -125,9 +124,8 @@ func Contract() HostContract {
 		return routes[i].Path < routes[j].Path
 	})
 	return HostContract{
-		Schema:          "https://json-schema.org/draft/2020-12/schema",
-		ID:              "https://codehelper.dev/schemas/web-host-v1.json",
-		Title:           "CodeHelper Web Host transport contract",
+		ID:              "https://codehelper.dev/contracts/web-host-v1.json",
+		Title:           "CodeHelper Web Host transport contract manifest",
 		ProtocolVersion: webProtocol,
 		LoopbackOnly:    true,
 		SameOriginOnly:  true,

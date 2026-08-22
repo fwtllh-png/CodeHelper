@@ -1,7 +1,6 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://codehelper.dev/schemas/web-host-v1.json",
-  "title": "CodeHelper Web Host transport contract",
+  "contract_id": "https://codehelper.dev/contracts/web-host-v1.json",
+  "title": "CodeHelper Web Host transport contract manifest",
   "protocol_version": 1,
   "loopback_only": true,
   "same_origin_only": true,
@@ -17,7 +16,7 @@
     {
       "path": "/api/v1/agent/list",
       "method": "POST",
-      "request": "session_identity",
+      "request": "agent_query",
       "response": "agent_list",
       "mutation": false,
       "idempotency_key": false,
@@ -87,7 +86,7 @@
     {
       "path": "/api/v1/credential/clear-keyring",
       "method": "POST",
-      "request": "credential_provider",
+      "request": "empty",
       "response": "credential_status",
       "mutation": true,
       "idempotency_key": true,
@@ -107,7 +106,7 @@
     {
       "path": "/api/v1/credential/status",
       "method": "POST",
-      "request": "credential_provider",
+      "request": "empty",
       "response": "credential_status",
       "mutation": false,
       "idempotency_key": false,
@@ -117,7 +116,7 @@
     {
       "path": "/api/v1/credential/validate",
       "method": "POST",
-      "request": "credential_validate",
+      "request": "empty",
       "response": "credential_status",
       "mutation": false,
       "idempotency_key": false,
@@ -147,7 +146,7 @@
     {
       "path": "/api/v1/extension/list",
       "method": "POST",
-      "request": "session_identity",
+      "request": "extension_query",
       "response": "extension_list",
       "mutation": false,
       "idempotency_key": false,
@@ -367,7 +366,7 @@
     {
       "path": "/api/v1/task/list",
       "method": "POST",
-      "request": "session_identity",
+      "request": "task_query",
       "response": "task_list",
       "mutation": false,
       "idempotency_key": false,
@@ -397,7 +396,7 @@
     {
       "path": "/api/v1/usage/query",
       "method": "POST",
-      "request": "session_identity",
+      "request": "usage_query",
       "response": "usage_summary",
       "mutation": false,
       "idempotency_key": false,

@@ -11,6 +11,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -152,6 +153,49 @@ func TestWebSocketDisconnectStormReleasesSlotsGoroutinesAndDescriptors(t *testin
 	for range defaultMaxConnections {
 		reopened = append(reopened, openWebSocket(t, origin, token, 0))
 	}
+}
+
+func TestWebSocketSlowReaderReleasesConnectionSlotAfterWriteTimeout(t *testing.T) {
+	const count = 2048
+	store := app.NewMemoryEventStore(count)
+	payload := strings.Repeat("x", 64<<10)
+	for sequence := 1; sequence <= count; sequence++ {
+		event, err := protocol.NewEvent(protocol.EventMeta{
+			Sequence: protocol.Cursor(sequence), OperationID: "operation",
+			ThreadID: "thread", TurnID: "turn", ItemID: "item",
+		}, &protocol.OutputDeltaData{Text: payload})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Append(t.Context(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lifecycle := &eventAuthorizationLifecycle{summary: protocol.SessionSummary{
+		Version: protocol.SessionLifecycleVersion, Revision: 1,
+		SessionID: "session", ThreadID: "thread", Status: protocol.SessionStatusIdle,
+		WorkspaceRoot: "/workspace", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}}
+	application := app.NewRuntime(app.Options{
+		EventStore: store, SessionLifecycle: lifecycle, WorkspaceRoot: "/workspace",
+	})
+	t.Cleanup(func() { _ = application.Close(context.Background()) })
+	server, origin, token := runningWebServer(t, application, Capacity{
+		MaxConnections: 1, MaxReplayEvents: count,
+	})
+	connection := openWebSocket(t, origin, token, 0)
+	defer connection.CloseNow()
+
+	deadline := time.Now().Add(websocketTimeout + 3*time.Second)
+	for server.connections.Load() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("slow WebSocket retained its connection slot after write timeout")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	reopened := openWebSocket(t, origin, token, protocol.Cursor(count))
+	_ = reopened.CloseNow()
 }
 
 func TestWebSessionCapacityAllowsThirtyTwoAndPreservesIdempotentRetry(t *testing.T) {

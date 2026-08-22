@@ -79,8 +79,59 @@ func TestParityStatusDoesNotVerifyDirtyInputs(t *testing.T) {
 	if got := parityStatus("required", false); got != "verified" {
 		t.Fatalf("clean required status = %q", got)
 	}
-	if got := parityStatus("intentional_drop", true); got != "verified_drop" {
-		t.Fatalf("drop status = %q", got)
+	if got := parityStatus("intentional_drop", true); got != "qualified_dirty" {
+		t.Fatalf("dirty drop status = %q", got)
+	}
+}
+
+func TestPublishedWebAPIsMatchLedgerSpelling(t *testing.T) {
+	apis := publishedWebAPIs()
+	for _, name := range []string{
+		"bootstrap",
+		"events WebSocket",
+		"healthz",
+		"operation/submit",
+		"session/snapshot",
+	} {
+		if _, exists := apis[name]; !exists {
+			t.Errorf("published Web API %q is missing", name)
+		}
+	}
+}
+
+func TestRequireWebAPIsRejectsUnknownRoute(t *testing.T) {
+	if err := requireWebAPIs(
+		"feature",
+		[]string{"session/list", "missing/route"},
+		publishedWebAPIs(),
+	); err == nil {
+		t.Fatal("unknown Web API was accepted")
+	}
+}
+
+func TestVerifyDropRejectsRetainedLegacySurface(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "Makefile", "vscode-check:\n\ttrue\n")
+	value := feature{
+		ID:                 "legacy-build",
+		LegacyInventoryIDs: []string{"legacy_make_target.vscode-check"},
+	}
+	items := []inventoryItem{{
+		ID:     "legacy_make_target.vscode-check",
+		Kind:   "legacy_make_target",
+		Name:   "vscode-check",
+		Source: "Makefile",
+	}}
+	if err := verifyDrop(root, value, items); err == nil {
+		t.Fatal("retained legacy Make target was accepted as a verified drop")
+	}
+}
+
+func TestVerifyLegacyHostsRemovedRejectsOldSourceTrees(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "extensions/vscode/package.json", "{}")
+	if err := verifyLegacyHostsRemoved(root); err == nil {
+		t.Fatal("legacy VS Code source tree was accepted")
 	}
 }
 

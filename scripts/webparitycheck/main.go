@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
 )
 
 const inventoryVersion = 1
@@ -363,6 +365,9 @@ func check(root, inventoryPath, ledgerPath string) error {
 	if requirements.Version != inventoryVersion {
 		return fmt.Errorf("ledger version = %d, want %d", requirements.Version, inventoryVersion)
 	}
+	if err := verifyLegacyHostsRemoved(root); err != nil {
+		return err
+	}
 	inventoryIDs := make(map[string]struct{}, len(captured.Items))
 	for _, item := range captured.Items {
 		if item.ID == "" || item.Kind == "" || item.Name == "" || item.Source == "" {
@@ -374,6 +379,7 @@ func check(root, inventoryPath, ledgerPath string) error {
 		inventoryIDs[item.ID] = struct{}{}
 	}
 	mapped := make(map[string]string, len(captured.Items))
+	webAPIs := publishedWebAPIs()
 	for _, value := range requirements.Features {
 		if value.ID == "" {
 			return errors.New("ledger feature id is required")
@@ -401,6 +407,9 @@ func check(root, inventoryPath, ledgerPath string) error {
 			if err := requirePath(root, value.ID, "runtime owner", value.RuntimeOwner); err != nil {
 				return err
 			}
+			if err := requireWebAPIs(value.ID, value.WebAPI, webAPIs); err != nil {
+				return err
+			}
 			if err := requireQualifications(
 				root,
 				value.ID,
@@ -425,6 +434,9 @@ func check(root, inventoryPath, ledgerPath string) error {
 		case "intentional_drop":
 			if value.DropRationale == "" || value.Replacement == "" {
 				return fmt.Errorf("dropped feature %q is incomplete", value.ID)
+			}
+			if err := verifyDrop(root, value, captured.Items); err != nil {
+				return err
 			}
 		default:
 			return fmt.Errorf("feature %q has invalid disposition %q", value.ID, value.Disposition)
@@ -539,13 +551,99 @@ func generateReport(
 }
 
 func parityStatus(disposition string, dirty bool) string {
-	if disposition == "intentional_drop" {
-		return "verified_drop"
-	}
 	if dirty {
 		return "qualified_dirty"
 	}
+	if disposition == "intentional_drop" {
+		return "verified_drop"
+	}
 	return "verified"
+}
+
+func publishedWebAPIs() map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, route := range webhost.Contract().Routes {
+		name := strings.TrimPrefix(route.Path, "/api/v1/")
+		name = strings.TrimPrefix(name, "/")
+		if route.Method == "GET+WEBSOCKET" {
+			name += " WebSocket"
+		}
+		result[name] = struct{}{}
+	}
+	return result
+}
+
+func requireWebAPIs(
+	featureID string,
+	declared []string,
+	published map[string]struct{},
+) error {
+	for _, api := range declared {
+		if _, exists := published[api]; !exists {
+			return fmt.Errorf(
+				"required feature %q references unknown Web API %q",
+				featureID,
+				api,
+			)
+		}
+	}
+	return nil
+}
+
+func verifyDrop(root string, value feature, items []inventoryItem) error {
+	byID := make(map[string]inventoryItem, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	for _, id := range value.LegacyInventoryIDs {
+		item, exists := byID[id]
+		if !exists {
+			continue
+		}
+		switch item.Kind {
+		case "legacy_make_target":
+			data, err := os.ReadFile(filepath.Join(root, "Makefile"))
+			if err != nil {
+				return err
+			}
+			pattern := regexp.MustCompile(
+				`(?m)^` + regexp.QuoteMeta(item.Name) + `:`,
+			)
+			if pattern.Match(data) {
+				return fmt.Errorf(
+					"dropped feature %q still exposes Make target %q",
+					value.ID,
+					item.Name,
+				)
+			}
+		case "acp_dynamic_method":
+			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(item.Source))); err == nil {
+				return fmt.Errorf(
+					"dropped feature %q still exposes ACP source %q",
+					value.ID,
+					item.Source,
+				)
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func verifyLegacyHostsRemoved(root string) error {
+	for _, name := range []string{
+		"extensions/vscode",
+		"internal/host/runtimeapi/acp",
+		"internal/compatibility",
+	} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(name))); err == nil {
+			return fmt.Errorf("legacy host path %q still exists", name)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 func qualificationCommands(features []feature) [][]string {

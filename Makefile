@@ -31,7 +31,7 @@ LDFLAGS := -s -w \
 		canary-adversarial canary-adversarial-quick \
 	cli-smoke tui-smoke protocol-contract protocol-schema \
 	web-install web-check web-test web-build web-assets-check web-e2e web-parity-check web-parity-report \
-	web-release-drill web-streaming-soak \
+		web-release-drill web-streaming-soak web-performance \
 	deepseek-init deepseek-tui deepseek-web deepseek-live-smoke \
 	deepseek-multi-agent-smoke \
 	bench catalog-bench package clean
@@ -82,8 +82,11 @@ canary-adversarial-quick:
 	python3 scripts/canary-adversarial.py fault-inject --timeout 60
 
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
-WEB_HOST_SCHEMA := docs/protocol/web-host.schema.json
+WEB_HOST_CONTRACT := docs/protocol/web-host.contract.json
 WEB_HOST_TYPES := web/src/protocol/web-host.generated.ts
+WEB_STREAMING_SOAK_DURATION ?= 1h
+WEB_STREAMING_SOAK_TIMEOUT ?= 70m
+WEB_STREAMING_SOAK_ALLOW_SHORT ?= 0
 ARCHITECTURE_METRICS_BASELINE := testdata/contracts/architecture-metrics-baseline.json
 RELIABILITY_MATRIX := testdata/contracts/reliability-matrix.json
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
@@ -119,7 +122,7 @@ fmt:
 	$(GO) fmt ./...
 
 verify: architecture-ratchet docs-check book-check brand-check web-protocol-check web-parity-check \
-	web-check web-test web-assets-check \
+	web-check web-test web-performance web-assets-check \
 	reliability-gate
 	@unformatted="$$(git ls-files --cached --others --exclude-standard '*.go' | \
 		while IFS= read -r file; do \
@@ -220,7 +223,7 @@ test-release:
 		--require-available \
 		-- $(MAKE) release-gate
 
-release-gate: cross-build smoke race secret-leak-test reliability-gate benchmark-v2 web-streaming-soak \
+release-gate: cross-build smoke race secret-leak-test reliability-gate benchmark-v2 web-performance web-streaming-soak \
 	web-parity-report web-release-drill
 	@dirty="$$(git status --porcelain --untracked-files=all)"; \
 		test -z "$$dirty" || { \
@@ -244,6 +247,9 @@ web-check:
 
 web-test:
 	$(NPM) --prefix web test
+
+web-performance:
+	$(NPM) --prefix web test -- --run src/ui/performance.test.ts
 
 web-build:
 	$(NPM) --prefix web run build
@@ -283,8 +289,9 @@ web-release-drill: build
 		--report '$(CURDIR)/.tmp/release/web-downgrade-drill.json'
 
 web-streaming-soak:
-	CODEHELPER_WEB_STREAMING_SOAK_DURATION=1h \
-		$(GO) test -count=1 -timeout 70m \
+	CODEHELPER_WEB_STREAMING_SOAK_DURATION=$(WEB_STREAMING_SOAK_DURATION) \
+		CODEHELPER_WEB_STREAMING_SOAK_ALLOW_SHORT=$(WEB_STREAMING_SOAK_ALLOW_SHORT) \
+		$(GO) test -count=1 -timeout $(WEB_STREAMING_SOAK_TIMEOUT) \
 		-run '^TestWebSocketSustainedStreamingSoak$$' \
 		./internal/host/runtimeapi/web
 
@@ -412,13 +419,13 @@ protocol-contract:
 protocol-schema:
 	$(GO) run ./scripts/eventtraitgen ./internal/runtime/protocol/event_traits.json ./internal/runtime/protocol/event_traits.gen.go
 	$(GO) run ./internal/runtime/protocol/schemagen $(PROTOCOL_SCHEMA)
-	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_SCHEMA) -typescript $(WEB_HOST_TYPES)
+	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) -typescript $(WEB_HOST_TYPES)
 
 web-protocol:
-	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_SCHEMA) -typescript $(WEB_HOST_TYPES)
+	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) -typescript $(WEB_HOST_TYPES)
 
 web-protocol-check:
-	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_SCHEMA) -typescript $(WEB_HOST_TYPES) -check
+	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) -typescript $(WEB_HOST_TYPES) -check
 
 observation-traits:
 	$(GO) run ./scripts/observationtraitgen \
