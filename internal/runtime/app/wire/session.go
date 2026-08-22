@@ -12,8 +12,10 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/worker"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -117,6 +119,10 @@ func (s *Session) Security() *policy.Runtime { return s.security }
 func (s *Session) RLM() *rlm.Store { return s.rlmStore }
 
 func (s *Session) Processes() *process.SessionManager { return s.processes }
+
+func (s *Session) WorkspaceQuery() *workspacequery.Service { return s.workspaceQuery }
+
+func (s *Session) RepositoryIndex() *repoindex.Index { return s.repositoryIndex }
 
 func (s *Session) MCPHealth() []mcp.HealthSnapshot {
 	if s == nil || s.mcpPool == nil {

@@ -22,7 +22,7 @@
 | --- | --- |
 | CLI Command/Flag | `internal/host/cli` |
 | TUI Rendering | `internal/host/tui` |
-| HTTP/ACP | `internal/host/runtimeapi` |
+| HTTP/Web Transport | `internal/host/runtimeapi` |
 | Operation/Event Shape | `internal/runtime/protocol` |
 | Turn/Session State | `internal/runtime/app` |
 | Model/Tool Loop | `internal/runtime/agent` |
@@ -34,13 +34,13 @@
 | Task/Workflow/Lease | `internal/orchestration/kernel`、`internal/orchestration/store` |
 | Durable Data | `internal/persist` |
 | Observation/Usage/Trace | `internal/observability` |
-| VS Code | `extensions/vscode` |
+| Web | `web` |
 
 ## 不可破坏的约束
 
 - Host 不直接执行 Tool。
 - `wire` 不实现业务循环。
-- VS Code 不建立第二套 Runtime。
+- Web 不建立第二套 Runtime。
 - 不绕过 Guard、Policy、Constitution、Journal 或 Sandbox。
 - 不在事务化 WorkGraph Command/Store 路径之外写入 Orchestration Lifecycle State。
 - Observation、Capture 或 Exporter Failure 不能改变 Turn 的业务结果。
@@ -85,7 +85,7 @@
 ```bash
 go test ./path/to/package
 make docs-check
-cd extensions/vscode && npm run check && npm test -- relevant-area
+cd web && npm run check && npm test -- relevant-area
 ```
 
 结束前运行 `git diff --check`。
@@ -98,8 +98,8 @@ cd extensions/vscode && npm run check && npm test -- relevant-area
 
 1. 更新 Validation 与 Test；
 2. 重新生成 JSON Schema；
-3. 重新生成 VS Code Protocol Type；
-4. 运行 ACP 与 HTTP Contract Test；
+3. 重新生成 Web Protocol Type；
+4. 运行 Web Transport 与 HTTP Contract Test；
 5. 更新中文文档。
 
 ### Persistence
@@ -169,7 +169,7 @@ Trust 时：
 - 示例命令必须存在于 `--help`；
 - 受 Git 跟踪的文档不嵌入真实凭证；
 - 操作仓库所有者的本机 DeepSeek 环境时，调用 `make deepseek-init`、
-  `make deepseek-tui` 或 `make deepseek-vscode`，不检查被忽略的 Runbook；
+  `make deepseek-tui` 或 `make deepseek-web`，不检查被忽略的 Runbook；
 - 保持本地链接有效；
 - 更新 `docs/zh-CN`，不创建英文镜像；
 - 删除过时材料，不保留互相矛盾的副本。

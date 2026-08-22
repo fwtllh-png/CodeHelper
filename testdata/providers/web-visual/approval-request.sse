@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_visual_approval","function":{"name":"exec_command","arguments":"{\"command\":\"printf visual-approval > approval.txt\",\"write_paths\":[\"approval.txt\"]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

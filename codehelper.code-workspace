@@ -8,11 +8,11 @@
     "eslint.useFlatConfig": true,
     "eslint.workingDirectories": [
       {
-        "directory": "./extensions/vscode",
+        "directory": "./web",
         "changeProcessCWD": true
       }
     ],
-    "typescript.tsdk": "extensions/vscode/node_modules/typescript/lib",
+    "typescript.tsdk": "web/node_modules/typescript/lib",
     "typescript.enablePromptUseWorkspaceTsdk": true
   }
 }

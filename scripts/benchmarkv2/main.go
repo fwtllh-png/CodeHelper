@@ -16,6 +16,11 @@ var requiredJourneys = []string{
 	"approval",
 	"budget",
 	"host_replay",
+	"web_capacity",
+	"web_browser_durability",
+	"web_long_session",
+	"web_streaming_soak",
+	"web_worker_coexistence",
 }
 
 var validLanes = map[string]bool{
@@ -43,7 +48,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "benchmark v2:", err)
 		os.Exit(1)
 	}
-	fmt.Println("benchmark v2 manifest valid: 6 required user journeys")
+	fmt.Printf(
+		"benchmark v2 manifest valid: %d required user journeys\n",
+		len(requiredJourneys),
+	)
 }
 
 func check(root string) error {

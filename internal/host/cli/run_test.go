@@ -48,8 +48,7 @@ func TestRunVersionJSON(t *testing.T) {
 	if got.GoVersion == "" || got.OS == "" || got.Arch == "" {
 		t.Fatalf("incomplete build info: %+v", got)
 	}
-	if got.ACPProtocolMin < 1 ||
-		got.ACPProtocolMax < got.ACPProtocolMin ||
+	if got.WebProtocolVersion != 1 ||
 		got.OperationSchemaVersion != protocol.Version {
 		t.Fatalf("incompatible protocol build info: %+v", got)
 	}

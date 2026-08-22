@@ -2,13 +2,17 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/ownerlease"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -206,6 +210,17 @@ func openRuntimeHost(ctx context.Context, options Options) (RuntimeHost, func(co
 	if options.DataDir != "" {
 		overrides.StateDataDir = &options.DataDir
 	}
+	loaded, err := config.Load(config.LoadOptions{
+		Path:      options.ConfigPath,
+		Overrides: overrides,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	effectiveDataDir := options.DataDir
+	if effectiveDataDir == "" {
+		effectiveDataDir = loaded.Config.State.DataDir
+	}
 
 	execOpts := wire.ExecOptions{
 		ConfigPath:      options.ConfigPath,
@@ -215,7 +230,7 @@ func openRuntimeHost(ctx context.Context, options Options) (RuntimeHost, func(co
 		FixturePath:     options.FixturePath,
 		Permission:      permission,
 		MCPConfigPath:   options.MCPConfig,
-		Extensions:      wire.ExtensionOptions{DataDir: options.DataDir},
+		Extensions:      wire.ExtensionOptions{DataDir: effectiveDataDir},
 	}
 	if options.BaseURL != "" {
 		caps := options.ModelCapabilities
@@ -251,27 +266,41 @@ func openRuntimeHost(ctx context.Context, options Options) (RuntimeHost, func(co
 	}
 
 	var store *state.Store
-	if options.DataDir != "" {
-		loaded, err := config.Load(config.LoadOptions{
-			Path:      options.ConfigPath,
-			Overrides: overrides,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		store, err = state.Open(ctx, state.Options{
-			DataDir: options.DataDir, BusyTimeout: loaded.Config.State.BusyTimeout,
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		execOpts.PersistentStore = store
-		if loaded.Config.Execution.Workspace != "" {
-			workspace = loaded.Config.Execution.Workspace
-		}
+	workspaceRoot, err := filepath.Abs(loaded.Config.Execution.Workspace)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve workspace owner lease: %w", err)
+	}
+	identity, err := protocol.NewWorkspaceIdentity(
+		(&url.URL{Scheme: "file", Path: workspaceRoot}).String(),
+		workspaceRoot,
+		"",
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("workspace owner lease identity: %w", err)
+	}
+	interactiveLease, err := ownerlease.Acquire(
+		ownerlease.Path(effectiveDataDir, identity.RootID),
+		ownerlease.Metadata{OwnerKind: "tui"},
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("interactive Runtime owner lease: %w", err)
+	}
+	store, err = state.Open(ctx, state.Options{
+		DataDir: effectiveDataDir, BusyTimeout: loaded.Config.State.BusyTimeout,
+	})
+	if err != nil {
+		_ = interactiveLease.Close()
+		return nil, nil, err
+	}
+	execOpts.PersistentStore = store
+	if loaded.Config.Execution.Workspace != "" {
+		workspace = loaded.Config.Execution.Workspace
 	}
 	session, err := wire.NewExec(ctx, execOpts)
 	if err != nil {
+		if interactiveLease != nil {
+			_ = interactiveLease.Close()
+		}
 		if store != nil {
 			_ = store.CloseAll(context.Background())
 		}
@@ -280,6 +309,9 @@ func openRuntimeHost(ctx context.Context, options Options) (RuntimeHost, func(co
 	host, err := NewSessionHost(session)
 	if err != nil {
 		_ = session.Close(ctx)
+		if interactiveLease != nil {
+			_ = interactiveLease.Close()
+		}
 		if store != nil {
 			_ = store.CloseAll(context.Background())
 		}
@@ -288,7 +320,17 @@ func openRuntimeHost(ctx context.Context, options Options) (RuntimeHost, func(co
 	if store != nil {
 		host.AttachStore(store, "session-local", workspace)
 	}
-	return host, host.Close, nil
+	return host, func(ctx context.Context) error {
+		var storeErr, leaseErr error
+		hostErr := host.Close(ctx)
+		if store != nil {
+			storeErr = store.CloseAll(ctx)
+		}
+		if interactiveLease != nil {
+			leaseErr = interactiveLease.Close()
+		}
+		return errors.Join(hostErr, storeErr, leaseErr)
+	}, nil
 }
 
 func wantsLiveRuntime(options Options) bool {

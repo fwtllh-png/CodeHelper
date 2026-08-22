@@ -7,7 +7,7 @@
 | Go 1.26+ | Runtime 必需 |
 | Git | 仓库工作流和 Worktree 隔离必需 |
 | Make | 推荐的统一命令入口 |
-| Node.js + npm | 仅开发 VS Code 插件时需要 |
+| Node.js + npm | 仅重新构建 Web 前端时需要 |
 | macOS/Linux | 推荐；Windows 的沙箱能力边界不同 |
 
 检查环境：
@@ -128,7 +128,7 @@ DeepSeek Runbook；Agent 不得读取或输出它。
 ```bash
 make deepseek-init
 make deepseek-tui
-make deepseek-vscode
+make deepseek-web
 ```
 
 这些 Target 会编译所需 Artifact、解析本机凭证、安装使用 Keychain 的配置，并启动
@@ -196,40 +196,36 @@ Fixture 使用确定性的已记录响应，但会经过真实 Runtime 和事件
   "继续处理上一次结果"
 ```
 
-## 8. 本地安装 VS Code 插件
+## 8. 启动本机 Web 工作区
 
-开发流程：
-
-```bash
-make vscode-install
-make vscode-check
-make vscode-test
-make vscode-build
-```
-
-构建、安装并完成当前 Host Target VSIX 的 Runtime Ready Handshake：
+先构建嵌入式前端和 Go Binary：
 
 ```bash
-make vscode-package
+make web-install
+make web-check
+make web-test
+make web-build
+make build
 ```
 
-`make vscode-package-universal` 仅用于静态 Universal Package；该产物不包含 Runtime
-Executable。
-
-macOS 还提供带固定 Provider 配置的一键脚本：
+随后启动当前 Workspace：
 
 ```bash
-export DEEPSEEK_API_KEY='...'
-make vscode-local-setup
-unset DEEPSEEK_API_KEY
+./bin/codehelper web \
+  --config ./codehelper.toml \
+  --workspace . \
+  --enable-tools
 ```
 
-执行前请阅读 [VS Code 插件指南](./vscode.md)。脚本会安装到官方 VS Code，并把凭证
-写入 macOS Keychain。
+Web 仅监听 `127.0.0.1`，默认选择空闲端口。终端先输出 Listening URL，完成持久化
+恢复后再输出 Runtime Ready URL。macOS 上可使用 DeepSeek 一键入口：
 
-通用首次运行可从 Command Palette 执行 `CodeHelper: Setup Workspace`。Runtime 无法
-启动时，Chat 失败面板和 `CodeHelper: Repair Runtime` 会直接展示结构化 Readiness
-缺失项与修复动作，无需只依赖 Output Channel 排查。
+```bash
+make deepseek-web
+```
+
+Runtime 无法启动时，页面保留 Boot Failure Surface；也可运行
+`codehelper doctor --json` 和 `codehelper diagnostics --json` 获取结构化修复信息。
 
 ## 9. 推荐的首次验证
 
@@ -246,4 +242,4 @@ make test
 - 在[使用指南](./usage.md)中理解 Mode、Posture 和审批。
 - 在[配置说明](./configuration.md)中设置预算、验证、上下文、Worker 和路由。
 - 扩展 Runtime 前阅读[架构设计](./architecture.md)。
-- 沙箱、Provider、状态和 VS Code 问题见[排障指南](./troubleshooting.md)。
+- 沙箱、Provider、状态和 Web 问题见[排障指南](./troubleshooting.md)。

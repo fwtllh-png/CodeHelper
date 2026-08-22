@@ -6,7 +6,7 @@ audience:
 prerequisites:
   - overview-system-architecture
   - runtime-protocol
-  - host-acp
+  - host-web-transport
 code_paths:
   - internal/host
   - internal/runtime/app
@@ -41,7 +41,7 @@ flowchart LR
 ```
 
 1. 优先选择 Existing Operation/Read Model。
-2. 通过 Wire 构造或 ACP 连接。
+2. 通过 Wire 构造或 Web Transport 连接。
 3. Validate/Bound Host-specific Input。
 4. 使用 Idempotency Identity 提交 Operation。
 5. 从 Cursor Replay，再消费 Live Event。

@@ -220,7 +220,7 @@ func TestReconstructThreadRetainsOnlyPairedUserInterruptedHistory(t *testing.T) 
 	events := []protocol.Event{
 		{
 			Kind: protocol.EventTurnStarted, ThreadID: "thread-a", TurnID: "interrupted", Sequence: 1,
-			Data: &protocol.TurnStartedData{Provider: "p", Model: "m", Prompt: "inspect vscode"},
+			Data: &protocol.TurnStartedData{Provider: "p", Model: "m", Prompt: "inspect web"},
 		},
 		{
 			Kind: protocol.EventToolStart, ThreadID: "thread-a", TurnID: "interrupted", Sequence: 2,
@@ -254,7 +254,7 @@ func TestReconstructThreadRetainsOnlyPairedUserInterruptedHistory(t *testing.T) 
 	if len(recon.History) != 3 {
 		t.Fatalf("history len=%d want 3: %+v", len(recon.History), recon.History)
 	}
-	if recon.History[0].Text() != "inspect vscode" ||
+	if recon.History[0].Text() != "inspect web" ||
 		replayToolCallID(recon.History[1]) != "paired" ||
 		replayToolResultID(recon.History[2]) != "paired" {
 		t.Fatalf("interrupted history=%+v", recon.History)

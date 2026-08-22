@@ -3,6 +3,7 @@ package wire
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -27,10 +28,12 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/worker"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
@@ -41,6 +44,11 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
+
+type RuntimeRole string
+
+const RuntimeRoleInteractive RuntimeRole = "interactive"
+const RuntimeRoleWorker RuntimeRole = "worker"
 
 type ExecOptions struct {
 	ConfigPath          string
@@ -72,6 +80,7 @@ type ExecOptions struct {
 	// WorkspaceIdentity binds editor-visible URI identity for editor hosts.
 	// Non-editor hosts leave it empty and retain local file URI behavior.
 	WorkspaceIdentity protocol.WorkspaceIdentity
+	RuntimeRole       RuntimeRole
 }
 
 // ContextFile is a file a host named for the session (`exec --file`, an editor
@@ -106,6 +115,8 @@ type Session struct {
 	modelCatalog       protocol.ModelCatalog
 	configuration      sessionConfiguration
 	processes          *process.SessionManager
+	workspaceQuery     *workspacequery.Service
+	repositoryIndex    *repoindex.Index
 	jobLogs            *joblog.Store
 	mcpPool            *mcpruntime.Pool
 	mcpPrewarm         *MCPPrewarm
@@ -167,6 +178,13 @@ func newExec(
 ) (_ *Session, resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if options.RuntimeRole == "" {
+		options.RuntimeRole = RuntimeRoleInteractive
+	}
+	if options.RuntimeRole != RuntimeRoleInteractive &&
+		options.RuntimeRole != RuntimeRoleWorker {
+		return nil, fmt.Errorf("unsupported Runtime role %q", options.RuntimeRole)
 	}
 	session := &Session{
 		metrics: telemetry.NewMetrics(), metricsPath: options.MetricsPath,

@@ -29,6 +29,7 @@ func TestListDefersEveryIgnoreRuleToGit(t *testing.T) {
 		write(t, filepath.Join(root, name), "body\n")
 	}
 	git(t, root, "add", "visible.txt", "nested/kept.txt")
+	git(t, root, "add", "-f", "ignored.txt")
 
 	listing := list(t, root)
 	if listing.Source != SourceGit {

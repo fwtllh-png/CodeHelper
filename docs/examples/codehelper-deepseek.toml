@@ -1,0 +1,32 @@
+# Safe example: this file contains a Keychain reference, never a secret value.
+[credential]
+kind = "keyring"
+name = "deepseek/default"
+
+[execution]
+provider = "deepseek-v4-flash"
+model = "deepseek-v4-flash"
+protocol = "openai_responses"
+mode = "act"
+workspace = "."
+tools = true
+max_output_tokens = 0
+max_steps = 0
+timeout = "2m"
+idle_timeout = "1m"
+
+[execution.verify]
+mode = "soft"
+scope = "diagnostics"
+on_failure = "fail"
+max_repair_steps = 1
+timeout = "2m"
+
+[execution.journal]
+durable = true
+recover_on_start = true
+
+[context.index]
+enabled = true
+max_file_bytes = 1048576
+max_files = 20000

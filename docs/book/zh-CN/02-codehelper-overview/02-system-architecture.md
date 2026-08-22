@@ -18,11 +18,11 @@ code_paths:
   - internal/persist
   - internal/observability
   - internal/platform
-  - extensions/vscode
+  - web
 test_paths:
   - internal/host/cli/architecture_test.go
   - internal/runtime/protocol/schema_test.go
-  - extensions/vscode/src/security/gate.test.ts
+  - internal/host/runtimeapi/web/server_test.go
 source_of_truth:
   - docs/zh-CN/architecture.md
   - docs/protocol/runtime-protocol.schema.json
@@ -77,8 +77,8 @@ flowchart TB
     subgraph Hosts
       CLI
       TUI
-      VSC[VS Code]
-      API[ACP]
+      VSC[Web]
+      API[Web Transport]
     end
     P[Runtime Protocol]
     APP[Application Runtime]
@@ -100,7 +100,7 @@ flowchart TB
 图中的箭头不是“上层可任意调用所有下层”。Host 可以使用 Protocol 和 Application
 Facade，但不能直接依赖 Tool、Provider、Agent Engine 或 Sandbox 实现。
 
-受支持的产品 Host 是 CLI、TUI、VS Code 和 ACP。Provider HTTP、MCP HTTP/SSE 与本地
+受支持的产品 Host 是 CLI、TUI、Web 和 Web Transport。Provider HTTP、MCP HTTP/SSE 与本地
 Fixture Listener 是集成 Transport，不是产品 Host。Root `web`/`serve`、Embedded UI、
 Pairing/QR 和 REST/SSE 不属于受支持的产品面。
 
@@ -117,11 +117,11 @@ Pairing/QR 和 REST/SSE 不属于受支持的产品面。
 | Persistence | `internal/persist` | SQLite、Event、CAS、Session、Journal |
 | Observability | `internal/observability` | 版本化 Observation、Trace、Usage、Diagnostics、Verification、OTLP |
 | Platform | `internal/platform` | Process 与 OS Integration |
-| VS Code | `extensions/vscode` | Editor UI 与 ACP Client |
+| Web | `web` | Editor UI 与 Web Transport Client |
 
-VS Code 是 Local UI Extension，Webview 与 Extension Host 之间有物理边界。Webview 只接收
-Immutable Projection 并提交 Finite Intent；Extension Host 拥有 VS Code API、Local
-Workspace Identity、SecretStorage、Native Control 与 ACP Transport；Runtime 是
+Web 是 Local UI Extension，Webview 与 Extension Host 之间有物理边界。Webview 只接收
+Immutable Projection 并提交 Finite Intent；Extension Host 拥有 Web Transport、Local
+Workspace Identity、SecretStorage、Native Control 与 Web Transport Transport；Runtime 是
 Session、Profile、Tool Policy、Lifecycle、Artifact 与 Execution 的唯一 Owner。
 产品只支持 Local `file:` Single-root/Multi-root；Remote SSH、Dev Container、Codespaces
 不属于该产品面。
@@ -150,7 +150,7 @@ Operation -> ordered Events -> Projection
 ```
 
 `internal/runtime/protocol` 定义 Operation/Event Tagged Union，生成的
-`docs/protocol/runtime-protocol.schema.json` 被 ACP 和 VS Code 共用。ACP 封装同一模型，
+`docs/protocol/runtime-protocol.schema.json` 被 Web Transport 和 Web 共用。Web Transport 封装同一模型，
 而不是定义另一个 Runtime。
 
 Event 包含 Sequence、Operation、Thread、Turn 和 Item Identity，使 Host 可以按 Cursor
@@ -205,10 +205,10 @@ Automation，最后启动 Worker Scheduler。任一步失败都会终止构造�
 | Extension Lifecycle | `runtime/extension`、`runtime/app/extension` | Plan、Generation、Effect Ownership、Control Receipt |
 | Observation Plane | `observability/observation`、`observability/router` | Privacy Admission、Evidence Routing、Exporter Isolation |
 | Go Projection | `runtime/eventview` | Go Host 共享的 Typed Event Interpretation |
-| VS Code Projection | `extensions/vscode/src/chat/projector` | Exhaustive Generated Event Class Dispatch |
+| Web Projection | `web/src/chat/projector` | Exhaustive Generated Event Class Dispatch |
 
-该所有权拆分删除了两条意外控制路径。持久 ACP 是唯一
-`host --adapter acp` 实现；预发布的一次性 Envelope Adapter 不再转发到 `exec`。
+该所有权拆分删除了两条意外控制路径。持久 Web Transport 是唯一
+`web` 实现；预发布的一次性 Envelope Adapter 不再转发到 `exec`。
 Chat Merge 与 Durable Repository 行为成为可独立测试的 Service，不再混在 `wire`
 构造逻辑中。
 

@@ -1,6 +1,6 @@
-# TUI 与 VS Code 体验契约
+# Web 与 TUI 体验契约
 
-本文定义 TUI 与 VS Code Host 共同遵循的交互和呈现基线。机器可读的权威来源是
+本文定义 Web 与 TUI Host 共同遵循的交互和呈现基线。机器可读的权威来源是
 [`experience-contract.json`](../../testdata/contracts/experience-contract.json)。
 Host 可以使用各自的原生
 控件和表达方式，但必须保留以下语义。
@@ -23,7 +23,7 @@ Host 可以使用各自的原生
 
 Host 将实现状态投影到七个 Canonical State：
 
-| Canonical | 含义 | 常见 TUI Alias | 常见 VS Code Alias |
+| Canonical | 含义 | 常见 TUI Alias | 常见 Web Alias |
 | --- | --- | --- | --- |
 | `idle` | 可开始新动作，当前无任务 | `idle` | `stopped` |
 | `working` | 工作或恢复正在进行 | `typing`、`streaming`、`running` | `starting`、`recovering`、`running` |
@@ -47,8 +47,8 @@ UI 文案应尽量使用 Canonical Label；本契约不重命名 Protocol 或持
 - 间距分为 Inline、Control、Section、Panel 四级。
 - 只使用 `neutral`、`info`、`success`、`warning`、`danger`、`focus` 语义角色，不把
   产品含义绑定到原始色值。
-- TUI 通过 `Theme` Token 映射；VS Code 使用 ThemeColor、Codicon 和 `--vscode-*`
-  变量，并支持 High Contrast Theme。
+- TUI 通过 `Theme` Token 映射；Web 使用 `--ch-*` CSS Token，并支持 Light、Dark
+  与 Reduced Motion。
 - 图标与稳定文本标签一起使用；纯 Glyph 控件必须有 Accessible Name 和 Tooltip。
 
 ## 术语
@@ -100,13 +100,8 @@ Receipt 保留确定性证据。
 make experience-baseline
 ```
 
-该门禁检查契约、TUI 80/120/160 列 Golden、VS Code Theme、Accessible Label、键盘
-控件，以及 Empty/Loading/Failure State。固定版本 Electron Host 可能下载 VS Code，
-因此使用独立门禁：
-
-```bash
-make experience-electron-baseline
-```
+该门禁检查契约、TUI 80/120/160 列 Golden，以及 Web Theme、Accessible Label、
+键盘控件和 Empty/Loading/Failure State。
 
 跨 Host Journey Contract 命令：
 

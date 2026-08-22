@@ -10,7 +10,7 @@
 可执行的 Agent 工程知识书籍。**
 
 CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、持久化会话与编排统一放在
-一套 Runtime 协议之后，并同时服务 CLI、TUI、VS Code、ACP、自动化与 Worker。
+一套 Runtime 协议之后，并同时服务本机 Web、CLI、TUI、自动化与 Worker。
 
 > 项目状态：初始开发版本。首次公开稳定发布前，接口和持久化格式仍可能调整。
 
@@ -47,7 +47,7 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 
 - Go 1.26 或更高版本
 - Git
-- 仅开发 VS Code 插件时需要 Node.js 和 npm
+- 重新构建 Web 前端时需要 Node.js 和 npm
 
 支持平台边界：
 
@@ -98,28 +98,39 @@ export OPENAI_API_KEY='...'
 ./bin/codehelper tui --workspace . --config ./codehelper.toml
 ```
 
-仓库所有者在 macOS 上使用 DeepSeek 时，可以一条命令完成编译、配置并启动 TUI
-或官方 VS Code：
+启动本机 Web 工作区：
 
 ```bash
+./bin/codehelper web \
+  --workspace . \
+  --config ./codehelper.toml \
+  --enable-tools
+```
+
+Web 只监听 `127.0.0.1`，默认选择可用端口。终端会分别输出页面开始监听和
+Runtime 完成恢复的 URL。
+
+仓库所有者在 macOS 上使用 DeepSeek 时，可以一条命令完成编译、配置并启动 Web
+或 TUI：
+
+```bash
+make deepseek-web
 make deepseek-tui
-make deepseek-vscode
 ```
 
 密钥来源、生成文件、Agent 执行方式和校验说明见
 [本机 DeepSeek 一键配置与运行](./docs/zh-CN/deepseek-local.md)。
 
-安装、初始配置、凭证、持久化和 VS Code 使用方式见
+安装、初始配置、凭证、持久化和 Web 使用方式见
 [快速开始](./docs/zh-CN/getting-started.md)。
 
 ## 产品入口
 
 | 入口 | 命令或路径 | 主要用途 |
 | --- | --- | --- |
+| 本机 Web | `codehelper web` | 默认交互入口、会话、审批、变更与运行状态 |
 | 单次 CLI | `codehelper exec` | 脚本、CI 实验、机器可读事件流 |
 | 终端界面 | `codehelper tui` | 交互式仓库开发 |
-| ACP Runtime | `codehelper host --adapter acp` | 编辑器与 Agent 协议客户端 |
-| VS Code 插件 | `extensions/vscode` | 编辑器原生对话、上下文、变更、审批和任务 |
 | Worker 与编排 | `worker`、`automation`、`workflow`、`lane`、`fleet` | 持久化、多步骤执行 |
 
 ## 一分钟理解安全模型
@@ -144,7 +155,7 @@ make deepseek-vscode
 
 ```text
 cmd/codehelper/          进程入口
-internal/host/           CLI、TUI、ACP
+internal/host/           Web、CLI、TUI
 internal/runtime/        Operation/Event Runtime 与 Agent Engine
 internal/adapter/        Provider、Model、Tool、MCP、Skill、Plugin、Hook
 internal/security/       Policy、Permission、Constitution、Sandbox
@@ -152,7 +163,7 @@ internal/orchestration/  Task、Worker、Workflow、Lane、Fleet、Subagent
 internal/persist/        SQLite、Event Log、Session、Snapshot、Journal
 internal/observability/  Usage、Trace、Verify、Diagnostics、Telemetry
 internal/platform/       进程和操作系统集成
-extensions/vscode/       TypeScript VS Code 插件
+web/                     React/TypeScript 本机 Web 前端
 docs/                    持续维护的中文文档
 scripts/                 构建、验证、配置和发布脚本
 testdata/                Hermetic Provider 与 Benchmark Fixture

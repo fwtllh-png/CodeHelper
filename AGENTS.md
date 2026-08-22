@@ -6,8 +6,8 @@ This file is the repository entry point for coding agents.
 
 ## Objective
 
-Maintain CodeHelper as one local, guarded coding-agent runtime shared by CLI,
-TUI, VS Code, ACP, workers, and orchestration.
+Maintain CodeHelper as one local, guarded coding-agent runtime shared by Web,
+CLI, TUI, workers, and orchestration.
 
 ## Read Before Editing
 
@@ -42,14 +42,14 @@ TUI, VS Code, ACP, workers, and orchestration.
 ## Ownership
 
 ```text
-CLI/TUI/API hosts          internal/host
+Web/CLI/TUI hosts          internal/host
 protocol/app/agent/wiring  internal/runtime
 providers/tools/ecosystem internal/adapter
 policy/sandbox            internal/security
 tasks/workflows/subagents internal/orchestration
 durable state             internal/persist
 usage/traces/verification internal/observability
-VS Code                    extensions/vscode
+Web client                 web
 ```
 
 ## Standard Validation
@@ -61,12 +61,11 @@ make book-check
 git diff --check
 ```
 
-For VS Code:
+For Web:
 
 ```bash
-cd extensions/vscode
-npm run check
-npm test -- relevant-area
+npm --prefix web run check
+npm --prefix web test
 ```
 
 Broaden validation based on risk. Report environment-limited failures rather

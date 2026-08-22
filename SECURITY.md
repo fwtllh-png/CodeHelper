@@ -42,7 +42,7 @@ CodeHelper 目前处于初始开发阶段。安全修复应用于最新标签版
 - Process Execution 和 OS Sandbox Isolation；
 - Credential Reference、Redaction 和 Log；
 - Provider、MCP、Plugin、Hook 和 Network Boundary；
-- HTTP/SSE、ACP、Web、CLI、TUI 和 VS Code Trust Boundary；
+- localhost HTTP/WebSocket、Web、CLI 和 TUI Trust Boundary；
 - 持久化 Session、Event、Snapshot 和 Trace；
 - Release Artifact、Checksum、Update 和 Supply-chain Metadata。
 

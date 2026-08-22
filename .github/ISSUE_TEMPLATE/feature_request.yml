@@ -38,8 +38,7 @@ body:
         - Persistence or observability
         - Orchestration
         - CLI or TUI
-        - VS Code
-        - ACP or VS Code
+        - Web
         - Documentation or book
         - Build, test, or release
         - Other

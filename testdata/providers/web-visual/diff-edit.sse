@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_visual_edit","function":{"name":"file_edit","arguments":"{\"path\":\"README.md\",\"old\":\"A stable baseline for browser goldens.\",\"new\":\"A stable baseline for browser goldens.\\n\\nPending review.\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

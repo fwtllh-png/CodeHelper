@@ -6,6 +6,11 @@ on:
       - main
   pull_request:
   workflow_dispatch:
+    inputs:
+      previous_release_ref:
+        description: Previous release Git ref used by the downgrade drill
+        required: true
+        default: HEAD^
 
 permissions:
   contents: read
@@ -54,7 +59,7 @@ jobs:
       - name: Check tracked-file whitespace
         run: |
           if git grep -n -I -E '[[:blank:]]+$' -- \
-            ':!go.sum' ':!extensions/vscode/package-lock.json'; then
+            ':!go.sum' ':!web/package-lock.json'; then
             echo "tracked files contain trailing whitespace" >&2
             exit 1
           fi
@@ -120,8 +125,8 @@ jobs:
       - name: Check protocol, binary smoke, and cross-build
         run: make protocol-contract smoke cross-build
 
-  vscode:
-    name: VS Code check and test
+  web:
+    name: Web check, test, and build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -139,10 +144,26 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: extensions/vscode/package-lock.json
+          cache-dependency-path: web/package-lock.json
 
-      - name: Check and test extension
-        run: make vscode-check vscode-test
+      - name: Install Chromium for Web E2E
+        run: |
+          npm --prefix web ci
+          npm --prefix web exec -- playwright install --with-deps chromium
+
+      - name: Check generated Web contracts and assets
+        run: make web-protocol-check web-experience-check web-assets-check
+
+      - name: Test and attest Web parity
+        run: make web-parity-report
+
+      - name: Upload Web parity evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-feature-parity-report
+          path: .tmp/web-feature-parity-report.json
+          if-no-files-found: error
 
   runtime-integration:
     name: Runtime integration
@@ -163,7 +184,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: extensions/vscode/package-lock.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Run real binary integration lane
         run: make test-integration INTEGRATION_REQUIRED=--require-available
@@ -180,10 +201,12 @@ jobs:
     name: Release
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -196,15 +219,24 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: extensions/vscode/package-lock.json
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Web release dependencies
+        run: |
+          npm --prefix web ci
+          npm --prefix web exec -- playwright install --with-deps chromium
 
       - name: Run release lane
-        run: make test-release
+        run: |
+          make test-release \
+            PREVIOUS_RELEASE_REF='${{ inputs.previous_release_ref }}'
 
       - name: Upload lane evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-lane-release
-          path: .tmp/test-lanes/release.json
+          path: |
+            .tmp/test-lanes/release.json
+            .tmp/release/web-downgrade-drill.json
           if-no-files-found: error

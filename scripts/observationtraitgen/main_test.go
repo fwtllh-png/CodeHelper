@@ -25,9 +25,9 @@ func TestRepositoryManifestGeneratesCommittedOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := map[string][]byte{
-		"internal/observability/observation/traits.gen.go":        output.goSource,
-		"extensions/vscode/src/protocol/observation.generated.ts": output.typeScript,
-		"docs/protocol/observation.schema.json":                   output.schema,
+		"internal/observability/observation/traits.gen.go": output.goSource,
+		"web/src/protocol/observation.generated.ts":        output.typeScript,
+		"docs/protocol/observation.schema.json":            output.schema,
 	}
 	for path, content := range expected {
 		if err := checkFile(filepath.Join(root, path), content); err != nil {

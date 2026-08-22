@@ -111,7 +111,7 @@ Root Precedence 防止 Lower Candidate Shadow Governed Skill。
 Hook Failure Policy 按 Event 区分：Observer 可 Audit/Fail Open；Message/Tool/Permission
 Gate Fail Closed。两者 Output/Environment 都有界并 Sanitized。
 
-Plugin/Skill CLI、ACP `extension/list`/`extension/control` 与 VS Code Extensions View
+Plugin/Skill CLI、Web Transport `extension/list`/`extension/control` 与 Web Extensions View
 提交到同一 Control Plane。Mutation 按 Operation ID 幂等，并持久化 Prepare/Commit
 Receipt。Host 只投影 Runtime-owned State，不实现 Extension Lifecycle。
 

@@ -158,11 +158,11 @@ func Start(directory string) (*Server, error) {
 			return
 		}
 
-			// Adversarial fault injection: when CODEHELPER_FAULT_INJECT is set,
-			// mutate a percentage of SSE events to test system resilience.
-			if faultSpec := os.Getenv("CODEHELPER_FAULT_INJECT"); faultSpec != "" {
-				stream = applyFaultInjection(stream, faultSpec, index)
-			}
+		// Adversarial fault injection: when CODEHELPER_FAULT_INJECT is set,
+		// mutate a percentage of SSE events to test system resilience.
+		if faultSpec := os.Getenv("CODEHELPER_FAULT_INJECT"); faultSpec != "" {
+			stream = applyFaultInjection(stream, faultSpec, index)
+		}
 		writer.Header().Set("Content-Type", "text/event-stream")
 		writer.WriteHeader(http.StatusOK)
 		for _, line := range strings.SplitAfter(string(stream), "\n") {

@@ -63,8 +63,8 @@
     {
       "boundary": "host",
       "case": "crash_recovery",
-      "test": "TestBinaryInteropFramingConcurrencyAndShutdown",
-      "package": "./internal/host/runtimeapi/acp",
+      "test": "TestWebSocketDownlinkConcurrencyAndShutdown",
+      "package": "./internal/host/runtimeapi/web",
       "required": [
         {"type": "concurrency_check", "note": "must verify concurrent framing is safe (verified by structural concurrent writes)"}
       ]

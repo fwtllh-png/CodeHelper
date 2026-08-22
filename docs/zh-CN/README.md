@@ -31,27 +31,27 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 6. [安全模型](./security.md)
 7. [排障指南](./troubleshooting.md)
 
-### 我要使用 VS Code 插件
+### 我要使用 Web 工作区
 
 1. [快速开始](./getting-started.md)
 2. [本机 DeepSeek 一键配置与运行](./deepseek-local.md)
-3. [VS Code 插件](./vscode.md)
-4. [配置说明](./configuration.md)
-5. [排障指南](./troubleshooting.md)
+3. [配置说明](./configuration.md)
+4. [排障指南](./troubleshooting.md)
 
 ### 我要参与开发
 
 1. [架构设计](./architecture.md)
 2. [运行时可靠性系统治理](./reliability-hardening.md)
-3. [Session Context Memory 优化设计与实施方案](./session-context-optimization.md)
-4. [安全模型](./security.md)
-5. [本地开发与脚本](./development.md)
-6. [源码阅读路线指南](./reading-guide.md)
-7. [Agent 指南](./agent-guide.md)
-8. [TUI 与 VS Code 体验契约](./experience.md)
-9. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-10. [文档治理](./documentation-governance.md)
-11. [后续规划](./roadmap.md)
+3. [Web 主入口与 Web 退役技术实施方案](./web-primary-entry-plan.md)
+4. [Session Context Memory 优化设计与实施方案](./session-context-optimization.md)
+5. [安全模型](./security.md)
+6. [本地开发与脚本](./development.md)
+7. [源码阅读路线指南](./reading-guide.md)
+8. [Agent 指南](./agent-guide.md)
+9. [Web 与 TUI 体验契约](./experience.md)
+10. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+11. [文档治理](./documentation-governance.md)
+12. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 
@@ -61,9 +61,9 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 | TOML 和环境变量 | `internal/config/config.go` |
 | Runtime 协议 | `docs/protocol/runtime-protocol.schema.json` |
 | 架构边界 | Import 图和 Architecture Test |
-| 构建测试命令 | `Makefile` 与扩展 package scripts |
-| VS Code 兼容范围 | `extensions/vscode/compatibility.json` |
-| TUI 与 VS Code 体验语义 | `testdata/contracts/experience-contract.json` |
+| 构建测试命令 | `Makefile` 与 `web/package.json` |
+| Web 能力迁移范围 | `testdata/contracts/web-feature-parity.json` |
+| Web 与 TUI 体验语义 | `testdata/contracts/experience-contract.json` |
 | 知识书籍结构与建设阶段 | `knowledge-base-plan.md` |
 | 书籍目录与章节状态 | `docs/book/catalog.json` |
 | 书籍 Ownership、新鲜度与发布事实 | `docs/book/governance.json` |

@@ -1,14 +1,12 @@
 # 本机 DeepSeek 一键编译、配置与运行
 
-本文为人和 Coding Agent 提供 macOS 上确定性的一键编译、配置、TUI 与官方 VS Code
-入口。
+本文为人和 Coding Agent 提供 macOS 上确定性的一键编译、配置、Web 与 TUI 入口。
 
 ## 前置条件
 
 - Go 1.26 或更高版本；
 - Git 与 Make；
-- VS Code 路径需要 Node.js 与 npm；
-- 官方 VS Code 位于 `/Applications/Visual Studio Code.app`；
+- 重新构建 Web 前端时需要 Node.js 与 npm；
 - 有效的 DeepSeek API Key；
 - 可访问 macOS Keychain。
 
@@ -19,16 +17,14 @@
 ```bash
 make deepseek-init
 make deepseek-tui
-make deepseek-vscode
+make deepseek-web
 ```
 
 | Target | 结果 |
 | --- | --- |
 | `deepseek-init` | 编译 `bin/codehelper`，安装配置，写入 Keychain 并校验模型路由 |
 | `deepseek-tui` | 完成初始化并启动启用 Tool 的 TUI |
-| `deepseek-vscode` | 构建目标 VSIX，配置 DeepSeek，安装插件并打开 Workspace |
-
-执行 `make deepseek-vscode` 前必须完全退出官方 VS Code。
+| `deepseek-web` | 完成初始化并在 `127.0.0.1` 启动 Web 工作区 |
 
 ## 密钥来源
 
@@ -90,10 +86,10 @@ Agent 应调用 Make Target，不得读取、打印、总结或 Patch 本机 Run
 ```bash
 make deepseek-init
 CODEHELPER_LOCAL_POSTURE=suggest make deepseek-tui
-make deepseek-vscode
+make deepseek-web
 ```
 
-运行 VS Code 命令前，Agent 必须提示用户完全退出官方 VS Code。启动 GUI 属于预期副作用。
+`deepseek-web` 默认打开系统浏览器；使用普通浏览器标签页即可。
 
 如果 IDE Sandbox 拒绝写 macOS Keychain，应停止并请用户在普通 macOS Terminal
 执行相同 Target。不得把凭证降级为受 Git 跟踪的配置值，也不得在命令输出中暴露它。

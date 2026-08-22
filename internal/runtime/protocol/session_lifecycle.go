@@ -9,6 +9,37 @@ import (
 
 const SessionLifecycleVersion = 1
 
+type SessionCreateSeed struct {
+	Version        int      `json:"version"`
+	SessionID      string   `json:"session_id"`
+	WorkspaceID    string   `json:"workspace_id"`
+	WorkspaceRoot  string   `json:"workspace_root"`
+	WorkspaceLabel string   `json:"workspace_label"`
+	ThreadID       ThreadID `json:"thread_id"`
+	Title          string   `json:"title"`
+	Provider       string   `json:"provider"`
+	Model          string   `json:"model"`
+	Isolation      string   `json:"isolation"`
+}
+
+func (s SessionCreateSeed) Validate() error {
+	if s.Version != SessionLifecycleVersion ||
+		!validProfileIdentifier(s.SessionID) ||
+		!validProfileIdentifier(s.WorkspaceID) ||
+		s.ThreadID == "" || len(s.ThreadID) > 256 ||
+		strings.TrimSpace(s.WorkspaceRoot) == "" ||
+		strings.TrimSpace(s.Title) == "" || len(s.Title) > 256 ||
+		strings.ContainsAny(s.Title, "\x00\r\n") ||
+		!validProfileIdentifier(s.Provider) ||
+		!validProfileIdentifier(s.Model) {
+		return errors.New("session create seed is invalid")
+	}
+	if s.Isolation != "shared" && s.Isolation != "worktree" {
+		return errors.New("session create isolation is invalid")
+	}
+	return nil
+}
+
 type SessionLifecycleStatus string
 
 const (
@@ -49,6 +80,14 @@ type SessionSummary struct {
 	CostKnown        bool                   `json:"cost_known"`
 	CreatedAt        time.Time              `json:"created_at"`
 	UpdatedAt        time.Time              `json:"updated_at"`
+}
+
+// SessionReadFence binds revisioned lifecycle state to one durable event
+// watermark. Repositories must populate all fields from one read transaction.
+type SessionReadFence struct {
+	Session         SessionSummary `json:"session"`
+	ThreadIDs       []ThreadID     `json:"thread_ids"`
+	ThroughSequence Cursor         `json:"through_sequence"`
 }
 
 func (s SessionSummary) Validate() error {

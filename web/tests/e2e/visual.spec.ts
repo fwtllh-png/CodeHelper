@@ -1,0 +1,296 @@
+import {expect, test, type Page} from "@playwright/test";
+import {
+  execFileSync,
+  spawn,
+  type ChildProcessWithoutNullStreams
+} from "node:child_process";
+import {mkdtemp, rm, writeFile} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import path from "node:path";
+import {fileURLToPath} from "node:url";
+
+const repositoryRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../.."
+);
+
+let server: ChildProcessWithoutNullStreams;
+let dataDir: string;
+let workspaceDir: string;
+let baseURL: string;
+
+test.describe.configure({mode: "serial"});
+test.setTimeout(90_000);
+
+test.beforeEach(async () => {
+  dataDir = await mkdtemp(path.join(tmpdir(), "codehelper-web-visual-"));
+  workspaceDir = await mkdtemp(path.join(tmpdir(), "codehelper-web-visual-workspace-"));
+  await writeFile(
+    path.join(workspaceDir, "README.md"),
+    "# Visual fixture\n\nA stable baseline for browser goldens.\n"
+  );
+  await writeFile(
+    path.join(workspaceDir, "main.go"),
+    "package main\n\nfunc stableVisualFixture() {}\n"
+  );
+  execFileSync("git", ["init", "-q"], {cwd: workspaceDir});
+  execFileSync("git", ["add", "."], {cwd: workspaceDir});
+  execFileSync(
+    "git",
+    [
+      "-c", "core.hooksPath=/dev/null",
+      "-c", "user.name=CodeHelper",
+      "-c", "user.email=fixture@codehelper.invalid",
+      "commit", "-qm", "visual baseline"
+    ],
+    {cwd: workspaceDir}
+  );
+  server = spawn(
+    path.join(repositoryRoot, "bin/codehelper"),
+    [
+      "web",
+      "--workspace", workspaceDir,
+      "--data-dir", dataDir,
+      "--provider-fixture",
+      path.join(repositoryRoot, "testdata/providers/web-visual"),
+      "--provider", "openai",
+      "--model", "fixture-model",
+      "--enable-tools",
+      "--posture", "suggest",
+      "--port", "0",
+      "--no-open"
+    ],
+    {
+      cwd: repositoryRoot,
+      stdio: ["ignore", "pipe", "pipe"]
+    }
+  );
+  baseURL = await runtimeURL(server);
+});
+
+test.afterEach(async () => {
+  if (server && server.exitCode === null) {
+    server.kill("SIGINT");
+    await Promise.race([
+      new Promise<void>((resolve) => server.once("exit", () => resolve())),
+      new Promise<void>((resolve) => setTimeout(resolve, 10_000))
+    ]);
+    if (server.exitCode === null) server.kill("SIGKILL");
+  }
+  if (dataDir) await rm(dataDir, {recursive: true, force: true});
+  if (workspaceDir) await rm(workspaceDir, {recursive: true, force: true});
+});
+
+test.beforeEach(async ({page}) => {
+  await page.setViewportSize({width: 1440, height: 900});
+  await page.emulateMedia({
+    colorScheme: "light",
+    forcedColors: "none",
+    reducedMotion: "reduce"
+  });
+  await page.goto(baseURL);
+  await expect(page.locator(".app")).toBeVisible();
+});
+
+test("captures empty and settings states", async ({page}) => {
+  await expect(page).toHaveScreenshot("canonical-empty.png");
+
+  await page.getByRole("button", {name: "Settings"}).click();
+  await expect(page.getByRole("dialog", {name: "Settings"})).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-settings.png");
+});
+
+test("captures the authoritative diff state", async ({page}) => {
+  await createSession(page);
+  await page.getByLabel("Approval").selectOption("auto");
+  await submitPrompt(page, "visual diff");
+  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+  await page.getByRole("button", {name: "Refresh diff"}).click();
+  await expect(page.locator(".mergePreview")).toContainText(
+    "README.md (file_edit) modified +2 -0"
+  );
+  await expect(page).toHaveScreenshot("canonical-diff.png");
+});
+
+test("captures streaming and completed states", async ({page}) => {
+  await createSession(page);
+  await submitPrompt(page, "visual streaming");
+  await expect(page.getByText("Working", {exact: true})).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-streaming.png");
+  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-completed.png");
+});
+
+test("captures the approval state", async ({page}) => {
+  await createSession(page);
+  await submitPrompt(page, "visual approval");
+  await expect(page.getByText("exec_command requires approval")).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-approval.png");
+});
+
+test("captures the input state", async ({page}) => {
+  await createSession(page);
+  await submitPrompt(page, "visual input");
+  await expect(page.getByText("Choose the verification scope")).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-input.png");
+});
+
+test("captures the failure state", async ({page}) => {
+  await createSession(page);
+  await submitPrompt(page, "visual failure");
+  await expect(page.getByText("Failed", {exact: true})).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-failure.png");
+});
+
+test("repeated reloads do not resubmit an active streaming turn", async ({page}) => {
+  await createSession(page);
+  await submitPrompt(page, "visual long streaming");
+  await expect(page.getByText("Working", {exact: true})).toBeVisible();
+
+  for (let index = 0; index < 5; index += 1) {
+    await page.reload();
+    await expect(page.locator(".app")).toBeVisible();
+  }
+
+  await expect(page.getByText("Connected", {exact: true})).toBeVisible();
+  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+  await expect(page.getByText("visual long streaming", {exact: true})).toHaveCount(1);
+});
+
+test("a frozen tab converges after streaming completes", async ({page, context}) => {
+  await createSession(page);
+  await submitPrompt(page, "visual long streaming");
+  await expect(page.getByText("Working", {exact: true})).toBeVisible();
+
+  const session = await context.newCDPSession(page);
+  await session.send("Page.setWebLifecycleState", {state: "frozen"});
+  await new Promise((resolve) => setTimeout(resolve, 3_000));
+  await session.send("Page.setWebLifecycleState", {state: "active"});
+  await page.bringToFront();
+
+  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+  await expect(page.getByText("visual long streaming", {exact: true})).toHaveCount(1);
+  await session.detach();
+});
+
+test("captures viewport theme contrast and zoom matrix", async ({page}) => {
+  for (const viewport of [
+    {width: 390, height: 844},
+    {width: 1024, height: 768},
+    {width: 1440, height: 900},
+    {width: 1920, height: 1080}
+  ]) {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.setViewportSize(viewport);
+      await page.emulateMedia({
+        colorScheme,
+        forcedColors: "none",
+        reducedMotion: "reduce"
+      });
+      await page.goto(baseURL);
+      await assertViewportGeometry(page);
+      await expect(page).toHaveScreenshot(
+        `viewport-${viewport.width}x${viewport.height}-${colorScheme}.png`
+      );
+    }
+  }
+
+  await page.setViewportSize({width: 1024, height: 768});
+  await page.emulateMedia({
+    colorScheme: "light",
+    forcedColors: "active",
+    reducedMotion: "reduce"
+  });
+  await page.goto(baseURL);
+  await assertViewportGeometry(page);
+  await expect(page).toHaveScreenshot("viewport-1024x768-forced-colors.png");
+
+  await page.emulateMedia({
+    colorScheme: "light",
+    forcedColors: "none",
+    reducedMotion: "reduce"
+  });
+  await page.setViewportSize({width: 512, height: 384});
+  await page.goto(baseURL);
+  await assertViewportGeometry(page);
+  await expect(page).toHaveScreenshot("viewport-1024x768-zoom-200.png");
+});
+
+async function createSession(page: Page): Promise<void> {
+  const sessions = page.locator(".sessionRow");
+  const count = await sessions.count();
+  await page.locator('button[aria-label="New chat"]').click();
+  await expect(sessions).toHaveCount(count + 1);
+  await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+}
+
+async function submitPrompt(page: Page, prompt: string): Promise<void> {
+  const composer = page.getByPlaceholder("Ask CodeHelper");
+  await composer.fill(prompt);
+  await page.getByRole("button", {name: "Send"}).click();
+}
+
+async function assertViewportGeometry(page: Page): Promise<void> {
+  await expect(page.locator(".app")).toBeVisible();
+  const geometry = await page.evaluate(() => {
+    const app = document.querySelector<HTMLElement>(".app");
+    const actions = Array.from(document.querySelectorAll<HTMLElement>("button"))
+      .filter((button) => button.offsetParent !== null)
+      .map((button) => button.getBoundingClientRect());
+    const composer = document.querySelector<HTMLElement>(".composerSeat");
+    return {
+      appOverflow: app ? app.scrollWidth - app.clientWidth : -1,
+      actionsInside: actions.every(
+        (box) =>
+          box.left >= 0 &&
+          box.right <= window.innerWidth &&
+          box.top >= 0 &&
+          box.bottom <= window.innerHeight
+      ),
+      composerInside: composer
+        ? composer.getBoundingClientRect().bottom <= window.innerHeight
+        : false
+    };
+  });
+  expect(geometry.appOverflow).toBeLessThanOrEqual(0);
+  expect(geometry.actionsInside).toBe(true);
+  expect(geometry.composerInside).toBe(true);
+}
+
+function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finish = (error?: Error, url?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      child.stdout.off("data", onStdout);
+      child.stderr.off("data", onStderr);
+      child.off("exit", onExit);
+      child.off("error", onError);
+      if (error) reject(error);
+      else resolve(url!);
+    };
+    const onStdout = (chunk: Buffer) => {
+      stdout += chunk.toString();
+      const match = stdout.match(/CodeHelper Runtime Ready: (http:\/\/[^\s]+)/);
+      if (match) finish(undefined, match[1]);
+    };
+    const onStderr = (chunk: Buffer) => {
+      stderr += chunk.toString();
+    };
+    const onExit = (code: number | null) => {
+      finish(new Error(`Runtime exited before readiness (${code})\n${stderr}`));
+    };
+    const onError = (error: Error) => finish(error);
+    const timeout = setTimeout(() => {
+      finish(new Error(`Runtime readiness timed out\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+    }, 20_000);
+    child.stdout.on("data", onStdout);
+    child.stderr.on("data", onStderr);
+    child.once("exit", onExit);
+    child.once("error", onError);
+  });
+}

@@ -5,12 +5,13 @@
 CodeHelper 保持一个权威执行 Runtime，同时允许多种呈现和集成入口。Host 提交
 Operation 并观察 Event，不复制 Agent 循环，也不直接执行特权工具。
 
-受支持的产品 Host 是 CLI、TUI、VS Code 和 ACP。项目不提供 `codehelper web`、
-`codehelper serve`、Embedded Browser UI、Pairing/QR Flow 或 REST/SSE Host。MCP
-Stdio Serving 和内部 Loopback Helper 属于集成机制，不是产品 HTTP Host。
+受支持的产品 Host 是本机 Web、CLI 和 TUI。Web 是默认交互入口，只绑定
+`127.0.0.1`，使用同源 HTTP RPC 与下行 WebSocket；项目不提供 LAN、公网部署、
+Pairing/QR Flow 或通用 REST/SSE Host。MCP Stdio Serving 属于集成机制，不是产品
+HTTP Host。
 
 ```text
-CLI / TUI / VS Code / ACP
+Web / CLI / TUI
                  |
            Operation / Event
                  |
@@ -92,7 +93,7 @@ Recovery 成功前不会启动后台 Worker。
 ## Runtime 所有权图
 
 ```text
-CLI / TUI / VS Code / ACP
+Web / CLI / TUI
         | Operation / Event
         v
 operationDispatcher -> ActiveTurnRegistry -> TurnCoordinator -> TurnScope
@@ -106,7 +107,7 @@ operationDispatcher -> ActiveTurnRegistry -> TurnCoordinator -> TurnScope
 
 wire.NewExec -> 仅负责构造 Module
 chatmerge.Service -> 隔离 Chat Preview / Journal Apply / Git Baseline
-eventview + VS Code Projector -> 仅负责 Host Presentation
+eventview + Web Projection -> 仅负责 Host Presentation
 ```
 
 | Owner | 路径 | 独占职责 |
@@ -122,10 +123,10 @@ eventview + VS Code Projector -> 仅负责 Host Presentation
 | Observation Plane | `internal/observability/observation`、`internal/observability/router` | Evidence Schema、Privacy Admission、Durable Routing 与 Exporter Isolation |
 | Session/Artifact Service | `internal/runtime/app` | Runtime-owned Port 上的 Host-facing Query 行为 |
 | Go Host Projection | `internal/runtime/eventview` | Event Payload 的唯一 Typed Interpretation |
-| VS Code Projection | `extensions/vscode/src/chat/projector` | Exhaustive Event Class Presentation |
+| Web Projection | `web/src` | 浏览器端 Event Projection 与交互状态 |
 
-`codehelper host --adapter acp` 现在只有持久化路径。预发布的一次性 ACP Envelope Adapter
-已删除，Host 不能再通过 `exec` 选择第二条执行路径。
+Web 直接调用 Runtime 的窄化 Session、Operation、History 与 Artifact Service。
+浏览器 Transport 不复制 Agent 循环，也不存在第二条兼容执行路径。
 
 ## Runtime 协议
 
@@ -139,8 +140,8 @@ eventview + VS Code Projector -> 仅负责 Host Presentation
 - **Receipt**：上下文、工具、变更、审批、验证或成本的结构化证据。
 - **Projection**：由 Event 和关系记录重建的查询状态。
 
-ACP 是共享模型的编辑器 Transport Envelope。除非是有意的 Host 呈现差异，只在一种
-Host 中存在的功能都不完整。
+Web Transport 只负责鉴权、序列化和事件投影。除非是有意的 Host 呈现差异，只在一种
+Host 中存在的 Runtime 能力都不完整。
 
 Event 分类是 Protocol 数据，而不是 Host Policy。`event_traits.json` 是唯一生成源，
 生成 Go Trait Table、Protocol Schema、TypeScript Table 与 Golden；新增 Event 缺少
@@ -148,9 +149,8 @@ Class、Item Owner、Durability、Correlation 或 Terminal Trait 时生成直接
 Go TUI、CLI 与 Bench 消费 `eventview` 的 Typed Semantic Update，不再分类
 `Event.Data`；Machine NDJSON 仍输出原始 Event Envelope。
 
-VS Code 消费生成的 Traits，并通过 Stream、Tool、Interaction、Evidence、Terminal 与
-Snapshot 领域模块投影。`projector/index.ts` 拥有 Sequence 与 Turn Identity，
-`turn-projector.ts` 对生成的全部 Event Class 做 Exhaustive Dispatch。
+Web Client 使用 Runtime Snapshot 完成 Hydration，再按全局 Cursor 消费 Event。
+Sequence 只要求严格单调；只有 Runtime 明确报告 Retention Gap 时才进入 Desync。
 
 ### Application Ownership
 
@@ -425,7 +425,7 @@ Registration 都通过 `EffectOwner` 绑定 Extension、Source、Plan Revision�
 Generation、Capability 和 Effect Kind。Disable 会 Drain 所属 Effect；Revoke 或
 Quarantine 会 Fence 旧 Generation。Lifecycle Receipt 持久化且已脱敏。
 
-Plugin/Skill CLI、ACP `extension/list`/`extension/control` 与 VS Code Extensions View
+Plugin/Skill CLI、Web Transport `extension/list`/`extension/control` 与 Web Extensions View
 使用同一 Runtime Control Plane。Mutation 按 Operation ID 幂等，并持久化
 Prepare/Commit Receipt；Host 只提交 Operation 与投影 Runtime-owned State。
 

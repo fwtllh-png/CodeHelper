@@ -1,0 +1,173 @@
+{
+  "version": 1,
+  "stylesheet": "web/src/ui/styles.css",
+  "layout_regions": [
+    "session_rail",
+    "conversation",
+    "composer",
+    "detail"
+  ],
+  "responsive_tracks": [
+    {
+      "mode": "compact",
+      "min_width": 320,
+      "max_width": 720,
+      "tracks": "76px minmax(0, 1fr)",
+      "yield_order": [
+        "detail",
+        "session_metadata",
+        "session_search"
+      ]
+    },
+    {
+      "mode": "regular",
+      "min_width": 721,
+      "max_width": 1050,
+      "tracks": "264px minmax(0, 1fr)",
+      "yield_order": [
+        "detail"
+      ]
+    },
+    {
+      "mode": "wide",
+      "min_width": 1051,
+      "max_width": 3840,
+      "tracks": "264px minmax(0, 1fr) 292px",
+      "yield_order": []
+    }
+  ],
+  "semantic_tokens": [
+    "--ch-canvas",
+    "--ch-panel",
+    "--ch-panel-subtle",
+    "--ch-panel-raised",
+    "--ch-border",
+    "--ch-border-strong",
+    "--ch-text",
+    "--ch-text-muted",
+    "--ch-accent",
+    "--ch-accent-hover",
+    "--ch-accent-soft",
+    "--ch-on-accent",
+    "--ch-danger",
+    "--ch-danger-soft",
+    "--ch-warning",
+    "--ch-focus",
+    "--ch-code",
+    "--ch-shadow",
+    "--ch-radius",
+    "--ch-motion-none",
+    "--ch-motion-spin",
+    "--ch-layer-behind",
+    "--ch-layer-content",
+    "--ch-layer-composer",
+    "--ch-layer-overlay",
+    "--ch-layer-popover"
+  ],
+  "canonical_states": [
+    "empty",
+    "streaming",
+    "approval",
+    "input",
+    "failure",
+    "completed",
+    "diff",
+    "settings"
+  ],
+  "motion": [
+    {
+      "id": "working_spinner",
+      "selector": ".spin",
+      "full": "infinite_rotation",
+      "reduced": "single_frame",
+      "still": "static_icon"
+    }
+  ],
+  "focus_order": [
+    "new_chat",
+    "session_search",
+    "session_list",
+    "conversation_actions",
+    "transcript",
+    "current_interaction",
+    "composer",
+    "detail"
+  ],
+  "keyboard_commands": [
+    {
+      "id": "submit",
+      "key": "Enter",
+      "accessible_name": "Send"
+    },
+    {
+      "id": "newline",
+      "key": "Shift+Enter",
+      "accessible_name": "Prompt"
+    },
+    {
+      "id": "close_overlay",
+      "key": "Escape",
+      "accessible_name": "Close"
+    }
+  ],
+  "stable_geometry": [
+    ".conversationHeader",
+    ".sessionRow",
+    ".composerSeat",
+    ".composer",
+    ".composerMeta",
+    ".pendingComposer",
+    ".detailPanel",
+    ".iconButton"
+  ],
+  "behavior": {
+    "transcript_auto_follow": "only_when_near_bottom",
+    "history_prepend_anchor": "preserve_visible_turn",
+    "approval_takeover": "replace_composer_without_resizing_shell",
+    "input_takeover": "replace_composer_without_resizing_shell",
+    "detail_open": "preserve_composer_and_primary_action"
+  },
+  "viewports": [
+    "390x844",
+    "1024x768",
+    "1440x900",
+    "1920x1080"
+  ],
+  "themes": [
+    "light",
+    "dark",
+    "forced-colors"
+  ],
+  "zoom_percent": [
+    100,
+    200
+  ],
+  "golden_directory": "web/tests/e2e/visual.spec.ts-snapshots",
+  "goldens": [
+    "canonical-approval.png",
+    "canonical-completed.png",
+    "canonical-diff.png",
+    "canonical-empty.png",
+    "canonical-failure.png",
+    "canonical-input.png",
+    "canonical-settings.png",
+    "canonical-streaming.png",
+    "viewport-390x844-dark.png",
+    "viewport-390x844-light.png",
+    "viewport-1024x768-dark.png",
+    "viewport-1024x768-forced-colors.png",
+    "viewport-1024x768-light.png",
+    "viewport-1024x768-zoom-200.png",
+    "viewport-1440x900-dark.png",
+    "viewport-1440x900-light.png",
+    "viewport-1920x1080-dark.png",
+    "viewport-1920x1080-light.png"
+  ],
+  "css_policy": {
+    "semantic_prefix": "--ch-",
+    "max_card_radius_px": 8,
+    "forbid_transition_all": true,
+    "require_reduced_motion_for_infinite": true,
+    "require_registered_z_index": true
+  }
+}

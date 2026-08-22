@@ -2,7 +2,7 @@
   "version": 1,
   "scope": [
     "tui",
-    "vscode"
+    "web"
   ],
   "principles": [
     "show state before decoration",
@@ -44,32 +44,32 @@
       "neutral": {
         "meaning": "secondary or inactive information",
         "tui": "Dim",
-        "vscode": "descriptionForeground"
+        "web": "var(--ch-text-muted)"
       },
       "info": {
         "meaning": "active work or non-blocking information",
         "tui": "Info",
-        "vscode": "textLink.foreground"
+        "web": "var(--ch-accent)"
       },
       "success": {
         "meaning": "verified or terminal success",
         "tui": "Success",
-        "vscode": "testing.iconPassed"
+        "web": "var(--ch-accent)"
       },
       "warning": {
         "meaning": "degraded capability or decision required",
         "tui": "Warn",
-        "vscode": "notificationsWarningIcon.foreground"
+        "web": "var(--ch-warning)"
       },
       "danger": {
         "meaning": "failure, denial, destructive effect, or blocked state",
         "tui": "Danger",
-        "vscode": "errorForeground"
+        "web": "var(--ch-danger)"
       },
       "focus": {
         "meaning": "keyboard focus or current selection",
         "tui": "Brand",
-        "vscode": "focusBorder"
+        "web": "var(--ch-focus)"
       }
     },
     "typography": {
@@ -89,7 +89,7 @@
       "tui_aliases": [
         "idle"
       ],
-      "vscode_aliases": [
+      "web_aliases": [
         "stopped"
       ]
     },
@@ -103,7 +103,7 @@
         "streaming",
         "running"
       ],
-      "vscode_aliases": [
+      "web_aliases": [
         "starting",
         "recovering",
         "running"
@@ -118,7 +118,7 @@
         "pending",
         "approval"
       ],
-      "vscode_aliases": [
+      "web_aliases": [
         "pending",
         "approval_required",
         "input_required"
@@ -133,7 +133,7 @@
         "completed",
         "ready"
       ],
-      "vscode_aliases": [
+      "web_aliases": [
         "completed",
         "ready",
         "approve"
@@ -146,7 +146,7 @@
       "tui_aliases": [
         "degraded"
       ],
-      "vscode_aliases": [
+      "web_aliases": [
         "degraded"
       ]
     },
@@ -159,7 +159,7 @@
         "rejected",
         "canceled"
       ],
-      "vscode_aliases": [
+      "web_aliases": [
         "failed",
         "deny",
         "cancel"
@@ -172,7 +172,7 @@
       "tui_aliases": [
         "blocked"
       ],
-      "vscode_aliases": [
+      "web_aliases": [
         "blocked",
         "untrusted"
       ]

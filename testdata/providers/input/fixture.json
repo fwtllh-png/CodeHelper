@@ -1,0 +1,16 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "expected_prompt": "ask for input",
+  "streams": [
+    "request.sse",
+    "answer.sse",
+    "declare.sse"
+  ],
+  "expected_request_fragments": [
+    ["\"tools\"", "\"name\":\"request_user_input\""],
+    ["\"tool_calls\"", "\"role\":\"tool\"", "\"tool_call_id\":\"call_input\"", "yes"],
+    ["completion_declaration_required"]
+  ]
+}

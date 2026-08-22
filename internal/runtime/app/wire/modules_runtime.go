@@ -350,6 +350,7 @@ func (runtimeModule) Build(
 	if state.options.PersistentStore != nil {
 		runtime, err := apppersistence.PreparePersistentRuntime(ctx, apppersistence.PersistentRuntimeOptions{
 			Store:               state.options.PersistentStore,
+			WorkspaceRoot:       state.config.execution.Workspace,
 			Engine:              state.agent.threads,
 			OperationBuffer:     state.config.snapshot.Config.Runtime.OperationBuffer,
 			SubscriberBuffer:    state.config.snapshot.Config.Runtime.SubscriberBuffer,
@@ -358,6 +359,7 @@ func (runtimeModule) Build(
 			ToolCatalog:         state.tools.registry,
 			ProfileCapabilities: state.agent.profileCapabilities,
 			SessionWorkspaces:   session.chatWorkspaces,
+			SkipRuntimeRecovery: state.options.RuntimeRole == RuntimeRoleWorker,
 		})
 		if err != nil {
 			return fmt.Errorf("create persistent runtime: %w", err)
@@ -366,6 +368,7 @@ func (runtimeModule) Build(
 	} else {
 		runtime, err := app.PrepareRuntime(ctx, app.Options{
 			Engine:        state.agent.threads,
+			WorkspaceRoot: state.config.execution.Workspace,
 			ContentStore:  session.content,
 			Orchestration: state.orchestration.workGraph,
 			Observability: runtimeObservability(state),

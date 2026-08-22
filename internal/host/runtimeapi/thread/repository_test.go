@@ -77,6 +77,33 @@ func TestLifecycleAcceptsWorkGraphOperationWithoutTurnRow(t *testing.T) {
 	if turnCount != 0 || itemCount != 0 {
 		t.Fatalf("work graph operation created turns=%d items=%d", turnCount, itemCount)
 	}
+	if _, err := store.SQLite().DB().ExecContext(
+		t.Context(),
+		`UPDATE sessions SET status = 'closed' WHERE id = 'session'`,
+	); err != nil {
+		t.Fatal(err)
+	}
+	operation, err = protocol.NewOperation(&protocol.SubmitRunPayload{
+		ThreadID: "thread", TurnID: "control-turn-2", ItemID: "control-item-2",
+		RunID: "run-2", Kind: "workflow", Source: "host",
+		SessionID: "session", RootThreadID: "thread",
+		Nodes: []protocol.RunNodeSpec{{ID: "node-2", Kind: "agent_turn"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err = app.CanonicalOperationPayload(operation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewLifecycle(store).Accept(
+		t.Context(),
+		operation,
+		"",
+		canonical,
+	); err == nil {
+		t.Fatal("closed session accepted a new operation")
+	}
 }
 
 func TestCreateSeedReusesWorkspaceRoot(t *testing.T) {

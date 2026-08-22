@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "operations": [
+    {
+      "operation_kind": "turn.start",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#turn.start",
+      "identity_binding": "session_thread_turn_item",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "composer",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "turn.cancel",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#turn.cancel",
+      "identity_binding": "active_session_turn",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "stop_turn",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "turn.steer",
+      "disposition": "denied",
+      "web_intent_schema": "",
+      "identity_binding": "none",
+      "admission_policy": "deny",
+      "required_surface": "",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "approval.decision",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#approval.decision",
+      "identity_binding": "pending_request_turn_item_plan",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "approval_composer",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "input.reply",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#input.reply",
+      "identity_binding": "pending_request_turn_item",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "input_composer",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "thread.compact",
+      "disposition": "denied",
+      "web_intent_schema": "",
+      "identity_binding": "none",
+      "admission_policy": "deny",
+      "required_surface": "",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "thread.fork",
+      "disposition": "denied",
+      "web_intent_schema": "",
+      "identity_binding": "none",
+      "admission_policy": "deny",
+      "required_surface": "",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "turn.revert",
+      "disposition": "denied",
+      "web_intent_schema": "",
+      "identity_binding": "none",
+      "admission_policy": "deny",
+      "required_surface": "",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "run.submit",
+      "disposition": "denied",
+      "web_intent_schema": "",
+      "identity_binding": "none",
+      "admission_policy": "deny",
+      "required_surface": "",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "run.cancel",
+      "disposition": "denied",
+      "web_intent_schema": "",
+      "identity_binding": "none",
+      "admission_policy": "deny",
+      "required_surface": "",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "run.resume",
+      "disposition": "denied",
+      "web_intent_schema": "",
+      "identity_binding": "none",
+      "admission_policy": "deny",
+      "required_surface": "",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "node.retry",
+      "disposition": "denied",
+      "web_intent_schema": "",
+      "identity_binding": "none",
+      "admission_policy": "deny",
+      "required_surface": "",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "node.skip",
+      "disposition": "denied",
+      "web_intent_schema": "",
+      "identity_binding": "none",
+      "admission_policy": "deny",
+      "required_surface": "",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    }
+  ]
+}

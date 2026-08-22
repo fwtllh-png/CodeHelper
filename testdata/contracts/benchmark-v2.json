@@ -40,8 +40,43 @@
       "id": "host_replay",
       "lane": "integration",
       "capabilities": [],
-      "evidence": ["internal/host/runtimeapi/acp/interop_test.go"],
-      "command": "go test -run 'TestBinaryInterop(ReplayPagesMatchLiveStream|RestartLoadsSessionAndReplays)' ./internal/host/runtimeapi/acp"
+      "evidence": ["internal/host/runtimeapi/web/server_test.go"],
+      "command": "go test -run '^TestWebSocketDownlinkConcurrencyAndShutdown$' ./internal/host/runtimeapi/web"
+    },
+    {
+      "id": "web_capacity",
+      "lane": "integration",
+      "capabilities": [],
+      "evidence": ["internal/host/runtimeapi/web/capacity_integration_test.go"],
+      "command": "go test -run '^TestWeb(Socket(ReplaysTenThousandEvents|CapsBrowserConnectionsAtSixteen|DisconnectStormReleasesSlotsGoroutinesAndDescriptors)|SessionCapacity(AllowsThirtyTwoAndPreservesIdempotentRetry|IsAtomicUnderConcurrentCreate))$' ./internal/host/runtimeapi/web"
+    },
+    {
+      "id": "web_browser_durability",
+      "lane": "integration",
+      "capabilities": [],
+      "evidence": ["web/tests/e2e/visual.spec.ts"],
+      "command": "npm --prefix web run test:e2e -- visual.spec.ts --grep 'reloads|frozen'"
+    },
+    {
+      "id": "web_long_session",
+      "lane": "integration",
+      "capabilities": [],
+      "evidence": ["web/src/ui/App.test.tsx"],
+      "command": "npm --prefix web test -- --testNamePattern 'windows 500-turn transcripts to 200 projected rows with older and newer navigation'"
+    },
+    {
+      "id": "web_streaming_soak",
+      "lane": "release",
+      "capabilities": [],
+      "evidence": ["internal/host/runtimeapi/web/streaming_soak_test.go"],
+      "command": "CODEHELPER_WEB_STREAMING_SOAK_DURATION=1h go test -count=1 -timeout 70m -run '^TestWebSocketSustainedStreamingSoak$' ./internal/host/runtimeapi/web"
+    },
+    {
+      "id": "web_worker_coexistence",
+      "lane": "integration",
+      "capabilities": [],
+      "evidence": ["internal/host/cli/web_worker_coexist_test.go"],
+      "command": "go test -run '^TestWebWorkerAndAutomationShareDurableStateWithoutOwnerConflict$' ./internal/host/cli"
     }
   ]
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -193,9 +194,10 @@ func (e *Engine) modelStep(
 		if turnUsage.InputTokens+totalUsage.InputTokens == 0 {
 			phase = CompactionPhasePreSampling
 		}
+		gateSend := deduplicateCompactionReceipts(send)
 		window, err := e.runCompactGate(
 			ctx,
-			history, snapshot, 0, phase, true, send,
+			history, snapshot, 0, phase, true, gateSend,
 		)
 		if err != nil {
 			return nil, nil, totalUsage, window.estimated, err
@@ -207,7 +209,7 @@ func (e *Engine) modelStep(
 			snapshot = project()
 			window, err = e.runCompactGate(
 				ctx,
-				history, snapshot, 0, phase, true, send,
+				history, snapshot, 0, phase, true, gateSend,
 			)
 			if err != nil {
 				return nil, nil, totalUsage, window.estimated, err
@@ -505,6 +507,36 @@ func (e *Engine) modelStep(
 		}
 		providerRetries++
 	}
+}
+
+func deduplicateCompactionReceipts(
+	send func(State, Event) error,
+) func(State, Event) error {
+	var previous *CompactionReceipt
+	return func(state State, event Event) error {
+		if state == Compacting && event.Compaction != nil {
+			current := observableCompactionReceipt(event.Compaction)
+			if previous != nil && reflect.DeepEqual(previous, &current) {
+				return nil
+			}
+			previous = &current
+		}
+		return send(state, event)
+	}
+}
+
+func observableCompactionReceipt(receipt *CompactionReceipt) CompactionReceipt {
+	value := *receipt
+	value.OriginalMessages = 0
+	value.OriginalTokens = 0
+	value.RetainedTokens = 0
+	value.SummaryOriginalBytes = 0
+	value.SummaryRetainedBytes = 0
+	value.TruncationReason = ""
+	value.ContextReceipts = nil
+	value.WorkingSet = nil
+	value.CriticalPaths = nil
+	return value
 }
 
 func projectionRecoveryID(

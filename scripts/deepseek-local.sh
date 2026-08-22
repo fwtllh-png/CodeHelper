@@ -22,7 +22,7 @@ Usage: ./scripts/deepseek-local.sh COMMAND
 Commands:
   init      build CodeHelper, install config, migrate the key to Keychain
   tui       run init, then launch the TUI with the DeepSeek model
-  vscode    build/configure/install the extension and open official VS Code
+  web       run init, then launch the local Web workspace
   live-smoke
             run the real-provider single-turn release smoke
   multi-agent-smoke
@@ -42,7 +42,6 @@ Environment overrides:
   CODEHELPER_CONFIG_DIR          config directory (default ~/.config/codehelper)
   CODEHELPER_LOCAL_WORKSPACE     TUI workspace (default repository root)
   CODEHELPER_LOCAL_POSTURE       TUI posture (default bypass)
-  VSCODE_CLI                     official VS Code CLI path
 EOF
 }
 
@@ -159,16 +158,13 @@ CODEHELPER_LOCAL_POSTURE=suggest make deepseek-tui
 CODEHELPER_LOCAL_WORKSPACE=/path/to/project make deepseek-tui
 ```
 
-## 一键安装并启动 VS Code
-
-先完全退出官方 VS Code，再执行：
+## 一键启动 Web 工作区
 
 ```bash
-make deepseek-vscode
+make deepseek-web
 ```
 
-脚本会构建 Target VSIX、配置 DeepSeek、写入官方 VS Code Settings、安装插件并打开
-`codehelper.code-workspace`。
+脚本会构建 CodeHelper、配置 DeepSeek，并在本机 Loopback 地址启动 Web 工作区。
 
 ## Agent 执行入口
 
@@ -177,7 +173,7 @@ Agent 只需调用下列确定性命令，不应读取或输出本文件中的 K
 ```bash
 make deepseek-init
 CODEHELPER_LOCAL_POSTURE=suggest make deepseek-tui
-make deepseek-vscode
+make deepseek-web
 ```
 
 如果 IDE Sandbox 拒绝写 macOS Keychain，Agent 应停止并请用户在普通 macOS Terminal
@@ -199,7 +195,7 @@ install_runtime_config() {
   require_macos
   make build
   install -d -m 700 "$CONFIG_DIR"
-  install -m 600 "$ROOT/docs/examples/codehelper-vscode.toml" "$CONFIG_PATH"
+  install -m 600 "$ROOT/docs/examples/codehelper-deepseek.toml" "$CONFIG_PATH"
   if ! DEEPSEEK_API_KEY="$key" "$ROOT/bin/codehelper" auth login \
       --config "$CONFIG_PATH" \
       --kind keyring \
@@ -261,11 +257,20 @@ case "$command_name" in
       --mode act \
       --posture "$POSTURE"
     ;;
-  vscode)
+  web)
     api_key="$(load_api_key)"
     trap 'api_key=""; unset DEEPSEEK_API_KEY' EXIT
     write_local_doc "$api_key"
-    DEEPSEEK_API_KEY="$api_key" "$ROOT/scripts/setup-vscode-local.sh"
+    install_runtime_config "$api_key"
+    check_environment
+    exec "$ROOT/bin/codehelper" web \
+      --config "$CONFIG_PATH" \
+      --workspace "$WORKSPACE" \
+      --provider "$PROVIDER" \
+      --model "$MODEL" \
+      --enable-tools \
+      --posture suggest \
+      --open
     ;;
   live-smoke|multi-agent-smoke)
     api_key="$(load_api_key)"

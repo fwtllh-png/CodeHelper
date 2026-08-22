@@ -3,7 +3,7 @@ package buildinfo
 import (
 	"runtime"
 
-	"github.com/fwtllh-png/CodeHelper/internal/compatibility"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 var (
@@ -20,13 +20,11 @@ type Info struct {
 	GoVersion              string `json:"go_version"`
 	OS                     string `json:"os"`
 	Arch                   string `json:"arch"`
-	ACPProtocolMin         int    `json:"acp_protocol_min"`
-	ACPProtocolMax         int    `json:"acp_protocol_max"`
+	WebProtocolVersion     int    `json:"web_protocol_version"`
 	OperationSchemaVersion int    `json:"operation_schema_version"`
 }
 
 func Current() Info {
-	manifest := compatibility.MustLoad()
 	return Info{
 		Name:                   "codehelper",
 		Version:                Version,
@@ -35,8 +33,7 @@ func Current() Info {
 		GoVersion:              runtime.Version(),
 		OS:                     runtime.GOOS,
 		Arch:                   runtime.GOARCH,
-		ACPProtocolMin:         manifest.ACPProtocol.Min,
-		ACPProtocolMax:         manifest.ACPProtocol.Max,
-		OperationSchemaVersion: manifest.OperationSchemaVersion,
+		WebProtocolVersion:     1,
+		OperationSchemaVersion: protocol.Version,
 	}
 }

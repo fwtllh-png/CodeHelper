@@ -3,7 +3,6 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,57 +48,18 @@ func TestThreadListRequiresDataDir(t *testing.T) {
 	}
 }
 
-func TestHostExposesMCPConfig(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	code := cli.Run([]string{"host", "--help"}, &stdout, &stderr)
-	if code != 0 && code != 2 {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+func TestRemovedGenericNetworkHostsAreNotExposed(t *testing.T) {
+	var removedOut, removedErr bytes.Buffer
+	if code := cli.Run([]string{"serve"}, &removedOut, &removedErr); code != 2 {
+		t.Fatalf(
+			"serve code=%d stdout=%q stderr=%q",
+			code,
+			removedOut.String(),
+			removedErr.String(),
+		)
 	}
-	if output := stdout.String() + stderr.String(); !strings.Contains(output, "-mcp-config") {
-		t.Fatalf("host help does not expose MCP config: %q", output)
-	}
-}
-
-func TestHostForwardsMCPConfigToRuntime(t *testing.T) {
-	workspace := t.TempDir()
-	missing := filepath.Join(workspace, "missing-mcp.json")
-	var stdout, stderr bytes.Buffer
-	code := cli.Run([]string{
-		"host", "--adapter", "acp",
-		"--data-dir", t.TempDir(),
-		"--provider-fixture", filepath.Join(
-			"..", "..", "..", "testdata", "providers", "openai",
-		),
-		"--provider", "openai",
-		"--model", "gpt-fixture",
-		"--workspace", workspace,
-		"--enable-tools",
-		"--mcp-config", missing,
-	}, &stdout, &stderr)
-	if code != 1 {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
-	}
-	if !strings.Contains(stderr.String(), missing) {
-		t.Fatalf("MCP config path did not reach Runtime: %q", stderr.String())
-	}
-}
-
-func TestRemovedNetworkHostsAreNotExposed(t *testing.T) {
-	for _, command := range []string{"web", "serve"} {
-		var stdout, stderr bytes.Buffer
-		if code := cli.Run([]string{command}, &stdout, &stderr); code != 2 {
-			t.Fatalf("%s code=%d stdout=%q stderr=%q", command, code, stdout.String(), stderr.String())
-		}
-		if !strings.Contains(stderr.String(), `unknown command "`+command+`"`) {
-			t.Fatalf("%s error=%q", command, stderr.String())
-		}
-	}
-	var legacyOut, legacyErr bytes.Buffer
-	if code := cli.Run([]string{"host", "--adapter", "http"}, &legacyOut, &legacyErr); code != 2 {
-		t.Fatalf("HTTP adapter code=%d stdout=%q stderr=%q", code, legacyOut.String(), legacyErr.String())
-	}
-	if !strings.Contains(legacyErr.String(), "must be acp") {
-		t.Fatalf("HTTP adapter error=%q", legacyErr.String())
+	if !strings.Contains(removedErr.String(), `unknown command "serve"`) {
+		t.Fatalf("serve error=%q", removedErr.String())
 	}
 	var stdout, stderr bytes.Buffer
 	stdout.Reset()
@@ -107,14 +67,28 @@ func TestRemovedNetworkHostsAreNotExposed(t *testing.T) {
 	if code := cli.Run([]string{"help"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("help code=%d stderr=%q", code, stderr.String())
 	}
-	for _, removed := range []string{"codehelper web", "codehelper serve"} {
+	for _, removed := range []string{"codehelper serve", "codehelper host"} {
 		if strings.Contains(stdout.String(), removed) {
 			t.Fatalf("help still exposes %s: %q", removed, stdout.String())
 		}
 	}
-	for _, removed := range []string{"web", "serve"} {
+	for _, removed := range []string{"serve"} {
 		if _, exists := cli.DoctorReport().Features[removed]; exists {
 			t.Fatalf("doctor still reports removed %s host", removed)
+		}
+	}
+}
+
+func TestWebRejectsNonLoopbackAndBypassPosture(t *testing.T) {
+	for _, args := range [][]string{
+		{"web", "--host", "localhost"},
+		{"web", "--host", "0.0.0.0"},
+		{"web", "--posture", "bypass"},
+		{"web", "--port", "65536"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := cli.Run(args, &stdout, &stderr); code != 2 {
+			t.Fatalf("%v code=%d stdout=%q stderr=%q", args, code, stdout.String(), stderr.String())
 		}
 	}
 }
@@ -143,7 +117,7 @@ func TestCompletionSmoke(t *testing.T) {
 		if !strings.Contains(out, "codehelper") {
 			t.Fatalf("%s completion missing root command: %q", shell, out[:min(200, len(out))])
 		}
-		if shell == "bash" && (!strings.Contains(out, "exec") || !strings.Contains(out, "host")) {
+		if shell == "bash" && (!strings.Contains(out, "exec") || !strings.Contains(out, "web")) {
 			t.Fatalf("bash completion missing commands: %q", out[:min(200, len(out))])
 		}
 	}

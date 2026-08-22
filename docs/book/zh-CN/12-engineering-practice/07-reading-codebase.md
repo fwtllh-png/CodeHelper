@@ -9,7 +9,7 @@ prerequisites:
   - overview-system-architecture
 code_paths:
   - internal
-  - extensions/vscode
+  - web
 test_paths:
   - internal/host/cli/architecture_test.go
   - internal/runtime/app/wire/sandbox_architecture_test.go

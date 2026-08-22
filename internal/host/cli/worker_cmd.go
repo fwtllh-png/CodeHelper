@@ -162,6 +162,7 @@ func runWorker(
 		ConfigPath: options.ConfigPath, ConfigOverrides: options.Overrides,
 		FixturePath: options.Fixture, Permission: options.Posture,
 		RepositoryRulesPath: options.RepositoryRules, PersistentStore: store,
+		RuntimeRole: wire.RuntimeRoleWorker,
 	})
 	if err != nil {
 		_ = store.CloseAll(context.Background())

@@ -9,7 +9,7 @@
 治理覆盖完整执行链：
 
 ```text
-CLI / TUI / VS Code / ACP / Worker
+CLI / TUI / Web / Worker
                   |
           Operation / Event
                   |
@@ -52,7 +52,7 @@ CLI / TUI / VS Code / ACP / Worker
    Outbox 必须共享一个提交边界。
 7. **取消可传播且不破坏提交**：取消能够到达所有子操作，但不能撤销已经提交的事实，
    也不能留下永久 Running 状态。
-8. **Host 只做投影**：CLI、TUI、VS Code、ACP 和 Worker 不得自行补执行、补终态或
+8. **Host 只做投影**：CLI、TUI、Web 和 Worker 不得自行补执行、补终态或
    重新解释 Runtime 失败。
 9. **失败可重建**：一次失败必须能够通过 Session、Turn、Operation、Attempt、Effect
    和 Resume 标识还原。
@@ -122,7 +122,7 @@ CLI / TUI / VS Code / ACP / Worker
 | 项目 | 基线 |
 | --- | --- |
 | 全仓源文件 | 1,279 个：Go 1,104、TypeScript 146、Python 20、Shell 9 |
-| 重点生产代码 | Go 601 个、VS Code TypeScript 87 个 |
+| 重点生产代码 | Go 601 个、Web TypeScript 87 个 |
 | 并发候选边界 | 68 个 Goroutine 启动点、138 个 Channel 声明或构造点 |
 | 持久化候选边界 | 167 个 Transaction/Commit/Rollback 相关点 |
 | 外部副作用候选边界 | 308 个文件、进程、网络或系统调用相关点 |
@@ -145,9 +145,9 @@ Generator。它们仍进入分类清单，但不应被机械删除。
 | Subagent | 默认 24 Steps、5 分钟 Wall Time；到期后 Cancel 并记为 Errored | 固定终止器 | 改为 Parent Budget 下的可续期 Lease 和可恢复结果 | R2、R7 |
 | Workflow / JS VM | 默认 256 Steps；Lifetime 1,000、Parallel Items 1,000、并发 16 | 混合预算 | 容量保护可保留；Step/Lifetime 耗尽必须持久挂起而非 Cancel 整个 Run | R2、R7 |
 | Worker | 默认 1 Attempt、30 秒 Lease、1 秒 Claim Interval | Durable Attempt Budget | 显式任务预算可保留，但默认值、Retry 和 Lease 必须共享类型化原因 | R4、R7 |
-| VS Code Supervisor | 250/500/1,000ms 后重启，3 次后进入 Failed | Host 局部 Retry Count | Host 不能用固定次数决定 Runtime 工作永久失败；应进入可操作的持久恢复状态 | R8、R9 |
+| Web Supervisor | 250/500/1,000ms 后重启，3 次后进入 Failed | Host 局部 Retry Count | Host 不能用固定次数决定 Runtime 工作永久失败；应进入可操作的持久恢复状态 | R8、R9 |
 | Runtime / Control Queue | Operation、Subscriber、Turn Mailbox 默认均为 64 | 背压容量 | 容量必须保留，但关键控制不能只返回 `resource_exhausted` 后由调用方猜测是否重发 | R7、R8 |
-| Replay / Frame | ACP Replay 256，Frame 4 MiB，History 通过分页读取 | 传输容量 | 保留分页和安全上限；所有 Host 必须共享 Continuation/Desync 契约 | R8 |
+| Replay / Frame | Web Transport Replay 256，Frame 4 MiB，History 通过分页读取 | 传输容量 | 保留分页和安全上限；所有 Host 必须共享 Continuation/Desync 契约 | R8 |
 | Tool / Process Output | Shell 默认 4,096、最大 10,000 Tokens；Process 保留 1/8 MiB 并支持 Archive | 结果保留容量 | 不作为任务终止器；截断必须有 Receipt、Handle 或 Durable Archive | R2、R6 |
 | MCP / Web / Hook / Git | 存在 250ms 至 2 分钟的固定 Call、Connect、Close 和 Shutdown Deadline | 操作 Deadline | 按连接、空闲、调用、关闭分类；不得把 Cleanup Timeout 解释为业务失败 | R4、R7、R9 |
 | Context / Payload / Security | Fragment、文件、Schema、Frame、Manifest 和 Sandbox 路径数量上限 | 安全或内存边界 | 保留并集中登记；触发时返回结构化容量结果，不得静默截断关键状态 | R2、R6、R8 |
@@ -163,12 +163,12 @@ Archive 的展示保留上限。问题在于隐式终止、静默丢失和多个
 | --- | --- | --- | --- |
 | R0-001 | P0 | Main Turn、Subagent、Workflow、Verification 和 JS VM 分别拥有固定 Step/Wall-time/Lifetime 终止器。Kernel 虽把 Main Turn 的 Step Limit 转成 Convergence，但它仍可能收敛一个持续产生新进展的任务。 | R1、R2 |
 | R0-002 | P0 | Provider 总请求 Timeout、Subagent Wall Time 及多个 Tool 30 秒上限混淆了连接、空闲、业务操作和执行 Lease。尤其 `internal/runtime/app/wire/modules_provider.go` 把 2 分钟配置写入 `http.Client.Timeout`，流式进展不能续期。 | R2、R4 |
-| R0-003 | P0 | Provider Retry、Worker Attempt、Workflow Retry 和 VS Code Runtime Restart 分别使用本地次数。当前 Provider 默认最多保证一次 Retry，VS Code 三次启动失败后永久进入 `failed`。 | R3、R4、R9 |
+| R0-003 | P0 | Provider Retry、Worker Attempt、Workflow Retry 和 Web Runtime Restart 分别使用本地次数。当前 Provider 默认最多保证一次 Retry，Web 三次启动失败后永久进入 `failed`。 | R3、R4、R9 |
 | R0-004 | P0 | 若干关键错误被丢弃：Terminal Event 的 `send`、Turn Coordinator `Release`、Checkpoint 发布失败后的内存回滚、Child `Settle`、Lane 状态持久化、Process Session Journal，以及 Observation 异步写入。它们可能造成“已完成但未记录”、Lease 残留或永久 Running。 | R1、R5、R7、R10 |
-| R0-005 | P1 | 已有统一 `Problem/Fault`，但 Metadata 尚无 Stage、Operation/Effect/Attempt ID；未分类错误默认映射为可恢复 `unavailable`。生产代码仍有 Egress、VS Code Revocation 和 TUI 投影依赖错误文本。 | R4、R8、R10 |
+| R0-005 | P1 | 已有统一 `Problem/Fault`，但 Metadata 尚无 Stage、Operation/Effect/Attempt ID；未分类错误默认映射为可恢复 `unavailable`。生产代码仍有 Egress、Web Revocation 和 TUI 投影依赖错误文本。 | R4、R8、R10 |
 | R0-006 | P1 | 11 个非 goja Runtime `panic` 包括随机 ID 生成、Process Output 不变量、非法 Permission Kind 及静态 Catalog/Manifest 加载。静态 Must Helper 可保留在构建事实边界；运行期输入和熵源失败必须返回类型化 Fault。 | R4、R9 |
 | R0-007 | P1 | Queue、Replay、Frame、Output、Context 和 Payload 上限分散在 Config、Protocol、Host 与 Adapter 中，触发行为包括 Reject、Truncate、Drop、Desync、Converge 和 Panic，没有统一容量语义。 | R2、R6、R7、R8 |
-| R0-008 | P1 | `max_steps` 同时存在于 Go Defaults、Engine Fallback、Session Profile、ACP、VS Code Setting 和 Package Schema；Timeout/Retry 也有类似重复默认值。Host 仍能改变 Runtime 终止策略。 | R8、R9 |
+| R0-008 | P1 | `max_steps` 同时存在于 Go Defaults、Engine Fallback、Session Profile、Web Setting 和 Package Schema；Timeout/Retry 也有类似重复默认值。Host 仍能改变 Runtime 终止策略。 | R8、R9 |
 | R0-009 | P1 | 已有 Terminal Atomicity、Outbox、Lease、Provider Disconnect 和 Tool Cancel 等强测试，但缺少跨所有异步边界的矩阵，特别是持续进展时的 Deadline、被忽略的 Terminal/Release 错误、Disk Full、Observation 写入失败和 Host Restart 耗尽。 | R5、R7、R10、R11 |
 
 ### 退出与错误处理结论
@@ -187,7 +187,7 @@ Archive 的展示保留上限。问题在于隐式终止、静默丢失和多个
 
 现有测试已经覆盖 Event Log Torn Tail、Domain Fact/Terminal Commit 失败、Terminal
 Outbox 恢复、Journal Draft 恢复、Lease Fencing、Provider SSE 断流、Tool Cancel、
-Approval/Input 恢复和 VS Code Cursor Replay。这说明 Durable Kernel 基础较强，但覆盖
+Approval/Input 恢复和 Web Cursor Replay。这说明 Durable Kernel 基础较强，但覆盖
 集中在少数边界，尚未形成“边界 × 故障 × 预期状态 × 恢复动作”矩阵。
 
 本次执行 `go test -count=1 ./...` 时出现三个时间敏感失败：
@@ -232,7 +232,7 @@ R11 应把这些跳过项和时间敏感用例转换为确定性门禁。
 - 状态图、终态唯一性、Command 排列和跨进程交互恢复测试通过；
 - `internal/runtime/agent/turnkernel`、Agent Engine、Workflow、Protocol 和 Wire
   定向测试通过；
-- Hermetic、Race、Architecture Ratchet、VS Code、Docs 和 Book 门禁通过。
+- Hermetic、Race、Architecture Ratchet、Web、Docs 和 Book 门禁通过。
 
 **扫描范围**
 
@@ -259,7 +259,7 @@ R11 应把这些跳过项和时间敏感用例转换为确定性门禁。
 
 **当前进展（2026-08-18）**
 
-- `0 = 未设置` 已贯通 Config、Session Profile、CLI、ACP/VS Code 解码和 Engine；
+- `0 = 未设置` 已贯通 Config、Session Profile、CLI、Web 解码和 Engine；
   历史默认 Profile 的 `8/64/256` 会迁移为 `0`，显式用户预算保持不变；
 - 持续变化的 Progress Signature 不受总 Sample 数限制；无进展 8/12/16 或
   16/32/48 策略仍由 Kernel 持久化并收敛；
@@ -290,7 +290,7 @@ R11 应把这些跳过项和时间敏感用例转换为确定性门禁。
 - Main/Workflow/Child Token 与 Cost 耗尽共享同一可恢复 Fault 契约；
 - 恢复历史身份、连续 Continue、Session Delta 重启恢复及压缩后绑定清理测试通过；
 - 持续进展、无进展收敛、Context Authority 等价和 Tool Pair 闭合测试通过；
-- Hermetic、Race、Architecture Ratchet、VS Code、Docs 和 Book 门禁通过。
+- Hermetic、Race、Architecture Ratchet、Web、Docs 和 Book 门禁通过。
 
 **扫描范围**
 
@@ -512,7 +512,7 @@ Event 仍持久且可 Replay。取消风暴测试验证 128 个并发 Subscripti
 
 - Operation、Event、Receipt、Problem/Fault 和 Terminal Data 的 Schema；
 - 事件重复、遗漏、乱序、未知类型和版本差异；
-- Go `eventview`、CLI/TUI、ACP 与 VS Code Projector 的解释差异；
+- Go `eventview`、CLI/TUI、Web Projector 的解释差异；
 - Host 是否自行推断完成、失败、审批或恢复。
 
 **统一方向**
@@ -528,12 +528,12 @@ Event 仍持久且可 Replay。取消风暴测试验证 128 个并发 Subscripti
 - 新增 Event 缺少 Trait 或投影处理时构建失败；
 - Replay、Reconnect 和 Unknown Event 行为有明确契约。
 
-R8 在 Go 和 VS Code 中都先拒绝协议版本差异，再按当前版本的 Operation Payload 或
+R8 在 Go 和 Web 中都先拒绝协议版本差异，再按当前版本的 Operation Payload 或
 Event Data Schema 解码。同版本未知 Event 会保留为 Opaque JSON，仅提供只读投影，
 且不具备可供 Host 推断终态或生命周期状态的 Traits。共享录制
 `testdata/contracts/host-event-sequence.json` 覆盖 Sequence Gap、重复和乱序 Event、
-未知 Event 以及结构化 Incomplete Terminal Convergence。Go `eventview` 与 VS Code
-`ChatProjector` 消费同一录制；CLI/TUI/Bench 共用 `eventview`，ACP Host Contract
+未知 Event 以及结构化 Incomplete Terminal Convergence。Go `eventview` 与 Web
+`ChatProjector` 消费同一录制；CLI/TUI/Bench 共用 `eventview`，Web Transport Host Contract
 继续覆盖 Cursor Replay、无重复 Reconnect 和 Desynchronization。
 
 ## R9：启停、装配、配置与环境差异
@@ -542,7 +542,7 @@ Event Data Schema 解码。同版本未知 Event 会保留为 Opaque JSON，仅�
 
 - `wire.NewExec` 各模块构造失败时的回滚和资源关闭；
 - Journal、Provider、MCP、Sandbox、Scheduler 和 Host Process 启动顺序；
-- CLI、ACP、VS Code、Workflow 中重复或冲突的默认值；
+- CLI、Web、Workflow 中重复或冲突的默认值；
 - macOS、Linux、Windows、CI、Remote SSH 和隔离 Worktree 差异。
 
 **统一方向**
@@ -562,7 +562,7 @@ R9 保持 `wire.NewExec` 为唯一 Composition Root。模块构造失败时，Ro
 Error 现在会与主错误聚合，不再被丢弃。故障矩阵在 13 个模块边界逐一注入失败并验证
 逆序关闭；Resource Stack 测试继续保证幂等 Close、错误聚合和资源身份。Session
 对外提供解析后配置、字段 Provenance 和 Runtime 派生默认 Session Profile 的独立
-副本。ACP 使用该 Profile 校验能力，不再自行定义 Mode、Posture 或 Step 默认值。
+副本。Web Transport 使用该 Profile 校验能力，不再自行定义 Mode、Posture 或 Step 默认值。
 Background Module 顺序门禁继续要求先完成 Runtime Recovery，再启动 MCP 后台
 Prewarm、Automation Reconcile 和 Scheduler；平台能力测试要求隔离能力缺失时显式
 返回类型化 Unavailable。

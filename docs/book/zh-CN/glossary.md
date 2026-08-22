@@ -21,7 +21,7 @@
 | Effect Owner | 附着于 Process、Connection、Registration、Subscription、Lease 或 Timer 的 Extension/Source/Plan/Generation Identity。 | Disable/Revoke 用它 Drain/Fence Effect。 |
 | Fleet（执行集群） | WorkGraph State 与 Ordered Fact 的 Read/Audit Projection。 | Fleet 不 Enqueue、Claim、Settle 或 Resume Work。 |
 | Guard（执行守卫） | 按 Policy、Permission、Approval、Constitution、Journal 和 Sandbox 要求检查 Tool 的边界。 | Host 不能绕过。 |
-| Host（交互宿主） | 提交 Operation 并投影 Event 的用户或 Client Adapter。 | CLI、TUI、ACP、VS Code 都是 Host。 |
+| Host（交互宿主） | 提交 Operation 并投影 Event 的用户或 Client Adapter。 | CLI、TUI、Web 都是 Host。 |
 | Idempotency（幂等性） | 重试操作不会产生非预期重复副作用的性质。 | 必须说明幂等 Key 或边界。 |
 | Journal（工作区日志） | 记录预期和已完成 Workspace 副作用，用于证据与恢复的持久数据。 | 不是普通应用日志。 |
 | Lane（执行通道） | Durable Placement 与显式 Inline/tmux Process Adapter。 | Placement 不是 Lifecycle/Scheduling Authority。 |

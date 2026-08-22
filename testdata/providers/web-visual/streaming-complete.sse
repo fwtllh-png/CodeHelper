@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_streaming_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"Review complete. Runtime evidence is consistent.\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":18,"completion_tokens":5}}
+
+data: [DONE]

@@ -41,7 +41,7 @@ type tokenCatalog struct {
 type colorRole struct {
 	Meaning string `json:"meaning"`
 	TUI     string `json:"tui"`
-	VSCode  string `json:"vscode"`
+	Web     string `json:"web"`
 }
 
 type state struct {
@@ -49,7 +49,7 @@ type state struct {
 	Terminal       bool     `json:"terminal"`
 	RequiresAction bool     `json:"requires_action"`
 	TUIAliases     []string `json:"tui_aliases"`
-	VSCodeAliases  []string `json:"vscode_aliases"`
+	WebAliases     []string `json:"web_aliases"`
 }
 
 type lifecycleFeedback struct {
@@ -104,8 +104,8 @@ func validate(value contract) error {
 	if value.Version != 1 {
 		return fmt.Errorf("version = %d, want 1", value.Version)
 	}
-	if !sameSet(value.Scope, []string{"tui", "vscode"}) {
-		return fmt.Errorf("scope must contain tui and vscode")
+	if !sameSet(value.Scope, []string{"tui", "web"}) {
+		return fmt.Errorf("scope must contain tui and web")
 	}
 	if len(value.Principles) < 4 || len(value.Accessibility) < 4 {
 		return errors.New("principles and accessibility rules must be substantive")
@@ -126,14 +126,14 @@ func validate(value contract) error {
 		return errors.New("semantic color roles drifted")
 	}
 	for name, role := range value.Tokens.SemanticColor {
-		if role.Meaning == "" || role.TUI == "" || role.VSCode == "" {
+		if role.Meaning == "" || role.TUI == "" || role.Web == "" {
 			return fmt.Errorf("semantic color %q is incomplete", name)
 		}
 	}
 	stateIDs := make([]string, 0, len(value.States))
 	for _, item := range value.States {
 		stateIDs = append(stateIDs, item.ID)
-		if len(item.TUIAliases) == 0 || len(item.VSCodeAliases) == 0 {
+		if len(item.TUIAliases) == 0 || len(item.WebAliases) == 0 {
 			return fmt.Errorf("state %q has no host aliases", item.ID)
 		}
 	}

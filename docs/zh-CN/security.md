@@ -14,7 +14,7 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - 模型输出与 Tool Argument；
 - Provider Response 与 Native Search Result；
 - MCP Server、Plugin Package、Skill Content 与 Hook；
-- HTTP/ACP Client Message；
+- HTTP/Web Transport Client Message；
 - 从其他 Workspace 复制的持久化状态；
 - Archive Path、Symlink、Environment 与 Process Output。
 
@@ -126,6 +126,12 @@ name = "OPENAI_API_KEY"
 - 怀疑泄漏后立即 Rotation；
 - 即使开启 Redaction，Log、Receipt、Crash Dump 与 Support Bundle 仍视为敏感。
 
+Web 写入凭证时会创建 Workspace/Provider 隔离的新 Keyring Entry，并以不含 Secret 的
+`prepared`、`config_committed`、`completed` Intent 和 Generation CAS 提交 Reference。
+切换后当前 Runtime 继续使用 Turn 已冻结的旧 Route，页面显示需要重启；下次启动会清理
+未提交的新 Orphan，并只在扫描 data-dir 内全部托管 Reference 后删除无引用的旧托管
+Entry。用户自定义 Keyring Name 无法完成全局引用证明，因此不会被自动删除。
+
 运行：
 
 ```bash
@@ -199,7 +205,7 @@ Observation Health 中，但不能改变业务 Turn Result。
 make security-test
 make sandbox-attack-test
 make secret-leak-test
-make vscode-security
+make web-build
 ```
 
 安全变更应覆盖：

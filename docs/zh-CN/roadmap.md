@@ -32,10 +32,10 @@
 
 ### 发布准备
 
-- 建立可重复的 CLI 与 VS Code Release Pipeline；
+- 建立可重复的 CLI 与 Web Release Pipeline；
 - 发布 Checksum、SBOM、Provenance、Compatibility 与 Rollback 指南；
 - 验证支持 Target 的 Clean Install；
-- 从持续维护的产品测试与发布工作流建立真实模型、真实 VS Code、Chaos、耐久和
+- 从持续维护的产品测试与发布工作流建立真实模型、真实 Web、Chaos、耐久和
   Canary 发布门禁；
 - 在第二个公开 Schema 出现前定义兼容策略。
 
@@ -78,7 +78,7 @@
 - 更好的 Session Navigation 与 Recovery Feedback；
 - Accessibility 与 Keyboard Discoverability。
 
-### VS Code
+### Web
 
 - 稳定的 Editor Context Synchronization；
 - 更完整的 Native Diff 与 Diagnostic Workflow；
@@ -86,7 +86,7 @@
 - 透明 Rollback 的 Managed Runtime Update；
 - 大型 Workspace 下的有界性能。
 
-### API 与 ACP
+### API 与 Web Transport
 
 - 公开 Contract Example；
 - Client Conformance Fixture；

@@ -32,7 +32,7 @@ git diff --check
 ### Runtime 与 Protocol
 
 - 定义 Operation、Event、Cancel、Error 与 Replay 语义。
-- 更新 Schema/Golden 和 ACP/HTTP Contract。
+- 更新 Schema/Golden 和 Web Transport Contract。
 - 通过仓库命令重新生成并提交 Artifact。
 
 ### Persistence

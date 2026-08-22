@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": "assets/index-09o8ZH-X.js",
+      "sha256": "1d0805a4423a545e3c103eae256696aa02c3c4e93b5b87e7b1b13c5e4417ad2e",
+      "bytes": 368141,
+      "media_type": "text/javascript; charset=utf-8"
+    },
+    {
+      "path": "assets/index-CFKuW6_9.css",
+      "sha256": "4eb162a67e33c5c5cf639f34aea844909ff26d63f650648fa2fb42dfe2e1f43a",
+      "bytes": 21035,
+      "media_type": "text/css; charset=utf-8"
+    },
+    {
+      "path": "index.html",
+      "sha256": "13ee5689db681202528e3dc2e71f053a2e0af7d5df5b1d5cfde8d84e647422f5",
+      "bytes": 481,
+      "media_type": "text/html; charset=utf-8"
+    },
+    {
+      "path": "theme-bootstrap.js",
+      "sha256": "4b2621f97c2adc983d10523dbccd23cb24ce6c0da7b490461049807a1cb56df0",
+      "bytes": 412,
+      "media_type": "text/javascript; charset=utf-8"
+    }
+  ]
+}

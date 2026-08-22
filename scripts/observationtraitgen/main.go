@@ -44,7 +44,7 @@ func main() {
 	)
 	typeScriptPath := flag.String(
 		"typescript",
-		"extensions/vscode/src/protocol/observation.generated.ts",
+		"web/src/protocol/observation.generated.ts",
 		"generated TypeScript output",
 	)
 	schemaPath := flag.String(

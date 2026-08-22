@@ -12,9 +12,8 @@ import (
 
 const WorkspaceIdentityVersion = 1
 
-// WorkspaceIdentity binds an editor-visible workspace URI to the filesystem
-// root visible to the Runtime process. Remote editor URIs must never be treated
-// as filesystem paths without this binding.
+// WorkspaceIdentity binds a host-visible workspace URI to the filesystem root
+// visible to the Runtime process.
 type WorkspaceIdentity struct {
 	Version     int    `json:"version"`
 	RootID      string `json:"root_id"`
@@ -53,24 +52,13 @@ func (i WorkspaceIdentity) Validate() error {
 	if err != nil {
 		return err
 	}
-	switch uri.Scheme {
-	case "file":
-		if uri.Host != "" || i.RemoteName != "" {
-			return errors.New("local workspace identity cannot carry authority or remote name")
-		}
-	case "vscode-remote":
-		if uri.Host == "" || !validRemoteName(i.RemoteName) ||
-			!remoteAuthorityMatchesName(uri.Host, i.RemoteName) {
-			return errors.New("remote workspace identity requires authority and remote name")
-		}
-	default:
+	if uri.Scheme != "file" {
 		return errors.New("workspace identity uri scheme is unsupported")
 	}
+	if uri.Host != "" || i.RemoteName != "" {
+		return errors.New("local workspace identity cannot carry authority or remote name")
+	}
 	return nil
-}
-
-func remoteAuthorityMatchesName(authority, remoteName string) bool {
-	return authority == remoteName || strings.HasPrefix(authority, remoteName+"+")
 }
 
 func parseCanonicalWorkspaceURI(raw string) (*url.URL, error) {
@@ -97,22 +85,6 @@ func canonicalPercentEscapes(value string) bool {
 			return false
 		}
 		index += 2
-	}
-	return true
-}
-
-func validRemoteName(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, character := range value {
-		if (character >= 'a' && character <= 'z') ||
-			(character >= 'A' && character <= 'Z') ||
-			(character >= '0' && character <= '9') ||
-			character == '.' || character == '_' || character == '-' {
-			continue
-		}
-		return false
 	}
 	return true
 }

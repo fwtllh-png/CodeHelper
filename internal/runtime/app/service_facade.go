@@ -28,6 +28,9 @@ func runtimeProblem(code protocol.ErrorCode, message string, cause error) *proto
 func retryableProblem(code protocol.ErrorCode, message string) *protocol.Problem {
 	return protocol.NewProblem(code, message, true, nil)
 }
+func turnNotActiveProblem() *protocol.Problem {
+	return runtimeProblem(protocol.CodeInvalidArgument, "turn is not active", nil)
+}
 func resourceProblem(code protocol.ErrorCode, message string, retryable bool, reason, resourceID string) *protocol.Problem {
 	return protocol.NewProblemWithDetails(code, message, retryable, protocol.ProblemDetails{Reason: reason, ResourceID: resourceID}, nil)
 }

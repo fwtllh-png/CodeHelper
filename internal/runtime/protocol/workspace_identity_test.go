@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestWorkspaceIdentityValidatesLocalAndRemoteRoots(t *testing.T) {
+func TestWorkspaceIdentityValidatesLocalRoot(t *testing.T) {
 	root := t.TempDir()
 	local, err := NewWorkspaceIdentity(
 		(&url.URL{Scheme: "file", Path: root}).String(),
@@ -19,22 +19,6 @@ func TestWorkspaceIdentityValidatesLocalAndRemoteRoots(t *testing.T) {
 	}
 	if local.Version != WorkspaceIdentityVersion || len(local.RootID) != 64 {
 		t.Fatalf("local identity = %+v", local)
-	}
-	remote, err := NewWorkspaceIdentity(
-		"vscode-remote://ssh-remote+dev/workspace",
-		"/workspace",
-		"ssh-remote",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if remote.RemoteName != "ssh-remote" || remote.RootID == local.RootID {
-		t.Fatalf("remote identity = %+v", remote)
-	}
-	forged := remote
-	forged.RemoteName = "dev-container"
-	if err := forged.Validate(); err == nil {
-		t.Fatal("remote authority accepted a mismatched remote name")
 	}
 }
 

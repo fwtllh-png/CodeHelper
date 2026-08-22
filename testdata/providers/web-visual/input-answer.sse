@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"Using the selected verification scope."},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":16,"completion_tokens":5}}
+
+data: [DONE]

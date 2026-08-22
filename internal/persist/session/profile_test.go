@@ -26,7 +26,7 @@ func TestProfilePersistsWithRevisionCASAndPreservesMetadata(t *testing.T) {
 	}
 	_, err = repository.Create(t.Context(), session.Session{
 		ID: "session", WorkspaceID: workspace.ID,
-		Metadata: json.RawMessage(`{"transport":"acp","isolation":"worktree"}`),
+		Metadata: json.RawMessage(`{"transport":"web","isolation":"worktree"}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestProfilePersistsWithRevisionCASAndPreservesMetadata(t *testing.T) {
 	if err := json.Unmarshal(record.Metadata, &metadata); err != nil {
 		t.Fatal(err)
 	}
-	if string(metadata["transport"]) != `"acp"` ||
+	if string(metadata["transport"]) != `"web"` ||
 		string(metadata["isolation"]) != `"worktree"` ||
 		len(metadata["profile"]) == 0 {
 		t.Fatalf("metadata = %s", record.Metadata)

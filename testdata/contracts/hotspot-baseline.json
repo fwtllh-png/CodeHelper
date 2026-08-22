@@ -44,6 +44,7 @@
         "internal/orchestration/workflow",
         "internal/persist/session/ux",
         "internal/persist/state",
+        "internal/platform/ownerlease",
         "internal/platform/process",
         "internal/runtime/app",
         "internal/runtime/app/wire",

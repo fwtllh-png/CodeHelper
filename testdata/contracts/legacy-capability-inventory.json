@@ -1,0 +1,734 @@
+{
+  "version": 1,
+  "source_hash": "265c83e4788bb7d023e726762247b381ff9b7718558ebd1cddf1e905fdb774f3",
+  "items": [
+    {
+      "id": "acp_dynamic_method.tool-call-result",
+      "kind": "acp_dynamic_method",
+      "name": "tool/call/result",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_dynamic_method.tool-catalog",
+      "kind": "acp_dynamic_method",
+      "name": "tool/catalog",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_dynamic_method.tool-register",
+      "kind": "acp_dynamic_method",
+      "name": "tool/register",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_dynamic_method.tool-replace",
+      "kind": "acp_dynamic_method",
+      "name": "tool/replace",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_dynamic_method.tool-revoke",
+      "kind": "acp_dynamic_method",
+      "name": "tool/revoke",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.agent-list",
+      "kind": "acp_method",
+      "name": "agent/list",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.checkpoint-fork",
+      "kind": "acp_method",
+      "name": "checkpoint/fork",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.checkpoint-get",
+      "kind": "acp_method",
+      "name": "checkpoint/get",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.checkpoint-list",
+      "kind": "acp_method",
+      "name": "checkpoint/list",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.checkpoint-restore",
+      "kind": "acp_method",
+      "name": "checkpoint/restore",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.extension-control",
+      "kind": "acp_method",
+      "name": "extension/control",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.extension-list",
+      "kind": "acp_method",
+      "name": "extension/list",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.initialize",
+      "kind": "acp_method",
+      "name": "initialize",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.model-list",
+      "kind": "acp_method",
+      "name": "model/list",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.model-select",
+      "kind": "acp_method",
+      "name": "model/select",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.plan-get",
+      "kind": "acp_method",
+      "name": "plan/get",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.plan-implement",
+      "kind": "acp_method",
+      "name": "plan/implement",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.provider-list",
+      "kind": "acp_method",
+      "name": "provider/list",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.provider-select",
+      "kind": "acp_method",
+      "name": "provider/select",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-cancel",
+      "kind": "acp_method",
+      "name": "session/cancel",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-delete",
+      "kind": "acp_method",
+      "name": "session/delete",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-history",
+      "kind": "acp_method",
+      "name": "session/history",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-lifecycle-update",
+      "kind": "acp_method",
+      "name": "session/lifecycle/update",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-list",
+      "kind": "acp_method",
+      "name": "session/list",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-load",
+      "kind": "acp_method",
+      "name": "session/load",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-merge",
+      "kind": "acp_method",
+      "name": "session/merge",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-new",
+      "kind": "acp_method",
+      "name": "session/new",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-profile-get",
+      "kind": "acp_method",
+      "name": "session/profile/get",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-profile-update",
+      "kind": "acp_method",
+      "name": "session/profile/update",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-prompt",
+      "kind": "acp_method",
+      "name": "session/prompt",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-rename",
+      "kind": "acp_method",
+      "name": "session/rename",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-replay",
+      "kind": "acp_method",
+      "name": "session/replay",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-status",
+      "kind": "acp_method",
+      "name": "session/status",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-submit",
+      "kind": "acp_method",
+      "name": "session/submit",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.session-tool-catalog",
+      "kind": "acp_method",
+      "name": "session/tool/catalog",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.shutdown",
+      "kind": "acp_method",
+      "name": "shutdown",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.task-list",
+      "kind": "acp_method",
+      "name": "task/list",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.thread-get",
+      "kind": "acp_method",
+      "name": "thread/get",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.thread-list",
+      "kind": "acp_method",
+      "name": "thread/list",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.turn-recover",
+      "kind": "acp_method",
+      "name": "turn/recover",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "acp_method.usage-query",
+      "kind": "acp_method",
+      "name": "usage/query",
+      "source": "internal/host/runtimeapi/acp/server.go",
+      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
+    },
+    {
+      "id": "host_journey.approve",
+      "kind": "host_journey",
+      "name": "approve",
+      "source": "testdata/contracts/host-journey-contract.json",
+      "source_hash": "e4264966689233fd3841b6a6060b7da28df54a6e66128eeaa32eb54f35431b8a"
+    },
+    {
+      "id": "host_journey.cancel",
+      "kind": "host_journey",
+      "name": "cancel",
+      "source": "testdata/contracts/host-journey-contract.json",
+      "source_hash": "e4264966689233fd3841b6a6060b7da28df54a6e66128eeaa32eb54f35431b8a"
+    },
+    {
+      "id": "host_journey.input",
+      "kind": "host_journey",
+      "name": "input",
+      "source": "testdata/contracts/host-journey-contract.json",
+      "source_hash": "e4264966689233fd3841b6a6060b7da28df54a6e66128eeaa32eb54f35431b8a"
+    },
+    {
+      "id": "host_journey.receipt",
+      "kind": "host_journey",
+      "name": "receipt",
+      "source": "testdata/contracts/host-journey-contract.json",
+      "source_hash": "e4264966689233fd3841b6a6060b7da28df54a6e66128eeaa32eb54f35431b8a"
+    },
+    {
+      "id": "host_journey.recover",
+      "kind": "host_journey",
+      "name": "recover",
+      "source": "testdata/contracts/host-journey-contract.json",
+      "source_hash": "e4264966689233fd3841b6a6060b7da28df54a6e66128eeaa32eb54f35431b8a"
+    },
+    {
+      "id": "host_journey.start",
+      "kind": "host_journey",
+      "name": "start",
+      "source": "testdata/contracts/host-journey-contract.json",
+      "source_hash": "e4264966689233fd3841b6a6060b7da28df54a6e66128eeaa32eb54f35431b8a"
+    },
+    {
+      "id": "host_journey.stream",
+      "kind": "host_journey",
+      "name": "stream",
+      "source": "testdata/contracts/host-journey-contract.json",
+      "source_hash": "e4264966689233fd3841b6a6060b7da28df54a6e66128eeaa32eb54f35431b8a"
+    },
+    {
+      "id": "host_journey.verify",
+      "kind": "host_journey",
+      "name": "verify",
+      "source": "testdata/contracts/host-journey-contract.json",
+      "source_hash": "e4264966689233fd3841b6a6060b7da28df54a6e66128eeaa32eb54f35431b8a"
+    },
+    {
+      "id": "legacy_make_target.acp-interop",
+      "kind": "legacy_make_target",
+      "name": "acp-interop",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.deepseek-vscode",
+      "kind": "legacy_make_target",
+      "name": "deepseek-vscode",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-approval-integration",
+      "kind": "legacy_make_target",
+      "name": "vscode-approval-integration",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-build",
+      "kind": "legacy_make_target",
+      "name": "vscode-build",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-check",
+      "kind": "legacy_make_target",
+      "name": "vscode-check",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-compatibility",
+      "kind": "legacy_make_target",
+      "name": "vscode-compatibility",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-distribution",
+      "kind": "legacy_make_target",
+      "name": "vscode-distribution",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-install",
+      "kind": "legacy_make_target",
+      "name": "vscode-install",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-integration",
+      "kind": "legacy_make_target",
+      "name": "vscode-integration",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-local-setup",
+      "kind": "legacy_make_target",
+      "name": "vscode-local-setup",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-matrix-report",
+      "kind": "legacy_make_target",
+      "name": "vscode-matrix-report",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-multiroot-integration",
+      "kind": "legacy_make_target",
+      "name": "vscode-multiroot-integration",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-package",
+      "kind": "legacy_make_target",
+      "name": "vscode-package",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-package-universal",
+      "kind": "legacy_make_target",
+      "name": "vscode-package-universal",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-performance",
+      "kind": "legacy_make_target",
+      "name": "vscode-performance",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-protocol-check",
+      "kind": "legacy_make_target",
+      "name": "vscode-protocol-check",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-rc",
+      "kind": "legacy_make_target",
+      "name": "vscode-rc",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-release-dry-run",
+      "kind": "legacy_make_target",
+      "name": "vscode-release-dry-run",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-rosetta-integration",
+      "kind": "legacy_make_target",
+      "name": "vscode-rosetta-integration",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-runtime-integration",
+      "kind": "legacy_make_target",
+      "name": "vscode-runtime-integration",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-security",
+      "kind": "legacy_make_target",
+      "name": "vscode-security",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-subagent-integration",
+      "kind": "legacy_make_target",
+      "name": "vscode-subagent-integration",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-test",
+      "kind": "legacy_make_target",
+      "name": "vscode-test",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "legacy_make_target.vscode-update-integration",
+      "kind": "legacy_make_target",
+      "name": "vscode-update-integration",
+      "source": "Makefile",
+      "source_hash": "769353683ea3667adda484579d9ba1dff76e326108ea79e091e836061d0d2724"
+    },
+    {
+      "id": "secondary_surface.automation-management",
+      "kind": "secondary_surface",
+      "name": "automation-management",
+      "source": "docs/zh-CN/web-primary-entry-plan.md",
+      "source_hash": ""
+    },
+    {
+      "id": "secondary_surface.boot-repair",
+      "kind": "secondary_surface",
+      "name": "boot-repair",
+      "source": "docs/zh-CN/web-primary-entry-plan.md",
+      "source_hash": ""
+    },
+    {
+      "id": "secondary_surface.cli-host",
+      "kind": "secondary_surface",
+      "name": "cli-host",
+      "source": "docs/zh-CN/web-primary-entry-plan.md",
+      "source_hash": ""
+    },
+    {
+      "id": "secondary_surface.mcp-management",
+      "kind": "secondary_surface",
+      "name": "mcp-management",
+      "source": "docs/zh-CN/web-primary-entry-plan.md",
+      "source_hash": ""
+    },
+    {
+      "id": "secondary_surface.tui-host",
+      "kind": "secondary_surface",
+      "name": "tui-host",
+      "source": "docs/zh-CN/web-primary-entry-plan.md",
+      "source_hash": ""
+    },
+    {
+      "id": "secondary_surface.worker-execution",
+      "kind": "secondary_surface",
+      "name": "worker-execution",
+      "source": "docs/zh-CN/web-primary-entry-plan.md",
+      "source_hash": ""
+    },
+    {
+      "id": "vscode_command.codehelper-checkbinaryupdates",
+      "kind": "vscode_command",
+      "name": "codehelper.checkBinaryUpdates",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-configurecredential",
+      "kind": "vscode_command",
+      "name": "codehelper.configureCredential",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-disableextension",
+      "kind": "vscode_command",
+      "name": "codehelper.disableExtension",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-editselection",
+      "kind": "vscode_command",
+      "name": "codehelper.editSelection",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-enableextension",
+      "kind": "vscode_command",
+      "name": "codehelper.enableExtension",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-explainselection",
+      "kind": "vscode_command",
+      "name": "codehelper.explainSelection",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-generatetestsforselection",
+      "kind": "vscode_command",
+      "name": "codehelper.generateTestsForSelection",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-newchat",
+      "kind": "vscode_command",
+      "name": "codehelper.newChat",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-refactorselection",
+      "kind": "vscode_command",
+      "name": "codehelper.refactorSelection",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-refreshextensions",
+      "kind": "vscode_command",
+      "name": "codehelper.refreshExtensions",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-repairruntime",
+      "kind": "vscode_command",
+      "name": "codehelper.repairRuntime",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-restartruntime",
+      "kind": "vscode_command",
+      "name": "codehelper.restartRuntime",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-runquickstart",
+      "kind": "vscode_command",
+      "name": "codehelper.runQuickstart",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-runsetup",
+      "kind": "vscode_command",
+      "name": "codehelper.runSetup",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-selectchat",
+      "kind": "vscode_command",
+      "name": "codehelper.selectChat",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-selectworkspaceroot",
+      "kind": "vscode_command",
+      "name": "codehelper.selectWorkspaceRoot",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-showstatus",
+      "kind": "vscode_command",
+      "name": "codehelper.showStatus",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-startruntimecapture",
+      "kind": "vscode_command",
+      "name": "codehelper.startRuntimeCapture",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_command.codehelper-stopruntimecapture",
+      "kind": "vscode_command",
+      "name": "codehelper.stopRuntimeCapture",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_view.codehelper-agents",
+      "kind": "vscode_view",
+      "name": "codehelper.agents",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_view.codehelper-approvals",
+      "kind": "vscode_view",
+      "name": "codehelper.approvals",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_view.codehelper-changes",
+      "kind": "vscode_view",
+      "name": "codehelper.changes",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_view.codehelper-chat",
+      "kind": "vscode_view",
+      "name": "codehelper.chat",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_view.codehelper-extensions",
+      "kind": "vscode_view",
+      "name": "codehelper.extensions",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    },
+    {
+      "id": "vscode_view.codehelper-usage",
+      "kind": "vscode_view",
+      "name": "codehelper.usage",
+      "source": "extensions/vscode/package.json",
+      "source_hash": "e324c73c1bfeecb58979ec866cbf3fff5d3b13cd11bc08c8d5b7bbffae22965c"
+    }
+  ]
+}

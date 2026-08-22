@@ -26,6 +26,14 @@ type EffectID string
 
 type Cursor uint64
 
+func NewSessionID() (string, error) {
+	return newID("session")
+}
+
+func NewWorkspaceID() (string, error) {
+	return newID("workspace")
+}
+
 func NewThreadID() (ThreadID, error) {
 	value, err := newID("thread")
 	return ThreadID(value), err

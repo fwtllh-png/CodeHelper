@@ -37,7 +37,7 @@ last_verified: null
 
 ## 问题背景
 
-CLI、ACP、VS Code、Persistence 和 Test 都要描述同一份工作。消息跨 Process
+CLI、Web、Persistence 和 Test 都要描述同一份工作。消息跨 Process
 和语言后，共享 Go Struct 并不足够；契约必须拒绝 Unknown Shape、保留 Identity，并
 显式演进。
 
@@ -54,7 +54,7 @@ CLI、ACP、VS Code、Persistence 和 Test 都要描述同一份工作。消息�
 - 每种 Event Kind 携带 Protocol Traits——Class、Item Owner、Durability、Correlation
   与 Terminal；Host 消费 Manifest，而不是各自发明分类。
 - Session/Profile、Provider/Model、Tool Catalog、Lifecycle/Search、Checkpoint、Plan
-  与 Turn Recovery 是共享 Host Contract，不是 VS Code Local State。
+  与 Turn Recovery 是共享 Host Contract，不是 Web Local State。
 
 ## CodeHelper 设计
 
@@ -109,7 +109,7 @@ Event 分类是 Protocol 数据，不是 Host Policy。`event_traits.json` 为�
 
 `make protocol-schema` 先运行 `scripts/eventtraitgen` 生成
 `event_traits.gen.go`；Schema 再把同一 Table 作为 `event_traits` 写入 Artifact，
-VS Code 生成器输出 TypeScript Table 与 `event-traits.golden.json`。
+Web 生成器输出 TypeScript Table 与 `event-traits.golden.json`。
 `IsTerminalEvent` 从 `Traits(kind).Terminal` 推导；Go Embed Test 与 TypeScript
 `--check` 会在产物漂移时失败。
 
@@ -162,7 +162,7 @@ Timestamp、Kind/Payload 一致性和 Payload 语义。公开 Kind 列表返回�
 修改全局 Protocol State。Fuzz Test 确保 Malformed JSON 不会 Panic。
 
 Protocol 文件按 Contract Role 拆分，同时保持 Wire Schema 不变。提交的 JSON Schema
-与生成的 VS Code Type 是行为边界；文件布局属于由 Hotspot Baseline 保护的实现细节。
+与生成的 Web Type 是行为边界；文件布局属于由 Hotspot Baseline 保护的实现细节。
 
 Session Contract 有意区分 Durable Summary 与 Transient Search Match、Immutable
 Checkpoint/Plan Artifact 与 Mutable Lifecycle State、Accepted Turn Identity 与

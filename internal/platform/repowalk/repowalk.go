@@ -300,13 +300,36 @@ func (w *Walker) gitFiles(ctx context.Context) ([]string, bool, error) {
 	if err != nil || result.ExitCode != 0 {
 		return nil, false, nil
 	}
+	ignoredResult, err := w.run(ctx, process.Options{
+		Path: "git",
+		Args: []string{
+			"ls-files", "--cached", "--ignored", "--exclude-standard", "-z",
+		},
+		Dir: w.root, DirFile: pinned, Sandbox: w.backend, RequireStrongSandbox: true,
+	})
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, false, ctxErr
+	}
+	if err != nil || ignoredResult.ExitCode != 0 {
+		return nil, false, nil
+	}
+	ignored := make(map[string]struct{})
+	for _, field := range strings.Split(ignoredResult.Stdout, "\x00") {
+		if field != "" {
+			ignored[filepath.ToSlash(field)] = struct{}{}
+		}
+	}
 	fields := strings.Split(result.Stdout, "\x00")
 	paths := make([]string, 0, len(fields))
 	for _, field := range fields {
 		if field == "" {
 			continue
 		}
-		paths = append(paths, filepath.ToSlash(field))
+		relative := filepath.ToSlash(field)
+		if _, excluded := ignored[relative]; excluded {
+			continue
+		}
+		paths = append(paths, relative)
 	}
 	return paths, true, nil
 }

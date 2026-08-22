@@ -12,6 +12,183 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
+func TestCreateLifecycleAtomicallySeedsWorkspaceSessionAndThread(t *testing.T) {
+	store, err := sqlitestate.Open(
+		t.Context(),
+		filepath.Join(t.TempDir(), "state.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	repository := session.NewSQLiteRepository(store)
+	created, err := repository.CreateLifecycle(
+		t.Context(),
+		protocol.SessionCreateSeed{
+			Version:   protocol.SessionLifecycleVersion,
+			SessionID: "session-web", WorkspaceID: "workspace-web",
+			WorkspaceRoot: "/workspace", WorkspaceLabel: "workspace",
+			ThreadID: "thread-web", Title: "Web",
+			Provider: "fixture", Model: "fixture", Isolation: "shared",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.SessionID != "session-web" ||
+		created.ThreadID != "thread-web" ||
+		created.WorkspaceRoot != "/workspace" ||
+		created.Provider != "fixture" ||
+		created.Model != "fixture" ||
+		created.Revision != 1 {
+		t.Fatalf("created lifecycle = %+v", created)
+	}
+	defaults := persistedProfile()
+	defaults.Model = "fixture"
+	profile, err := repository.EnsureProfile(
+		t.Context(),
+		"session-web",
+		defaults,
+	)
+	if err != nil {
+		t.Fatalf("initialize seeded lifecycle profile: %v", err)
+	}
+	if profile.Provider != "fixture" || profile.Model != "fixture" {
+		t.Fatalf("initialized profile = %+v", profile)
+	}
+	var workspaces, sessions, threads int
+	for query, target := range map[string]*int{
+		"SELECT COUNT(*) FROM workspaces": &workspaces,
+		"SELECT COUNT(*) FROM sessions":   &sessions,
+		"SELECT COUNT(*) FROM threads":    &threads,
+	} {
+		if err := store.DB().QueryRowContext(t.Context(), query).Scan(target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if workspaces != 1 || sessions != 1 || threads != 1 {
+		t.Fatalf(
+			"seed counts workspace=%d session=%d thread=%d",
+			workspaces,
+			sessions,
+			threads,
+		)
+	}
+	var metadata string
+	if err := store.DB().QueryRowContext(
+		t.Context(),
+		`SELECT metadata_json FROM sessions WHERE id = 'session-web'`,
+	).Scan(&metadata); err != nil {
+		t.Fatal(err)
+	}
+	var stored map[string]any
+	if err := json.Unmarshal([]byte(metadata), &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored["isolation"] != "" {
+		t.Fatalf("shared isolation persisted as %#v, want legacy-compatible empty value", stored["isolation"])
+	}
+}
+
+func TestPresentationReadFenceBindsLifecycleThreadsAndEventWatermark(t *testing.T) {
+	store, err := sqlitestate.Open(
+		t.Context(),
+		filepath.Join(t.TempDir(), "state.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	repository := session.NewSQLiteRepository(store)
+	if _, err := repository.CreateLifecycle(
+		t.Context(),
+		protocol.SessionCreateSeed{
+			Version:   protocol.SessionLifecycleVersion,
+			SessionID: "session-fence", WorkspaceID: "workspace-fence",
+			WorkspaceRoot: "/workspace", WorkspaceLabel: "workspace",
+			ThreadID: "thread-fence", Title: "Fence",
+			Provider: "fixture", Model: "fixture", Isolation: "shared",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := store.DB().ExecContext(t.Context(), `
+		INSERT INTO event_reservations(
+			sequence, event_id, status, created_at, updated_at
+		) VALUES (7, 'event-fence', 'abandoned', ?, ?)`,
+		now,
+		now,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	fence, err := repository.PresentationReadFence(
+		t.Context(),
+		"session-fence",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fence.ThroughSequence != 7 ||
+		fence.Session.Revision != 1 ||
+		fence.Session.ThreadID != "thread-fence" ||
+		len(fence.ThreadIDs) != 1 ||
+		fence.ThreadIDs[0] != "thread-fence" {
+		t.Fatalf("presentation read fence = %+v", fence)
+	}
+}
+
+func TestLifecycleRejectsArchiveAndDeleteWithActiveTurn(t *testing.T) {
+	store, err := sqlitestate.Open(
+		t.Context(),
+		filepath.Join(t.TempDir(), "state.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	repository := session.NewSQLiteRepository(store)
+	if _, err := repository.CreateLifecycle(
+		t.Context(),
+		protocol.SessionCreateSeed{
+			Version:   protocol.SessionLifecycleVersion,
+			SessionID: "session-active", WorkspaceID: "workspace-active",
+			WorkspaceRoot: "/workspace", WorkspaceLabel: "workspace",
+			ThreadID: "thread-active", Title: "Active",
+			Provider: "fixture", Model: "fixture", Isolation: "shared",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := store.DB().ExecContext(t.Context(), `
+		INSERT INTO turns(
+			id, thread_id, ordinal, status, created_at, updated_at
+		) VALUES ('turn-active', 'thread-active', 1, 'active', ?, ?)`,
+		now,
+		now,
+	); err != nil {
+		t.Fatal(err)
+	}
+	archived := true
+	if _, err := repository.UpdateLifecycle(
+		t.Context(),
+		"session-active",
+		1,
+		protocol.SessionLifecyclePatch{Archived: &archived},
+	); err == nil {
+		t.Fatal("session with an active turn was archived")
+	}
+	if _, err := repository.DeleteLifecycle(
+		t.Context(),
+		"session-active",
+		1,
+	); err == nil {
+		t.Fatal("session with an active turn was deleted")
+	}
+}
+
 func TestLifecycleListSearchUpdateAndDeleteProtection(t *testing.T) {
 	store, err := sqlitestate.Open(
 		t.Context(),
@@ -37,11 +214,11 @@ func TestLifecycleListSearchUpdateAndDeleteProtection(t *testing.T) {
 	}{
 		{
 			"session-a", "thread-a", "Fix login",
-			`{"transport":"acp","isolation":"worktree","provider":"fixture","model":"model"}`,
+			`{"transport":"web","isolation":"worktree","provider":"fixture","model":"model"}`,
 		},
 		{
 			"session-b", "thread-b", "Review API",
-			`{"transport":"acp","provider":"fixture","model":"model"}`,
+			`{"transport":"web","provider":"fixture","model":"model"}`,
 		},
 	} {
 		if _, err := repository.Create(t.Context(), session.Session{
@@ -182,7 +359,7 @@ func TestLifecyclePersistsTheActiveForkThread(t *testing.T) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if _, err := repository.Create(t.Context(), session.Session{
 		ID: "session", WorkspaceID: workspace.ID,
-		Metadata:  json.RawMessage(`{"transport":"acp"}`),
+		Metadata:  json.RawMessage(`{"transport":"web"}`),
 		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)

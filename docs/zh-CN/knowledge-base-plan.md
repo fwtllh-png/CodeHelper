@@ -44,7 +44,7 @@ CodeHelper 的文档不应只回答“命令怎么运行”，还应系统回答
 
 - Quick Start、Configuration、Usage；
 - Architecture 与 Security 概览；
-- VS Code、本地开发、Roadmap、Troubleshooting；
+- Web、本地开发、Roadmap、Troubleshooting；
 - Contributor 与 Agent 的仓库工作规则。
 
 产品手册应简洁、可检索、面向任务，不承担完整技术教学。
@@ -66,7 +66,7 @@ docs/book/
 包括：
 
 - Runtime Protocol JSON Schema；
-- VS Code Compatibility Contract；
+- Web Compatibility Contract；
 - CLI `--help`；
 - Config Schema 与校验逻辑；
 - 生成的 TypeScript Protocol Type；
@@ -161,8 +161,8 @@ docs/book/
 
 1. CLI 和 Machine-readable Output
 2. TUI State Projection
-3. ACP Stdio 与编辑器互操作
-4. VS Code 原生 Agent Chat 与 Runtime Authority
+3. Web Transport Stdio 与编辑器互操作
+4. Web 原生 Agent Chat 与 Runtime Authority
 
 ### 第十一部分：扩展生态
 
@@ -176,11 +176,11 @@ docs/book/
 ### 第十二部分：Agent 工程实践
 
 1. Hermetic Fixture 与真实 Provider Smoke
-2. Unit、Contract、Integration 与 Electron Test
+2. Unit、Contract、Integration 与 Web Test
 3. 并发测试、Race 与确定性同步
 4. Benchmark、性能预算与回归
 5. 跨平台构建、Sandbox 差异与能力探测
-6. VSIX、SBOM、Provenance 与 Release Evidence
+6. Binary、SBOM、Provenance 与 Release Evidence
 7. 如何阅读和修改大型 Agent 工程
 
 ### 第十三部分：动手实验
@@ -192,7 +192,7 @@ docs/book/
 5. 构造一次 Approval 与 Denial
 6. 构建可恢复 Workflow
 7. 调试 Worker Lease 与 Retry
-8. 完成一个 VS Code 端到端功能
+8. 完成一个 Web 端到端功能
 9. 从 Trace 复盘一次失败
 10. 设计并验证一个新的 Agent 能力
 
@@ -211,7 +211,7 @@ docs/book/
 | Trace、Usage、Verify | `internal/observability` |
 | CLI、TUI、API Host | `internal/host` |
 | OS 与 Process | `internal/platform` |
-| VS Code | `extensions/vscode` |
+| Web | `web` |
 
 每个主要 Package 最终都应至少有一章设计导读、一张执行流程图和一条可运行验证路径。
 
@@ -397,7 +397,7 @@ Checkpoint Commit Window、Lane/Fleet Control/Evidence，并将 Child-to-parent 
 Guarded Two-phase Integration。
 
 2026-08-06 已完成第十部分质量提升：Host 与协议章节现在明确 CLI Output Channel、TUI
-Reducer/Reconstruction、ACP Connection Ordering，以及 VS Code Supervisor、Cursor、
+Reducer/Reconstruction、Web Transport Connection Ordering，以及 Web Supervisor、Cursor、
 Multi-root Workspace 与 Compatibility Recovery。
 
 2026-08-06 已完成第十一部分质量提升：扩展生态章节现在明确 Provider Route/Stream
@@ -414,7 +414,7 @@ Change Workflow。
 2026-08-06 已完成第十三部分质量提升：10 个动手实验均使用当前 Command/Test Name、
 Temporary State Isolation、Evidence Worksheet、Adversarial Control、Crash-window/
 Authority Matrix、Measurable Completion Gate、Failure Diagnosis 与 Cleanup Check；形成从
-First Turn 到 Provider、Tool、Governance、Recovery、Orchestration、VS Code、Incident
+First Turn 到 Provider、Tool、Governance、Recovery、Orchestration、Web、Incident
 Reconstruction 和 Capability Rollout 的无网络实践路径。
 
 ### 阶段 2：Runtime 核心
@@ -446,9 +446,9 @@ task-lease-retry、task-checkpoint-recovery、task-lane-fleet）。
 ### 阶段 4：Host 与扩展生态
 
 状态：进行中。Host 与协议、扩展生态共 10 章中文正文均已交付，其中 1 章在
-`docs/book/catalog.json` 中标记为 `verified`（host-acp）。
+`docs/book/catalog.json` 中标记为 `verified`（host-web-transport）。
 
-- CLI、TUI、ACP、VS Code；
+- CLI、TUI、Web；
 - MCP、Skill、Plugin、Hook；
 - Provider、Tool 和 Host 扩展教程。
 

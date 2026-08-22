@@ -34,18 +34,18 @@ func validContract() contract {
 		"idle", "working", "waiting", "succeeded", "degraded", "failed", "blocked",
 	} {
 		states = append(states, state{
-			ID: id, TUIAliases: []string{id}, VSCodeAliases: []string{id},
+			ID: id, TUIAliases: []string{id}, WebAliases: []string{id},
 		})
 	}
 	colors := map[string]colorRole{}
 	for _, id := range []string{
 		"neutral", "info", "success", "warning", "danger", "focus",
 	} {
-		colors[id] = colorRole{Meaning: id, TUI: id, VSCode: id}
+		colors[id] = colorRole{Meaning: id, TUI: id, Web: id}
 	}
 	return contract{
 		Version:    1,
-		Scope:      []string{"tui", "vscode"},
+		Scope:      []string{"tui", "web"},
 		Principles: []string{"one", "two", "three", "four"},
 		InformationArchitecture: []architectureRegion{
 			{Region: "context", Purpose: "context", Priority: 1},

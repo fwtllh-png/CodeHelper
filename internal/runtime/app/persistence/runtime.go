@@ -24,6 +24,7 @@ import (
 
 type PersistentRuntimeOptions struct {
 	Store               *state.Store
+	WorkspaceRoot       string
 	Engine              app.Engine
 	OperationBuffer     int
 	SubscriberBuffer    int
@@ -32,6 +33,7 @@ type PersistentRuntimeOptions struct {
 	ProfileCapabilities protocol.SessionProfileCapabilities
 	ToolCatalog         *tool.Registry
 	SessionWorkspaces   app.SessionWorkspaceManager
+	SkipRuntimeRecovery bool
 }
 
 type PersistentRepositories struct {
@@ -79,16 +81,18 @@ func PreparePersistentRuntime(
 		return nil, fmt.Errorf("open work graph orchestration: %w", err)
 	}
 	runtimeOptions := app.Options{
-		Engine:             options.Engine,
-		EventStore:         options.Store,
-		ContentStore:       options.Store.Content(),
-		Lifecycle:          repositories.Lifecycle,
-		OperationBuffer:    options.OperationBuffer,
-		SubscriberBuffer:   options.SubscriberBuffer,
-		Observability:      options.Observability,
-		TerminalStore:      terminalStore,
-		ContextRebaseStore: contextRebases,
-		Orchestration:      orchestration,
+		Engine:              options.Engine,
+		WorkspaceRoot:       options.WorkspaceRoot,
+		EventStore:          options.Store,
+		ContentStore:        options.Store.Content(),
+		Lifecycle:           repositories.Lifecycle,
+		OperationBuffer:     options.OperationBuffer,
+		SubscriberBuffer:    options.SubscriberBuffer,
+		Observability:       options.Observability,
+		TerminalStore:       terminalStore,
+		ContextRebaseStore:  contextRebases,
+		Orchestration:       orchestration,
+		SkipRuntimeRecovery: options.SkipRuntimeRecovery,
 	}
 	if options.DefaultProfile.Version != 0 {
 		runtimeOptions.SessionProfiles = repositories.Sessions

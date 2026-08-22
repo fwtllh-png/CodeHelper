@@ -9,7 +9,7 @@ prerequisites:
 code_paths:
   - cmd/codehelper
   - internal
-  - extensions/vscode/src
+  - web/src
 test_paths:
   - internal/host/cli/architecture_test.go
   - internal/runtime/app/wire/sandbox_architecture_test.go
@@ -46,7 +46,7 @@ State，或让 Restart Behavior 依赖 UI Process。
 | Durable Data | `internal/persist` | Arbitrary Global Store |
 | Usage/Trace/Verify | `internal/observability` | Execution Authority |
 | OS Behavior | `internal/platform` | Product Policy |
-| Editor | `extensions/vscode` | Runtime Reimplementation |
+| Editor | `web` | Runtime Reimplementation |
 
 ## 3. Runtime 内部边界
 
@@ -129,7 +129,7 @@ Automation、Workflow DAG Compiler、Lane Placement、Fleet Projection 与 Subag
 | Chat Merge 策略 | `runtime/app/chatmerge` | Journal/Guard/Baseline |
 | Worker Retry | `orchestration/task` | Persist/Executor |
 | SQLite Table | `persist/state/sqlite` | Repository/Schema |
-| VS Code Command | `extensions/vscode` | ACP/Trust |
+| Web Command | `web` | Web Transport/Trust |
 
 Cross-cutting 不等于 Ownerless。先选定一个 Invariant Owner，再围绕其 Contract 适配。
 
@@ -142,7 +142,7 @@ Cross-cutting 不等于 Ownerless。先选定一个 Invariant Owner，再围绕�
 - Engine 直接写 SQLite Table；
 - Projection/UI State 授权 Action；
 - Orchestration 直接调用 Provider；
-- VS Code 信任 Webview Workspace Identity；
+- Web 信任 Webview Workspace Identity；
 - Protocol Import Host/Adapter。
 
 它们可能局部方便，却破坏系统保证。

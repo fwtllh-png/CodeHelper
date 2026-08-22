@@ -199,10 +199,15 @@ func (l *Lifecycle) Accept(
 	var acceptance app.Acceptance
 	err := withTx(ctx, l.db, func(tx *sql.Tx) error {
 		threadID, turnID, itemID := protocol.OperationReferences(operation)
-		var sessionID string
+		var sessionID, sessionStatus, threadStatus string
 		if err := tx.QueryRowContext(
-			ctx, "SELECT session_id FROM threads WHERE id = ?", threadID,
-		).Scan(&sessionID); err != nil {
+			ctx, `
+				SELECT t.session_id, s.status, t.status
+				FROM threads t
+				JOIN sessions s ON s.id = t.session_id
+				WHERE t.id = ?`,
+			threadID,
+		).Scan(&sessionID, &sessionStatus, &threadStatus); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound
 			}
@@ -242,6 +247,14 @@ func (l *Lifecycle) Accept(
 				}
 				return nil
 			}
+		}
+		if sessionStatus != "open" || threadStatus != string(ThreadOpen) {
+			return protocol.NewProblem(
+				protocol.CodeConflict,
+				"session or thread is archived",
+				false,
+				nil,
+			)
 		}
 
 		now := time.Now().UTC()

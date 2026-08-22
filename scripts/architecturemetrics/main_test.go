@@ -77,7 +77,7 @@ func project(event protocol.Event) {
 	}
 }
 `)
-	writeFixture(t, root, "extensions/vscode/src/projector.ts", `
+	writeFixture(t, root, "web/src/projector.ts", `
 export function project(kind: string): void {
   switch (kind) {
     case "turn.completed":
@@ -86,7 +86,7 @@ export function project(kind: string): void {
   }
 }
 `)
-	writeFixture(t, root, "extensions/vscode/src/projector.test.ts", `
+	writeFixture(t, root, "web/src/projector.test.ts", `
 switch (kind) { case "turn.completed": break; }
 `)
 	metrics, err := measureRepository(root)

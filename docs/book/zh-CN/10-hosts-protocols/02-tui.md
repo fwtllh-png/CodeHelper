@@ -134,7 +134,7 @@ Tool Card、Approval Overlay 与 Final Receipt。
 
 ## 延伸阅读
 
-- [VS Code Native Agent Chat](./06-vscode.md)
+- [Web Native Agent Chat](./06-web.md)
 
 ## 事实来源与验证
 

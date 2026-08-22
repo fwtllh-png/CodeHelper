@@ -1,0 +1,37 @@
+{
+  "protocol": "openai_chat",
+  "path": "/chat/completions",
+  "model": "fixture-model",
+  "stream_delay_ms": 40,
+  "routes": [
+    {
+      "match": ["visual long streaming"],
+      "streams": ["long-streaming.sse", "streaming-complete.sse"]
+    },
+    {
+      "match": ["visual streaming"],
+      "streams": ["streaming.sse", "streaming-complete.sse"]
+    },
+    {
+      "match": ["visual approval"],
+      "streams": ["approval-request.sse", "approval-complete.sse"]
+    },
+    {
+      "match": ["visual input"],
+      "streams": ["input-request.sse", "input-answer.sse", "input-complete.sse"]
+    },
+    {
+      "match": ["visual failure"],
+      "streams": ["failure.sse"]
+    },
+    {
+      "match": ["visual diff"],
+      "streams": [
+        "diff-read.sse",
+        "diff-edit.sse",
+        "diff-verify.sse",
+        "diff-complete.sse"
+      ]
+    }
+  ]
+}

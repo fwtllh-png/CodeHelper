@@ -1,0 +1,48 @@
+data: {"choices":[{"delta":{"content":"Streaming remains active while the browser reconnects. "},"finish_reason":null}]}
+
+: tick 01
+: tick 02
+: tick 03
+: tick 04
+: tick 05
+: tick 06
+: tick 07
+: tick 08
+: tick 09
+: tick 10
+: tick 11
+: tick 12
+: tick 13
+: tick 14
+: tick 15
+: tick 16
+: tick 17
+: tick 18
+: tick 19
+: tick 20
+: tick 21
+: tick 22
+: tick 23
+: tick 24
+: tick 25
+: tick 26
+: tick 27
+: tick 28
+: tick 29
+: tick 30
+: tick 31
+: tick 32
+: tick 33
+: tick 34
+: tick 35
+: tick 36
+: tick 37
+: tick 38
+: tick 39
+: tick 40
+
+data: {"choices":[{"delta":{"content":"Runtime authority retained the turn."},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":14,"completion_tokens":11}}
+
+data: [DONE]

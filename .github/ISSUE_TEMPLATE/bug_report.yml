@@ -28,8 +28,6 @@ body:
       options:
         - CLI
         - TUI
-        - VS Code
-        - ACP
         - Web
         - Worker or orchestration
         - Documentation or book

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -146,6 +147,32 @@ func TestSessionProfileUpdateRejectsActiveTurnBeforePersistence(t *testing.T) {
 	}
 	if store.writes != 0 {
 		t.Fatalf("active update persisted %d writes", store.writes)
+	}
+}
+
+func TestSessionProfileRejectsForeignWorkspace(t *testing.T) {
+	defaults := runtimeTestProfile()
+	lifecycle := &memorySessionLifecycleStore{summary: protocol.SessionSummary{
+		Version: protocol.SessionLifecycleVersion, Revision: 1,
+		SessionID: "session-foreign", ThreadID: "thread-foreign",
+		Status: protocol.SessionStatusIdle, Isolation: "shared",
+		WorkspaceRoot: "/workspace/foreign", WorkspaceLabel: "foreign",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}}
+	runtime := NewRuntime(Options{
+		WorkspaceRoot:       "/workspace/current",
+		SessionLifecycle:    lifecycle,
+		SessionProfiles:     &memoryProfileStore{profile: defaults},
+		DefaultProfile:      defaults,
+		ProfileCapabilities: runtimeTestCapabilities(defaults),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	if _, err := runtime.SessionProfile(
+		t.Context(),
+		lifecycle.summary.SessionID,
+	); err == nil {
+		t.Fatal("foreign workspace profile was exposed")
 	}
 }
 

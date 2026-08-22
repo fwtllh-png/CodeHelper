@@ -311,9 +311,6 @@
         "production_lines": 413,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "DeepSeek Responses maps the runtime off reasoning level to the provider-specific none wire value"
       }
     },
     {
@@ -336,9 +333,6 @@
         "production_lines": 386,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Corrects the stale main-branch baseline to the already-present provider fixture implementation"
       }
     },
     {
@@ -346,14 +340,15 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 77,
-        "production_lines": 9152,
-        "options_fields": 70,
+        "internal_fanout": 78,
+        "production_lines": 9191,
+        "options_fields": 71,
         "mutex_fields": 6
       },
       "relaxations": {
-        "internal_fanout": "Context construction now wires scoped memory and the persistence-owned Context Rebase repository",
-        "production_lines": "Context construction maps bounded retention, narrative, manifest, and memory policy into the Agent runtime"
+        "internal_fanout": "Runtime construction now wires the sandbox-backed Workspace Query service for the Web host",
+        "production_lines": "Runtime construction now binds Web workspace identity, Runtime role, and fail-closed Workspace Query ownership",
+        "options_fields": "Runtime construction declares the interactive or worker role explicitly"
       }
     },
     {
@@ -442,9 +437,6 @@
         "production_lines": 75,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Memory v2 publishes a guarded CRUD tool set and the active scoped record store"
       }
     },
     {
@@ -563,13 +555,13 @@
       "path": "internal/runtime/app/persistence",
       "limits": {
         "internal_fanout": 14,
-        "production_lines": 721,
-        "options_fields": 9,
+        "production_lines": 725,
+        "options_fields": 11,
         "mutex_fields": 0
       },
       "relaxations": {
-        "internal_fanout": "The persistence owner now validates and commits Context Rebase manifests",
-        "production_lines": "Context persistence now commits Restore and Fork baselines, child Thread identity, CAS manifests, revision fences, and rollback cleanup"
+        "production_lines": "Persistent Runtime construction forwards workspace ownership and worker recovery policy",
+        "options_fields": "Persistent Runtime construction accepts an explicit workspace binding and worker recovery policy"
       }
     },
     {
@@ -620,13 +612,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 25,
-        "production_lines": 13396,
+        "production_lines": 13428,
         "options_fields": 61,
         "mutex_fields": 8
       },
       "relaxations": {
-        "production_lines": "Context optimization adds admission, workspace-aware snapshots, semantic narrative, bounded tails, durable rebase orchestration, validated post-turn receipts, and running-scope snapshot ownership",
-        "options_fields": "Engine construction now binds one ContextPolicy for the context optimization subsystem"
+        "production_lines": "Context optimization suppresses duplicate observable Compaction Receipts across repeated admission gates"
       }
     },
     {
@@ -635,14 +626,14 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 23,
-        "production_lines": 9501,
-        "options_fields": 19,
-        "mutex_fields": 7
+        "production_lines": 10508,
+        "options_fields": 21,
+        "mutex_fields": 8
       },
       "relaxations": {
-        "internal_fanout": "Runtime checkpoint and terminal paths now consume Context Snapshot and Manifest contracts",
-        "production_lines": "Runtime now owns manifest-backed terminals, post-turn context maintenance, and durable workspace-aware checkpoint restore and fork",
-        "options_fields": "Runtime accepts the persistence-owned Context Rebase store as an explicit dependency"
+        "production_lines": "Runtime owns Web Session lifecycle, Workspace authorization for forward and backward paged History/Profile, queued-operation activity projection, transactional presentation read fences, and synchronous inactive-Turn cancellation admission",
+        "mutex_fields": "Session lifecycle mutations serialize with operation acceptance so archive/delete cannot race an accepted Turn",
+        "options_fields": "Runtime accepts an explicit workspace root binding and worker recovery policy"
       }
     },
     {
@@ -654,10 +645,6 @@
         "production_lines": 257,
         "options_fields": 0,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "Pending interaction identities are snapshotted for mandatory context admission",
-        "mutex_fields": "Corrects the stale main-branch mutex baseline while retaining RequestLedger isolation"
       }
     },
     {
@@ -669,10 +656,6 @@
         "production_lines": 2445,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "internal_fanout": "Compaction now owns provider-neutral narrative, source-fence, and protocol identity contracts",
-        "production_lines": "Bounded retention, omission receipts, narrative artifacts, verified excerpt rebinding, and compaction plans are implemented as deterministic codecs"
       }
     },
     {
@@ -695,9 +678,6 @@
         "production_lines": 808,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Evidence exposes a bounded retained delta and stale workspace claim state for Context Snapshot recovery"
       }
     },
     {
@@ -709,9 +689,6 @@
         "production_lines": 374,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Working Set exposes a bounded retained projection for low-amplification Context manifests"
       }
     },
     {
@@ -723,9 +700,6 @@
         "production_lines": 1310,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Turn-state persistence exposes transaction-scoped idempotent fact appends so Context Rebase and effect completion commit atomically"
       }
     },
     {
@@ -742,10 +716,14 @@
       "kind": "package",
       "path": "internal/host/tui",
       "limits": {
-        "internal_fanout": 22,
-        "production_lines": 7504,
+        "internal_fanout": 23,
+        "production_lines": 7546,
         "options_fields": 28,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "internal_fanout": "The retained TUI host consumes the shared Runtime session-control contract",
+        "production_lines": "The retained TUI host resolves the effective Data Dir before acquiring the shared interactive owner lease"
       }
     },
     {
@@ -754,7 +732,7 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6359,
+        "production_lines": 6398,
         "options_fields": 0,
         "mutex_fields": 0
       },
@@ -763,23 +741,15 @@
       }
     },
     {
-      "id": "acp_package",
-      "kind": "package",
-      "path": "internal/host/runtimeapi/acp",
-      "limits": {
-        "internal_fanout": 12,
-        "production_lines": 3253,
-        "options_fields": 10,
-        "mutex_fields": 2
-      }
-    },
-    {
       "id": "runtime_file",
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2172,
+        "lines": 2235,
         "max_function_lines": 135
+      },
+      "relaxations": {
+        "lines": "Runtime Session entry points enforce Workspace ownership, Profile/Thread binding, and queued-operation lifecycle exclusion"
       }
     },
     {
@@ -787,8 +757,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/runtime.go",
       "limits": {
-        "lines": 423,
+        "lines": 441,
         "max_function_lines": 50
+      },
+      "relaxations": {
+        "lines": "Runtime wiring declares explicit interactive and worker roles for recovery ownership"
       }
     },
     {
@@ -805,8 +778,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_core.go",
       "limits": {
-        "lines": 194,
-        "max_function_lines": 58
+        "lines": 204,
+        "max_function_lines": 67
+      },
+      "relaxations": {
+        "lines": "Platform assembly constructs the sandbox-backed Workspace Query service even when execution tools are disabled",
+        "max_function_lines": "Platform assembly keeps sandbox and Workspace Query construction in one ownership boundary"
       }
     },
     {
@@ -851,7 +828,10 @@
       "path": "internal/runtime/app/runtime_start.go",
       "limits": {
         "lines": 172,
-        "max_function_lines": 82
+        "max_function_lines": 84
+      },
+      "relaxations": {
+        "max_function_lines": "Runtime preparation binds workspace ownership before exposing Session services"
       }
     },
     {
@@ -972,15 +952,6 @@
       }
     },
     {
-      "id": "acp_server_file",
-      "kind": "file",
-      "path": "internal/host/runtimeapi/acp/server.go",
-      "limits": {
-        "lines": 3052,
-        "max_function_lines": 124
-      }
-    },
-    {
       "id": "engine_file",
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
@@ -1062,46 +1033,6 @@
       }
     },
     {
-      "id": "vscode_chat_view_file",
-      "kind": "file",
-      "path": "extensions/vscode/src/chat/view.ts",
-      "limits": {
-        "lines": 1777
-      }
-    },
-    {
-      "id": "vscode_runtime_controller_file",
-      "kind": "file",
-      "path": "extensions/vscode/src/runtime/controller.ts",
-      "limits": {
-        "lines": 1378
-      }
-    },
-    {
-      "id": "vscode_chat_projector_file",
-      "kind": "file",
-      "path": "extensions/vscode/src/chat/projector.ts",
-      "limits": {
-        "lines": 7
-      }
-    },
-    {
-      "id": "vscode_chat_projector_index_file",
-      "kind": "file",
-      "path": "extensions/vscode/src/chat/projector/index.ts",
-      "limits": {
-        "lines": 99
-      }
-    },
-    {
-      "id": "vscode_chat_turn_projector_file",
-      "kind": "file",
-      "path": "extensions/vscode/src/chat/projector/turn-projector.ts",
-      "limits": {
-        "lines": 46
-      }
-    },
-    {
       "id": "persist_extensioncontrol_package",
       "kind": "package",
       "path": "internal/persist/extensioncontrol",
@@ -1129,22 +1060,6 @@
       }
     },
     {
-      "id": "vscode_extension_view_file",
-      "kind": "file",
-      "path": "extensions/vscode/src/extensions/view.ts",
-      "limits": {
-        "lines": 158
-      }
-    },
-    {
-      "id": "vscode_extension_model_file",
-      "kind": "file",
-      "path": "extensions/vscode/src/extensions/model.ts",
-      "limits": {
-        "lines": 57
-      }
-    },
-    {
       "id": "turnkernel_terminal_measurement_file",
       "kind": "file",
       "path": "internal/runtime/agent/turnkernel/measurement.go",
@@ -1165,11 +1080,19 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 30
-      },
-      "relaxations": {
-        "event_switch_sites": "Context compaction lifecycle handling adds one Runtime-owned protocol event projection switch"
+        "event_switch_sites": 20
       }
     }
-  ]
+  ],
+  "retirements": {
+    "acp_package": "ACP transport removed after Web Runtime service migration",
+    "acp_server_file": "ACP transport removed after Web Runtime service migration",
+    "vscode_chat_view_file": "VS Code host removed after Web primary entry migration",
+    "vscode_runtime_controller_file": "VS Code host removed after Web primary entry migration",
+    "vscode_chat_projector_file": "VS Code host removed after Web primary entry migration",
+    "vscode_chat_projector_index_file": "VS Code host removed after Web primary entry migration",
+    "vscode_chat_turn_projector_file": "VS Code host removed after Web primary entry migration",
+    "vscode_extension_view_file": "VS Code host removed after Web primary entry migration",
+    "vscode_extension_model_file": "VS Code host removed after Web primary entry migration"
+  }
 }

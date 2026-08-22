@@ -106,8 +106,8 @@
 
 - [CLI 与 Machine-readable Output](./10-hosts-protocols/01-cli.md) — `host-cli` — `draft` — 规划路径: `10-hosts-protocols/01-cli.md`
 - [TUI State Projection](./10-hosts-protocols/02-tui.md) — `host-tui` — `draft` — 规划路径: `10-hosts-protocols/02-tui.md`
-- [ACP Stdio 与编辑器互操作](./10-hosts-protocols/04-acp.md) — `host-acp` — `verified` — 规划路径: `10-hosts-protocols/04-acp.md`
-- [VS Code Native Agent Chat 与 Runtime Authority](./10-hosts-protocols/06-vscode.md) — `host-vscode` — `draft` — 规划路径: `10-hosts-protocols/06-vscode.md`
+- [本机 Web Transport 与 Runtime Authority](./10-hosts-protocols/04-web-transport.md) — `host-web-transport` — `verified` — 规划路径: `10-hosts-protocols/04-web-transport.md`
+- [React Web 工作区与 Runtime Authority](./10-hosts-protocols/06-web.md) — `host-web` — `draft` — 规划路径: `10-hosts-protocols/06-web.md`
 
 ### 部分 11: 扩展生态
 
@@ -121,11 +121,11 @@
 ### 部分 12: Agent 工程实践
 
 - [Hermetic Fixture 与真实 Provider Smoke](./12-engineering-practice/01-fixtures-and-smoke.md) — `practice-fixtures-smoke` — `draft` — 规划路径: `12-engineering-practice/01-fixtures-and-smoke.md`
-- [Unit、Contract、Integration 与 Electron Test](./12-engineering-practice/02-test-layers.md) — `practice-test-layers` — `draft` — 规划路径: `12-engineering-practice/02-test-layers.md`
+- [Unit、Contract、Integration 与 Browser Test](./12-engineering-practice/02-test-layers.md) — `practice-test-layers` — `draft` — 规划路径: `12-engineering-practice/02-test-layers.md`
 - [并发测试、Race 与确定性同步](./12-engineering-practice/03-concurrency-and-race.md) — `practice-concurrency-race` — `draft` — 规划路径: `12-engineering-practice/03-concurrency-and-race.md`
 - [Benchmark、性能预算与回归](./12-engineering-practice/04-benchmark-and-performance.md) — `practice-benchmark` — `draft` — 规划路径: `12-engineering-practice/04-benchmark-and-performance.md`
 - [跨平台构建与能力探测](./12-engineering-practice/05-cross-platform.md) — `practice-cross-platform` — `draft` — 规划路径: `12-engineering-practice/05-cross-platform.md`
-- [VSIX、SBOM、Provenance 与 Release Evidence](./12-engineering-practice/06-release-evidence.md) — `practice-release-evidence` — `draft` — 规划路径: `12-engineering-practice/06-release-evidence.md`
+- [Binary、Web Asset、SBOM 与 Release Evidence](./12-engineering-practice/06-release-evidence.md) — `practice-release-evidence` — `draft` — 规划路径: `12-engineering-practice/06-release-evidence.md`
 - [如何阅读和修改大型 Agent 工程](./12-engineering-practice/07-reading-codebase.md) — `practice-reading-codebase` — `draft` — 规划路径: `12-engineering-practice/07-reading-codebase.md`
 - [架构度量与回归棘轮](./12-engineering-practice/08-architecture-ratchet.md) — `practice-architecture-ratchet` — `verified` — 规划路径: `12-engineering-practice/08-architecture-ratchet.md`
 
@@ -138,7 +138,7 @@
 - [构造 Approval 与 Denial](./13-hands-on-labs/05-approval-and-denial.md) — `lab-approval-denial` — `draft` — 规划路径: `13-hands-on-labs/05-approval-and-denial.md`
 - [构建可恢复 Workflow](./13-hands-on-labs/06-recoverable-workflow.md) — `lab-recoverable-workflow` — `verified` — 规划路径: `13-hands-on-labs/06-recoverable-workflow.md`
 - [调试 Worker Lease 与 Retry](./13-hands-on-labs/07-worker-lease-retry.md) — `lab-worker-retry` — `verified` — 规划路径: `13-hands-on-labs/07-worker-lease-retry.md`
-- [完成 VS Code 端到端功能](./13-hands-on-labs/08-vscode-feature.md) — `lab-vscode-feature` — `draft` — 规划路径: `13-hands-on-labs/08-vscode-feature.md`
+- [完成 Web 端到端功能](./13-hands-on-labs/08-web-feature.md) — `lab-web-feature` — `draft` — 规划路径: `13-hands-on-labs/08-web-feature.md`
 - [从 Trace 复盘一次失败](./13-hands-on-labs/09-trace-failure.md) — `lab-trace-failure` — `verified` — 规划路径: `13-hands-on-labs/09-trace-failure.md`
 - [设计并验证新的 Agent 能力](./13-hands-on-labs/10-new-agent-capability.md) — `lab-new-capability` — `draft` — 规划路径: `13-hands-on-labs/10-new-agent-capability.md`
 

@@ -551,19 +551,19 @@
           }
         },
         {
-          "id": "host-acp",
-          "slug": "04-acp",
+          "id": "host-web-transport",
+          "slug": "04-web-transport",
           "status": "verified",
           "titles": {
-            "zh-CN": "ACP Stdio 与编辑器互操作"
+            "zh-CN": "本机 Web Transport 与 Runtime Authority"
           }
         },
         {
-          "id": "host-vscode",
-          "slug": "06-vscode",
+          "id": "host-web",
+          "slug": "06-web",
           "status": "draft",
           "titles": {
-            "zh-CN": "VS Code Native Agent Chat 与 Runtime Authority"
+            "zh-CN": "React Web 工作区与 Runtime Authority"
           }
         }
       ]
@@ -645,7 +645,7 @@
           "slug": "02-test-layers",
           "status": "draft",
           "titles": {
-            "zh-CN": "Unit、Contract、Integration 与 Electron Test"
+            "zh-CN": "Unit、Contract、Integration 与 Browser Test"
           }
         },
         {
@@ -677,7 +677,7 @@
           "slug": "06-release-evidence",
           "status": "draft",
           "titles": {
-            "zh-CN": "VSIX、SBOM、Provenance 与 Release Evidence"
+            "zh-CN": "Binary、Web Asset、SBOM 与 Release Evidence"
           }
         },
         {
@@ -763,11 +763,11 @@
           }
         },
         {
-          "id": "lab-vscode-feature",
-          "slug": "08-vscode-feature",
+          "id": "lab-web-feature",
+          "slug": "08-web-feature",
           "status": "draft",
           "titles": {
-            "zh-CN": "完成 VS Code 端到端功能"
+            "zh-CN": "完成 Web 端到端功能"
           }
         },
         {

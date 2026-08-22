@@ -2023,7 +2023,7 @@ func TestCanceledTurnContinuationRetainsTaskContext(t *testing.T) {
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, runErr := engine.Run(t.Context(), "inspect extensions/vscode", nil)
+		_, runErr := engine.Run(t.Context(), "inspect web", nil)
 		done <- runErr
 	}()
 	select {
@@ -2050,7 +2050,7 @@ func TestCanceledTurnContinuationRetainsTaskContext(t *testing.T) {
 			userPrompts = append(userPrompts, message.Text())
 		}
 	}
-	if !slices.Contains(userPrompts, "inspect extensions/vscode") ||
+	if !slices.Contains(userPrompts, "inspect web") ||
 		!slices.Contains(userPrompts, "继续") {
 		t.Fatalf("continuation user prompts=%q", userPrompts)
 	}
@@ -2058,7 +2058,7 @@ func TestCanceledTurnContinuationRetainsTaskContext(t *testing.T) {
 
 func TestRetainCanceledHistoryDropsOrphanToolTraffic(t *testing.T) {
 	messages := []provider.Message{
-		provider.TextMessage(provider.RoleUser, "inspect vscode"),
+		provider.TextMessage(provider.RoleUser, "inspect web"),
 		{
 			Role: provider.RoleAssistant,
 			Blocks: []provider.ContentBlock{{
@@ -2089,7 +2089,7 @@ func TestRetainCanceledHistoryDropsOrphanToolTraffic(t *testing.T) {
 	}
 	retained := retainCanceledHistory(messages)
 	if len(retained) != 3 ||
-		retained[0].Text() != "inspect vscode" ||
+		retained[0].Text() != "inspect web" ||
 		retained[1].Blocks[0].ToolCall.ID != "paired" ||
 		retained[2].Blocks[0].ToolResult.CallID != "paired" {
 		t.Fatalf("retained history=%+v", retained)
@@ -2752,6 +2752,40 @@ func TestEnginePreSamplingGateBeforeModelCall(t *testing.T) {
 	assertStateOrder(t, states, Preparing, Compacting, CallingModel)
 	if len(runtime.requests) != 1 {
 		t.Fatalf("model requests = %d, want 1 after gate", len(runtime.requests))
+	}
+}
+
+func TestDeduplicateCompactionReceipts(t *testing.T) {
+	var events []Event
+	send := deduplicateCompactionReceipts(func(_ State, event Event) error {
+		events = append(events, event)
+		return nil
+	})
+	first := &CompactionReceipt{
+		Phase: CompactionPhasePreSampling, OriginalBytes: 100,
+		RetainedBytes: 80, PrunedToolResults: 1,
+	}
+	if err := send(Compacting, Event{Compaction: first}); err != nil {
+		t.Fatal(err)
+	}
+	same := *first
+	same.WorkingSet = []string{"internal-only-difference"}
+	if err := send(Compacting, Event{Compaction: &same}); err != nil {
+		t.Fatal(err)
+	}
+	changed := same
+	changed.RetainedBytes = 70
+	if err := send(Compacting, Event{Compaction: &changed}); err != nil {
+		t.Fatal(err)
+	}
+	if err := send(Streaming, Event{Text: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 ||
+		events[0].Compaction.RetainedBytes != 80 ||
+		events[1].Compaction.RetainedBytes != 70 ||
+		events[2].Text != "done" {
+		t.Fatalf("events = %+v", events)
 	}
 }
 

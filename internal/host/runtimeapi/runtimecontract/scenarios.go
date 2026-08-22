@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -133,7 +134,8 @@ func Scenarios() []Scenario {
 			Run: extensionLifecycleIsVisible,
 		},
 		{
-			Name: "trusted dynamic tools register execute replace and revoke",
+			Name:       "trusted dynamic tools register execute replace and revoke",
+			Capability: CapabilityDynamicTools,
 			Setup: func(t *testing.T) Setup {
 				return Setup{
 					Fixture: fixturePath(t, "dynamic-tools"), Prompt: "call host echo",
@@ -151,11 +153,28 @@ func Scenarios() []Scenario {
 			Run: cancelReachesOneTerminal,
 		},
 		{
+			Name: "a canceled turn recovers under a new turn identity",
+			Setup: func(t *testing.T) Setup {
+				return Setup{Fixture: fixturePath(t, "slow"), Prompt: "wait for interrupt"}
+			},
+			Run: canceledTurnRecoversWithNewIdentity,
+		},
+		{
 			Name: "an operation naming a turn that does not exist is refused",
 			Setup: func(t *testing.T) Setup {
 				return Setup{Fixture: fixturePath(t, "openai"), Prompt: "say hello"}
 			},
 			Run: unknownTurnIsRefused,
+		},
+		{
+			Name: "an input request resumes the same turn exactly once",
+			Setup: func(t *testing.T) Setup {
+				return Setup{
+					Fixture: fixturePath(t, "input"), Prompt: "ask for input",
+					Workspace: t.TempDir(), Tools: true, MaxSteps: 6,
+				}
+			},
+			Run: inputRequestResumesTurn,
 		},
 		{
 			Name: "an approval parks the turn and a decision resumes it",
@@ -398,13 +417,16 @@ func editorContextSetup(t *testing.T) Setup {
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	command := exec.Command("git", "init", "-q")
+	command.Dir = workspace
+	command.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+workspace)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git init editor context workspace: %v: %s", err, output)
+	}
 	identity, err := protocol.NewWorkspaceIdentity(
-		(&url.URL{
-			Scheme: "vscode-remote", Host: "ssh-remote+contract",
-			Path: workspace,
-		}).String(),
+		(&url.URL{Scheme: "file", Path: workspace}).String(),
 		workspace,
-		"ssh-remote",
+		"",
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -429,23 +451,14 @@ func editorContextReceiptsAreSharedAndDurable(
 		t.Fatal("editor context setup omitted workspace identity")
 	}
 	reference := protocol.EditorContextReference{
-		Kind:   protocol.EditorContextDiagnostics,
-		Source: protocol.EditorContextSourceCodeAction,
-		URI: (&url.URL{
-			Scheme: "vscode-remote", Host: "ssh-remote+contract",
-			Path: filepath.Join(setup.Workspace, "context.go"),
-		}).String(),
+		Kind:   protocol.EditorContextFile,
+		Source: protocol.EditorContextSourceComposer,
+		URI: (&url.URL{Scheme: "file", Path: filepath.Join(
+			setup.Workspace,
+			"context.go",
+		)}).String(),
 		Path: "context.go", DocumentVersion: 1,
 		Digest: hex.EncodeToString(sum[:]), Explicit: true,
-		Diagnostics: []protocol.EditorDiagnostic{{
-			Range: protocol.EditorRange{
-				Start: protocol.EditorPosition{Line: 2, Character: 6},
-				End:   protocol.EditorPosition{Line: 2, Character: 11},
-			},
-			Severity: "error", Code: "fixture",
-			Message: "context fixture diagnostic", Source: "contract",
-		}},
-		OmittedDiagnostics: 2,
 	}
 	events, err := host.Live(t.Context(), 0)
 	if err != nil {
@@ -469,11 +482,11 @@ func editorContextReceiptsAreSharedAndDurable(
 		}
 	}
 	if len(opened) != 1 || len(completed) != 1 ||
-		opened[0].Kind != protocol.EditorContextDiagnostics ||
-		opened[0].Source != protocol.EditorContextSourceCodeAction ||
+		opened[0].Kind != protocol.EditorContextFile ||
+		opened[0].Source != protocol.EditorContextSourceComposer ||
 		opened[0].Path != "context.go" ||
-		opened[0].DiagnosticCount != 1 ||
-		opened[0].OmittedDiagnostics != 2 ||
+		opened[0].DiagnosticCount != 0 ||
+		opened[0].OmittedDiagnostics != 0 ||
 		opened[0].OriginalBytes != len(content) ||
 		opened[0].RetainedBytes != len(content) {
 		t.Fatalf("%s: turn.started editor context = %+v", host.Transport(), opened)
@@ -1017,6 +1030,113 @@ func unknownTurnIsRefused(t *testing.T, host Host, setup Setup) {
 	}
 	if refusal.Retryable {
 		t.Fatalf("%s: refusal claims retryable; the turn will never exist", host.Transport())
+	}
+}
+
+func canceledTurnRecoversWithNewIdentity(
+	t *testing.T,
+	host Host,
+	setup Setup,
+) {
+	events, err := host.Live(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := host.StartTurn(t.Context(), setup.Prompt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.Cancel(
+		t.Context(),
+		source,
+		protocol.CancelReasonUserInterrupted,
+	); err != nil {
+		t.Fatal(err)
+	}
+	collectUntilTerminal(t, host, events, source.TurnID)
+
+	recovered, err := host.RecoverTurn(
+		t.Context(),
+		source.TurnID,
+		protocol.TurnRecoveryRetry,
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.TurnID == "" || recovered.TurnID == source.TurnID {
+		t.Fatalf(
+			"%s: recovered turn = %q, source = %q",
+			host.Transport(),
+			recovered.TurnID,
+			source.TurnID,
+		)
+	}
+	deadline := time.After(waitTimeout)
+	for {
+		select {
+		case event, open := <-events:
+			if !open {
+				t.Fatal("event stream closed before recovered turn started")
+			}
+			if event.Kind == protocol.EventTurnStarted &&
+				event.TurnID == recovered.TurnID {
+				return
+			}
+		case <-deadline:
+			t.Fatal("recovered turn start was not observed")
+		}
+	}
+}
+
+func inputRequestResumesTurn(t *testing.T, host Host, setup Setup) {
+	events, err := host.Live(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := host.StartTurn(t.Context(), setup.Prompt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var requestID string
+	deadline := time.After(waitTimeout)
+	for requestID == "" {
+		select {
+		case event, open := <-events:
+			if !open {
+				t.Fatal("event stream closed before input request")
+			}
+			if event.TurnID != turn.TurnID {
+				continue
+			}
+			if data, ok := event.Data.(*protocol.InputRequiredData); ok {
+				requestID = data.RequestID
+				if len(data.Options) != 2 {
+					t.Fatalf("%s: input options = %v", host.Transport(), data.Options)
+				}
+			}
+		case <-deadline:
+			t.Fatal("input request was not observed")
+		}
+	}
+	if _, err := host.ReplyInput(
+		t.Context(),
+		turn,
+		requestID,
+		"yes",
+		map[string]string{"choice": "yes"},
+	); err != nil {
+		t.Fatal(err)
+	}
+	var resolved int
+	for _, event := range collectUntilTerminal(t, host, events, turn.TurnID) {
+		if data, ok := event.Data.(*protocol.InputResolvedData); ok &&
+			data.RequestID == requestID {
+			resolved++
+		}
+	}
+	if resolved != 1 {
+		t.Fatalf("%s: input resolved events = %d, want 1", host.Transport(), resolved)
 	}
 }
 

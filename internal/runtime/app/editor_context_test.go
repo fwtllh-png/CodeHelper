@@ -56,42 +56,6 @@ func TestResolveEditorContextReadsExplicitFileAndSelection(t *testing.T) {
 	}
 }
 
-func TestResolveEditorContextBindsRemoteEditorURIToRuntimePath(t *testing.T) {
-	root := t.TempDir()
-	content := []byte("remote\n")
-	if err := os.WriteFile(filepath.Join(root, "value.go"), content, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	rootURI := (&url.URL{
-		Scheme: "vscode-remote", Host: "ssh-remote+dev", Path: root,
-	}).String()
-	identity, err := protocol.NewWorkspaceIdentity(rootURI, root, "ssh-remote")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sum := sha256.Sum256(content)
-	reference := protocol.EditorContextReference{
-		Kind: protocol.EditorContextFile,
-		URI: (&url.URL{
-			Scheme: "vscode-remote", Host: "ssh-remote+dev",
-			Path: filepath.ToSlash(filepath.Join(root, "value.go")),
-		}).String(),
-		Path: "value.go", DocumentVersion: 1,
-		Digest: hex.EncodeToString(sum[:]), Explicit: true,
-	}
-	if _, _, err := resolveEditorContext(
-		root, "inspect", []protocol.EditorContextReference{reference}, identity,
-	); err != nil {
-		t.Fatal(err)
-	}
-	reference.URI = strings.Replace(reference.URI, "ssh-remote+dev", "ssh-remote+other", 1)
-	if _, _, err := resolveEditorContext(
-		root, "inspect", []protocol.EditorContextReference{reference}, identity,
-	); err == nil || !strings.Contains(err.Error(), "does not belong") {
-		t.Fatalf("remote authority mismatch error = %v", err)
-	}
-}
-
 func TestResolveEditorContextRejectsDriftAndIdentityMismatch(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, "value.go")

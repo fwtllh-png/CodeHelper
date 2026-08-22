@@ -1,3 +1,5 @@
+//go:build ignore
+
 // verify-reliability-assertions statically checks that each test referenced
 // in the reliability matrix actually contains the required assertion patterns.
 // It uses go/ast and go/parser to parse test files and walk the AST looking
@@ -24,26 +26,26 @@ import (
 type AssertionType string
 
 const (
-	AssertFaultCheck          AssertionType = "fault_check"
-	AssertRetryableCheck      AssertionType = "retryable_check"
-	AssertSingleAttemptCheck  AssertionType = "single_attempt_check"
+	AssertFaultCheck           AssertionType = "fault_check"
+	AssertRetryableCheck       AssertionType = "retryable_check"
+	AssertSingleAttemptCheck   AssertionType = "single_attempt_check"
 	AssertContextCanceledCheck AssertionType = "context_canceled_check"
 	AssertResourceCleanupCheck AssertionType = "resource_cleanup_check"
 	AssertResourceReleaseCheck AssertionType = "resource_release_check"
-	AssertNoRecoveryCheck     AssertionType = "no_recovery_check"
-	AssertRecoveryCheck       AssertionType = "recovery_check"
-	AssertAtomicityCheck      AssertionType = "atomicity_check"
-	AssertIdempotencyCheck    AssertionType = "idempotency_check"
-	AssertConcurrencyCheck    AssertionType = "concurrency_check"
-	AssertShutdownCheck       AssertionType = "shutdown_check"
+	AssertNoRecoveryCheck      AssertionType = "no_recovery_check"
+	AssertRecoveryCheck        AssertionType = "recovery_check"
+	AssertAtomicityCheck       AssertionType = "atomicity_check"
+	AssertIdempotencyCheck     AssertionType = "idempotency_check"
+	AssertConcurrencyCheck     AssertionType = "concurrency_check"
+	AssertShutdownCheck        AssertionType = "shutdown_check"
 )
 
 type AssertionEntry struct {
-	Boundary string            `json:"boundary"`
-	Case     string            `json:"case"`
-	Test     string            `json:"test"`
-	Package  string            `json:"package"`
-	Required []AssertionReq    `json:"required"`
+	Boundary string         `json:"boundary"`
+	Case     string         `json:"case"`
+	Test     string         `json:"test"`
+	Package  string         `json:"package"`
+	Required []AssertionReq `json:"required"`
 }
 
 type AssertionReq struct {

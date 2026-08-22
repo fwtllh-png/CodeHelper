@@ -15,6 +15,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -80,13 +81,10 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 	}
 	session.processes = processes
 	state.platform.processes = processes
-	if !execution.Tools {
-		if state.options.TrustedDynamicTools {
-			return errors.New(
-				"trusted-host dynamic tools require execution.tools",
-			)
-		}
-		return nil
+	if !execution.Tools && state.options.TrustedDynamicTools {
+		return errors.New(
+			"trusted-host dynamic tools require execution.tools",
+		)
 	}
 	helperPath, err := os.Executable()
 	if err != nil {
@@ -101,13 +99,25 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 		return fmt.Errorf("create sandbox: %w", err)
 	}
 	session.sandbox = backend
+	session.workspaceQuery, err = workspacequery.New(execution.Workspace, backend)
+	if err != nil {
+		return fmt.Errorf("create workspace query: %w", err)
+	}
 	index, status := openRepositoryIndex(
 		execution.Workspace,
 		backend,
 		state.persistence.taskStore,
 		state.config.snapshot.Config.Context.Index,
 	)
+	session.repositoryIndex = index
 	session.metrics.SetRepositoryIndexState(status)
+	if !execution.Tools {
+		state.platform = platformBuildState{
+			helperPath: helperPath, backend: backend, processes: processes,
+			repositoryIndex: index,
+		}
+		return nil
+	}
 	webOptions := webtool.OptionsFromEnv()
 	if search := state.config.snapshot.Config.Web.SearchBackend; search != "" {
 		webOptions.SearchBackend = search

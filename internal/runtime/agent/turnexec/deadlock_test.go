@@ -130,7 +130,7 @@ func TestConcurrentMailboxOfferAndDrainDoesNotDeadlock(t *testing.T) {
 
 type noopControl struct{}
 
-func (n *noopControl) Cancel(string) error                        { return nil }
-func (n *noopControl) Steer(string) error                         { return nil }
+func (n *noopControl) Cancel(string) error                              { return nil }
+func (n *noopControl) Steer(string) error                               { return nil }
 func (n *noopControl) ResolveApproval(toolguard.ApprovalDecision) error { return nil }
-func (n *noopControl) ResolveInput(interact.Reply) error          { return nil }
+func (n *noopControl) ResolveInput(interact.Reply) error                { return nil }

@@ -1,0 +1,137 @@
+package web
+
+import "sort"
+
+// RouteContract is the public transport shape for one Web RPC endpoint.
+type RouteContract struct {
+	Path               string `json:"path"`
+	Method             string `json:"method"`
+	Request            string `json:"request"`
+	Response           string `json:"response"`
+	Mutation           bool   `json:"mutation"`
+	IdempotencyKey     bool   `json:"idempotency_key"`
+	RequiresRuntime    bool   `json:"requires_runtime"`
+	RequiresCapability bool   `json:"requires_capability"`
+}
+
+// HostContract is the generated Web transport contract source.
+type HostContract struct {
+	Schema          string          `json:"$schema"`
+	ID              string          `json:"$id"`
+	Title           string          `json:"title"`
+	ProtocolVersion int             `json:"protocol_version"`
+	LoopbackOnly    bool            `json:"loopback_only"`
+	SameOriginOnly  bool            `json:"same_origin_only"`
+	Capacity        Capacity        `json:"capacity_defaults"`
+	Routes          []RouteContract `json:"routes"`
+}
+
+var unaryRouteContracts = []RouteContract{
+	rpc("system/describe", "empty", "system_description", false, false),
+	rpc("system/readiness", "empty", "runtime_readiness", false, false),
+	rpc("system/diagnostics", "empty", "system_diagnostics", false, false),
+	rpc("session/create", "session_create", "session_binding", true, true),
+	rpc("session/activate", "session_identity", "session_binding", true, true),
+	rpc("session/list", "session_list", "session_list", false, false),
+	rpc("session/status", "session_identity", "session_summary", false, false),
+	rpc("session/update", "session_update", "session_lifecycle_update", true, true),
+	rpc("session/delete", "session_delete", "session_delete_result", true, true),
+	rpc("session/history", "session_history", "session_history_page", false, false),
+	rpc("session/snapshot", "session_identity", "presentation_snapshot", false, false),
+	rpc("session/export", "session_identity", "session_export", false, false),
+	rpc("session/merge", "session_merge", "merge_result", true, true),
+	rpc("operation/submit", "operation_submit", "operation_receipt", true, true),
+	rpc("profile/get", "session_identity", "session_profile_snapshot", false, false),
+	rpc("profile/update", "profile_update", "profile_update_result", true, true),
+	rpc("provider/list", "empty", "provider_catalog", false, false),
+	rpc("model/list", "empty", "model_catalog", false, false),
+	rpc("tool/catalog", "session_identity", "tool_catalog", false, false),
+	rpc("checkpoint/list", "checkpoint_query", "checkpoint_list", false, false),
+	rpc("checkpoint/get", "checkpoint_identity", "checkpoint", false, false),
+	rpc("checkpoint/restore", "checkpoint_identity", "checkpoint_restore", true, true),
+	rpc("checkpoint/fork", "checkpoint_fork", "checkpoint_fork_result", true, true),
+	rpc("turn/recover", "turn_recover", "operation_receipt", true, true),
+	rpc("plan/get", "session_identity", "session_plan", false, false),
+	rpc("plan/transition", "plan_transition", "operation_receipt", true, true),
+	rpc("task/list", "session_identity", "task_list", false, false),
+	rpc("agent/list", "session_identity", "agent_list", false, false),
+	rpc("usage/query", "session_identity", "usage_summary", false, false),
+	rpc("extension/list", "session_identity", "extension_list", false, false),
+	rpc("extension/control", "extension_control", "extension_control_result", true, true),
+	rpc("workspace/browse", "workspace_browse", "workspace_entries", false, false),
+	rpc("workspace/search", "workspace_search", "workspace_entries", false, false),
+	rpc("workspace/resource", "workspace_resource", "workspace_resource", false, false),
+	rpc("workspace/image", "workspace_resource", "workspace_image", false, false),
+	rpc("workspace/symbols", "workspace_symbols", "workspace_symbol_list", false, false),
+	rpc("workspace/diagnostics", "session_identity", "workspace_diagnostics", false, false),
+	rpc("workspace/diff", "workspace_diff", "workspace_diff", false, false),
+	rpc("credential/status", "credential_provider", "credential_status", false, false),
+	rpc("credential/set-keyring", "credential_set", "credential_status", true, true),
+	rpc("credential/clear-keyring", "credential_provider", "credential_status", true, true),
+	rpc("credential/validate", "credential_validate", "credential_status", false, false),
+	rpc("mcp/health", "empty", "mcp_health_list", false, false),
+}
+
+var unaryRouteSet = func() map[string]struct{} {
+	result := make(map[string]struct{}, len(unaryRouteContracts))
+	for _, route := range unaryRouteContracts {
+		result[route.Path] = struct{}{}
+	}
+	return result
+}()
+
+func rpc(path, request, response string, mutation, idempotency bool) RouteContract {
+	return RouteContract{
+		Path: path, Method: "POST", Request: request, Response: response,
+		Mutation: mutation, IdempotencyKey: idempotency,
+		RequiresRuntime: true, RequiresCapability: true,
+	}
+}
+
+func registeredUnaryRoute(path string) bool {
+	_, ok := unaryRouteSet[path]
+	return ok
+}
+
+// Contract returns a detached and deterministically ordered transport contract.
+func Contract() HostContract {
+	routes := []RouteContract{
+		{
+			Path: "/healthz", Method: "GET", Request: "empty",
+			Response: "health", RequiresRuntime: false, RequiresCapability: false,
+		},
+		{
+			Path: "/api/v1/bootstrap", Method: "GET", Request: "empty",
+			Response: "bootstrap", RequiresRuntime: false, RequiresCapability: false,
+		},
+		{
+			Path: "/api/v1/events", Method: "GET+WEBSOCKET", Request: "auth_frame",
+			Response: "event_frame", RequiresRuntime: true, RequiresCapability: true,
+		},
+		{
+			Path: "/api/v1/content/{handle}", Method: "GET", Request: "content_handle",
+			Response: "content_download", RequiresRuntime: true, RequiresCapability: true,
+		},
+	}
+	for _, route := range unaryRouteContracts {
+		copy := route
+		copy.Path = "/api/v1/" + copy.Path
+		routes = append(routes, copy)
+	}
+	sort.Slice(routes, func(i, j int) bool {
+		if routes[i].Path == routes[j].Path {
+			return routes[i].Method < routes[j].Method
+		}
+		return routes[i].Path < routes[j].Path
+	})
+	return HostContract{
+		Schema:          "https://json-schema.org/draft/2020-12/schema",
+		ID:              "https://codehelper.dev/schemas/web-host-v1.json",
+		Title:           "CodeHelper Web Host transport contract",
+		ProtocolVersion: webProtocol,
+		LoopbackOnly:    true,
+		SameOriginOnly:  true,
+		Capacity:        defaultCapacity(),
+		Routes:          routes,
+	}
+}

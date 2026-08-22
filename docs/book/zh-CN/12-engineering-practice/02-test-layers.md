@@ -1,27 +1,25 @@
 ---
 id: practice-test-layers
-title: Unit、Contract、Integration 与 Electron Test
+title: Unit、Contract、Integration 与 Browser Test
 audience:
   - contributor
 prerequisites:
   - practice-fixtures-smoke
-  - host-vscode
+  - host-web
 code_paths:
   - internal
-  - extensions/vscode
+  - web
 test_paths:
-  - internal/host/runtimeapi/acp/contract_test.go
-  - extensions/vscode/src/test/suite/index.ts
-  - extensions/vscode/src/performance/gate.test.ts
+  - internal/host/runtimeapi/web/server_test.go
+  - web/src/runtime/client.test.ts
 source_of_truth:
   - Makefile
-  - extensions/vscode/package.json
-  - extensions/vscode/scripts/matrix/journeys.mjs
+  - web/package.json
 status: draft
 last_verified: null
 ---
 
-# Unit、Contract、Integration 与 Electron Test
+# Unit、Contract、Integration 与 Browser Test
 
 ## 学习目标
 
@@ -31,16 +29,15 @@ Extension Host 或 Electron。
 | Layer | 证明 | 命令 |
 | --- | --- | --- |
 | Unit/Package | Local Invariant | `go test ./path` |
-| Contract | 通过 ACP 验证共享 Runtime 行为 | `make protocol-contract` |
-| Binary Integration | ACP Framing/Process | `make acp-interop` |
-| VS Code Static/Runtime | TS/Real Runtime | `make vscode-check`、Runtime Integration |
-| Electron | 本地 Real VS Code Platform | Integration/Rosetta Target |
-| Release Matrix | Journey/Artifact 完整性 | `make vscode-rc` |
+| Contract | 通过 Web Transport 验证共享 Runtime 行为 | `make protocol-contract` |
+| Binary Integration | Web Transport Framing/Process | `go test ./internal/host/runtimeapi/web` |
+| Web Static/Runtime | TS/Real Runtime | `make web-check`、`make web-test` |
+| Browser E2E | 真实 Binary、HTTP/WebSocket、Chromium | `make web-e2e` |
+| Release Matrix | Journey/Artifact 完整性 | `make web-parity-report` |
 
-Unit Test 只在 Ownership Boundary 使用 Fake。ACP Contract 验证共享 Runtime Scenario；
-Binary Test 启动 Build Artifact。Electron 因下载外部 Runtime 而显式分离。
-当前 VS Code Suite 有 173 项测试；Runtime Integration Lane 会实际执行 4 个
-Cross-process Case，而不是接受其 Skipped 形式。
+Unit Test 只在 Ownership Boundary 使用 Fake。Web Transport Contract 验证共享 Runtime Scenario；
+Binary Test 启动 Build Artifact。Playwright 使用 `--port 0` 启动同一发布 Binary，
+通过 `Runtime Ready` 行取得地址，并验证真实 HTTP/WebSocket 主路径。
 
 Repository Verification 通过四条 Lane 报告：
 
@@ -48,7 +45,7 @@ Repository Verification 通过四条 Lane 报告：
 | --- | --- |
 | Hermetic | 不使用网络、真实凭证、GUI 或真实 HOME |
 | Platform Capability | 显式 OS/Sandbox 前置条件和 Unavailable Evidence |
-| Integration | 真实 Binary、ACP、VS Code Runtime Integration |
+| Integration | 真实 Binary、Web Runtime Integration |
 | Release | Cross-build、Race、Secret、Benchmark 与 Packaging |
 
 Unavailable、Skipped、Failed、Passed 保持为不同结果。Lane Report 保留 Command、
@@ -59,13 +56,13 @@ Platform、Duration、Exit Code、Status 和 Reason。
 | Change Risk | Minimum Evidence |
 | --- | --- |
 | Parser/Formatter | Table Unit + Malformed Boundary |
-| Protocol Shape | Schema/Golden + ACP 与 Host Journey Contract |
+| Protocol Shape | Schema/Golden + Web Transport 与 Host Journey Contract |
 | Persistence | Restart + Corruption/Crash Window |
 | Consequential Tool | Guard/Policy/Sandbox/Effect/Rollback |
 | Concurrency/Lease | Forced Interleaving + Race |
 | Process/Transport | Real Binary Lifecycle/Cancellation |
-| VS Code Trust/Context | TS + ACP Integration；Platform API 用 Electron |
-| VS Code Recovery/Projection | Runtime Artifact + Electron Retry/Continue/Plan + Patch Resync |
+| Web Trust/Context | TS + Web Transport Integration；Platform API 用 Electron |
+| Web Recovery/Projection | Runtime Artifact + Electron Retry/Continue/Plan + Patch Resync |
 | Release/Update | Artifact/Digest/Install/Rollback/Revoke |
 
 Test Breadth 取决于 Changed Contract，不取决于 Changed Line Count。一行 Protocol/Security
@@ -105,8 +102,9 @@ Session Lifecycle/Search 与三种 Plan Destination。
 go test ./...
 make protocol-contract
 make test-hermetic
-cd extensions/vscode && npm run check && npm test
-make vscode-rc
+cd web && npm run check && npm test
+make web-build
+make web-e2e
 ```
 
 ## 复习问题

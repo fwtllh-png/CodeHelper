@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/session/ux"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/ownerlease"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
@@ -177,14 +179,37 @@ func runExec(
 	}
 
 	var store *state.Store
+	loaded, err := config.Load(config.LoadOptions{
+		Path: *configPath, Overrides: overrides,
+	})
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "codehelper: exec config: %v\n", err)
+		return 1
+	}
+	workspaceRoot, err := filepath.Abs(loaded.Config.Execution.Workspace)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "codehelper: exec workspace: %v\n", err)
+		return 1
+	}
+	identity, err := protocol.NewWorkspaceIdentity(
+		(&url.URL{Scheme: "file", Path: workspaceRoot}).String(),
+		workspaceRoot,
+		"",
+	)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "codehelper: exec workspace identity: %v\n", err)
+		return 1
+	}
+	interactiveLease, err := ownerlease.Acquire(
+		ownerlease.Path(loaded.Config.State.DataDir, identity.RootID),
+		ownerlease.Metadata{OwnerKind: "exec"},
+	)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "codehelper: exec owner lease: %v\n", err)
+		return 1
+	}
+	defer interactiveLease.Close()
 	if *dataDir != "" {
-		loaded, err := config.Load(config.LoadOptions{
-			Path: *configPath, Overrides: overrides,
-		})
-		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: exec config: %v\n", err)
-			return 1
-		}
 		store, err = state.Open(ctx, state.Options{
 			DataDir: *dataDir, BusyTimeout: loaded.Config.State.BusyTimeout,
 		})
@@ -195,7 +220,7 @@ func runExec(
 		defer func() {
 			_ = store.CloseAll(context.Background())
 		}()
-		workspaceRoot := loaded.Config.Execution.Workspace
+		workspaceRoot = loaded.Config.Execution.Workspace
 		if workspaceRoot == "" {
 			workspaceRoot = *workspace
 		}

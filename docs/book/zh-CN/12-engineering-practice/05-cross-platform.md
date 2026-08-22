@@ -9,7 +9,7 @@ prerequisites:
 code_paths:
   - internal/security/sandbox
   - internal/platform/process
-  - extensions/vscode/src/workspace
+  - internal/platform/workspacequery
 test_paths:
   - internal/security/sandbox/backend_test.go
   - internal/security/sandbox/workspace_windows_test.go
@@ -38,7 +38,7 @@ flowchart LR
     K --> G[Guard]
 ```
 
-VS Code 绑定本地 `file:` Workspace Identity，并打包 Target-specific Binary。
+Web 绑定本地 `file:` Workspace Identity，并打包 Target-specific Binary。
 Remote Editor Environment 不在插件产品范围内。
 
 ## 三层 Platform Evidence

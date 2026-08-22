@@ -185,6 +185,7 @@ type Options struct {
 	OperationBuffer     int
 	EventHistory        int
 	SubscriberBuffer    int
+	WorkspaceRoot       string
 	Engine              Engine
 	EventStore          EventStore
 	ContentStore        ContentStore
@@ -201,6 +202,7 @@ type Options struct {
 	TerminalStore       turnkernel.TerminalEnvelopeStore
 	ContextRebaseStore  ContextRebaseStore
 	Orchestration       OrchestrationController
+	SkipRuntimeRecovery bool
 }
 
 type Snapshot struct {
@@ -243,8 +245,12 @@ type Runtime struct {
 	contextRebaseStore   ContextRebaseStore
 	terminal             *TerminalPublisher
 	orchestration        OrchestrationController
+	workspaceRoot        string
 	orchestrationEffects sync.Mutex
+	sessionMutationMu    sync.Mutex
 	*SessionService
+	*OperationService
+	*HistoryService
 	*ArtifactService
 
 	operations chan acceptedOperation
@@ -324,6 +330,17 @@ func (r *SessionService) ListSessions(
 	if err := query.Validate(); err != nil {
 		return protocol.SessionList{},
 			runtimeProblem(protocol.CodeInvalidArgument, err.Error(), err)
+	}
+	if r.workspaceRoot != "" {
+		if query.WorkspaceRoot != "" &&
+			!sameWorkspaceRoot(r.workspaceRoot, query.WorkspaceRoot) {
+			return protocol.SessionList{}, runtimeProblem(
+				protocol.CodeConflict,
+				"session query workspace does not match the Runtime binding",
+				nil,
+			)
+		}
+		query.WorkspaceRoot = r.workspaceRoot
 	}
 	limit := query.Limit
 	if limit <= 0 {
@@ -538,6 +555,14 @@ func (r *SessionService) SessionStatus(
 	if err != nil {
 		return protocol.SessionSummary{}, err
 	}
+	if r.workspaceRoot != "" &&
+		!sameWorkspaceRoot(r.workspaceRoot, summary.WorkspaceRoot) {
+		return protocol.SessionSummary{}, runtimeProblem(
+			protocol.CodeConflict,
+			"session does not belong to this Runtime workspace",
+			nil,
+		)
+	}
 	return r.projectSessionActivity(ctx, summary)
 }
 
@@ -547,6 +572,8 @@ func (r *SessionService) UpdateSessionLifecycle(
 	expectedRevision uint64,
 	patch protocol.SessionLifecyclePatch,
 ) (protocol.SessionLifecycleUpdate, error) {
+	r.sessionMutationMu.Lock()
+	defer r.sessionMutationMu.Unlock()
 	if r.sessionLifecycle == nil {
 		return protocol.SessionLifecycleUpdate{}, runtimeProblem(protocol.CodeUnavailable, "session lifecycle is unavailable", nil)
 	}
@@ -582,6 +609,8 @@ func (r *SessionService) DeleteSession(
 	sessionID string,
 	expectedRevision uint64,
 ) (protocol.SessionDeleteResult, error) {
+	r.sessionMutationMu.Lock()
+	defer r.sessionMutationMu.Unlock()
 	if r.sessionLifecycle == nil {
 		return protocol.SessionDeleteResult{}, runtimeProblem(protocol.CodeUnavailable, "session lifecycle is unavailable", nil)
 	}
@@ -590,6 +619,10 @@ func (r *SessionService) DeleteSession(
 		return protocol.SessionDeleteResult{}, err
 	}
 	if err := ensureSessionQuiescent(current, "delete"); err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	threadIDs, err := r.sessionLifecycle.ThreadIDs(ctx, sessionID)
+	if err != nil {
 		return protocol.SessionDeleteResult{}, err
 	}
 	if current.Isolation == SessionIsolationWorktree {
@@ -624,7 +657,9 @@ func (r *SessionService) DeleteSession(
 		return protocol.SessionDeleteResult{}, err
 	}
 	if manager, ok := r.engine.(*ThreadManager); ok && manager != nil {
-		manager.Release(result.ThreadID)
+		for _, threadID := range threadIDs {
+			manager.Release(threadID)
+		}
 	}
 	if current.Isolation == SessionIsolationWorktree {
 		if discardErr := r.sessionWorkspaces.Discard(
@@ -685,6 +720,13 @@ func (r *SessionService) projectSessionActivity(
 		}
 	}
 	r.mu.Lock()
+	pendingOperation := false
+	for _, operation := range r.accepted {
+		if operation.SessionID == summary.SessionID {
+			pendingOperation = true
+			break
+		}
+	}
 	pendingApprovals := 0
 	for _, approval := range r.approvals {
 		if _, ok := threads[approval.ThreadID]; ok {
@@ -705,7 +747,7 @@ func (r *SessionService) projectSessionActivity(
 		summary.Status = protocol.SessionStatusAwaitingApproval
 	case pendingInputs > 0:
 		summary.Status = protocol.SessionStatusAwaitingInput
-	case active:
+	case active, pendingOperation:
 		summary.Status = protocol.SessionStatusRunning
 	}
 	return summary, nil
@@ -877,6 +919,11 @@ func (r *SessionService) SessionProfile(
 	if r.profiles == nil {
 		return protocol.SessionProfileSnapshot{}, runtimeProblem(protocol.CodeUnavailable, "session profiles are unavailable", nil)
 	}
+	if r.workspaceRoot != "" {
+		if _, err := r.SessionStatus(ctx, sessionID); err != nil {
+			return protocol.SessionProfileSnapshot{}, err
+		}
+	}
 	profile, err := r.profiles.EnsureProfile(ctx, sessionID, r.defaultProfile)
 	if err != nil {
 		return protocol.SessionProfileSnapshot{}, err
@@ -953,6 +1000,22 @@ func (r *SessionService) UpdateSessionProfile(
 ) (protocol.SessionProfileUpdateResult, error) {
 	if r.profiles == nil {
 		return protocol.SessionProfileUpdateResult{}, runtimeProblem(protocol.CodeUnavailable, "session profiles are unavailable", nil)
+	}
+	if r.workspaceRoot != "" {
+		if _, err := r.SessionStatus(ctx, sessionID); err != nil {
+			return protocol.SessionProfileUpdateResult{}, err
+		}
+		owner, err := r.sessionLifecycle.SessionForThread(ctx, threadID)
+		if err != nil {
+			return protocol.SessionProfileUpdateResult{}, err
+		}
+		if owner != sessionID {
+			return protocol.SessionProfileUpdateResult{}, runtimeProblem(
+				protocol.CodeConflict,
+				"thread does not belong to session",
+				nil,
+			)
+		}
 	}
 	controller, ok := r.engine.(SessionProfileEngine)
 	if !ok {
@@ -1473,7 +1536,7 @@ func startTurnSafely(
 
 func (r CancelTurnHandler) Handle(operation protocol.Operation, payload *protocol.CancelTurnPayload) OperationOutcome {
 	if _, active := r.active.LookupTurn(payload.TurnID); !active {
-		return finishOutcome(errors.New("turn is not active"))
+		return finishOutcome(turnNotActiveProblem())
 	}
 	sink := &runtimeSink{runtime: r.Runtime, operation: operation}
 	if err := r.engine.CancelTurn(r.ctx, payload, sink); err != nil {

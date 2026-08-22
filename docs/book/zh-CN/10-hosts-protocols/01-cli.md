@@ -122,7 +122,7 @@ Receipt。
 
 ## 延伸阅读
 
-- [ACP Stdio 与编辑器互操作](./04-acp.md)
+- [Web Transport Stdio 与编辑器互操作](./04-web-transport.md)
 
 ## 事实来源与验证
 

@@ -1,0 +1,13 @@
+data: {"choices":[{"delta":{"reasoning_content":"Inspecting the workspace state. "},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"content":"Reviewing "},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"content":"the selected files "},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"content":"and checking "},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"content":"the runtime evidence."},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":12}}
+
+data: [DONE]

@@ -480,7 +480,7 @@ def external_links() -> int:
     pattern = re.compile(r"!?\[[^\]]*\]\((https?://[^ )]+)")
     links: set[str] = set()
     for path in ROOT.rglob("*.md"):
-        if any(part in {".git", "node_modules", "dist", ".vscode-test"} for part in path.parts):
+        if any(part in {".git", "node_modules", "dist"} for part in path.parts):
             continue
         links.update(pattern.findall(path.read_text(encoding="utf-8")))
     errors: list[str] = []

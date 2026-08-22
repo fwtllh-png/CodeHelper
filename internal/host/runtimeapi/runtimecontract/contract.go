@@ -1,8 +1,7 @@
 // Package contract holds the behaviours every runtime host must show.
 //
-// ACP exposes one protocol-backed view of the shared runtime. These scenarios
-// keep its host semantics aligned with the runtime model and remain reusable by
-// any future host without copying assertions.
+// These scenarios keep host semantics aligned with the runtime model and remain
+// reusable without copying assertions into each transport.
 //
 // It imports testing because it is test support, in the same way net/http/httptest
 // is: the scenarios are assertions, and they belong next to each other rather than
@@ -98,6 +97,18 @@ type Host interface {
 		decision protocol.ApprovalDecision,
 		planID string,
 	) (Receipt, error)
+	ReplyInput(
+		ctx context.Context,
+		turn Receipt,
+		requestID, answer string,
+		values map[string]string,
+	) (Receipt, error)
+	RecoverTurn(
+		ctx context.Context,
+		sourceTurnID protocol.TurnID,
+		action protocol.TurnRecoveryAction,
+		guidance string,
+	) (Receipt, error)
 	// Live delivers events as a client watching this host sees them, starting
 	// after since. The channel closes when the host stops.
 	Live(ctx context.Context, since protocol.Cursor) (<-chan protocol.Event, error)
@@ -153,6 +164,12 @@ type Host interface {
 	) (DynamicCatalog, error)
 }
 
+type CapabilityHost interface {
+	Supports(string) bool
+}
+
+const CapabilityDynamicTools = "dynamic-tools"
+
 type DynamicCatalog struct {
 	CatalogID  string                     `json:"catalog_id"`
 	Generation uint64                     `json:"generation"`
@@ -166,6 +183,9 @@ type Factory func(t *testing.T, setup Setup) Host
 // Scenario is one behaviour, plus what the host needs to show it.
 type Scenario struct {
 	Name string
+	// Capability is empty for the shared minimum. A Host may explicitly decline
+	// a legacy capability that its product contract intentionally removed.
+	Capability string
 	// Setup runs per scenario so temporary directories are not shared.
 	Setup func(t *testing.T) Setup
 	Run   func(t *testing.T, host Host, setup Setup)
@@ -177,7 +197,14 @@ func Run(t *testing.T, newHost Factory) {
 	for _, scenario := range Scenarios() {
 		t.Run(scenario.Name, func(t *testing.T) {
 			setup := scenario.Setup(t)
-			scenario.Run(t, newHost(t, setup), setup)
+			host := newHost(t, setup)
+			if scenario.Capability != "" {
+				if capabilities, ok := host.(CapabilityHost); ok &&
+					!capabilities.Supports(scenario.Capability) {
+					t.Skipf("%s intentionally does not expose %s", host.Transport(), scenario.Capability)
+				}
+			}
+			scenario.Run(t, host, setup)
 		})
 	}
 }

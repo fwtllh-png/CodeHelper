@@ -10,14 +10,14 @@ prerequisites:
 code_paths:
   - internal/host/bench
   - internal/runtime/agent/promptcontext
-  - extensions/vscode/src/performance
+  - web/src/runtime
 test_paths:
   - internal/host/bench/bench_test.go
-  - extensions/vscode/src/performance/gate.test.ts
+  - web/src/runtime/client.test.ts
 source_of_truth:
   - testdata/benchmarks/README.md
   - Makefile
-  - extensions/vscode/scripts/release/rc-report.mjs
+  - web/package.json
 status: draft
 last_verified: null
 ---
@@ -30,7 +30,7 @@ last_verified: null
 
 Hermetic Coding Suite 覆盖 Context Truncation、Compaction、Working Set、Evidence、
 Index Degradation、Edit Transaction 与 Verification Gate；每个 Task 具有 Assertion。
-Catalog Benchmark 测量大 Tool Set 的时间与 Allocation。VS Code Gate 约束 10k Delta、
+Catalog Benchmark 测量大 Tool Set 的时间与 Allocation。Web Gate 约束 10k Delta、
 1000 Background Row、Runtime Ready、Incremental Transcript、Hidden View 与 Electron
 Interaction。
 
@@ -119,8 +119,8 @@ Stability 是不同证据；即使耗时快，重建完整 DOM 仍应失败。
 make benchmark-v2
 make bench
 make catalog-bench
-make vscode-performance
-make vscode-rc
+make web-build
+make web-build
 ```
 
 Platform-capability Journey 只在声明的 Sandbox 前置条件可用时运行。Capability 缺失要

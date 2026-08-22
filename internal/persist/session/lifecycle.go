@@ -50,6 +50,94 @@ type profileRoute struct {
 	ExecutionTarget string `json:"execution_target"`
 }
 
+type lifecycleQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (r *Repository) CreateLifecycle(
+	ctx context.Context,
+	seed protocol.SessionCreateSeed,
+) (protocol.SessionSummary, error) {
+	if r.db == nil {
+		return protocol.SessionSummary{}, errors.New("session repository database is required")
+	}
+	if err := seed.Validate(); err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	now := time.Now().UTC()
+	persistedIsolation := seed.Isolation
+	if persistedIsolation == "shared" {
+		persistedIsolation = ""
+	}
+	metadata, err := json.Marshal(map[string]any{
+		"lifecycle": lifecycleMetadata{
+			Version:        protocol.SessionLifecycleVersion,
+			Revision:       1,
+			ActiveThreadID: seed.ThreadID,
+		},
+		"provider":  seed.Provider,
+		"model":     seed.Model,
+		"isolation": persistedIsolation,
+	})
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	err = sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO workspaces(
+				id, root_path, display_name, metadata_json, created_at, updated_at
+			) VALUES (?, ?, ?, '{}', ?, ?)
+			ON CONFLICT(root_path) DO NOTHING`,
+			seed.WorkspaceID,
+			seed.WorkspaceRoot,
+			seed.WorkspaceLabel,
+			sqlkit.Timestamp(now),
+			sqlkit.Timestamp(now),
+		); err != nil {
+			return fmt.Errorf("create session workspace: %w", err)
+		}
+		var workspaceID string
+		if err := tx.QueryRowContext(
+			ctx,
+			`SELECT id FROM workspaces WHERE root_path = ?`,
+			seed.WorkspaceRoot,
+		).Scan(&workspaceID); err != nil {
+			return fmt.Errorf("resolve session workspace: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO sessions(
+				id, workspace_id, status, metadata_json, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?)`,
+			seed.SessionID,
+			workspaceID,
+			StatusOpen,
+			metadata,
+			sqlkit.Timestamp(now),
+			sqlkit.Timestamp(now),
+		); err != nil {
+			return fmt.Errorf("create session lifecycle: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO threads(
+				id, session_id, parent_thread_id, title, status, created_at, updated_at
+			) VALUES (?, ?, NULL, ?, 'open', ?, ?)`,
+			seed.ThreadID,
+			seed.SessionID,
+			seed.Title,
+			sqlkit.Timestamp(now),
+			sqlkit.Timestamp(now),
+		); err != nil {
+			return fmt.Errorf("create session thread: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return protocol.SessionSummary{}, err
+	}
+	return r.GetLifecycle(ctx, seed.SessionID)
+}
+
 func (r *Repository) ListLifecycle(
 	ctx context.Context,
 	filter LifecycleQuery,
@@ -180,6 +268,14 @@ func (r *Repository) GetLifecycle(
 	if r.db == nil {
 		return protocol.SessionSummary{}, errors.New("session repository database is required")
 	}
+	return getLifecycle(ctx, r.db, sessionID)
+}
+
+func getLifecycle(
+	ctx context.Context,
+	queryer lifecycleQueryer,
+	sessionID string,
+) (protocol.SessionSummary, error) {
 	var (
 		summary                                  protocol.SessionSummary
 		sessionStatus, threadStatus              string
@@ -188,7 +284,7 @@ func (r *Repository) GetLifecycle(
 		createdAt, sessionUpdated, threadUpdated string
 		parent                                   sql.NullString
 	)
-	err := r.db.QueryRowContext(ctx, `
+	err := queryer.QueryRowContext(ctx, `
 		SELECT s.id, s.status, s.metadata_json, s.created_at, s.updated_at,
 		       w.root_path, w.display_name,
 		       t.id, t.parent_thread_id, t.title, t.status, t.updated_at
@@ -256,10 +352,10 @@ func (r *Repository) GetLifecycle(
 	if summary.WorkspaceLabel == "" || summary.WorkspaceLabel == "." {
 		summary.WorkspaceLabel = summary.WorkspaceRoot
 	}
-	if err := r.projectLatestTurn(ctx, &summary); err != nil {
+	if err := projectLatestTurn(ctx, queryer, &summary); err != nil {
 		return protocol.SessionSummary{}, err
 	}
-	if err := r.projectUsage(ctx, &summary); err != nil {
+	if err := projectUsage(ctx, queryer, &summary); err != nil {
 		return protocol.SessionSummary{}, err
 	}
 	if err := summary.Validate(); err != nil {
@@ -272,7 +368,15 @@ func (r *Repository) ThreadIDs(
 	ctx context.Context,
 	sessionID string,
 ) ([]protocol.ThreadID, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	return threadIDs(ctx, r.db, sessionID)
+}
+
+func threadIDs(
+	ctx context.Context,
+	queryer lifecycleQueryer,
+	sessionID string,
+) ([]protocol.ThreadID, error) {
+	rows, err := queryer.QueryContext(ctx, `
 		SELECT id FROM threads WHERE session_id = ? ORDER BY created_at, id`,
 		sessionID,
 	)
@@ -289,6 +393,45 @@ func (r *Repository) ThreadIDs(
 		result = append(result, id)
 	}
 	return result, rows.Err()
+}
+
+func (r *Repository) PresentationReadFence(
+	ctx context.Context,
+	sessionID string,
+) (protocol.SessionReadFence, error) {
+	if r.db == nil {
+		return protocol.SessionReadFence{},
+			errors.New("session repository database is required")
+	}
+	var fence protocol.SessionReadFence
+	err := sqlkit.WithTx(
+		ctx,
+		r.db,
+		&sql.TxOptions{ReadOnly: true},
+		func(tx *sql.Tx) error {
+			if err := tx.QueryRowContext(ctx, `
+				SELECT COALESCE(MAX(sequence), 0)
+				FROM event_reservations`,
+			).Scan(&fence.ThroughSequence); err != nil {
+				return fmt.Errorf("read presentation event watermark: %w", err)
+			}
+			summary, err := getLifecycle(ctx, tx, sessionID)
+			if err != nil {
+				return err
+			}
+			ids, err := threadIDs(ctx, tx, sessionID)
+			if err != nil {
+				return err
+			}
+			fence.Session = summary
+			fence.ThreadIDs = ids
+			return nil
+		},
+	)
+	if err != nil {
+		return protocol.SessionReadFence{}, err
+	}
+	return fence, nil
 }
 
 func (r *Repository) SessionForThread(
@@ -413,6 +556,12 @@ func (r *Repository) UpdateLifecycle(
 		if patch.Archived != nil {
 			archived = *patch.Archived
 		}
+		if archived &&
+			!(sessionStatus == string(StatusClosed) || threadStatus == "archived") {
+			if err := requireNoActiveTurns(ctx, tx, sessionID, "archive"); err != nil {
+				return err
+			}
+		}
 		if title == currentTitle && pinned == lifecycle.Pinned &&
 			archived == (sessionStatus == string(StatusClosed) || threadStatus == "archived") {
 			return nil
@@ -504,6 +653,9 @@ func (r *Repository) DeleteLifecycle(
 				Current:  lifecycle.Revision,
 			}
 		}
+		if err := requireNoActiveTurns(ctx, tx, sessionID, "delete"); err != nil {
+			return err
+		}
 		var count int
 		if err := tx.QueryRowContext(ctx, `
 			SELECT COUNT(*)
@@ -540,6 +692,32 @@ func (r *Repository) DeleteLifecycle(
 		ThreadID:  threadID,
 		DeletedAt: time.Now().UTC(),
 	}, nil
+}
+
+func requireNoActiveTurns(
+	ctx context.Context,
+	tx *sql.Tx,
+	sessionID, action string,
+) error {
+	var count int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM turns tr
+		JOIN threads th ON th.id = tr.thread_id
+		WHERE th.session_id = ? AND tr.status = 'active'`,
+		sessionID,
+	).Scan(&count); err != nil {
+		return err
+	}
+	if count != 0 {
+		return protocol.NewProblem(
+			protocol.CodeConflict,
+			fmt.Sprintf("cannot %s session with an active turn", action),
+			true,
+			nil,
+		)
+	}
+	return nil
 }
 
 func decodeLifecycleMetadata(
@@ -617,12 +795,13 @@ func metadataWithLifecycle(
 	return json.Marshal(values)
 }
 
-func (r *Repository) projectLatestTurn(
+func projectLatestTurn(
 	ctx context.Context,
+	queryer lifecycleQueryer,
 	summary *protocol.SessionSummary,
 ) error {
 	var turnID, status, updatedAt string
-	err := r.db.QueryRowContext(ctx, `
+	err := queryer.QueryRowContext(ctx, `
 		SELECT tr.id, tr.status, tr.updated_at
 		FROM turns tr
 		JOIN threads t ON t.id = tr.thread_id
@@ -657,7 +836,7 @@ func (r *Repository) projectLatestTurn(
 		summary.Status = protocol.SessionStatusIdle
 	}
 	var sequence uint64
-	if err := r.db.QueryRowContext(ctx, `
+	if err := queryer.QueryRowContext(ctx, `
 		SELECT COALESCE(MAX(e.sequence), 0)
 		FROM event_index e
 		JOIN threads t ON t.id = e.thread_id
@@ -670,12 +849,13 @@ func (r *Repository) projectLatestTurn(
 	return nil
 }
 
-func (r *Repository) projectUsage(
+func projectUsage(
 	ctx context.Context,
+	queryer lifecycleQueryer,
 	summary *protocol.SessionSummary,
 ) error {
 	var unpriced, calls uint64
-	err := r.db.QueryRowContext(ctx, `
+	err := queryer.QueryRowContext(ctx, `
 		SELECT
 			COALESCE(SUM(input_tokens + output_tokens + reasoning_tokens), 0),
 			COALESCE(SUM(CASE WHEN cost_known THEN cost_microunits ELSE 0 END), 0),

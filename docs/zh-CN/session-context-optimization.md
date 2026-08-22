@@ -866,7 +866,7 @@ Host 在 `started` 后显示“Compacting conversation”，在 `completed` 或 
 普通 Turn 展示。Provider 通常不返回真实百分比，因此 UI 应优先显示 Stage 和 Elapsed；
 如需要百分比，只能使用明确标注的 Stage-based Progress，不能伪装成模型生成进度。
 
-TUI、VS Code、CLI JSON 和 ACP 必须投影同一 Runtime Event。关闭 `inline` 时不应出现
+TUI、Web、CLI JSON 和 Web Transport 必须投影同一 Runtime Event。关闭 `inline` 时不应出现
 阻塞式 UI；`post_turn` Job 只通过非阻塞状态或 Receipt 展示。
 
 ## 9. Workspace-aware Context Checkpoint
@@ -1179,7 +1179,7 @@ Host 只能展示这些 Runtime-owned Receipt。
 | 默认值、校验、环境变量 | `internal/config` | 未知字段失败关闭，新增能力默认关闭 |
 | Event、Receipt、Schema | `internal/runtime/protocol` | 通过 Generator 同步 Go、JSON Schema、TypeScript |
 | 具体构造与 Feature Gate | `internal/runtime/app/wire` | 只负责 Wiring，不承载业务循环 |
-| Host 展示 | `internal/host`、`extensions/vscode` | 只投影 Runtime Receipt，不推断 Context 事实 |
+| Host 展示 | `internal/host`、`web` | 只投影 Runtime Receipt，不推断 Context 事实 |
 
 推荐把每个 Phase 拆成 Contract、Implementation、Recovery、Observability 和 Gate 五组
 提交。不得在同一个提交中同时改变 Durable Format、Compaction Policy 和 Host 展示，
@@ -1233,7 +1233,7 @@ Host 只能展示这些 Runtime-owned Receipt。
 - 实现 Durable Narrative Input Artifact、`post_turn` Maintenance State、Source ID Validator、
   Staleness Fence 和确定性降级；
 - 首版不启用 Inline；
-- 扩展 `turn.compaction` Lifecycle，并让 TUI、CLI、ACP 和 VS Code 只投影 Runtime
+- 扩展 `turn.compaction` Lifecycle，并让 TUI、CLI、Web Transport 和 Web 只投影 Runtime
   状态；
 - Feature Flag 默认 `off`。
 
@@ -1278,7 +1278,7 @@ State Machine 和 Digest 与 Phase 4 一致。
 - Security：Prompt Injection、Secret Memory、跨 Workspace Scope、Tool Disabled；
 - Race：并发 Memory CRUD、Manifest Recovery、Fork/Restore Fence；
 - Protocol：Go/Schema/TypeScript Trait 和 Golden 同步；
-- Hosts：CLI、TUI、ACP、VS Code 投影同一 Receipt。
+- Hosts：CLI、TUI、Web 投影同一 Receipt。
 
 标准验证：
 
@@ -1374,4 +1374,4 @@ Token 降低不是单独成功标准。必须同时观察正确完成率、验�
    Compaction；
 7. 用户 Memory 可按 Scope 查询、更新、删除，并在下一 Turn 生效；
 8. 所有 Context 省略、降级和失效均可从 Receipt 解释；
-9. Hermetic、Race、Architecture、Protocol、VS Code、Docs 和 Book 门禁全部通过。
+9. Hermetic、Race、Architecture、Protocol、Web、Docs 和 Book 门禁全部通过。

@@ -1,0 +1,488 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codehelper.dev/schemas/web-host-v1.json",
+  "title": "CodeHelper Web Host transport contract",
+  "protocol_version": 1,
+  "loopback_only": true,
+  "same_origin_only": true,
+  "capacity_defaults": {
+    "max_json_body_bytes": 1048576,
+    "max_websocket_frame_bytes": 4194304,
+    "max_replay_events": 10000,
+    "max_connections": 16,
+    "max_active_sessions": 32,
+    "max_identity_bytes": 256
+  },
+  "routes": [
+    {
+      "path": "/api/v1/agent/list",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "agent_list",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/bootstrap",
+      "method": "GET",
+      "request": "empty",
+      "response": "bootstrap",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": false,
+      "requires_capability": false
+    },
+    {
+      "path": "/api/v1/checkpoint/fork",
+      "method": "POST",
+      "request": "checkpoint_fork",
+      "response": "checkpoint_fork_result",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/checkpoint/get",
+      "method": "POST",
+      "request": "checkpoint_identity",
+      "response": "checkpoint",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/checkpoint/list",
+      "method": "POST",
+      "request": "checkpoint_query",
+      "response": "checkpoint_list",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/checkpoint/restore",
+      "method": "POST",
+      "request": "checkpoint_identity",
+      "response": "checkpoint_restore",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/content/{handle}",
+      "method": "GET",
+      "request": "content_handle",
+      "response": "content_download",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/credential/clear-keyring",
+      "method": "POST",
+      "request": "credential_provider",
+      "response": "credential_status",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/credential/set-keyring",
+      "method": "POST",
+      "request": "credential_set",
+      "response": "credential_status",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/credential/status",
+      "method": "POST",
+      "request": "credential_provider",
+      "response": "credential_status",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/credential/validate",
+      "method": "POST",
+      "request": "credential_validate",
+      "response": "credential_status",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/events",
+      "method": "GET+WEBSOCKET",
+      "request": "auth_frame",
+      "response": "event_frame",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/extension/control",
+      "method": "POST",
+      "request": "extension_control",
+      "response": "extension_control_result",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/extension/list",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "extension_list",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/mcp/health",
+      "method": "POST",
+      "request": "empty",
+      "response": "mcp_health_list",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/model/list",
+      "method": "POST",
+      "request": "empty",
+      "response": "model_catalog",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/operation/submit",
+      "method": "POST",
+      "request": "operation_submit",
+      "response": "operation_receipt",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/plan/get",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "session_plan",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/plan/transition",
+      "method": "POST",
+      "request": "plan_transition",
+      "response": "operation_receipt",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/profile/get",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "session_profile_snapshot",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/profile/update",
+      "method": "POST",
+      "request": "profile_update",
+      "response": "profile_update_result",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/provider/list",
+      "method": "POST",
+      "request": "empty",
+      "response": "provider_catalog",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/activate",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "session_binding",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/create",
+      "method": "POST",
+      "request": "session_create",
+      "response": "session_binding",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/delete",
+      "method": "POST",
+      "request": "session_delete",
+      "response": "session_delete_result",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/export",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "session_export",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/history",
+      "method": "POST",
+      "request": "session_history",
+      "response": "session_history_page",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/list",
+      "method": "POST",
+      "request": "session_list",
+      "response": "session_list",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/merge",
+      "method": "POST",
+      "request": "session_merge",
+      "response": "merge_result",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/snapshot",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "presentation_snapshot",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/status",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "session_summary",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/session/update",
+      "method": "POST",
+      "request": "session_update",
+      "response": "session_lifecycle_update",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/system/describe",
+      "method": "POST",
+      "request": "empty",
+      "response": "system_description",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/system/diagnostics",
+      "method": "POST",
+      "request": "empty",
+      "response": "system_diagnostics",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/system/readiness",
+      "method": "POST",
+      "request": "empty",
+      "response": "runtime_readiness",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/task/list",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "task_list",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/tool/catalog",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "tool_catalog",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/turn/recover",
+      "method": "POST",
+      "request": "turn_recover",
+      "response": "operation_receipt",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/usage/query",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "usage_summary",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/workspace/browse",
+      "method": "POST",
+      "request": "workspace_browse",
+      "response": "workspace_entries",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/workspace/diagnostics",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "workspace_diagnostics",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/workspace/diff",
+      "method": "POST",
+      "request": "workspace_diff",
+      "response": "workspace_diff",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/workspace/image",
+      "method": "POST",
+      "request": "workspace_resource",
+      "response": "workspace_image",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/workspace/resource",
+      "method": "POST",
+      "request": "workspace_resource",
+      "response": "workspace_resource",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/workspace/search",
+      "method": "POST",
+      "request": "workspace_search",
+      "response": "workspace_entries",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/workspace/symbols",
+      "method": "POST",
+      "request": "workspace_symbols",
+      "response": "workspace_symbol_list",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/healthz",
+      "method": "GET",
+      "request": "empty",
+      "response": "health",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": false,
+      "requires_capability": false
+    }
+  ]
+}

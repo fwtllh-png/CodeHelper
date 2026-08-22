@@ -9,6 +9,8 @@ import (
 
 const defaultService = "codehelper"
 
+var ErrNotFound = oskeyring.ErrNotFound
+
 // Store is the OS credential store (macOS Keychain, Linux Secret Service,
 // Windows Credential Manager) via zalando/go-keyring.
 type Store struct {

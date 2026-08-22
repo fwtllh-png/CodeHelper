@@ -20,8 +20,7 @@ codehelper config explain execution.verify.mode --config ./codehelper.toml
 返回最终值、内置默认值、胜出来源、风险级别和行为影响。
 
 MCP Server 定义使用独立、严格且带版本的 JSON 文件，不属于 Runtime TOML 控制面。
-CLI 与 TUI 通过 `--mcp-config` 传入；VS Code 使用
-`codehelper.runtime.mcpConfigPath`，并将同一路径转发给 ACP Host。可通过
+CLI、TUI 与 Web 都通过 `--mcp-config` 传入。可通过
 `codehelper mcp validate --config ./mcp.json` 校验。
 
 ## 配置 Profile

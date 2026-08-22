@@ -290,7 +290,7 @@
     },
     {
       "id": "host",
-      "owner": "internal/host/runtimeapi/acp",
+      "owner": "internal/host/runtimeapi/web",
       "invariants": [
         "no_duplicate_side_effect",
         "terminal_accounted",
@@ -298,20 +298,20 @@
       ],
       "cases": {
         "success": {
-          "package": "./internal/host/runtimeapi/acp",
-          "test": "TestACPHostMeetsTheProtocolContract",
+          "package": "./internal/host/runtimeapi/web",
+          "test": "TestWebSocketDownlinkConcurrencyAndShutdown",
           "expected_state": "host projection matches runtime contract",
           "recovery": "none"
         },
         "retryable_failure": {
-          "package": "./internal/host/runtimeapi/acp",
-          "test": "TestUnavailableTurnFailurePreservesRecoverableACPCode",
+          "package": "./internal/host/runtimeapi/web",
+          "test": "TestUnaryRequiresTokenAndRuntimeReadiness",
           "expected_state": "recoverable failure remains typed",
           "recovery": "resume through runtime"
         },
         "permanent_failure": {
-          "package": "./internal/host/runtimeapi/acp",
-          "test": "TestConvergenceFailureReturnsRecoverablePromptResult",
+          "package": "./internal/host/runtimeapi/web",
+          "test": "TestArtifactRouteUsesTypedValidation",
           "expected_state": "incomplete terminal is explicit",
           "recovery": "new continuation turn"
         },
@@ -322,8 +322,8 @@
           "recovery": "reconnect at terminal cursor"
         },
         "crash_recovery": {
-          "package": "./internal/host/runtimeapi/acp",
-          "test": "TestBinaryInteropFramingConcurrencyAndShutdown",
+          "package": "./internal/host/runtimeapi/web",
+          "test": "TestWebSocketDownlinkConcurrencyAndShutdown",
           "expected_state": "transport shutdown does not fabricate state",
           "recovery": "reconnect and replay cursor"
         }

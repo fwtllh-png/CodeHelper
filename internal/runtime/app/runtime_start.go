@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
@@ -87,6 +88,7 @@ func prepareRuntime(
 		terminalStore:      options.TerminalStore,
 		contextRebaseStore: options.ContextRebaseStore,
 		orchestration:      options.Orchestration,
+		workspaceRoot:      strings.TrimSpace(options.WorkspaceRoot),
 		operations:         make(chan acceptedOperation, options.OperationBuffer),
 		done:               make(chan struct{}),
 		terminals:          make(map[protocol.TurnID]protocol.EventKind),
@@ -105,6 +107,8 @@ func prepareRuntime(
 	runtime.hub = newEventHub(runtimeContext, runtime)
 	runtime.terminal = &TerminalPublisher{runtime: runtime}
 	runtime.SessionService = &SessionService{Runtime: runtime}
+	runtime.OperationService = &OperationService{Runtime: runtime}
+	runtime.HistoryService = &HistoryService{Runtime: runtime}
 	runtime.ArtifactService = &ArtifactService{Runtime: runtime}
 	if recovery != nil {
 		runtime.restore(*recovery)
@@ -124,7 +128,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 	return r.startErr
 }
 func (r *Runtime) activate(ctx context.Context) error {
-	if r.durable {
+	if r.durable && !r.opts.SkipRuntimeRecovery {
 		if err := r.terminal.Recover(ctx); err != nil {
 			go r.loop()
 			close(r.operations)
@@ -144,7 +148,7 @@ func (r *Runtime) activate(ctx context.Context) error {
 	r.accepting = true
 	r.mu.Unlock()
 	go r.loop()
-	if !r.durable {
+	if !r.durable || r.opts.SkipRuntimeRecovery {
 		return nil
 	}
 	if err := r.recoverPendingTurns(ctx); err != nil {

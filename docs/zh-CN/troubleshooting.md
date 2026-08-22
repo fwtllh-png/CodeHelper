@@ -142,7 +142,7 @@ Projection，不能 Resume 或 Settle Work。
 
 ## Extension State 未收敛
 
-使用对应的 `plugin` 或 `skill` List Command，再通过 Runtime Client 或 VS Code
+使用对应的 `plugin` 或 `skill` List Command，再通过 Runtime Client 或 Web
 Extensions View 检查 Health 与 Receipt。重点核对 Source Identity、Trust、
 Generation、Enabled State、Capability State 与最后一条 Operation Receipt。
 
@@ -172,31 +172,31 @@ Retention 按时间管理，与 `state.event_retention` 不同。OTLP 缺失或 
 Drop 只影响 Observation Health，不改变权威 Turn Outcome。排查 Collector 时不能
 重写 Runtime Event、Receipt 或 Terminal Envelope。
 
-## VS Code Runtime 不可用
+## Web Runtime 不可用
 
 1. 执行 `CodeHelper: Show Status`。
 2. 确认 Workspace Trust。
 3. 检查 `codehelper.binarySource`。
 4. 检查 Runtime Config Absolute Path。
 5. 执行选中 Binary 的 `version --json`。
-6. 与 `extensions/vscode/compatibility.json` 对比。
+6. 运行 `make web-parity-check` 检查 Web 能力契约。
 7. 从同一代码树重建 Runtime 与 Extension。
 
 CodeHelper 只支持本地 `file:` Workspace。Remote SSH、Dev Container 和其他
-`vscode-remote:` 环境会在 Activation 阶段被拒绝。
+`web-remote:` 环境会在 Activation 阶段被拒绝。
 
-## 采集 VS Code Runtime 故障
+## 采集 Web Runtime 故障
 
 复现前执行 `CodeHelper: Start Runtime Capture`，实测结束后执行
 `CodeHelper: Stop Runtime Capture`。完成提示会给出 Extension 私有 Workspace
 Storage 下的 JSONL 路径。
 
-Capture 会关联全部 Live Protocol Event、Replay 标记、ACP Request 生命周期与 ID、
+Capture 会关联全部 Live Protocol Event、Replay 标记、Web Transport Request 生命周期与 ID、
 Runtime stderr、进程退出 Code 或 Signal、自动重启状态和 Session 同步错误。该功能
 默认关闭；采集文件权限为 `0600`，因为 Model Output、Tool Arguments/Results 和
 Diagnostics 可能包含敏感 Workspace 数据。分享前必须检查并脱敏。
 
-该 VS Code Host Capture 与 Runtime Observation Journal 不同。Host Capture 覆盖 ACP
+该 Web Host Capture 与 Runtime Observation Journal 不同。Host Capture 覆盖 Web Transport
 与 Process Supervision；Observation Journal 按 `CODEHELPER_OBSERVATION_CAPTURE`
 记录 Runtime Evidence。
 

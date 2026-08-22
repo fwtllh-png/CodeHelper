@@ -133,7 +133,7 @@ Journal。
 projection(next) = reduce(projection(current), event)
 ```
 
-Projection 包括 Thread List、Latest Turn、Pending Approval、Usage Rollup、VS Code Tree/
+Projection 包括 Thread List、Latest Turn、Pending Approval、Usage Rollup、Web Tree/
 Chat。它应当在规定范围可 Rebuild、Duplicate Delivery 下 Idempotent、按 Cursor/Version
 排序、按 Workspace/Thread Scope，并只优化 Read。
 

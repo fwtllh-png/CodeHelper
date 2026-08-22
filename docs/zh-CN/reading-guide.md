@@ -21,7 +21,7 @@ CodeHelper 是一个体量很大的 Go 代码库（1800+ 个文件）。这份�
 
 ```mermaid
 flowchart LR
-    subgraph Hosts["主机：CLI / TUI / VS Code / ACP"]
+    subgraph Hosts["主机：CLI / TUI / Web"]
         H1["提交 Operation"]
         H2["订阅 Event 流"]
     end
@@ -55,7 +55,7 @@ flowchart LR
 
 ```text
 cmd/codehelper            进程入口
-internal/host             CLI、TUI、ACP 展示层
+internal/host             CLI、TUI、Web Transport 展示层
 internal/runtime          协议、应用状态、Agent 循环、装配
 internal/adapter          Provider、模型、工具、MCP、技能、插件
 internal/security         策略、权限、宪法、沙箱
@@ -64,7 +64,7 @@ internal/persist          SQLite、事件、会话、日志
 internal/observability    用量、trace、验证、诊断
 internal/platform         进程、PTY、OS 集成
 internal/config           默认值、TOML、环境变量、校验
-extensions/vscode         TypeScript 编辑器扩展
+web         TypeScript 编辑器扩展
 ```
 
 如果想先建立概念背景再读代码，[Agent 工程书](../book/zh-CN/README.md) 里的
@@ -88,7 +88,7 @@ sequenceDiagram
 
     Main->>CLI: cli.RunContext(ctx, args, stdin, stdout, stderr)
     CLI->>CLI: runWithCobra -> newRoot 构建命令树
-    CLI->>Exec: runExec / runHost（一次性或 ACP）
+    CLI->>Exec: runExec / runWeb（一次性或本机 Web）
     Exec->>Wire: wire.NewExec(ctx, ExecOptions)
     Wire->>Mods: defaultBuildModules() 按固定顺序
     Mods->>Mods: config -> provider -> persistence -> platform<br/>builtin tools -> extension tools -> security<br/>extension plan -> orchestration -> observability<br/>agent -> runtime -> background
@@ -106,15 +106,15 @@ sequenceDiagram
    归一化成 `protocol.Problem` 供机器消费。
 
 3. `internal/host/cli/cobra.go` —— `newRoot` 构建命令树。命令大多是“透传”分组
-   （`config`、`plugin`、`skill`）加直接命令（`exec`、`host --adapter acp`、
+   （`config`、`plugin`、`skill`）加直接命令（`exec`、`web`、
    `runtime-observe`、`auth`、`model`、`thread`、`fleet`、`automation`、
    `worker`、`workflow`、`lane`、`sandbox`、`tui` 等）。`exec.go` 是单次执行命令，
    也是最好的端到端示例：解析参数、调用 `wire.NewExec`、提交 `StartTurn`
    Operation、消费事件流。
 
-4. `internal/host/cli/host.go` —— `runHost` 是持久化主机路径。它把
-   `PersistentStore` 注入 `wire.NewExec`，并对外提供 ACP 适配器
-   （`internal/host/runtimeapi/acp/server.go`）。这是 VS Code 对接的表面。
+4. `internal/host/cli/web.go` —— `runWeb` 是持久化主机路径。它先启动 Boot
+   Surface，再把 `PersistentStore` 注入 `wire.NewExec`，最后激活
+   `internal/host/runtimeapi/web/server.go`。
 
 5. `internal/runtime/app/wire/` —— 组合根。`runtime.go` 定义 `ExecOptions`、
    `Session` 和 `NewExec`。`defaultBuildModules()` 是封闭的模块序列：
@@ -474,7 +474,7 @@ flowchart TD
 
 **路线 4 回答：**“状态存在哪里，我如何解释发生了什么？”
 
-## 路线 5 — 编排与 VS Code 扩展
+## 路线 5 — 编排与 Web 扩展
 
 **目标：** 理解产品更长生命周期、多步骤的那一侧：持久的 Run/Workflow/Subagent，
 以及编辑器如何投影运行时 Event。
@@ -523,7 +523,7 @@ flowchart LR
    （`subagent.go`、`graph.go`、`lifecycle.go`、`worktree.go`、`control.go`）。
 8. `internal/orchestration/task/` —— 持久任务状态与 `background_executors.go`
    使用的执行器契约。
-9. `extensions/vscode/src/chat/projector/` —— `index.ts` 拥有 `ChatProjector`：
+9. `web/src/chat/projector/` —— `index.ts` 拥有 `ChatProjector`：
    它跟踪序号与 Turn 身份，按序应用每个 Event，并暴露 `snapshot()`、
    `pendingApprovals()`、`pendingInputs()`。`turn-projector.ts` 穷尽分发每一个
    Event Class；领域模块处理 stream、tool、interaction、evidence、terminal 与
@@ -532,7 +532,7 @@ flowchart LR
    `snapshot.ts`、`model.ts`、`helpers.ts`）。
 10. `internal/host/tui/` 与 `internal/host/runtimeapi/` —— 其它主机表面。TUI
     （`host.go`、`app.go`、`view.go`、`reducer.go`、`projection.go`）是 Event 的纯
-    投影；`runtimeapi/` 包含 ACP 服务器（`acp/server.go`）、线程生命周期
+    投影；`runtimeapi/` 包含 Web Transport 服务器（`web/server.go`）、线程生命周期
     （`thread/`）与类型化视图（`view/`）。
 
 **关键符号：** `kernel`、`Attempt`、`Lease`、`worker`、`workflow.Compiler`、
@@ -541,7 +541,7 @@ flowchart LR
 **配套测试：** `orchestration/kernel/kernel_test.go`、
 `orchestration/store/store_test.go`、`orchestration/worker/worker_test.go`、
 `orchestration/workflow/workflow_test.go`、`orchestration/subagent/*_test.go`、
-`extensions/vscode/src/chat/projector.test.ts`。
+`web/src/chat/projector.test.ts`。
 
 **路线 5 回答：**“任务、工作流与子代理如何保持持久，编辑器如何把它们全部渲染出来？”
 
@@ -551,7 +551,7 @@ flowchart LR
   `SteerTurn`、`ApprovalDecision`、`InputReply`、`SubmitRun` 等）。
 - **Event** —— 转换发出的不可变、带序号的观察结果；这是主机协议。
 - **Receipt** —— 关于上下文、工具、变更、审批、验证或成本的结构化证据。
-- **Projection** —— 从事件与关系记录重建的、面向查询的状态（TUI/VS Code 永远不
+- **Projection** —— 从事件与关系记录重建的、面向查询的状态（TUI/Web 永远不
   拥有运行时真相）。
 - **Turn / Thread** —— Turn 是一次 Agent 执行；Thread 是它所属的对话容器。
 - **Sample** —— Turn 内一次 provider 请求/响应周期。
@@ -573,7 +573,7 @@ flowchart LR
   策略测试，看 allow/ask/deny 的实际表现。
 - **第 4 次（1–2 小时）：** 路线 4 —— 持久化与可观测性。读
   `wire/persistent_test.go` 理解持久恢复如何工作。
-- **第 5 次（2 小时）：** 路线 5 —— 编排 kernel，然后是 VS Code projector。
+- **第 5 次（2 小时）：** 路线 5 —— 编排 kernel，然后是 Web projector。
   可选：重跑路线 2，同时在 TUI/扩展里观察事件流动。
 
 如果你喜欢概念先行的学习方式，可以把[书](../book/zh-CN/README.md)穿插进来：

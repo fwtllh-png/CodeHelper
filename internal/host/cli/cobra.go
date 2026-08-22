@@ -109,9 +109,6 @@ func newRoot(
 		setCode,
 	)
 	root.AddCommand(newMCPCommand(ctx, stdin, stdout, stderr, setCode))
-	addPassthrough(root, "host --adapter acp [flags]", "Host Runtime over ACP", func(args []string) int {
-		return runHost(ctx, args, stdin, stdout, stderr)
-	}, setCode)
 	addPassthrough(root, "runtime-observe [flags]", "Emit runtime metrics and redacted logs", func(args []string) int {
 		return runRuntimeObserve(args, stdout, stderr)
 	}, setCode)
@@ -141,6 +138,7 @@ func newRoot(
 	root.AddCommand(newScorecardCommand(stdout, stderr, setCode))
 	root.AddCommand(newCompletionCommand(root, stdout, stderr, setCode))
 	root.AddCommand(newTUICommand(ctx, stdin, stdout, stderr, setCode))
+	root.AddCommand(newWebCommand(ctx, stdout, stderr, setCode))
 	return root
 }
 

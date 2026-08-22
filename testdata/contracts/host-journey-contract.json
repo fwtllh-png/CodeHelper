@@ -46,8 +46,7 @@
     "cli": {
       "transport": "runtime event stream",
       "evidence": [
-        "internal/host/cli/quickstart_test.go",
-        "internal/host/runtimeapi/acp/interop_test.go"
+        "internal/host/cli/quickstart_test.go"
       ]
     },
     "tui": {
@@ -57,18 +56,11 @@
         "internal/host/tui/visual_snapshot_test.go"
       ]
     },
-    "vscode": {
-      "transport": "ACP projection",
+    "web": {
+      "transport": "localhost HTTP and WebSocket",
       "evidence": [
-        "extensions/vscode/src/experience/journey.test.ts",
-        "extensions/vscode/src/runtime/integration.test.ts",
-        "extensions/vscode/src/test/suite/index.ts"
-      ]
-    },
-    "acp": {
-      "transport": "JSON-RPC",
-      "evidence": [
-        "internal/host/runtimeapi/acp/contract_test.go"
+        "internal/host/runtimeapi/web/server_test.go",
+        "web/src/runtime/client.test.ts"
       ]
     }
   },

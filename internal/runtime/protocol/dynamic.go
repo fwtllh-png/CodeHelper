@@ -14,7 +14,7 @@ const DynamicToolSpecVersion = 1
 
 var dynamicToolNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
-// DynamicToolSpec is the versioned ACP/runtime registration surface for tools
+// DynamicToolSpec is the versioned trusted-host registration surface for tools
 // supplied by a trusted host client. Capability and sandbox policy are never
 // taken from this payload; hosts attach those through registration policy.
 type DynamicToolSpec struct {

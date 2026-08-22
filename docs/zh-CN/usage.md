@@ -46,7 +46,6 @@ codehelper <command> --help
 | `codehelper fleet profile [flags]` | Show fleet roster/profile (workers, lease, heartbeat) |
 | `codehelper fleet status [flags]` | Show one fleet run and its tasks |
 | `codehelper help` | Show usage |
-| `codehelper host --adapter acp [flags]` | Host Runtime over ACP |
 | `codehelper init [flags]` | Create a minimal CodeHelper workspace config and data dirs |
 | `codehelper lane` | Manage inline/tmux worker lanes |
 | `codehelper lane attach [flags]` | Print tmux attach command for a lane (fail-closed without tmux) |
@@ -113,6 +112,7 @@ codehelper <command> --help
 | `codehelper update [flags]` | Check for newer CodeHelper releases (no auto-replace) |
 | `codehelper update check [flags]` | Query latest release metadata |
 | `codehelper version [flags]` | Print version information |
+| `codehelper web [flags]` | Run the local CodeHelper Web workspace |
 | `codehelper worker` | Execute durable background tasks |
 | `codehelper worker enqueue [flags]` | Queue a task for a worker to execute |
 | `codehelper worker list [flags]` | List executable tasks and their leases |
@@ -190,22 +190,19 @@ codehelper tui --config ./codehelper.toml --workspace .
 TUI 与 `exec` 使用同一 Runtime，不存在独立工具策略。日常建议从
 `--posture suggest` 开始。
 
-### ACP Host
+### 本机 Web 工作区
 
 ```bash
-codehelper host \
-  --adapter acp \
+codehelper web \
   --data-dir ./.codehelper \
-  --workspace .
+  --workspace . \
+  --enable-tools
 ```
 
-ACP 面向编辑器与 Agent 客户端。Workspace Identity 把编辑器 URI 绑定到 Runtime Root，
-Host 不能自行放宽或伪造该身份。
-`session/profile/get` 返回 Runtime 持有的 Session Profile 与 Model Capability；
-`session/profile/update` 使用 `expectedRevision` 乐观并发控制，活动 Turn 期间拒绝更新，
-并明确返回本次变化是否重置 Prompt Cache Identity。
-`session/tool/catalog` 返回统一 Runtime Tool Registry 的 Session 投影；其中 Enabled
-状态由 Profile Allowlist 控制，不替代 Guard 或 Approval 裁决。
+Web 只监听 `127.0.0.1`，使用 Capability Token、Host/Origin Fence、类型化 HTTP
+请求和下行 WebSocket。Workspace Identity、Session Profile、Tool Catalog、Checkpoint、
+Plan、Credential 与 Operation 都由 Runtime 或其所属安全组件校验；浏览器只提交 Intent
+并投影结果。
 
 ## Mode 与 Posture
 

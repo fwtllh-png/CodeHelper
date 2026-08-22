@@ -1,3 +1,5 @@
+//go:build ignore
+
 // verify-reliability-behavior runs the tests referenced in the reliability
 // matrix and verifies they pass. This complements the static assertion verifier
 // by actually executing the tests and checking their runtime behavior.
@@ -18,8 +20,8 @@ import (
 )
 
 type ReliabilityMatrix struct {
-	Version    int         `json:"version"`
-	Boundaries []Boundary  `json:"boundaries"`
+	Version    int        `json:"version"`
+	Boundaries []Boundary `json:"boundaries"`
 }
 
 type Boundary struct {

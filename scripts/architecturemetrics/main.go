@@ -471,7 +471,7 @@ func measureFile(path string) (map[string]int, error) {
 
 func measureRepository(root string) (map[string]int, error) {
 	sites := 0
-	for _, relative := range []string{"internal", "extensions/vscode/src"} {
+	for _, relative := range []string{"internal", "web/src"} {
 		directory := filepath.Join(root, filepath.FromSlash(relative))
 		err := filepath.WalkDir(directory, func(path string, entry os.DirEntry, walkErr error) error {
 			if walkErr != nil {

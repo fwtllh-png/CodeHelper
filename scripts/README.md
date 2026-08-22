@@ -16,10 +16,13 @@ Root 运行。
 | `check-hotspot-baseline.go` | 无 | 校验当前热点职责归属与体积预算 |
 | `commanddocs` | 无 | 从 Cobra Command Tree 生成或校验中文命令清单 |
 | `experiencecontract` | 无 | 校验共享 Experience Baseline |
+| `webexperiencecheck` | 无 | 校验 Web 布局、Token、Motion、Viewport 和 CSS 静态契约 |
+| `webassetmanifest` | 无 | 生成并核验嵌入 Web 产物的 SHA-256、大小和 MIME Manifest |
+| `webprotocolgen` | 无 | 从 Web Route Registry 生成或校验 Web Host 传输契约 |
 | `live-model-smoke.sh` | 有 | 单 Agent 或 Multi Agent 真实 Provider Smoke，不持久化 Secret |
 | `package-release.sh` | 无 | `dist/release` Binary、Checksum、SBOM、Manifest |
-| `deepseek-local.sh` | 配置或打包可能联网 | 本机 DeepSeek 编译、Keychain 配置、TUI 与 VS Code |
-| `setup-vscode-local.sh` | Package Build 可能安装依赖 | 把 Target VSIX 安装到 macOS 官方 VS Code |
+| `web-release-drill.py` | 无 | Web RC Data Dir 备份恢复与上一 Binary 降级证据 |
+| `deepseek-local.sh` | 配置时可能联网 | 本机 DeepSeek 编译、Keychain 配置、Web 与 TUI |
 
 ## 约定
 
@@ -52,14 +55,14 @@ make release-fact-check
 make doc-external-links
 make brand-check
 make secret-leak-test
+make web-release-drill PREVIOUS_RELEASE_REF=<上一发布提交>
 make live-model-smoke
 make live-multi-agent-smoke
 make deepseek-multi-agent-smoke
 VERSION=0.1.0 make package
 make deepseek-init
 make deepseek-tui
-make deepseek-vscode
-make vscode-local-setup
+make deepseek-web
 ```
 
 完整开发与发布背景见
