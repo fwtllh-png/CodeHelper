@@ -9,8 +9,9 @@ prerequisites:
   - runtime-app
 code_paths:
   - internal/runtime/agent/engine
-  - internal/runtime/agent/engine
   - internal/runtime/agent/turnkernel
+  - internal/adapter/provider/assembly
+  - internal/adapter/tool
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/turnkernel/tool_scheduler_test.go
@@ -20,10 +21,12 @@ test_paths:
 source_of_truth:
   - internal/runtime/agent/engine/turn_handler.go
   - internal/runtime/agent/turnkernel/runtime_kernel.go
-  - internal/runtime/agent/turnkernel/reducer.go
+  - internal/runtime/agent/turnkernel/reducer_sampling.go
+  - internal/runtime/agent/turnkernel/reducer_tool.go
+  - internal/runtime/agent/turnkernel/reducer_terminal.go
   - internal/runtime/agent/turnkernel/coordinator.go
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-08-23
 ---
 
 # 模型与工具执行循环
@@ -80,8 +83,9 @@ Catalog Budget 允许的 Tool Definition。
 
 ## Tool Round Trip
 
-Stream Fragment 被组装为完整 Tool Call，并绑定 Local Catalog Identity。Scheduler
-根据 Descriptor/Resource 决定 Parallel 或 Serial，执行统一经过 Guard。
+Provider Assembly 把 Stream Fragment 组装为完整 Tool Call，并绑定 Local Catalog
+Identity。`tool.ExecuteBatch` 根据已经冻结的 Replay/Parallel Plan 执行 Serial 或
+Concurrent Call，执行本身统一经过 Guard。
 
 Provider、Tool、Approval、Input、Verification 和 Journal 工作都表示为显式 Kernel
 Effect。`DurableEffectDispatcher` 在外部执行前记录 `EffectStarted`，并保留首个
@@ -139,8 +143,9 @@ Scope 本身就是 Correctness 的一部分。
 
 ## Gate 与 Completion
 
-- Max Steps 限制循环；
+- 显式 Max Steps 限制普通工作，并在预算外保留受限 Finalization；
 - Token/Cost Budget 限制消耗；
+- No-progress 状态逐步收窄能力并请求收敛，而不是直接制造固定执行上限；
 - Context Limit 触发 Compaction 或 Failure；
 - Pre-sampling Gate 可要求 Plan；
 - Workspace Turn Gate 串行化共享 Root 的 Writer；
@@ -154,14 +159,16 @@ Turn 把不完整 Tool Exchange 当成事实。
 
 | 关注点 | 源码 |
 | --- | --- |
-| Loop/Sampling | `engine.go` |
-| Turn Scope/Mailbox | `engine` |
+| 生产入口 | `engine/turn_handler.go` 中的 `Engine.Execute` |
+| Loop/Sampling | `engine/turn_handler.go`、`engine/model_handler.go` |
+| Provider Stream Assembly | `adapter/provider/assembly/stream_consumer.go` |
+| Turn Scope/Mailbox | `engine/turn_scope.go`、`turnkernel/runtime_control.go` |
 | Scope State/Control | `turn_scope.go` |
 | Session Delta | `session_delta.go` |
 | State、Command、Event 与 Effect | `turnkernel/state.go`、`turnkernel/command.go` |
-| 权威状态转换 | `turnkernel/reducer.go`、`turnkernel/coordinator.go` |
+| 权威状态转换 | `turnkernel/reducer_*.go`、`turnkernel/coordinator.go` |
 | Durable Effect Routing | `turnkernel/effect_dispatcher.go` |
-| Scheduler | `scheduler.go` |
+| Tool Batch/Scheduler | `adapter/tool/batch.go`、`turnkernel/tool_scheduler.go` |
 | Failure Class | `tool_failure.go` |
 | Verification | `verify.go` |
 | Compaction | `compaction.go` |
@@ -217,4 +224,4 @@ Message。
 | --- | --- |
 | Catalog ID | `runtime-agent-loop` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-12 |
+| 最后验证 | 2026-08-23 |

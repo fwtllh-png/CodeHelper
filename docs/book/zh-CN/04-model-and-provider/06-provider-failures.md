@@ -10,6 +10,7 @@ prerequisites:
   - runtime-stream-cancel-errors
 code_paths:
   - internal/adapter/provider/httpclient
+  - internal/adapter/provider/assembly
   - internal/runtime/agent/engine
 test_paths:
   - internal/adapter/provider/httpclient/client_test.go
@@ -82,7 +83,8 @@ Behavior Transactional。
 | HTTP Lifecycle | `httpclient/client.go` |
 | SSE | `provider/sse.go` |
 | Fault Fixture | `provider/fault_injection_test.go` |
-| Engine Retry | `agent/engine/engine.go` |
+| Engine Retry | `agent/engine/provider_retry.go` |
+| Incomplete Stream | `adapter/provider/assembly/stream_consumer.go` |
 | Public Problem | `runtime/protocol/problem.go` |
 
 ## Retry Timing 与 Health

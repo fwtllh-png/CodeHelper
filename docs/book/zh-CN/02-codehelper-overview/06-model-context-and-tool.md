@@ -22,7 +22,8 @@ test_paths:
 source_of_truth:
   - internal/adapter/provider/types.go
   - internal/runtime/agent/context/compact_truth.go
-  - internal/runtime/agent/engine/engine.go
+  - internal/runtime/agent/engine/turn_handler.go
+  - internal/adapter/tool/batch.go
   - internal/runtime/app/wire/route.go
 status: draft
 last_verified: null
@@ -160,7 +161,7 @@ Result 可以包含 Content、Metadata、File Change、Error Category 和大输�
 | Context | `internal/runtime/agent/prompt` |
 | Truth/Narrative | `internal/runtime/agent/context` |
 | Working Set/Evidence | `internal/runtime/agent/context`、`evidence` |
-| Collaboration Loop | `internal/runtime/agent/engine/engine.go` |
+| Collaboration Loop | `internal/runtime/agent/engine/turn_handler.go` |
 | Default Budget | `internal/runtime/app/wire/route.go` |
 
 ## 设计取舍与替代方案

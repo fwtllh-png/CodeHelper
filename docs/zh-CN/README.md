@@ -4,7 +4,7 @@
 有效的架构决策会以“当前约束”的形式写入对应指南，而不是要求读者重放开发过程。
 产品手册只维护中文版本，`docs/en` 和 `docs/book/en` 不属于允许的仓库结构。
 
-CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背景概念、系统设计、
+CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景概念、系统设计、
 源码导读、测试、故障和动手实验组织为一条渐进式学习路径。信息架构与建设阶段见
 [知识文档体系建设方案](./knowledge-base-plan.md)。
 
@@ -41,10 +41,10 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 ### 我要参与开发
 
 1. [架构设计](./architecture.md)
-2. [Runtime 可维护性与核心流程重构方案](./runtime-maintainability-refactoring-plan.md)
-3. [运行时可靠性系统治理](./reliability-hardening.md)
-4. [Web 主入口与 Web 退役技术实施方案](./web-primary-entry-plan.md)
-5. [Session Context Memory 优化设计与实施方案](./session-context-optimization.md)
+2. [Runtime 可维护性与所有权边界](./runtime-maintainability-refactoring-plan.md)
+3. [Runtime 可靠性契约](./reliability-hardening.md)
+4. [Web 主入口架构](./web-primary-entry-plan.md)
+5. [Session Context、Memory 与持久化](./session-context-optimization.md)
 6. [安全模型](./security.md)
 7. [本地开发与脚本](./development.md)
 8. [源码阅读路线指南](./reading-guide.md)
@@ -59,17 +59,17 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 | 文档内容 | 代码事实来源 |
 | --- | --- |
 | CLI 名称与参数 | `internal/host/cli` 与 `codehelper <command> --help` |
-| TOML 和环境变量 | `internal/config/config.go` |
+| TOML、环境变量与默认值 | `internal/config/schema.go`、`defaults.go`、`environment.go` |
 | Runtime 协议 | `docs/protocol/runtime-protocol.schema.json` |
 | 架构边界 | Import 图和 Architecture Test |
 | 构建测试命令 | `Makefile` 与 `web/package.json` |
 | Web 能力迁移范围 | `testdata/contracts/web-feature-parity.json` |
 | Web 与 TUI 体验语义 | `testdata/contracts/experience-contract.json` |
-| 知识书籍结构与建设阶段 | `knowledge-base-plan.md` |
+| 知识书籍信息架构 | `knowledge-base-plan.md` |
 | 书籍目录与章节状态 | `docs/book/catalog.json` |
 | 书籍 Ownership、新鲜度与发布事实 | `docs/book/governance.json` |
-| Runtime 可维护性改造状态 | `runtime-maintainability-refactoring-plan.md` 中通过验收的阶段 |
-| 可靠性治理状态 | `reliability-hardening.md` 中带验收证据的工作流状态 |
+| Runtime 所有权与主流程 | `runtime-maintainability-refactoring-plan.md` 与 Architecture Test |
+| 可靠性不变量 | `reliability-hardening.md` 与 `testdata/contracts/reliability-matrix.json` |
 | 路线图 | 只描述目标，不作为“已交付”证明 |
 
 实现与文档不一致时，应先核对实现，在同一变更中修正文档；适合自动化的内容应补充

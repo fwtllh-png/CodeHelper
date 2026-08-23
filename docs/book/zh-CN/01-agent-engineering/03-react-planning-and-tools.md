@@ -16,7 +16,8 @@ test_paths:
   - internal/adapter/provider/assembly/proposed_plan_test.go
   - internal/runtime/agent/engine/toolfailure_test.go
 source_of_truth:
-  - internal/runtime/agent/engine/engine.go
+  - internal/runtime/agent/engine/turn_handler.go
+  - internal/runtime/agent/turnkernel/reducer_sampling.go
   - internal/adapter/tool/tool.go
 status: draft
 last_verified: null

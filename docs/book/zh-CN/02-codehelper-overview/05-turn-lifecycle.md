@@ -11,8 +11,9 @@ code_paths:
   - internal/runtime/protocol
   - internal/runtime/app
   - internal/runtime/agent/engine
-  - internal/runtime/agent/engine
   - internal/runtime/agent/turnkernel
+  - internal/adapter/provider/assembly
+  - internal/adapter/tool
   - internal/observability/observation
   - internal/observability/router
 test_paths:
@@ -31,7 +32,7 @@ source_of_truth:
   - internal/runtime/agent/turnkernel/measurement.go
   - internal/observability/observation/envelope.go
 status: verified
-last_verified: 2026-08-17
+last_verified: 2026-08-23
 ---
 
 # 一次 Agent Turn 的完整生命周期
@@ -269,4 +270,4 @@ Tool Branch。修改 Prompt 前先阅读 `testdata/providers/openai/fixture.json
 | --- | --- |
 | Catalog ID | `overview-turn-lifecycle` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-17 |
+| 最后验证 | 2026-08-23 |

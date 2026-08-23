@@ -12,12 +12,14 @@ code_paths:
   - internal/runtime/app
   - internal/runtime/agent/engine
   - internal/adapter/provider
+  - internal/adapter/provider/assembly
 test_paths:
   - internal/runtime/app/runtime_test.go
   - internal/runtime/agent/engine/toolstream_test.go
   - internal/runtime/protocol/problem_test.go
 source_of_truth:
   - internal/runtime/protocol/problem.go
+  - internal/adapter/provider/assembly/stream_consumer.go
   - internal/adapter/tool/stream.go
 status: draft
 last_verified: null
@@ -119,7 +121,8 @@ Failure 可以反馈给 Model，Security Denial 与 Invariant Failure 不允许�
 | --- | --- |
 | Problem | `runtime/protocol/problem.go` |
 | Provider Stream | `adapter/provider` |
-| Engine Stream | `agent/engine/engine.go` |
+| Engine Stream | `agent/engine/model_handler.go` |
+| Provider Assembly | `adapter/provider/assembly/stream_consumer.go` |
 | Tool Output | `agent/engine/toolstream.go` |
 | Tool Failure | `agent/engine/tool_failure.go` |
 | Cancellation | `runtime/app/runtime.go` |

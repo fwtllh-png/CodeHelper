@@ -53,6 +53,9 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - 拒绝 Traversal、不安全 Symlink 和 Archive Escape。
 - Tool Contract 要求时先读后写。
 - 修改写入 Journal 并保持 Atomicity。
+- `exec_command` 的写权限只授予显式 `write_paths`。目标可以是现有普通文件，或位于
+  已存在父目录下的待创建文件；Guard 在执行前完成 Preflight，Strong Sandbox 只为
+  这些精确路径物化最小占位。目录、Symlink、重复路径和执行前发生的身份漂移均拒绝。
 - 配置后，写入型 Subagent 使用 Worktree。
 - 隔离 Worktree 仅可只读访问经过校验的自身 Git Administration Directory，以及
   Repository Common Git Directory 中必要的 Object、Ref 与配置路径；这不会授予

@@ -88,6 +88,9 @@ Turn Diff 记录 Path、Tool、Created/Modified/Deleted 与累计 Line Count。
 
 Execution Receipt 汇总 Change、Rollback Conflict、Read Path、Approval、Verification、
 Evidence、Context、Catalog、Usage/Cost/Latency 与 Unresolved Issue。未测量不等于零。
+其中 `model_execution.sample_reasons` 区分普通采样、续写、修复和收敛等原因；
+`tool_execution` 分别统计业务、控制、验证和失败调用，避免把 `turn_complete` 或
+`update_plan` 计成业务工具成本。
 
 Verification 是 Attempt History，不是单个 Final Badge。每次 Attempt 记录 Scope、
 Command、Derivation、Outcome 与 Failure Category。Repair Round 追加新 Attempt，并再次
@@ -115,7 +118,7 @@ Joined Receipt 方便查询，但不替代 Source Record。没有 Journal 时即
 | Transaction/Plan | `adapter/tool/file/apply.go` |
 | Change Observation | `adapter/tool/guard/guard.go` |
 | Journal/Recovery | `persist/workspacejournal` |
-| Turn Diff | `agent/engine/turndiff.go` |
+| Turn Diff | `agent/turnkernel/turn_diff.go` |
 | Receipt | `observability/receipt/receipt.go` |
 
 ## 设计取舍

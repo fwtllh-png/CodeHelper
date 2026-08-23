@@ -10,6 +10,7 @@ prerequisites:
   - runtime-stream-cancel-errors
 code_paths:
   - internal/adapter/provider
+  - internal/adapter/provider/assembly
   - internal/runtime/agent/engine
   - internal/observability/usage
 test_paths:
@@ -18,7 +19,8 @@ test_paths:
   - internal/runtime/agent/engine/latency_test.go
 source_of_truth:
   - internal/adapter/provider/types.go
-  - internal/runtime/agent/engine/engine.go
+  - internal/adapter/provider/assembly/stream_consumer.go
+  - internal/runtime/agent/engine/model_handler.go
 status: draft
 last_verified: null
 ---
@@ -98,7 +100,8 @@ Cost 使用该 Sample 的 Actual Route/Pricing Provenance，而非 Turn Default 
 | --- | --- |
 | StreamEvent/Usage | `provider/types.go` |
 | Decoder | `provider/openai`、`provider/anthropic` |
-| Engine | `agent/engine/engine.go` |
+| Engine | `agent/engine/model_handler.go` |
+| Stream Assembly | `adapter/provider/assembly/stream_consumer.go` |
 | Tool Sample | `agent/engine/toolsample.go` |
 | Usage Store | `observability/usage` |
 | Latency | `agent/engine/tracing.go` |

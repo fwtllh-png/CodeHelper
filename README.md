@@ -179,7 +179,7 @@ testdata/                Hermetic Provider 与 Benchmark Fixture
 | 配置 | [配置说明](./docs/zh-CN/configuration.md) |
 | 命令与工作流 | [使用指南](./docs/zh-CN/usage.md) |
 | 架构 | [架构设计](./docs/zh-CN/architecture.md) |
-| Runtime 可维护性改造 | [核心流程重构方案](./docs/zh-CN/runtime-maintainability-refactoring-plan.md) |
+| Runtime 所有权与可维护性 | [核心流程与边界](./docs/zh-CN/runtime-maintainability-refactoring-plan.md) |
 | 安全 | [安全指南](./docs/zh-CN/security.md) |
 | 本地开发 | [本地开发](./docs/zh-CN/development.md) |
 | 本机 DeepSeek | [一键配置运行](./docs/zh-CN/deepseek-local.md) |
@@ -187,7 +187,7 @@ testdata/                Hermetic Provider 与 Benchmark Fixture
 | Agent 工程知识书籍 | [书籍与导航](./docs/book/zh-CN/README.md) |
 | 知识体系方案 | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) |
 | 文档治理 | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) |
-| 运行时可靠性 | [系统治理](./docs/zh-CN/reliability-hardening.md) |
+| 运行时可靠性 | [可靠性契约](./docs/zh-CN/reliability-hardening.md) |
 | 产品方向 | [后续规划](./docs/zh-CN/roadmap.md) |
 
 ## 开发

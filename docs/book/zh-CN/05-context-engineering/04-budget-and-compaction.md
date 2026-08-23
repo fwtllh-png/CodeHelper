@@ -74,6 +74,11 @@ Deterministic Local Bound 与 UTF-8-safe Retention。
 Token Estimate 是带 Method 的 Evidence，不是精确 Provider Bill；Actual Usage 由 Provider
 返回并单独记录。
 
+执行预算与 Context 容量不是同一个概念。单 Turn 未显式配置 Token Ceiling 时，从当前
+模型 Context Window 派生；Child Tree 未显式配置时，再由父 Turn 容量和并发度派生。
+显式值是 Operator Ceiling，不能扩大模型或父级边界。预算耗尽产生带 Scope、Used 和
+Limit 的可恢复 `resource_exhausted`，而不是由模型无关固定值直接终止任务。
+
 ## 三类信息损失
 
 | Mechanism | Scope | Recoverability |
@@ -139,8 +144,8 @@ Section、Truncation Reason、Working Set、Critical Path 和 Prompt Context Rec
 | 关注点 | 源码 |
 | --- | --- |
 | Partition Retain | `prompt/context.go` |
-| Truth/Retention | `agent/compact/truth.go`、`retention.go` |
-| Narrative Artifact | `agent/compact/narrative.go` |
+| Truth/Retention | `agent/context/compact_truth.go`、`compact_retention.go` |
+| Narrative Artifact | `agent/context/compact_narrative.go`、`narrative_service.go` |
 | Cut/Replacement | `agent/engine/history_recovery.go` |
 | Narrative Effect | `agent/engine/narrative.go`、`agent/turnkernel` |
 | Thread Compact | `persist/history/compact.go` |

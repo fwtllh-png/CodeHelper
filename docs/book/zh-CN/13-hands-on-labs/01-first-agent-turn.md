@@ -147,7 +147,8 @@ rm -rf "$tmp"
 | Operation/Event | `internal/runtime/protocol/message.go` |
 | Queue/Sequence | `internal/runtime/app/runtime.go` |
 | Turn/Receipt Adapter | `internal/runtime/app/extension/engine_adapter.go`、`receipt.go` |
-| Model/Tool State Machine | `internal/runtime/agent/engine/engine.go` |
+| Model/Tool Loop | `internal/runtime/agent/engine/turn_handler.go` |
+| State Machine | `internal/runtime/agent/turnkernel` |
 | Fixture Server | `internal/adapter/provider/fixture` |
 
 ```bash

@@ -15,7 +15,8 @@ test_paths:
   - internal/runtime/agent/engine/engine_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
-  - internal/runtime/agent/engine/engine.go
+  - internal/runtime/agent/engine/turn_handler.go
+  - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/protocol/message.go
 status: draft
 last_verified: null

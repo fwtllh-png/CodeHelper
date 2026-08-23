@@ -96,6 +96,11 @@ Claim 在 Authority 已知后 Acquire，并在 Cancellation 等所有 Return Pat
 协调 Concurrent Call，但不能替代 Filesystem Precondition/Journal Fingerprint，因为
 External Process 仍可能修改 Workspace。
 
+`exec_command` 的声明写路径可以指向现有普通文件，或已存在父目录中的待创建文件。
+Guard 在进入 Sandbox 前做无副作用 Preflight；Strong Backend 只为已批准的缺失文件
+创建最小占位并再次校验 Identity。目录、Symlink、父目录缺失或 TOCTOU 漂移都会在命令
+执行前失败，不能通过扩大 Workspace 写权限规避。
+
 ## 代码地图
 
 | 关注点 | 源码 |

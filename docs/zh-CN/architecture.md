@@ -109,7 +109,7 @@ OperationService -> TurnService -> TurnCoordinator -> TurnScope
         +-> SessionService / ArtifactService -> Host Query
 
 wire.NewExec -> 仅负责构造 Module
-app.ChatMergeService -> 隔离 Chat Preview / Journal Apply / Git Baseline
+orchestration/chatmerge.Service -> 隔离 Chat Preview / Journal Apply / Git Baseline
 eventview + Web Projection -> 仅负责 Host Presentation
 ```
 
@@ -117,7 +117,7 @@ eventview + Web Projection -> 仅负责 Host Presentation
 | --- | --- | --- |
 | Composition Root | `internal/runtime/app/wire` | Concrete Construction 与 Resource Registration |
 | Durable Runtime Assembly | `internal/runtime/app/persistence` | Repository、Lifecycle Recovery、Persistent Runtime Options |
-| Chat Merge Service | `internal/runtime/app` | Isolated Baseline、Three-way Preview、Journaled Apply |
+| Chat Merge Service | `internal/orchestration/chatmerge` | Isolated Baseline、Three-way Preview、Journaled Apply |
 | Operation Service | `internal/runtime/app` | Queue、Idempotency、Typed Dispatch 与 Operation Commit/Reject |
 | Turn Service | `internal/runtime/app` | Active Lease、Control、Cancel Provenance 与 Turn goroutine 生命周期 |
 | Event/Recovery Service | `internal/runtime/app` | Event Projection 索引、Observer 与 Durable Recovery |
@@ -230,27 +230,27 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
 14. 业务 Terminal Decision 在 Turn 后 Context 维护之前冻结。Compaction、
     Session Delta 应用和非控制事件投影失败只能成为 Secondary Issue 或可重放
     Outbox 工作，不能把已完成 Turn 改写为失败。
-12. Verification Executor 通过 `VerificationFinished` 返回证据；Reducer 选择 Passed、
+15. Verification Executor 通过 `VerificationFinished` 返回证据；Reducer 选择 Passed、
     Repair、Reported、Blocked、Failed 或 Reverted，并独占 Repair Budget。
-13. Engine 提交 `TerminalRequested`；Reducer 选择 Completed、Failed 或 Canceled。
+16. Engine 提交 `TerminalRequested`；Reducer 选择 Completed、Failed 或 Canceled。
     随后 Journal Commit/Suspend/Rollback 作为 Durable Effect 执行，并返回
     `JournalResultReceived`。Suspend 会为结构化绑定的 Continue Turn 保留
     Verification-blocked 或 Convergence-blocked 修改。
-14. Scope 准备带 Revision 与 Digest 的 `SessionDelta`，包含 History、Usage、Cost、
+17. Scope 准备带 Revision 与 Digest 的 `SessionDelta`，包含 History、Usage、Cost、
     Working Set、Evidence、Failures 与 Compaction State。
-15. Runtime 为 Usage 与 Latency 冻结同一份带 Digest 的
+18. Runtime 为 Usage 与 Latency 冻结同一份带 Digest 的
     `TerminalMeasurementSnapshot`。Receipt、由 Measurement 投影的 Trace 与 Terminal
     Envelope 都引用该 Snapshot，不会再次读取可变 Counter。
-16. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Measurement、
+19. Persistent Runtime 在同一 SQLite 事务原子提交 Frozen State、Measurement、
     Session Delta、Final Output、Receipt、Terminal Event、Outbox 与真实 Operation
     Receipt。
-17. Engine 只在该 Commit 成功后幂等 Apply Session Delta；Commit 失败不修改 Session
+20. Engine 只在该 Commit 成功后幂等 Apply Session Delta；Commit 失败不修改 Session
     内存。
-18. 重启时 Runtime 扫描 Pending Terminal Projection，以稳定 Event ID 逐条 Append，
+21. 重启时 Runtime 扫描 Pending Terminal Projection，以稳定 Event ID 逐条 Append，
     成功后再将对应 Entry 标记为 Published。
-19. accepted StartTurn 仅在存在对应非终态 Domain Fact 时自动恢复；Coordinator requeue
+22. accepted StartTurn 仅在存在对应非终态 Domain Fact 时自动恢复；Coordinator requeue
     Running Effect，Engine 从 Durable Payload 接续 Provider、Tool 或 Journal 执行。
-20. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
+23. Approval/Input 恢复在接续执行前预装原 Request ID，Host 只回放一个 Wait，不会收到
     替代请求。
 
 Engine 始终提交完整逻辑模型请求。只有模型显式广告能力、请求属性不变且输入严格扩展
@@ -271,10 +271,11 @@ Engine 在每次投影后重新测量，若 Surface Pruning 已恢复窗口，�
 Replacement。
 
 完整传输 Route 还使用独立的滚动 Surface Budget：最新 Tool Batch 保持完整，已经被
-后续 Sample 消费的旧结果缩减为稳定 Handle 投影，不等待 Context 达到模型物理窗口的
-65%。默认累计预算为 64 KiB，单个已消费结果保留最多 384 Bytes。其 Provider 请求只
-物化每个 World Section 的最新版本，并移除已闭合 Tool Round 中的旧状态文本和
-Reasoning；Durable History、World Patch 链和原始 Tool Result 不被改写。
+后续 Sample 消费的旧结果缩减为稳定 Handle 投影，不必等待全局 Compaction。累计和
+单项保留值是可配置的模型可见容量边界，不是 Turn 执行预算；完整原文仍在 Content
+Store。Provider 请求只物化每个 World Section 的最新版本，并移除已闭合 Tool Round
+中的旧状态文本和 Reasoning；Durable History、World Patch 链和原始 Tool Result
+不被改写。
 增量 Route 保持严格追加投影，不执行这些会破坏 Response Chain 前缀的转换。
 
 `TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，
@@ -370,7 +371,7 @@ Graph；Support Bundle 构造会再次脱敏所选记录，并以独占 mode `06
 
 上限是正确性的一部分。无界上下文最终会变贵、变慢并降低一致性。
 
-长期 Session 的模型可见 Context 固定为三层：
+长期 Session 的模型可见 Context 分为三层：
 
 1. Runtime 生成、经过 Retention 和 Admission 的 Truth Capsule；
 2. 可选、非权威、带 Source Message Fence 的 Semantic Narrative；

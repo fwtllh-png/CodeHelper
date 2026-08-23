@@ -18,7 +18,8 @@ test_paths:
   - internal/adapter/tool/fault_injection_test.go
 source_of_truth:
   - internal/runtime/agent/engine/tool_failure.go
-  - internal/runtime/agent/engine/engine.go
+  - internal/adapter/tool/batch.go
+  - internal/adapter/tool/result/recovery.go
 status: draft
 last_verified: null
 ---
@@ -101,7 +102,8 @@ Failure Feedback 会进入 Model-visible History 与 Evidence/Compaction。它�
 | 关注点 | 源码 |
 | --- | --- |
 | Classification | `agent/engine/tool_failure.go` |
-| Parallel Execution | `agent/engine/engine.go` |
+| Parallel Execution | `adapter/tool/batch.go` |
+| Result Recovery | `adapter/tool/result/recovery.go` |
 | Error Category | `adapter/tool/catalog.go`、`adapter/mcp` |
 | Failure Evidence | `agent/engine/evidence.go` |
 | Tool Result Block | `adapter/provider/types.go` |

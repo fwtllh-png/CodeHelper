@@ -51,15 +51,14 @@
 
 ## 中期：执行可靠性
 
-- 确定性的 Task Recovery 与 Lease 可观测性；
-- Workflow Cancel、Retry 和 Checkpoint 保证；
+- 扩大 Durable WorkGraph Recovery 与 Lease 故障注入覆盖；
+- 改进 Workflow Cancel、Retry、Blocked/Waiting 和 Effect 恢复的运维可见性；
 - 更清晰的 Subagent Merge/Conflict 语义；
-- 按照 [Session Context Memory 优化设计与实施方案](./session-context-optimization.md)
-  建设可评估质量的有界长会话 Compact；
+- 持续评估[有界 Session Context](./session-context-optimization.md)的事实保留质量、
+  重复工作率和持久化写放大；
 - 并发 Provider、Tool 与 Worker 的资源隔离。
 
-具体扫描工作流、优先级、状态和验收证据统一记录在
-[运行时可靠性系统治理](./reliability-hardening.md)中。
+当前可靠性边界和验证入口见 [Runtime 可靠性契约](./reliability-hardening.md)。
 
 ## 中期：安全与治理
 

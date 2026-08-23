@@ -39,7 +39,7 @@ source_of_truth:
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
 status: verified
-last_verified: 2026-08-17
+last_verified: 2026-08-23
 ---
 
 # Application Runtime 与状态投影
@@ -155,7 +155,7 @@ Commit 或 Terminal Outcome。
 
 ## Chat Merge 与 Durable Assembly
 
-`app.ChatMergeService`（`internal/runtime/app`）以独立可测试的 Service
+`chatmerge.Service`（`internal/orchestration/chatmerge`）以独立可测试的 Service
 拥有隔离 Chat Workspace 流水线，而不是 `wire` 内的构造逻辑：
 
 - `Plan` 返回紧凑 `tool.EditPlan`，其 ID 摘要所有批次，过期 Preview 无法被应用。
@@ -200,11 +200,11 @@ Stream、不授权 Tool，也不调用 `turnkernel.Reducer.Apply`。Turn Coordin
 | Operation Outcome/Handler | `operation_dispatch.go` |
 | Active Turn Lease/Control | `active_turn_registry.go` |
 | Event Sequence/Replay/Subscriber | `eventhub/hub.go` |
-| Atomic Terminal/Outbox Recovery | `terminal_publisher.go` |
-| Frozen Terminal Usage/Latency | `terminal_measurement.go` |
+| Atomic Terminal/Outbox Recovery | `terminal_runtime.go`、`eventhub/terminal.go` |
+| Frozen Terminal Usage/Latency | `extension/terminal_measurement.go` |
 | Observation Admission/Routing | `internal/observability/observation`、`internal/observability/router` |
-| Session/Artifact Service | `service_facade.go`、`session_artifacts.go` |
-| Engine Adapter | `application.go` |
+| Session/Artifact Service | `service_facade.go`、`artifact_runtime.go` |
+| Engine Adapter | `extension/engine_adapter.go` |
 | Turn 状态机权威 | `agent/turnkernel/coordinator.go` |
 | Pending State | `pendingwork.go` |
 | Thread Ownership | `thread_manager.go` |
@@ -267,4 +267,4 @@ Complete Accounting；再分析 Dropped Subscriber 如何通过 `ReplayEvents` �
 | --- | --- |
 | Catalog ID | `runtime-app` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-17 |
+| 最后验证 | 2026-08-23 |

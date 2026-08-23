@@ -93,8 +93,8 @@ flowchart TD
 - 装配 Observation Privacy、Journal、Router、Retention 与 OTLP Projection；
 - 构建 Child Runtime、Worktree 与 Background Executor；
 - 选择 Persistent 或 In-memory Application Runtime；
-- 构造 `app.ChatMergeService` 与 Durable Assembly；Merge、Journal、Git 行为保留在
-  被构造的 Service 中。
+- 构造 `orchestration/chatmerge.Service` 与 Durable Assembly；Merge、Journal、Git
+  行为保留在被构造的 Service 中。
 
 ## 组合根结构
 
@@ -117,7 +117,8 @@ Child Worktree/Toolset。Provider 发布所选 Provider/Model Catalog，Security
 发布 Permission Store 与 Guard Factory。Module 失败时以 `moduleBuildError` 中止
 并带上 Module 名，已打开资源通过共享 Resource Stack 关闭。Durable Assembly 与 Chat
 Merge 同样是构造模块：`app/persistence` 组合 Repository 与 Recovery，
-`app.ChatMergeService` 拥有隔离 Workspace 的 Baseline、Preview 与 Journaled Apply。
+`orchestration/chatmerge.Service` 拥有隔离 Workspace 的 Baseline、Preview 与
+Journaled Apply。
 
 Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Plugin、Skill、Memory、
 Dynamic Tool、Hook 和 MCP 注册 Typed Contributor，只接收显式 Capability，不接收
