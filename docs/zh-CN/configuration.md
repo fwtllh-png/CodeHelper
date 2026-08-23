@@ -84,6 +84,7 @@ idle_timeout = "1m"             # 每个流事件都会续期
 max_concurrent = 8
 rate_limit = 0
 budget_tokens = 0            # 0 表示不设置累计 Session Token 上限
+turn_budget_tokens = 0       # 0 表示按当前模型 context window 派生每 Turn 上限
 budget_usd = 0               # 0 表示不增加成本上限
 reasoning_effort = ""        # 空值为自适应；显式值固定 Effort
 native_search = false
@@ -107,7 +108,7 @@ max_parallel = 4
 max_resident = 8
 max_total = 16
 max_steps = 0                   # 0 = 只继承进展收敛策略
-max_tokens = 0
+max_tokens = 0                  # 0 表示按 Turn 上限和 max_parallel 派生树预算
 max_cost_usd = 0
 wall_time = "0s"                # 0 = 不设置子 Agent 执行 Lease
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
@@ -174,8 +175,14 @@ semantic_narrative_retry_limit = 1
 owner_delta_max_segments = 16
 owner_delta_max_bytes = 65536
 
+
+`recent_tail_turns` 是压缩时优先完整保留的最近 Turn 数；
+`recent_tail_max_tokens` 是这些原始消息的硬上限。若最近 Turn 本身超过该上限，
+终态维护会在安全的 Tool Call/Result 边界内继续压缩当前 Turn，并通过 Truth Capsule
+和 durable rebase 保留目标、事实与变更，而不是把超大的原始 transcript 带入下一 Turn。
 [route]
 lock = false
+
 
 [route.plan]
 provider = "openai"

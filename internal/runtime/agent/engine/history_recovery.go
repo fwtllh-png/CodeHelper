@@ -69,8 +69,13 @@ func (e *Engine) runCompactGate(
 			}
 		}
 	}
+	forceTailBudget := phase == CompactionPhasePostTurn &&
+		allowCurrentTurn &&
+		e.options.Context.RecentTailMaxTokens != 0 &&
+		agentcontext.EstimateMessageTokens(*history) >
+			e.options.Context.RecentTailMaxTokens
 	receipt := e.compactHistoryWithPolicy(
-		history, false, allowCurrentTurn, input, outputReserve,
+		history, forceTailBudget, allowCurrentTurn, input, outputReserve,
 	)
 	if receipt != nil {
 		receipt.Phase = phase

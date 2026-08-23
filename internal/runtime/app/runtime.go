@@ -144,15 +144,17 @@ type Options struct {
 }
 
 type Snapshot struct {
-	LastSequence        protocol.Cursor          `json:"last_sequence"`
-	OperationsProcessed uint64                   `json:"operations_processed"`
-	Subscribers         int                      `json:"subscribers"`
-	ActiveTurns         int                      `json:"active_turns"`
-	PendingApprovals    int                      `json:"pending_approvals"`
-	PendingInputs       int                      `json:"pending_inputs"`
-	PendingOperations   int                      `json:"pending_operations"`
-	Closed              bool                     `json:"closed"`
-	Metrics             telemetry.MetricSnapshot `json:"metrics"`
+	LastSequence         protocol.Cursor          `json:"last_sequence"`
+	OperationsProcessed  uint64                   `json:"operations_processed"`
+	Subscribers          int                      `json:"subscribers"`
+	ActiveTurns          int                      `json:"active_turns"`
+	ActiveProviderCalls  int                      `json:"active_provider_calls"`
+	ActiveToolExecutions int                      `json:"active_tool_executions"`
+	PendingApprovals     int                      `json:"pending_approvals"`
+	PendingInputs        int                      `json:"pending_inputs"`
+	PendingOperations    int                      `json:"pending_operations"`
+	Closed               bool                     `json:"closed"`
+	Metrics              telemetry.MetricSnapshot `json:"metrics"`
 }
 
 type acceptedOperation struct {
@@ -1119,6 +1121,11 @@ func (r *Runtime) Snapshot(context.Context) Snapshot {
 	snapshot.OperationsProcessed, snapshot.PendingOperations =
 		r.OperationService.snapshot()
 	snapshot.ActiveTurns = r.active.Snapshot().Turns
+	if manager, ok := r.engine.(*ThreadManager); ok {
+		activity := manager.ActivitySnapshot()
+		snapshot.ActiveProviderCalls = activity.ProviderCalls
+		snapshot.ActiveToolExecutions = activity.ToolExecutions
+	}
 	return snapshot
 }
 

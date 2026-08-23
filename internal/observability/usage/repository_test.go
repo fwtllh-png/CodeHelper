@@ -227,6 +227,102 @@ func TestUsageRequiresTurnStartedContext(t *testing.T) {
 	}
 }
 
+func TestSessionUsageCanIncludeChildTurnsWithoutChangingDirectOwnership(
+	t *testing.T,
+) {
+	repository := testRepository(t)
+	addChildUsageTurn(t, repository)
+	parentStart := testEvent(
+		t,
+		1,
+		&protocol.TurnStartedData{Provider: "provider", Model: "model"},
+	)
+	childStart, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 2, OperationID: "operation-child",
+		ThreadID: "thread-child", TurnID: "turn-child", ItemID: "item-child",
+	}, &protocol.TurnStartedData{Provider: "provider", Model: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childUsage, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 4, OperationID: "operation-child",
+		ThreadID: "thread-child", TurnID: "turn-child", ItemID: "item-child",
+	}, &protocol.UsageData{Sample: 1, InputTokens: 20, OutputTokens: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []protocol.Event{
+		parentStart,
+		testEvent(t, 3, &protocol.UsageData{
+			Sample: 1, InputTokens: 10, OutputTokens: 1,
+		}),
+		childStart,
+		childUsage,
+	} {
+		if err := repository.Project(t.Context(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	direct, err := repository.QueryRollup(
+		t.Context(),
+		Query{SessionID: "session-1"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inclusive, err := repository.QueryRollup(
+		t.Context(),
+		Query{SessionID: "session-1", IncludeChildren: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if direct.InputTokens != 10 || direct.Turns != 1 {
+		t.Fatalf("direct rollup = %+v", direct)
+	}
+	if inclusive.InputTokens != 30 || inclusive.OutputTokens != 3 ||
+		inclusive.Turns != 2 {
+		t.Fatalf("inclusive rollup = %+v", inclusive)
+	}
+}
+
+func addChildUsageTurn(t *testing.T, repository *Repository) {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, statement := range []string{
+		`INSERT INTO sessions(id, workspace_id, status, created_at, updated_at)
+		 VALUES ('session-child', 'workspace-1', 'open', ?, ?)`,
+		`INSERT INTO threads(id, session_id, status, created_at, updated_at)
+		 VALUES ('thread-child', 'session-child', 'open', ?, ?)`,
+		`INSERT INTO turns(id, thread_id, ordinal, status, created_at, updated_at)
+		 VALUES ('turn-child', 'thread-child', 0, 'active', ?, ?)`,
+	} {
+		if _, err := repository.db.ExecContext(
+			t.Context(),
+			statement,
+			now,
+			now,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := repository.db.ExecContext(
+		t.Context(),
+		`INSERT INTO agent_nodes(
+			workspace_root, session_id, agent_id, path, execution_root,
+			thread_id, turn_id, status, revision, role,
+			operation_id, actor, event_id, source_sequence, updated_at
+		 ) VALUES (
+			'/workspace', 'session-1', 'agent-1', '/root/agent-1', '/workspace',
+			'thread-child', 'turn-child', 'running', 1, 'explore',
+			'agent:1', 'test', 'event-agent-1', 1, ?
+		 )`,
+		now,
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func testEvent(t *testing.T, sequence protocol.Cursor, data protocol.EventData) protocol.Event {
 	t.Helper()
 	event, err := protocol.NewEvent(protocol.EventMeta{

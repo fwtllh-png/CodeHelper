@@ -110,6 +110,7 @@ idle_timeout = "1m"
 max_concurrent = 8
 rate_limit = 0
 budget_tokens = 0
+turn_budget_tokens = 0
 budget_usd = 0
 native_search = false
 

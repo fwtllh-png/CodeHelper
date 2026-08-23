@@ -84,6 +84,8 @@ func SelectCompaction(
 		return result, nil
 	}
 	pruningEnough := pruned.Results != 0 &&
+		(request.RecentTailMaxTokens == 0 ||
+			request.EstimateMessages(working) <= request.RecentTailMaxTokens) &&
 		(prunedWindow.Active <= prunedWindow.CompactLimit &&
 			prunedWindow.Total <= prunedWindow.HardLimit ||
 			request.Force && original.Total <= original.HardLimit)

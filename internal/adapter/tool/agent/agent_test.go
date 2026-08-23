@@ -139,7 +139,7 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 	}
 	descriptors := registry.Descriptors(tool.VisibleModel)
 	names := make([]string, 0, len(descriptors))
-	var spawnDescriptor, waitDescriptor, integrateDescriptor tool.Descriptor
+	var spawnDescriptor, waitDescriptor, closeDescriptor, integrateDescriptor tool.Descriptor
 	for _, descriptor := range descriptors {
 		if descriptor.Name != "result_get" {
 			names = append(names, descriptor.Name)
@@ -149,6 +149,9 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 		}
 		if descriptor.Name == "wait_agent" {
 			waitDescriptor = descriptor
+		}
+		if descriptor.Name == "close_agent" {
+			closeDescriptor = descriptor
 		}
 		if descriptor.Name == "integrate_agent" {
 			integrateDescriptor = descriptor
@@ -165,6 +168,14 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 		t.Fatalf(
 			"wait_agent parallel policy = %q, want concurrent",
 			waitDescriptor.ParallelPolicy,
+		)
+	}
+	if spawnDescriptor.ParallelPolicy != tool.ParallelConcurrent ||
+		closeDescriptor.ParallelPolicy != tool.ParallelConcurrent {
+		t.Fatalf(
+			"agent lifecycle parallel policies: spawn=%q close=%q",
+			spawnDescriptor.ParallelPolicy,
+			closeDescriptor.ParallelPolicy,
 		)
 	}
 	hasGitProcess := false

@@ -329,6 +329,25 @@ func TestAnUnnamedTurnIsMeasuredButNotPersisted(t *testing.T) {
 	}
 }
 
+func TestActivitySnapshotCountsOnlyOpenProviderAndToolSpans(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	scope := attachTestScope(t, engine)
+	recorder := trace.NewRecorder(nil)
+	root := recorder.Start(trace.NameTurn, 0, nil)
+	model := recorder.Start(trace.NameModelCall, root.ID(), nil)
+	toolSpan := recorder.Start(trace.NameTool, root.ID(), nil)
+	scope.state.recorder = recorder
+	if got := engine.ActivitySnapshot(); got.ProviderCalls != 1 ||
+		got.ToolExecutions != 1 {
+		t.Fatalf("active snapshot = %+v", got)
+	}
+	model.End(trace.StatusOK)
+	toolSpan.End(trace.StatusOK)
+	if got := engine.ActivitySnapshot(); got != (ActivitySnapshot{}) {
+		t.Fatalf("terminal snapshot = %+v", got)
+	}
+}
+
 type latencyEngineOptions struct {
 	clock    *latencyClock
 	verifier verify.Runner

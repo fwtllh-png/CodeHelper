@@ -141,6 +141,32 @@ func TestCompactionCutsPreserveConfiguredRecentTurns(t *testing.T) {
 	}
 }
 
+func TestCompactionTailTokenLimitOverridesRecentTurnCount(t *testing.T) {
+	history := []provider.Message{
+		messageWithText(provider.RoleUser, "old", 1),
+		messageWithText(provider.RoleAssistant, "old answer", 1),
+		messageWithText(
+			provider.RoleUser,
+			strings.Repeat("large current context ", 200),
+			2,
+		),
+		messageWithText(provider.RoleAssistant, "current answer", 2),
+	}
+	cuts := agentcontext.RetainedTailCuts(
+		history,
+		true,
+		2,
+		64,
+		estimateMessageTokens,
+	)
+	if len(cuts) == 0 || cuts[len(cuts)-1] != len(history)-1 {
+		t.Fatalf(
+			"cuts=%v, want tail budget to permit a cut inside recent turns",
+			cuts,
+		)
+	}
+}
+
 func TestHeuristicEstimatorAccountsForImageTilesByKind(t *testing.T) {
 	imageBytes := encodePNG(t, 512, 512)
 	attachment := provider.Attachment{

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"encoding/json"
 	"io"
 	"strings"
 	"syscall"
@@ -258,7 +259,152 @@ func TestR3FineGrainedDeltasAreCoalescedBeforeDurableCheckpoint(t *testing.T) {
 	}
 }
 
-func TestR3EnginePersistsEveryConfirmedProviderIncrement(t *testing.T) {
+func TestR3InterleavedDeltasAreBatchedBeforeDurableCheckpoint(t *testing.T) {
+	const deltaCount = 128
+	events := make([]provider.StreamEvent, 0, deltaCount+1)
+	for index := range deltaCount {
+		event := provider.StreamEvent{
+			Type: provider.EventReasoningDelta,
+			Text: strings.Repeat("r", 1<<10),
+		}
+		if index%2 != 0 {
+			event.Type = provider.EventTextDelta
+			event.Text = strings.Repeat("t", 1<<10)
+		}
+		events = append(events, event)
+	}
+	events = append(events, provider.StreamEvent{
+		Type:       provider.EventMessageStop,
+		StopReason: provider.StopReasonEndTurn,
+	})
+	store := turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
+	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: events},
+	}}, nil)
+	engine.options.TurnCoordinatorRuntime = coordinators
+	result, err := engine.RunForTurn(
+		t.Context(),
+		"turn-r3-interleaved-checkpoint",
+		"review",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Text) != deltaCount/2*(1<<10) ||
+		len(result.Reasoning) != deltaCount/2*(1<<10) {
+		t.Fatalf(
+			"text_length=%d reasoning_length=%d",
+			len(result.Text),
+			len(result.Reasoning),
+		)
+	}
+	facts, err := store.LoadDomainFacts(
+		t.Context(),
+		"turn-r3-interleaved-checkpoint",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var progress int
+	var progressBytes int
+	for _, fact := range facts {
+		if fact.Command == "model_sample_progress_recorded" {
+			progress++
+			encoded, marshalErr := json.Marshal(fact)
+			if marshalErr != nil {
+				t.Fatal(marshalErr)
+			}
+			progressBytes += len(encoded)
+		}
+	}
+	if progress >= deltaCount/4 {
+		t.Fatalf(
+			"progress=%d deltas=%d, want at least 75%% reduction",
+			progress,
+			deltaCount,
+		)
+	}
+	if progressBytes >= 2<<20 {
+		t.Fatalf(
+			"progress payload=%d bytes, want less than 2 MiB",
+			progressBytes,
+		)
+	}
+}
+
+func TestR3TransportProgressIsBatchedBeforeDurableCheckpoint(t *testing.T) {
+	const progressCount = 1_000
+	events := make([]provider.StreamEvent, 0, progressCount+2)
+	for range progressCount {
+		events = append(events, provider.StreamEvent{
+			Type: provider.EventTransportProgress,
+		})
+	}
+	events = append(events,
+		provider.StreamEvent{
+			Type: provider.EventTextDelta,
+			Text: "done",
+		},
+		provider.StreamEvent{
+			Type:       provider.EventMessageStop,
+			StopReason: provider.StopReasonEndTurn,
+		},
+	)
+	store := turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
+	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: events},
+	}}, nil)
+	engine.options.TurnCoordinatorRuntime = coordinators
+	result, err := engine.RunForTurn(
+		t.Context(),
+		"turn-r3-transport-progress-checkpoint",
+		"review",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "done" {
+		t.Fatalf("text=%q", result.Text)
+	}
+	facts, err := store.LoadDomainFacts(
+		t.Context(),
+		"turn-r3-transport-progress-checkpoint",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var progress int
+	var assembly *providerassembly.ResponseAssembly
+	for _, fact := range facts {
+		if fact.Command != "model_sample_progress_recorded" {
+			continue
+		}
+		progress++
+		assembly = fact.State.SampleLedger["turn-1-step-1"].Assembly
+	}
+	if progress >= progressCount/20 ||
+		assembly == nil ||
+		assembly.EventCount() != progressCount+2 {
+		t.Fatalf(
+			"progress=%d assembly=%+v facts=%d",
+			progress,
+			assembly,
+			len(facts),
+		)
+	}
+}
+
+func TestR3EnginePersistsProviderRecoveryBoundaries(t *testing.T) {
 	store := turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
 	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(store)
 	if err != nil {
@@ -297,7 +443,7 @@ func TestR3EnginePersistsEveryConfirmedProviderIncrement(t *testing.T) {
 			assembly = sample.Assembly
 		}
 	}
-	if progress < 3 || assembly == nil ||
+	if progress < 2 || assembly == nil ||
 		assembly.State != providerassembly.ResponseComplete ||
 		assembly.EventCount() != 2 ||
 		len(assembly.ConfirmedBlocks()) != 1 ||

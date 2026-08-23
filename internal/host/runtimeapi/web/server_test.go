@@ -321,6 +321,64 @@ func TestRequestPanicIsContainedAndRedacted(t *testing.T) {
 	}
 }
 
+func TestSystemDiagnosticsReportsAuthoritativeRuntimeHealth(t *testing.T) {
+	const host = "127.0.0.1:43211"
+	server := newTestServer(t, host)
+	runtime := app.NewRuntime(app.Options{})
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	identity, err := protocol.NewWorkspaceIdentity(
+		"file:///workspace",
+		"/workspace",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Activate(webhost.Dependencies{
+		Runtime: runtime, WorkspaceRoot: "/workspace",
+		WorkspaceIdentity: identity,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	response := postWeb(
+		t,
+		server,
+		host,
+		bootstrapToken(t, server, host),
+		"system/diagnostics",
+		`{}`,
+	)
+	if response.Code != http.StatusOK {
+		t.Fatalf("diagnostics status=%d body=%s", response.Code, response.Body)
+	}
+	var envelope struct {
+		Result struct {
+			RuntimeHealth struct {
+				ActiveTurns         int `json:"active_turns"`
+				ActiveProviderCalls int `json:"active_provider_calls"`
+				ActiveTools         int `json:"active_tool_executions"`
+				Goroutines          int `json:"goroutines"`
+				Trace               struct {
+					DurableSource string `json:"durable_source"`
+					RawAuthority  bool   `json:"raw_spans_table_authoritative"`
+				} `json:"trace"`
+			} `json:"runtime_health"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	health := envelope.Result.RuntimeHealth
+	if health.ActiveTurns != 0 ||
+		health.ActiveProviderCalls != 0 ||
+		health.ActiveTools != 0 ||
+		health.Goroutines == 0 ||
+		health.Trace.DurableSource != "terminal_measurement" ||
+		health.Trace.RawAuthority {
+		t.Fatalf("runtime health = %+v", health)
+	}
+}
+
 func TestWebSocketDownlinkConcurrencyAndShutdown(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

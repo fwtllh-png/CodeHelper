@@ -459,6 +459,20 @@ func TestDefaultProvenanceFieldSetGolden(t *testing.T) {
 	}
 }
 
+func TestDefaultExecutionTokenBudgetsAreDerivedAtRuntime(t *testing.T) {
+	defaults := Defaults()
+	if defaults.Execution.TurnBudgetTokens != 0 ||
+		defaults.Execution.Subagent.MaxTokens != 0 {
+		t.Fatalf("default execution budgets = %+v", defaults.Execution)
+	}
+	if defaults.Execution.BudgetTokens != 0 {
+		t.Fatalf(
+			"session budget=%d, want unlimited independently of turn budget",
+			defaults.Execution.BudgetTokens,
+		)
+	}
+}
+
 func TestProviderPhaseDeadlinesOverrideCompatibleTimeout(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "codehelper.toml")

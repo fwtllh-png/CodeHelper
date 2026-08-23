@@ -41,6 +41,22 @@ type ThreadManager struct {
 	createMu  sync.Mutex // serialize factory calls (shared Options seeds)
 }
 
+func (m *ThreadManager) ActivitySnapshot() agentengine.ActivitySnapshot {
+	m.mu.Lock()
+	engines := make([]*EngineAdapter, 0, len(m.threads))
+	for _, engine := range m.threads {
+		engines = append(engines, engine)
+	}
+	m.mu.Unlock()
+	var snapshot agentengine.ActivitySnapshot
+	for _, engine := range engines {
+		current := engine.Underlying().ActivitySnapshot()
+		snapshot.ProviderCalls += current.ProviderCalls
+		snapshot.ToolExecutions += current.ToolExecutions
+	}
+	return snapshot
+}
+
 // ChildSpec describes a child-agent thread whose Engine must differ from the
 // host template: its own workspace root, step quota and spend budget. The host
 // template cannot express these because every host thread shares one seed.

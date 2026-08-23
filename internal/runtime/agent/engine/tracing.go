@@ -194,6 +194,27 @@ func (e *Engine) TurnSpans() []trace.Record {
 	return e.tracer().Spans()
 }
 
+type ActivitySnapshot struct {
+	ProviderCalls  int
+	ToolExecutions int
+}
+
+func (e *Engine) ActivitySnapshot() ActivitySnapshot {
+	var snapshot ActivitySnapshot
+	for _, span := range e.TurnSpans() {
+		if !span.Open() {
+			continue
+		}
+		switch span.Name {
+		case trace.NameModelCall:
+			snapshot.ProviderCalls++
+		case trace.NameTool:
+			snapshot.ToolExecutions++
+		}
+	}
+	return snapshot
+}
+
 func traceStatus(state State) trace.Status {
 	switch state {
 	case Completed:

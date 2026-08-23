@@ -80,6 +80,7 @@ const (
 	fieldMaxConcurrent         = "execution.max_concurrent"
 	fieldRateLimit             = "execution.rate_limit"
 	fieldBudgetTokens          = "execution.budget_tokens"
+	fieldTurnBudgetTokens      = "execution.turn_budget_tokens"
 	fieldBudgetUSD             = "execution.budget_usd"
 	fieldReasoning             = "execution.reasoning_effort"
 	fieldNativeSearch          = "execution.native_search"
@@ -217,6 +218,7 @@ func defaultProvenance() map[string]Source {
 		fieldMaxConcurrent:         SourceDefault,
 		fieldRateLimit:             SourceDefault,
 		fieldBudgetTokens:          SourceDefault,
+		fieldTurnBudgetTokens:      SourceDefault,
 		fieldBudgetUSD:             SourceDefault,
 		fieldReasoning:             SourceDefault,
 		fieldNativeSearch:          SourceDefault,

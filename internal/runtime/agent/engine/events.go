@@ -141,8 +141,9 @@ const (
 type ContextBudgetSnapshot = agentcontext.BudgetSnapshot
 
 type Budget struct {
-	MaxTokens  uint64
-	MaxCostUSD float64
+	MaxTokens     uint64
+	MaxTurnTokens uint64
+	MaxCostUSD    float64
 }
 
 type CompactWindowPolicy = agentcontext.WindowPolicy

@@ -22,15 +22,16 @@ type Repository struct {
 }
 
 type Query struct {
-	SessionID     string
-	ThreadID      protocol.ThreadID
-	TurnID        protocol.TurnID
-	Provider      string
-	Model         string
-	WorkspaceRoot string
-	Start         time.Time
-	End           time.Time
-	Limit         int
+	SessionID       string
+	ThreadID        protocol.ThreadID
+	TurnID          protocol.TurnID
+	IncludeChildren bool
+	Provider        string
+	Model           string
+	WorkspaceRoot   string
+	Start           time.Time
+	End             time.Time
+	Limit           int
 }
 
 type Aggregate struct {
@@ -254,12 +255,19 @@ func (r *Repository) QueryAggregates(ctx context.Context, filter Query) ([]Aggre
 			COUNT(*), MIN(created_at), MAX(created_at)
 		FROM usage WHERE event_sequence IS NOT NULL`
 	var arguments []any
-	add := func(clause string, value any) {
+	add := func(clause string, values ...any) {
 		query += " AND " + clause
-		arguments = append(arguments, value)
+		arguments = append(arguments, values...)
 	}
 	if filter.SessionID != "" {
-		add("session_id = ?", filter.SessionID)
+		if filter.IncludeChildren {
+			add(`(session_id = ? OR EXISTS (
+				SELECT 1 FROM agent_nodes child
+				WHERE child.session_id = ? AND child.turn_id = usage.turn_id
+			))`, filter.SessionID, filter.SessionID)
+		} else {
+			add("session_id = ?", filter.SessionID)
+		}
 	}
 	if filter.ThreadID != "" {
 		add("thread_id = ?", filter.ThreadID)

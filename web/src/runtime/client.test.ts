@@ -829,6 +829,59 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
+  it("coalesces session-list invalidation for foreign lifecycle events", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+    const socket = FakeWebSocket.instances.at(-1);
+    if (!socket) throw new Error("missing WebSocket");
+    const before = requests.filter(
+      (request) => request.route.endsWith("/session/list")
+    ).length;
+    for (let sequence = 20; sequence < 70; sequence += 1) {
+      socket.emit("message", {
+        type: "event",
+        protocol_version: 1,
+        session_id: "foreign-session",
+        sequence,
+        event: runtimeEvent(sequence, "output.delta")
+      });
+    }
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "foreign-session",
+      sequence: 70,
+      event: runtimeEvent(70, "turn.started")
+    });
+    for (let sequence = 71; sequence < 75; sequence += 1) {
+      socket.emit("message", {
+        type: "event",
+        protocol_version: 1,
+        session_id: "session",
+        sequence,
+        event: runtimeEvent(sequence, "approval.resolved")
+      });
+    }
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "foreign-session",
+      sequence: 75,
+      event: runtimeEvent(75, "turn.completed")
+    });
+    await vi.waitFor(() => {
+      expect(
+        requests.filter((request) => request.route.endsWith("/session/list"))
+          .length
+      ).toBe(before + 1);
+    });
+    const after = requests.filter(
+      (request) => request.route.endsWith("/session/list")
+    ).length;
+    expect(after - before).toBe(1);
+    client.stop();
+  });
+
   it("buffers live events before the session snapshot returns", async () => {
     const client = new RuntimeClient();
     await startClient(client);

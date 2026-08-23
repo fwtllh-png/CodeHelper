@@ -91,8 +91,9 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		CodingPolicy:   execution.Tools && snapshot.Config.Context.CodingPolicy.Enabled,
 
 		Budget: agentengine.Budget{
-			MaxTokens:  execution.BudgetTokens,
-			MaxCostUSD: execution.BudgetUSD,
+			MaxTokens:     execution.BudgetTokens,
+			MaxTurnTokens: effectiveTurnTokenBudget(execution.TurnBudgetTokens, route.Model().Limits.ContextTokens),
+			MaxCostUSD:    execution.BudgetUSD,
 		},
 
 		WorkingSet:            prompt.WorkingSet,

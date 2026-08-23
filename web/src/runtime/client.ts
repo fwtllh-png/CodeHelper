@@ -122,6 +122,7 @@ export class RuntimeClient {
   private token = "";
   private cursor = 0;
   private socket?: WebSocket;
+  private sessionRefreshQueued = false;
   private reconnectTimer?: number;
   private bootTimer?: number;
   private generation = 0;
@@ -198,6 +199,7 @@ export class RuntimeClient {
     if (this.bootTimer !== undefined) {
       window.clearTimeout(this.bootTimer);
     }
+    this.sessionRefreshQueued = false;
     this.socket?.close(1000, "client stopped");
     this.socket = undefined;
   }
@@ -325,7 +327,11 @@ export class RuntimeClient {
       this.call<SessionPlanSnapshot>("plan/get", {session_id: sessionID}),
       this.call<TaskList>("task/list", {session_id: sessionID, limit: 20}),
       this.call<AgentList>("agent/list", {session_id: sessionID, limit: 20}),
-      this.call<UsageQueryResult>("usage/query", {session_id: sessionID, limit: 100}),
+      this.call<UsageQueryResult>("usage/query", {
+        session_id: sessionID,
+        include_children: true,
+        limit: 100
+      }),
       this.call<ExtensionControlResult>("extension/list", {kind: "all"})
     ]);
     if (generation !== this.selectionGeneration || this.hydration !== hydration) return;
@@ -1006,13 +1012,42 @@ export class RuntimeClient {
     }
     this.commitCursor(event.sequence);
     if (sessionID !== this.state.selectedSessionID) {
-      void this.refreshSessions("", false);
+      if (event.kind === "turn.started" || isTerminal(event.kind)) {
+        this.scheduleSessionRefresh();
+      }
       return;
     }
     this.update({events: [...this.state.events, event]});
-    if (isTerminal(event.kind) || event.kind.endsWith(".resolved")) {
-      void this.refreshSessions("", false);
+    if (isTerminal(event.kind)) {
+      this.scheduleSessionRefresh();
+      void this.refreshUsage(sessionID);
     }
+  }
+
+  private async refreshUsage(sessionID: string): Promise<void> {
+    const generation = this.selectionGeneration;
+    const result = await this.call<UsageQueryResult>("usage/query", {
+      session_id: sessionID,
+      include_children: true,
+      limit: 100
+    });
+    if (
+      generation === this.selectionGeneration &&
+      sessionID === this.state.selectedSessionID
+    ) {
+      this.update({usage: result.rollup});
+    }
+  }
+
+  private scheduleSessionRefresh(): void {
+    if (this.sessionRefreshQueued) return;
+    this.sessionRefreshQueued = true;
+    const generation = this.generation;
+    queueMicrotask(() => {
+      this.sessionRefreshQueued = false;
+      if (generation !== this.generation) return;
+      void this.refreshSessions("", false);
+    });
   }
 
   private update(patch: Partial<RuntimeSnapshot>): void {

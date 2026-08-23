@@ -160,7 +160,7 @@ func (e *Engine) modelStep(
 		turnReceipts := append([]promptcontext.Receipt(nil), worldReceipts...)
 		e.recordTurnContextReceipts(turnReceipts)
 		budgetMessage, budgetFinishOnly := e.budgetConvergence(
-			e.BudgetSnapshot().TokensUsed + turnUsage.Total() + totalUsage.Total(),
+			turnUsage.Total() + totalUsage.Total(),
 		)
 		if len(budgetMessage.Blocks) != 0 {
 			turnContext = append(turnContext, budgetMessage)

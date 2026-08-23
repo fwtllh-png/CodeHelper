@@ -315,6 +315,16 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	if err != nil {
 		return nil, err
 	}
+	if intent.Budget.MaxTokens == 0 &&
+		spec.DefaultBudget.MaxTokens == 0 &&
+		m.budget.MaxTokens > 0 {
+		remaining := m.budget.MaxTokens -
+			min(m.budget.MaxTokens, ledger.SpentTokens+ledger.ReservedTokens)
+		if remaining == 0 {
+			return nil, errors.New("subagent token tree budget exhausted")
+		}
+		requested.MaxTokens = min(requested.MaxTokens, remaining)
+	}
 	reservedMicros := uint64(requested.MaxCostUSD * 1e6)
 	if m.budget.MaxTokens > 0 &&
 		ledger.SpentTokens+ledger.ReservedTokens+requested.MaxTokens >

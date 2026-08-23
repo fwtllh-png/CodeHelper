@@ -241,6 +241,9 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 	if err := applyEnvUint64(lookup, "CODEHELPER_BUDGET_TOKENS", fieldBudgetTokens, &execution.BudgetTokens, provenance); err != nil {
 		return err
 	}
+	if err := applyEnvUint64(lookup, "CODEHELPER_TURN_BUDGET_TOKENS", fieldTurnBudgetTokens, &execution.TurnBudgetTokens, provenance); err != nil {
+		return err
+	}
 	if err := applyEnvFloat64(lookup, "CODEHELPER_BUDGET_USD", fieldBudgetUSD, &execution.BudgetUSD, provenance); err != nil {
 		return err
 	}

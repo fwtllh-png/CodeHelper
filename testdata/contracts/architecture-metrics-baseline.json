@@ -85,9 +85,12 @@
       "path": "internal/orchestration/subagent",
       "limits": {
         "internal_fanout": 7,
-        "production_lines": 4443,
+        "production_lines": 4452,
         "options_fields": 8,
         "mutex_fields": 3
+      },
+      "relaxations": {
+        "production_lines": "Bound default child reservations by the remaining shared tree token budget."
       }
     },
     {
@@ -217,9 +220,12 @@
       "path": "internal/adapter/provider/assembly",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1680,
+        "production_lines": 1708,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Use payload-relative geometric stream checkpoints while preserving structural recovery boundaries."
       }
     },
     {
@@ -341,9 +347,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 76,
-        "production_lines": 9470,
+        "production_lines": 9498,
         "options_fields": 82,
         "mutex_fields": 7
+      },
+      "relaxations": {
+        "production_lines": "Derive parent and child token ceilings from active model metadata while preserving explicit operator ceilings."
       }
     },
     {
@@ -581,9 +590,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 7683,
+        "production_lines": 7730,
         "options_fields": 6,
         "mutex_fields": 4
+      },
+      "relaxations": {
+        "production_lines": "Add independent turn-budget convergence, bounded stream checkpoints, terminal tail compaction, and live provider/tool activity snapshots."
       }
     },
     {
@@ -603,9 +615,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 20,
-        "production_lines": 5643,
+        "production_lines": 5666,
         "options_fields": 21,
         "mutex_fields": 10
+      },
+      "relaxations": {
+        "production_lines": "Aggregate live provider and tool activity across thread-owned engines for runtime health."
       }
     },
     {
@@ -655,8 +670,11 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2037,
+        "lines": 2044,
         "max_function_lines": 119
+      },
+      "relaxations": {
+        "lines": "Expose live provider and tool activity in the authoritative runtime snapshot."
       }
     },
     {
@@ -719,7 +737,10 @@
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
         "lines": 419,
-        "max_function_lines": 322
+        "max_function_lines": 323
+      },
+      "relaxations": {
+        "max_function_lines": "Wire the independent per-turn token ceiling alongside the existing session budget."
       }
     },
     {
@@ -993,9 +1014,12 @@
       "path": "internal/runtime/agent/context",
       "limits": {
         "internal_fanout": 7,
-        "production_lines": 9091,
+        "production_lines": 9095,
         "options_fields": 0,
         "mutex_fields": 3
+      },
+      "relaxations": {
+        "production_lines": "Make the configured recent-tail token ceiling override turn-count retention when they conflict."
       }
     },
     {

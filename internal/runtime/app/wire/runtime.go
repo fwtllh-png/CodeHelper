@@ -291,6 +291,7 @@ func childEngineOptions(
 	}
 	if spec.MaxTokens > 0 {
 		options.Budget.MaxTokens = spec.MaxTokens
+		options.Budget.MaxTurnTokens = spec.MaxTokens
 	}
 	if spec.MaxCostUSD > 0 {
 		options.Budget.MaxCostUSD = spec.MaxCostUSD

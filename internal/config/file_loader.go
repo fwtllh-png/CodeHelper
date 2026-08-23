@@ -25,6 +25,7 @@ type executionFileConfig struct {
 	MaxConcurrent         *int     `toml:"max_concurrent"`
 	RateLimit             *float64 `toml:"rate_limit"`
 	BudgetTokens          *uint64  `toml:"budget_tokens"`
+	TurnBudgetTokens      *uint64  `toml:"turn_budget_tokens"`
 	BudgetUSD             *float64 `toml:"budget_usd"`
 	ReasoningEffort       *string  `toml:"reasoning_effort"`
 	NativeSearch          *bool    `toml:"native_search"`
@@ -373,6 +374,7 @@ func applyExecutionFile(
 	applyInt(input.MaxConcurrent, &execution.MaxConcurrent, fieldMaxConcurrent, source, provenance)
 	applyFloat64(input.RateLimit, &execution.RateLimit, fieldRateLimit, source, provenance)
 	applyUint64(input.BudgetTokens, &execution.BudgetTokens, fieldBudgetTokens, source, provenance)
+	applyUint64(input.TurnBudgetTokens, &execution.TurnBudgetTokens, fieldTurnBudgetTokens, source, provenance)
 	applyFloat64(input.BudgetUSD, &execution.BudgetUSD, fieldBudgetUSD, source, provenance)
 	applyString(input.ReasoningEffort, &execution.ReasoningEffort, fieldReasoning, source, provenance)
 	applyBool(input.NativeSearch, &execution.NativeSearch, fieldNativeSearch, source, provenance)

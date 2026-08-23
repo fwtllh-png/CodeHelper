@@ -204,6 +204,15 @@ Web 只监听 `127.0.0.1`，使用 Capability Token、Host/Origin Fence、类型
 Plan、Credential 与 Operation 都由 Runtime 或其所属安全组件校验；浏览器只提交 Intent
 并投影结果。
 
+Web 的 Session usage 默认使用 `include_children=true`，因此父 Session 的汇总包含
+其 `agent_nodes` 下 Child Turn 的消耗；关闭该参数可读取 direct usage。两种口径都保留
+原始 Child Session/Thread/Turn 归属，不通过重写账本伪造父子关系。
+
+`system/diagnostics` 的 `runtime_health` 从 Runtime active registry 和各 Thread Engine
+的 in-memory recorder 读取 active Turn、Provider Call、Tool Execution 与 Pending
+Interaction。终态 Trace 的 durable source 是 `turn_terminal_envelopes` 中的 frozen
+measurement；原始 `spans` 表不是健康检查权威来源。
+
 ## Mode 与 Posture
 
 二者回答不同问题：

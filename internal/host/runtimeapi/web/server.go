@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -486,12 +487,36 @@ func (s *Server) systemDiagnostics(
 	if dependencies.MCPHealth != nil {
 		health = dependencies.MCPHealth()
 	}
+	runtimeSnapshot := dependencies.Runtime.Snapshot(r.Context())
+	activeAgents := 0
+	if dependencies.Agents != nil {
+		for _, agent := range dependencies.Agents.List(subagent.ListFilter{}) {
+			if subagent.OccupiesSlot(agent.Status) {
+				activeAgents++
+			}
+		}
+	}
 	return map[string]any{
-		"version":      1,
-		"ready":        s.ready.Load(),
-		"draining":     s.draining.Load(),
-		"workspace":    dependencies.WorkspaceIdentity,
-		"runtime":      dependencies.Runtime.Snapshot(r.Context()),
+		"version":   1,
+		"ready":     s.ready.Load(),
+		"draining":  s.draining.Load(),
+		"workspace": dependencies.WorkspaceIdentity,
+		"runtime":   runtimeSnapshot,
+		"runtime_health": map[string]any{
+			"active_turns":           runtimeSnapshot.ActiveTurns,
+			"active_provider_calls":  runtimeSnapshot.ActiveProviderCalls,
+			"active_tool_executions": runtimeSnapshot.ActiveToolExecutions,
+			"active_agents":          activeAgents,
+			"pending_approvals":      runtimeSnapshot.PendingApprovals,
+			"pending_inputs":         runtimeSnapshot.PendingInputs,
+			"pending_operations":     runtimeSnapshot.PendingOperations,
+			"goroutines":             goruntime.NumGoroutine(),
+			"trace": map[string]any{
+				"active_source":                 "in_memory_recorder",
+				"durable_source":                "terminal_measurement",
+				"raw_spans_table_authoritative": false,
+			},
+		},
 		"mcp_health":   health,
 		"generated_at": time.Now().UTC(),
 	}
@@ -1170,14 +1195,15 @@ func (s *Server) usageQuery(
 		)
 	}
 	var request struct {
-		SessionID string            `json:"session_id,omitempty"`
-		ThreadID  protocol.ThreadID `json:"thread_id,omitempty"`
-		TurnID    protocol.TurnID   `json:"turn_id,omitempty"`
-		Provider  string            `json:"provider,omitempty"`
-		Model     string            `json:"model,omitempty"`
-		Start     time.Time         `json:"start,omitempty"`
-		End       time.Time         `json:"end,omitempty"`
-		Limit     int               `json:"limit,omitempty"`
+		SessionID       string            `json:"session_id,omitempty"`
+		ThreadID        protocol.ThreadID `json:"thread_id,omitempty"`
+		TurnID          protocol.TurnID   `json:"turn_id,omitempty"`
+		Provider        string            `json:"provider,omitempty"`
+		Model           string            `json:"model,omitempty"`
+		Start           time.Time         `json:"start,omitempty"`
+		End             time.Time         `json:"end,omitempty"`
+		Limit           int               `json:"limit,omitempty"`
+		IncludeChildren bool              `json:"include_children,omitempty"`
 	}
 	if err := s.decodeRequest(r, &request); err != nil {
 		return nil, err
@@ -1189,15 +1215,16 @@ func (s *Server) usageQuery(
 	values, err := dependencies.Usage.QueryAggregates(
 		r.Context(),
 		usagestate.Query{
-			SessionID:     request.SessionID,
-			ThreadID:      request.ThreadID,
-			TurnID:        request.TurnID,
-			Provider:      request.Provider,
-			Model:         request.Model,
-			WorkspaceRoot: dependencies.WorkspaceRoot,
-			Start:         request.Start,
-			End:           request.End,
-			Limit:         limit,
+			SessionID:       request.SessionID,
+			ThreadID:        request.ThreadID,
+			TurnID:          request.TurnID,
+			IncludeChildren: request.IncludeChildren,
+			Provider:        request.Provider,
+			Model:           request.Model,
+			WorkspaceRoot:   dependencies.WorkspaceRoot,
+			Start:           request.Start,
+			End:             request.End,
+			Limit:           limit,
 		},
 	)
 	if err != nil {

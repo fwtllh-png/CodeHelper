@@ -68,6 +68,7 @@ execution.subagent.workspace
 execution.timeout
 execution.tls_handshake_timeout
 execution.tools
+execution.turn_budget_tokens
 execution.verify.command
 execution.verify.max_repair_steps
 execution.verify.mode

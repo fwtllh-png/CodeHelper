@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
@@ -39,6 +40,34 @@ func TestCheckBudgetFitsAvailableOutputCapacity(t *testing.T) {
 	)
 	if err != nil || got != 200 {
 		t.Fatalf("output capacity = %d, %v", got, err)
+	}
+}
+
+func TestCheckBudgetResetsTurnLimitWithoutResettingSessionUsage(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	engine.options.Budget.MaxTurnTokens = 500
+	engine.usage = provider.Usage{InputTokens: 1_000}
+	got, err := engine.checkBudget(
+		200,
+		provider.Usage{InputTokens: 100},
+		provider.Usage{},
+		1_000,
+	)
+	if err != nil || got != 200 {
+		t.Fatalf("turn output capacity = %d, %v", got, err)
+	}
+	_, err = engine.checkBudget(
+		200,
+		provider.Usage{InputTokens: 300},
+		provider.Usage{},
+		128,
+	)
+	var problem *protocol.Problem
+	if !errors.As(err, &problem) ||
+		problem.Details == nil ||
+		problem.Details.Reason != protocol.ProblemReasonTokenBudgetExhausted ||
+		!strings.Contains(problem.Message, "limit 500") {
+		t.Fatalf("turn budget error = %+v", problem)
 	}
 }
 

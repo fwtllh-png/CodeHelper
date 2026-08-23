@@ -146,17 +146,20 @@ type Execution struct {
 	TLSHandshakeTimeout   time.Duration `json:"tls_handshake_timeout" toml:"-"`
 	ResponseHeaderTimeout time.Duration `json:"response_header_timeout" toml:"-"`
 	// IdleTimeout is renewed by every provider stream event.
-	IdleTimeout     time.Duration `json:"idle_timeout" toml:"-"`
-	MaxConcurrent   int           `json:"max_concurrent" toml:"max_concurrent"`
-	RateLimit       float64       `json:"rate_limit" toml:"rate_limit"`
-	BudgetTokens    uint64        `json:"budget_tokens" toml:"budget_tokens"`
-	BudgetUSD       float64       `json:"budget_usd" toml:"budget_usd"`
-	ReasoningEffort string        `json:"reasoning_effort" toml:"reasoning_effort"`
-	NativeSearch    bool          `json:"native_search" toml:"native_search"`
-	Verify          Verify        `json:"verify" toml:"verify"`
-	Subagent        Subagent      `json:"subagent" toml:"subagent"`
-	Worker          Worker        `json:"worker" toml:"worker"`
-	Journal         Journal       `json:"journal" toml:"journal"`
+	IdleTimeout   time.Duration `json:"idle_timeout" toml:"-"`
+	MaxConcurrent int           `json:"max_concurrent" toml:"max_concurrent"`
+	RateLimit     float64       `json:"rate_limit" toml:"rate_limit"`
+	BudgetTokens  uint64        `json:"budget_tokens" toml:"budget_tokens"`
+	// TurnBudgetTokens is an optional operator ceiling. Zero derives the
+	// per-turn ceiling from the active model's context window.
+	TurnBudgetTokens uint64   `json:"turn_budget_tokens" toml:"turn_budget_tokens"`
+	BudgetUSD        float64  `json:"budget_usd" toml:"budget_usd"`
+	ReasoningEffort  string   `json:"reasoning_effort" toml:"reasoning_effort"`
+	NativeSearch     bool     `json:"native_search" toml:"native_search"`
+	Verify           Verify   `json:"verify" toml:"verify"`
+	Subagent         Subagent `json:"subagent" toml:"subagent"`
+	Worker           Worker   `json:"worker" toml:"worker"`
+	Journal          Journal  `json:"journal" toml:"journal"`
 }
 
 // Journal configures the edit-transaction journal.
@@ -213,11 +216,9 @@ type Subagent struct {
 	// MaxSteps is an optional explicit child quota. Zero uses progress
 	// convergence and spend budgets without an implicit step cap.
 	MaxSteps int `json:"max_steps" toml:"max_steps"`
-	// MaxTokens and MaxCostUSD bound all child agents in the session together,
-	// and each child is capped by the same number on its own: the shared ledger
-	// refuses the next child once the pot is spent, while the per-child ceiling
-	// stops a single runaway child during its turn. Zero means unbounded beyond
-	// the session budget the child inherits.
+	// MaxTokens and MaxCostUSD bound all child agents in the session together.
+	// Zero MaxTokens derives the tree ceiling from the active model's context
+	// window and MaxParallel instead of installing a model-independent default.
 	MaxTokens  uint64  `json:"max_tokens" toml:"max_tokens"`
 	MaxCostUSD float64 `json:"max_cost_usd" toml:"max_cost_usd"`
 	// WallTime is an optional renewable child execution lease. Runtime progress
@@ -383,6 +384,7 @@ type Overrides struct {
 	MaxConcurrent         *int
 	RateLimit             *float64
 	BudgetTokens          *uint64
+	TurnBudgetTokens      *uint64
 	BudgetUSD             *float64
 	ReasoningEffort       *string
 	NativeSearch          *bool

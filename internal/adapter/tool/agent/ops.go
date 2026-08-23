@@ -134,7 +134,7 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"Integrate with integrate_agent first if you need the child's writes in the parent workspace; " +
 				"Close discards the worktree. Prefer wait_agent until terminal status before closing.",
 			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
-			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
+			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 				Kind: "agent", Field: "agent_id", Access: tool.AccessWrite,
@@ -228,7 +228,7 @@ func (t *Tool) spawnDescriptor() tool.Descriptor {
 			"Returns agent_id, structured receipt, and a transcript var_handle for handle_read. " +
 			"Use wait_agent, followup_task, interrupt_agent, list_agents, integrate_agent, and close_agent for control.",
 		Visibility: t.visibility(), Capability: tool.CapabilityWrite,
-		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
+		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelConcurrent,
 		SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 		ResourceResolver: tool.ResourceResolver{
 			Templates: []tool.ResourceTemplate{

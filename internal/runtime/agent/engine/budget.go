@@ -14,14 +14,26 @@ func (e *Engine) checkBudget(
 	outputReserve uint64,
 ) (uint64, error) {
 	route := e.activeRoute()
-	return agentcontext.CheckBudget(agentcontext.BudgetRequest{
+	request := agentcontext.BudgetRequest{
 		ContextTokens:  route.Model().Limits.ContextTokens,
 		EstimatedInput: estimatedInput, OutputReserve: outputReserve,
 		SessionUsage: e.usage, TurnUsage: turnUsage, StepUsage: stepUsage,
 		MaxTokens: e.options.Budget.MaxTokens, SpentCostUSD: e.costUSD,
 		MaxCostUSD: e.options.Budget.MaxCostUSD, Pricing: route.Model().Pricing,
 		Scope: e.turnBudgetScope(),
-	})
+	}
+	if e.options.Budget.MaxTurnTokens > 0 {
+		turnRequest := request
+		turnRequest.SessionUsage = provider.Usage{}
+		turnRequest.MaxTokens = e.options.Budget.MaxTurnTokens
+		turnRequest.MaxCostUSD = 0
+		var err error
+		request.OutputReserve, err = agentcontext.CheckBudget(turnRequest)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return agentcontext.CheckBudget(request)
 }
 
 func (e *Engine) turnBudgetScope() string {
@@ -32,9 +44,18 @@ func (e *Engine) turnBudgetScope() string {
 	return "turn"
 }
 
-func (e *Engine) budgetConvergence(used uint64) (provider.Message, bool) {
-	limit := e.options.Budget.MaxTokens
+func (e *Engine) budgetConvergence(turnUsed uint64) (provider.Message, bool) {
+	used, limit := turnUsed, e.options.Budget.MaxTurnTokens
 	stage, finishOnly := agentcontext.BudgetStage(used, limit)
+	sessionUsed := e.BudgetSnapshot().TokensUsed + turnUsed
+	sessionStage, sessionFinishOnly := agentcontext.BudgetStage(
+		sessionUsed,
+		e.options.Budget.MaxTokens,
+	)
+	if sessionStage > stage {
+		used, limit = sessionUsed, e.options.Budget.MaxTokens
+		stage, finishOnly = sessionStage, sessionFinishOnly
+	}
 	if stage == 0 {
 		return provider.Message{}, false
 	}

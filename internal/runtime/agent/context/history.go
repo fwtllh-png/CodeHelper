@@ -131,14 +131,16 @@ func RetainedTailCuts(
 		return cuts
 	}
 	minimumStart := recentTurnStart(history, recentTurns)
+	recentTurnsFit := minimumStart < 0 ||
+		recentMaxTokens == 0 ||
+		estimateTokens(history[minimumStart:]) <= recentMaxTokens
 	filtered := cuts[:0]
 	for _, cut := range cuts {
-		if minimumStart >= 0 && cut > minimumStart {
+		if minimumStart >= 0 && cut > minimumStart && recentTurnsFit {
 			continue
 		}
 		if recentMaxTokens != 0 &&
-			estimateTokens(history[cut:]) > recentMaxTokens &&
-			(minimumStart < 0 || cut < minimumStart) {
+			estimateTokens(history[cut:]) > recentMaxTokens {
 			continue
 		}
 		filtered = append(filtered, cut)

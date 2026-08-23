@@ -1128,6 +1128,9 @@ max_prompt_bytes = 16384
 semantic_rerank = false
 ```
 
+`recent_tail_turns` 表示优先保留的最近 Turn 数，`recent_tail_max_tokens` 则是原始
+tail 的硬上限；当两者冲突时以 token 上限为准，并在终态提交 deterministic rebase。
+
 协议和 Receipt 需要增加：
 
 - Truth Retention：按 Class 的候选、保留、淘汰、外置数量；

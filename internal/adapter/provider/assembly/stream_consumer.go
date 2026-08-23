@@ -83,13 +83,34 @@ func ConsumeStream(
 	if err := assembly.BeginTransport(metadata); err != nil {
 		return ConsumeResult{}, err
 	}
-	persist := func() error {
+	var checkpointedUnits, pendingCheckpointUnits uint64
+	addPendingCheckpoint := func(units uint64) {
+		if ^uint64(0)-pendingCheckpointUnits < units {
+			pendingCheckpointUnits = ^uint64(0)
+			return
+		}
+		pendingCheckpointUnits += units
+	}
+	persist := func(force bool) error {
 		if options.Checkpoint == nil {
 			return nil
 		}
-		return options.Checkpoint(assembly)
+		if !force &&
+			pendingCheckpointUnits < max(uint64(1), checkpointedUnits) {
+			return nil
+		}
+		if err := options.Checkpoint(assembly); err != nil {
+			return err
+		}
+		if ^uint64(0)-checkpointedUnits < pendingCheckpointUnits {
+			checkpointedUnits = ^uint64(0)
+		} else {
+			checkpointedUnits += pendingCheckpointUnits
+		}
+		pendingCheckpointUnits = 0
+		return nil
 	}
-	if err := persist(); err != nil {
+	if err := persist(true); err != nil {
 		return ConsumeResult{}, err
 	}
 	project := func(value StreamProjection) error {
@@ -126,7 +147,7 @@ func ConsumeStream(
 			if interruptErr := assembly.Interrupt(err); interruptErr != nil {
 				return result, errors.Join(err, interruptErr)
 			}
-			if persistErr := persist(); persistErr != nil {
+			if persistErr := persist(true); persistErr != nil {
 				return result, persistErr
 			}
 			if errors.Is(err, context.Canceled) {
@@ -148,7 +169,7 @@ func ConsumeStream(
 				Message: "provider stream violated the incremental response contract",
 			}
 			_ = assembly.Fail(applyErr)
-			if persistErr := persist(); persistErr != nil {
+			if persistErr := persist(true); persistErr != nil {
 				return current(), errors.Join(applyErr, persistErr)
 			}
 			return current(), protocol.NewProblem(
@@ -161,7 +182,14 @@ func ConsumeStream(
 		if !applied {
 			continue
 		}
-		if err := persist(); err != nil {
+		batchedCheckpoint := coalescibleDelta(event) ||
+			event.Type == provider.EventTransportProgress
+		if coalescibleDelta(event) {
+			addPendingCheckpoint(uint64(max(1, deltaSize(event))))
+		} else if batchedCheckpoint {
+			addPendingCheckpoint(1)
+		}
+		if err := persist(!batchedCheckpoint); err != nil {
 			return current(), err
 		}
 		result := current()

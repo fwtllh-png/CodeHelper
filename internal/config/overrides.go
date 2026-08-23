@@ -131,6 +131,7 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyInt(overrides.MaxConcurrent, &execution.MaxConcurrent, fieldMaxConcurrent, SourceCLI, provenance)
 	applyFloat64(overrides.RateLimit, &execution.RateLimit, fieldRateLimit, SourceCLI, provenance)
 	applyUint64(overrides.BudgetTokens, &execution.BudgetTokens, fieldBudgetTokens, SourceCLI, provenance)
+	applyUint64(overrides.TurnBudgetTokens, &execution.TurnBudgetTokens, fieldTurnBudgetTokens, SourceCLI, provenance)
 	applyFloat64(overrides.BudgetUSD, &execution.BudgetUSD, fieldBudgetUSD, SourceCLI, provenance)
 	applyString(overrides.ReasoningEffort, &execution.ReasoningEffort, fieldReasoning, SourceCLI, provenance)
 	applyBool(overrides.NativeSearch, &execution.NativeSearch, fieldNativeSearch, SourceCLI, provenance)

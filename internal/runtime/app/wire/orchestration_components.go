@@ -72,7 +72,7 @@ func buildChildOrchestration(
 	output *orchestrationBuildState,
 ) error {
 	session, execution := state.session, state.config.execution
-	limits := execution.Subagent
+	limits := effectiveSubagentLimits(execution.Subagent, effectiveTurnTokenBudget(execution.TurnBudgetTokens, state.provider.route.Model().Limits.ContextTokens))
 	output.sharedGovernor = rlm.NewGovernor(rlm.Limits{})
 	output.childGovernor = newChildGovernor(limits)
 	orchestrationRoot := childOrchestrationRoot(state)

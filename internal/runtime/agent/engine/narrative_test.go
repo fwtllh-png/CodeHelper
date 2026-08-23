@@ -334,6 +334,65 @@ func TestNarrativeOffCommitsDeterministicRebase(t *testing.T) {
 	}
 }
 
+func TestTerminalTailBudgetForcesDeterministicRebaseBelowWindowLimit(
+	t *testing.T,
+) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.Context.SemanticNarrative = "off"
+	engine.options.Context.Window.AutoTokens = 1 << 20
+	engine.options.Context.RecentTailTurns = 2
+	engine.options.Context.RecentTailMaxTokens = 128
+	var committed *agentcontext.ContextRebaseEnvelope
+	engine.options.Context.CommitRebase = func(
+		_ context.Context,
+		envelope agentcontext.ContextRebaseEnvelope,
+	) error {
+		copy := envelope
+		committed = &copy
+		return nil
+	}
+	scope := attachTestScope(t, engine)
+	scope.spec.Identity = TurnIdentity{
+		SessionID: "session-1", ThreadID: "thread-1",
+		TurnID: "turn-1", ProfileRevision: 1,
+	}
+	scope.state.kernel = newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		telemetry.NewMetrics(),
+	)
+	history := []provider.Message{
+		messageWithText(
+			provider.RoleUser,
+			"a large request "+strings.Repeat("context ", 400),
+			1,
+		),
+		messageWithText(provider.RoleAssistant, "completed answer", 1),
+	}
+	originalBytes := agentcontext.HistoryBytes(history)
+	if err := engine.runTerminalCompactGate(
+		&history,
+		true,
+		func(State, Event) error { return nil },
+	); err != nil {
+		t.Fatal(err)
+	}
+	if committed == nil ||
+		agentcontext.HistoryBytes(history) >= originalBytes ||
+		!strings.Contains(history[0].Text(), agentcontext.TruthMarkerStart) {
+		t.Fatalf(
+			"committed=%+v original_bytes=%d retained_bytes=%d history=%v",
+			committed,
+			originalBytes,
+			agentcontext.HistoryBytes(history),
+			history,
+		)
+	}
+}
+
 func TestPostTurnNarrativeRetriesRebaseWithoutResampling(t *testing.T) {
 	runtime := &sourceEchoNarrativeProvider{}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
