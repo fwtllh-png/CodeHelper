@@ -41,6 +41,12 @@ func (g *Guard) authorize(
 				waited: approvalWait,
 			}, err
 		}
+		if err := g.preflightFileWrites(invocation); err != nil {
+			return preparedExecution{
+				invocation: invocation, executor: executor, arguments: arguments,
+				waited: approvalWait,
+			}, err
+		}
 		policyInvocation := policyInput(callID, invocation)
 		started := g.now()
 		runtime := g.Policy().CloneSampling()

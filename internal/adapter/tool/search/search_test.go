@@ -196,6 +196,24 @@ func TestSearchProjectAcceptsCommonModelAliases(t *testing.T) {
 	}
 }
 
+func TestSearchSchemaRequiresQueryOrPattern(t *testing.T) {
+	schema := (&Tool{kind: "search_files"}).Descriptor().InputSchema
+	if err := tool.ValidateArguments(schema, json.RawMessage(`{}`)); err == nil {
+		t.Fatal("empty search arguments passed schema validation")
+	}
+	for _, arguments := range []string{
+		`{"query":"needle"}`,
+		`{"pattern":"needle"}`,
+	} {
+		if err := tool.ValidateArguments(
+			schema,
+			json.RawMessage(arguments),
+		); err != nil {
+			t.Fatalf("arguments %s failed schema validation: %v", arguments, err)
+		}
+	}
+}
+
 func decodeMatches(t *testing.T, content string) []map[string]any {
 	t.Helper()
 	var payload struct {

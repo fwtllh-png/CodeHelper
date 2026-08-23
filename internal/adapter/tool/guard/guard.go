@@ -451,6 +451,37 @@ func (g *Guard) prepareFileWrites(
 	return expected, nil
 }
 
+func (g *Guard) preflightFileWrites(invocation Invocation) error {
+	for _, path := range invocationWritePaths(invocation) {
+		fingerprint, _, _, err := workspacejournal.Snapshot(path)
+		if err != nil {
+			return tool.Precondition(fmt.Errorf(
+				"preflight write path %q: %w",
+				path,
+				err,
+			))
+		}
+		if fingerprint.Exists || invocation.Tool != "exec_command" {
+			continue
+		}
+		parent, err := os.Stat(filepath.Dir(path))
+		if err != nil {
+			return tool.Precondition(fmt.Errorf(
+				"preflight write path %q requires an existing parent directory: %w",
+				path,
+				err,
+			))
+		}
+		if !parent.IsDir() {
+			return tool.Precondition(fmt.Errorf(
+				"preflight write path %q parent is not a directory",
+				path,
+			))
+		}
+	}
+	return nil
+}
+
 func (g *Guard) readValidationError(path string, cause error) error {
 	relative, err := filepath.Rel(g.workspace, path)
 	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {

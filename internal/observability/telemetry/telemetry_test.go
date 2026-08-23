@@ -112,6 +112,12 @@ func TestMetricsAreAtomic(t *testing.T) {
 		got.ApprovalWaitLatencyMS != want*4 {
 		t.Fatalf("metric snapshot = %+v, want every counter %d", got, want)
 	}
+	if got.HeapAllocBytes == 0 ||
+		got.HeapInuseBytes == 0 ||
+		got.HeapObjects == 0 ||
+		got.ProcessSysBytes == 0 {
+		t.Fatalf("runtime memory snapshot = %+v", got)
+	}
 }
 
 func TestTurnKernelObserverMetricsSeparateHealthyTransitions(t *testing.T) {

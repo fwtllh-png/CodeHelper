@@ -54,6 +54,9 @@ func (e *Engine) stageNarrativeCandidate(
 	} else if stableErr != nil {
 		routeFailure = stableErr.Error()
 	}
+	if e.options.Context.SemanticNarrative == "off" {
+		routeFailure = "semantic_narrative_disabled"
+	}
 	state := agentcontext.PrepareCompactionState(
 		agentcontext.CompactionPreparation{
 			Candidate: candidate, Previous: e.compactionState().State,
@@ -221,7 +224,7 @@ func (e *Engine) completeInlineNarrative(
 	ctx context.Context,
 	history *[]provider.Message,
 ) (*CompactionReceipt, error) {
-	if e.options.Context.SemanticNarrative != "inline" {
+	if e.options.Context.SemanticNarrative == "post_turn" {
 		return nil, nil
 	}
 	state := e.compactionState().State
@@ -230,7 +233,7 @@ func (e *Engine) completeInlineNarrative(
 	}
 	scope := e.runningScope()
 	if scope == nil || scope.state.kernel == nil {
-		return nil, errors.New("inline compaction requires an active turn kernel")
+		return nil, nil
 	}
 	if state.PlanDigest == "" {
 		state.PlanDigest = agentcontext.FallbackCompactionPlanDigest(state)

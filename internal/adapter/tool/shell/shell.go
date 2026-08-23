@@ -394,15 +394,29 @@ func (t *Tool) resolveWritePaths(paths []string) ([]string, error) {
 	resolved := make([]string, 0, len(paths))
 	seen := make(map[string]struct{}, len(paths))
 	for _, path := range paths {
-		canonical, err := t.workspace.Resolve(path, sandbox.MustExist)
+		canonical, err := t.workspace.Resolve(path, sandbox.AllowMissing)
 		if err != nil {
 			return nil, err
 		}
 		info, err := os.Lstat(canonical)
-		if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			parent, parentErr := os.Stat(filepath.Dir(canonical))
+			if parentErr != nil {
+				return nil, fmt.Errorf(
+					"write path %q requires an existing parent directory: %w",
+					path,
+					parentErr,
+				)
+			}
+			if !parent.IsDir() {
+				return nil, fmt.Errorf(
+					"write path %q parent is not a directory",
+					path,
+				)
+			}
+		} else if err != nil {
 			return nil, err
-		}
-		if !info.Mode().IsRegular() {
+		} else if !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("write path %q is not a regular file", path)
 		}
 		if _, exists := seen[canonical]; exists {

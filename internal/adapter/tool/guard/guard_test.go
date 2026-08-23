@@ -36,6 +36,74 @@ func TestMalformedArgumentsFailBeforePolicy(t *testing.T) {
 	}
 }
 
+func TestExecCommandWritePathPreflightRunsBeforeApproval(t *testing.T) {
+	for name, path := range map[string]string{
+		"directory":      "directory",
+		"missing_parent": filepath.Join("missing", "new.txt"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			workspace := t.TempDir()
+			if err := os.Mkdir(filepath.Join(workspace, "directory"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			descriptor := writeDescriptor()
+			descriptor.Name = "exec_command"
+			descriptor.Capability = tool.CapabilityProcess
+			descriptor.ResourceResolver = tool.ResourceResolver{
+				PathsField: "write_paths",
+			}
+			descriptor.InputSchema = map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"write_paths": map[string]any{
+						"type":  "array",
+						"items": map[string]any{"type": "string"},
+					},
+				},
+				"required": []string{"write_paths"}, "additionalProperties": false,
+			}
+			registry := tool.NewRegistry(nil, nil)
+			executor := &testExecutor{descriptor: descriptor}
+			if err := registry.Register(executor, nil); err != nil {
+				t.Fatal(err)
+			}
+			requested := atomic.Bool{}
+			guard, err := New(Options{
+				Registry: registry,
+				Policy: policy.DefaultRuntime(
+					policy.ModeAct,
+					policy.PermissionSuggest,
+				),
+				Workspace: workspace,
+				Approvals: func(context.Context, ApprovalRequest) error {
+					requested.Store(true)
+					return nil
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := json.Marshal(map[string]any{
+				"write_paths": []string{path},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := guard.Execute(
+				t.Context(), "call-preflight-"+name, "exec_command", raw,
+			); err == nil {
+				t.Fatalf("Execute(%q) error = nil", path)
+			}
+			if requested.Load() {
+				t.Fatalf("Execute(%q) requested approval before preflight", path)
+			}
+			if executor.calls.Load() != 0 {
+				t.Fatalf("Execute(%q) calls = %d", path, executor.calls.Load())
+			}
+		})
+	}
+}
+
 func TestNetworkTargetsResolveHostPortMethodAndPrivateScope(t *testing.T) {
 	resources, err := networkTargets([]any{map[string]any{
 		"host": "API.Example.com.", "protocol": "https", "port": float64(8443),

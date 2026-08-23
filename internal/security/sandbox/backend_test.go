@@ -75,6 +75,73 @@ func TestExactWorkspaceWritePathLimitMatchesToolExpansion(t *testing.T) {
 	}
 }
 
+func TestExactWorkspaceWritePathsAllowMissingLeafWithExistingParent(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "generated"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join("generated", "new.txt")
+	resolved, err := validateExactWorkspaceWritePaths(
+		workspace,
+		true,
+		[]string{path},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved) != 1 ||
+		resolved[0] != filepath.Join(workspace.Root(), path) {
+		t.Fatalf("resolved paths = %+v", resolved)
+	}
+	for name, invalid := range map[string]string{
+		"directory":      "generated",
+		"missing_parent": filepath.Join("missing", "new.txt"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := validateExactWorkspaceWritePaths(
+				workspace,
+				true,
+				[]string{invalid},
+			); err == nil {
+				t.Fatalf("validateExactWorkspaceWritePaths(%q) error = nil", invalid)
+			}
+		})
+	}
+}
+
+func TestMaterializeMissingExactWritePathsCreatesOnlyDeclaredFiles(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(workspace.Root(), "new.txt")
+	if err := materializeMissingExactWritePaths(workspace, []string{path}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() != 0 {
+		t.Fatalf("materialized path info=%+v error=%v", info, err)
+	}
+	if err := materializeMissingExactWritePaths(workspace, []string{path}); err != nil {
+		t.Fatalf("idempotent materialization failed: %v", err)
+	}
+	link := filepath.Join(workspace.Root(), "replaced.txt")
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := materializeMissingExactWritePaths(
+		workspace,
+		[]string{link},
+	); err == nil || !strings.Contains(err.Error(), "changed type") {
+		t.Fatalf("symlink replacement error = %v", err)
+	}
+}
+
 func TestExactWorkspaceWritesRejectControlPlaneAndWritableBase(t *testing.T) {
 	root := t.TempDir()
 	protected := filepath.Join(root, ".codehelper", "state.json")

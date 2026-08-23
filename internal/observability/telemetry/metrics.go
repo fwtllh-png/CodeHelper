@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"encoding/json"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,6 +46,11 @@ type MetricSnapshot struct {
 	ApprovalGrantHitTotal         uint64 `json:"approval_grant_hit_total,omitempty"`
 	ApprovalReviewerLatencyMS     uint64 `json:"approval_reviewer_latency_ms,omitempty"`
 	ApprovalWaitLatencyMS         uint64 `json:"approval_wait_latency_ms,omitempty"`
+	HeapAllocBytes                uint64 `json:"heap_alloc_bytes,omitempty"`
+	HeapInuseBytes                uint64 `json:"heap_inuse_bytes,omitempty"`
+	HeapObjects                   uint64 `json:"heap_objects,omitempty"`
+	ProcessSysBytes               uint64 `json:"process_sys_bytes,omitempty"`
+	NumGC                         uint32 `json:"num_gc,omitempty"`
 }
 
 type Metrics struct {
@@ -293,6 +299,8 @@ func (m *Metrics) Snapshot() MetricSnapshot {
 	if m == nil {
 		return MetricSnapshot{}
 	}
+	var memory runtime.MemStats
+	runtime.ReadMemStats(&memory)
 	indexState := ""
 	if state := m.repoIndexState.Load(); state != nil {
 		indexState = *state
@@ -325,6 +333,11 @@ func (m *Metrics) Snapshot() MetricSnapshot {
 		ApprovalGrantHitTotal:         m.approvalGrantHits.Load(),
 		ApprovalReviewerLatencyMS:     m.approvalReviewerLatencyMS.Load(),
 		ApprovalWaitLatencyMS:         m.approvalWaitLatencyMS.Load(),
+		HeapAllocBytes:                memory.HeapAlloc,
+		HeapInuseBytes:                memory.HeapInuse,
+		HeapObjects:                   memory.HeapObjects,
+		ProcessSysBytes:               memory.Sys,
+		NumGC:                         memory.NumGC,
 
 		OperationsSubmitted: m.operationsSubmitted.Load(),
 		OperationsProcessed: m.operationsProcessed.Load(),

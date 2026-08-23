@@ -82,6 +82,47 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 	}
 }
 
+func TestStatelessDefaultCompactsLargeHistoryIntoTruthCapsule(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	engine.options.Route = reasoningRoute(t)
+	history := []provider.Message{
+		messageWithText(provider.RoleUser, strings.Repeat("first context ", 5000), 1),
+		messageWithText(provider.RoleAssistant, "first answer", 1),
+		messageWithText(provider.RoleUser, strings.Repeat("second context ", 5000), 2),
+		messageWithText(provider.RoleAssistant, "second answer", 2),
+		messageWithText(provider.RoleUser, "current request", 3),
+	}
+	var receipt *CompactionReceipt
+	window, err := engine.runCompactGate(
+		t.Context(),
+		&history,
+		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
+		0,
+		CompactionPhasePreSampling,
+		true,
+		func(_ State, event Event) error {
+			receipt = event.Compaction
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt == nil || receipt.RemovedMessages == 0 {
+		t.Fatalf("large stateless history was not replaced: %+v", receipt)
+	}
+	if window.active > statelessCompactTokens {
+		t.Fatalf(
+			"compacted active tokens = %d, want <= %d",
+			window.active,
+			statelessCompactTokens,
+		)
+	}
+	if !strings.Contains(history[0].Text(), "<codehelper_truth_capsule>") {
+		t.Fatalf("first retained message is not a truth capsule: %q", history[0].Text())
+	}
+}
+
 func TestToolResultPruningSkipsMalformedAndRetrievalResults(t *testing.T) {
 	results := tool.NewResultStore(32 << 10)
 	engine := newEngine(

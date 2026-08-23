@@ -165,6 +165,7 @@ func TestReceiptSeparatesProviderAttemptsSamplesAndCompletionRepairs(t *testing.
 		{Kind: "provider_attempt", SampleID: "sample-1", Attempt: 1},
 		{Kind: "provider_attempt", SampleID: "sample-1", Attempt: 2},
 		{Kind: "model_sample", SampleID: "sample-2", Reason: promptcontext.SampleCompletionRepair},
+		{Kind: "model_sample", SampleID: "sample-3", Reason: promptcontext.SampleVerificationRepair},
 		{Kind: "provider_attempt", SampleID: "sample-2", Attempt: 1},
 	} {
 		value := event
@@ -172,9 +173,36 @@ func TestReceiptSeparatesProviderAttemptsSamplesAndCompletionRepairs(t *testing.
 	}
 	receipt := recorder.Build(Observations{})
 	if receipt.ModelExecution.ProviderAttempts != 3 ||
-		receipt.ModelExecution.ModelSamples != 2 ||
-		receipt.ModelExecution.CompletionRepairs != 1 {
+		receipt.ModelExecution.ModelSamples != 3 ||
+		receipt.ModelExecution.CompletionRepairs != 1 ||
+		receipt.ModelExecution.SampleReasons[promptcontext.SampleVerificationRepair] != 1 {
 		t.Fatalf("model execution = %+v", receipt.ModelExecution)
+	}
+}
+
+func TestReceiptClassifiesToolExecutions(t *testing.T) {
+	recorder := New("run and verify")
+	for _, event := range []struct {
+		name   string
+		failed bool
+	}{
+		{name: "exec_command"},
+		{name: "quality_verify"},
+		{name: "turn_complete"},
+		{name: "search_files", failed: true},
+	} {
+		call := provider.ToolCall{Name: event.name}
+		result := tool.Result{IsError: event.failed}
+		recorder.Observe(agentengine.Event{
+			State: agentengine.RunningTools, ToolCall: &call, Result: &result,
+		})
+	}
+	receipt := recorder.Build(Observations{})
+	if receipt.ToolExecution["business"] != 2 ||
+		receipt.ToolExecution["control"] != 1 ||
+		receipt.ToolExecution["verification"] != 1 ||
+		receipt.ToolExecution["failed"] != 1 {
+		t.Fatalf("tool execution = %+v", receipt.ToolExecution)
 	}
 }
 

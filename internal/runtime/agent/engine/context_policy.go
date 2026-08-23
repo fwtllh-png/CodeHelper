@@ -31,9 +31,9 @@ type ContextPolicy struct {
 }
 
 const (
-	statelessPrepareTokens   = 48 << 10
-	statelessCompactTokens   = 64 << 10
-	statelessEmergencyTokens = 96 << 10
+	statelessPrepareTokens   = 16 << 10
+	statelessCompactTokens   = 24 << 10
+	statelessEmergencyTokens = 48 << 10
 )
 
 func (e *Engine) effectiveWindowPolicy() agentcontext.WindowPolicy {

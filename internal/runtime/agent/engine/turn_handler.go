@@ -383,7 +383,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		terminal.setPrimary(resultErr)
 		snapshot, err := e.finalizeTerminalContext(
-			transaction, false, canceled, provider.Usage{}, 0, send,
+			transaction, false, canceled, resultErr, provider.Usage{}, 0, send,
 		)
 		terminal.setContextBudget(snapshot)
 		if err != nil {
@@ -675,7 +675,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		)
 		result.Text, result.State = finalText, Completed
 		snapshot, err := e.finalizeTerminalContext(
-			transaction, true, false, result.Usage, cost, send,
+			transaction, true, false, nil, result.Usage, cost, send,
 		)
 		contextFinalized = true
 		terminal.setContextBudget(snapshot)
@@ -733,12 +733,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		result.CostUSD = cost
 		terminal.setPrimary(blocked)
 		snapshot, err := e.finalizeTerminalContext(
-			transaction,
-			true,
-			false,
-			result.Usage,
-			cost,
-			send,
+			transaction, true, false, nil, result.Usage, cost, send,
 		)
 		contextFinalized = true
 		terminal.setContextBudget(snapshot)

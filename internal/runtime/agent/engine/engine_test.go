@@ -1890,8 +1890,12 @@ func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 			terminalFault,
 		)
 	}
-	if history := engine.History(); len(history) != 0 {
-		t.Fatalf("failed turn committed history: %+v", history)
+	if history := engine.History(); len(history) != 1 ||
+		history[0].Role != provider.RoleSystem ||
+		!strings.Contains(history[0].Text(), "[turn_terminal]") ||
+		!strings.Contains(history[0].Text(), `"goal":"too large"`) ||
+		!strings.Contains(history[0].Text(), `"code":"resource_exhausted"`) {
+		t.Fatalf("failed turn capsule = %+v", history)
 	}
 
 	costEngine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t), MaxOutputTokens: 128}, ContextConfig: ContextConfig{Budget: Budget{MaxCostUSD: 0.000001}}})
@@ -1907,8 +1911,30 @@ func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 	if _, err := engine.Run(t.Context(), "rollback", nil); err == nil {
 		t.Fatal("Run() error = nil")
 	}
-	if history := engine.History(); len(history) != 0 {
-		t.Fatalf("provider failure committed history: %+v", history)
+	if history := engine.History(); len(history) != 2 ||
+		history[1].Role != provider.RoleSystem ||
+		!strings.Contains(history[1].Text(), `"goal":"rollback"`) ||
+		!strings.Contains(history[1].Text(), `"status":"failed"`) {
+		t.Fatalf("provider failure capsules = %+v", history)
+	}
+	runtime.streams = []provider.Stream{&providerfixture.SliceStream{Events: []provider.StreamEvent{
+		{Type: provider.EventTextDelta, Text: "recovered"},
+		{Type: provider.EventMessageStop},
+	}}}
+	if _, err := engine.Run(t.Context(), "summarize the failure", nil); err != nil {
+		t.Fatal(err)
+	}
+	request := runtime.requests[len(runtime.requests)-1]
+	var sawFailure bool
+	for _, message := range request.Messages {
+		if message.Role == provider.RoleSystem &&
+			strings.Contains(message.Text(), "[turn_terminal]") &&
+			strings.Contains(message.Text(), `"goal":"rollback"`) {
+			sawFailure = true
+		}
+	}
+	if !sawFailure {
+		t.Fatalf("next turn request omitted failed turn capsule: %+v", request.Messages)
 	}
 
 	canceled, cancel := context.WithCancel(t.Context())
@@ -2635,7 +2661,8 @@ func TestFailedTurnCompactsWithinOversizedDurableLastTurn(t *testing.T) {
 	}
 	assertToolPairs(t, engine.history)
 	for _, message := range engine.history {
-		if strings.Contains(message.Text(), "new request") {
+		if message.Turn == 2 &&
+			!strings.HasPrefix(message.Text(), "[turn_terminal]\n") {
 			t.Fatalf("failed transaction entered durable history: %+v", engine.history)
 		}
 	}

@@ -124,7 +124,10 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object", "properties": properties,
-			// query OR pattern — enforced in Execute after alias normalization.
+			"anyOf": []any{
+				map[string]any{"required": []string{"query"}},
+				map[string]any{"required": []string{"pattern"}},
+			},
 			"additionalProperties": false,
 		},
 	}

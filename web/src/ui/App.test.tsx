@@ -87,6 +87,21 @@ describe("projectTranscript", () => {
     ]);
   });
 
+  it("reports failed recovery operations", async () => {
+    const client = mockClient(snapshot([
+      event(1, "turn.failed", {message: "provider unavailable"})
+    ]));
+    vi.mocked(client.recoverTurn).mockRejectedValue(
+      new Error("recovery was rejected")
+    );
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Retry"}));
+
+    expect(await screen.findByText("recovery was rejected")).toBeTruthy();
+    expect(client.recoverTurn).toHaveBeenCalledWith("turn", "retry");
+  });
+
   it("renders lifecycle, workspace, profile, and governed tool controls", () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
@@ -694,6 +709,7 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
     saveDraft: vi.fn(),
     decideApproval: vi.fn(async () => ({})),
     replyInput: vi.fn(async () => ({})),
+    recoverTurn: vi.fn(async () => ({})),
     updateProfile: vi.fn(async () => {}),
     transitionPlan: vi.fn(async () => ({})),
     restoreCheckpoint: vi.fn(async () => ({})),

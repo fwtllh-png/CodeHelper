@@ -261,6 +261,27 @@ func TestShellRunExactWriteScopeIsGuardedAndObserved(t *testing.T) {
 		t.Fatalf("declared content = %q, error = %v", data, err)
 	}
 
+	created := filepath.Join(root, "created.txt")
+	result, err = guarded.Execute(
+		t.Context(), "call-created", "exec_command",
+		json.RawMessage(
+			`{"command":"printf 'created\n' > created.txt","write_paths":["created.txt"]}`,
+		),
+	)
+	if err != nil || result.IsError {
+		t.Fatalf("created write failed: result=%+v error=%v", result, err)
+	}
+	changes = result.Outcome.Facts.WorkspaceChanges
+	if len(changes) != 1 ||
+		changes[0].Path != "created.txt" ||
+		changes[0].Kind != tool.WorkspaceCreated {
+		t.Fatalf("created changes = %+v", changes)
+	}
+	data, err = os.ReadFile(created)
+	if err != nil || string(data) != "created\n" {
+		t.Fatalf("created content = %q, error = %v", data, err)
+	}
+
 	escaped, err := guarded.Execute(
 		t.Context(), "call-escaped", "exec_command",
 		json.RawMessage(
@@ -361,6 +382,49 @@ func TestShellRunAcceptsBoundedLargeExactWriteSet(t *testing.T) {
 	}
 	if len(resolved) != len(paths) {
 		t.Fatalf("resolved paths = %d, want %d", len(resolved), len(paths))
+	}
+}
+
+func TestShellRunAcceptsMissingExactWritePathWithExistingParent(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "generated"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := &Tool{workspace: workspace}
+	path := filepath.Join("generated", "new.txt")
+	resolved, err := shell.resolveWritePaths([]string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved) != 1 ||
+		resolved[0] != filepath.Join(workspace.Root(), path) {
+		t.Fatalf("resolved paths = %+v", resolved)
+	}
+}
+
+func TestShellRunRejectsDirectoryAndMissingParentWritePaths(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "directory"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := &Tool{workspace: workspace}
+	for name, path := range map[string]string{
+		"directory":      "directory",
+		"missing_parent": filepath.Join("missing", "new.txt"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := shell.resolveWritePaths([]string{path}); err == nil {
+				t.Fatalf("resolveWritePaths(%q) error = nil", path)
+			}
+		})
 	}
 }
 

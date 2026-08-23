@@ -6483,6 +6483,10 @@
             },
             "provider_attempts": {
               "type": "integer"
+            },
+            "sample_reasons": {
+              "type": "object",
+              "description": "map of int"
             }
           },
           "required": [
@@ -6716,6 +6720,10 @@
             "additionalProperties": false
           }
         },
+        "tool_execution": {
+          "type": "object",
+          "description": "map of int"
+        },
         "tools_failed": {
           "type": "array",
           "items": {
@@ -6903,6 +6911,7 @@
         "measurement_recorded",
         "model_execution",
         "output_tokens",
+        "tool_execution",
         "verification"
       ],
       "additionalProperties": false

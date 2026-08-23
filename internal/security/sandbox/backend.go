@@ -270,6 +270,9 @@ func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command
 	if err != nil {
 		return Command{}, err
 	}
+	if err := materializeMissingExactWritePaths(b.workspace, writePaths); err != nil {
+		return Command{}, err
+	}
 	args := []string{sandboxExec, "-p", profile, "--", executable}
 	args = append(args, command.Args[1:]...)
 	preparedProxyPort := b.policy.ManagedProxyPort
@@ -354,6 +357,9 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 		if err != nil {
 			return Command{}, err
 		}
+	}
+	if err := materializeMissingExactWritePaths(b.workspace, writePaths); err != nil {
+		return Command{}, err
 	}
 	args := []string{
 		bwrap, "--die-with-parent", "--new-session", "--unshare-all",
@@ -608,15 +614,29 @@ func validateExactWorkspaceWritePaths(
 	}
 	canonical := make([]string, 0, len(paths))
 	for _, path := range paths {
-		resolved, err := workspace.Resolve(path, MustExist)
+		resolved, err := workspace.Resolve(path, AllowMissing)
 		if err != nil {
 			return nil, err
 		}
 		info, err := os.Lstat(resolved)
-		if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			parent, parentErr := os.Stat(filepath.Dir(resolved))
+			if parentErr != nil {
+				return nil, fmt.Errorf(
+					"exact write path %q requires an existing parent directory: %w",
+					path,
+					parentErr,
+				)
+			}
+			if !parent.IsDir() {
+				return nil, fmt.Errorf(
+					"exact write path %q parent is not a directory",
+					path,
+				)
+			}
+		} else if err != nil {
 			return nil, err
-		}
-		if !info.Mode().IsRegular() {
+		} else if !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("exact write path %q is not a regular file", path)
 		}
 		if err := classifier.CheckWrite(resolved, false); err != nil {
@@ -631,6 +651,57 @@ func validateExactWorkspaceWritePaths(
 		}
 	}
 	return canonical, nil
+}
+
+func materializeMissingExactWritePaths(
+	workspace *Workspace,
+	paths []string,
+) error {
+	var created []string
+	cleanup := func() {
+		for _, path := range created {
+			_ = os.Remove(path)
+		}
+	}
+	for _, path := range paths {
+		if info, err := os.Lstat(path); err == nil {
+			if !info.Mode().IsRegular() {
+				cleanup()
+				return fmt.Errorf("exact write path %q changed type", path)
+			}
+			resolved, resolveErr := workspace.Resolve(path, MustExist)
+			if resolveErr != nil || resolved != path {
+				cleanup()
+				if resolveErr != nil {
+					return resolveErr
+				}
+				return fmt.Errorf("exact write path %q changed identity", path)
+			}
+			continue
+		} else if !errors.Is(err, os.ErrNotExist) {
+			cleanup()
+			return err
+		}
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			cleanup()
+			return fmt.Errorf("materialize exact write path %q: %w", path, err)
+		}
+		if err := file.Close(); err != nil {
+			cleanup()
+			return err
+		}
+		created = append(created, path)
+		resolved, err := workspace.Resolve(path, MustExist)
+		if err != nil || resolved != path {
+			cleanup()
+			if err != nil {
+				return err
+			}
+			return fmt.Errorf("materialized write path %q changed identity", path)
+		}
+	}
+	return nil
 }
 
 func validateAdditionalReadPaths(policy Policy, paths []string) ([]string, error) {

@@ -258,6 +258,82 @@ func TestInlineNarrativeFailureCommitsDeterministicRebase(t *testing.T) {
 	}
 }
 
+func TestNarrativeOffCommitsDeterministicRebase(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.Context.SemanticNarrative = "off"
+	engine.options.Context.Window.AutoTokens = 300
+	var committed *agentcontext.ContextRebaseEnvelope
+	engine.options.Context.CommitRebase = func(
+		_ context.Context,
+		envelope agentcontext.ContextRebaseEnvelope,
+	) error {
+		copy := envelope
+		committed = &copy
+		return nil
+	}
+	scope := attachTestScope(t, engine)
+	scope.spec.Identity = TurnIdentity{
+		SessionID: "session-1", ThreadID: "thread-1",
+		TurnID: "turn-2", ProfileRevision: 1,
+	}
+	scope.state.kernel = newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		telemetry.NewMetrics(),
+	)
+	history := []provider.Message{
+		messageWithText(
+			provider.RoleUser,
+			"retain deterministic facts "+strings.Repeat("old ", 200),
+			1,
+		),
+		messageWithText(
+			provider.RoleAssistant,
+			strings.Repeat("answer ", 200),
+			1,
+		),
+		messageWithText(provider.RoleUser, "continue", 2),
+	}
+	input := agentcontext.NewMessageLedger(
+		agentcontext.LedgerInput{History: history},
+	).Snapshot()
+	if _, err := engine.runCompactGate(
+		t.Context(),
+		&history,
+		input,
+		128,
+		CompactionPhaseMidTurn,
+		true,
+		func(State, Event) error { return nil },
+	); err != nil {
+		t.Fatal(err)
+	}
+	if committed != nil {
+		t.Fatal("mid-turn compaction committed a durable rebase")
+	}
+	if err := engine.runTerminalCompactGate(
+		&history,
+		true,
+		func(State, Event) error { return nil },
+	); err != nil {
+		t.Fatal(err)
+	}
+	if committed == nil ||
+		committed.NarrativeDigest != "" ||
+		engine.sessionRevision != 1 ||
+		!strings.Contains(history[0].Text(), agentcontext.TruthMarkerStart) {
+		t.Fatalf(
+			"committed=%+v revision=%d history=%q",
+			committed,
+			engine.sessionRevision,
+			history[0].Text(),
+		)
+	}
+}
+
 func TestPostTurnNarrativeRetriesRebaseWithoutResampling(t *testing.T) {
 	runtime := &sourceEchoNarrativeProvider{}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))

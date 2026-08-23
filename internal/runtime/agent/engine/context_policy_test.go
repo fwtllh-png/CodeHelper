@@ -45,3 +45,14 @@ func TestStatelessProviderUsesEconomicCompactionThresholds(t *testing.T) {
 		)
 	}
 }
+
+func TestEngineDefaultsToBoundedConsumedToolResultHistory(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	if engine.options.MaxToolResultHistoryBytes != 16<<10 {
+		t.Fatalf(
+			"max tool result history bytes = %d, want %d",
+			engine.options.MaxToolResultHistoryBytes,
+			16<<10,
+		)
+	}
+}

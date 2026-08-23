@@ -270,9 +270,10 @@ type ReceiptProviderRetry struct {
 }
 
 type ReceiptModelExecution struct {
-	ProviderAttempts  int `json:"provider_attempts"`
-	ModelSamples      int `json:"model_samples"`
-	CompletionRepairs int `json:"completion_repairs"`
+	ProviderAttempts  int            `json:"provider_attempts"`
+	ModelSamples      int            `json:"model_samples"`
+	CompletionRepairs int            `json:"completion_repairs"`
+	SampleReasons     map[string]int `json:"sample_reasons,omitempty"`
 }
 
 // ExecutionReceiptData is the per-turn audit record: what the turn was asked to
@@ -297,6 +298,7 @@ type ExecutionReceiptData struct {
 	Convergence        *TurnConvergence          `json:"convergence,omitempty"`
 	ProviderRetry      *ReceiptProviderRetry     `json:"provider_retry,omitempty"`
 	ModelExecution     ReceiptModelExecution     `json:"model_execution"`
+	ToolExecution      map[string]int            `json:"tool_execution"`
 
 	// Routes are the routes the turn actually sampled on, one entry per purpose.
 	// It is what the turn did, not the table it could have used: a slot the turn

@@ -38,6 +38,7 @@ type Recorder struct {
 	convergence        *protocol.TurnConvergence
 	providerRetry      *protocol.ReceiptProviderRetry
 	modelExecution     protocol.ReceiptModelExecution
+	toolExecution      map[string]int
 	toolsSucceeded     []string
 	toolsFailed        []string
 	approvals          int
@@ -197,8 +198,15 @@ func (r *Recorder) Observe(event agentengine.Event) {
 			r.modelExecution.ProviderAttempts++
 		case "model_sample":
 			r.modelExecution.ModelSamples++
-			if event.ModelExecution.Reason ==
-				promptcontext.SampleCompletionRepair {
+			reason := event.ModelExecution.Reason
+			if reason == "" {
+				reason = promptcontext.SampleNormal
+			}
+			if r.modelExecution.SampleReasons == nil {
+				r.modelExecution.SampleReasons = make(map[string]int)
+			}
+			r.modelExecution.SampleReasons[reason]++
+			if reason == promptcontext.SampleCompletionRepair {
 				r.modelExecution.CompletionRepairs++
 			}
 		}
@@ -280,7 +288,19 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 	if event.ToolCall == nil || event.Result == nil {
 		return
 	}
+	kind := "business"
+	switch event.ToolCall.Name {
+	case "turn_complete", "update_plan", "request_user_input":
+		kind = "control"
+	case "quality_test", "quality_diagnostics", "quality_review", "quality_verify":
+		kind = "verification"
+	}
+	if r.toolExecution == nil {
+		r.toolExecution = make(map[string]int)
+	}
+	r.toolExecution[kind]++
 	if event.Result.IsError {
+		r.toolExecution["failed"]++
 		r.toolsFailed = appendUniqueString(r.toolsFailed, event.ToolCall.Name)
 	} else {
 		r.toolsSucceeded = appendUniqueString(r.toolsSucceeded, event.ToolCall.Name)
@@ -370,6 +390,7 @@ func (r *Recorder) Build(
 		Convergence:        r.convergence,
 		ProviderRetry:      r.providerRetry,
 		ModelExecution:     r.modelExecution,
+		ToolExecution:      r.toolExecution,
 		Routes:             append([]protocol.ReceiptRoute(nil), r.routes...),
 		ToolsSucceeded:     r.toolsSucceeded, ToolsFailed: r.toolsFailed,
 		Skills:             append([]protocol.ReceiptSkill(nil), r.skills...),

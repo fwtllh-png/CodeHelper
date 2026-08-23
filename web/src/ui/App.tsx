@@ -1260,12 +1260,16 @@ function TranscriptItem({
             <button onClick={() => void client.recoverTurn(
               entry.turnID ?? "",
               "retry"
-            )}>
+            ).catch(onError)}>
               <RotateCcw size={13} /> Retry
             </button>
             <button onClick={() => {
               const guidance = window.prompt("Continue with guidance", "") ?? "";
-              void client.recoverTurn(entry.turnID ?? "", "continue", guidance);
+              void client.recoverTurn(
+                entry.turnID ?? "",
+                "continue",
+                guidance
+              ).catch(onError);
             }}>
               <Play size={13} /> Continue
             </button>

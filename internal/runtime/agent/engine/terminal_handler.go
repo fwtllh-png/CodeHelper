@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -34,13 +35,9 @@ func newTurnEmitter(turn uint64, emit func(Event) error) *turnEmitter {
 	return &turnEmitter{turn: turn, emitFunc: emit}
 }
 
-func (h *turnEmitter) setCancelReason(source func() string) {
-	h.cancelReason = source
-}
+func (h *turnEmitter) setCancelReason(source func() string) { h.cancelReason = source }
 
-func (h *turnEmitter) setTerminalDecision(
-	source func() (turnkernel.TerminalDecision, bool),
-) {
+func (h *turnEmitter) setTerminalDecision(source func() (turnkernel.TerminalDecision, bool)) {
 	h.decision = source
 }
 
@@ -106,17 +103,11 @@ func (h *turnEmitter) send(state State, event Event) error {
 	return nil
 }
 
-func (h *turnEmitter) setContextBudget(snapshot ContextBudgetSnapshot) {
-	h.contextBudget = &snapshot
-}
+func (h *turnEmitter) setContextBudget(snapshot ContextBudgetSnapshot) { h.contextBudget = &snapshot }
 
-func (h *turnEmitter) setCommitted(apply func() error) {
-	h.committed = apply
-}
+func (h *turnEmitter) setCommitted(apply func() error) { h.committed = apply }
 
-func (h *turnEmitter) setRelease(release func() error) {
-	h.release = release
-}
+func (h *turnEmitter) setRelease(release func() error) { h.release = release }
 
 func (h *turnEmitter) releaseTurn() error {
 	if h.released || h.release == nil {
@@ -157,9 +148,7 @@ func mergeTerminalIssues(
 	return result
 }
 
-func (h *turnEmitter) suspendForRecovery() {
-	h.recoveryPending = true
-}
+func (h *turnEmitter) suspendForRecovery() { h.recoveryPending = true }
 
 func (h *turnEmitter) setPrimary(err error) {
 	if err == nil || h.primaryError != "" {
@@ -199,7 +188,7 @@ func firstJoinedError(err error) error {
 func (e *Engine) finalizeTerminalContext(
 	transaction []provider.Message,
 	completed, canceled bool,
-	usage provider.Usage,
+	failure error, usage provider.Usage,
 	cost float64,
 	send func(State, Event) error,
 ) (ContextBudgetSnapshot, error) {
@@ -208,7 +197,6 @@ func (e *Engine) finalizeTerminalContext(
 	// A failed transaction is deliberately excluded from candidate. Its last turn
 	// is therefore the most recent durable completed turn, which is safe to compact
 	// within as long as the compactor preserves closed tool pairs.
-	allowCurrentTurn := true
 	switch {
 	case completed:
 		candidate = cloneMessages(transaction)
@@ -216,12 +204,11 @@ func (e *Engine) finalizeTerminalContext(
 	case canceled:
 		candidate = retainCanceledHistory(transaction)
 		original = cloneMessages(candidate)
+	case failure != nil && !errors.Is(failure, context.Canceled):
+		candidate = append(candidate, e.failedTurnContextMessage(transaction, failure))
+		original = cloneMessages(candidate)
 	}
-	maintenanceErr := e.runTerminalCompactGate(
-		&candidate,
-		allowCurrentTurn,
-		send,
-	)
+	maintenanceErr := e.runTerminalCompactGate(&candidate, true, send)
 	if maintenanceErr != nil {
 		candidate = original
 	}
@@ -263,6 +250,24 @@ func (e *Engine) finalizeTerminalContext(
 	}
 	e.stageSessionDelta(delta)
 	return e.contextBudgetSnapshot(candidate), maintenanceErr
+}
+
+func (e *Engine) failedTurnContextMessage(transaction []provider.Message, failure error) provider.Message {
+	problem := protocol.ProblemOf(failure)
+	problem.Message = agentcontext.TruncateUTF8(problem.Message, 512)
+	failures := e.contextAuthority().Failures().List()
+	if len(failures) > 4 {
+		failures = failures[:4]
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"v": 1, "status": "failed",
+		"turn_id": e.runningScope().spec.Identity.TurnID,
+		"goal":    agentcontext.TruncateUTF8(agentcontext.ActiveTurnGoal(transaction), 512),
+		"problem": problem, "failures": failures,
+	})
+	message := provider.TextMessage(provider.RoleSystem, "[turn_terminal]\n"+string(payload))
+	message.Turn = e.turn
+	return message
 }
 
 func (h *turnEmitter) finish(ctx context.Context, result *Result, resultErr *error) {
@@ -308,10 +313,7 @@ func (h *turnEmitter) finish(ctx context.Context, result *Result, resultErr *err
 	result.State = state
 }
 
-func (h *turnEmitter) terminalEvent(
-	ctx context.Context,
-	err error,
-) (State, Event) {
+func (h *turnEmitter) terminalEvent(ctx context.Context, err error) (State, Event) {
 	reason := ""
 	if h.cancelReason != nil {
 		reason = h.cancelReason()
@@ -344,8 +346,7 @@ func (h *turnEmitter) terminalEvent(
 }
 
 func (h *turnEmitter) terminalRequest(
-	ctx context.Context,
-	err error,
+	ctx context.Context, err error,
 ) (State, Event, turnkernel.TerminalRequested) {
 	state, event := h.terminalEvent(ctx, err)
 	request := turnkernel.TerminalRequested{}

@@ -99,10 +99,6 @@
         "production_lines": 812,
         "options_fields": 0,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "internal_fanout": "Terminal outbox commit and projection moved into the event owner",
-        "production_lines": "Terminal outbox commit and projection moved into the event owner"
       }
     },
     {
@@ -191,10 +187,6 @@
         "production_lines": 529,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "internal_fanout": "Tool result recovery and model projection now integrate content, provider, protocol, and verification contracts",
-        "production_lines": "Stable result handles, bounded model projection, and recovery moved into the tool result owner"
       }
     },
     {
@@ -217,9 +209,6 @@
         "production_lines": 820,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Shared pricing and transport metadata contracts moved into the provider owner"
       }
     },
     {
@@ -231,11 +220,6 @@
         "production_lines": 1680,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "internal_fanout": "Provider transport, tool sampling, and stream consumption moved to the assembly owner",
-        "production_lines": "Provider delta coalescing, transport lifecycle, tool sampling, and stream parsing moved to the assembly owner",
-        "mutex_fields": "Response assembly now owns synchronized stream aggregation"
       }
     },
     {
@@ -258,9 +242,6 @@
         "production_lines": 386,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Provider retry classification and projection recovery contracts moved into provider wire"
       }
     },
     {
@@ -363,11 +344,6 @@
         "production_lines": 9470,
         "options_fields": 82,
         "mutex_fields": 7
-      },
-      "relaxations": {
-        "production_lines": "Persistent Runtime construction moved back into the composition root",
-        "mutex_fields": "ResourceStack synchronization is now owned directly by the composition root",
-        "options_fields": "Persistent Runtime construction options moved back into the composition root"
       }
     },
     {
@@ -379,9 +355,6 @@
         "production_lines": 1470,
         "options_fields": 1,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "Extension lifecycle projection moved into the extension owner"
       }
     },
     {
@@ -393,10 +366,6 @@
         "production_lines": 3178,
         "options_fields": 0,
         "mutex_fields": 6
-      },
-      "relaxations": {
-        "internal_fanout": "Engine Adapter and pending-work projections moved into the extension owner",
-        "production_lines": "Engine Adapter and pending-work projections moved into the extension owner"
       }
     },
     {
@@ -626,10 +595,6 @@
         "production_lines": 8023,
         "options_fields": 0,
         "mutex_fields": 8
-      },
-      "relaxations": {
-        "production_lines": "Tool effects, journal finalization, and split reducer commands moved to the authoritative state machine",
-        "mutex_fields": "Recovered interaction state now owns its synchronization"
       }
     },
     {
@@ -641,9 +606,6 @@
         "production_lines": 5643,
         "options_fields": 21,
         "mutex_fields": 10
-      },
-      "relaxations": {
-        "mutex_fields": "Operation, Event, Session, and Runtime lifecycle state now use owner-specific locks instead of one shared mutex"
       }
     },
     {
@@ -675,9 +637,6 @@
         "production_lines": 7549,
         "options_fields": 28,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "Prompt package rename required explicit import aliases at shadowing call sites"
       }
     },
     {
@@ -761,9 +720,6 @@
       "limits": {
         "lines": 419,
         "max_function_lines": 322
-      },
-      "relaxations": {
-        "max_function_lines": "Engine construction now initializes explicit typed option groups"
       }
     },
     {
@@ -773,8 +729,7 @@
       "limits": {
         "lines": 151,
         "max_function_lines": 69
-      },
-      "relaxations": {}
+      }
     },
     {
       "id": "wire_module_outputs_file",
@@ -900,9 +855,6 @@
       "limits": {
         "lines": 417,
         "max_function_lines": 128
-      },
-      "relaxations": {
-        "max_function_lines": "Engine construction now normalizes typed option groups and stateless projection budgets in one validation pass"
       }
     },
     {
@@ -921,10 +873,6 @@
       "limits": {
         "lines": 234,
         "max_function_lines": 48
-      },
-      "relaxations": {
-        "lines": "Window construction, fallback, thresholds, and projection moved to the context owner",
-        "max_function_lines": "Window projection remains one cohesive field mapping operation"
       }
     },
     {
@@ -934,9 +882,6 @@
       "limits": {
         "lines": 148,
         "max_function_lines": 41
-      },
-      "relaxations": {
-        "max_function_lines": "Engine window methods now delegate state mutation to Context Authority"
       }
     },
     {
@@ -1051,9 +996,6 @@
         "production_lines": 9091,
         "options_fields": 0,
         "mutex_fields": 3
-      },
-      "relaxations": {
-        "production_lines": "Context Authority, narrative generation, history invariants, and window construction moved to the context owner"
       }
     },
     {
@@ -1065,10 +1007,6 @@
         "production_lines": 2470,
         "options_fields": 22,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "internal_fanout": "Editor context rendering moved into the prompt owner",
-        "production_lines": "Editor context rendering and validation moved into the prompt owner"
       }
     },
     {
@@ -1091,18 +1029,5 @@
       },
       "kind": "file"
     }
-  ],
-  "retirements": {
-    "wire_assembly_package": "Construction-only ResourceStack moved into its sole owner, runtime/app/wire",
-    "turnexec_package": "Turn lifecycle and mailbox moved into their sole owner, runtime/agent/engine",
-    "compact_package": "Compaction merged into the Context Authority package",
-    "contextstore_package": "Model context ledger merged into the Context Authority package",
-    "evidence_package": "Evidence ledger merged into the Context Authority package",
-    "workingset_package": "Working-set ledger merged into the Context Authority package",
-    "compact_truth_file": "Moved unchanged into runtime/agent/context/compact_truth.go",
-    "contextstore_normalize_file": "Moved unchanged into runtime/agent/context/store_normalize.go",
-    "contextstore_window_file": "Moved unchanged into runtime/agent/context/store_window.go",
-    "runtime_app_chatmerge_package": "Chat merge service moved into its runtime/app owner",
-    "runtime_terminal_measurement_file": "Terminal measurement moved into its Engine Adapter owner, runtime/app/extension"
-  }
+  ]
 }

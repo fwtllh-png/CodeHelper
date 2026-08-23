@@ -77,19 +77,21 @@ func (e *Engine) runCompactGate(
 		if err := send(Compacting, Event{Compaction: receipt}); err != nil {
 			return tokenWindow{}, err
 		}
-		if inlineReceipt, inlineErr := e.completeInlineNarrative(
-			ctx,
-			history,
-		); inlineErr != nil {
-			return tokenWindow{}, inlineErr
-		} else if inlineReceipt != nil {
+	}
+	var inlineReceipt *CompactionReceipt
+	if e.options.Context.SemanticNarrative != "off" || phase == CompactionPhasePostTurn {
+		inlineReceipt, err = e.completeInlineNarrative(ctx, history)
+		if err != nil {
+			return tokenWindow{}, err
+		}
+		if inlineReceipt != nil {
 			inlineReceipt.Phase = phase
-			if err := send(Compacting, Event{
-				Compaction: inlineReceipt,
-			}); err != nil {
+			if err := send(Compacting, Event{Compaction: inlineReceipt}); err != nil {
 				return tokenWindow{}, err
 			}
 		}
+	}
+	if receipt != nil || inlineReceipt != nil {
 		input = input.WithHistory(*history)
 		window, err = e.measureTokenWindow(input, outputReserve)
 	}
@@ -317,16 +319,14 @@ func (e *Engine) compactHistoryWithPolicy(
 		criticalPaths,
 	)
 	finished := finish(receipt)
-	if e.options.Context.SemanticNarrative != "off" &&
-		selection.OriginalWindow.Active < e.emergencyCompactLimit() {
-		if state := e.stageNarrativeCandidate(*selected); state != nil {
-			receipt.CompactionID = state.ID
-			receipt.Status = state.Phase
-			receipt.Mode = e.options.Context.SemanticNarrative
-			receipt.SourceWindowID = state.SourceWindowID
-			receipt.TargetWindowID = state.TargetWindowID
-			receipt.FallbackReason = state.FallbackReason
-		}
+	durableRebase := e.options.Context.CommitRebase != nil || e.options.Context.CommitRebaseWithFacts != nil
+	if (e.options.Context.SemanticNarrative == "off" && durableRebase) ||
+		(e.options.Context.SemanticNarrative != "off" && selection.OriginalWindow.Active < e.emergencyCompactLimit()) {
+		state := e.stageNarrativeCandidate(*selected)
+		receipt.CompactionID, receipt.Status = state.ID, state.Phase
+		receipt.Mode = e.options.Context.SemanticNarrative
+		receipt.SourceWindowID, receipt.TargetWindowID = state.SourceWindowID, state.TargetWindowID
+		receipt.FallbackReason = state.FallbackReason
 	}
 	return finished
 }
