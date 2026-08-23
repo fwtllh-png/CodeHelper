@@ -39,6 +39,19 @@ func TestNormalizeEffectAndRisk(t *testing.T) {
 			kind: EffectAgentMessage, risk: RiskLow,
 		},
 		{
+			name: "session plan mutation",
+			call: effectInvocation(
+				"update_plan",
+				CapabilityWrite,
+				tool.AccessWrite,
+				tool.SandboxNone,
+				tool.Resource{
+					Kind: "plan", ID: "session", Access: tool.AccessWrite,
+				},
+			),
+			kind: EffectSessionMutation, risk: RiskLow,
+		},
+		{
 			name: "agent followup",
 			call: effectInvocation("followup_task", CapabilityWrite, tool.AccessWrite, tool.SandboxNone,
 				tool.Resource{Kind: "agent", ID: "agent-1", Access: tool.AccessWrite}),
@@ -104,6 +117,19 @@ func TestEffectRiskDrivesApprovalWithoutToolNameExceptions(t *testing.T) {
 			name: "suggest message allows", permission: PermissionSuggest,
 			call: effectInvocation("send_message", CapabilityWrite, tool.AccessWrite, tool.SandboxNone,
 				tool.Resource{Kind: "agent", ID: "agent-1", Access: tool.AccessWrite}),
+			want: ActionAllow,
+		},
+		{
+			name: "suggest session plan allows", permission: PermissionSuggest,
+			call: effectInvocation(
+				"update_plan",
+				CapabilityWrite,
+				tool.AccessWrite,
+				tool.SandboxNone,
+				tool.Resource{
+					Kind: "plan", ID: "session", Access: tool.AccessWrite,
+				},
+			),
 			want: ActionAllow,
 		},
 		{

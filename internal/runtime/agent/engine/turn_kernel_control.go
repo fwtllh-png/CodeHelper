@@ -9,11 +9,7 @@ import (
 
 var ErrTurnCoordinatorNotActive = errors.New("turn coordinator is not active")
 
-type FrozenTerminalState struct {
-	TurnID      string
-	State       turnkernel.State
-	DomainFacts []turnkernel.DomainFact
-}
+type FrozenTerminalState = turnkernel.FrozenTerminalState
 
 func (e *Engine) FrozenTerminalState(
 	ctx context.Context,
@@ -26,19 +22,5 @@ func (e *Engine) FrozenTerminalState(
 	if err != nil {
 		return FrozenTerminalState{}, err
 	}
-	kernel.mu.Lock()
-	defer kernel.mu.Unlock()
-	facts, err := kernel.coordinator.DomainFacts(ctx)
-	if err != nil {
-		return FrozenTerminalState{}, err
-	}
-	state := kernel.coordinator.Snapshot()
-	if !state.Phase.Terminal() {
-		return FrozenTerminalState{}, errors.New("turn kernel is not terminal")
-	}
-	return FrozenTerminalState{
-		TurnID:      kernel.coordinator.TurnID(),
-		State:       state,
-		DomainFacts: facts,
-	}, nil
+	return kernel.FrozenTerminalState(ctx)
 }

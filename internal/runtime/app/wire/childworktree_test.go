@@ -392,7 +392,7 @@ func TestSerializedWritingChildUsesHostWorkspaceWithoutGit(t *testing.T) {
 func TestChildEngineOptionsOnlySharesHostJournalUnderSerializedStrategy(t *testing.T) {
 	gate := agentengine.NewWorkspaceTurnGate()
 	journal := new(workspacejournal.Manager)
-	seed := agentengine.Options{Journal: journal, WorkspaceTurnGate: gate}
+	seed := agentengine.Options{SecurityConfig: agentengine.SecurityConfig{Journal: journal, WorkspaceTurnGate: gate}}
 
 	serialized := childEngineOptions(seed, app.ChildSpec{Serialized: true}, nil)
 	if serialized.Journal != journal || serialized.WorkspaceTurnGate != gate ||

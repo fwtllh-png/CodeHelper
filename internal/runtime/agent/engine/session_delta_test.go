@@ -7,8 +7,7 @@ import (
 
 	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -19,7 +18,7 @@ func TestSessionDeltaApplyIsRevisionedAndIdempotent(t *testing.T) {
 		messageWithText(provider.RoleUser, "request", 1),
 		messageWithText(provider.RoleAssistant, "answer", 1),
 	}
-	delta, err := prepareSessionDelta(
+	delta, err := agentcontext.PrepareSessionDelta(
 		"turn-1",
 		0,
 		history,
@@ -59,7 +58,7 @@ func TestSessionDeltaRestoresRecoveryHistoryIdentity(t *testing.T) {
 		messageWithText(provider.RoleUser, "recovery envelope", 2),
 		messageWithText(provider.RoleAssistant, "partial", 2),
 	}
-	delta, err := prepareSessionDelta(
+	delta, err := agentcontext.PrepareSessionDelta(
 		"recovery-1",
 		0,
 		history,
@@ -68,7 +67,7 @@ func TestSessionDeltaRestoresRecoveryHistoryIdentity(t *testing.T) {
 		SessionStateDelta{
 			Turn:         2,
 			HistoryTurns: map[string]uint64{"earlier": 1},
-			Window:       contextstore.CloneWindowLedger(source.window),
+			Window:       source.context.Window(),
 		},
 	)
 	if err != nil {
@@ -86,7 +85,7 @@ func TestSessionDeltaRestoresRecoveryHistoryIdentity(t *testing.T) {
 		target.historyTurns["recovery-1"] != 2 {
 		t.Fatalf("restored history bindings = %+v", target.historyTurns)
 	}
-	base := target.recoveryBaseHistory(&protocol.TurnRecoveryContext{
+	base := agentcontext.RecoveryBaseHistory(target.history, target.historyTurns, &protocol.TurnRecoveryContext{
 		Action:       protocol.TurnRecoveryContinue,
 		SourceTurnID: "recovery-1",
 	})
@@ -100,7 +99,7 @@ func TestSessionDeltaRestoresRecoveryHistoryIdentity(t *testing.T) {
 func TestSessionDeltaRejectsRevisionAndDigestConflicts(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	scope := attachTestScope(t, engine)
-	first, err := prepareSessionDelta(
+	first, err := agentcontext.PrepareSessionDelta(
 		"turn-1", 0, nil, provider.Usage{InputTokens: 1}, 0,
 	)
 	if err != nil {
@@ -116,7 +115,7 @@ func TestSessionDeltaRejectsRevisionAndDigestConflicts(t *testing.T) {
 	if err := engine.applySessionDelta(); err == nil {
 		t.Fatal("digest conflict was accepted")
 	}
-	stale, err := prepareSessionDelta("turn-2", 0, nil, provider.Usage{}, 0)
+	stale, err := agentcontext.PrepareSessionDelta("turn-2", 0, nil, provider.Usage{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +145,7 @@ func TestSessionDeltaPreservesToolAdmissionReceipt(t *testing.T) {
 			}},
 		},
 	}
-	delta, err := prepareSessionDelta(
+	delta, err := agentcontext.PrepareSessionDelta(
 		"turn-admission", 0, history, provider.Usage{}, 0,
 	)
 	if err != nil {
@@ -183,7 +182,7 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 			Data:    json.RawMessage(`{"items":[{"type":"reasoning"}]}`),
 		},
 	)
-	source.workingLedger().Observe(workingset.SourceRead, 4, "a.go")
+	source.workingLedger().Observe(agentcontext.SourceRead, 4, "a.go")
 	source.evidenceSet().MarkChanged("a.go", 4, true)
 	plan := planFixture()
 	if err := source.ApplyPlan(plan); err != nil {
@@ -193,9 +192,11 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 		ContextDigest: "sha256:window", EstimatedTokens: 900,
 		ToolDefinitionTokens: 100,
 	}
-	source.window.Prepare(&windowContext, 128, 2662, 4096)
-	source.window.Observe(windowContext, 960, 400)
-	delta, err := prepareSessionDelta(
+	window := source.context.Window()
+	window.Prepare(&windowContext, 128, 2662, 4096)
+	window.Observe(windowContext, 960, 400)
+	source.context.SetWindow(window)
+	delta, err := agentcontext.PrepareSessionDelta(
 		"turn-5",
 		4,
 		[]provider.Message{assistant},
@@ -206,7 +207,7 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 			WorkingSet: source.workingLedger().Delta(),
 			Evidence:   source.evidenceSet().Delta(),
 			Plan:       &plan,
-			Window:     contextstore.CloneWindowLedger(source.window),
+			Window:     source.context.Window(),
 		},
 	)
 	if err != nil {
@@ -222,21 +223,23 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	usage, cost := target.Usage()
+	targetWindow := target.context.Window()
+	sourceWindow := source.context.Window()
 	if target.SessionRevision() != 5 || len(target.History()) != 1 ||
 		usage.InputTokens != 9 || cost != 0.25 ||
-		len(target.working.Select(5, 10)) != 2 || target.turn != 5 ||
+		len(target.context.WorkingSet().Select(5, 10)) != 2 || target.turn != 5 ||
 		len(target.EvidenceSnapshot().Risks) != 1 ||
 		!strings.Contains(target.planText, "step one") ||
-		target.window.ID != source.window.ID ||
-		target.window.PrefillTokens != 960 ||
-		!target.window.PrefillObserved {
+		targetWindow.ID != sourceWindow.ID ||
+		targetWindow.PrefillTokens != 960 ||
+		!targetWindow.PrefillObserved {
 		t.Fatalf(
 			"revision=%d history=%d usage=%+v cost=%f working=%+v turn=%d plan=%q",
 			target.SessionRevision(),
 			len(target.History()),
 			usage,
 			cost,
-			target.working.Select(5, 10),
+			target.context.WorkingSet().Select(5, 10),
 			target.turn,
 			target.planText,
 		)
@@ -254,11 +257,13 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	forkWindow := fork.context.Window()
+	targetWindow = target.context.Window()
 	if !strings.Contains(fork.planText, "step one") ||
 		len(fork.WorkingSetEntries(5, 10)) != 2 ||
 		len(fork.EvidenceSnapshot().Risks) != 1 ||
-		fork.window.ID == target.window.ID ||
-		fork.window.Number != 1 || fork.window.PrefillObserved {
+		forkWindow.ID == targetWindow.ID ||
+		forkWindow.Number != 1 || forkWindow.PrefillObserved {
 		t.Fatalf(
 			"fork plan=%q working=%+v evidence=%+v",
 			fork.planText, fork.WorkingSetEntries(5, 10), fork.EvidenceSnapshot(),

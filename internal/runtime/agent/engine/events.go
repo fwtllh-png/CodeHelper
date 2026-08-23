@@ -1,20 +1,23 @@
 package engine
 
 import (
-	"time"
-
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
+	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type State string
+type ProposedPlanUpdate = providerassembly.ProposedPlanUpdate
 
 type Event struct {
 	State    State  `json:"state"`
@@ -83,16 +86,7 @@ type ModelExecution struct {
 	Reason   string `json:"reason,omitempty"`
 }
 
-type ProviderRetry struct {
-	Attempt        int                `json:"attempt"`
-	Retry          uint32             `json:"retry"`
-	Code           protocol.ErrorCode `json:"code"`
-	Category       string             `json:"category"`
-	Failure        provider.Failure   `json:"failure"`
-	EffectiveDelay time.Duration      `json:"effective_delay"`
-	RetryAt        time.Time          `json:"retry_at"`
-	PolicyRevision string             `json:"policy_revision"`
-}
+type ProviderRetry = providerwire.RetryDecision
 
 // TerminalIssue is a cleanup/finalization failure that happened after the
 // primary turn outcome was already known.
@@ -111,39 +105,10 @@ type CatalogChanged struct {
 	Revoked    []tool.CatalogChange
 }
 
-type MCPHealthSnapshot struct {
-	Server              string
-	State               string
-	ConsecutiveFailures int
-	LastError           string
-	ChangedAt           time.Time
-	RetryAt             time.Time
-}
-
-type MCPHealthChanged struct {
-	PreviousState string
-	Current       MCPHealthSnapshot
-}
-
-type ExtensionSnapshot struct {
-	Kind       string
-	Name       string
-	Version    string
-	Source     string
-	Publisher  string
-	Trust      string
-	Digest     string
-	Generation uint64
-	Enabled    bool
-	LastAction string
-	ChangedAt  time.Time
-}
-
-type ExtensionLifecycleChanged struct {
-	Action          string
-	PreviousVersion string
-	Current         ExtensionSnapshot
-}
+type MCPHealthSnapshot = mcp.HealthSnapshot
+type MCPHealthChanged = mcp.ProjectedHealthChange
+type ExtensionSnapshot = runtimeextension.Snapshot
+type ExtensionLifecycleChanged = runtimeextension.LifecycleChange
 
 // ToolOutput is one piece of a tool's output, delivered while the tool is still
 // running. It exists because a command that takes a minute used to produce nothing
@@ -162,53 +127,7 @@ type ToolOutput struct {
 	Truncated bool `json:"truncated,omitempty"`
 }
 
-type CompactionReceipt struct {
-	CompactionID          string                   `json:"compaction_id,omitempty"`
-	Status                string                   `json:"status,omitempty"`
-	Mode                  string                   `json:"mode,omitempty"`
-	SourceWindowID        string                   `json:"source_window_id,omitempty"`
-	TargetWindowID        string                   `json:"target_window_id,omitempty"`
-	Phase                 string                   `json:"phase,omitempty"`
-	OriginalMessages      int                      `json:"original_messages"`
-	RemovedMessages       int                      `json:"removed_messages"`
-	OriginalBytes         int                      `json:"original_bytes"`
-	RetainedBytes         int                      `json:"retained_bytes"`
-	OriginalTokens        uint64                   `json:"original_tokens"`
-	RetainedTokens        uint64                   `json:"retained_tokens"`
-	SummaryOriginalBytes  int                      `json:"summary_original_bytes"`
-	SummaryRetainedBytes  int                      `json:"summary_retained_bytes"`
-	SummaryTruncated      bool                     `json:"summary_truncated"`
-	TruncationReason      string                   `json:"truncation_reason,omitempty"`
-	PrunedToolResults     int                      `json:"pruned_tool_results,omitempty"`
-	PrunedBytes           int                      `json:"pruned_bytes,omitempty"`
-	TruthGeneration       uint64                   `json:"truth_generation,omitempty"`
-	TruthEntities         int                      `json:"truth_entities,omitempty"`
-	CriticalFacts         int                      `json:"critical_facts,omitempty"`
-	CompatibilityHash     string                   `json:"compatibility_hash,omitempty"`
-	CompatibilityMatched  bool                     `json:"compatibility_matched,omitempty"`
-	AuthorityDigest       string                   `json:"authority_digest,omitempty"`
-	AuthorityEquivalent   bool                     `json:"authority_equivalent,omitempty"`
-	ModelDownshifted      bool                     `json:"model_downshifted,omitempty"`
-	DownshiftPolicy       string                   `json:"downshift_policy,omitempty"`
-	NarrativeIncluded     bool                     `json:"narrative_included,omitempty"`
-	NarrativeBytes        int                      `json:"narrative_bytes,omitempty"`
-	NarrativeInputTokens  uint64                   `json:"narrative_input_tokens,omitempty"`
-	NarrativeOutputTokens uint64                   `json:"narrative_output_tokens,omitempty"`
-	FallbackReason        string                   `json:"fallback_reason,omitempty"`
-	CapsuleBytes          int                      `json:"capsule_bytes,omitempty"`
-	MandatoryBytes        int                      `json:"mandatory_bytes,omitempty"`
-	MandatoryEntities     int                      `json:"mandatory_entities,omitempty"`
-	OmissionCount         int                      `json:"omission_count,omitempty"`
-	Retention             []compact.RetentionCount `json:"retention,omitempty"`
-	// Sections names the parts of the summary that survived the budget, so a host
-	// can tell a compaction that carried the goal from one that only had room for
-	// a transcript.
-	Sections        []string                `json:"sections,omitempty"`
-	RemovedTurns    []uint64                `json:"removed_turns"`
-	ContextReceipts []promptcontext.Receipt `json:"context_receipts"`
-	WorkingSet      []string                `json:"working_set"`
-	CriticalPaths   []string                `json:"critical_paths"`
-}
+type CompactionReceipt = promptcontext.CompactionReceipt
 
 const (
 	CompactionPhasePreSampling = "pre_sampling"
@@ -219,36 +138,14 @@ const (
 // ContextBudgetSnapshot freezes the exact retained context visible when a
 // terminal event is emitted. Receipts consume this snapshot instead of racing
 // a later read of mutable engine history.
-type ContextBudgetSnapshot struct {
-	WindowID             string `json:"window_id,omitempty"`
-	WindowNumber         uint64 `json:"window_number,omitempty"`
-	Observed             bool   `json:"observed,omitempty"`
-	ActiveTokens         uint64 `json:"active_tokens"`
-	FullActiveTokens     uint64 `json:"full_active_tokens,omitempty"`
-	PrefillTokens        uint64 `json:"prefill_tokens,omitempty"`
-	BodyTokens           uint64 `json:"body_tokens,omitempty"`
-	ToolDefinitionTokens uint64 `json:"tool_definition_tokens,omitempty"`
-	PendingTokens        uint64 `json:"pending_tokens,omitempty"`
-	OutputReserve        uint64 `json:"output_reserve,omitempty"`
-	AutoCompactTokens    uint64 `json:"auto_compact_tokens"`
-	PrepareTokens        uint64 `json:"prepare_tokens,omitempty"`
-	EmergencyTokens      uint64 `json:"emergency_tokens,omitempty"`
-	EstimatedTokens      uint64 `json:"estimated_tokens,omitempty"`
-	MaxContextTokens     uint64 `json:"max_context_tokens,omitempty"`
-	Compactions          int    `json:"compactions"`
-}
+type ContextBudgetSnapshot = agentcontext.BudgetSnapshot
 
 type Budget struct {
 	MaxTokens  uint64
 	MaxCostUSD float64
 }
 
-type CompactWindowPolicy struct {
-	PrepareTokens   uint64
-	AutoTokens      uint64
-	EmergencyTokens uint64
-	Scope           string
-}
+type CompactWindowPolicy = agentcontext.WindowPolicy
 
 type TokenEstimator interface {
 	Estimate([]provider.Message) (uint64, error)
@@ -257,13 +154,13 @@ type TokenEstimator interface {
 type HeuristicTokenEstimator struct{}
 
 func (HeuristicTokenEstimator) Estimate(messages []provider.Message) (uint64, error) {
-	return estimateMessageTokens(messages), nil
+	return agentcontext.EstimateMessageTokens(messages), nil
 }
 
 func (HeuristicTokenEstimator) EstimateImage(
 	attachment provider.Attachment,
 ) (uint64, error) {
-	return estimateImageTokens(attachment), nil
+	return agentcontext.EstimateImageTokens(attachment), nil
 }
 
 type Result struct {

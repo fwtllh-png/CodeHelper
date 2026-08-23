@@ -16,7 +16,7 @@ code_paths:
 test_paths:
   - internal/adapter/tool/file/apply_test.go
   - internal/persist/workspacejournal/journal_test.go
-  - internal/runtime/app/receipt_test.go
+  - internal/observability/receipt/receipt_test.go
 source_of_truth:
   - internal/adapter/tool/tool.go
   - internal/persist/workspacejournal/journal.go
@@ -116,7 +116,7 @@ Joined Receipt 方便查询，但不替代 Source Record。没有 Journal 时即
 | Change Observation | `adapter/tool/guard/guard.go` |
 | Journal/Recovery | `persist/workspacejournal` |
 | Turn Diff | `agent/engine/turndiff.go` |
-| Receipt | `runtime/app/receipt.go` |
+| Receipt | `observability/receipt/receipt.go` |
 
 ## 设计取舍
 

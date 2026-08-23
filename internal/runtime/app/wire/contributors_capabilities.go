@@ -121,7 +121,7 @@ func (c hookContributor) Contribute(
 			return fmt.Errorf("merged hooks config: %w", err)
 		}
 		manager, err := hooks.New(combined, hooks.Options{
-			Workspace: c.workspace, Sandbox: c.backend, RequireStrongSandbox: true,
+			Sandbox: c.backend, RequireStrongSandbox: true, Workspace: c.workspace,
 		})
 		if err != nil {
 			return fmt.Errorf("hooks manager: %w", err)

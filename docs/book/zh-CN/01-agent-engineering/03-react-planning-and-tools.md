@@ -9,11 +9,11 @@ prerequisites:
   - agent-llm-token-context
 code_paths:
   - internal/runtime/agent/engine
-  - internal/runtime/agent/promptcontext
+  - internal/runtime/agent/prompt
   - internal/adapter/tool
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
-  - internal/runtime/agent/engine/proposed_plan_test.go
+  - internal/adapter/provider/assembly/proposed_plan_test.go
   - internal/runtime/agent/engine/toolfailure_test.go
 source_of_truth:
   - internal/runtime/agent/engine/engine.go

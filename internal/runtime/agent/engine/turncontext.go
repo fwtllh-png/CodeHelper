@@ -6,7 +6,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -24,6 +25,7 @@ type TurnIdentity struct {
 
 // TurnRequest is the host input frozen before a Scope starts.
 type TurnRequest struct {
+	TurnID        string
 	Prompt        string
 	Intent        protocol.TurnIntent
 	Orchestration *protocol.OrchestrationCorrelation
@@ -46,16 +48,7 @@ type TurnSnapshotSources struct {
 	Memory         func(string) (MemorySnapshot, error)
 }
 
-type MemorySnapshot struct {
-	Generation     uint64
-	Body           string
-	Source         string
-	Digest         string
-	CandidateCount int
-	SelectedIDs    []string
-	Truncated      bool
-	FailureReason  string
-}
+type MemorySnapshot = promptcontext.MemorySnapshot
 
 // TurnSpec is the complete immutable input for one Engine Scope. Host profile,
 // policy, route, catalog, and skill mutations apply only to the next Scope.
@@ -79,8 +72,8 @@ type TurnSpec struct {
 	Policy         *policy.Runtime
 	Kernel         turnkernel.Policy
 	Limits         TurnLimits
-	World          contextstore.WorldBaseline
-	Window         contextstore.WindowLedger
+	World          agentcontext.WorldBaseline
+	Window         agentcontext.WindowLedger
 	Catalog        tool.CatalogSnapshot
 	Skills         []SkillSummary
 	SkillSelection SkillSelectionMetrics
@@ -90,33 +83,8 @@ type TurnSpec struct {
 }
 
 // SkillSummary is a turn-frozen skill catalog entry (N10).
-type SkillSummary struct {
-	Name           string
-	Description    string
-	Source         string
-	Path           string
-	Plugin         string
-	Handle         string
-	PackageHandle  string
-	ResourceHandle string
-}
-
-type SkillSelectionMetrics struct {
-	Method                string
-	CatalogSize           int
-	CandidateSize         int
-	VisibleSize           int
-	ExplicitMatches       int
-	QueryTerms            int
-	QueryTruncated        bool
-	CandidateSetTruncated bool
-	OriginalTokens        uint64
-	ProjectedTokens       uint64
-	TokenSavings          float64
-	Recall                float64
-	Precision             float64
-	CacheHit              bool
-}
+type SkillSummary = promptcontext.SkillSummary
+type SkillSelectionMetrics = promptcontext.SkillSelectionMetrics
 
 // PurposeForMode is which route a turn in this mode samples on. Plan mode is the
 // only mode with a purpose of its own: operate is act with wider permissions, not
@@ -182,7 +150,7 @@ func SnapshotTurnSpec(
 	kernelPolicy.CompletionRequired = options.RequireCompletionDeclaration
 	kernelPolicy.StructuredTerminalRequired =
 		options.RequireCompletionDeclaration
-	kernelPolicy.VerificationRequired = options.Verify.enabled() ||
+	kernelPolicy.VerificationRequired = options.Verify.Enabled() ||
 		request.Intent == protocol.TurnIntentWorkspaceChange ||
 		options.RequireCompletionDeclaration
 	kernelPolicy.VerificationMustPass =

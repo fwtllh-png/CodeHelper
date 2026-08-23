@@ -177,7 +177,7 @@ func TestJournalFinalizationFailureLeavesRetryableCommittingTurn(
 	if scope == nil || scope.state.kernel == nil {
 		t.Fatal("turn kernel was not retained")
 	}
-	kernelState := scope.state.kernel.state
+	kernelState := scope.state.kernel.Snapshot()
 	if kernelState.Phase != turnkernel.PhaseCommitting ||
 		kernelState.PendingTerminal == nil ||
 		len(kernelState.PendingEffects) != 1 {

@@ -13,6 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -48,7 +49,7 @@ func TestC5RuntimeRecoversTerminalOutboxWithoutDuplicateEvent(t *testing.T) {
 	}
 	eventStore := NewMemoryEventStore(16)
 	receipt := envelope.Outbox[0]
-	receiptData, err := decodeTerminalOutboxEntry(receipt)
+	receiptData, err := eventhub.DecodeTerminalOutboxEntry(receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,19 +447,15 @@ func TestC5RuntimeResumesStartedModelEffectThroughAgentEngine(t *testing.T) {
 	if err := coordinators.Release(t.Context(), string(turnID)); err != nil {
 		t.Fatal(err)
 	}
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &singleAnswerProvider{},
-		Route:    runtimeTestRoute(t),
-		Tools:    tool.NewRegistry(nil, nil),
-		Security: policy.DefaultRuntime(
-			policy.ModeAct,
-			policy.PermissionBypass,
-		),
-		Workspace:              t.TempDir(),
-		Metrics:                telemetry.NewMetrics(),
-		MaxOutputTokens:        128,
-		ProfileRevision:        1,
-		TurnCoordinatorRuntime: coordinators,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &singleAnswerProvider{},
+		Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+		policy.ModeAct,
+		policy.PermissionBypass,
+	),
+		Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}, LifecycleConfig: agentengine.LifecycleConfig{ProfileRevision: 1,
+		TurnCoordinatorRuntime: coordinators},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -540,19 +537,15 @@ func TestRuntimeRecoveryCommitsEnvelopeForAlreadyTerminalKernel(t *testing.T) {
 	if err := coordinators.Release(t.Context(), string(turnID)); err != nil {
 		t.Fatal(err)
 	}
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &singleAnswerProvider{},
-		Route:    runtimeTestRoute(t),
-		Tools:    tool.NewRegistry(nil, nil),
-		Security: policy.DefaultRuntime(
-			policy.ModeAct,
-			policy.PermissionBypass,
-		),
-		Workspace:              t.TempDir(),
-		Metrics:                telemetry.NewMetrics(),
-		MaxOutputTokens:        128,
-		ProfileRevision:        1,
-		TurnCoordinatorRuntime: coordinators,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &singleAnswerProvider{},
+		Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+		policy.ModeAct,
+		policy.PermissionBypass,
+	),
+		Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}, LifecycleConfig: agentengine.LifecycleConfig{ProfileRevision: 1,
+		TurnCoordinatorRuntime: coordinators},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -663,20 +656,16 @@ func TestC5RuntimeResumesStartedToolEffectThroughAgentEngine(t *testing.T) {
 	}
 	model := &runtimeApprovalProvider{calls: 1}
 	root := t.TempDir()
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: model,
-		Route:    runtimeTestRoute(t),
-		Tools:    registry,
-		Security: policy.DefaultRuntime(
-			policy.ModeAct,
-			policy.PermissionBypass,
-		),
-		Workspace:              root,
-		Journal:                newTestWorkspaceJournal(t, root),
-		Metrics:                telemetry.NewMetrics(),
-		MaxOutputTokens:        128,
-		ProfileRevision:        1,
-		TurnCoordinatorRuntime: coordinators,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: model,
+		Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: registry}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+		policy.ModeAct,
+		policy.PermissionBypass,
+	),
+		Workspace: root,
+		Journal:   newTestWorkspaceJournal(t, root)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}, LifecycleConfig: agentengine.LifecycleConfig{ProfileRevision: 1,
+		TurnCoordinatorRuntime: coordinators},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -801,20 +790,16 @@ func TestC5RuntimeResumesCommittingTurnThroughJournalEffect(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &singleAnswerProvider{},
-		Route:    runtimeTestRoute(t),
-		Tools:    tool.NewRegistry(nil, nil),
-		Security: policy.DefaultRuntime(
-			policy.ModeAct,
-			policy.PermissionBypass,
-		),
-		Workspace:              root,
-		Journal:                newTestWorkspaceJournal(t, root),
-		Metrics:                telemetry.NewMetrics(),
-		MaxOutputTokens:        128,
-		ProfileRevision:        1,
-		TurnCoordinatorRuntime: coordinators,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &singleAnswerProvider{},
+		Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+		policy.ModeAct,
+		policy.PermissionBypass,
+	),
+		Workspace: root,
+		Journal:   newTestWorkspaceJournal(t, root)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}, LifecycleConfig: agentengine.LifecycleConfig{ProfileRevision: 1,
+		TurnCoordinatorRuntime: coordinators},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -937,7 +922,7 @@ func c5TerminalEnvelope(t *testing.T) turnkernel.TerminalEnvelope {
 	) turnkernel.ProjectionOutboxEntry {
 		return turnkernel.ProjectionOutboxEntry{
 			ID:          id,
-			EventID:     terminalOutboxEventID(turnID, id),
+			EventID:     eventhub.TerminalOutboxEventID(turnID, id),
 			OperationID: operationID,
 			ThreadID:    threadID,
 			TurnID:      turnID,

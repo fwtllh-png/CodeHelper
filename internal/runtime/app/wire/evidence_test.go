@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 )
 
 func TestRepoContextCarriesEvidenceAndItsBudget(t *testing.T) {

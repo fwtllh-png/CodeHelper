@@ -9,19 +9,17 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestRuntimeEmitsTurnCompactionOnPreSamplingGate(t *testing.T) {
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
-		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
-		MaxOutputTokens: 128,
-		Context: agentengine.ContextPolicy{
-			Window: agentengine.CompactWindowPolicy{AutoTokens: 300},
-		}, SummaryMaxBytes: 2 << 10,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ContextConfig: agentengine.ContextConfig{Context: agentengine.ContextPolicy{
+		Window: agentengine.CompactWindowPolicy{AutoTokens: 300},
+	}, SummaryMaxBytes: 2 << 10}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +57,7 @@ func TestRuntimeEmitsTurnCompactionOnPreSamplingGate(t *testing.T) {
 				if !ok || data.Phase != agentengine.CompactionPhasePreSampling ||
 					data.Summary == "" || data.TruthGeneration != 1 ||
 					data.CompatibilityHash == "" ||
-					data.DownshiftPolicy != compact.DownshiftRuntimeTruthOnly {
+					data.DownshiftPolicy != agentcontext.DownshiftRuntimeTruthOnly {
 					t.Fatalf("turn.compaction = %#v", event.Data)
 				}
 				sawCompaction = true

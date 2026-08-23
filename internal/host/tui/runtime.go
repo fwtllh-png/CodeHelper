@@ -4,13 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/ownerlease"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"io"
 	"net/url"
 	"os"
@@ -18,6 +11,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/ownerlease"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type Options struct {

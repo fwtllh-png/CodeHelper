@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -13,7 +14,7 @@ func TestEventKindIncludesEveryAgentEvent(t *testing.T) {
 		&protocol.AgentMessageData{}:     protocol.EventAgentMessage,
 		&protocol.AgentIntegrationData{}: protocol.EventAgentIntegration,
 	} {
-		if got := eventKind(data); got != want {
+		if got := eventhub.EventKind(data); got != want {
 			t.Fatalf("%T kind = %q want %q", data, got, want)
 		}
 	}

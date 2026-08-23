@@ -462,9 +462,9 @@ func (c *childToolsets) open(
 	if interactive {
 		inputHost = interacttool.NewHost(0)
 		registerErr := interacttool.Register(registry, interacttool.Options{
-			Host: inputHost, Workspace: root, Backend: backend,
+			Host: inputHost, Backend: backend,
 			RLM: c.interactionRLM, Governor: c.interactionGovernor,
-			Vision: c.interactionVision, OnPlan: c.interactionPlan,
+			Vision: c.interactionVision, OnPlan: c.interactionPlan, Workspace: root,
 		})
 		if registerErr != nil {
 			if jobs != nil {
@@ -494,9 +494,9 @@ func (c *childToolsets) open(
 	}
 	if c.agents != nil {
 		if err := agenttool.Register(registry, agenttool.Options{
-			Control: c.agents, Handles: handles, SessionID: c.agentSession,
-			Files: files, Workspace: root, OnRelease: c.agentRelease,
-			Verify: runner, Sandbox: backend,
+			Control: c.agents, Handles: handles,
+			Files: files, OnRelease: c.agentRelease,
+			Sandbox: backend, Verify: runner, Workspace: root, SessionID: c.agentSession,
 		}); err != nil {
 			_ = journal.Close(context.Background())
 			processes.CloseAll()

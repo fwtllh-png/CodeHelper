@@ -74,8 +74,8 @@ protocol = "openai_chat"
 mode = "act"                 # plan | act | operate
 workspace = "."
 tools = true
-max_output_tokens = 0           # 0 = 当前模型能力自动值
-max_steps = 0                   # 0 = 不设置隐式 Step Budget
+max_output_tokens = 0           # 0 = 自动值，当前上限为 16384
+max_steps = 32                  # 0 = 显式取消普通 Step Budget
 timeout = "2m"                  # 连接、TLS 和响应头阶段
 connection_timeout = "0s"       # 0 表示继承 timeout
 tls_handshake_timeout = "0s"    # 0 表示继承 timeout
@@ -148,9 +148,9 @@ max_bytes = 4096
 enabled = true
 
 [context.compact]
-prepare_tokens = 0 # 0 表示使用当前模型窗口的 55%
-auto_compact_tokens = 0 # 0 表示使用当前模型窗口的 65%
-emergency_tokens = 0 # 0 表示使用当前模型窗口的 85%
+prepare_tokens = 0 # 增量路由为窗口 55%；完整传输路由不超过 49152
+auto_compact_tokens = 0 # 增量路由为窗口 65%；完整传输路由不超过 65536
+emergency_tokens = 0 # 增量路由为窗口 85%；完整传输路由不超过 98304
 scope = "total" # 或 "body_after_prefix"
 summary_max_bytes = 8192
 max_digest_entries = 120
@@ -202,8 +202,8 @@ search_backend = "duckduckgo"
 广告；不支持的值会在 Provider I/O 前失败。Reasoning Effort 不再改变输出容量。
 
 `max_output_tokens = 0` 会根据当前 Model Catalog 能力和输入投影后剩余的 Context
-空间，为每次请求动态计算上限。正值表示 Operator 显式上限，并且仍受这两个模型
-边界约束。
+空间，为每次请求动态计算上限，默认不超过 16384。正值表示 Operator 显式上限，
+并且仍受这两个模型边界约束。
 
 `delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
 `spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。
@@ -243,8 +243,8 @@ Incremental Transport 固定使用 `store=false`。Response State 只保留在�
 以及 Logical/Transport 的 SHA-256 Digest，不保存 Prompt 内容。Request Byte
 下降只属于传输证据，不会被报告为 Token 降幅。
 
-`execution.max_steps` 是普通工作的可选显式预算，不限制结构化 Finalization。默认值为
-`0`，表示不注入隐式 Step Budget；正数会被冻结进 Turn Kernel Policy。当显式预算
+`execution.max_steps` 是普通工作的显式预算，不限制结构化 Finalization。默认值为
+`32`；显式配置为 `0` 表示取消普通 Step Budget。正数会被冻结进 Turn Kernel Policy。当显式预算
 不少于 64 步时，Runtime 会在剩余 16-32 步时注入一次收敛提醒。显式普通工作预算
 耗尽后，Kernel 会在预算之外保留一次 Finalization Sample；它只能请求必需输入，
 或声明 Complete/Incomplete 状态，不能继续探索或修改。Kernel 授权的 Repair Steps
@@ -303,6 +303,10 @@ Protected/Refreshable Truth、Raw Tail 和可选 Narrative。新增计划、Pend
 `resource_exhausted`。`post_turn` Narrative 在业务终态提交后维护 Context；
 `inline` 在安全 Tool Pair 边界提交独立 Context Rebase。两种模式都使用
 `route.summary`，禁用工具和原生搜索，失败时保留确定性的 Truth + Tail。
+不支持 Incremental Responses 的路由还会在每次 Sample 前执行滚动 Tool Surface
+预算：最新 Tool Batch 保留原文，已被模型消费的旧结果替换为带 Handle 与 Digest 的
+小型投影，完整原文仍由 Content Store 持有。默认累计预算为 64 KiB，单个已消费
+结果保留最多 384 Bytes；该预算独立于全局 Compaction。
 
 Memory 使用带稳定 ID 和 Generation 的记录存储。`user`、`workspace` 和
 `repository` Scope 按规范化身份隔离；`remember`、`memory_list`、`memory_get`、

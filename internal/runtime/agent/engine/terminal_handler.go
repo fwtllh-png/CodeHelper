@@ -5,8 +5,7 @@ import (
 	"errors"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -226,62 +225,37 @@ func (e *Engine) finalizeTerminalContext(
 	if maintenanceErr != nil {
 		candidate = original
 	}
-	e.planMu.Lock()
-	plan := e.plan.Clone()
-	e.planMu.Unlock()
 	scope := e.runningScope()
 	scope.mu.Lock()
-	projectedWorld := contextstore.CloneWorldBaseline(scope.state.world)
-	window := contextstore.CloneWindowLedger(scope.state.window)
 	contextUsage := scope.state.contextUsage
 	contextCost := scope.state.contextCost
 	scope.mu.Unlock()
 	usage.Add(contextUsage)
 	cost += contextCost
-	world := contextstore.WorldBaseline{}
-	switch {
-	case contextstore.WorldBaselineValid(candidate, projectedWorld):
-		world = projectedWorld
-	case contextstore.WorldBaselineValid(candidate, e.world):
-		world = contextstore.CloneWorldBaseline(e.world)
-	}
-	retainedWorking := e.workingLedger().RetainedDelta(
-		e.turn,
-		e.options.WorkingSetLimit,
-		e.options.Context.TruthRetention.TruthMaxEntities,
-	)
-	retainedEvidence := e.evidenceSet().RetainedDelta(
-		e.options.Context.TruthRetention.FactMaxEntities,
-		e.options.Context.TruthRetention.VerifiedChangeRetentionTurns,
-		e.options.Context.TruthRetention.HandleMaxEntities,
-	)
-	workspace, workspaceErr := e.captureWorkspaceBindingFor(retainedEvidence)
-	if workspaceErr != nil {
-		return e.contextBudgetSnapshot(candidate),
-			errors.Join(maintenanceErr, workspaceErr)
-	}
-	delta, err := prepareSessionDelta(
-		scope.spec.Identity.TurnID,
-		e.sessionRevision,
+	snapshot, snapshotErr := e.buildContextSnapshot(
 		candidate,
+		e.compactionState(),
+		e.sessionRevision+1,
+		max(uint64(1), e.stateEpoch),
+	)
+	if snapshotErr != nil {
+		return e.contextBudgetSnapshot(candidate),
+			errors.Join(maintenanceErr, snapshotErr)
+	}
+	accounting, err := agentcontext.PrepareAccountingDelta(
+		scope.spec.Identity.TurnID,
 		usage,
 		cost,
-		SessionStateDelta{
-			Epoch:        e.stateEpoch,
-			Turn:         e.turn,
-			HistoryTurns: cloneHistoryTurns(e.historyTurns),
-			WorkingSet:   retainedWorking,
-			Evidence:     retainedEvidence,
-			Failures:     e.failureLedger().Delta(),
-			Compaction:   e.compactionState(),
-			Plan:         &plan,
-			World:        world,
-			Workspace:    workspace,
-			Window:       window,
-			Manifest: sessiondelta.ManifestLimits{
-				OwnerDeltaMaxSegments: e.options.Context.OwnerDeltaMaxSegments,
-				OwnerDeltaMaxBytes:    e.options.Context.OwnerDeltaMaxBytes,
-			},
+	)
+	if err != nil {
+		return e.contextBudgetSnapshot(candidate), errors.Join(maintenanceErr, err)
+	}
+	delta, err := agentcontext.NewSessionDelta(
+		snapshot,
+		accounting,
+		agentcontext.ManifestLimits{
+			OwnerDeltaMaxSegments: e.options.Context.OwnerDeltaMaxSegments,
+			OwnerDeltaMaxBytes:    e.options.Context.OwnerDeltaMaxBytes,
 		},
 	)
 	if err != nil {

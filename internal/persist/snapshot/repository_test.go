@@ -13,8 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -44,20 +43,20 @@ func TestContextCheckpointRoundTripBindsEpochAndWorkspace(t *testing.T) {
 	history := []protocol.CompactedMessage{{
 		Role: "user", Content: json.RawMessage(`["implement parser"]`), Turn: 1,
 	}}
-	window, err := contextstore.NewWindowLedger("window-1", 1)
+	window, err := agentcontext.NewWindowLedger("window-1", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := sessiondelta.WorkspaceBinding{
+	binding := agentcontext.WorkspaceBinding{
 		WorkspaceIdentity: "workspace:test",
 		JournalRevision:   1,
-		BoundPaths: []sessiondelta.BoundPath{{
+		BoundPaths: []agentcontext.BoundPath{{
 			Path: "parser.go", ContentDigest: "sha256:content",
 		}},
 	}
 	binding.Seal()
-	contextSnapshot := sessiondelta.ContextSnapshot{
-		Version: sessiondelta.ContextSnapshotVersion,
+	contextSnapshot := agentcontext.ContextSnapshot{
+		Version: agentcontext.ContextSnapshotVersion,
 		Epoch:   3, Revision: 7, Turn: 1,
 		History: []provider.Message{
 			func() provider.Message {

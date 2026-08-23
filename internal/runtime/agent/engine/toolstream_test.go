@@ -70,9 +70,8 @@ func streamingTurn(t *testing.T, executor tool.Executor, options func(*Options))
 	if err := registry.Register(executor, nil); err != nil {
 		t.Fatal(err)
 	}
-	opts := Options{
-		Provider: runtime, Route: testRoute(t), Tools: registry, MaxOutputTokens: 128,
-		Authorize: func(provider.ToolCall) bool { return true },
+	opts := Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
+		Authorize: func(provider.ToolCall) bool { return true }},
 	}
 	if options != nil {
 		options(&opts)

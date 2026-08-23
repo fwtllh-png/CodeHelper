@@ -65,14 +65,14 @@ func TestC2ControlToolOwnershipBaseline(t *testing.T) {
 	engine := parseProductionFile(
 		t,
 		root,
-		"internal/runtime/agent/engine/turn_kernel.go",
+		"internal/runtime/agent/turnkernel/runtime_kernel.go",
 	)
 	if !structHasFieldType(
 		engine,
-		"engineTurnKernel",
+		"RuntimeKernel",
 		"DurableEffectDispatcher",
 	) {
-		t.Fatal("engineTurnKernel does not use DurableEffectDispatcher")
+		t.Fatal("RuntimeKernel does not use DurableEffectDispatcher")
 	}
 	for _, name := range []string{
 		"observeToolLocked",
@@ -97,7 +97,7 @@ func TestC2ControlToolOwnershipBaseline(t *testing.T) {
 	if findFunction(dispatcher, "C2RoutedEffect") == nil {
 		t.Fatal("C2 routed Effect ownership function is missing")
 	}
-	for _, name := range []string{"requireApproval", "requireInput"} {
+	for _, name := range []string{"RequireApproval", "RequireInput"} {
 		if !functionCalls(findFunction(engine, name), "Start") {
 			t.Fatalf("%s does not persist EffectStarted before waiting", name)
 		}
@@ -111,7 +111,7 @@ func TestC3ModelDecisionOwnershipBaseline(t *testing.T) {
 		root,
 		"internal/runtime/agent/engine/turn_handler.go",
 	)
-	run := findFunction(turnHandler, "RunForTurnWithIntentAndAttachments")
+	run := findFunction(turnHandler, "Execute")
 	if functionCalls(run, "requestRepair") {
 		t.Fatal("Engine turn handler still spends repair budgets")
 	}
@@ -159,7 +159,7 @@ func TestC3ModelDecisionOwnershipBaseline(t *testing.T) {
 	kernelFile := parseProductionFile(
 		t,
 		root,
-		"internal/runtime/agent/engine/turn_kernel.go",
+		"internal/runtime/agent/turnkernel/runtime_kernel.go",
 	)
 	if findFunction(kernelFile, "observeVerificationLocked") != nil {
 		t.Fatal("Verification Engine event still reverse-drives Kernel")
@@ -200,8 +200,8 @@ func TestC3ConvergenceBudgetOwnershipBaseline(t *testing.T) {
 		root,
 		"internal/runtime/agent/engine/turn_handler.go",
 	)
-	run := findFunction(handler, "RunForTurnWithIntentAndAttachments")
-	if functionCalls(run, "requestConvergence") {
+	run := findFunction(handler, "Execute")
+	if functionCalls(run, "RequestConvergence") {
 		t.Fatal("Engine turn loop still owns work-step convergence")
 	}
 	if fileHasIdentifier(handler, "CodeResourceExhausted") {
@@ -248,7 +248,7 @@ func TestC4TerminalCommitOwnershipBaseline(t *testing.T) {
 	kernelFile := parseProductionFile(
 		t,
 		root,
-		"internal/runtime/agent/engine/turn_kernel.go",
+		"internal/runtime/agent/turnkernel/runtime_kernel.go",
 	)
 	if findFunction(kernelFile, "observeTerminalLocked") != nil {
 		t.Fatal("Terminal Engine event still reverse-drives Kernel")
@@ -264,7 +264,7 @@ func TestC4TerminalCommitOwnershipBaseline(t *testing.T) {
 	applicationFile := parseProductionFile(
 		t,
 		root,
-		"internal/runtime/app/application.go",
+		"internal/runtime/app/extension/engine_adapter.go",
 	)
 	commit := findFunction(applicationFile, "commitTerminal")
 	if functionCalls(commit, "Emit") {
@@ -327,7 +327,7 @@ func TestC5RestartProjectionOwnershipBaseline(t *testing.T) {
 	publisherFile := parseProductionFile(
 		t,
 		root,
-		"internal/runtime/app/terminal_publisher.go",
+		"internal/runtime/app/eventhub/terminal.go",
 	)
 	if findFunction(publisherFile, "Recover") == nil {
 		t.Fatal("Terminal Publisher has no terminal outbox recovery")
@@ -390,16 +390,16 @@ func TestC6SingleAuthorityOwnershipBaseline(t *testing.T) {
 	)
 	run := findFunction(
 		handlerFile,
-		"RunForTurnWithIntentAndAttachments",
+		"Execute",
 	)
-	if functionCalls(run, "requireApproval") ||
-		functionCalls(run, "requireInput") {
+	if functionCalls(run, "RequireApproval") ||
+		functionCalls(run, "RequireInput") {
 		t.Fatal("Engine Event projection still reverse-drives Kernel commands")
 	}
 	applicationFile := parseProductionFile(
 		t,
 		root,
-		"internal/runtime/app/application.go",
+		"internal/runtime/app/extension/engine_adapter.go",
 	)
 	if functionCalls(findFunction(applicationFile, "commitTerminal"), "Emit") {
 		t.Fatal("non-transactional terminal emit fallback remains")
@@ -452,12 +452,17 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 				engineKernel := parseProductionFile(
 					t,
 					root,
-					"internal/runtime/agent/engine/turn_kernel.go",
+					"internal/runtime/agent/turnkernel/runtime_kernel.go",
 				)
 				engine := parseProductionFile(
 					t,
 					root,
 					"internal/runtime/agent/engine/engine.go",
+				)
+				engineOptions := parseProductionFile(
+					t,
+					root,
+					"internal/runtime/agent/engine/options_types.go",
 				)
 				wire := parseProductionFile(
 					t,
@@ -471,7 +476,7 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 				)
 				function := findFunction(
 					engineKernel,
-					"newEngineTurnKernelForTurn",
+					"NewRuntimeKernel",
 				)
 				return functionCalls(
 					function,
@@ -479,8 +484,8 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 				) ||
 					fileCalls(engine, "NewEphemeralCoordinatorRuntime") ||
 					!structHasNamedFieldType(
-						engine,
-						"Options",
+						engineOptions,
+						"LifecycleConfig",
 						"TurnCoordinatorRuntime",
 						"CoordinatorRuntime",
 					) ||
@@ -515,11 +520,11 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 				file := parseProductionFile(
 					t,
 					root,
-					"internal/runtime/agent/engine/turn_kernel.go",
+					"internal/runtime/agent/turnkernel/runtime_kernel.go",
 				)
 				return structHasFieldType(
 					file,
-					"engineTurnKernel",
+					"RuntimeKernel",
 					"DeferredEffectDispatcher",
 				) ||
 					fileCalls(file, "Claim") &&
@@ -528,9 +533,9 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 			},
 		},
 		{
-			id:             "C0-D04-turn-handler-retains-business-decisions",
+			id:             "C0-D04-turn-executor-retains-business-decisions",
 			classification: "Legacy",
-			detail:         "RunForTurnWithIntentAndAttachments still selects Repair and keeps completion-verification state",
+			detail:         "Execute still selects Repair and keeps completion-verification state",
 			resolved:       true,
 			active: func(t *testing.T) bool {
 				root := convergenceRepositoryRoot(t)
@@ -541,7 +546,7 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 				)
 				function := findFunction(
 					file,
-					"RunForTurnWithIntentAndAttachments",
+					"Execute",
 				)
 				return functionCalls(function, "requestRepair") ||
 					functionHasIdentifier(function, "completionVerification")
@@ -557,7 +562,7 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 				kernelFile := parseProductionFile(
 					t,
 					root,
-					"internal/runtime/agent/engine/turn_kernel.go",
+					"internal/runtime/agent/turnkernel/runtime_kernel.go",
 				)
 				return findFunction(
 					kernelFile,
@@ -575,7 +580,7 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 				kernelFile := parseProductionFile(
 					t,
 					root,
-					"internal/runtime/agent/engine/turn_kernel.go",
+					"internal/runtime/agent/turnkernel/runtime_kernel.go",
 				)
 				return findFunction(
 					kernelFile,
@@ -624,7 +629,7 @@ func c0ConvergenceDeviations() []convergenceDeviation {
 				file := parseProductionFile(
 					t,
 					root,
-					"internal/runtime/app/application.go",
+					"internal/runtime/app/extension/engine_adapter.go",
 				)
 				function := findFunction(file, "commitTerminal")
 				return functionCalls(function, "CommitTerminal") &&

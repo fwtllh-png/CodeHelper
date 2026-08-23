@@ -12,7 +12,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/durablecodec"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -24,7 +24,7 @@ const (
 
 type checkpointContent struct {
 	History         []protocol.CompactedMessage   `json:"history,omitempty"`
-	ContextManifest *sessiondelta.ContextManifest `json:"context_manifest,omitempty"`
+	ContextManifest *agentcontext.ContextManifest `json:"context_manifest,omitempty"`
 	Profile         protocol.SessionProfile       `json:"profile"`
 }
 
@@ -66,7 +66,7 @@ func (r *Repository) SaveContextCheckpoint(
 	ctx context.Context,
 	checkpoint protocol.SessionCheckpoint,
 	history []protocol.CompactedMessage,
-	contextSnapshot sessiondelta.ContextSnapshot,
+	contextSnapshot agentcontext.ContextSnapshot,
 	profile protocol.SessionProfile,
 ) (protocol.SessionCheckpoint, error) {
 	if err := contextSnapshot.Validate(); err != nil {
@@ -86,7 +86,7 @@ func (r *Repository) saveCheckpoint(
 	checkpoint protocol.SessionCheckpoint,
 	history []protocol.CompactedMessage,
 	profile protocol.SessionProfile,
-	contextSnapshot *sessiondelta.ContextSnapshot,
+	contextSnapshot *agentcontext.ContextSnapshot,
 ) (protocol.SessionCheckpoint, error) {
 	if r.db == nil || r.content == nil {
 		return protocol.SessionCheckpoint{},
@@ -123,7 +123,7 @@ func (r *Repository) saveCheckpoint(
 		Profile: profile,
 	}
 	if contextSnapshot != nil {
-		var previous *sessiondelta.ContextManifest
+		var previous *agentcontext.ContextManifest
 		if checkpoint.ParentCheckpointID != "" {
 			parent, getErr := r.Get(ctx, checkpoint.ParentCheckpointID)
 			if getErr == nil {
@@ -135,14 +135,14 @@ func (r *Repository) saveCheckpoint(
 				}
 			}
 		}
-		manifest, buildErr := sessiondelta.BuildContextManifest(
+		manifest, buildErr := agentcontext.BuildContextManifest(
 			ctx,
 			r.content,
 			checkpoint.ThreadID,
 			checkpoint.TurnID,
 			*contextSnapshot,
 			previous,
-			sessiondelta.DefaultManifestLimits(),
+			agentcontext.DefaultManifestLimits(),
 		)
 		if buildErr != nil {
 			return protocol.SessionCheckpoint{}, buildErr
@@ -228,7 +228,7 @@ func (r *Repository) GetCheckpoint(
 			&IntegrityError{ID: id, Err: err}
 	}
 	if len(content.History) == 0 && content.ContextManifest != nil {
-		snapshot, loadErr := sessiondelta.LoadContextManifest(
+		snapshot, loadErr := agentcontext.LoadContextManifest(
 			ctx,
 			r.content,
 			*content.ContextManifest,
@@ -254,49 +254,49 @@ func (r *Repository) GetContextCheckpoint(
 	id string,
 ) (
 	protocol.SessionCheckpoint,
-	sessiondelta.ContextSnapshot,
+	agentcontext.ContextSnapshot,
 	protocol.SessionProfile,
 	error,
 ) {
 	value, err := r.Get(ctx, id)
 	if err != nil {
-		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+		return protocol.SessionCheckpoint{}, agentcontext.ContextSnapshot{},
 			protocol.SessionProfile{}, err
 	}
 	if value.Kind != KindSessionCheckpoint {
-		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+		return protocol.SessionCheckpoint{}, agentcontext.ContextSnapshot{},
 			protocol.SessionProfile{}, ErrNotFound
 	}
 	checkpoint, err := decodeCheckpointSummary(value)
 	if err != nil {
-		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+		return protocol.SessionCheckpoint{}, agentcontext.ContextSnapshot{},
 			protocol.SessionProfile{}, err
 	}
 	var content checkpointContent
 	if err := decodeCheckpointContent(value.Content, &content); err != nil {
-		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+		return protocol.SessionCheckpoint{}, agentcontext.ContextSnapshot{},
 			protocol.SessionProfile{}, &IntegrityError{ID: id, Err: err}
 	}
 	if content.ContextManifest == nil {
-		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+		return protocol.SessionCheckpoint{}, agentcontext.ContextSnapshot{},
 			protocol.SessionProfile{}, &IntegrityError{
 				ID: id, Err: errors.New("checkpoint has no context snapshot"),
 			}
 	}
-	contextSnapshot, err := sessiondelta.LoadContextManifest(
+	contextSnapshot, err := agentcontext.LoadContextManifest(
 		ctx,
 		r.content,
 		*content.ContextManifest,
 	)
 	if err != nil {
-		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+		return protocol.SessionCheckpoint{}, agentcontext.ContextSnapshot{},
 			protocol.SessionProfile{}, &IntegrityError{ID: id, Err: err}
 	}
 	if contextSnapshot.Digest != checkpoint.ContextDigest ||
 		contextSnapshot.Epoch != checkpoint.StateEpoch ||
 		contextSnapshot.Workspace.SparseDigest != checkpoint.WorkspaceDigest ||
 		content.Profile.Revision != checkpoint.ProfileRevision {
-		return protocol.SessionCheckpoint{}, sessiondelta.ContextSnapshot{},
+		return protocol.SessionCheckpoint{}, agentcontext.ContextSnapshot{},
 			protocol.SessionProfile{}, &IntegrityError{
 				ID: id, Err: errors.New("checkpoint context identity is inconsistent"),
 			}

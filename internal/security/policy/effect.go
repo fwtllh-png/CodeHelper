@@ -11,6 +11,7 @@ const (
 	EffectProcessMutating  EffectKind = "process.mutating"
 	EffectNetworkRead      EffectKind = "network.read"
 	EffectNetworkMutating  EffectKind = "network.mutating"
+	EffectSessionMutation  EffectKind = "session.mutation"
 	EffectAgentMessage     EffectKind = "agent.message"
 	EffectAgentLifecycle   EffectKind = "agent.lifecycle"
 	EffectExternalMutation EffectKind = "external.mutation"
@@ -45,7 +46,9 @@ func NormalizeEffect(invocation Invocation) Effect {
 		}
 	}
 	var resources uint8
-	masks := map[string]uint8{"process": 2, "host": 4, "url": 4, "agent": 8}
+	masks := map[string]uint8{
+		"process": 2, "host": 4, "url": 4, "agent": 8, "plan": 16,
+	}
 	for _, resource := range invocation.Resources {
 		resources |= masks[resource.Kind]
 		if (resource.Kind == "file" || resource.Kind == "directory") &&
@@ -56,6 +59,8 @@ func NormalizeEffect(invocation Invocation) Effect {
 	switch {
 	case invocation.Capability == tool.CapabilityRead:
 		return effect(EffectWorkspaceRead, RiskLow, "reversible")
+	case resources == 16 && invocation.Capability == tool.CapabilityWrite:
+		return effect(EffectSessionMutation, RiskLow, "reversible")
 	case resources&8 != 0:
 		switch invocation.Tool {
 		case "send_message":

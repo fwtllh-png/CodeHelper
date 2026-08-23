@@ -8,16 +8,16 @@ prerequisites:
   - context-prompt-message
   - context-workspace-index-editor
 code_paths:
-  - internal/runtime/agent/promptcontext
-  - internal/runtime/agent/workingset
-  - internal/runtime/agent/evidence
+  - internal/runtime/agent/prompt
+  - internal/runtime/agent/context
+  - internal/runtime/agent/context
 test_paths:
-  - internal/runtime/agent/promptcontext/worldstate_test.go
-  - internal/runtime/agent/promptcontext/evidence_test.go
-  - internal/runtime/agent/workingset/workingset_test.go
+  - internal/runtime/agent/prompt/worldstate_test.go
+  - internal/runtime/agent/prompt/evidence_test.go
+  - internal/runtime/agent/context/workingset_workingset_test.go
 source_of_truth:
-  - internal/runtime/agent/promptcontext/context.go
-  - internal/runtime/agent/promptcontext/turn.go
+  - internal/runtime/agent/prompt/context.go
+  - internal/runtime/agent/prompt/turn.go
 status: draft
 last_verified: null
 ---
@@ -105,11 +105,11 @@ Selection、Evidence Rendering、Compaction。Receipt 暴露每个 Local Policy 
 
 | 关注点 | 源码 |
 | --- | --- |
-| Stable Partition | `promptcontext/context.go` |
-| Volatile Partition | `promptcontext/turn.go` |
-| Digest Section | `promptcontext/worldstate.go` |
-| Fragment Lifecycle | `promptcontext/fragment.go` |
-| Working Set | `agent/workingset` |
+| Stable Partition | `prompt/context.go` |
+| Volatile Partition | `prompt/turn.go` |
+| Digest Section | `prompt/worldstate.go` |
+| Fragment Lifecycle | `prompt/fragment.go` |
+| Working Set | `agent/context` |
 | Evidence | `agent/evidence` |
 
 ## 设计取舍
@@ -129,8 +129,8 @@ CodeHelper 使用 Stable Authority Prefix 加 Dynamic Task Tail，并独立记�
 ## 测试与验证
 
 ```bash
-go test ./internal/runtime/agent/promptcontext
-go test ./internal/runtime/agent/workingset ./internal/runtime/agent/evidence
+go test ./internal/runtime/agent/prompt
+go test ./internal/runtime/agent/context ./internal/runtime/agent/context
 ```
 
 ## 动手实验

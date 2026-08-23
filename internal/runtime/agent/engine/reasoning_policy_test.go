@@ -5,7 +5,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -92,7 +92,7 @@ func reasoningRoute(t *testing.T) model.ReadyRoute {
 		Protocol: model.ProtocolOpenAIResponses, Provenance: model.ProvenanceFixture,
 		Models: map[string]model.Model{"model": {
 			ID: "model", CanonicalID: "model", WireID: "model",
-			Limits: model.Limits{ContextTokens: 128_000, MaxOutputTokens: 16_384},
+			Limits: model.Limits{ContextTokens: 1_048_576, MaxOutputTokens: 393_216},
 			Capabilities: model.Capabilities{
 				Streaming: true, Reasoning: true, ToolCalls: true,
 			},

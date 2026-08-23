@@ -68,7 +68,7 @@ var _ = tool.Result{}
 
 func TestRepositoryEventSwitchSites(t *testing.T) {
 	root := t.TempDir()
-	writeFixture(t, root, "internal/example/example.go", `package example
+	writeFixture(t, root, "internal/runtime/example/example.go", `package example
 import "github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 func project(event protocol.Event) {
 	switch event.Kind {
@@ -95,6 +95,40 @@ switch (kind) { case "turn.completed": break; }
 	}
 	if metrics["event_switch_sites"] != 2 {
 		t.Fatalf("event_switch_sites = %d", metrics["event_switch_sites"])
+	}
+	if metrics["runtime_package_dirs"] != 1 {
+		t.Fatalf("runtime_package_dirs = %d", metrics["runtime_package_dirs"])
+	}
+	if metrics["runtime_one_file_packages"] != 1 {
+		t.Fatalf(
+			"runtime_one_file_packages = %d",
+			metrics["runtime_one_file_packages"],
+		)
+	}
+	if metrics["runtime_agent_package_dirs"] != 0 ||
+		metrics["runtime_agent_unexpected_packages"] != 0 ||
+		metrics["runtime_app_package_dirs"] != 0 ||
+		metrics["runtime_app_unexpected_packages"] != 0 {
+		t.Fatalf("runtime agent metrics = %+v", metrics)
+	}
+}
+
+func TestRuntimeAgentPackageCounts(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "internal/runtime/agent/engine/engine.go", "package engine\n")
+	writeFixture(t, root, "internal/runtime/agent/legacy/legacy.go", "package legacy\n")
+	writeFixture(t, root, "internal/runtime/agent/prompt/prompt_test.go", "package prompt\n")
+
+	packages, unexpected, err := runtimeChildPackageCounts(
+		root,
+		"agent",
+		map[string]struct{}{"engine": {}, "prompt": {}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packages != 2 || unexpected != 1 {
+		t.Fatalf("packages = %d, unexpected = %d", packages, unexpected)
 	}
 }
 

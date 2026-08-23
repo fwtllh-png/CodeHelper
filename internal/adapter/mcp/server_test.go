@@ -40,9 +40,8 @@ func TestServerCancellationAndShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	guard, err := toolguard.New(toolguard.Options{
-		Registry:  registry,
-		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		Workspace: t.TempDir(),
+		Registry: registry,
+		Policy:   policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), Workspace: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -2,68 +2,30 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 const (
-	VerifyModeOff  = "off"
-	VerifyModeSoft = "soft"
-	VerifyModeHard = "hard"
+	VerifyModeOff  = verify.ModeOff
+	VerifyModeSoft = verify.ModeSoft
+	VerifyModeHard = verify.ModeHard
 
-	VerifyOnFailureFail   = "fail"
-	VerifyOnFailureRevert = "revert"
+	VerifyOnFailureFail   = verify.OnFailureFail
+	VerifyOnFailureRevert = verify.OnFailureRevert
 )
 
-// verifyFeedbackLimit bounds the failure text handed back to the model so a
-// noisy suite cannot swallow the context window.
-const verifyFeedbackLimit = 4 << 10
-
-// VerifyOptions configures the gate that runs before a turn commits its edits.
-type VerifyOptions struct {
-	Mode           string
-	Scope          verify.Scope
-	OnFailure      string
-	MaxRepairSteps int
-	Timeout        time.Duration
-	Runner         verify.Runner
-}
-
-func (o VerifyOptions) enabled() bool {
-	return o.Runner != nil && (o.Mode == VerifyModeSoft || o.Mode == VerifyModeHard)
-}
-
-// VerificationReceipt is one gate evaluation as the hosts see it.
-type VerificationReceipt struct {
-	verify.Receipt
-	Mode           string                 `json:"mode"`
-	Action         string                 `json:"action"`
-	RepairSteps    int                    `json:"repair_steps"`
-	Paths          []string               `json:"paths,omitempty"`
-	UncoveredPaths []string               `json:"uncovered_paths,omitempty"`
-	Attempts       []verify.Receipt       `json:"attempts,omitempty"`
-	Workspace      *VerificationWorkspace `json:"workspace,omitempty"`
-}
-
-// VerificationWorkspace is the final observable workspace state after the
-// verification policy and any automatic rollback have settled.
-type VerificationWorkspace struct {
-	Status                     string   `json:"status"`
-	Restored                   []string `json:"restored,omitempty"`
-	Conflicts                  []string `json:"conflicts,omitempty"`
-	NonFileSideEffectsReverted bool     `json:"non_file_side_effects_reverted"`
-	Note                       string   `json:"note,omitempty"`
-}
+type VerifyOptions = verify.GateOptions
+type VerificationReceipt = verify.GateReceipt
+type VerificationWorkspace = verify.Workspace
 
 type verifyAction string
 
@@ -89,7 +51,7 @@ type verifyOutcome struct {
 // turn has spent, which is also the extra step allowance it has earned.
 type verifyGate struct {
 	engine   *Engine
-	kernel   *engineTurnKernel
+	kernel   *turnkernel.RuntimeKernel
 	attempts []verify.Receipt
 }
 
@@ -99,7 +61,7 @@ func (g *verifyGate) extraSteps() int {
 	if g == nil {
 		return 0
 	}
-	return int(g.kernel.repairSteps(turnkernel.RepairVerification))
+	return int(g.kernel.RepairSteps(turnkernel.RepairVerification))
 }
 
 // evaluate runs one verification pass over the files the turn changed.
@@ -107,7 +69,7 @@ func (g *verifyGate) evaluate(
 	ctx context.Context, send func(State, Event) error,
 ) (verifyOutcome, error) {
 	options := g.engine.options.Verify
-	if !options.enabled() {
+	if !options.Enabled() {
 		return verifyOutcome{action: verifyActionSkipped}, nil
 	}
 	paths := changedPaths(g.engine.TurnDiff())
@@ -122,7 +84,7 @@ func (g *verifyGate) evaluate(
 			nil,
 		)
 	}
-	if err := g.kernel.beginVerification(); err != nil {
+	if err := g.kernel.BeginVerification(); err != nil {
 		return verifyOutcome{}, err
 	}
 	scope := options.Scope
@@ -148,7 +110,7 @@ func (g *verifyGate) evaluate(
 		// not run is reported as unavailable. A hard gate cannot be honoured
 		// without a working runner, so the error stands.
 		if options.Mode != VerifyModeSoft {
-			_, _ = g.kernel.finishVerification(
+			_, _ = g.kernel.FinishVerification(
 				g.verificationCommand(
 					turnkernel.VerificationUnavailable,
 					nil,
@@ -176,8 +138,8 @@ func (g *verifyGate) evaluate(
 		span.End(trace.StatusOK)
 	}
 	var uncovered []string
-	mutationRevision := g.kernel.mutationRevision()
-	if g.kernel.verificationMustPass() &&
+	mutationRevision := g.kernel.MutationRevision()
+	if g.kernel.VerificationMustPass() &&
 		receipt.Status == verify.StatusUnavailable {
 		qualityReceipt, missing := g.engine.qualityVerificationReceipt(
 			paths,
@@ -194,7 +156,7 @@ func (g *verifyGate) evaluate(
 			receipt = qualityReceipt
 		}
 	}
-	actionValue, err := g.kernel.finishVerification(
+	actionValue, err := g.kernel.FinishVerification(
 		g.verificationCommand(
 			kernelVerificationStatus(receipt.Status),
 			currentVerificationCallIDs(g.engine, mutationRevision),
@@ -208,16 +170,31 @@ func (g *verifyGate) evaluate(
 	g.attempts = append(g.attempts, receipt)
 	// A verified path outranks one that was merely edited: it is the path the
 	// turn now owes an explanation for.
-	g.engine.observePaths(workingset.SourceVerified, paths)
+	for _, path := range paths {
+		g.engine.contextAuthority().ObservePath(
+			g.engine.options.Workspace,
+			agentcontext.SourceVerified,
+			g.engine.turn,
+			path,
+		)
+	}
 	// Only a pass clears the evidence gap. A failed or unavailable run leaves the
 	// change exactly as unproved as it was before the gate ran.
 	if receipt.Status == verify.StatusPassed {
-		g.engine.observeVerifiedEvidence(paths)
+		g.engine.contextAuthority().ObserveVerified(
+			g.engine.options.Workspace,
+			paths,
+		)
 	} else {
 		// An unavailable run is recorded too, and says so: "nobody could check
 		// this" is a different instruction to the next turn than "the check ran
 		// and it is broken", and neither is silence.
-		g.engine.observeVerifyFailure(string(scope), string(receipt.Status), failureDetail(receipt))
+		g.engine.contextAuthority().Failures().NoteVerify(
+			g.engine.turn,
+			string(scope),
+			string(receipt.Status),
+			verify.FailureDetail(receipt),
+		)
 	}
 	observed := &VerificationReceipt{
 		Receipt: receipt, Mode: options.Mode, Action: string(action),
@@ -238,7 +215,7 @@ func (g *verifyGate) verificationCommand(
 ) turnkernel.VerificationFinished {
 	key := fmt.Sprintf(
 		"mutation=%d;status=%s;evidence=%s",
-		g.kernel.mutationRevision(),
+		g.kernel.MutationRevision(),
 		status,
 		strings.Join(evidenceCalls, ","),
 	)
@@ -284,80 +261,10 @@ func currentVerificationCallIDs(
 // tool_result pair pollutes the history and can trip provider-side pairing
 // checks.
 func verifyFeedback(receipt *VerificationReceipt, turn uint64) provider.Message {
-	if receipt != nil && receipt.Scope == verify.ScopeQuality &&
-		receipt.Status == verify.StatusFailed {
-		paths, _ := json.Marshal(receipt.UncoveredPaths)
-		message := provider.TextMessage(
-			provider.RoleUser,
-			"[verify] a structured quality command failed and provides no coverage.\n"+
-				"required_action=repair_quality_verification\n"+
-				"retry_original=false\n"+
-				"uncovered_paths="+string(paths)+"\n"+
-				receipt.Feedback(verifyFeedbackLimit)+"\n"+
-				"Fix the command or code, then rerun quality_test or quality_verify "+
-				"with these exact covered_paths. If dependency downloads are required, "+
-				"declare their exact network_targets on the quality tool. Do not call "+
-				"turn_complete until a structured quality command passes.",
-		)
-		message.Turn = turn
-		return message
-	}
-	if receipt != nil && receipt.Status == verify.StatusUnavailable {
-		paths, _ := json.Marshal(receipt.UncoveredPaths)
-		message := provider.TextMessage(
-			provider.RoleUser,
-			"[verify] structured verification is required before workspace_change completion.\n"+
-				"required_action=quality_verify\n"+
-				"retry_original=false\n"+
-				"uncovered_paths="+string(paths)+"\n"+
-				"Call quality_verify or quality_test after the last mutation with covered_paths "+
-				"set to these exact uncovered_paths. Then call turn_complete again. "+
-				"Do not enumerate the whole worktree and do not retry the original edit.",
-		)
-		message.Turn = turn
-		return message
-	}
-	message := provider.TextMessage(
-		provider.RoleUser,
-		"[verify] "+receipt.Feedback(verifyFeedbackLimit)+
-			"\nFix the cause and do not report success until verification passes.",
-	)
-	message.Turn = turn
-	return message
+	return verify.FeedbackMessage(receipt, turn)
 }
 
-func (r *VerificationReceipt) problemMessage() string {
-	if r == nil {
-		return "verification failed"
-	}
-	message := fmt.Sprintf("verification (%s) failed", r.Scope)
-	if r.Message != "" {
-		return message + ": " + r.Message
-	}
-	for _, check := range r.Checks {
-		if check.Status == verify.StatusFailed {
-			return message + ": " + check.Name
-		}
-	}
-	return message
-}
-
-// failureDetail names what failed in one phrase: the runner's message when there
-// is one, otherwise the first failing check. The whole feedback text is already
-// in the history; the ledger only needs enough to recognise a repeat.
-func failureDetail(receipt verify.Receipt) string {
-	if receipt.Message != "" {
-		return receipt.Message
-	}
-	for _, check := range receipt.Checks {
-		if check.Status == verify.StatusFailed {
-			return check.Name
-		}
-	}
-	return ""
-}
-
-func changedPaths(entries []TurnDiffEntry) []string {
+func changedPaths(entries []turnkernel.TurnDiffEntry) []string {
 	unique := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
 		if entry.Path == "" {

@@ -25,7 +25,7 @@ const joined = path.join(".", "note.txt");
 const body = read(path.normalize(joined));
 const mark = env("CODEHELPER_WF_MARK");
 task(body.trim() + ":" + mark);
-`, jsvm.Options{Driver: driver, Workspace: root, Timeout: time.Second})
+`, jsvm.Options{Driver: driver, Timeout: time.Second, Workspace: root})
 	if err != nil {
 		t.Fatal(err)
 	}

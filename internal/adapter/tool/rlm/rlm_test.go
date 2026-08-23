@@ -32,13 +32,13 @@ func TestRLMOpenEvalCloseAndHandleRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := rlmtool.Register(registry, rlmtool.Options{
-		Handles: handles, SessionID: "session-1",
-		Root: filepath.Join(workspace, "rlm"), Workspace: workspace,
+		Handles:  handles,
+		Root:     filepath.Join(workspace, "rlm"),
 		Backend:  passthroughBackend{},
 		Governor: rlmlib.NewGovernor(rlmlib.Limits{}),
 		Payloads: map[string]string{
 			"session://active/system_prompt": "you are a fixture",
-		},
+		}, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -104,9 +104,9 @@ func TestRLMTimeoutAndBudgetFailClosed(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	gov := rlmlib.NewGovernor(rlmlib.Limits{MaxConcurrency: 1})
 	if err := rlmtool.Register(registry, rlmtool.Options{
-		Handles: handles, SessionID: "session-1",
-		Root: filepath.Join(workspace, "rlm"), Workspace: workspace,
-		Backend: passthroughBackend{}, Governor: gov,
+		Handles: handles,
+		Root:    filepath.Join(workspace, "rlm"),
+		Backend: passthroughBackend{}, Governor: gov, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -153,12 +153,12 @@ func TestRLMSessionObjectOpen(t *testing.T) {
 	handles := handle.NewStore()
 	registry := tool.NewRegistry(nil, nil)
 	if err := rlmtool.Register(registry, rlmtool.Options{
-		Handles: handles, SessionID: "session-1",
-		Root: filepath.Join(workspace, "rlm"), Workspace: workspace,
+		Handles: handles,
+		Root:    filepath.Join(workspace, "rlm"),
 		Backend: passthroughBackend{},
 		Payloads: map[string]string{
 			"session://active/latest_user": "inspect me",
-		},
+		}, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}

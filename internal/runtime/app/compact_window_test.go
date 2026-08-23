@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
@@ -15,10 +17,9 @@ import (
 
 func TestCompactWindowChainAndResume(t *testing.T) {
 	store := NewMemoryEventStore(256)
-	seed, err := newTestAgentEngine(agentengine.Options{
-		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
-		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
-		MaxOutputTokens: 128,
+	seed, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +32,7 @@ func TestCompactWindowChainAndResume(t *testing.T) {
 		return AdaptEngine(clone), nil
 	})
 	manager.SetWindowRestorer(func(ctx context.Context, threadID protocol.ThreadID) (*protocol.ThreadCompactedData, error) {
-		return LatestThreadHistorySeed(ctx, store, threadID)
+		return sessionhistory.LatestThreadHistorySeed(ctx, store, threadID)
 	})
 	manager.SetSequenceReader(func(ctx context.Context) (protocol.Cursor, error) {
 		return store.LastSequence(ctx)
@@ -108,7 +109,7 @@ func TestCompactWindowChainAndResume(t *testing.T) {
 		return AdaptEngine(clone), nil
 	})
 	resumed.SetWindowRestorer(func(ctx context.Context, threadID protocol.ThreadID) (*protocol.ThreadCompactedData, error) {
-		return LatestThreadHistorySeed(ctx, store, threadID)
+		return sessionhistory.LatestThreadHistorySeed(ctx, store, threadID)
 	})
 	hist, err := resumed.History("thread-window")
 	if err != nil {
@@ -137,10 +138,9 @@ func TestCompactWindowChainAndResume(t *testing.T) {
 
 func TestCompactForkResume(t *testing.T) {
 	store := NewMemoryEventStore(256)
-	seed, err := newTestAgentEngine(agentengine.Options{
-		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
-		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
-		MaxOutputTokens: 128,
+	seed, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -154,7 +154,7 @@ func TestCompactForkResume(t *testing.T) {
 	}
 	manager := NewThreadManager(factory)
 	manager.SetWindowRestorer(func(ctx context.Context, threadID protocol.ThreadID) (*protocol.ThreadCompactedData, error) {
-		return LatestThreadHistorySeed(ctx, store, threadID)
+		return sessionhistory.LatestThreadHistorySeed(ctx, store, threadID)
 	})
 	manager.SetSequenceReader(func(ctx context.Context) (protocol.Cursor, error) {
 		return store.LastSequence(ctx)
@@ -243,7 +243,7 @@ func TestCompactForkResume(t *testing.T) {
 
 	resumed := NewThreadManager(factory)
 	resumed.SetWindowRestorer(func(ctx context.Context, threadID protocol.ThreadID) (*protocol.ThreadCompactedData, error) {
-		return LatestThreadHistorySeed(ctx, store, threadID)
+		return sessionhistory.LatestThreadHistorySeed(ctx, store, threadID)
 	})
 	restored, err := resumed.History("thread-child")
 	if err != nil {
@@ -302,11 +302,11 @@ func TestEncodeDecodeCompactedHistoryRoundTrip(t *testing.T) {
 		}}},
 		assistant,
 	}
-	encoded, err := EncodeCompactedHistory(input)
+	encoded, err := sessionhistory.EncodeCompactedHistory(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := DecodeCompactedHistory(encoded)
+	decoded, err := sessionhistory.DecodeCompactedHistory(encoded)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,12 +1,9 @@
 package engine
 
 import (
-	"encoding/json"
-
-	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
 const toolResultSurfaceBytes = 4 << 10
@@ -18,90 +15,54 @@ type toolResultPruneStats struct {
 
 func (e *Engine) pruneToolResultSurfaces(
 	history *[]provider.Message,
-	input contextstore.Snapshot,
+	input agentcontext.MessageSnapshot,
 	outputReserve uint64,
 	force bool,
 ) (toolResultPruneStats, tokenWindow, error) {
-	names := toolCallNames(*history)
-	var stats toolResultPruneStats
-	var window tokenWindow
-	for messageIndex := range *history {
-		message := &(*history)[messageIndex]
-		for blockIndex := range message.Blocks {
-			block := &message.Blocks[blockIndex]
-			if block.Type != provider.ContentToolResult ||
-				block.ToolResult == nil {
-				continue
-			}
-			name := names[block.ToolResult.CallID]
-			if name == "" {
-				continue
-			}
-			var result tool.Result
-			if err := json.Unmarshal(
-				[]byte(block.ToolResult.Content),
-				&result,
-			); err != nil {
-				continue
-			}
-			projected, changed := e.options.Tools.PruneResultSurface(
-				name,
-				result,
-				toolResultSurfaceBytes,
+	stats, window, err := toolresult.PruneSurfaces(
+		history,
+		e.options.Tools,
+		toolResultSurfaceBytes,
+		force,
+		func(history []provider.Message) (toolresult.PruneWindow, error) {
+			measured, err := e.measureTokenWindow(
+				input.WithHistory(history),
+				outputReserve,
 			)
-			if !changed {
-				continue
-			}
-			encoded, err := json.Marshal(tool.ModelResult(name, projected))
-			if err != nil || len(encoded) >= len(block.ToolResult.Content) {
-				continue
-			}
-			stats.results++
-			stats.bytes += len(block.ToolResult.Content) - len(encoded)
-			block.ToolResult.Content = string(encoded)
-			block.ToolResult.IsError = projected.IsError
-			block.ToolResult.Admission = adaptercontent.CloneAdmissionReceipt(
-				projected.Admission,
-			)
-			input = input.WithHistory(*history)
-			window, err = e.measureTokenWindow(input, outputReserve)
-			if err != nil {
-				return toolResultPruneStats{}, tokenWindow{}, err
-			}
-			if !force &&
-				window.active <= window.compactLimit &&
-				window.total <= window.hardLimit {
-				return stats, window, nil
-			}
-		}
-	}
-	if stats.results == 0 {
-		input = input.WithHistory(*history)
-		measured, err := e.measureTokenWindow(input, outputReserve)
-		return stats, measured, err
-	}
-	return stats, window, nil
+			return toolresult.PruneWindow{
+				Active: measured.active, CompactLimit: measured.compactLimit,
+				Total: measured.total, HardLimit: measured.hardLimit,
+			}, err
+		},
+	)
+	return toolResultPruneStats{
+			results: stats.Results,
+			bytes:   stats.Bytes,
+		}, tokenWindow{
+			active: window.Active, compactLimit: window.CompactLimit,
+			total: window.Total, hardLimit: window.HardLimit,
+		}, err
 }
 
-func toolCallNames(messages []provider.Message) map[string]string {
-	type identity struct {
-		name  string
-		count int
+func (e *Engine) pruneConsumedToolResultSurfaces(
+	history *[]provider.Message,
+) toolResultPruneStats {
+	before := agentcontext.CloneMessages(*history)
+	stats := toolresult.PruneConsumedSurfaces(
+		history,
+		e.options.Tools,
+		e.options.MaxToolResultHistoryBytes,
+		e.options.MaxConsumedToolResultBytes,
+	)
+	if stats.Results == 0 {
+		return toolResultPruneStats{}
 	}
-	identities := make(map[string]identity)
-	for _, message := range messages {
-		for _, call := range messageToolCalls(message) {
-			value := identities[call.ID]
-			value.name = call.Name
-			value.count++
-			identities[call.ID] = value
-		}
+	if !agentcontext.ToolPairIdentityEquivalent(before, *history) {
+		*history = before
+		return toolResultPruneStats{}
 	}
-	names := make(map[string]string)
-	for callID, value := range identities {
-		if value.count == 1 {
-			names[callID] = value.name
-		}
+	return toolResultPruneStats{
+		results: stats.Results,
+		bytes:   stats.Bytes,
 	}
-	return names
 }

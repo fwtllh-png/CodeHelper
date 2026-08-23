@@ -10,7 +10,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 

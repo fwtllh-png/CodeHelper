@@ -8,7 +8,30 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
+
+func kernelTransitionObserver(
+	recorder *trace.Recorder,
+	parent uint64,
+) func(turnkernel.TransitionRecord) {
+	return func(record turnkernel.TransitionRecord) {
+		span := recorder.Start(
+			trace.NameTurnKernelTransition,
+			parent,
+			map[string]any{
+				"command": record.Command, "from_phase": string(record.From),
+				"to_phase": string(record.To), "state_digest": record.StateDigest,
+				"drift": record.Drift, "rejection": record.Rejection,
+			},
+		)
+		status := trace.StatusOK
+		if record.Drift != "" || record.Rejection != "" {
+			status = trace.StatusError
+		}
+		span.End(status)
+	}
+}
 
 // beginTrace opens the recorder and root span for a turn. The previous turn's
 // recorder is replaced rather than cleared on the way out, so a caller can still

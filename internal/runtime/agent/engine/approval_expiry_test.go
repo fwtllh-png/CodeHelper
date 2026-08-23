@@ -6,7 +6,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -53,17 +53,17 @@ func TestApprovalExpiryResolvesKernelBeforeToolResult(t *testing.T) {
 	scope.mu.Unlock()
 
 	call := provider.ToolCall{ID: "approval-call", Name: "write"}
-	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(call.ID); err != nil {
+	if err := kernel.StartTool(call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requireApproval("approval-1", call.ID); err != nil {
+	if err := kernel.RequireApproval("approval-1", call.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := scope.state.requests.Register(
-		turnexec.RequestApproval,
+		turnkernel.RequestApproval,
 		"approval-1",
 	); err != nil {
 		t.Fatal(err)
@@ -83,10 +83,10 @@ func TestApprovalExpiryResolvesKernelBeforeToolResult(t *testing.T) {
 		emitted.ApprovalResolution.Reason != "approval_expired" {
 		t.Fatalf("approval resolution event = %+v", emitted)
 	}
-	if len(kernel.state.PendingApprovals) != 0 {
-		t.Fatalf("pending approvals = %+v", kernel.state.PendingApprovals)
+	if len(kernel.Snapshot().PendingApprovals) != 0 {
+		t.Fatalf("pending approvals = %+v", kernel.Snapshot().PendingApprovals)
 	}
-	if err := kernel.closeTool(call, tool.Result{IsError: true}, nil); err != nil {
+	if err := kernel.CloseTool(call, tool.Result{IsError: true}, nil); err != nil {
 		t.Fatalf("expired tool result was rejected: %v", err)
 	}
 }

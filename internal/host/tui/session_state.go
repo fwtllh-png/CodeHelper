@@ -3,14 +3,15 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/session/ux"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	toml "github.com/pelletier/go-toml/v2"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/persist/session/ux"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 func (m Model) sessionDir(id string) string {

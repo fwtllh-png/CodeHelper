@@ -21,23 +21,22 @@ func newEngineTurnKernel(
 	sink func(turnkernel.TransitionRecord),
 	metrics *telemetry.Metrics,
 	policies ...turnkernel.Policy,
-) *engineTurnKernel {
+) *turnkernel.RuntimeKernel {
 	policy := turnkernel.DefaultPolicy()
 	if len(policies) != 0 {
 		policy = policies[0]
 	}
-	kernel, err := newEngineTurnKernelForTurn(
-		kernelTurnIdentity{
-			turnID:          "engine-turn-kernel",
-			profileRevision: 1,
+	kernel, err := turnkernel.NewRuntimeKernel(
+		turnkernel.KernelIdentity{
+			TurnID:          "engine-turn-kernel",
+			ProfileRevision: 1,
 		},
 		intent,
 		mode,
 		nil,
 		false,
 		nil,
-		recorder,
-		parent,
+		kernelTransitionObserver(recorder, parent),
 		sink,
 		nil,
 		metrics,

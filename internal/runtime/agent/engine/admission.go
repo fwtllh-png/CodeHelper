@@ -7,6 +7,7 @@ import (
 	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
 )
 
 // admitToolResultHistory upgrades legacy or externally restored Tool Results
@@ -15,7 +16,7 @@ func (e *Engine) admitToolResultHistory(
 	messages []provider.Message,
 ) ([]provider.Message, error) {
 	result := cloneMessages(messages)
-	names := toolCallNames(result)
+	names := toolresult.ToolCallNames(result)
 	for messageIndex := range result {
 		for blockIndex := range result[messageIndex].Blocks {
 			block := &result[messageIndex].Blocks[blockIndex]

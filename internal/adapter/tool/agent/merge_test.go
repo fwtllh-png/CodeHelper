@@ -116,18 +116,17 @@ func openMergeHarnessWithVerifier(
 	gate := &recordingGate{}
 	manager, err := subagent.Open(subagent.Options{
 		Root: t.TempDir(), Gate: gate, Runtime: &dualRuntime{},
-		SessionID: "merge-session",
-		Worktrees: fixedWorktrees{path: worktree, baseRev: baseRev},
-		Budget:    subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+
+		Worktrees: fixedWorktrees{path: worktree, baseRev: baseRev}, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4}, SessionID: "merge-session",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := agenttool.Register(registry, agenttool.Options{
-		Manager: manager, Handles: handles, SessionID: "merge-session",
-		Root: t.TempDir(), Gate: gate, Files: files, Workspace: workspace,
-		Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
-		Verify: verifier, Sandbox: backend,
+		Manager: manager, Handles: handles,
+		Root: t.TempDir(), Gate: gate, Files: files,
+
+		Sandbox: backend, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4}, Verify: verifier, Workspace: workspace, SessionID: "merge-session",
 	}); err != nil {
 		t.Fatal(err)
 	}

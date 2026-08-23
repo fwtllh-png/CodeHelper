@@ -3,10 +3,11 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui/facade"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"strings"
 )
 
 type Mode string

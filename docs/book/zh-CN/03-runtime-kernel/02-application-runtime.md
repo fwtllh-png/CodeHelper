@@ -18,8 +18,8 @@ test_paths:
   - internal/runtime/app/active_turn_registry_test.go
   - internal/runtime/app/thread_manager_test.go
   - internal/runtime/app/eventhub/hub_test.go
-  - internal/runtime/app/chatmerge/service_test.go
-  - internal/runtime/app/persistence/runtime_test.go
+  - internal/orchestration/chatmerge/service_test.go
+  - internal/runtime/app/wire/persistent_composition_test.go
   - internal/runtime/app/turn_kernel_convergence_test.go
   - internal/runtime/agent/turnkernel/convergence_baseline_test.go
   - internal/runtime/app/terminal_measurement_test.go
@@ -28,14 +28,14 @@ source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/operation_dispatch.go
   - internal/runtime/app/active_turn_registry.go
-  - internal/runtime/app/terminal_publisher.go
-  - internal/runtime/app/terminal_measurement.go
+  - internal/runtime/app/eventhub/terminal.go
+  - internal/runtime/app/extension/terminal_measurement.go
   - internal/runtime/app/service_facade.go
   - internal/runtime/app/eventhub/hub.go
-  - internal/runtime/app/session_artifacts.go
-  - internal/runtime/app/application.go
-  - internal/runtime/app/chatmerge/service.go
-  - internal/runtime/app/persistence/runtime.go
+  - internal/persist/artifact/service.go
+  - internal/runtime/app/extension/engine_adapter.go
+  - internal/orchestration/chatmerge/service.go
+  - internal/runtime/app/wire/persistent_runtime.go
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
 status: verified
@@ -155,7 +155,7 @@ Commit 或 Terminal Outcome。
 
 ## Chat Merge 与 Durable Assembly
 
-`chatmerge.Service`（`internal/runtime/app/chatmerge`）以独立可测试的 Service
+`app.ChatMergeService`（`internal/runtime/app`）以独立可测试的 Service
 拥有隔离 Chat Workspace 流水线，而不是 `wire` 内的构造逻辑：
 
 - `Plan` 返回紧凑 `tool.EditPlan`，其 ID 摘要所有批次，过期 Preview 无法被应用。

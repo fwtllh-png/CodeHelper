@@ -67,11 +67,9 @@
         "internal/adapter/lsp/**",
         "internal/persist/repoindex/**",
         "internal/platform/symbols/**",
-        "internal/runtime/agent/compact/**",
-        "internal/runtime/agent/promptcontext/**",
-        "internal/runtime/agent/repocontext/**",
-        "internal/runtime/agent/repomap/**",
-        "internal/runtime/agent/workingset/**"
+        "internal/runtime/agent/context/**",
+        "internal/runtime/agent/prompt/**",
+        "internal/runtime/agent/context/**"
       ]
     },
     {

@@ -10,9 +10,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
 func evidenceEngine(t *testing.T) *Engine {
@@ -20,7 +18,7 @@ func evidenceEngine(t *testing.T) *Engine {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.Workspace = t.TempDir()
 	engine.turn = 1
-	engine.evidence.BeginTurn(1)
+	engine.context.Evidence().BeginTurn(1)
 	return engine
 }
 
@@ -40,14 +38,14 @@ func TestSearchHitsBecomeFactsAndTheWeakestWorkingSetSource(t *testing.T) {
 	if len(facts) != 1 {
 		t.Fatalf("facts = %+v", facts)
 	}
-	if facts[0].Kind != evidence.KindDefinition || facts[0].Path != "auth/token.go" ||
+	if facts[0].Kind != agentcontext.KindDefinition || facts[0].Path != "auth/token.go" ||
 		facts[0].Line != 12 || facts[0].Symbol != "Verify" ||
 		facts[0].Tool != "search_definition" || facts[0].Turn != 1 {
 		t.Fatalf("fact = %+v", facts[0])
 	}
 	entries := engine.WorkingSetEntries(1, 10)
 	if len(entries) != 1 || entries[0].Path != "auth/token.go" ||
-		entries[0].Sources[0] != workingset.SourceSearch {
+		entries[0].Sources[0] != agentcontext.SourceSearch {
 		t.Fatalf("entries = %+v, want the hit recorded as a search", entries)
 	}
 }
@@ -68,14 +66,14 @@ func TestUnknownEvidenceKindIsIgnored(t *testing.T) {
 func TestAnEditAfterAReadIsNotBlind(t *testing.T) {
 	engine := evidenceEngine(t)
 	read := filepath.Join(engine.options.Workspace, "a.go")
-	engine.observePath(workingset.SourceRead, read)
+	engine.observePath(agentcontext.SourceRead, read)
 	engine.observeChangeEvidence(tool.WorkspaceChange{Path: read, Kind: tool.WorkspaceModified})
 	engine.observeChangeEvidence(tool.WorkspaceChange{Path: "b.go", Kind: tool.WorkspaceModified})
 	engine.observeChangeEvidence(tool.WorkspaceChange{Path: "new.go", Kind: tool.WorkspaceCreated})
 
 	blind := map[string]bool{}
 	for _, risk := range engine.EvidenceSnapshot().Risks {
-		if risk.Kind == evidence.RiskBlindChange {
+		if risk.Kind == agentcontext.RiskBlindChange {
 			blind[risk.Path] = true
 		}
 	}
@@ -91,16 +89,16 @@ func TestDiagnosticsCloseAndOpenTheEvidenceGap(t *testing.T) {
 		Path: "a.go", Status: "failed",
 		Diagnostics: []diagnostics.Diagnostic{{Path: "a.go", Message: "broken"}},
 	}})
-	if !hasRisk(engine, evidence.RiskOpenDiagnostics) {
+	if !hasRisk(engine, agentcontext.RiskOpenDiagnostics) {
 		t.Fatal("a failing check left no risk")
 	}
 	// An unavailable runner checked nothing, so it must not read as clean.
 	engine.observeDiagnosticsEvidence([]diagnostics.Receipt{{Path: "a.go", Status: "unavailable"}})
-	if !hasRisk(engine, evidence.RiskOpenDiagnostics) {
+	if !hasRisk(engine, agentcontext.RiskOpenDiagnostics) {
 		t.Fatal("an unavailable runner cleared the risk")
 	}
 	engine.observeDiagnosticsEvidence([]diagnostics.Receipt{{Path: "a.go", Status: "passed"}})
-	if hasRisk(engine, evidence.RiskOpenDiagnostics) {
+	if hasRisk(engine, agentcontext.RiskOpenDiagnostics) {
 		t.Fatal("a clean check left the risk standing")
 	}
 }
@@ -109,13 +107,13 @@ func TestVerifiedPathsClearTheRiskWorkspaceRelative(t *testing.T) {
 	engine := evidenceEngine(t)
 	absolute := filepath.Join(engine.options.Workspace, "a.go")
 	engine.observeChangeEvidence(tool.WorkspaceChange{Path: absolute, Kind: tool.WorkspaceModified})
-	if !hasRisk(engine, evidence.RiskUnverifiedChange) {
+	if !hasRisk(engine, agentcontext.RiskUnverifiedChange) {
 		t.Fatal("a fresh change is not unverified")
 	}
 	// The gate reports the paths the way the guard spelled them, absolute; the
 	// evidence set keys on workspace-relative paths, so the two must be lined up.
 	engine.observeVerifiedEvidence([]string{absolute})
-	if hasRisk(engine, evidence.RiskUnverifiedChange) {
+	if hasRisk(engine, agentcontext.RiskUnverifiedChange) {
 		t.Fatal("verification did not clear the risk")
 	}
 }
@@ -125,7 +123,7 @@ func TestRepeatedCallAndConsumedHandleAreObservedFromCalls(t *testing.T) {
 	engine.noteToolCall(provider.ToolCall{Name: "search_text", Arguments: `{"query":"a"}`})
 	engine.noteToolCall(provider.ToolCall{Name: "search_text", Arguments: `{"query":"a"}`})
 	reminders := engine.EvidenceSnapshot().Reminders
-	if len(reminders) != 1 || reminders[0].Kind != evidence.ReminderRepeatedCall {
+	if len(reminders) != 1 || reminders[0].Kind != agentcontext.ReminderRepeatedCall {
 		t.Fatalf("reminders = %+v", reminders)
 	}
 
@@ -136,12 +134,12 @@ func TestRepeatedCallAndConsumedHandleAreObservedFromCalls(t *testing.T) {
 		}},
 	)
 	engine.turn = 2
-	engine.evidence.BeginTurn(2)
-	if !hasReminder(engine, evidence.ReminderUnconsumedResult) {
+	engine.context.Evidence().BeginTurn(2)
+	if !hasReminder(engine, agentcontext.ReminderUnconsumedResult) {
 		t.Fatal("an unread handle from the previous turn is not reported")
 	}
 	engine.noteToolCall(provider.ToolCall{Name: "result_get", Arguments: `{"handle":"h1"}`})
-	if hasReminder(engine, evidence.ReminderUnconsumedResult) {
+	if hasReminder(engine, agentcontext.ReminderUnconsumedResult) {
 		t.Fatal("reading the handle did not clear the reminder")
 	}
 }
@@ -154,11 +152,11 @@ func TestRereadingAnUnchangedFileReminds(t *testing.T) {
 	}}}
 	call := provider.ToolCall{Name: "file_read"}
 	engine.observeEvidence(call, result)
-	if hasReminder(engine, evidence.ReminderRepeatedRead) {
+	if hasReminder(engine, agentcontext.ReminderRepeatedRead) {
 		t.Fatal("a first read reminded")
 	}
 	engine.observeEvidence(call, result)
-	if !hasReminder(engine, evidence.ReminderRepeatedRead) {
+	if !hasReminder(engine, agentcontext.ReminderRepeatedRead) {
 		t.Fatal("re-reading unchanged content did not remind")
 	}
 }
@@ -172,7 +170,7 @@ func TestForkInheritsTheEvidenceWithoutSharingIt(t *testing.T) {
 	}
 	parent.observeVerifiedEvidence([]string{"a.go"})
 
-	if !hasRisk(child, evidence.RiskUnverifiedChange) {
+	if !hasRisk(child, agentcontext.RiskUnverifiedChange) {
 		t.Fatal("the fork lost the inherited risk or shares the parent's verification")
 	}
 }
@@ -192,7 +190,7 @@ func TestCompactionSummaryCarriesUnverifiedChanges(t *testing.T) {
 	if !strings.Contains(rendered, "b.go (turn 1) — verified") {
 		t.Fatalf("summary = %q, want the verified change reported as verified", rendered)
 	}
-	if !slices.Contains(sections, compact.SectionChanges) {
+	if !slices.Contains(sections, agentcontext.SectionChanges) {
 		t.Fatalf("sections = %v", sections)
 	}
 }

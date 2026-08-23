@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/artifact"
 	"strings"
 	"testing"
 	"time"
 
+	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -20,7 +22,7 @@ type memoryArtifactStore struct {
 	history    []protocol.CompactedMessage
 	profile    protocol.SessionProfile
 	plan       protocol.SessionPlanArtifact
-	context    sessiondelta.ContextSnapshot
+	context    agentcontext.ContextSnapshot
 }
 
 func (s *memoryArtifactStore) SaveCheckpoint(
@@ -51,7 +53,7 @@ func (s *memoryArtifactStore) SaveContextCheckpoint(
 	context.Context,
 	protocol.SessionCheckpoint,
 	[]protocol.CompactedMessage,
-	sessiondelta.ContextSnapshot,
+	agentcontext.ContextSnapshot,
 	protocol.SessionProfile,
 ) (protocol.SessionCheckpoint, error) {
 	return protocol.SessionCheckpoint{}, errors.New("unexpected Context Checkpoint save")
@@ -62,11 +64,11 @@ func (s *memoryArtifactStore) GetContextCheckpoint(
 	string,
 ) (
 	protocol.SessionCheckpoint,
-	sessiondelta.ContextSnapshot,
+	agentcontext.ContextSnapshot,
 	protocol.SessionProfile,
 	error,
 ) {
-	return s.checkpoint, sessiondelta.CloneContextSnapshot(s.context), s.profile, nil
+	return s.checkpoint, agentcontext.CloneContextSnapshot(s.context), s.profile, nil
 }
 
 func (s *memoryArtifactStore) ListCheckpoints(
@@ -113,7 +115,7 @@ type artifactTestEngine struct {
 	restoreErrAt int
 	restoreErr   error
 	forks        map[protocol.ThreadID][]provider.Message
-	contexts     map[protocol.ThreadID]sessiondelta.ContextSnapshot
+	contexts     map[protocol.ThreadID]agentcontext.ContextSnapshot
 }
 
 type artifactFailingEventStore struct {
@@ -169,49 +171,49 @@ func (e *artifactTestEngine) Release(threadID protocol.ThreadID) {
 
 func (e *artifactTestEngine) ContextSnapshot(
 	threadID protocol.ThreadID,
-) (sessiondelta.ContextSnapshot, error) {
+) (agentcontext.ContextSnapshot, error) {
 	snapshot, ok := e.contexts[threadID]
 	if !ok {
-		return sessiondelta.ContextSnapshot{}, errors.New("context snapshot is unavailable")
+		return agentcontext.ContextSnapshot{}, errors.New("context snapshot is unavailable")
 	}
-	return sessiondelta.CloneContextSnapshot(snapshot), nil
+	return agentcontext.CloneContextSnapshot(snapshot), nil
 }
 
 func (e *artifactTestEngine) RestoreContext(
 	threadID protocol.ThreadID,
-	snapshot sessiondelta.ContextSnapshot,
-) (sessiondelta.ReconciliationReceipt, error) {
+	snapshot agentcontext.ContextSnapshot,
+) (agentcontext.ReconciliationReceipt, error) {
 	if e.contexts == nil {
-		e.contexts = make(map[protocol.ThreadID]sessiondelta.ContextSnapshot)
+		e.contexts = make(map[protocol.ThreadID]agentcontext.ContextSnapshot)
 	}
-	e.contexts[threadID] = sessiondelta.CloneContextSnapshot(snapshot)
+	e.contexts[threadID] = agentcontext.CloneContextSnapshot(snapshot)
 	e.history = append([]provider.Message(nil), snapshot.History...)
-	return sessiondelta.ReconciliationReceipt{BindingMatch: true}, nil
+	return agentcontext.ReconciliationReceipt{BindingMatch: true}, nil
 }
 
 func (e *artifactTestEngine) ForkContext(
 	_ protocol.ThreadID,
 	threadID protocol.ThreadID,
-	snapshot sessiondelta.ContextSnapshot,
-) (sessiondelta.ReconciliationReceipt, error) {
+	snapshot agentcontext.ContextSnapshot,
+) (agentcontext.ReconciliationReceipt, error) {
 	if e.contexts == nil {
-		e.contexts = make(map[protocol.ThreadID]sessiondelta.ContextSnapshot)
+		e.contexts = make(map[protocol.ThreadID]agentcontext.ContextSnapshot)
 	}
-	e.contexts[threadID] = sessiondelta.CloneContextSnapshot(snapshot)
+	e.contexts[threadID] = agentcontext.CloneContextSnapshot(snapshot)
 	if e.forks == nil {
 		e.forks = make(map[protocol.ThreadID][]provider.Message)
 	}
 	e.forks[threadID] = append([]provider.Message(nil), snapshot.History...)
-	return sessiondelta.ReconciliationReceipt{BindingMatch: true}, nil
+	return agentcontext.ReconciliationReceipt{BindingMatch: true}, nil
 }
 
 type artifactCurrentContextStore struct {
-	current map[protocol.ThreadID]sessiondelta.CurrentContextCommit
+	current map[protocol.ThreadID]agentcontext.CurrentContextCommit
 }
 
 func (s *artifactCurrentContextStore) CommitContextRebase(
 	context.Context,
-	sessiondelta.ContextRebaseEnvelope,
+	agentcontext.ContextRebaseEnvelope,
 ) error {
 	return nil
 }
@@ -219,20 +221,20 @@ func (s *artifactCurrentContextStore) CommitContextRebase(
 func (s *artifactCurrentContextStore) LatestContextSnapshot(
 	_ context.Context,
 	threadID protocol.ThreadID,
-) (sessiondelta.ContextSnapshot, bool, error) {
+) (agentcontext.ContextSnapshot, bool, error) {
 	commit, ok := s.current[threadID]
-	return sessiondelta.CloneContextSnapshot(commit.Snapshot), ok, nil
+	return agentcontext.CloneContextSnapshot(commit.Snapshot), ok, nil
 }
 
 func (s *artifactCurrentContextStore) CommitCurrentContext(
 	_ context.Context,
-	commit sessiondelta.CurrentContextCommit,
+	commit agentcontext.CurrentContextCommit,
 ) error {
 	if err := commit.Validate(); err != nil {
 		return err
 	}
 	if s.current == nil {
-		s.current = make(map[protocol.ThreadID]sessiondelta.CurrentContextCommit)
+		s.current = make(map[protocol.ThreadID]agentcontext.CurrentContextCommit)
 	}
 	s.current[commit.ThreadID] = commit
 	return nil
@@ -252,18 +254,18 @@ func (s *artifactCurrentContextStore) DeleteCurrentContext(
 
 func TestExactContextRestoreAndForkPersistCurrentBaselines(t *testing.T) {
 	profile := runtimeTestProfile()
-	window, err := contextstore.NewWindowLedger("checkpoint-window", 1)
+	window, err := agentcontext.NewWindowLedger("checkpoint-window", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := sessiondelta.WorkspaceBinding{
+	binding := agentcontext.WorkspaceBinding{
 		WorkspaceIdentity: "workspace:test",
 	}
 	binding.Seal()
 	message := provider.TextMessage(provider.RoleUser, "checkpoint context")
 	message.Turn = 1
-	checkpointContext := sessiondelta.ContextSnapshot{
-		Version: sessiondelta.ContextSnapshotVersion,
+	checkpointContext := agentcontext.ContextSnapshot{
+		Version: agentcontext.ContextSnapshotVersion,
 		Epoch:   1, Revision: 1, Turn: 1,
 		History:   []provider.Message{message},
 		Workspace: binding,
@@ -272,7 +274,7 @@ func TestExactContextRestoreAndForkPersistCurrentBaselines(t *testing.T) {
 	if err := checkpointContext.Seal(); err != nil {
 		t.Fatal(err)
 	}
-	encoded, err := EncodeCompactedHistory(checkpointContext.History)
+	encoded, err := sessionhistory.EncodeCompactedHistory(checkpointContext.History)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +292,7 @@ func TestExactContextRestoreAndForkPersistCurrentBaselines(t *testing.T) {
 		history: encoded,
 	}
 	engine := &artifactTestEngine{
-		contexts: map[protocol.ThreadID]sessiondelta.ContextSnapshot{
+		contexts: map[protocol.ThreadID]agentcontext.ContextSnapshot{
 			"thread-profile": checkpointContext,
 		},
 	}
@@ -369,7 +371,7 @@ func TestExactContextRestoreAndForkPersistCurrentBaselines(t *testing.T) {
 func TestCheckpointRestoreIsStateOnlyAndForkPreservesLineage(t *testing.T) {
 	profile := runtimeTestProfile()
 	profile.Mode = "plan"
-	encoded, err := EncodeCompactedHistory([]provider.Message{
+	encoded, err := sessionhistory.EncodeCompactedHistory([]provider.Message{
 		provider.TextMessage(provider.RoleUser, "checkpoint prompt"),
 		provider.TextMessage(provider.RoleAssistant, "checkpoint result"),
 	})
@@ -451,7 +453,7 @@ func TestCheckpointRestoreIsStateOnlyAndForkPreservesLineage(t *testing.T) {
 
 func TestCheckpointRestoreJoinsPublicationAndRollbackFailures(t *testing.T) {
 	profile := runtimeTestProfile()
-	encoded, err := EncodeCompactedHistory([]provider.Message{
+	encoded, err := sessionhistory.EncodeCompactedHistory([]provider.Message{
 		provider.TextMessage(provider.RoleUser, "checkpoint prompt"),
 		provider.TextMessage(provider.RoleAssistant, "checkpoint result"),
 	})
@@ -862,7 +864,7 @@ func TestTurnRecoveryDefaultsLegacyEmptyIntentToAnswer(t *testing.T) {
 }
 
 func TestRecoveryDisplayPromptUnwrapsLegacyInternalPrompt(t *testing.T) {
-	legacy := turnRecoveryPromptPrefix + ` Do not infer the task.
+	legacy := artifact.TurnRecoveryPromptPrefix + ` Do not infer the task.
 
 Original model-visible request:
 <source_request>
@@ -872,19 +874,19 @@ Fix the parser
 <recovery_evidence>
 {"source_turn_id":"turn-source","closed_tools":[{"call_id":"call-read"}]}
 </recovery_evidence>`
-	if got := recoveryDisplayPrompt(legacy, legacy); got != "Fix the parser" {
+	if got := artifact.RecoveryDisplayPrompt(legacy, legacy); got != "Fix the parser" {
 		t.Fatalf("legacy recovery display prompt = %q", got)
 	}
-	nested := turnRecoveryPromptPrefix + ` Do not infer the task.
+	nested := artifact.TurnRecoveryPromptPrefix + ` Do not infer the task.
 
 Original model-visible request:
 <source_request>
 ` + legacy + `
 </source_request>`
-	if got := recoverySourcePrompt(nested); got != "Fix the parser" {
+	if got := artifact.RecoverySourcePrompt(nested); got != "Fix the parser" {
 		t.Fatalf("nested recovery source prompt = %q", got)
 	}
-	withQuotedClose := turnRecoveryPromptPrefix + ` Do not infer the task.
+	withQuotedClose := artifact.TurnRecoveryPromptPrefix + ` Do not infer the task.
 
 Original model-visible request:
 <source_request>
@@ -895,10 +897,10 @@ Recovery guidance:
 <guidance>
 Explain the literal </source_request> tag.
 </guidance>`
-	if got := recoverySourcePrompt(withQuotedClose); got != "Fix the parser" {
+	if got := artifact.RecoverySourcePrompt(withQuotedClose); got != "Fix the parser" {
 		t.Fatalf("quoted close recovery source prompt = %q", got)
 	}
-	if got := recoveryDisplayPrompt(
+	if got := artifact.RecoveryDisplayPrompt(
 		"internal recovery context",
 		"Continue: Continue: Fix the parser",
 	); got != "Fix the parser" {
@@ -907,25 +909,25 @@ Explain the literal </source_request> tag.
 }
 
 func TestRecoveryEvidenceIsCanonicalAndBounded(t *testing.T) {
-	first := recoveryDigestJSON(
+	first := artifact.RecoveryDigestJSON(
 		[]byte(`{"b":9223372036854775807,"a":1}`),
 	)
-	second := recoveryDigestJSON(
+	second := artifact.RecoveryDigestJSON(
 		[]byte(`{"a":1,"b":9223372036854775807}`),
 	)
 	if first == "" || first != second {
 		t.Fatalf("canonical argument digests = %q and %q", first, second)
 	}
-	tools := make([]recoveryToolEvidence, 200)
+	tools := make([]artifact.RecoveryToolEvidence, 200)
 	for index := range tools {
-		tools[index] = recoveryToolEvidence{
+		tools[index] = artifact.RecoveryToolEvidence{
 			Tool:            "file_read",
 			CallID:          fmt.Sprintf("call-%03d", index),
 			ArgumentsDigest: first,
-			OutputDigest:    recoveryDigest([]byte(strings.Repeat("x", index+1))),
+			OutputDigest:    artifact.RecoveryDigest([]byte(strings.Repeat("x", index+1))),
 		}
 	}
-	rendered := renderRecoveryEvidence(
+	rendered := artifact.RenderRecoveryEvidence(
 		"turn-source",
 		protocol.TurnIntentWorkspaceChange,
 		"failed (conflict): no changes",
@@ -938,10 +940,10 @@ func TestRecoveryEvidenceIsCanonicalAndBounded(t *testing.T) {
 			},
 		},
 	)
-	if rendered == "" || len(rendered) > turnRecoveryEvidenceLimit {
+	if rendered == "" || len(rendered) > artifact.TurnRecoveryEvidenceLimit {
 		t.Fatalf("rendered recovery evidence bytes = %d", len(rendered))
 	}
-	var capsule recoveryEvidenceCapsule
+	var capsule artifact.RecoveryEvidenceCapsule
 	if err := json.Unmarshal([]byte(rendered), &capsule); err != nil {
 		t.Fatal(err)
 	}

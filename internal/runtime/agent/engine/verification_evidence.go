@@ -7,6 +7,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
 func (e *Engine) bindVerificationEvidence(
@@ -79,7 +80,10 @@ func (e *Engine) qualityVerificationReceipt(
 ) (verify.Receipt, []string) {
 	canonical := make([]string, 0, len(paths))
 	for _, path := range paths {
-		if relative, ok := e.workspaceRelative(path); ok {
+		if relative, ok := agentcontext.WorkspaceRelative(
+			e.options.Workspace,
+			path,
+		); ok {
 			path = relative
 		}
 		if !slices.Contains(canonical, path) {

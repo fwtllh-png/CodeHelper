@@ -32,11 +32,11 @@ func TestSessionLifecycleOverlaysLiveStateAndProtectsArchiveDelete(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime.mu.Lock()
+	runtime.EventService.mu.Lock()
 	runtime.approvals["approval-life"] = PendingApproval{
 		RequestID: "approval-life", ThreadID: "thread-life", TurnID: "turn-life",
 	}
-	runtime.mu.Unlock()
+	runtime.EventService.mu.Unlock()
 
 	list, err := runtime.ListSessions(t.Context(), protocol.SessionListQuery{
 		WorkspaceRoot: "/workspace",
@@ -70,9 +70,9 @@ func TestSessionLifecycleOverlaysLiveStateAndProtectsArchiveDelete(t *testing.T)
 	if err := runtime.active.Release(lease); err != nil {
 		t.Fatal(err)
 	}
-	runtime.mu.Lock()
+	runtime.EventService.mu.Lock()
 	delete(runtime.approvals, "approval-life")
-	runtime.mu.Unlock()
+	runtime.EventService.mu.Unlock()
 	updated, err := runtime.UpdateSessionLifecycle(
 		t.Context(),
 		"session-life",

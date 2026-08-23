@@ -78,15 +78,14 @@ func TestRound13ObserveReadOnlyJournalLifecycle(t *testing.T) {
 	metrics := telemetry.NewMetrics()
 	var transitionMu sync.Mutex
 	var commands []string
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &singleAnswerProvider{}, Route: runtimeTestRoute(t),
-		Tools: tool.NewRegistry(nil, nil),
-		Security: policy.DefaultRuntime(
-			policy.ModeAct,
-			policy.PermissionBypass,
-		),
-		Workspace: root, Journal: journal, Metrics: metrics,
-		MaxOutputTokens: 128, TurnCoordinatorRuntime: coordinators,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &singleAnswerProvider{}, Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+		policy.ModeAct,
+		policy.PermissionBypass,
+	),
+		Workspace: root, Journal: journal}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: metrics,
+
 		TurnKernelObserver: func(record turnkernel.TransitionRecord) {
 			transitionMu.Lock()
 			commands = append(commands, record.Command)
@@ -99,7 +98,7 @@ func TestRound13ObserveReadOnlyJournalLifecycle(t *testing.T) {
 				"digest":  record.StateDigest,
 			})
 			// #endregion
-		},
+		}}, LifecycleConfig: agentengine.LifecycleConfig{TurnCoordinatorRuntime: coordinators},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -425,17 +424,14 @@ func observeC0OperationCommitFailure(
 
 func newC0AnswerEngine(t *testing.T) *agentengine.Engine {
 	t.Helper()
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &singleAnswerProvider{},
-		Route:    runtimeTestRoute(t),
-		Tools:    tool.NewRegistry(nil, nil),
-		Security: policy.DefaultRuntime(
-			policy.ModeAct,
-			policy.PermissionBypass,
-		),
-		Workspace:       t.TempDir(),
-		Metrics:         telemetry.NewMetrics(),
-		MaxOutputTokens: 128,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &singleAnswerProvider{},
+		Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+		policy.ModeAct,
+		policy.PermissionBypass,
+	),
+		Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -126,7 +126,7 @@ Automation、Workflow DAG Compiler、Lane Placement、Fleet Projection 与 Subag
 | OpenAI Frame | `adapter/provider/openai` | Normalized Stream |
 | File Tool | `adapter/tool/file` | Descriptor/Guard/Journal |
 | Approval Rule | `security/policy` | Guard/Protocol |
-| Chat Merge 策略 | `runtime/app/chatmerge` | Journal/Guard/Baseline |
+| Chat Merge 策略 | `runtime/app` | Journal/Guard/Baseline |
 | Worker Retry | `orchestration/task` | Persist/Executor |
 | SQLite Table | `persist/state/sqlite` | Repository/Schema |
 | Web Command | `web` | Web Transport/Trust |

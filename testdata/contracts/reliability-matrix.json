@@ -339,13 +339,13 @@
       ],
       "cases": {
         "success": {
-          "package": "./internal/runtime/app/wire/assembly",
+          "package": "./internal/runtime/app/wire",
           "test": "TestResourceStackClosesOnceInReverseOrder",
           "expected_state": "all resources close once in reverse order",
           "recovery": "none"
         },
         "retryable_failure": {
-          "package": "./internal/runtime/app/wire/assembly",
+          "package": "./internal/runtime/app/wire",
           "test": "TestResourceStackContinuesAndJoinsCloseFailures",
           "expected_state": "later closers run after one close failure",
           "recovery": "report joined cleanup errors"

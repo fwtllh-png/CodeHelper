@@ -55,9 +55,8 @@ func buildOrchestrationRepositories(
 		state.tools.registry,
 		orchestrationextension.Options{
 			Tasks: tasks, Automations: automations,
-			SessionID: state.config.hookSessionID,
-			Workspace: state.config.execution.Workspace,
-			Backend:   state.platform.backend,
+
+			Backend: state.platform.backend, Workspace: state.config.execution.Workspace, SessionID: state.config.hookSessionID,
 		},
 	); err != nil {
 		return err
@@ -120,11 +119,10 @@ func buildChildOrchestration(
 	}
 	output.subagents, err = subagent.OpenControl(subagent.Options{
 		Root: agentRoot, Gate: state.security.guard,
-		Workspace: workspaceIdentity, SessionID: state.config.hookSessionID,
-		Runtime: output.children, Worktrees: childTrees,
-		Budget: subagent.Budget{
+
+		Runtime: output.children, Worktrees: childTrees, Budget: subagent.Budget{
 			MaxTokens: limits.MaxTokens, MaxCostUSD: limits.MaxCostUSD, MaxDepth: limits.MaxDepth, MaxParallel: limits.MaxParallel, MaxResident: limits.MaxResident, MaxTotal: limits.MaxTotal,
-		},
+		}, Workspace: workspaceIdentity, SessionID: state.config.hookSessionID,
 	}, subagent.DelegationMode(limits.Delegation))
 	if err != nil {
 		return fmt.Errorf("agent control: %w", err)
@@ -139,13 +137,13 @@ func buildChildOrchestration(
 	}
 	if err := agenttool.Register(state.tools.registry, agenttool.Options{
 		Control: output.subagents, Handles: state.tools.handleStore,
-		SessionID: state.config.hookSessionID,
-		Root:      agentRoot, Gate: state.security.guard,
+
+		Root: agentRoot, Gate: state.security.guard,
 		Graph: persiststate.NewAgentGraph(
 			state.options.PersistentStore, execution.Workspace, state.config.hookSessionID,
 		),
-		Files: output.parentFiles, Workspace: execution.Workspace, Verify: state.security.verify,
-		Sandbox: state.platform.backend, OnRelease: output.children.release,
+		Files:   output.parentFiles,
+		Sandbox: state.platform.backend, OnRelease: output.children.release, Verify: state.security.verify, Workspace: execution.Workspace, SessionID: state.config.hookSessionID,
 	}); err != nil {
 		return fmt.Errorf("agent tool: %w", err)
 	}
@@ -184,8 +182,8 @@ func buildRLMOrchestration(
 	if err := rlmtool.Register(state.tools.registry, rlmtool.Options{
 		Store: store, Handles: state.tools.handleStore,
 		Governor: output.sharedGovernor, SubQuery: subQuery,
-		SessionID: state.config.hookSessionID, Root: root,
-		Workspace: execution.Workspace, Backend: state.platform.backend,
+		Root:    root,
+		Backend: state.platform.backend, Workspace: execution.Workspace, SessionID: state.config.hookSessionID,
 	}); err != nil {
 		return fmt.Errorf("rlm tools: %w", err)
 	}
@@ -218,9 +216,9 @@ func buildInteractionOrchestration(
 		return nil
 	}
 	if err := interacttool.Register(state.tools.registry, interacttool.Options{
-		Host: host, Workspace: execution.Workspace, Backend: state.platform.backend,
+		Host: host, Backend: state.platform.backend,
 		RLM: session.rlmStore, Governor: output.sharedGovernor, Vision: vision,
-		OnPlan: applyPlan,
+		OnPlan: applyPlan, Workspace: execution.Workspace,
 	}); err != nil {
 		return fmt.Errorf("interact tools: %w", err)
 	}

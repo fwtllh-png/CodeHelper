@@ -8,14 +8,44 @@
       "hotspot_file": "internal/host/tui/app.go",
       "baseline_lines": 294,
       "responsibilities": {
-        "model_orchestration": ["Model", "NewModel"],
-        "runtime_adapter": ["RuntimeHost", "Run", "openRuntimeHost"],
-        "command_adapter": ["dispatchSlash", "handleJobs", "attachImage"],
-        "state_projection": ["streamMsg", "StreamOutputMessage", "StreamDoneMessage"],
-        "panels": ["openPanel", "renderPanel", "panelAction"],
-        "session_state": ["sessionLoad", "sessionSave", "sessionSnapshot"],
-        "reducer": ["Update", "handleKey", "handleEnter"],
-        "presentation": ["View", "padBlockHeight"]
+        "model_orchestration": [
+          "Model",
+          "NewModel"
+        ],
+        "runtime_adapter": [
+          "RuntimeHost",
+          "Run",
+          "openRuntimeHost"
+        ],
+        "command_adapter": [
+          "dispatchSlash",
+          "handleJobs",
+          "attachImage"
+        ],
+        "state_projection": [
+          "streamMsg",
+          "StreamOutputMessage",
+          "StreamDoneMessage"
+        ],
+        "panels": [
+          "openPanel",
+          "renderPanel",
+          "panelAction"
+        ],
+        "session_state": [
+          "sessionLoad",
+          "sessionSave",
+          "sessionSnapshot"
+        ],
+        "reducer": [
+          "Update",
+          "handleKey",
+          "handleEnter"
+        ],
+        "presentation": [
+          "View",
+          "padBlockHeight"
+        ]
       },
       "responsibility_files": {
         "model_orchestration": "app.go",
@@ -73,20 +103,52 @@
       "id": "engine",
       "package": "./internal/runtime/agent/engine",
       "hotspot_file": "internal/runtime/agent/engine/engine.go",
-      "baseline_lines": 640,
+      "baseline_lines": 482,
       "responsibilities": {
-        "engine_core": ["Engine", "New", "OptionsSeed"],
-        "turn_orchestration": ["Run", "RunForTurn"],
-        "start_phase": ["WorkspaceTurnGate", "attachPending"],
-        "model_phase": ["modelStep", "consume"],
-        "tool_phase": ["runToolsWithCache"],
-        "approval_and_input": ["ControlPort", "ResolveApproval", "ResolveInput"],
-        "verification": ["verifyGate", "evaluate"],
-        "terminal": ["turnEmitter", "newTurnEmitter", "finish"],
-        "cancel": ["Cancel", "Steer"],
-        "history_and_recovery": ["History", "ReplaceHistory", "RevertWorkspace"],
-        "context_admission": ["admitToolResultHistory"],
-        "turn_kernel_coordinator": ["newEngineTurnKernelForTurn"]
+        "engine_core": [
+          "Engine",
+          "New",
+          "OptionsSeed"
+        ],
+        "turn_orchestration": [
+          "Execute"
+        ],
+        "start_phase": [
+          "WorkspaceTurnGate",
+          "attachPending"
+        ],
+        "model_phase": [
+          "modelStep"
+        ],
+        "tool_phase": [
+          "runToolsWithCache"
+        ],
+        "approval_and_input": [
+          "ControlPort",
+          "ResolveApproval",
+          "ResolveInput"
+        ],
+        "verification": [
+          "verifyGate",
+          "evaluate"
+        ],
+        "terminal": [
+          "turnEmitter",
+          "newTurnEmitter",
+          "finish"
+        ],
+        "cancel": [
+          "Cancel",
+          "Steer"
+        ],
+        "history_and_recovery": [
+          "History",
+          "ReplaceHistory",
+          "RevertWorkspace"
+        ],
+        "context_admission": [
+          "admitToolResultHistory"
+        ]
       },
       "responsibility_files": {
         "engine_core": "engine.go",
@@ -99,8 +161,7 @@
         "terminal": "terminal_handler.go",
         "cancel": "turn_scope.go",
         "history_and_recovery": "history_recovery.go",
-        "context_admission": "admission.go",
-        "turn_kernel_coordinator": "turn_kernel.go"
+        "context_admission": "admission.go"
       },
       "allowed_internal_imports": [
         "internal/adapter/content",
@@ -109,25 +170,22 @@
         "internal/adapter/model",
         "internal/adapter/provider",
         "internal/adapter/provider/assembly",
+        "internal/adapter/provider/wire",
         "internal/adapter/skill",
         "internal/adapter/tool",
         "internal/adapter/tool/guard",
         "internal/adapter/tool/interact",
+        "internal/adapter/tool/result",
         "internal/adapter/tool/toolsearch",
         "internal/observability/diagnostics",
         "internal/observability/telemetry",
         "internal/observability/trace",
         "internal/observability/verify",
         "internal/persist/workspacejournal",
-        "internal/runtime/agent/compact",
-        "internal/runtime/agent/contextstore",
-        "internal/runtime/agent/evidence",
-        "internal/runtime/agent/promptcontext",
-        "internal/runtime/agent/sessiondelta",
-        "internal/runtime/agent/toolfailure",
-        "internal/runtime/agent/turnexec",
+        "internal/runtime/agent/context",
+        "internal/runtime/agent/prompt",
+        "internal/runtime/agent/repository",
         "internal/runtime/agent/turnkernel",
-        "internal/runtime/agent/workingset",
         "internal/runtime/extension",
         "internal/runtime/protocol",
         "internal/security/policy"
@@ -147,7 +205,7 @@
         "internal/runtime/agent/engine/verify_gate_test.go",
         "internal/runtime/agent/engine/toolstream_test.go",
         "internal/runtime/agent/engine/turn_kernel_test.go",
-        "internal/runtime/agent/sessiondelta/delta_test.go"
+        "internal/runtime/agent/context/session_delta_test.go"
       ]
     },
     {
@@ -156,15 +214,47 @@
       "hotspot_file": "internal/config/config.go",
       "baseline_lines": 22,
       "responsibilities": {
-        "schema": ["Config", "Execution", "Overrides"],
-        "defaults": ["Defaults", "defaultDataDir"],
-        "load_orchestration": ["Load", "LoadOptions", "normalizeRoutes"],
-        "file_load": ["fileConfig", "applyFile", "applyExecutionFile"],
-        "environment_load": ["applyEnvironment", "applyEnvDuration"],
-        "override_load": ["applyOverrides"],
-        "validate": ["Validate", "validateRoute", "validateVerify"],
-        "provenance": ["Snapshot", "Source", "defaultProvenance"],
-        "reload": ["Manager", "Reload", "ReloadFrom"]
+        "schema": [
+          "Config",
+          "Execution",
+          "Overrides"
+        ],
+        "defaults": [
+          "Defaults",
+          "defaultDataDir"
+        ],
+        "load_orchestration": [
+          "Load",
+          "LoadOptions",
+          "normalizeRoutes"
+        ],
+        "file_load": [
+          "fileConfig",
+          "applyFile",
+          "applyExecutionFile"
+        ],
+        "environment_load": [
+          "applyEnvironment",
+          "applyEnvDuration"
+        ],
+        "override_load": [
+          "applyOverrides"
+        ],
+        "validate": [
+          "Validate",
+          "validateRoute",
+          "validateVerify"
+        ],
+        "provenance": [
+          "Snapshot",
+          "Source",
+          "defaultProvenance"
+        ],
+        "reload": [
+          "Manager",
+          "Reload",
+          "ReloadFrom"
+        ]
       },
       "responsibility_files": {
         "schema": "schema.go",
@@ -201,13 +291,39 @@
       "hotspot_file": "internal/runtime/protocol/message.go",
       "baseline_lines": 24,
       "responsibilities": {
-        "operation_wire": ["Operation", "OperationPayload", "NewOperation"],
-        "event_wire": ["Event", "EventData", "NewEvent", "IsTerminalEvent"],
-        "receipt_wire": ["ExecutionReceiptData", "ReceiptVerification"],
-        "codec": ["DecodeOperationPayload", "OperationKinds", "EventKinds", "decodeStrict"],
-        "validate": ["Validate"],
-        "schema": ["GenerateSchema", "MarshalSchema"],
-        "problem_and_error_normalization": ["Problem", "NewProblem", "CodeOf"]
+        "operation_wire": [
+          "Operation",
+          "OperationPayload",
+          "NewOperation"
+        ],
+        "event_wire": [
+          "Event",
+          "EventData",
+          "NewEvent",
+          "IsTerminalEvent"
+        ],
+        "receipt_wire": [
+          "ExecutionReceiptData",
+          "ReceiptVerification"
+        ],
+        "codec": [
+          "DecodeOperationPayload",
+          "OperationKinds",
+          "EventKinds",
+          "decodeStrict"
+        ],
+        "validate": [
+          "Validate"
+        ],
+        "schema": [
+          "GenerateSchema",
+          "MarshalSchema"
+        ],
+        "problem_and_error_normalization": [
+          "Problem",
+          "NewProblem",
+          "CodeOf"
+        ]
       },
       "responsibility_files": {
         "operation_wire": "operation.go",

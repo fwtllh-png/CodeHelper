@@ -95,8 +95,8 @@ func (e *shellCommandExecutor) Execute(
 	}
 	guard, err := toolguard.New(toolguard.Options{
 		Registry: e.registry, Policy: e.security.CloneSampling(),
-		Workspace: e.workspace, Hooks: &hooks.Adapter{Manager: e.hooks},
-		PermissionHooks: &hooks.Adapter{Manager: e.hooks},
+
+		PermissionHooks: &hooks.Adapter{Manager: e.hooks}, Workspace: e.workspace, Hooks: &hooks.Adapter{Manager: e.hooks},
 	})
 	if err != nil {
 		return failedOutcome(err), nil

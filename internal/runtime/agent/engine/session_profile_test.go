@@ -8,7 +8,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -32,9 +32,8 @@ func TestEffectiveProfilePermissionPreservesHostReadOnlyCeiling(t *testing.T) {
 }
 
 func TestProfilePermissionCeilingDistinguishesHostFromSessionNever(t *testing.T) {
-	sessionNever := Options{
-		Security:                 policy.DefaultRuntime(policy.ModeAct, policy.PermissionNever),
-		ProfilePermissionCeiling: policy.PermissionSuggest,
+	sessionNever := Options{SecurityConfig: SecurityConfig{Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionNever),
+		ProfilePermissionCeiling: policy.PermissionSuggest},
 	}
 	if profileReadOnlyFromOptions(sessionNever) {
 		t.Fatal("session-selected never became a Host read-only ceiling")
@@ -157,10 +156,10 @@ func TestSessionProfileToolAllowlistDoesNotBypassGuard(t *testing.T) {
 	if err := registry.Register(executor, nil); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{
-		Provider: &scriptedProvider{}, Route: testRoute(t), Tools: registry,
-		MaxOutputTokens: 128,
-		Authorize:       func(provider.ToolCall) bool { return false },
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t),
+		MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
+
+		Authorize: func(provider.ToolCall) bool { return false }},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -12,8 +12,7 @@ import (
 func TestParentCompletionWakeP95(t *testing.T) {
 	const samples = 64
 	manager, err := subagent.Open(subagent.Options{
-		Root: t.TempDir(), Gate: &fakeGate{},
-		Budget: subagent.Budget{
+		Root: t.TempDir(), Gate: &fakeGate{}, Budget: subagent.Budget{
 			MaxParallel: 1, MaxResident: 1, MaxTotal: samples,
 		},
 	})

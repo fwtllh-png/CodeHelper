@@ -95,9 +95,8 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 	if err := registry.Register(samplingTool{sampler: sampler, route: visionRoute}, nil); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{
-		Provider: scripted, Route: testRoute(t), Tools: registry,
-		Workspace: t.TempDir(), MaxOutputTokens: 128, MaxSteps: 3,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: scripted, Route: testRoute(t),
+		MaxOutputTokens: 128, MaxSteps: 3}, ToolConfig: ToolConfig{Tools: registry}, SecurityConfig: SecurityConfig{Workspace: t.TempDir()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -207,9 +206,8 @@ func TestASampleOutsideATurnIsStillServed(t *testing.T) {
 }
 
 func TestToolSampleUsageEmitFailureStopsTheStream(t *testing.T) {
-	engine, err := New(Options{
-		Provider: &scriptedProvider{streams: []provider.Stream{textStream("unused")}},
-		Route:    testRoute(t), Workspace: t.TempDir(), MaxOutputTokens: 128,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{streams: []provider.Stream{textStream("unused")}},
+		Route: testRoute(t), MaxOutputTokens: 128}, SecurityConfig: SecurityConfig{Workspace: t.TempDir()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -257,18 +255,17 @@ func TestToolSampleUsageProjectionFailureIsSecondary(t *testing.T) {
 	}, nil); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{
-		Provider: &scriptedProvider{streams: []provider.Stream{
-			&providerfixture.SliceStream{Events: []provider.StreamEvent{
-				{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
-					ID: "call-usage-failure", Name: "look", Arguments: `{}`,
-				}},
-				{Type: provider.EventMessageStop},
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
+				ID: "call-usage-failure", Name: "look", Arguments: `{}`,
 			}},
-			textStream("done"),
+			{Type: provider.EventMessageStop},
 		}},
-		Route: testRoute(t), Tools: registry,
-		Workspace: t.TempDir(), MaxOutputTokens: 128, MaxSteps: 2,
+		textStream("done"),
+	}},
+		Route:           testRoute(t),
+		MaxOutputTokens: 128, MaxSteps: 2}, ToolConfig: ToolConfig{Tools: registry}, SecurityConfig: SecurityConfig{Workspace: t.TempDir()},
 	})
 	if err != nil {
 		t.Fatal(err)

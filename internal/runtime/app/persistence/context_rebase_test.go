@@ -8,9 +8,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -32,31 +30,31 @@ func TestContextRebaseCommitIsAtomicIdempotentAndRecoverable(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	window, err := contextstore.NewWindowLedger("window-2", 2)
+	window, err := agentcontext.NewWindowLedger("window-2", 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := sessiondelta.WorkspaceBinding{
+	binding := agentcontext.WorkspaceBinding{
 		WorkspaceIdentity: "workspace:test",
 		JournalRevision:   1,
 	}
 	binding.Seal()
 	message := provider.TextMessage(provider.RoleUser, "retained")
 	message.Turn = 1
-	truth := compact.TruthCapsule{
-		SchemaVersion: compact.TruthSchemaVersion,
+	truth := agentcontext.TruthCapsule{
+		SchemaVersion: agentcontext.TruthSchemaVersion,
 		Generation:    1, CompatibilityHash: "sha256:compat",
 		ModelID: "model", ContextTokens: 8192,
-		DownshiftPolicy: compact.DownshiftRuntimeTruthOnly,
+		DownshiftPolicy: agentcontext.DownshiftRuntimeTruthOnly,
 	}
 	truth.Seal()
-	snapshot := sessiondelta.ContextSnapshot{
-		Version: sessiondelta.ContextSnapshotVersion,
+	snapshot := agentcontext.ContextSnapshot{
+		Version: agentcontext.ContextSnapshotVersion,
 		Epoch:   1, Revision: 2, Turn: 1,
 		History:   []provider.Message{message},
 		Workspace: binding, Window: window,
-		Compaction: sessiondelta.Compaction{
-			State: &sessiondelta.CompactionState{
+		Compaction: agentcontext.Compaction{
+			State: &agentcontext.CompactionState{
 				ID: "compact-1", ThreadID: "thread-1", TurnID: "turn-1",
 				Phase: "completed", PlanDigest: "sha256:plan",
 				Truth: truth, SourceWindowID: "window-1",
@@ -69,7 +67,7 @@ func TestContextRebaseCommitIsAtomicIdempotentAndRecoverable(t *testing.T) {
 	if err := snapshot.Seal(); err != nil {
 		t.Fatal(err)
 	}
-	envelope := sessiondelta.ContextRebaseEnvelope{
+	envelope := agentcontext.ContextRebaseEnvelope{
 		CompactionID: "compact-1", ThreadID: "thread-1", TurnID: "turn-1",
 		SourceWindowID: "window-1", TargetWindowID: "window-2",
 		SourceContextDigest: "sha256:source",
@@ -122,7 +120,7 @@ func TestContextRebaseCommitIsAtomicIdempotentAndRecoverable(t *testing.T) {
 	next := snapshot
 	next.Revision = 3
 	next.Turn = 2
-	next.Compaction.State = &sessiondelta.CompactionState{
+	next.Compaction.State = &agentcontext.CompactionState{
 		ID: "compact-2", ThreadID: "thread-1", TurnID: "turn-2",
 		Phase: "completed", PlanDigest: "sha256:plan-2",
 		Truth: truth, SourceWindowID: "window-2",
@@ -133,7 +131,7 @@ func TestContextRebaseCommitIsAtomicIdempotentAndRecoverable(t *testing.T) {
 	if err := next.Seal(); err != nil {
 		t.Fatal(err)
 	}
-	nextEnvelope := sessiondelta.ContextRebaseEnvelope{
+	nextEnvelope := agentcontext.ContextRebaseEnvelope{
 		CompactionID: "compact-2", ThreadID: "thread-1", TurnID: "turn-2",
 		SourceWindowID: "window-2", TargetWindowID: "window-2",
 		SourceContextDigest: snapshot.Digest,
@@ -231,11 +229,11 @@ func TestCurrentContextCommitPersistsForkBaselineAndCanRollBack(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	window, err := contextstore.NewWindowLedger("fork-window", 1)
+	window, err := agentcontext.NewWindowLedger("fork-window", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding, err := sessiondelta.CaptureWorkspaceBinding(
+	binding, err := agentcontext.CaptureWorkspaceBinding(
 		workspace,
 		"workspace:test",
 		1,
@@ -246,8 +244,8 @@ func TestCurrentContextCommitPersistsForkBaselineAndCanRollBack(t *testing.T) {
 	}
 	message := provider.TextMessage(provider.RoleUser, "fork baseline")
 	message.Turn = 1
-	snapshot := sessiondelta.ContextSnapshot{
-		Version: sessiondelta.ContextSnapshotVersion,
+	snapshot := agentcontext.ContextSnapshot{
+		Version: agentcontext.ContextSnapshotVersion,
 		Epoch:   1, Revision: 1, Turn: 1,
 		History:   []provider.Message{message},
 		Workspace: binding,
@@ -257,7 +255,7 @@ func TestCurrentContextCommitPersistsForkBaselineAndCanRollBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository := NewContextRebaseRepository(store)
-	commit := sessiondelta.CurrentContextCommit{
+	commit := agentcontext.CurrentContextCommit{
 		ID:             "checkpoint-fork-1",
 		ThreadID:       "thread-child",
 		TurnID:         "turn-1",

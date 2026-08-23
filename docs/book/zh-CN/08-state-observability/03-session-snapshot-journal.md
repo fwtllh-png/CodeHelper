@@ -27,7 +27,7 @@ test_paths:
   - internal/observability/retention/retention_test.go
   - internal/observability/supportbundle/bundle_test.go
 source_of_truth:
-  - internal/runtime/app/session_artifacts.go
+  - internal/persist/artifact/service.go
   - internal/persist/session/lifecycle.go
   - internal/persist/snapshot/repository.go
   - internal/persist/workspacejournal/journal.go

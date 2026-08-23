@@ -1,71 +1,11 @@
 package engine
 
 import (
-	"bytes"
 	"fmt"
-	"image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
-	"math"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
-
-func estimateMessageTokens(messages []provider.Message) uint64 {
-	characters := 0
-	for _, message := range messages {
-		for _, block := range message.Blocks {
-			characters += len([]rune(block.Text))
-			if block.ToolCall != nil {
-				characters += len([]rune(block.ToolCall.Name + block.ToolCall.Arguments))
-			}
-			if block.ToolResult != nil {
-				characters += len([]rune(block.ToolResult.Content))
-			}
-			if block.Type == provider.ContentImage && block.Attachment != nil {
-				characters += int(estimateImageTokens(*block.Attachment) * 4)
-			}
-		}
-	}
-	return uint64(max(1, (characters+3)/4))
-}
-
-func estimateImageTokens(attachment provider.Attachment) uint64 {
-	config, _, err := image.DecodeConfig(bytes.NewReader(attachment.Data))
-	if err != nil || config.Width <= 0 || config.Height <= 0 {
-		tiles := max(1, (len(attachment.Data)+(512<<10)-1)/(512<<10))
-		return 85 + uint64(170*tiles)
-	}
-	width, height := config.Width, config.Height
-	if longest := max(width, height); longest > 2048 {
-		width = max(1, width*2048/longest)
-		height = max(1, height*2048/longest)
-	}
-	if shortest := min(width, height); shortest > 768 {
-		width = max(1, width*768/shortest)
-		height = max(1, height*768/shortest)
-	}
-	tiles := ((width + 511) / 512) * ((height + 511) / 512)
-	return 85 + uint64(170*tiles)
-}
-
-func estimateCost(pricing model.Pricing, usage provider.Usage) float64 {
-	uncached := usage.InputTokens - min(usage.InputTokens, usage.CachedTokens)
-	cachedPrice := pricing.InputPerMillion
-	if pricing.CachedInputPerMillion != nil {
-		cachedPrice = *pricing.CachedInputPerMillion
-	}
-	return float64(uncached)/1_000_000*pricing.InputPerMillion +
-		float64(usage.CachedTokens)/1_000_000*cachedPrice +
-		float64(usage.OutputTokens)/1_000_000*pricing.OutputPerMillion
-}
-
-func pricingKnown(pricing model.Pricing, usage provider.Usage) bool {
-	return pricing.Known && (usage.CachedTokens == 0 || pricing.CachedInputPerMillion != nil)
-}
 
 func (e *Engine) checkBudget(
 	estimatedInput uint64,
@@ -74,82 +14,14 @@ func (e *Engine) checkBudget(
 	outputReserve uint64,
 ) (uint64, error) {
 	route := e.activeRoute()
-	contextTokens := route.Model().Limits.ContextTokens
-	if estimatedInput >= contextTokens {
-		return 0, protocol.NewProblem(
-			protocol.CodeResourceExhausted,
-			"context window has no remaining output capacity",
-			true,
-			nil,
-		)
-	}
-	outputReserve = min(outputReserve, contextTokens-estimatedInput)
-	usedTokens := e.usage.Total() + turnUsage.Total() + stepUsage.Total() + estimatedInput
-	if limit := e.options.Budget.MaxTokens; limit > 0 {
-		if usedTokens >= limit {
-			return 0, protocol.NewBudgetExhausted(
-				protocol.BudgetExhaustion{
-					Resource:  protocol.BudgetResourceTokens,
-					Scope:     e.turnBudgetScope(),
-					Used:      usedTokens,
-					Limit:     limit,
-					Projected: true,
-				},
-				nil,
-			)
-		}
-		outputReserve = min(outputReserve, limit-usedTokens)
-	}
-	if limit := e.options.Budget.MaxCostUSD; limit > 0 {
-		pricing := route.Model().Pricing
-		if !pricing.Known {
-			return 0, protocol.NewProblem(
-				protocol.CodeInvalidArgument, "cost budget requires known model pricing", false, nil,
-			)
-		}
-		projectedUsage := turnUsage
-		projectedUsage.Add(stepUsage)
-		projectedUsage.Add(provider.Usage{InputTokens: estimatedInput})
-		spent := e.costUSD + estimateCost(pricing, projectedUsage)
-		if spent >= limit {
-			return 0, protocol.NewBudgetExhausted(
-				protocol.BudgetExhaustion{
-					Resource:  protocol.BudgetResourceCostMicrounits,
-					Scope:     e.turnBudgetScope(),
-					Used:      uint64(math.Ceil(spent * 1e6)),
-					Limit:     max(uint64(1), uint64(math.Ceil(limit*1e6))),
-					Projected: true,
-				},
-				nil,
-			)
-		}
-		if pricing.OutputPerMillion > 0 {
-			affordable := uint64(math.Floor(
-				(limit - spent) * 1_000_000 / pricing.OutputPerMillion,
-			))
-			outputReserve = min(outputReserve, affordable)
-			if outputReserve == 0 {
-				return 0, protocol.NewBudgetExhausted(
-					protocol.BudgetExhaustion{
-						Resource:  protocol.BudgetResourceCostMicrounits,
-						Scope:     e.turnBudgetScope(),
-						Used:      uint64(math.Ceil(spent * 1e6)),
-						Limit:     max(uint64(1), uint64(math.Ceil(limit*1e6))),
-						Projected: true,
-					},
-					nil,
-				)
-			}
-		}
-	}
-	if outputReserve == 0 {
-		return 0, protocol.NewProblem(
-			protocol.CodeResourceExhausted,
-			"budget has no remaining output capacity",
-			false, nil,
-		)
-	}
-	return outputReserve, nil
+	return agentcontext.CheckBudget(agentcontext.BudgetRequest{
+		ContextTokens:  route.Model().Limits.ContextTokens,
+		EstimatedInput: estimatedInput, OutputReserve: outputReserve,
+		SessionUsage: e.usage, TurnUsage: turnUsage, StepUsage: stepUsage,
+		MaxTokens: e.options.Budget.MaxTokens, SpentCostUSD: e.costUSD,
+		MaxCostUSD: e.options.Budget.MaxCostUSD, Pricing: route.Model().Pricing,
+		Scope: e.turnBudgetScope(),
+	})
 }
 
 func (e *Engine) turnBudgetScope() string {
@@ -162,24 +34,18 @@ func (e *Engine) turnBudgetScope() string {
 
 func (e *Engine) budgetConvergence(used uint64) (provider.Message, bool) {
 	limit := e.options.Budget.MaxTokens
-	if limit == 0 {
+	stage, finishOnly := agentcontext.BudgetStage(used, limit)
+	if stage == 0 {
 		return provider.Message{}, false
-	}
-	if used < limit*70/100 {
-		return provider.Message{}, false
-	}
-	stage := uint8(1)
-	if used >= limit*85/100 {
-		stage = 2
 	}
 	scope := e.runningScope()
 	if scope == nil {
-		return provider.Message{}, stage == 2
+		return provider.Message{}, finishOnly
 	}
 	scope.mu.Lock()
 	if stage <= scope.state.budgetStage {
 		scope.mu.Unlock()
-		return provider.Message{}, stage == 2
+		return provider.Message{}, finishOnly
 	}
 	scope.state.budgetStage = stage
 	scope.mu.Unlock()
@@ -189,7 +55,7 @@ func (e *Engine) budgetConvergence(used uint64) (provider.Message, bool) {
 		used, limit, []string{"", "converge", "finish_only"}[stage],
 	))
 	message.Turn = e.turn
-	return message, stage == 2
+	return message, finishOnly
 }
 
 func (e *Engine) Usage() (provider.Usage, float64) {

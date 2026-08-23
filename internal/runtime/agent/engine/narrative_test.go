@@ -13,9 +13,7 @@ import (
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -24,7 +22,7 @@ func TestNarrativeReasoningEffortPrefersOff(t *testing.T) {
 	capabilities := model.Capabilities{
 		Reasoning: true, ReasoningEfforts: []string{"off", "low"},
 	}
-	if effort := narrativeReasoningEffort(capabilities); effort != "off" {
+	if effort := agentcontext.NarrativeReasoningEffort(capabilities); effort != "off" {
 		t.Fatalf("narrative reasoning effort = %q", effort)
 	}
 }
@@ -57,12 +55,12 @@ func TestNarrativeGenerationUsesSummaryRouteWithoutTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	truth := engine.buildTruthCapsule(compact.Summary{Goal: "continue"})
+	truth := engine.buildTruthCapsule(agentcontext.Summary{Goal: "continue"})
 	authority, err := truth.AuthorityDigest()
 	if err != nil {
 		t.Fatal(err)
 	}
-	input, err := compact.BuildNarrativeInput(
+	input, err := agentcontext.BuildNarrativeInput(
 		"thread-1",
 		"window-1",
 		authority,
@@ -112,11 +110,11 @@ func TestInlineNarrativeCommitsRebaseBeforeApplyingHistory(t *testing.T) {
 	engine.options.SummaryMaxBytes = 4 << 10
 	engine.options.Workspace = t.TempDir()
 	engine.options.WorkspaceIdentity = "workspace:test"
-	var committed *sessiondelta.ContextRebaseEnvelope
+	var committed *agentcontext.ContextRebaseEnvelope
 	var committedFacts turnkernel.DomainFactBatch
 	engine.options.Context.CommitRebaseWithFacts = func(
 		_ context.Context,
-		envelope sessiondelta.ContextRebaseEnvelope,
+		envelope agentcontext.ContextRebaseEnvelope,
 		facts turnkernel.DomainFactBatch,
 	) error {
 		copy := envelope
@@ -142,7 +140,7 @@ func TestInlineNarrativeCommitsRebaseBeforeApplyingHistory(t *testing.T) {
 		messageWithText(provider.RoleAssistant, strings.Repeat("answer ", 200), 1),
 		messageWithText(provider.RoleUser, "continue", 2),
 	}
-	input := contextstore.New(contextstore.Input{
+	input := agentcontext.NewMessageLedger(agentcontext.LedgerInput{
 		History: history,
 	}).Snapshot()
 	var events []Event
@@ -187,10 +185,10 @@ func TestInlineNarrativeFailureCommitsDeterministicRebase(t *testing.T) {
 	engine.options.SummaryMaxBytes = 4 << 10
 	engine.options.Workspace = t.TempDir()
 	engine.options.WorkspaceIdentity = "workspace:test"
-	var committed *sessiondelta.ContextRebaseEnvelope
+	var committed *agentcontext.ContextRebaseEnvelope
 	engine.options.Context.CommitRebase = func(
 		_ context.Context,
-		envelope sessiondelta.ContextRebaseEnvelope,
+		envelope agentcontext.ContextRebaseEnvelope,
 	) error {
 		copy := envelope
 		committed = &copy
@@ -222,7 +220,7 @@ func TestInlineNarrativeFailureCommitsDeterministicRebase(t *testing.T) {
 		),
 		messageWithText(provider.RoleUser, "continue", 2),
 	}
-	input := contextstore.New(contextstore.Input{History: history}).Snapshot()
+	input := agentcontext.NewMessageLedger(agentcontext.LedgerInput{History: history}).Snapshot()
 	var events []Event
 	_, err := engine.runCompactGate(
 		t.Context(),
@@ -241,7 +239,7 @@ func TestInlineNarrativeFailureCommitsDeterministicRebase(t *testing.T) {
 	}
 	if committed == nil || committed.NarrativeDigest != "" ||
 		engine.sessionRevision != 1 ||
-		!strings.Contains(history[0].Text(), compact.TruthMarkerStart) {
+		!strings.Contains(history[0].Text(), agentcontext.TruthMarkerStart) {
 		t.Fatalf(
 			"committed=%+v revision=%d history=%q events=%+v",
 			committed,
@@ -267,7 +265,7 @@ func TestPostTurnNarrativeRetriesRebaseWithoutResampling(t *testing.T) {
 	engine.options.Workspace = t.TempDir()
 	engine.options.WorkspaceIdentity = "workspace:test"
 	engine.sessionRevision = 1
-	truth := engine.buildTruthCapsule(compact.Summary{Goal: "continue"})
+	truth := engine.buildTruthCapsule(agentcontext.Summary{Goal: "continue"})
 	authority, err := truth.AuthorityDigest()
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +274,7 @@ func TestPostTurnNarrativeRetriesRebaseWithoutResampling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input, err := compact.BuildNarrativeInput(
+	input, err := agentcontext.BuildNarrativeInput(
 		"thread-1",
 		"window-1",
 		authority,
@@ -291,10 +289,10 @@ func TestPostTurnNarrativeRetriesRebaseWithoutResampling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rendered, err := compact.RenderStructured(
-		compact.Summary{Window: 1},
+	rendered, err := agentcontext.RenderStructured(
+		agentcontext.Summary{Window: 1},
 		truth,
-		compact.Narrative{},
+		agentcontext.Narrative{},
 		engine.summaryBudget(),
 	)
 	if err != nil {
@@ -304,19 +302,19 @@ func TestPostTurnNarrativeRetriesRebaseWithoutResampling(t *testing.T) {
 		provider.TextMessage(provider.RoleSystem, rendered.Text),
 		messageWithText(provider.RoleUser, "continue", 2),
 	}
-	engine.contextCompaction = &sessiondelta.CompactionState{
+	engine.context.SetCompaction(agentcontext.Compaction{State: &agentcontext.CompactionState{
 		ID: "compact-post", ThreadID: "thread-1", TurnID: "turn-1",
 		Phase:      "prepared",
 		PlanDigest: input.Digest, NarrativeInput: &input,
 		Truth: truth, SourceWindowID: "window-1",
-		TargetWindowID:      engine.window.ID,
+		TargetWindowID:      engine.context.Window().ID,
 		SourceContextDigest: "sha256:source",
-	}
-	var committed *sessiondelta.ContextRebaseEnvelope
+	}})
+	var committed *agentcontext.ContextRebaseEnvelope
 	commitAttempts := 0
 	engine.options.Context.CommitRebase = func(
 		_ context.Context,
-		envelope sessiondelta.ContextRebaseEnvelope,
+		envelope agentcontext.ContextRebaseEnvelope,
 	) error {
 		commitAttempts++
 		if commitAttempts == 1 {
@@ -380,7 +378,7 @@ func (p *sourceEchoNarrativeProvider) Stream(
 		return nil, errors.New("unexpected narrative request")
 	}
 	var payload struct {
-		Input compact.NarrativeInputArtifact `json:"input"`
+		Input agentcontext.NarrativeInputArtifact `json:"input"`
 	}
 	if err := json.Unmarshal(
 		[]byte(request.Messages[1].Text()),

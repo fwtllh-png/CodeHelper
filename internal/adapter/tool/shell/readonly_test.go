@@ -232,8 +232,7 @@ func TestShellRunExactWriteScopeIsGuardedAndObserved(t *testing.T) {
 		Registry: registry,
 		Policy: policy.DefaultRuntime(
 			policy.ModeAct, policy.PermissionBypass,
-		),
-		Workspace: root, Journal: journal,
+		), Workspace: root, Journal: journal,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -403,8 +402,7 @@ func TestShellRunWriteGlobsAreJournaledAsExactFiles(t *testing.T) {
 		Registry: registry,
 		Policy: policy.DefaultRuntime(
 			policy.ModeAct, policy.PermissionBypass,
-		),
-		Workspace: root, Journal: journal,
+		), Workspace: root, Journal: journal,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -490,11 +488,11 @@ func TestExecCommandRejectsInvalidHTTPSMethodBeforeApproval(t *testing.T) {
 			policy.ModeAct,
 			policy.PermissionSuggest,
 		),
-		Workspace: root,
+
 		Approvals: func(context.Context, toolguard.ApprovalRequest) error {
 			requested = true
 			return nil
-		},
+		}, Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)

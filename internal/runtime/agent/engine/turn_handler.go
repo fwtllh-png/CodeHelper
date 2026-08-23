@@ -2,77 +2,27 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
-	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
-func (e *Engine) Run(
-	ctx context.Context, prompt string, emit func(Event) error,
-) (Result, error) {
-	return e.RunForTurn(ctx, "", prompt, emit)
-}
-
-func (e *Engine) RunForTurn(
-	ctx context.Context, turnID, prompt string, emit func(Event) error,
-) (result Result, resultErr error) {
-	return e.RunForTurnWithAttachments(ctx, turnID, prompt, nil, emit)
-}
-
-// RunForTurnWithAttachments accepts Runtime-verified native images.
-func (e *Engine) RunForTurnWithAttachments(
+// Execute is the only production entry point for a Turn. It snapshots every
+// mutable Session dependency before opening the execution Scope.
+func (e *Engine) Execute(
 	ctx context.Context,
-	turnID, prompt string,
-	attachments []provider.Attachment,
-	emit func(Event) error,
-) (result Result, resultErr error) {
-	return e.RunForTurnWithIntentAndAttachments(
-		ctx,
-		turnID,
-		prompt,
-		protocol.TurnIntentAnswer,
-		attachments,
-		emit,
-	)
-}
-
-// RunForTurnWithIntentAndAttachments uses a host-supplied completion contract.
-func (e *Engine) RunForTurnWithIntentAndAttachments(
-	ctx context.Context,
-	turnID, prompt string,
-	intent protocol.TurnIntent,
-	attachments []provider.Attachment,
-	emit func(Event) error,
-) (result Result, resultErr error) {
-	return e.RunForTurnWithRequest(
-		ctx,
-		turnID,
-		TurnRequest{
-			Prompt: prompt, Intent: intent, Attachments: attachments,
-		},
-		emit,
-	)
-}
-
-// RunForTurnWithRequest starts a Turn with host-validated recovery metadata.
-func (e *Engine) RunForTurnWithRequest(
-	ctx context.Context,
-	turnID string,
 	request TurnRequest,
 	emit func(Event) error,
 ) (result Result, resultErr error) {
@@ -80,7 +30,6 @@ func (e *Engine) RunForTurnWithRequest(
 	defer e.mu.Unlock()
 	spec, persistedTurnID, err := e.prepareTurnSpec(
 		ctx,
-		turnID,
 		request,
 	)
 	if err != nil {
@@ -99,10 +48,9 @@ func (e *Engine) RunForTurnWithRequest(
 
 func (e *Engine) prepareTurnSpec(
 	ctx context.Context,
-	turnID string,
 	request TurnRequest,
 ) (TurnSpec, string, error) {
-	persistedTurnID := turnID
+	persistedTurnID := request.TurnID
 	if request.Prompt == "" {
 		return TurnSpec{}, "", errors.New("prompt is required")
 	}
@@ -135,15 +83,15 @@ func (e *Engine) prepareTurnSpec(
 			)
 		}
 	}
-	if turnID == "" {
-		turnID = fmt.Sprintf("engine-turn-%d", e.turn+1)
+	if request.TurnID == "" {
+		request.TurnID = fmt.Sprintf("engine-turn-%d", e.turn+1)
 	}
 	spec, err := SnapshotTurnSpec(
 		e.options,
 		TurnIdentity{
 			SessionID:       e.options.SessionID,
 			ThreadID:        tool.InvocationIdentityFrom(ctx).ThreadID,
-			TurnID:          turnID,
+			TurnID:          request.TurnID,
 			ProfileRevision: e.options.ProfileRevision,
 		},
 		request,
@@ -151,12 +99,17 @@ func (e *Engine) prepareTurnSpec(
 	if err != nil {
 		return TurnSpec{}, "", err
 	}
-	spec.World = contextstore.CloneWorldBaseline(e.world)
-	spec.Window = contextstore.CloneWindowLedger(e.window)
+	spec.World = e.context.World()
+	spec.Window = e.context.Window()
 	return spec, persistedTurnID, nil
 }
 
-type executionScope = turnexec.Scope[TurnSpec, Result, ScopeSnapshot]
+type executionScope = turnkernel.Lifecycle[
+	TurnSpec,
+	Result,
+	ScopeSnapshot,
+	ControlPort,
+]
 
 type scopeFactory struct {
 	engine          *Engine
@@ -184,11 +137,11 @@ func (f scopeFactory) open(spec TurnSpec) (*executionScope, error) {
 		persistedTurnID: f.persistedTurnID,
 		state:           newScopeState(f.engine),
 	}
-	scope.state.world = contextstore.CloneWorldBaseline(spec.World)
-	scope.state.window = contextstore.CloneWindowLedger(spec.Window)
+	scope.state.context.SetWorld(spec.World)
+	scope.state.context.SetWindow(spec.Window)
 	f.engine.publishScope(scope)
 	f.engine.attachPending(scope)
-	return turnexec.NewScope(
+	return turnkernel.NewLifecycle(
 		scope.Spec(),
 		scope.Run,
 		scope.Control(),
@@ -255,18 +208,17 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			)
 		}
 	}
-	kernel, err := newEngineTurnKernelForTurn(
-		kernelTurnIdentity{
-			turnID:          turnID,
-			profileRevision: spec.Identity.ProfileRevision,
+	kernel, err := turnkernel.NewRuntimeKernel(
+		turnkernel.KernelIdentity{
+			TurnID:          turnID,
+			ProfileRevision: spec.Identity.ProfileRevision,
 		},
 		intent,
 		string(spec.Mode),
 		spec.Request.Recovery,
 		draftResumed,
 		kernelDraftChanges,
-		recorder,
-		turnSpan.ID(),
+		kernelTransitionObserver(recorder, turnSpan.ID()),
 		e.options.TurnKernelObserver,
 		e.domainFactObserver(spec.Identity),
 		e.options.Metrics,
@@ -350,7 +302,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	kernelTerminalStarted := false
 	journalRevert := false
 	e.evidenceSet().BeginTurn(e.turn)
-	_, restoredTerminal := kernel.terminalDecision()
+	_, restoredTerminal := kernel.TerminalDecision()
 	if e.journal != nil && !restoredTerminal {
 		var journalErr error
 		switch {
@@ -370,10 +322,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			journalErr = e.journal.Begin(turnID)
 		}
 		if journalErr != nil {
-			if terminalErr := turnkernel.FailBeforeJournal(
+			if terminalErr := kernel.FailBeforeJournal(
 				context.Background(),
-				kernel.coordinator,
-				kernel.dispatcher,
 				journalErr.Error(),
 			); terminalErr != nil {
 				return result, errors.Join(journalErr, terminalErr)
@@ -384,25 +334,34 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			return result, journalErr
 		}
 		for _, change := range draftChanges {
-			s.state.diff.Record(TurnDiffEntry{
+			s.state.diff.Record(turnkernel.TurnDiffEntry{
 				Path: change.Path, Tool: "recovery_draft", Kind: change.Kind,
 			})
-			e.observePath(workingset.SourceEdited, change.Path)
-			e.observeChangeEvidence(tool.WorkspaceChange{
-				Path: change.Path, Kind: change.Kind,
-			})
+			e.contextAuthority().ObservePath(
+				e.options.Workspace,
+				agentcontext.SourceEdited,
+				e.turn,
+				change.Path,
+			)
+			e.contextAuthority().ObserveChange(
+				e.options.Workspace,
+				tool.WorkspaceChange{
+					Path: change.Path, Kind: change.Kind,
+				},
+				e.turn,
+			)
 		}
 	}
-	transaction := e.recoveryBaseHistory(spec.Request.Recovery)
+	transaction := agentcontext.RecoveryBaseHistory(e.history, e.historyTurns, spec.Request.Recovery)
 	terminal = newTurnEmitter(e.turn, emit)
 	terminal.setCommitted(e.applySessionDelta)
 	terminal.setCancelReason(func() string {
-		if reason := kernel.cancellationReason(); reason != "" {
+		if reason := kernel.CancellationReason(); reason != "" {
 			return reason
 		}
 		return e.cancellationReason()
 	})
-	terminal.setTerminalDecision(kernel.terminalDecision)
+	terminal.setTerminalDecision(kernel.TerminalDecision)
 	terminal.setRelease(releaseCoordinator)
 	send := terminal.send
 	defer terminal.finish(ctx, &result, &resultErr)
@@ -439,113 +398,71 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if kernelTerminalFinalized {
 			return nil
 		}
-		if resumed == nil {
-			if request.FailureMessage != "" || request.CancelReason != "" {
-				reason := request.FailureMessage
-				if reason == "" {
-					reason = request.CancelReason
-				}
-				if err := kernel.abortForTerminal(reason); err != nil {
-					return err
-				}
-				if err := kernel.discardOutput("terminal_failure"); err != nil {
-					return err
-				}
+		journal := turnkernel.JournalDriver{}
+		if e.journal != nil {
+			journal.Commit = func() error {
+				return e.journal.Commit(turnID)
 			}
-			_, err := kernel.requestTerminal(request)
-			if err != nil {
-				return err
-			}
-			kernelTerminalStarted = true
-		}
-		kind, hasJournal := kernel.journalEffectKind()
-		if hasJournal {
-			effect, err := kernel.startJournal(kind)
-			if err != nil {
-				return err
-			}
-			var receipt workspacejournal.Receipt
-			var journalErr error
-			switch kind {
-			case turnkernel.EffectCommitJournal:
-				if e.journal == nil {
-					journalErr = errors.New("workspace journal is unavailable")
-				} else {
-					journalErr = e.journal.Commit(turnID)
-				}
-			case turnkernel.EffectSuspendJournal:
-				if e.journal == nil {
-					journalErr = errors.New("workspace journal is unavailable")
-				} else {
-					journalErr = e.journal.Suspend(turnID)
-				}
+			journal.Suspend = func() error {
+				err := e.journal.Suspend(turnID)
 				if result.Verification != nil {
 					result.Verification.Workspace = &VerificationWorkspace{
 						Status: "draft",
 						Note:   "workspace changes are retained as a resumable, unverified draft",
 					}
 				}
-			case turnkernel.EffectRollbackJournal:
-				if e.journal == nil {
-					journalErr = errors.New("workspace journal is unavailable")
-				} else {
-					receipt, journalErr = e.journal.Rollback(
-						context.Background(),
-						turnID,
+				return err
+			}
+			journal.Rollback = func() error {
+				receipt, err := e.journal.Rollback(
+					context.Background(),
+					turnID,
+				)
+				if result.Verification != nil {
+					result.Verification.Workspace = verify.WorkspaceFromJournal(
+						receipt,
 					)
 				}
-				if result.Verification != nil {
-					result.Verification.Workspace = verificationWorkspace(receipt)
-				}
 				e.recordRollbackConflicts(receipt)
-			default:
-				journalErr = fmt.Errorf("unsupported journal effect %q", kind)
-			}
-			status := turnkernel.JournalRolledBack
-			switch kind {
-			case turnkernel.EffectCommitJournal:
-				status = turnkernel.JournalCommitted
-			case turnkernel.EffectSuspendJournal:
-				status = turnkernel.JournalSuspended
-			}
-			if err := kernel.finishJournal(
-				effect,
-				status,
-				journalErr,
-			); err != nil {
-				return errors.Join(journalErr, err)
-			}
-			if journalErr != nil {
-				terminal.suspendForRecovery()
-				result.State = AwaitingRecovery
-				fault := protocol.NewFault(
-					protocol.CodeUnavailable,
-					"workspace journal finalization is awaiting recovery",
-					true,
-					protocol.FaultMetadata{
-						Origin:         protocol.FaultOriginPersistence,
-						Disposition:    protocol.FaultRetryStep,
-						SideEffects:    protocol.SideEffectUnknown,
-						RecoveryAction: "retry the pending idempotent journal effect",
-					},
-					journalErr,
-				)
-				projectionErr := send(AwaitingRecovery, Event{
-					ErrorCode: fault.Code,
-					Error:     fault.Message,
-					Fault:     fault.Fault,
-				})
-				return errors.Join(fault, projectionErr)
+				return err
 			}
 		}
-		if err := kernel.finishTerminal(); err != nil {
+		finalized, err := kernel.FinalizeTerminal(
+			request,
+			resumed,
+			journal,
+		)
+		kernelTerminalStarted = kernelTerminalStarted || finalized.Started
+		kernelTerminalFinalized = finalized.Finalized
+		if err != nil {
 			return err
 		}
-		kernelTerminalFinalized = true
+		if finalized.Pending != nil {
+			terminal.suspendForRecovery()
+			result.State = AwaitingRecovery
+			fault := protocol.NewFault(
+				protocol.CodeUnavailable,
+				"workspace journal finalization is awaiting recovery",
+				true,
+				protocol.FaultMetadata{
+					Origin:         protocol.FaultOriginPersistence,
+					Disposition:    protocol.FaultRetryStep,
+					SideEffects:    protocol.SideEffectUnknown,
+					RecoveryAction: "retry the pending idempotent journal effect",
+				},
+				finalized.Pending,
+			)
+			projectionErr := send(AwaitingRecovery, Event{
+				ErrorCode: fault.Code,
+				Error:     fault.Message,
+				Fault:     fault.Fault,
+			})
+			return errors.Join(fault, projectionErr)
+		}
 		return nil
 	}
 	finishAcceptedCancellation := func() (bool, error) {
-		reason := kernel.cancellationReason()
+		reason := kernel.CancellationReason()
 		if reason == "" {
 			return false, nil
 		}
@@ -570,7 +487,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			resultErr = errors.Join(resultErr, err)
 		}
 	}()
-	if decision, resuming := kernel.committingDecision(); resuming {
+	if decision, resuming := kernel.CommittingDecision(); resuming {
 		kernelTerminalStarted = true
 		contextFinalized = true
 		terminal.setContextBudget(ContextBudgetSnapshot{})
@@ -582,7 +499,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		switch decision.Kind {
 		case turnkernel.TerminalCompleted:
-			result.Text = kernel.frozenOutput()
+			result.Text = kernel.FrozenOutput()
 			result.State = Completed
 			if err := send(Completed, Event{Text: result.Text}); err != nil {
 				return result, err
@@ -604,14 +521,14 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			return result, nil
 		}
 	}
-	if decision, terminalized := kernel.terminalDecision(); terminalized {
+	if decision, terminalized := kernel.TerminalDecision(); terminalized {
 		kernelTerminalStarted = true
 		kernelTerminalFinalized = true
 		contextFinalized = true
 		terminal.setContextBudget(ContextBudgetSnapshot{})
 		switch decision.Kind {
 		case turnkernel.TerminalCompleted:
-			result.Text = kernel.frozenOutput()
+			result.Text = kernel.FrozenOutput()
 			result.State = Completed
 			if err := send(Completed, Event{Text: result.Text}); err != nil {
 				return result, err
@@ -634,7 +551,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		return result, nil
 	}
-	if kernel.cancellationReason() != "" {
+	if kernel.CancellationReason() != "" {
 		return result, context.Canceled
 	}
 	if err := send(Preparing, Event{
@@ -658,8 +575,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	transaction = append(transaction, user)
 	executed := make(map[string]tool.Result)
 	cache := &toolResultCache{}
-	progress := kernel.progressObservation()
-	if recoveredCalls := kernel.pendingToolCalls(); len(recoveredCalls) != 0 {
+	progress := kernel.ProgressObservation()
+	if recoveredCalls := kernel.PendingToolCalls(); len(recoveredCalls) != 0 {
 		blocks := make([]provider.ContentBlock, 0, len(recoveredCalls))
 		for _, call := range recoveredCalls {
 			callCopy := call
@@ -672,9 +589,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			provider.ProducedAssistant(spec.Route, blocks, e.turn, nil),
 		)
 		toolCtx := ctx
-		if progress.stage == turnkernel.ProgressStageFinishOnly ||
-			kernel.convergence() != nil {
-			toolCtx = withFinishOnly(ctx)
+		if progress.Stage == turnkernel.ProgressStageFinishOnly ||
+			kernel.Convergence() != nil {
+			toolCtx = tool.WithFinishOnly(ctx)
 		}
 		results, err := e.runToolsWithCache(
 			toolCtx,
@@ -691,25 +608,15 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if err != nil {
 			return result, err
 		}
-		for index, call := range recoveredCalls {
-			data, err := json.Marshal(tool.ModelResult(call.Name, results[index]))
-			if err != nil {
-				return result, err
-			}
-			transaction = append(transaction, provider.Message{
-				Role: provider.RoleTool, Turn: e.turn,
-				Blocks: []provider.ContentBlock{{
-					Type: provider.ContentToolResult,
-					ToolResult: &provider.ToolResult{
-						CallID: call.ID, Content: string(data),
-						IsError: results[index].IsError,
-						Admission: adaptercontent.CloneAdmissionReceipt(
-							results[index].Admission,
-						),
-					},
-				}},
-			})
+		resultMessages, err := tool.ProjectModelResults(
+			recoveredCalls,
+			results,
+			e.turn,
+		)
+		if err != nil {
+			return result, err
 		}
+		transaction = append(transaction, resultMessages...)
 	}
 	// Tool-model usage is accounted separately from this route.
 	var sampled provider.Usage
@@ -722,22 +629,22 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	sampleReason := promptcontext.SampleNormal
 	convergenceFinalization := false
 	invalidateCompletion := func(reason string) error {
-		current := kernel.completion()
+		current := kernel.Completion()
 		if current == nil || !current.Accepted {
 			return nil
 		}
-		return kernel.invalidateCompletion(reason)
+		return kernel.InvalidateCompletion(reason)
 	}
 	completeTurn := func(outcome verifyOutcome) error {
 		if outcome.receipt != nil {
 			result.Verification = outcome.receipt
 		}
-		if err := kernel.validateFinalReadiness(); err != nil {
+		if err := kernel.ValidateFinalReadiness(); err != nil {
 			return err
 		}
 		pricing := e.activeRoute().Model().Pricing
-		cost := estimateCost(pricing, sampled) + toolSpent.cost
-		costKnown := pricingKnown(pricing, sampled) &&
+		cost := provider.EstimateCost(pricing, sampled) + toolSpent.cost
+		costKnown := provider.PricingKnown(pricing, sampled) &&
 			(toolSpent.samples == 0 || toolSpent.known)
 		result.CostUSD = cost
 		journalRevert = outcome.action == verifyActionReverted
@@ -749,7 +656,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if outcome.receipt != nil && outcome.receipt.Workspace == nil {
 			outcome.receipt.Workspace = &VerificationWorkspace{Status: "changed"}
 		}
-		output, err := kernel.releaseOutput()
+		output, err := kernel.ReleaseOutput()
 		if err != nil {
 			return err
 		}
@@ -787,7 +694,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if err := send(Completed, Event{
 			Text: finalText, Usage: &result.Usage, CostUSD: cost,
 			CostKnown: costKnown, Verification: outcome.receipt,
-			Completion: kernel.completionDeclaration(),
+			Completion: kernel.CompletionDeclaration(),
 			SecondaryIssues: append(
 				[]TerminalIssue(nil),
 				terminal.secondary...,
@@ -798,7 +705,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		return nil
 	}
 	blockTurn := func() error {
-		convergence := kernel.convergence()
+		convergence := kernel.Convergence()
 		if convergence == nil {
 			return protocol.NewProblem(
 				protocol.CodeInternal,
@@ -820,8 +727,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			nil,
 		)
 		pricing := e.activeRoute().Model().Pricing
-		cost := estimateCost(pricing, sampled) + toolSpent.cost
-		costKnown := pricingKnown(pricing, sampled) &&
+		cost := provider.EstimateCost(pricing, sampled) + toolSpent.cost
+		costKnown := provider.PricingKnown(pricing, sampled) &&
 			(toolSpent.samples == 0 || toolSpent.known)
 		result.CostUSD = cost
 		terminal.setPrimary(blocked)
@@ -851,7 +758,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		); err != nil {
 			return errors.Join(blocked, err)
 		}
-		convergence = kernel.convergence()
+		convergence = kernel.Convergence()
 		result.State = Failed
 		if err := send(Failed, Event{
 			ErrorCode:    protocol.CodeConflict,
@@ -861,7 +768,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			CostUSD:      cost,
 			CostKnown:    costKnown,
 			Verification: result.Verification,
-			Completion:   kernel.blockedCompletionDeclaration(),
+			Completion:   kernel.BlockedCompletionDeclaration(),
 			SecondaryIssues: append(
 				[]TerminalIssue(nil),
 				terminal.secondary...,
@@ -873,8 +780,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	}
 	advanceTurn := func() (bool, error) {
 		var outcome verifyOutcome
-		action, actionErr := kernel.evaluateTurnStep(
-			kernel.repairProgressKey(),
+		action, actionErr := kernel.EvaluateTurnStep(
+			kernel.RepairProgressKey(),
 		)
 		if actionErr != nil {
 			var exhausted *turnkernel.RepairBudgetExhaustedError
@@ -899,39 +806,39 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		switch action {
 		case turnkernel.StepActionRepairToolFailure:
-			if err := kernel.discardOutput("tool_failure_repair"); err != nil {
+			if err := kernel.DiscardOutput("tool_failure_repair"); err != nil {
 				return false, err
 			}
 			transaction = append(
 				transaction,
-				toolFailureCompletionFeedback(e.turn),
+				promptcontext.ToolFailureCompletionFeedback(e.turn),
 			)
 			sampleReason = promptcontext.SampleToolFailureRepair
 			return false, nil
 		case turnkernel.StepActionRepairCompletion:
-			if err := kernel.discardOutput("completion_repair"); err != nil {
+			if err := kernel.DiscardOutput("completion_repair"); err != nil {
 				return false, err
 			}
-			transaction = append(transaction, completionFeedback(e.turn))
+			transaction = append(transaction, promptcontext.CompletionFeedback(e.turn))
 			sampleReason = promptcontext.SampleCompletionRepair
 			return false, nil
 		case turnkernel.StepActionRepairWorkspace:
-			if err := kernel.discardOutput("workspace_change_repair"); err != nil {
+			if err := kernel.DiscardOutput("workspace_change_repair"); err != nil {
 				return false, err
 			}
 			transaction = append(
 				transaction,
-				workspaceChangeRequiredFeedback(e.turn),
+				promptcontext.WorkspaceChangeRequiredFeedback(e.turn),
 			)
 			sampleReason = promptcontext.SampleWorkspaceRepair
 			return false, nil
 		case turnkernel.StepActionRepairDeclaration:
-			if err := kernel.discardOutput("completion_declaration_repair"); err != nil {
+			if err := kernel.DiscardOutput("completion_declaration_repair"); err != nil {
 				return false, err
 			}
 			transaction = append(
 				transaction,
-				completionDeclarationFeedback(e.turn),
+				promptcontext.CompletionDeclarationFeedback(e.turn),
 			)
 			sampleReason = promptcontext.SampleDeclarationRepair
 			return false, nil
@@ -944,7 +851,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			result.Verification = outcome.receipt
 			switch outcome.action {
 			case verifyActionRepair:
-				if err := kernel.discardOutput("verification_repair"); err != nil {
+				if err := kernel.DiscardOutput("verification_repair"); err != nil {
 					return false, err
 				}
 				transaction = append(
@@ -956,21 +863,24 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			case verifyActionBlocked, verifyActionFailed:
 				return false, protocol.NewProblem(
 					protocol.CodeConflict,
-					outcome.receipt.problemMessage(),
+					outcome.receipt.ProblemMessage(),
 					false,
 					nil,
 				)
 			}
 		case turnkernel.StepActionFinalize:
-			if err := kernel.beginConvergenceFinalization(); err != nil {
+			if err := kernel.BeginConvergenceFinalization(); err != nil {
 				return false, err
 			}
 			transaction = append(
 				transaction,
-				convergenceFeedback(
+				promptcontext.ConvergenceFeedback(
 					e.turn,
-					kernel.convergence(),
-					kernel.hasProvisionalOutput(),
+					string(kernel.Convergence().Cause),
+					kernel.Convergence().Used,
+					kernel.Convergence().Limit,
+					string(kernel.Convergence().RepairKind),
+					kernel.HasProvisionalOutput(),
 				),
 			)
 			sampleReason = promptcontext.SampleConvergence
@@ -996,12 +906,12 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		return true, nil
 	}
 	for step := 0; ; step++ {
-		if e.appendSteering(&transaction) && kernel.completion() != nil {
+		if e.appendSteering(&transaction) && kernel.Completion() != nil {
 			if err := invalidateCompletion("turn_steered"); err != nil {
 				return result, err
 			}
 		}
-		if completion := kernel.completion(); completion != nil &&
+		if completion := kernel.Completion(); completion != nil &&
 			completion.Accepted {
 			completed, err := advanceTurn()
 			if err != nil {
@@ -1011,22 +921,26 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				return result, nil
 			}
 		}
-		if remaining := stepBudgetWarningRemaining(spec.Limits.MaxSteps, step); remaining > 0 {
-			transaction = append(transaction, stepBudgetFeedback(e.turn, remaining))
+		if remaining := promptcontext.StepBudgetWarningRemaining(spec.Limits.MaxSteps, step); remaining > 0 {
+			transaction = append(transaction, promptcontext.StepBudgetFeedback(e.turn, remaining))
 		}
 		progressSignature := e.progressSignature(kernel)
-		progress, err = kernel.observeProgress(progressSignature)
+		progress, err = kernel.ObserveProgress(progressSignature)
 		if err != nil {
 			return result, err
 		}
-		if progress.stageChanged &&
-			progress.stage != turnkernel.ProgressStageNone {
+		if progress.StageChanged &&
+			progress.Stage != turnkernel.ProgressStageNone {
 			transaction = append(
 				transaction,
-				noProgressFeedback(e.turn, progress),
+				promptcontext.NoProgressFeedback(
+					e.turn,
+					progress.NoProgressSamples,
+					string(progress.Stage),
+				),
 			)
 		}
-		if kernel.convergence() != nil && !convergenceFinalization {
+		if kernel.Convergence() != nil && !convergenceFinalization {
 			completed, err := advanceTurn()
 			if err != nil {
 				return result, err
@@ -1036,10 +950,10 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			}
 			continue
 		}
-		sampleID := kernel.pendingSampleID()
+		sampleID := kernel.PendingSampleID()
 		if sampleID == "" {
 			sampleID = fmt.Sprintf("turn-%d-step-%d", e.turn, step+1)
-			for kernel.hasSample(sampleID) {
+			for kernel.HasSample(sampleID) {
 				sampleID += "-recovered"
 			}
 		}
@@ -1051,26 +965,25 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}); err != nil {
 			return result, err
 		}
-		assembly := kernel.sampleAssembly(sampleID)
+		assembly := kernel.SampleAssembly(sampleID)
 		if assembly == nil {
 			assembly = providerassembly.NewResponseAssembly(sampleID)
 		}
-		if err := kernel.beginModelSample(ctx, sampleID); err != nil {
+		if err := kernel.BeginModelSample(ctx, sampleID); err != nil {
 			return result, err
 		}
 		var modelOutputContinued bool
 		var pendingInputInjected bool
 		var modelReplay *provider.ReplayState
-		var modelConvergence turnkernel.ConvergenceRequested
 		modelSend := func(state State, event Event) error {
 			if event.ProviderRetry != nil {
-				if err := kernel.providerRetry(
+				if err := kernel.ScheduleProviderRetry(
 					sampleID,
-					*event.ProviderRetry,
+					kernelProviderRetry(*event.ProviderRetry),
 				); err != nil {
 					return err
 				}
-				if err := kernel.beginModelSample(ctx, sampleID); err != nil {
+				if err := kernel.BeginModelSample(ctx, sampleID); err != nil {
 					return err
 				}
 			}
@@ -1087,17 +1000,16 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			result.Usage,
 			sampleID,
 			sampleReason,
-			kernel.providerRetries(sampleID),
-			progress.stage == turnkernel.ProgressStageFinishOnly &&
-				turnkernel.IsResearchIntent(kernel.intent()),
+			kernel.ProviderRetries(sampleID),
+			progress.Stage == turnkernel.ProgressStageFinishOnly &&
+				turnkernel.IsResearchIntent(kernel.Intent()),
 			convergenceFinalization,
 			&modelOutputContinued,
 			&pendingInputInjected,
 			&modelReplay,
-			&modelConvergence,
 			assembly,
 			func(current *providerassembly.ResponseAssembly) error {
-				return kernel.recordModelSampleProgress(
+				return kernel.RecordModelSampleProgress(
 					sampleID,
 					current,
 				)
@@ -1106,39 +1018,35 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		)
 		convergenceFinalization = false
 		sampleReason = promptcontext.SampleNormal
-		sampleCost := estimateCost(spec.Route.Model().Pricing, usage)
-		sampleCostKnown := pricingKnown(
+		sampleCost := provider.EstimateCost(spec.Route.Model().Pricing, usage)
+		sampleCostKnown := provider.PricingKnown(
 			spec.Route.Model().Pricing,
 			usage,
 		)
-		if finishErr := kernel.finishModelSample(
+		if finishErr := kernel.FinishModelSample(
 			sampleID,
-			blocksText(blocks),
+			providerassembly.BlocksText(blocks),
 			calls,
 			usage,
 			sampleCost,
 			sampleCostKnown,
 			modelOutputContinued,
 			err,
+			kernelProviderFailure(err),
 		); finishErr != nil {
 			return result, errors.Join(err, finishErr)
 		}
 		if err != nil {
 			return result, err
 		}
-		if modelConvergence.Cause != "" {
-			if err := kernel.requestConvergence(modelConvergence); err != nil {
-				return result, err
-			}
-		}
-		if pendingInputInjected && kernel.completion() != nil {
+		if pendingInputInjected && kernel.Completion() != nil {
 			if err := invalidateCompletion("input_injected"); err != nil {
 				return result, err
 			}
 		}
 		result.Usage.Add(usage)
 		sampled.Add(usage)
-		result.Reasoning += blocksReasoning(blocks)
+		result.Reasoning += providerassembly.BlocksReasoning(blocks)
 		for _, block := range blocks {
 			if block.Type == provider.ContentSearch && block.Search != nil {
 				result.Searches = append(result.Searches, *block.Search)
@@ -1149,7 +1057,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		if len(calls) == 0 {
 			if e.appendSteering(&transaction) {
-				if kernel.completion() != nil {
+				if kernel.Completion() != nil {
 					if err := invalidateCompletion("turn_steered"); err != nil {
 						return result, err
 					}
@@ -1193,8 +1101,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			),
 		)
 		toolCtx := ctx
-		if progress.stage == turnkernel.ProgressStageFinishOnly {
-			toolCtx = withFinishOnly(ctx)
+		if progress.Stage == turnkernel.ProgressStageFinishOnly {
+			toolCtx = tool.WithFinishOnly(ctx)
 		}
 		results, err := e.runToolsWithCache(
 			toolCtx,
@@ -1213,7 +1121,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		toolSpent.samples += spend.samples
 		if spend.samples != 0 {
 			toolSpent.known = toolSpent.known && spend.known
-			if usageErr := kernel.recordSupplementalUsage(
+			if usageErr := kernel.RecordSupplementalUsage(
 				"tool",
 				fmt.Sprintf("tool-batch-%d", step),
 				spend.usage,
@@ -1233,25 +1141,12 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if err := send(FeedingResults, Event{}); err != nil {
 			return result, err
 		}
-		for index, call := range calls {
-			data, err := json.Marshal(tool.ModelResult(call.Name, results[index]))
-			if err != nil {
-				return result, err
-			}
-			transaction = append(transaction, provider.Message{
-				Role: provider.RoleTool, Turn: e.turn,
-				Blocks: []provider.ContentBlock{{
-					Type: provider.ContentToolResult,
-					ToolResult: &provider.ToolResult{
-						CallID: call.ID, Content: string(data), IsError: results[index].IsError,
-						Admission: adaptercontent.CloneAdmissionReceipt(
-							results[index].Admission,
-						),
-					},
-				}},
-			})
+		resultMessages, err := tool.ProjectModelResults(calls, results, e.turn)
+		if err != nil {
+			return result, err
 		}
-		if completion := kernel.completion(); completion != nil &&
+		transaction = append(transaction, resultMessages...)
+		if completion := kernel.Completion(); completion != nil &&
 			completion.Accepted {
 			completed, err := advanceTurn()
 			if err != nil {
@@ -1264,158 +1159,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	}
 }
 
-func stepBudgetWarningRemaining(maxSteps, step int) int {
-	if maxSteps < 64 {
-		return 0
-	}
-	warning := min(32, max(16, maxSteps/4))
-	if step != maxSteps-warning {
-		return 0
-	}
-	return warning
-}
-
-func stepBudgetFeedback(turn uint64, remaining int) provider.Message {
-	message := provider.TextMessage(
-		provider.RoleUser,
-		fmt.Sprintf(
-			"[step_budget]\nremaining_steps=%d\nhard_limit=true\n"+
-				"Prioritize the requested deliverable now. Stop broad exploration, "+
-				"finish the smallest coherent verified result, and call turn_complete. "+
-				"If required work cannot fit, call turn_complete with status=incomplete "+
-				"and concrete pending_actions instead of waiting for forced termination.",
-			remaining,
-		),
-	)
-	message.Turn = turn
-	return message
-}
-
-func contextWindowFeedback(turn uint64) provider.Message {
-	message := provider.TextMessage(provider.RoleUser,
-		"[context_window]\nStop broad exploration. Complete the smallest coherent "+
-			"verified result and declare any concrete remaining work.")
-	message.Turn = turn
-	return message
-}
-
-func convergenceFeedback(
-	turn uint64,
-	convergence *turnkernel.ConvergenceState,
-	hasProvisionalOutput bool,
-) provider.Message {
-	cause, used, limit := "unknown", uint32(0), uint32(0)
-	repairKind := ""
-	if convergence != nil {
-		cause = string(convergence.Cause)
-		used = convergence.Used
-		limit = convergence.Limit
-		repairKind = string(convergence.RepairKind)
-	}
-	message := provider.TextMessage(
-		provider.RoleUser,
-		fmt.Sprintf(
-			"[convergence_finalization]\n"+
-				"cause=%s\nused=%d\nlimit=%d\nrepair_kind=%s\n"+
-				"captured_output=%t\nrequired_action=choose_structured_turn_state\n"+
-				"This is the single reserved finalization sample outside the normal "+
-				"work budget. Do not continue exploration, implementation, or a long "+
-				"user-facing body. Call turn_complete now. If all requested work is "+
-				"complete and captured_output=true, use status=complete, "+
-				"output_mode=preserve_provisional, a concise closing summary, and "+
-				"pending_actions=[]. If the captured output is unavailable, use "+
-				"output_mode=exact with the complete concise answer in summary. If any "+
-				"work remains, use status=incomplete with a concrete progress summary "+
-				"and pending_actions; Runtime will record a resumable blocked outcome. "+
-				"Use request_user_input only when completion genuinely depends on the user.",
-			cause,
-			used,
-			limit,
-			repairKind,
-			hasProvisionalOutput,
-		),
-	)
-	message.Turn = turn
-	return message
-}
-
-func workspaceChangeRequiredFeedback(turn uint64) provider.Message {
-	message := provider.TextMessage(
-		provider.RoleUser,
-		"[completion_check]\n"+
-			"required_action=perform_workspace_mutation\n"+
-			"observed_changes=0\n"+
-			"retry_original=false\n"+
-			"The workspace_change contract is not complete. Use a guarded mutation tool, "+
-			"then verify the observed changed paths before answering.",
-	)
-	message.Turn = turn
-	return message
-}
-
-func completionDeclarationFeedback(turn uint64) provider.Message {
-	message := provider.TextMessage(
-		provider.RoleUser,
-		"[completion_declaration_required]\n"+
-			"required_action=choose_structured_turn_state\n"+
-			"retry_original=false\n"+
-			"Provider message_stop ended only the previous model sample; it did not "+
-			"complete this Turn. If request_user_input is available and progress requires "+
-			"a user answer, call it now and wait in this same Turn. Otherwise report the "+
-			"actual work state through turn_complete. Use status=complete only when every "+
-			"requested action is finished, put the exact user-facing final response in "+
-			"summary, and set pending_actions=[]. The runtime publishes that summary "+
-			"without another model sample. If any work remains, use status=incomplete and "+
-			"list each concrete pending action; the runtime will continue this same Turn. "+
-			"The runtime binds any changed paths and accepted verification evidence automatically. "+
-			"Do not move requested work to a future turn.",
-	)
-	message.Turn = turn
-	return message
-}
-
-func completionFeedback(turn uint64) provider.Message {
-	message := provider.TextMessage(provider.RoleUser, `[completion_required]
-Your previous model sample did not select a structured Turn state. Do not stop
-at reasoning or narration of future work. Call the required Tool now, call
-request_user_input if available and genuinely blocked on the user, or call
-turn_complete. For status=complete, put the exact user-facing final response in
-summary; ordinary assistant text cannot complete this Turn.`)
-	message.Turn = turn
-	return message
-}
-
-func toolFailureCompletionFeedback(turn uint64) provider.Message {
-	message := provider.TextMessage(provider.RoleUser, `[tool_failure_resolution_required]
-The latest tool batch contained an explicit failure. Do not stop after
-describing a future retry. Follow required_action and retry_original from the
-failed Tool Result. Never repeat the same call when retry_original=false.
-Otherwise call the required tool now to resolve the failure, or provide a
-concise final answer that clearly reports the unresolved failure and its impact.`)
-	message.Turn = turn
-	return message
-}
-
 func errorText(err error) string {
 	if err == nil {
 		return "turn failed"
 	}
 	return err.Error()
-}
-
-func verificationWorkspace(receipt workspacejournal.Receipt) *VerificationWorkspace {
-	conflicts := make([]string, 0, len(receipt.Conflicts))
-	for _, conflict := range receipt.Conflicts {
-		conflicts = append(conflicts, conflict.Path)
-	}
-	status := "restored"
-	if len(conflicts) != 0 {
-		status = "conflicted"
-	}
-	return &VerificationWorkspace{
-		Status: status, Restored: append([]string(nil), receipt.Restored...),
-		Conflicts:                  conflicts,
-		NonFileSideEffectsReverted: receipt.NonFileSideEffectsReverted,
-		Note:                       receipt.NonFileSideEffectsNote,
-	}
 }

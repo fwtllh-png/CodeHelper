@@ -15,7 +15,8 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	rlmlib "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -31,100 +32,14 @@ type Options struct {
 	OnPlan    func(Plan) error
 }
 
-// Plan step statuses. They are the model's own report of where it is, not an
-// inference: the runtime observes files and commands, never intent, so a step is
-// done when the model says it is done.
 const (
-	StepPending    = "pending"
-	StepInProgress = "in_progress"
-	StepDone       = "done"
+	StepPending    = agentcontext.StepPending
+	StepInProgress = agentcontext.StepInProgress
+	StepDone       = agentcontext.StepDone
 )
 
-// PlanStep is one step of a plan and how far along it is.
-//
-// The status exists so a compaction can say what is left rather than replaying
-// the whole plan. Without it a summary can only carry the plan verbatim, which
-// tells the next turn what the task was but not where it stopped.
-type PlanStep struct {
-	Title  string `json:"title"`
-	Status string `json:"status,omitempty"`
-}
-
-// UnmarshalJSON accepts a bare string as well as an object, so plans a model
-// already wrote — and histories already recorded — keep deserializing. The tool
-// schema only advertises the object form, which is how the new shape spreads
-// without a flag day.
-func (s *PlanStep) UnmarshalJSON(data []byte) error {
-	trimmed := strings.TrimSpace(string(data))
-	if strings.HasPrefix(trimmed, `"`) {
-		var title string
-		if err := json.Unmarshal(data, &title); err != nil {
-			return err
-		}
-		*s = PlanStep{Title: title, Status: StepPending}
-		return nil
-	}
-	var object struct {
-		Title  string `json:"title"`
-		Status string `json:"status"`
-	}
-	if err := json.Unmarshal(data, &object); err != nil {
-		return err
-	}
-	status := strings.TrimSpace(strings.ToLower(object.Status))
-	switch status {
-	case StepPending, StepInProgress, StepDone:
-	default:
-		status = StepPending
-	}
-	*s = PlanStep{Title: object.Title, Status: status}
-	return nil
-}
-
-// Done reports whether the step needs no further work.
-func (s PlanStep) Done() bool { return s.Status == StepDone }
-
-// Clone returns a copy that shares no slice with the original, so a forked
-// thread can rewrite its plan without editing its parent's.
-func (p Plan) Clone() Plan {
-	clone := p
-	clone.Steps = append([]PlanStep(nil), p.Steps...)
-	clone.SourcesUsed = append([]string(nil), p.SourcesUsed...)
-	clone.CriticalFiles = append([]string(nil), p.CriticalFiles...)
-	clone.Constraints = append([]string(nil), p.Constraints...)
-	return clone
-}
-
-// OutstandingSteps returns the steps still to do and how many are finished. A
-// compaction reports both: a list that shrinks silently reads like a task that
-// shrank.
-func (p Plan) OutstandingSteps() ([]PlanStep, int) {
-	var open []PlanStep
-	done := 0
-	for _, step := range p.Steps {
-		if step.Done() {
-			done++
-			continue
-		}
-		open = append(open, step)
-	}
-	return open, done
-}
-
-type Plan struct {
-	Title               string     `json:"title,omitempty"`
-	Steps               []PlanStep `json:"steps"`
-	Notes               string     `json:"notes,omitempty"`
-	Objective           string     `json:"objective,omitempty"`
-	ContextSummary      string     `json:"context_summary,omitempty"`
-	SourcesUsed         []string   `json:"sources_used,omitempty"`
-	CriticalFiles       []string   `json:"critical_files,omitempty"`
-	Constraints         []string   `json:"constraints,omitempty"`
-	RecommendedApproach string     `json:"recommended_approach,omitempty"`
-	VerificationPlan    string     `json:"verification_plan,omitempty"`
-	RisksAndUnknowns    string     `json:"risks_and_unknowns,omitempty"`
-	HandoffPacket       string     `json:"handoff_packet,omitempty"`
-}
+type PlanStep = agentcontext.PlanStep
+type Plan = agentcontext.Plan
 
 type Tools struct {
 	host      *Host

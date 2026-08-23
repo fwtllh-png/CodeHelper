@@ -23,8 +23,8 @@ func TestTaskCreateGateRunRead(t *testing.T) {
 	repo := testRepo(t, workspace)
 	registry := tool.NewRegistry(nil, nil)
 	if err := tasktool.Register(registry, tasktool.Options{
-		Repository: repo, SessionID: "session-1", Workspace: workspace,
-		Backend: passthroughBackend{},
+		Repository: repo,
+		Backend:    passthroughBackend{}, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -64,8 +64,8 @@ func TestTaskCancelAndWorkBoard(t *testing.T) {
 	repo := testRepo(t, workspace)
 	registry := tool.NewRegistry(nil, nil)
 	if err := tasktool.Register(registry, tasktool.Options{
-		Repository: repo, SessionID: "session-1", Workspace: workspace,
-		Backend: passthroughBackend{},
+		Repository: repo,
+		Backend:    passthroughBackend{}, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -102,8 +102,8 @@ func TestTaskSurvivesReopen(t *testing.T) {
 	repo := taskstate.NewSQLiteRepository(store)
 	registry := tool.NewRegistry(nil, nil)
 	if err := tasktool.Register(registry, tasktool.Options{
-		Repository: repo, SessionID: "session-1", Workspace: workspace,
-		Backend: passthroughBackend{},
+		Repository: repo,
+		Backend:    passthroughBackend{}, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -130,8 +130,8 @@ func TestTaskCreateMapsExecutableKindToWorkGraph(t *testing.T) {
 	repo := testRepo(t, workspace)
 	registry := tool.NewRegistry(nil, nil)
 	if err := tasktool.Register(registry, tasktool.Options{
-		Repository: repo, SessionID: "session-1", Workspace: workspace,
-		Backend: passthroughBackend{},
+		Repository: repo,
+		Backend:    passthroughBackend{}, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -172,16 +172,15 @@ func TestTaskCancelFailClosedWithoutApprovalHost(t *testing.T) {
 	repo := testRepo(t, workspace)
 	registry := tool.NewRegistry(nil, nil)
 	if err := tasktool.Register(registry, tasktool.Options{
-		Repository: repo, SessionID: "session-1", Workspace: workspace,
-		Backend: passthroughBackend{},
+		Repository: repo,
+		Backend:    passthroughBackend{}, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	created := execute(t, registry, "task_create", map[string]any{"title": "needs-approval"})
 	guard, err := toolguard.New(toolguard.Options{
-		Registry:  registry,
-		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto),
-		Workspace: workspace,
+		Registry: registry,
+		Policy:   policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto), Workspace: workspace,
 	})
 	if err != nil {
 		t.Fatal(err)

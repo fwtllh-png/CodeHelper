@@ -5,14 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -27,7 +25,7 @@ func (e *Engine) compact() *CompactionReceipt {
 func (e *Engine) runCompactGate(
 	ctx context.Context,
 	history *[]provider.Message,
-	input contextstore.Snapshot,
+	input agentcontext.MessageSnapshot,
 	outputReserve uint64,
 	phase string,
 	allowCurrentTurn bool,
@@ -37,6 +35,39 @@ func (e *Engine) runCompactGate(
 	window, err := e.measureTokenWindow(input, outputReserve)
 	if err != nil {
 		return tokenWindow{}, err
+	}
+	if !e.activeRoute().Model().Capabilities.IncrementalResponses {
+		originalMessages := len(*history)
+		originalBytes := agentcontext.HistoryBytes(*history)
+		originalTokens := window.active
+		pruned := e.pruneConsumedToolResultSurfaces(history)
+		if pruned.results != 0 {
+			input = input.WithHistory(*history)
+			window, err = e.measureTokenWindow(input, outputReserve)
+			if err != nil {
+				return tokenWindow{}, err
+			}
+			authority := e.buildTruthCapsule(e.buildCompactSummary(nil))
+			authorityDigest, digestErr := authority.AuthorityDigest()
+			if digestErr != nil {
+				return tokenWindow{}, digestErr
+			}
+			receipt := promptcontext.NewSurfaceBudgetReceipt(
+				originalMessages,
+				originalBytes,
+				agentcontext.HistoryBytes(*history),
+				originalTokens,
+				window.active,
+				pruned.results,
+				pruned.bytes,
+				authorityDigest,
+				e.contextReceipts(),
+			)
+			receipt.Phase = phase
+			if err := send(Compacting, Event{Compaction: receipt}); err != nil {
+				return tokenWindow{}, err
+			}
+		}
 	}
 	receipt := e.compactHistoryWithPolicy(
 		history, false, allowCurrentTurn, input, outputReserve,
@@ -70,7 +101,7 @@ func (e *Engine) runTerminalCompactGate(
 	allowCurrentTurn bool,
 	send func(State, Event) error,
 ) error {
-	input := contextstore.New(contextstore.Input{Stable: e.promptMessages()}).Snapshot()
+	input := agentcontext.NewMessageLedger(agentcontext.LedgerInput{Stable: e.promptMessages()}).Snapshot()
 	window, err := e.runCompactGate(
 		context.Background(),
 		history, input, 0,
@@ -84,11 +115,11 @@ func (e *Engine) runTerminalCompactGate(
 
 type tokenWindow struct {
 	estimated, total, active, hardLimit, compactLimit uint64
-	accounting                                        contextstore.WindowProjection
+	accounting                                        agentcontext.WindowProjection
 }
 
 func (e *Engine) measureTokenWindow(
-	input contextstore.Snapshot,
+	input agentcontext.MessageSnapshot,
 	outputReserve uint64,
 ) (tokenWindow, error) {
 	measured, err := input.Measure("", "", e.options.TokenEstimator)
@@ -113,19 +144,19 @@ func (e *Engine) measureTokenWindow(
 }
 
 func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudgetSnapshot {
-	value := contextstore.Input{
+	value := agentcontext.LedgerInput{
 		Stable: e.promptMessages(), History: history,
 	}
 	if scope := e.runningScope(); scope != nil {
 		scope.mu.Lock()
 		if scope.state.contextLedger != nil {
 			snapshot := scope.state.contextLedger.Snapshot()
-			value.Stable = snapshot.Partition(contextstore.KindStable)
+			value.Stable = snapshot.Partition(agentcontext.KindStable)
 			value.Definitions = snapshot.Definitions()
 		}
 		scope.mu.Unlock()
 	}
-	input := contextstore.New(value).Snapshot()
+	input := agentcontext.NewMessageLedger(value).Snapshot()
 	window, _ := e.measureTokenWindow(input, e.maxOutputFor(e.activeRoute()))
 	return ContextBudgetSnapshot{
 		ActiveTokens: window.active, AutoCompactTokens: window.compactLimit,
@@ -162,13 +193,11 @@ func (e *Engine) CompactForced() *CompactionReceipt {
 }
 
 func (e *Engine) reconcileWorldBaseline(history []provider.Message) {
-	if !contextstore.WorldBaselineValid(history, e.world) {
-		e.world = contextstore.WorldBaseline{}
-	}
+	e.context.ReconcileWorld(history)
 }
 
 func (e *Engine) compactHistory(history *[]provider.Message, force bool) *CompactionReceipt {
-	input := contextstore.New(contextstore.Input{Stable: e.promptMessages()}).Snapshot()
+	input := agentcontext.NewMessageLedger(agentcontext.LedgerInput{Stable: e.promptMessages()}).Snapshot()
 	return e.compactHistoryWithPolicy(
 		history, force, false, input, 0,
 	)
@@ -178,7 +207,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	history *[]provider.Message,
 	force bool,
 	allowCurrentTurn bool,
-	input contextstore.Snapshot,
+	input agentcontext.MessageSnapshot,
 	outputReserve uint64,
 ) *CompactionReceipt {
 	if e.options.Hooks != nil {
@@ -206,171 +235,90 @@ func (e *Engine) compactHistoryWithPolicy(
 		}
 		return receipt
 	}
-	input = input.WithHistory(*history)
-	sourceContextDigest, _ := input.Digest()
-	originalWindow, err := e.measureTokenWindow(input, outputReserve)
-	if err != nil || !force && originalWindow.active < originalWindow.compactLimit &&
-		originalWindow.total <= originalWindow.hardLimit {
-		return nil
-	}
-	size := historyBytes(*history)
-	originalMessages := len(*history)
 	authority := e.buildTruthCapsule(e.buildCompactSummary(nil))
 	authorityDigest, err := authority.AuthorityDigest()
 	if err != nil {
 		return nil
 	}
-	workingHistory := cloneMessages(*history)
-	pruned, prunedWindow, err := e.pruneToolResultSurfaces(
-		&workingHistory,
-		input,
-		outputReserve,
-		force,
+	selection, err := agentcontext.SelectCompaction(
+		agentcontext.CompactionSelectionRequest{
+			History: *history, Force: force,
+			AllowCurrentTurn: allowCurrentTurn,
+			Input:            input, OutputReserve: outputReserve,
+			RecentTailTurns:     e.options.Context.RecentTailTurns,
+			RecentTailMaxTokens: e.options.Context.RecentTailMaxTokens,
+			WindowScope:         e.options.Context.Window.Scope,
+			EmergencyLimit:      e.emergencyCompactLimit(),
+			AuthorityDigest:     authorityDigest,
+			EstimateMessages:    agentcontext.EstimateMessageTokens,
+			Measure: func(
+				snapshot agentcontext.MessageSnapshot,
+				reserve uint64,
+			) (agentcontext.WindowMeasurement, error) {
+				window, err := e.measureTokenWindow(snapshot, reserve)
+				return agentcontext.WindowMeasurement{
+					Estimated: window.estimated, Total: window.total,
+					Active: window.active, HardLimit: window.hardLimit,
+					CompactLimit: window.compactLimit,
+					Projection:   window.accounting,
+				}, err
+			},
+			Prune: func(
+				history *[]provider.Message,
+				snapshot agentcontext.MessageSnapshot,
+				reserve uint64,
+				forced bool,
+			) (
+				agentcontext.SurfacePruning,
+				agentcontext.WindowMeasurement,
+				error,
+			) {
+				stats, window, err := e.pruneToolResultSurfaces(
+					history,
+					snapshot,
+					reserve,
+					forced,
+				)
+				return agentcontext.SurfacePruning{
+						Results: stats.results,
+						Bytes:   stats.bytes,
+					}, agentcontext.WindowMeasurement{
+						Estimated: window.estimated, Total: window.total,
+						Active: window.active, HardLimit: window.hardLimit,
+						CompactLimit: window.compactLimit,
+						Projection:   window.accounting,
+					}, err
+			},
+			Build: e.buildCompactionCandidate,
+		},
 	)
 	if err != nil {
 		return nil
 	}
-	if pruned.results != 0 &&
-		!toolPairIdentityEquivalent(*history, workingHistory) {
-		return nil
+	if selection.Candidate == nil {
+		if selection.Pruning.Results == 0 {
+			return nil
+		}
+		*history = selection.History
+		return finish(promptcontext.NewPruningReceipt(
+			selection,
+			authorityDigest,
+			e.contextReceipts(),
+		))
 	}
-	pruningReceipt := func() *CompactionReceipt {
-		return &CompactionReceipt{
-			OriginalMessages:    originalMessages,
-			OriginalBytes:       size,
-			RetainedBytes:       historyBytes(workingHistory),
-			OriginalTokens:      originalWindow.active,
-			RetainedTokens:      prunedWindow.active,
-			TruncationReason:    "tool_result_surface_pruning",
-			PrunedToolResults:   pruned.results,
-			PrunedBytes:         pruned.bytes,
-			AuthorityDigest:     authorityDigest,
-			AuthorityEquivalent: true,
-			ContextReceipts:     e.contextReceipts(),
-		}
-	}
-	pruningEnough := pruned.results != 0 &&
-		(prunedWindow.active <= prunedWindow.compactLimit &&
-			prunedWindow.total <= prunedWindow.hardLimit ||
-			force && originalWindow.total <= originalWindow.hardLimit)
-	if pruningEnough {
-		*history = workingHistory
-		return finish(pruningReceipt())
-	}
-	workingWindow := originalWindow
-	if pruned.results != 0 {
-		workingWindow = prunedWindow
-	}
-	target := originalWindow.compactLimit
-	cuts := e.retainedTailCuts(workingHistory, allowCurrentTurn)
-	if len(cuts) == 0 {
-		if pruned.results != 0 {
-			return finish(pruningReceipt())
-		}
-		return nil
-	}
-	var selected *compactionCandidate
-	for _, cut := range cuts {
-		candidate, buildErr := e.buildCompactionCandidate(
-			workingHistory,
-			cut,
-			true,
-		)
-		if buildErr != nil {
-			continue
-		}
-		input = input.WithHistory(candidate.history)
-		window, estimateErr := e.measureTokenWindow(input, outputReserve)
-		if estimateErr == nil && window.active > target {
-			minimal, minimalErr := e.buildCompactionCandidate(
-				workingHistory,
-				cut,
-				false,
-			)
-			if minimalErr == nil {
-				minimalInput := input.WithHistory(minimal.history)
-				minimalWindow, measureErr := e.measureTokenWindow(
-					minimalInput,
-					outputReserve,
-				)
-				if measureErr == nil && minimalWindow.active < window.active {
-					candidate, window = minimal, minimalWindow
-				}
-			}
-		}
-		if estimateErr != nil ||
-			window.active >= workingWindow.active &&
-				window.total >= workingWindow.total {
-			continue
-		}
-		if !toolPairsClosed(candidate.history) {
-			continue
-		}
-		required := candidate.authority
-		if err := candidate.capsule.ContainsAuthority(required); err != nil {
-			continue
-		}
-		authorityDigest, err := required.AuthorityDigest()
-		if err != nil {
-			continue
-		}
-		candidate.authorityDigest = authorityDigest
-		candidate.sourceWindowID = originalWindow.accounting.ID
-		candidate.sourceContextDigest = sourceContextDigest
-		candidate.retainedTokens = window.active
-		if force || window.active <= target ||
-			e.options.Context.Window.Scope == compactScopeBodyAfterPrefix &&
-				originalWindow.total > originalWindow.hardLimit &&
-				window.total <= window.hardLimit {
-			selected = &candidate
-			break
-		}
-	}
-	if selected == nil {
-		if pruned.results != 0 {
-			*history = workingHistory
-			return finish(pruningReceipt())
-		}
-		return nil
-	}
-	*history = selected.history
+	selected := selection.Candidate
+	*history = selected.History
 	workingSet, criticalPaths := e.compactionPaths()
-	receipt := &CompactionReceipt{
-		OriginalMessages: originalMessages, RemovedMessages: selected.cut,
-		OriginalBytes: size, RetainedBytes: selected.retainedBytes,
-		OriginalTokens: originalWindow.active, RetainedTokens: selected.retainedTokens,
-		SummaryOriginalBytes: digestOriginalBytes(selected.toSummarize),
-		SummaryRetainedBytes: len(selected.rendered),
-		SummaryTruncated:     selected.summaryTruncated,
-		Sections:             selected.sections,
-		RemovedTurns:         uniqueMessageTurns(selected.removed),
-		PrunedToolResults:    pruned.results,
-		PrunedBytes:          pruned.bytes,
-		TruthGeneration:      selected.truth.Generation,
-		TruthEntities:        selected.truth.EntityCount,
-		CriticalFacts:        selected.truth.CriticalEntityCount,
-		CompatibilityHash:    selected.compatibilityHash,
-		CompatibilityMatched: selected.truth.CompatibilityMatched,
-		AuthorityDigest:      selected.authorityDigest,
-		AuthorityEquivalent:  true,
-		ModelDownshifted:     selected.truth.ModelDownshifted,
-		DownshiftPolicy:      compact.DownshiftRuntimeTruthOnly,
-		NarrativeIncluded:    selected.narrativeIncluded,
-		CapsuleBytes:         selected.capsuleBytes,
-		MandatoryBytes:       selected.retention.MandatoryBytes,
-		MandatoryEntities:    selected.retention.MandatoryEntities,
-		OmissionCount:        selected.retention.OmissionCount,
-		Retention:            append([]compact.RetentionCount(nil), selected.retention.ByClass...),
-
-		ContextReceipts: e.contextReceipts(),
-		WorkingSet:      workingSet, CriticalPaths: criticalPaths,
-	}
-	if selected.summaryTruncated {
-		receipt.TruncationReason = "summary_byte_budget"
-	}
+	receipt := promptcontext.NewCompactionReceipt(
+		selection,
+		summaryLineBytes,
+		e.contextReceipts(),
+		workingSet,
+		criticalPaths,
+	)
 	finished := finish(receipt)
 	if e.options.Context.SemanticNarrative != "off" &&
-		originalWindow.active < e.emergencyCompactLimit() {
+		selection.OriginalWindow.Active < e.emergencyCompactLimit() {
 		if state := e.stageNarrativeCandidate(*selected); state != nil {
 			receipt.CompactionID = state.ID
 			receipt.Status = state.Phase
@@ -383,27 +331,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	return finished
 }
 
-type compactionCandidate struct {
-	cut                 int
-	history             []provider.Message
-	removed             []provider.Message
-	toSummarize         []provider.Message
-	rendered            string
-	retainedBytes       int
-	retainedTokens      uint64
-	summaryTruncated    bool
-	sections            []string
-	truth               compact.MergeReceipt
-	capsule             compact.TruthCapsule
-	authority           compact.TruthCapsule
-	compatibilityHash   string
-	authorityDigest     string
-	narrativeIncluded   bool
-	capsuleBytes        int
-	retention           compact.RetentionReceipt
-	sourceWindowID      string
-	sourceContextDigest string
-}
+type compactionCandidate = agentcontext.CompactionCandidate
 
 func (e *Engine) buildCompactionCandidate(
 	history []provider.Message,
@@ -411,267 +339,35 @@ func (e *Engine) buildCompactionCandidate(
 	includeNarrative bool,
 ) (compactionCandidate, error) {
 	removed := cloneMessages(history[:cut])
-	toSummarize := contextstore.StripWorldState(
+	toSummarize := agentcontext.StripWorldState(
 		promptcontext.StripContextualFragments(cloneMessages(removed)),
 	)
 	summary := e.buildCompactSummary(toSummarize)
 	if summary.Goal == "" {
-		goal := activeTurnGoal(history)
-		summary.Digest = removeGoalDigest(summary.Digest, goal)
+		goal := agentcontext.ActiveTurnGoal(history)
+		summary.Digest = agentcontext.RemoveGoalDigest(summary.Digest, goal)
 		goal = strings.Join(strings.Fields(goal), " ")
 		goalLimit := max(32, min(summaryLineBytes, e.summaryBudget()/2))
 		if len(goal) > goalLimit {
-			goal = truncateUTF8(goal, goalLimit) + "..."
+			goal = agentcontext.TruncateUTF8(goal, goalLimit) + "..."
 		}
 		summary.Goal = goal
 	}
-	previous, err := previousTruthCapsules(toSummarize)
-	if err != nil {
-		return compactionCandidate{}, err
-	}
 	current := e.buildTruthCapsule(summary)
-	authority := compact.MandatoryCapsule(current)
-	capsule, mergeReceipt, err := compact.MergeTruthCapsules(
-		current,
-		previous...,
-	)
-	if err != nil {
-		return compactionCandidate{}, err
-	}
-	capsule, retention, err := compact.PlanRetention(
-		capsule,
-		e.options.Context.TruthRetention,
-		e.turn,
-	)
-	if err != nil {
-		return compactionCandidate{}, err
-	}
-	mergeReceipt.EntityCount = len(capsule.Entities)
-	mergeReceipt.CriticalEntityCount = 0
-	for _, entity := range capsule.Entities {
-		if entity.Kind == compact.EntityFact ||
-			entity.Kind == compact.EntityCriticalPath {
-			mergeReceipt.CriticalEntityCount++
-		}
-	}
-	narrative := compact.Narrative{}
-	renderSummary := summary
-	if !includeNarrative {
-		narrative = compact.Narrative{}
-		renderSummary = compact.Summary{Window: summary.Window}
-	}
-	rendered, err := compact.RenderStructured(
-		renderSummary,
-		capsule,
-		narrative,
-		e.summaryBudget(),
-	)
-	if err != nil {
-		return compactionCandidate{}, err
-	}
-	compacted := provider.TextMessage(provider.RoleSystem, rendered.Text)
-	tail := contextstore.StripWorldState(
+	tail := agentcontext.StripWorldState(
 		promptcontext.StripContextualFragments(cloneMessages(history[cut:])),
 	)
-	candidate := append([]provider.Message{compacted}, tail...)
-	if historyBytes(candidate) >= historyBytes(history) &&
-		(rendered.NarrativeIncluded || len(rendered.Sections) > 1) {
-		rendered, err = compact.RenderStructured(
-			compact.Summary{Window: summary.Window},
-			capsule,
-			compact.Narrative{},
-			e.summaryBudget(),
-		)
-		if err != nil {
-			return compactionCandidate{}, err
-		}
-		compacted = provider.TextMessage(provider.RoleSystem, rendered.Text)
-		candidate = append([]provider.Message{compacted}, tail...)
-	}
-	return compactionCandidate{
-		cut: cut, history: candidate, removed: removed, toSummarize: toSummarize,
-		rendered: rendered.Text, retainedBytes: historyBytes(candidate),
-		summaryTruncated: rendered.Truncated, sections: rendered.Sections,
-		truth: mergeReceipt, capsule: capsule, authority: authority,
-		compatibilityHash: capsule.CompatibilityHash,
-		narrativeIncluded: rendered.NarrativeIncluded,
-		capsuleBytes:      rendered.CapsuleBytes,
-		retention:         retention,
-	}, nil
-}
-
-func activeTurnGoal(history []provider.Message) string {
-	if len(history) == 0 {
-		return ""
-	}
-	activeTurn := history[len(history)-1].Turn
-	for _, message := range history {
-		if message.Turn == activeTurn && message.Role == provider.RoleUser &&
-			message.Text() != "" {
-			return message.Text()
-		}
-	}
-	return ""
-}
-
-func removeGoalDigest(digest []string, goal string) []string {
-	goal = "user: " + strings.Join(strings.Fields(goal), " ")
-	for index, line := range digest {
-		if line == goal {
-			return append(append([]string(nil), digest[:index]...), digest[index+1:]...)
-		}
-	}
-	return digest
-}
-
-func compactionCuts(
-	history []provider.Message,
-	allowCurrentTurn bool,
-) []int {
-	var cuts []int
-	currentTurn := history[len(history)-1].Turn
-	for cut := 1; cut < len(history); cut++ {
-		if !safeToolBoundary(history, cut) {
-			continue
-		}
-		if !allowCurrentTurn && history[cut-1].Turn == currentTurn {
-			continue
-		}
-		if history[cut-1].Turn != history[cut].Turn || allowCurrentTurn {
-			cuts = append(cuts, cut)
-		}
-	}
-	return cuts
-}
-
-func (e *Engine) retainedTailCuts(
-	history []provider.Message,
-	allowCurrentTurn bool,
-) []int {
-	cuts := compactionCuts(history, allowCurrentTurn)
-	if len(cuts) == 0 ||
-		(e.options.Context.RecentTailTurns <= 0 &&
-			e.options.Context.RecentTailMaxTokens == 0) {
-		return cuts
-	}
-	minimumStart := recentTurnStart(
-		history,
-		e.options.Context.RecentTailTurns,
+	return agentcontext.BuildCompactionCandidate(
+		agentcontext.CompactionCandidateInput{
+			Cut: cut, Removed: removed, ToSummarize: toSummarize,
+			Tail: tail, OriginalHistory: history,
+			Summary: summary, CurrentTruth: current,
+			RetentionPolicy:  e.options.Context.TruthRetention,
+			Turn:             e.turn,
+			SummaryMaxBytes:  e.summaryBudget(),
+			IncludeNarrative: includeNarrative,
+		},
 	)
-	filtered := cuts[:0]
-	for _, cut := range cuts {
-		if minimumStart >= 0 && cut > minimumStart {
-			continue
-		}
-		if e.options.Context.RecentTailMaxTokens != 0 &&
-			estimateMessageTokens(history[cut:]) >
-				e.options.Context.RecentTailMaxTokens &&
-			(minimumStart < 0 || cut < minimumStart) {
-			continue
-		}
-		filtered = append(filtered, cut)
-	}
-	return filtered
-}
-
-func recentTurnStart(history []provider.Message, count int) int {
-	if count <= 0 {
-		return -1
-	}
-	seen := make(map[uint64]struct{}, count)
-	start := -1
-	for index := len(history) - 1; index >= 0; index-- {
-		turn := history[index].Turn
-		if turn == 0 {
-			continue
-		}
-		if _, exists := seen[turn]; !exists {
-			if len(seen) == count {
-				break
-			}
-			seen[turn] = struct{}{}
-		}
-		start = index
-	}
-	if len(seen) == 0 {
-		return -1
-	}
-	return start
-}
-
-func safeToolBoundary(history []provider.Message, cut int) bool {
-	if cut <= 0 || cut >= len(history) {
-		return false
-	}
-	return toolPairsClosed(history[:cut]) && toolPairsClosed(history[cut:])
-}
-
-func toolPairsClosed(messages []provider.Message) bool {
-	calls := make(map[string]int)
-	results := make(map[string]int)
-	for _, message := range messages {
-		for _, call := range messageToolCalls(message) {
-			calls[call.ID]++
-		}
-		if id := messageToolResultID(message); id != "" {
-			results[id]++
-		}
-	}
-	if len(calls) != len(results) {
-		return false
-	}
-	for id, count := range calls {
-		if count != 1 || results[id] != 1 {
-			return false
-		}
-	}
-	return true
-}
-
-type toolPairIdentity struct {
-	name           string
-	calls, results int
-}
-
-func toolPairIdentityEquivalent(
-	before []provider.Message,
-	after []provider.Message,
-) bool {
-	identities := func(messages []provider.Message) map[string]toolPairIdentity {
-		result := make(map[string]toolPairIdentity)
-		for _, message := range messages {
-			for _, call := range messageToolCalls(message) {
-				value := result[call.ID]
-				value.name = call.Name
-				value.calls++
-				result[call.ID] = value
-			}
-			if id := messageToolResultID(message); id != "" {
-				value := result[id]
-				value.results++
-				result[id] = value
-			}
-		}
-		return result
-	}
-	left, right := identities(before), identities(after)
-	if len(left) != len(right) {
-		return false
-	}
-	for id, value := range left {
-		if right[id] != value {
-			return false
-		}
-	}
-	return true
-}
-
-func historyBytes(messages []provider.Message) int {
-	size := 0
-	for _, message := range messages {
-		size += messageSize(message)
-	}
-	return size
 }
 
 func compactionBudgetError(window tokenWindow) error {
@@ -697,11 +393,9 @@ func (e *Engine) ReplaceHistory(messages []provider.Message) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.history = cloneMessages(messages)
-	e.reconcileHistoryTurns(e.history, "", 0)
+	agentcontext.ReconcileHistoryTurns(&e.historyTurns, e.history, "", 0)
 	e.advanceTokenWindow()
-	if !contextstore.WorldBaselineValid(e.history, e.world) {
-		e.world = contextstore.WorldBaseline{}
-	}
+	e.context.ReconcileWorld(e.history)
 	var maxTurn uint64
 	for _, message := range e.history {
 		if message.Turn > maxTurn {
@@ -726,27 +420,24 @@ func (e *Engine) Fork() (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("construct forked engine: %w", err)
 	}
-	forkWindow, err := createWindowLedger(1)
+	forkWindow, err := agentcontext.CreateWindowLedger(1)
 	if err != nil {
-		forkWindow = fallbackWindowLedger(
-			contextstore.WindowLedger{},
+		forkWindow = agentcontext.FallbackWindowLedger(
+			agentcontext.WindowLedger{},
 			fmt.Sprintf("%s:fork:%d", e.options.SessionID, e.turn),
 		)
 	}
 	forked.history = cloneMessages(e.history)
 	forked.mailboxHold = append([]PendingInput(nil), e.mailboxHold...)
 	forked.turn = e.turn
-	forked.working = e.working.Clone()
-	forked.evidence = e.evidence.Clone()
-	forked.failures = e.failures.Clone()
-	forked.world = contextstore.CloneWorldBaseline(e.world)
-	forked.window = forkWindow
-	forked.historyTurns = cloneHistoryTurns(e.historyTurns)
+	forked.context = e.context.Clone()
+	forked.context.SetWindow(forkWindow)
+	forked.historyTurns = agentcontext.CloneHistoryTurns(e.historyTurns)
 	forked.planText = e.planText
 	forked.plan = e.plan.Clone()
 	forked.lastScope = &Scope{
 		engine: forked,
-		state:  newScopeState(e),
+		state:  newScopeState(forked),
 	}
 	if e.planReceipt != nil {
 		receipt := *e.planReceipt
@@ -803,60 +494,10 @@ func (e *Engine) RevertWorkspace(
 	return receipt, nil
 }
 
-func messageSize(message provider.Message) int {
-	size := 0
-	if message.Provenance != nil {
-		size += len(message.Provenance.Adapter) +
-			len(message.Provenance.Provider) +
-			len(message.Provenance.Model)
-		if message.Provenance.Replay != nil {
-			size += len(message.Provenance.Replay.ContentDigest) +
-				len(message.Provenance.Replay.Data)
-		}
-	}
-	for _, block := range message.Blocks {
-		size += len(block.Text)
-		if block.ToolCall != nil {
-			size += len(block.ToolCall.ID) + len(block.ToolCall.Name) + len(block.ToolCall.Arguments)
-		}
-		if block.ToolResult != nil {
-			size += len(block.ToolResult.CallID) + len(block.ToolResult.Content)
-		}
-	}
-	return size
-}
-
-func uniqueMessageTurns(messages []provider.Message) []uint64 {
-	seen := make(map[uint64]struct{})
-	var turns []uint64
-	for _, message := range messages {
-		if message.Turn == 0 {
-			continue
-		}
-		if _, exists := seen[message.Turn]; exists {
-			continue
-		}
-		seen[message.Turn] = struct{}{}
-		turns = append(turns, message.Turn)
-	}
-	return turns
-}
-
-func truncateUTF8(value string, limit int) string {
-	if len(value) <= limit {
-		return value
-	}
-	value = value[:limit]
-	for !utf8.ValidString(value) {
-		value = value[:len(value)-1]
-	}
-	return value
-}
-
 func cloneMessages(messages []provider.Message) []provider.Message {
-	return contextstore.CloneMessages(messages)
+	return agentcontext.CloneMessages(messages)
 }
 
 func cloneBlocks(blocks []provider.ContentBlock) []provider.ContentBlock {
-	return contextstore.CloneBlocks(blocks)
+	return agentcontext.CloneBlocks(blocks)
 }

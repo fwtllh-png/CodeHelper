@@ -17,7 +17,7 @@ code_paths:
   - internal/persist/state/turnstate
   - internal/observability/journal
 test_paths:
-  - internal/runtime/app/reconstruct_test.go
+  - internal/persist/history/reconstruct_test.go
   - internal/runtime/app/session_artifacts_test.go
   - internal/runtime/app/runtime_terminal_recovery_test.go
   - internal/runtime/app/wire/persistent_test.go
@@ -28,11 +28,11 @@ test_paths:
   - internal/persist/workspacejournal/recover_test.go
 source_of_truth:
   - internal/runtime/app/lifecycle.go
-  - internal/runtime/app/reconstruct.go
+  - internal/persist/history/reconstruct.go
   - internal/runtime/app/thread_manager.go
-  - internal/runtime/app/terminal_publisher.go
+  - internal/runtime/app/eventhub/terminal.go
   - internal/runtime/app/runtime_start.go
-  - internal/runtime/app/persistence/runtime.go
+  - internal/runtime/app/wire/persistent_runtime.go
   - internal/runtime/app/wire/turn_coordinator.go
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
@@ -195,13 +195,13 @@ Idempotency 只在局部边界成立；一个 Key 不能使任意 Shell Command 
 | --- | --- |
 | Lifecycle Contract | `runtime/app/lifecycle.go` |
 | Startup Activation/Pending Turn Dispatch | `runtime/app/runtime_start.go`、`runtime/app/runtime.go` |
-| History | `runtime/app/reconstruct.go` |
-| Persistent Assembly | `runtime/app/persistence/runtime.go` |
+| History | `persist/history/reconstruct.go` |
+| Persistent Assembly | `runtime/app/wire/persistent_runtime.go` |
 | Turn Lease/Coordinator Runtime | `runtime/app/wire/turn_coordinator.go` |
 | Coordinator Restore/Effect Requeue | `runtime/agent/turnkernel/coordinator.go` |
 | Durable Effect Result Retention | `runtime/agent/turnkernel/effect_dispatcher.go` |
 | Session/Snapshot | `persist/session`、`persist/snapshot` |
-| Checkpoint/Plan/Turn Recovery | `runtime/app/session_artifacts.go` |
+| Checkpoint/Plan/Turn Recovery | `persist/artifact/service.go` |
 | Thread Session State Restore | `runtime/app/thread_manager.go` |
 | Terminal Turn State Store | `persist/state/turnstate` |
 | Observation Evidence（非 Recovery Authority） | `observability/journal` |

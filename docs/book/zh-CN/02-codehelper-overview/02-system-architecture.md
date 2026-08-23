@@ -188,7 +188,7 @@ Runtime 的 Terminal Outbox/Pending Turn Recovery、启动 MCP Prewarm、协调
 Automation，最后启动 Worker Scheduler。任一步失败都会终止构造并由 ResourceStack
 回滚；Runtime Recovery 成功前不会启动后台 Worker。
 
-构造与关闭共享 `assembly.ResourceStack`，部分构造失败按注册逆序回滚，不泄漏资源。
+构造与关闭共享 `wire.ResourceStack`，部分构造失败按注册逆序回滚，不泄漏资源。
 
 构造与业务循环分离，避免 Dependency Injection 代码成为第二套 Runtime。
 
@@ -198,7 +198,7 @@ Automation，最后启动 Worker Scheduler。任一步失败都会终止构造�
 | --- | --- | --- |
 | Composition | `runtime/app/wire` | 构造 Concrete Module，不拥有业务循环 |
 | Durable Assembly | `runtime/app/persistence` | 组合 Repository 与 Recovery |
-| Chat Merge | `runtime/app/chatmerge` | Preview 并 Journal-apply 隔离 Worktree Change |
+| Chat Merge | `runtime/app` | Preview 并 Journal-apply 隔离 Worktree Change |
 | Operation | `runtime/app` | Dispatch、Reservation、Event Hub、Terminal Commit |
 | Turn | `runtime/agent` | Coordinator、Scope、Effect、Control、Verification |
 | Work Lifecycle | `orchestration/kernel`、`orchestration/store` | Run/Node/Attempt/Lease/Effect Transition 与 Atomic Fact |
@@ -252,8 +252,8 @@ go test ./internal/runtime/app -run TestRuntimeUnsupportedOperationIsExplicitlyR
 ## 动手实验
 
 按顺序定位 `OperationStartTurn`、`Runtime.Submit`、`EngineAdapter.StartTurn`、
-`Engine.RunForTurn`（沿 `prepareTurnSpec`/`SnapshotTurnSpec` 到冻结的
-`TurnSpec`，再进入 `internal/runtime/agent/turnexec` 的 `turnexec.Scope`）、
+`Engine.Execute`（沿 `prepareTurnSpec`/`SnapshotTurnSpec` 到冻结的
+`TurnSpec`，再进入 `internal/runtime/agent/engine` 的单 Turn `Scope`）、
 `Guard.ExecuteBound` 和 `wire.NewExec` 调用点，再运行 Architecture Test，
 确认源码路径与架构图一致。
 

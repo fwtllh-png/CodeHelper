@@ -77,7 +77,7 @@
       "legacy_evidence": [
         "internal/host/runtimeapi/acp/server.go"
       ],
-      "runtime_owner": "internal/runtime/app/session_artifacts.go",
+      "runtime_owner": "internal/persist/artifact/service.go",
       "web_api": [
         "checkpoint/list",
         "checkpoint/get",
@@ -290,7 +290,7 @@
       ],
       "required_qualifications": [
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
-        "internal/runtime/app/receipt_test.go#TestValidateTerminalReceipt",
+        "internal/observability/receipt/receipt_test.go#TestValidateTerminalReceipt",
         "testdata/contracts/host-journey-contract.json",
         "web/src/ui/App.test.tsx#projects verification, receipt, and rejection evidence"
       ]
@@ -386,7 +386,7 @@
       ],
       "required_qualifications": [
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
-        "internal/runtime/app/receipt_test.go#TestReceiptReportsVerificationGateVerdict",
+        "internal/observability/receipt/receipt_test.go#TestReceiptReportsVerificationGateVerdict",
         "testdata/contracts/host-journey-contract.json",
         "web/src/ui/App.test.tsx#projects verification, receipt, and rejection evidence"
       ]
@@ -464,7 +464,7 @@
       "legacy_evidence": [
         "internal/host/runtimeapi/acp/server.go"
       ],
-      "runtime_owner": "internal/runtime/app/session_artifacts.go",
+      "runtime_owner": "internal/persist/artifact/service.go",
       "web_api": [
         "plan/get",
         "plan/transition",
@@ -665,7 +665,7 @@
       ],
       "required_qualifications": [
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
-        "internal/runtime/app/receipt_test.go#TestReceiptUsesFrozenKernelUsage",
+        "internal/observability/receipt/receipt_test.go#TestReceiptUsesFrozenKernelUsage",
         "web/src/ui/App.test.tsx#renders detailed activity artifacts and extension controls"
       ]
     },
@@ -725,7 +725,7 @@
       "legacy_evidence": [
         "extensions/vscode/package.json"
       ],
-      "runtime_owner": "internal/runtime/app/chatmerge",
+      "runtime_owner": "internal/runtime/app",
       "web_api": [
         "session/merge",
         "workspace/diff"
@@ -735,7 +735,7 @@
       ],
       "required_qualifications": [
         "internal/host/runtimeapi/web/server_test.go#TestWorkspaceRoutesUseBoundedWorkspaceQuery",
-        "internal/runtime/app/chatmerge/service_test.go#TestMergeBatchAndPlanCompaction",
+        "internal/orchestration/chatmerge/service_test.go#TestMergeBatchAndPlanCompaction",
         "web/src/ui/App.test.tsx#adds a server-issued workspace diff to prompt context"
       ]
     },

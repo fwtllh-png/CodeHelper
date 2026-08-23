@@ -7,8 +7,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
 func normalizeEngineOptions(options *Options) error {
@@ -18,7 +17,7 @@ func normalizeEngineOptions(options *Options) error {
 	}
 	if options.Context.TruthRetention.TruthMaxBytes <= 0 {
 		options.Context.TruthRetention.TruthMaxBytes = min(
-			compact.DefaultRetentionPolicy().TruthMaxBytes,
+			agentcontext.DefaultRetentionPolicy().TruthMaxBytes,
 			max(256, summaryBytes-256),
 		)
 	}
@@ -45,7 +44,7 @@ func normalizeEngineOptions(options *Options) error {
 	if options.Context.NarrativeRetryLimit < 0 {
 		return errors.New("semantic narrative retry limit cannot be negative")
 	}
-	manifestDefaults := sessiondelta.DefaultManifestLimits()
+	manifestDefaults := agentcontext.DefaultManifestLimits()
 	if options.Context.OwnerDeltaMaxSegments <= 0 {
 		options.Context.OwnerDeltaMaxSegments =
 			manifestDefaults.OwnerDeltaMaxSegments
@@ -55,7 +54,7 @@ func normalizeEngineOptions(options *Options) error {
 			manifestDefaults.OwnerDeltaMaxBytes
 	}
 	contextLimit := options.Route.Model().Limits.ContextTokens
-	prepareLimit, compactLimit, emergencyLimit := contextWindowThresholds(
+	prepareLimit, compactLimit, emergencyLimit := agentcontext.WindowThresholds(
 		options.Context.Window,
 		contextLimit,
 	)

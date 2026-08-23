@@ -1,0 +1,84 @@
+package agentcontext
+
+import (
+	"encoding/json"
+	"strings"
+)
+
+const (
+	StepPending    = "pending"
+	StepInProgress = "in_progress"
+	StepDone       = "done"
+)
+
+// PlanStep is one step of a model-authored plan and its reported progress.
+type PlanStep struct {
+	Title  string `json:"title"`
+	Status string `json:"status,omitempty"`
+}
+
+func (s *PlanStep) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if strings.HasPrefix(trimmed, `"`) {
+		var title string
+		if err := json.Unmarshal(data, &title); err != nil {
+			return err
+		}
+		*s = PlanStep{Title: title, Status: StepPending}
+		return nil
+	}
+	var object struct {
+		Title  string `json:"title"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(data, &object); err != nil {
+		return err
+	}
+	status := strings.TrimSpace(strings.ToLower(object.Status))
+	switch status {
+	case StepPending, StepInProgress, StepDone:
+	default:
+		status = StepPending
+	}
+	*s = PlanStep{Title: object.Title, Status: status}
+	return nil
+}
+
+func (s PlanStep) Done() bool { return s.Status == StepDone }
+
+type Plan struct {
+	Title               string     `json:"title,omitempty"`
+	Steps               []PlanStep `json:"steps"`
+	Notes               string     `json:"notes,omitempty"`
+	Objective           string     `json:"objective,omitempty"`
+	ContextSummary      string     `json:"context_summary,omitempty"`
+	SourcesUsed         []string   `json:"sources_used,omitempty"`
+	CriticalFiles       []string   `json:"critical_files,omitempty"`
+	Constraints         []string   `json:"constraints,omitempty"`
+	RecommendedApproach string     `json:"recommended_approach,omitempty"`
+	VerificationPlan    string     `json:"verification_plan,omitempty"`
+	RisksAndUnknowns    string     `json:"risks_and_unknowns,omitempty"`
+	HandoffPacket       string     `json:"handoff_packet,omitempty"`
+}
+
+func (p Plan) Clone() Plan {
+	clone := p
+	clone.Steps = append([]PlanStep(nil), p.Steps...)
+	clone.SourcesUsed = append([]string(nil), p.SourcesUsed...)
+	clone.CriticalFiles = append([]string(nil), p.CriticalFiles...)
+	clone.Constraints = append([]string(nil), p.Constraints...)
+	return clone
+}
+
+func (p Plan) OutstandingSteps() ([]PlanStep, int) {
+	var open []PlanStep
+	done := 0
+	for _, step := range p.Steps {
+		if step.Done() {
+			done++
+			continue
+		}
+		open = append(open, step)
+	}
+	return open, done
+}

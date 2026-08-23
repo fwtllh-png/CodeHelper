@@ -11,10 +11,10 @@ import (
 	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/chatmerge"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/chatmerge"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )

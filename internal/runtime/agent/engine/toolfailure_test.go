@@ -14,9 +14,9 @@ import (
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/toolfailure"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -202,7 +202,7 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			content, recoverable := toolfailure.Recoverable(test.err)
+			content, recoverable := recoverableToolFailure(test.err)
 			if recoverable != test.wantRecoverable {
 				t.Fatalf(
 					"recoverableToolFailure(%v) recoverable = %v, want %v",
@@ -233,11 +233,8 @@ func TestRecoverableToolResultPreservesGuardExecutionReceipt(t *testing.T) {
 		TerminalStatus: tool.OutcomeRejected,
 		TerminalOwner:  tool.TerminalOwnerGuard,
 	}
-	result, recovered := newEngine(
-		t,
-		&scriptedProvider{},
+	result, recovered := toolresult.RecoverResult(
 		nil,
-	).recoverableToolResult(
 		provider.ToolCall{Name: "missing"},
 		tool.Result{
 			Execution: receipt,
@@ -261,7 +258,7 @@ func TestEditPlanStaleRecoveryMetadataRequiresNewPlan(t *testing.T) {
 	err := &policy.DecisionError{
 		Code: "edit_plan_stale", Reason: "workspace changed after edit preview",
 	}
-	metadata := toolfailure.Metadata(err)
+	metadata := toolFailureMetadata(err)
 	if metadata["error_category"] != "edit_plan_stale" ||
 		metadata["required_action"] != "file_read" ||
 		metadata["retry_original"] != false ||
@@ -285,7 +282,7 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 		}),
 	))
 
-	metadata := toolfailure.Metadata(err)
+	metadata := toolFailureMetadata(err)
 
 	if metadata["error_category"] != "edit_precondition_failed" ||
 		metadata["required_action"] != "replace_failed_change" ||
@@ -299,7 +296,7 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 		t.Fatalf("metadata = %#v", metadata)
 	}
 
-	content, recoverable := toolfailure.Recoverable(err)
+	content, recoverable := recoverableToolFailure(err)
 	if !recoverable ||
 		!strings.Contains(content, "failed_change=6; match_count=0") ||
 		!strings.Contains(content, "current_excerpt_lines=74-80:\ncurrent text") {
@@ -366,7 +363,7 @@ func TestMissingPathRecoveryExposesExactCandidatesToModel(t *testing.T) {
 		},
 	))
 
-	content, recoverable := toolfailure.Recoverable(err)
+	content, recoverable := recoverableToolFailure(err)
 	if !recoverable ||
 		!strings.Contains(
 			content,
@@ -375,7 +372,7 @@ func TestMissingPathRecoveryExposesExactCandidatesToModel(t *testing.T) {
 		) {
 		t.Fatalf("content = %q, recoverable = %v", content, recoverable)
 	}
-	metadata := toolfailure.Metadata(err)
+	metadata := toolFailureMetadata(err)
 	candidates, ok := metadata["candidate_paths"].([]string)
 	if !ok || len(candidates) != 2 ||
 		candidates[0] != "docs/01-prompt-message-context.md" {
@@ -477,14 +474,14 @@ func TestRunToolsCategorizesRevokedCatalogEntry(t *testing.T) {
 
 func TestToolFailureCategoryIncludesMCPCircuit(t *testing.T) {
 	err := fmt.Errorf("remote call: %w", mcpruntime.ErrCircuitOpen)
-	if got := toolfailure.Category(err); got != mcpruntime.ErrorCategoryCircuitOpen {
+	if got := toolFailureCategory(err); got != mcpruntime.ErrorCategoryCircuitOpen {
 		t.Fatalf("category = %q, want %q", got, mcpruntime.ErrorCategoryCircuitOpen)
 	}
 }
 
 func TestToolFailureCategoryIncludesSkillDependency(t *testing.T) {
 	err := fmt.Errorf("load skill: %w", skillruntime.ErrDependencyConflict)
-	if got := toolfailure.Category(err); got != skillruntime.ErrorCategoryDependencyConflict {
+	if got := toolFailureCategory(err); got != skillruntime.ErrorCategoryDependencyConflict {
 		t.Fatalf("category = %q, want %q", got, skillruntime.ErrorCategoryDependencyConflict)
 	}
 }

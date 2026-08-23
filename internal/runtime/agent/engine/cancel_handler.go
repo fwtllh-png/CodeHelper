@@ -5,12 +5,12 @@ import (
 	"errors"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const maxMailboxBacklog = 2 * turnexec.DefaultMailboxCapacity
+const maxMailboxBacklog = 2 * turnkernel.DefaultMailboxCapacity
 
 // EnqueueMailbox queues an inter-agent mailbox message.
 // triggerTurn=true injects into the current turn (cancels sampling, like Steer).
@@ -115,7 +115,7 @@ func (e *Engine) cancellationReason() string {
 }
 
 func retainCanceledHistory(messages []provider.Message) []provider.Message {
-	retained, _, err := contextstore.NormalizePairs(messages)
+	retained, _, err := agentcontext.NormalizePairs(messages)
 	if err != nil {
 		return nil
 	}

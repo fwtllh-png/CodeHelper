@@ -350,16 +350,14 @@ func newLatencyEngine(t *testing.T, options latencyEngineOptions) *Engine {
 		posture = policy.PermissionBypass
 	}
 	root := t.TempDir()
-	engineOptions := Options{
-		Provider: &timedProvider{clock: options.clock, calls: options.calls},
-		Route:    testRoute(t), Tools: registry, MaxOutputTokens: 128, MaxSteps: 8,
-		Security:  policy.DefaultRuntime(policy.ModeAct, posture),
+	engineOptions := Options{ProviderConfig: ProviderConfig{Provider: &timedProvider{clock: options.clock, calls: options.calls},
+		Route: testRoute(t), MaxOutputTokens: 128, MaxSteps: 8}, ToolConfig: ToolConfig{Tools: registry,
+
+		Diagnostics: fakeDiagnosticRunner{}}, SecurityConfig: SecurityConfig{Security: policy.DefaultRuntime(policy.ModeAct, posture),
 		Workspace: root,
-		Journal:   newTestWorkspaceJournal(t, root),
-		Observability: trace.Runtime{
-			Clock: options.clock.now,
-		},
-		Diagnostics: fakeDiagnosticRunner{},
+		Journal:   newTestWorkspaceJournal(t, root)}, TelemetryConfig: TelemetryConfig{Observability: trace.Runtime{
+		Clock: options.clock.now,
+	}},
 	}
 	if options.verifier != nil {
 		engineOptions.Verify = VerifyOptions{

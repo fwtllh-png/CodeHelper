@@ -8,18 +8,18 @@ audience:
 prerequisites:
   - context-source-lifecycle
 code_paths:
-  - internal/runtime/agent/promptcontext
-  - internal/runtime/agent/compact
+  - internal/runtime/agent/prompt
+  - internal/runtime/agent/context
   - internal/runtime/agent/engine
 test_paths:
-  - internal/runtime/agent/compact/compact_test.go
-  - internal/runtime/agent/compact/retention_test.go
-  - internal/runtime/agent/compact/narrative_test.go
+  - internal/runtime/agent/context/compact_compact_test.go
+  - internal/runtime/agent/context/compact_retention_test.go
+  - internal/runtime/agent/context/compact_narrative_test.go
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/engine/narrative_test.go
   - internal/runtime/app/compact_window_test.go
 source_of_truth:
-  - internal/runtime/agent/compact/compact.go
+  - internal/runtime/agent/context/compact_compact.go
   - internal/runtime/agent/engine/compaction.go
 status: draft
 last_verified: null
@@ -138,12 +138,12 @@ Section、Truncation Reason、Working Set、Critical Path 和 Prompt Context Rec
 
 | 关注点 | 源码 |
 | --- | --- |
-| Partition Retain | `promptcontext/context.go` |
+| Partition Retain | `prompt/context.go` |
 | Truth/Retention | `agent/compact/truth.go`、`retention.go` |
 | Narrative Artifact | `agent/compact/narrative.go` |
 | Cut/Replacement | `agent/engine/history_recovery.go` |
 | Narrative Effect | `agent/engine/narrative.go`、`agent/turnkernel` |
-| Thread Compact | `runtime/app/compact_window.go` |
+| Thread Compact | `persist/history/compact.go` |
 
 ## 设计取舍
 
@@ -163,7 +163,7 @@ Model-generated Narrative 流畅但不是可信 Evidence；纯结构化事实可
 ## 测试与验证
 
 ```bash
-go test ./internal/runtime/agent/compact
+go test ./internal/runtime/agent/context
 go test ./internal/runtime/agent/engine -run 'TestEngineCompact|TestEngineCompaction'
 go test ./internal/runtime/agent/turnkernel -run TestContextCompaction
 go test ./internal/runtime/app -run 'TestCompact(Window|Fork)'

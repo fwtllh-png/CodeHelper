@@ -3,13 +3,11 @@ package engine
 import (
 	"context"
 	"maps"
-	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -18,59 +16,7 @@ type RepoContext interface {
 	Build(ctx context.Context, state promptcontext.TurnState) promptcontext.TurnContext
 }
 
-func (e *Engine) observePath(source workingset.Source, path string) {
-	if e == nil || e.workingLedger() == nil {
-		return
-	}
-	if relative, ok := e.workspaceRelative(path); ok {
-		e.workingLedger().Observe(source, e.turn, relative)
-	}
-}
-
-func (e *Engine) observePaths(source workingset.Source, paths []string) {
-	for _, path := range paths {
-		e.observePath(source, path)
-	}
-}
-
-func (e *Engine) workspaceRelative(path string) (string, bool) {
-	path = strings.TrimSpace(path)
-	if path == "" || path == "." {
-		return "", false
-	}
-	if !filepath.IsAbs(path) {
-		return filepath.ToSlash(filepath.Clean(path)), true
-	}
-	workspace := e.options.Workspace
-	if workspace == "" {
-		return "", false
-	}
-	absolute, err := filepath.Abs(workspace)
-	if err != nil {
-		return "", false
-	}
-	// A workspace reached through a symlink (/var on macOS) is spelled one way in
-	// options and another in the fingerprints the guard reports, so both count.
-	roots := []string{filepath.Clean(absolute)}
-	if resolved, err := filepath.EvalSymlinks(absolute); err == nil && resolved != roots[0] {
-		roots = append(roots, resolved)
-	}
-	clean := filepath.Clean(path)
-	for _, root := range roots {
-		relative, err := filepath.Rel(root, clean)
-		if err != nil || relative == ".." ||
-			strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			continue
-		}
-		if relative == "." {
-			return "", false
-		}
-		return filepath.ToSlash(relative), true
-	}
-	return "", false
-}
-
-func (e *Engine) WorkingSetEntries(turn uint64, limit int) []workingset.Entry {
+func (e *Engine) WorkingSetEntries(turn uint64, limit int) []agentcontext.WorkingSetEntry {
 	if e == nil {
 		return nil
 	}
@@ -81,7 +27,7 @@ func (e *Engine) ReadPaths(turn uint64) []string {
 	if e == nil {
 		return nil
 	}
-	return e.workingLedger().PathsObservedAt(workingset.SourceRead, turn)
+	return e.workingLedger().PathsObservedAt(agentcontext.SourceRead, turn)
 }
 
 func (e *Engine) compactionPaths() ([]string, []string) {
@@ -188,8 +134,11 @@ func (e *Engine) seedWorkingSet() {
 		return
 	}
 	for _, path := range e.options.WorkingSet {
-		if relative, ok := e.workspaceRelative(path); ok {
-			e.workingLedger().Observe(workingset.SourcePinned, 0, relative)
-		}
+		e.contextAuthority().ObservePath(
+			e.options.Workspace,
+			agentcontext.SourcePinned,
+			0,
+			path,
+		)
 	}
 }

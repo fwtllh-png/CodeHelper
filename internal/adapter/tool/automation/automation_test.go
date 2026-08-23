@@ -24,12 +24,12 @@ func TestAutomationCreateRunTaskRead(t *testing.T) {
 	taskRepo := taskstate.NewSQLiteRepository(store)
 	registry := tool.NewRegistry(nil, nil)
 	if err := automationtool.Register(registry, automationtool.Options{
-		Repository: autoRepo, SessionID: "session-1", Workspace: workspace,
+		Repository: autoRepo, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := tasktool.Register(registry, tasktool.Options{
-		Repository: taskRepo, SessionID: "session-1", Workspace: workspace,
+		Repository: taskRepo, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestAutomationPauseResumeAndDenyFailClosed(t *testing.T) {
 	repo := automationstore.NewSQLiteRepository(store)
 	registry := tool.NewRegistry(nil, nil)
 	if err := automationtool.Register(registry, automationtool.Options{
-		Repository: repo, SessionID: "session-1", Workspace: workspace,
+		Repository: repo, Workspace: workspace, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -134,8 +134,7 @@ func TestAutomationPauseResumeAndDenyFailClosed(t *testing.T) {
 	}
 
 	guard, err := toolguard.New(toolguard.Options{
-		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto),
-		Workspace: workspace,
+		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto), Workspace: workspace,
 	})
 	if err != nil {
 		t.Fatal(err)

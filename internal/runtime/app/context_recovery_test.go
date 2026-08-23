@@ -6,19 +6,18 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type recoveryContextStore struct {
-	snapshot sessiondelta.ContextSnapshot
+	snapshot agentcontext.ContextSnapshot
 }
 
 func (s recoveryContextStore) CommitContextRebase(
 	context.Context,
-	sessiondelta.ContextRebaseEnvelope,
+	agentcontext.ContextRebaseEnvelope,
 ) error {
 	return nil
 }
@@ -26,23 +25,23 @@ func (s recoveryContextStore) CommitContextRebase(
 func (s recoveryContextStore) LatestContextSnapshot(
 	context.Context,
 	protocol.ThreadID,
-) (sessiondelta.ContextSnapshot, bool, error) {
+) (agentcontext.ContextSnapshot, bool, error) {
 	return s.snapshot, true, nil
 }
 
 func TestContextRecoveryUsesCurrentSnapshotWithoutTerminalDelta(t *testing.T) {
-	window, err := contextstore.NewWindowLedger("fork-window", 1)
+	window, err := agentcontext.NewWindowLedger("fork-window", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := sessiondelta.WorkspaceBinding{
+	binding := agentcontext.WorkspaceBinding{
 		WorkspaceIdentity: "workspace:test",
 	}
 	binding.Seal()
 	message := provider.TextMessage(provider.RoleUser, "fork baseline")
 	message.Turn = 1
-	snapshot := sessiondelta.ContextSnapshot{
-		Version: sessiondelta.ContextSnapshotVersion,
+	snapshot := agentcontext.ContextSnapshot{
+		Version: agentcontext.ContextSnapshotVersion,
 		Epoch:   1, Revision: 1, Turn: 1,
 		History:   []provider.Message{message},
 		Workspace: binding,
@@ -60,7 +59,7 @@ func TestContextRecoveryUsesCurrentSnapshotWithoutTerminalDelta(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var delta sessiondelta.Delta
+	var delta agentcontext.SessionDelta
 	if err := json.Unmarshal(raw, &delta); err != nil {
 		t.Fatal(err)
 	}

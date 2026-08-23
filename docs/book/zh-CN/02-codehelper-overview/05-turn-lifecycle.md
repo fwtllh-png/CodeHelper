@@ -11,7 +11,7 @@ code_paths:
   - internal/runtime/protocol
   - internal/runtime/app
   - internal/runtime/agent/engine
-  - internal/runtime/agent/turnexec
+  - internal/runtime/agent/engine
   - internal/runtime/agent/turnkernel
   - internal/observability/observation
   - internal/observability/router
@@ -83,7 +83,7 @@ sequenceDiagram
     participant H as Host
     participant R as app.Runtime
     participant A as EngineAdapter
-    participant S as turnexec.Scope
+    participant S as engine.Scope
     participant K as TurnCoordinator
     participant E as agent.Engine
     participant M as Provider
@@ -135,7 +135,7 @@ Subscriber。有界 Queue/Buffer 防止单个 Caller 消耗无限内存。
 
 Agent Engine 在一个 `TurnSpec` 中冻结 Identity、Request、Session Profile、Route、
 Policy、Limit、Prompt Prefix、Tool Catalog、Skill、MCP Health 与 Extension。
-`turnexec.Factory` 打开强类型 Scope；Sampling 不得重新读取这些可变来源。Repo Map、
+Engine Scope Factory 打开强类型 Scope；Sampling 不得重新读取这些可变来源。Repo Map、
 Working Set 与 Evidence 仍从 Scope-local State 在 Tool Result 后重新渲染。
 
 ## 4. Sample 与 Stream
@@ -195,14 +195,14 @@ Overflow、Late、Duplicate、Kind Mismatch 都返回结构化错误。
 | --- | --- |
 | Operation/Event | `internal/runtime/protocol/message.go` |
 | Queue/Cursor/Terminal | `internal/runtime/app/runtime.go` |
-| Engine Adapter | `internal/runtime/app/application.go` |
-| Turn Lifecycle/Control | `internal/runtime/agent/turnexec` |
+| Engine Adapter | `internal/runtime/app/extension/engine_adapter.go` |
+| Turn Lifecycle/Control | `internal/runtime/agent/engine` |
 | 权威 Reducer、Coordinator 与 Effect | `internal/runtime/agent/turnkernel` |
 | Model/Tool Executor | `internal/runtime/agent/engine` |
-| Receipt | `internal/runtime/app/receipt.go` |
+| Receipt | `internal/observability/receipt/receipt.go` |
 | Frozen Terminal Measurement | `internal/runtime/agent/turnkernel/measurement.go` |
 | Observation Evidence | `internal/observability/observation`、`internal/observability/router` |
-| Durable Runtime Assembly | `internal/runtime/app/persistence/runtime.go` |
+| Durable Runtime Assembly | `internal/runtime/app/wire/persistent_runtime.go` |
 | Turn Domain Fact 与 Lease | `internal/persist/state/turnstate` |
 
 ## 设计取舍与替代方案

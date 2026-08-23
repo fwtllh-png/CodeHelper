@@ -41,17 +41,18 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 ### 我要参与开发
 
 1. [架构设计](./architecture.md)
-2. [运行时可靠性系统治理](./reliability-hardening.md)
-3. [Web 主入口与 Web 退役技术实施方案](./web-primary-entry-plan.md)
-4. [Session Context Memory 优化设计与实施方案](./session-context-optimization.md)
-5. [安全模型](./security.md)
-6. [本地开发与脚本](./development.md)
-7. [源码阅读路线指南](./reading-guide.md)
-8. [Agent 指南](./agent-guide.md)
-9. [Web 与 TUI 体验契约](./experience.md)
-10. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-11. [文档治理](./documentation-governance.md)
-12. [后续规划](./roadmap.md)
+2. [Runtime 可维护性与核心流程重构方案](./runtime-maintainability-refactoring-plan.md)
+3. [运行时可靠性系统治理](./reliability-hardening.md)
+4. [Web 主入口与 Web 退役技术实施方案](./web-primary-entry-plan.md)
+5. [Session Context Memory 优化设计与实施方案](./session-context-optimization.md)
+6. [安全模型](./security.md)
+7. [本地开发与脚本](./development.md)
+8. [源码阅读路线指南](./reading-guide.md)
+9. [Agent 指南](./agent-guide.md)
+10. [Web 与 TUI 体验契约](./experience.md)
+11. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+12. [文档治理](./documentation-governance.md)
+13. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 
@@ -67,6 +68,7 @@ CodeHelper 也将建设为一本可执行的 Agent 工程知识书籍：把背�
 | 知识书籍结构与建设阶段 | `knowledge-base-plan.md` |
 | 书籍目录与章节状态 | `docs/book/catalog.json` |
 | 书籍 Ownership、新鲜度与发布事实 | `docs/book/governance.json` |
+| Runtime 可维护性改造状态 | `runtime-maintainability-refactoring-plan.md` 中通过验收的阶段 |
 | 可靠性治理状态 | `reliability-hardening.md` 中带验收证据的工作流状态 |
 | 路线图 | 只描述目标，不作为“已交付”证明 |
 

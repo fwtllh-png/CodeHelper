@@ -136,7 +136,7 @@ sequenceDiagram
 6. `internal/runtime/app/wire/module_background.go` —— `backgroundModule.Build`
    先做首次 MCP 刷新，启动 Runtime 恢复（`application.Start`），启动 MCP prewarm，
    对账 Automations，最后构建并启动 Worker 调度器。构造失败即关闭：某一步失败会
-   中止构建，并由 `assembly.ResourceStack` 回滚。
+   中止构建，并由 `wire.ResourceStack` 回滚。
 
 7. `internal/runtime/app/wire/background_executors.go` —— Turn 之外运行的后台任务
    执行器：`shellCommandExecutor` 与 `workflowRunExecutor`。定时任务和工作流步骤
@@ -226,7 +226,7 @@ sequenceDiagram
        CallingModel --> Canceled
    ```
 
-5. `internal/runtime/agent/engine/turn_kernel.go` —— 经典 Engine 循环与权威的
+5. `internal/runtime/agent/turnkernel/runtime_kernel.go` —— Engine 执行循环与权威的
    `turnkernel.TurnCoordinator` 之间的适配层。`newEngineTurnKernelForTurn` 构建全新
    `State`，从 `CoordinatorRuntime` 打开一个协调器句柄，应用 `StartTurn` +
    `PreparationFinished`，此后 kernel 就是唯一事实来源。`turn_scope.go` 保存每个
@@ -250,7 +250,7 @@ sequenceDiagram
    `TerminalRequested`，日志 Commit/Suspend/Rollback 作为持久化 Effect 运行。读
    `turn_handler.go` 里的 `StepAction*` 常量和终端决策 switch。
 
-8. `internal/runtime/app/terminal_publisher.go` —— `TerminalPublisher.Commit`
+8. `internal/runtime/app/eventhub/terminal.go` —— `TerminalPublisher.Commit`
    校验冻结状态是终态、receipt 与 terminal 材料都存在，然后在单个事务里持久化
    operation + receipt + terminal + outbox，并通过 hub 发布。这是“回合结束”的原子
    边界。
@@ -266,7 +266,7 @@ sequenceDiagram
 **配套测试：** `app/application_e2e_test.go`（完整循环）、`app/runtime_test.go`、
 `engine/engine_test.go`（114 KB 的契约测试）、`engine/turn_kernel_test.go`、
 `turnkernel/coordinator_test.go`、`turnkernel/reducer_test.go`、
-`app/terminal_publisher`（经由 runtime 测试）。
+`app/eventhub/terminal`（经由 runtime 测试）。
 
 **路线 2 回答：**“我的提示词从头到尾发生了什么？”
 
@@ -439,10 +439,10 @@ flowchart TD
    `internal/persist/joblog/` —— 会话元数据、显式线程检查点/计划产物、任务日志。
 5. `internal/persist/workspacejournal/` —— 写前镜像与编辑恢复：`Before` /
    `After` 指纹、草稿恢复、回滚。
-6. `internal/runtime/app/persistence/runtime.go` —— `PreparePersistentRuntime`
+6. `internal/runtime/app/wire/persistent_runtime.go` —— `PreparePersistentRuntime`
    构建持久化 Runtime：在创建任何 Engine 之前注入 SQLite Turn Coordinator Store，
    装配仓库，并用可续期的活跃 Turn 租约做生命周期恢复。
-7. `internal/runtime/app/receipt.go` 与 `tool_execution_receipt.go` —— 结构化证据：
+7. `internal/observability/receipt/receipt.go` 与 `tool_execution_receipt.go` —— 结构化证据：
    上下文选择、使用的工具、工作区变更、审批、验证尝试、成本与最终闸门动作。执行
    receipt 是主机投影的解释性产物。
 8. `internal/observability/` —— 非权威的证据平面：

@@ -9,7 +9,7 @@ prerequisites:
   - tool-edit-journal-receipt
 code_paths:
   - internal/runtime/agent/engine
-  - internal/runtime/agent/evidence
+  - internal/runtime/agent/context
   - internal/observability/verify
 test_paths:
   - internal/runtime/agent/engine/verify_gate_test.go
@@ -17,7 +17,7 @@ test_paths:
   - internal/observability/verify/verify_test.go
 source_of_truth:
   - internal/runtime/agent/engine/verify.go
-  - internal/runtime/agent/evidence/evidence.go
+  - internal/runtime/agent/context/evidence_evidence.go
 status: draft
 last_verified: null
 ---
@@ -100,7 +100,7 @@ Passing Receipt。
 | Runner/Scope | `observability/verify` |
 | Evidence | `agent/evidence` |
 | Metadata Fold | `agent/engine/evidence.go` |
-| Protocol Receipt | `runtime/app/receipt.go` |
+| Protocol Receipt | `observability/receipt/receipt.go` |
 
 ## 设计取舍
 

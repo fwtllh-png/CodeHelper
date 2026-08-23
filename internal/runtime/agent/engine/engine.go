@@ -5,25 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -44,79 +37,6 @@ const (
 	Failed           State = "failed"
 	Canceled         State = "canceled"
 )
-
-type Options struct {
-	Provider provider.Provider
-	// Route is the act route and the fallback for single-route callers.
-	Route model.ReadyRoute
-	// Routes overrides Route with a locked per-purpose table.
-	Routes                model.RouteSet
-	Tools                 *tool.Registry
-	StaticContext         []provider.Message
-	ContextBudgets        map[string]promptcontext.Budget
-	CodingPolicy          bool
-	MaxOutputTokens       uint64
-	MaxSteps              int
-	MaxRetries            int
-	MaxRetryDelay         time.Duration
-	SummaryMaxBytes       int
-	MaxDigestEntries      int
-	Context               ContextPolicy
-	ReasoningEffort       string
-	NativeSearch          bool
-	Budget                Budget
-	TokenEstimator        TokenEstimator
-	WorkingSet            []string
-	CriticalPaths         []string
-	StaticContextReceipts []promptcontext.Receipt
-	Authorize             func(provider.ToolCall) bool
-	Security              *policy.Runtime
-	// ProfilePermissionCeiling is fixed by the Host.
-	ProfilePermissionCeiling policy.Permission
-	Guard                    *toolguard.Guard
-	// GuardFactory creates one stateful Guard for this Engine.
-	GuardFactory func(context.Context) (*toolguard.Guard, error)
-	// OnNetworkAllow grants approved egress to the session Gate.
-	OnNetworkAllow     toolguard.NetworkAllow
-	Workspace          string
-	WorkspaceIdentity  string
-	WorkspaceIsolation string
-	Metrics            Metrics
-	Observability      trace.Runtime
-	Journal            *workspacejournal.Manager
-	ReadTracker        *workspacejournal.ReadTracker
-	// WorkspaceTurnGate serializes engines sharing one writable root.
-	WorkspaceTurnGate *WorkspaceTurnGate
-	Diagnostics       diagnostics.Runner
-	Verify            VerifyOptions
-	// RequireCompletionDeclaration requires an explicit terminal declaration
-	// and binds accepted completion to the current mutation revision.
-	RequireCompletionDeclaration bool
-	// TurnKernelObserver is diagnostics-only and panic-contained.
-	TurnKernelObserver func(turnkernel.TransitionRecord)
-	// TurnCoordinatorRuntime owns Coordinator construction and persistence.
-	TurnCoordinatorRuntime turnkernel.CoordinatorRuntime
-	// ReleaseTurnResources tears down resources that may outlive one tool call.
-	ReleaseTurnResources func(TurnIdentity)
-	Hooks                *hooks.Manager
-	SessionID            string
-	InputHost            *interact.Host
-	// PromptCacheKey is the session sticky cache hint.
-	PromptCacheKey string
-	// ProfileRevision is frozen into each TurnCoordinator snapshot.
-	ProfileRevision   uint64
-	MaxToolConcurrent int
-	// MaxToolStreamBytes bounds live chunks, not the final result.
-	MaxToolStreamBytes int
-	MaxToolDefinitions int
-	MaxToolSchemaBytes int
-	// ToolCatalogSync reconciles external tools before the Turn snapshot.
-	ToolCatalogSync func() error
-	TurnSnapshots   TurnSnapshotSources
-	RepoContext     RepoContext
-	WorkingSetLimit int
-	EvidenceLimit   int
-}
 
 type Metrics interface {
 	AgentTurn()
@@ -158,20 +78,13 @@ type Engine struct {
 	plan        interact.Plan
 	planReceipt *promptcontext.Receipt
 
-	working         *workingset.Ledger
-	evidence        *evidence.Set
-	failures        *compact.Failures
-	world           contextstore.WorldBaseline
-	window          contextstore.WindowLedger
+	context         agentcontext.Authority
 	promptCacheBase string
 	profileReadOnly bool
 	enabledTools    map[string]struct{}
 
-	approvalRecovery recoveredInteraction[toolguard.ApprovalDecision]
-	inputRecovery    recoveredInteraction[interact.Reply]
-
-	compactions       int
-	contextCompaction *sessiondelta.CompactionState
+	approvalRecovery turnkernel.RecoveredInteraction[toolguard.ApprovalDecision]
+	inputRecovery    turnkernel.RecoveredInteraction[interact.Reply]
 
 	activeScope *Scope
 	lastScope   *Scope
@@ -194,7 +107,12 @@ func (e *Engine) recordTurnDiagnostics(receipts []diagnostics.Receipt) {
 		return
 	}
 	for _, receipt := range receipts {
-		e.observePath(workingset.SourceDiagnostic, receipt.Path)
+		e.contextAuthority().ObservePath(
+			e.options.Workspace,
+			agentcontext.SourceDiagnostic,
+			e.turn,
+			receipt.Path,
+		)
 	}
 	scope := e.runningScope()
 	if scope == nil {
@@ -285,6 +203,12 @@ func New(options Options) (*Engine, error) {
 	if options.EvidenceLimit <= 0 {
 		options.EvidenceLimit = 24
 	}
+	if options.MaxToolResultHistoryBytes <= 0 {
+		options.MaxToolResultHistoryBytes = 64 << 10
+	}
+	if options.MaxConsumedToolResultBytes <= 0 {
+		options.MaxConsumedToolResultBytes = 384
+	}
 	if options.MaxToolDefinitions <= 0 {
 		options.MaxToolDefinitions = 128
 	}
@@ -300,7 +224,7 @@ func New(options Options) (*Engine, error) {
 	options.Tools.SetMaterializeLimits(
 		tool.DefaultMaxMaterialized, tool.DefaultMaxMaterializedSchemaBytes,
 	)
-	window, err := createWindowLedger(1)
+	window, err := agentcontext.CreateWindowLedger(1)
 	if err != nil {
 		return nil, fmt.Errorf("create token window: %w", err)
 	}
@@ -311,11 +235,9 @@ func New(options Options) (*Engine, error) {
 		turnIDs:         make(map[string]uint64),
 		appliedDeltas:   make(map[string]string),
 		stateEpoch:      1,
-		working:         workingset.New(),
-		evidence:        evidence.New(),
-		failures:        compact.NewFailures(),
-		window:          window,
+		context:         agentcontext.NewAuthority(),
 	}
+	engine.context.SetWindow(window)
 	engine.seedWorkingSet()
 	engine.lastScope = &Scope{engine: engine, state: newScopeState(engine)}
 	if engine.guard == nil {
@@ -324,11 +246,11 @@ func New(options Options) (*Engine, error) {
 			guard, err = options.GuardFactory(context.Background())
 		} else {
 			guard, err = toolguard.New(toolguard.Options{
-				Registry: options.Tools, Policy: options.Security, Workspace: options.Workspace,
-				ReadTracker: options.ReadTracker, Journal: options.Journal, Diagnostics: options.Diagnostics,
-				OnNetworkAllow: options.OnNetworkAllow,
+				Registry: options.Tools, Policy: options.Security,
 
-				Now: options.Observability.Now,
+				Now: options.Observability.Now, Diagnostics: options.Diagnostics,
+				OnNetworkAllow: options.OnNetworkAllow, Workspace: options.Workspace,
+				ReadTracker: options.ReadTracker, Journal: options.Journal,
 			})
 		}
 		if err != nil {

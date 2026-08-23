@@ -12,10 +12,9 @@ import (
 )
 
 func TestRuntimeCompactThreadEmitsThreadCompacted(t *testing.T) {
-	seed, err := newTestAgentEngine(agentengine.Options{
-		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
-		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
-		MaxOutputTokens: 128,
+	seed, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 	})
 	if err != nil {
 		t.Fatal(err)

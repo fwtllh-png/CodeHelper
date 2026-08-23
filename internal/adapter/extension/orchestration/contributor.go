@@ -24,18 +24,15 @@ type Options struct {
 func Contribute(registry *tool.Registry, options Options) error {
 	if err := tasktool.Register(registry, tasktool.Options{
 		Repository: options.Tasks,
-		SessionID:  options.SessionID,
-		Workspace:  options.Workspace,
-		Backend:    options.Backend,
+
+		Backend: options.Backend, Workspace: options.Workspace, SessionID: options.SessionID,
 	}); err != nil {
 		return fmt.Errorf("task tools: %w", err)
 	}
 	if err := automationtool.Register(
 		registry,
 		automationtool.Options{
-			Repository: options.Automations,
-			SessionID:  options.SessionID,
-			Workspace:  options.Workspace,
+			Repository: options.Automations, Workspace: options.Workspace, SessionID: options.SessionID,
 		},
 	); err != nil {
 		return fmt.Errorf("automation tools: %w", err)

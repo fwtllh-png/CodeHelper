@@ -149,8 +149,7 @@ func TestChildTurnIntentUsesEffectiveWorkspaceAuthority(t *testing.T) {
 func TestChildTerminalSettlementRetriesUntilDurable(t *testing.T) {
 	control, err := subagent.OpenControl(subagent.Options{
 		Root: t.TempDir(), Gate: recoveryToolGate{},
-		Runtime: recoveredChildRuntimeHost{}, Workspace: t.TempDir(),
-		SessionID: "session-settlement-retry",
+		Runtime: recoveredChildRuntimeHost{}, Workspace: t.TempDir(), SessionID: "session-settlement-retry",
 	}, subagent.DelegationExplicit)
 	if err != nil {
 		t.Fatal(err)
@@ -274,8 +273,7 @@ func TestChildTerminalObserverDoesNotBlockOnSettlement(t *testing.T) {
 func TestBindRestoresActiveChildObservation(t *testing.T) {
 	control, err := subagent.OpenControl(subagent.Options{
 		Root: t.TempDir(), Gate: recoveryToolGate{},
-		Runtime:   recoveredChildRuntimeHost{},
-		Workspace: t.TempDir(), SessionID: "session-recovered",
+		Runtime: recoveredChildRuntimeHost{}, Workspace: t.TempDir(), SessionID: "session-recovered",
 	}, subagent.DelegationExplicit)
 	if err != nil {
 		t.Fatal(err)

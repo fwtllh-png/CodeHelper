@@ -34,22 +34,6 @@ type Acceptance struct {
 	Committed   bool
 }
 
-type PendingApproval struct {
-	RequestID string
-	ThreadID  protocol.ThreadID
-	TurnID    protocol.TurnID
-	ItemID    protocol.ItemID
-	Data      protocol.ApprovalRequiredData
-}
-
-type PendingInput struct {
-	RequestID string
-	ThreadID  protocol.ThreadID
-	TurnID    protocol.TurnID
-	ItemID    protocol.ItemID
-	Data      protocol.InputRequiredData
-}
-
 type PendingOperation struct {
 	ID             protocol.OperationID
 	SessionID      string
@@ -83,16 +67,16 @@ type RecoveryState struct {
 // approval. Hosts use it to route a decision to a child thread without
 // weakening Session ownership checks.
 func (r *Runtime) PendingApproval(requestID string) (PendingApproval, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.EventService.mu.Lock()
+	defer r.EventService.mu.Unlock()
 	pending, ok := r.approvals[requestID]
 	return pending, ok
 }
 
 // PendingInput returns the authoritative identity for one unresolved input.
 func (r *Runtime) PendingInput(requestID string) (PendingInput, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.EventService.mu.Lock()
+	defer r.EventService.mu.Unlock()
 	pending, ok := r.inputs[requestID]
 	return pending, ok
 }

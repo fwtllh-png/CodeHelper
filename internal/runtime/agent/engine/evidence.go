@@ -1,168 +1,22 @@
 package engine
 
 import (
-	"encoding/json"
-
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
-// resultHandleTools are the tools that read a parked result back. A call to one
-// of them is what marks a handle consumed.
-var resultHandleTools = map[string]struct{}{
-	"result_get": {}, "handle_read": {},
-}
-
-// noteToolCall records a call before it runs: what was asked for, and whether it
-// collects a result the model was told about earlier.
-func (e *Engine) noteToolCall(call provider.ToolCall) {
-	if e.evidenceSet() == nil {
-		return
-	}
-	e.evidenceSet().NoteCall(call.Name, call.Arguments)
-	if _, found := resultHandleTools[call.Name]; !found {
-		return
-	}
-	var arguments struct {
-		Handle string `json:"handle"`
-		ID     string `json:"id"`
-	}
-	// A malformed argument list is the tool's problem to report; here it only
-	// means no handle was consumed.
-	if err := json.Unmarshal([]byte(call.Arguments), &arguments); err != nil {
-		return
-	}
-	for _, candidate := range []string{arguments.Handle, arguments.ID} {
-		e.evidenceSet().ConsumeHandle(candidate)
-	}
-}
-
-// observeEvidence folds one successful tool result into the evidence set.
-//
-// Everything it records comes from typed outcome facts, so
-// a tool that says nothing about what it found costs the ledger nothing.
-func (e *Engine) observeEvidence(call provider.ToolCall, result tool.Result) {
-	if e.evidenceSet() == nil || result.Outcome == nil ||
-		result.Outcome.Facts == nil {
-		return
-	}
-	facts := result.Outcome.Facts
-	for _, hit := range facts.Evidence {
-		path, ok := e.workspaceRelative(hit.Path)
-		if !ok {
-			continue
-		}
-		e.evidenceSet().Observe(evidence.Fact{
-			Kind: evidence.Kind(hit.Kind), Path: path, Line: hit.Line,
-			Symbol: hit.Symbol, Tool: call.Name, Turn: e.turn,
-		})
-		// A search hit joins the working set as its weakest source: it names a
-		// place worth looking at, which is less than having looked.
-		e.observePath(workingset.SourceSearch, hit.Path)
-	}
-	if facts.WorkspaceRead != nil {
-		if path, ok := e.workspaceRelative(facts.WorkspaceRead.Path); ok {
-			e.evidenceSet().NoteRead(path, facts.WorkspaceRead.Digest)
-		}
-	}
-	if facts.ResultHandle != "" {
-		e.evidenceSet().NoteHandle(facts.ResultHandle, call.Name)
-	}
-}
-
-// observeToolFailure records that a tool call was rejected or errored.
-//
-// The failure is fed back to the model in this turn's history anyway; the ledger
-// exists for the turn after the history is gone. A model that cannot see that it
-// already tried an edit with the wrong anchor will try it again with the same
-// anchor.
-func (e *Engine) observeToolFailure(call provider.ToolCall, result tool.Result) {
-	if e.failureLedger() == nil {
-		return
-	}
-	reason := result.Content
-	if result.Outcome != nil && result.Outcome.Facts != nil &&
-		result.Outcome.Facts.Failure != nil &&
-		result.Outcome.Facts.Failure.Category != "" {
-		reason = result.Outcome.Facts.Failure.Category + ": " + reason
-	}
-	e.failureLedger().NoteTool(e.turn, call.Name, reason)
-}
-
-// observeVerifyFailure records that a verification did not pass. The gate's own
-// verdict only reaches this turn's event stream, so without this the next turn
-// cannot tell a suite that was never run from one that ran and failed.
-func (e *Engine) observeVerifyFailure(scope, status, message string) {
-	if e.failureLedger() == nil {
-		return
-	}
-	e.failureLedger().NoteVerify(e.turn, scope, status, message)
-}
-
 // Failures reports the attempts that did not work, most recently seen first.
-func (e *Engine) Failures() []compact.Failure {
+func (e *Engine) Failures() []agentcontext.Failure {
 	if e == nil {
 		return nil
 	}
 	return e.failureLedger().List()
 }
 
-// observeChangeEvidence records a write. A path the thread read first, or one it
-// created, rests on evidence; anything else was written blind.
-func (e *Engine) observeChangeEvidence(change tool.WorkspaceChange) {
-	if e.evidenceSet() == nil {
-		return
-	}
-	path, ok := e.workspaceRelative(change.Path)
-	if !ok {
-		return
-	}
-	read := change.Kind == tool.WorkspaceCreated ||
-		e.workingLedger().HasSource(workingset.SourceRead, path)
-	e.evidenceSet().MarkChanged(path, e.turn, read)
-}
-
-// observeDiagnosticsEvidence records whether a checked path is still failing. A
-// receipt the runner could not produce says nothing either way, so it is skipped
-// rather than read as clean.
-func (e *Engine) observeDiagnosticsEvidence(receipts []diagnostics.Receipt) {
-	if e.evidenceSet() == nil {
-		return
-	}
-	for _, receipt := range receipts {
-		if receipt.Status == "unavailable" {
-			continue
-		}
-		if path, ok := e.workspaceRelative(receipt.Path); ok {
-			e.evidenceSet().MarkDiagnostics(path, len(receipt.Diagnostics) > 0)
-		}
-	}
-}
-
-// observeVerifiedEvidence records that verification covered paths. Only a passing
-// gate may call it: a failed run is the reason the risk exists.
-func (e *Engine) observeVerifiedEvidence(paths []string) {
-	if e.evidenceSet() == nil {
-		return
-	}
-	relative := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if candidate, ok := e.workspaceRelative(path); ok {
-			relative = append(relative, candidate)
-		}
-	}
-	e.evidenceSet().MarkVerified(relative)
-}
-
 // EvidenceSnapshot reports the evidence set as of the last sample: what the
 // thread found, what it has not proved, and which call patterns wasted a turn.
-func (e *Engine) EvidenceSnapshot() evidence.Snapshot {
+func (e *Engine) EvidenceSnapshot() agentcontext.EvidenceSnapshot {
 	if e == nil {
-		return evidence.Snapshot{}
+		return agentcontext.EvidenceSnapshot{}
 	}
 	return e.evidenceSet().Snapshot(e.options.EvidenceLimit)
 }

@@ -4,45 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
-	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
-	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/worker"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 type RuntimeRole string
@@ -99,54 +75,16 @@ type ContextFile struct {
 }
 
 type Session struct {
-	Runtime            *app.Runtime
-	metrics            *telemetry.Metrics
-	metricsPath        string
-	logger             *slog.Logger
-	logFile            *os.File
-	fixture            *fixture.Server
-	plugins            []*pluginruntime.Loaded
-	extensions         *extensionSession
-	dynamicTools       *dynamictool.Manager
-	providerID         string
-	modelID            string
-	modelCapabilities  protocol.ModelCapabilities
-	providerCatalog    protocol.ProviderCatalog
-	modelCatalog       protocol.ModelCatalog
-	configuration      sessionConfiguration
-	processes          *process.SessionManager
-	workspaceQuery     *workspacequery.Service
-	repositoryIndex    *repoindex.Index
-	jobLogs            *joblog.Store
-	mcpPool            *mcpruntime.Pool
-	mcpPrewarm         *MCPPrewarm
-	sandbox            sandbox.Backend
-	content            *contentstore.Memory
-	memory             *memory.Store
-	automations        *automation.Repository
-	tasks              *taskstate.Repository
-	ephemeralTasks     *sqlitestate.Store
-	ephemeralTasksDir  string
-	hooks              *hooks.Manager
-	inputHost          *interacttool.Host
-	applyPlan          func(interacttool.Plan) error
-	security           *policy.Runtime
-	rlmStore           *rlm.Store
-	children           *childRuntime
-	childTools         *childToolsets
-	chatWorkspaces     *chatWorkspaces
-	threads            *app.ThreadManager
-	turnCoordinators   *durableCoordinatorRuntime
-	observability      observationSession
-	journal            *workspacejournal.Manager
-	journalRecovery    workspacejournal.Recovery
-	subagents          *subagent.AgentControl
-	scheduler          *worker.Scheduler
-	Constitution       constitution.Status
-	constitutionPrompt string
-	resources          *assembly.ResourceStack
-	closeOnce          sync.Once
-	closeErr           error
+	providerBundle
+	platformBundle
+	extensionBundle
+	orchestrationBundle
+	persistenceBundle
+	securityBundle
+	observabilityBundle
+	runtimeBundle
+	resourceBundle
+	configuration sessionConfiguration
 }
 
 func NewExec(ctx context.Context, options ExecOptions) (_ *Session, resultErr error) {
@@ -187,8 +125,12 @@ func newExec(
 		return nil, fmt.Errorf("unsupported Runtime role %q", options.RuntimeRole)
 	}
 	session := &Session{
-		metrics: telemetry.NewMetrics(), metricsPath: options.MetricsPath,
-		resources: assembly.NewResourceStack(),
+		observabilityBundle: observabilityBundle{
+			metrics: telemetry.NewMetrics(), metricsPath: options.MetricsPath,
+		},
+		resourceBundle: resourceBundle{
+			resources: NewResourceStack(),
+		},
 	}
 	if err := session.registerResourceClosers(); err != nil {
 		return nil, err

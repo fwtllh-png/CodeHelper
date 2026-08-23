@@ -179,6 +179,7 @@ testdata/                Hermetic Provider 与 Benchmark Fixture
 | 配置 | [配置说明](./docs/zh-CN/configuration.md) |
 | 命令与工作流 | [使用指南](./docs/zh-CN/usage.md) |
 | 架构 | [架构设计](./docs/zh-CN/architecture.md) |
+| Runtime 可维护性改造 | [核心流程重构方案](./docs/zh-CN/runtime-maintainability-refactoring-plan.md) |
 | 安全 | [安全指南](./docs/zh-CN/security.md) |
 | 本地开发 | [本地开发](./docs/zh-CN/development.md) |
 | 本机 DeepSeek | [一键配置运行](./docs/zh-CN/deepseek-local.md) |

@@ -109,10 +109,11 @@ func newVerifyGateFixture(
 	}
 	runtime := &scriptedProvider{streams: streams}
 	options.Runner = verifier
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), Tools: registry, Workspace: root,
-		MaxOutputTokens: 128, MaxSteps: maxSteps, Journal: journal,
-		Diagnostics: fakeDiagnosticRunner{}, Verify: options,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+		MaxOutputTokens: 128, MaxSteps: maxSteps}, ToolConfig: ToolConfig{Tools: registry,
+
+		Diagnostics: fakeDiagnosticRunner{}, Verify: options}, SecurityConfig: SecurityConfig{Workspace: root,
+		Journal: journal},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -511,12 +512,12 @@ func TestVerifyGateSkipsTurnsWithoutFileChanges(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), Tools: tool.NewRegistry(nil, nil),
-		MaxOutputTokens: 128,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+		MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil),
+
 		Verify: VerifyOptions{
 			Mode: VerifyModeHard, Scope: verify.ScopeDiagnostics, Runner: verifier,
-		},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -594,15 +595,17 @@ func TestVerifyGateCoversToolsWhoseArgumentsCarryNoPath(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), Tools: registry, Workspace: root,
-		Security:        policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		MaxOutputTokens: 128, MaxSteps: 8, Journal: journal,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+
+		MaxOutputTokens: 128, MaxSteps: 8}, ToolConfig: ToolConfig{Tools: registry,
+
 		Diagnostics: fakeDiagnosticRunner{},
 		Verify: VerifyOptions{
 			Mode: VerifyModeHard, OnFailure: VerifyOnFailureFail,
 			Scope: verify.ScopeDiagnostics, Runner: verifier,
-		},
+		}}, SecurityConfig: SecurityConfig{Workspace: root,
+		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		Journal:  journal},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -658,15 +661,16 @@ func TestVerifyGateSkipsWritesThatChangeNoBytes(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), Tools: registry, Workspace: root,
-		Security:        policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		MaxOutputTokens: 128, MaxSteps: 8,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+
+		MaxOutputTokens: 128, MaxSteps: 8}, ToolConfig: ToolConfig{Tools: registry,
+
 		Diagnostics: fakeDiagnosticRunner{},
 		Verify: VerifyOptions{
 			Mode: VerifyModeHard, OnFailure: VerifyOnFailureFail,
 			Scope: verify.ScopeDiagnostics, Runner: verifier,
-		},
+		}}, SecurityConfig: SecurityConfig{Workspace: root,
+		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -4,15 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	reverttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/revert"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -36,13 +37,13 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		budgets = defaultPromptBudgets()
 	}
 	prompt, err := promptcontext.Assemble(promptcontext.Options{
-		BaseSystem:    "You are a software engineering agent.",
-		Workspace:     execution.Workspace,
-		ToolPrefix:    toolPrefix,
-		Budgets:       budgets,
-		WorkingSet:    promptWorkingSet(state.options.WorkingSet),
+		BaseSystem: "You are a software engineering agent.",
+
+		ToolPrefix: toolPrefix,
+		Budgets:    budgets,
+
 		MemoryEnabled: false,
-		Constitution:  session.constitutionPrompt,
+		Constitution:  session.constitutionPrompt, WorkingSet: promptWorkingSet(state.options.WorkingSet), Workspace: execution.Workspace,
 	})
 	if err != nil {
 		return fmt.Errorf("assemble prompt context: %w", err)
@@ -76,47 +77,24 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	}
 	session.turnCoordinators = contextRuntime.durable
 	catalog := state.tools.skillCatalog
-	seedOptions := agentengine.Options{
-		Provider:                 state.provider.provider,
-		Route:                    route,
-		Routes:                   state.provider.routes,
-		Tools:                    state.tools.registry,
-		StaticContext:            prompt.Messages,
-		ContextBudgets:           budgets,
-		CodingPolicy:             execution.Tools && snapshot.Config.Context.CodingPolicy.Enabled,
-		MaxOutputTokens:          execution.MaxOutputTokens,
-		Security:                 state.security.runtime,
-		ProfilePermissionCeiling: approvalPosture,
-		Workspace:                execution.Workspace,
-		WorkspaceIdentity:        workspaceID,
-		WorkspaceIsolation:       "shared",
-		OnNetworkAllow:           state.security.guardFactory.onNetworkAllow,
-		Journal:                  state.security.journal,
-		WorkspaceTurnGate:        workspaceTurnGate,
-		Diagnostics:              state.security.diagnostics,
-		Verify: agentengine.VerifyOptions{
-			Mode:           execution.Verify.Mode,
-			Scope:          verify.Scope(execution.Verify.Scope),
-			OnFailure:      execution.Verify.OnFailure,
-			MaxRepairSteps: execution.Verify.MaxRepairSteps,
-			Timeout:        execution.Verify.Timeout,
-			Runner:         state.security.verify,
-		},
-		RequireCompletionDeclaration: execution.Tools,
-		Metrics:                      session.metrics,
-		Observability:                engineObservability(state),
-		TurnCoordinatorRuntime:       contextRuntime.coordinator,
-		ReleaseTurnResources: session.turnProcessReleaser(
-			session.processes,
-			"main",
-		),
+	seedOptions := agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: state.provider.provider,
+		Route:  route,
+		Routes: state.provider.routes,
+
+		MaxOutputTokens: execution.MaxOutputTokens,
+
 		ReasoningEffort: reasoningEffort,
 		NativeSearch:    execution.NativeSearch,
+
+		MaxSteps: execution.MaxSteps}, ContextConfig: agentengine.ContextConfig{StaticContext: prompt.Messages,
+		ContextBudgets: budgets,
+		CodingPolicy:   execution.Tools && snapshot.Config.Context.CodingPolicy.Enabled,
+
 		Budget: agentengine.Budget{
 			MaxTokens:  execution.BudgetTokens,
 			MaxCostUSD: execution.BudgetUSD,
 		},
-		MaxSteps:              execution.MaxSteps,
+
 		WorkingSet:            prompt.WorkingSet,
 		CriticalPaths:         prompt.CriticalPaths,
 		StaticContextReceipts: prompt.Receipts,
@@ -130,19 +108,12 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 			contextRuntime.commit,
 			contextRuntime.commitWithFacts,
 		),
-		Hooks:     session.hooks,
-		SessionID: state.config.hookSessionID,
-		InputHost: session.inputHost,
+
 		PromptCacheKey: promptcontext.StickyCacheKey(
 			state.config.hookSessionID,
 			execution.Workspace,
 		),
-		ToolCatalogSync: func() error {
-			if session.mcpPrewarm == nil {
-				return nil
-			}
-			return session.mcpPrewarm.SyncCatalog()
-		},
+
 		TurnSnapshots: agentengine.TurnSnapshotSources{
 			Memory: memorySnapshotSource(
 				session.memory,
@@ -158,7 +129,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 				for _, snapshot := range snapshots {
 					result = append(result, agentengine.MCPHealthSnapshot{
 						Server:              snapshot.Server,
-						State:               string(snapshot.State),
+						State:               snapshot.State,
 						ConsecutiveFailures: snapshot.ConsecutiveFailures,
 						LastError:           snapshot.LastError,
 						ChangedAt:           snapshot.ChangedAt,
@@ -178,7 +149,44 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 			) ([]agentengine.SkillSummary, agentengine.SkillSelectionMetrics, error) {
 				return selectTurnSkills(catalog, query)
 			},
+		}}, ToolConfig: agentengine.ToolConfig{Tools: state.tools.registry,
+
+		OnNetworkAllow: state.security.guardFactory.onNetworkAllow,
+
+		Diagnostics: state.security.diagnostics,
+		Verify: agentengine.VerifyOptions{
+			Mode:           execution.Verify.Mode,
+			Scope:          verify.Scope(execution.Verify.Scope),
+			OnFailure:      execution.Verify.OnFailure,
+			MaxRepairSteps: execution.Verify.MaxRepairSteps,
+			Timeout:        execution.Verify.Timeout,
+			Runner:         state.security.verify,
 		},
+		RequireCompletionDeclaration: execution.Tools,
+
+		ToolCatalogSync: func() error {
+			if session.mcpPrewarm == nil {
+				return nil
+			}
+			return session.mcpPrewarm.SyncCatalog()
+		}}, SecurityConfig: agentengine.SecurityConfig{Security: state.security.runtime,
+		ProfilePermissionCeiling: approvalPosture,
+		Workspace:                execution.Workspace,
+		WorkspaceIdentity:        workspaceID,
+		WorkspaceIsolation:       "shared",
+
+		Journal:           state.security.journal,
+		WorkspaceTurnGate: workspaceTurnGate}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: session.metrics,
+		Observability: engineObservability(state),
+
+		Hooks: session.hooks}, LifecycleConfig: agentengine.LifecycleConfig{TurnCoordinatorRuntime: contextRuntime.coordinator,
+		ReleaseTurnResources: session.turnProcessReleaser(
+			session.processes,
+			"main",
+		),
+
+		SessionID: state.config.hookSessionID,
+		InputHost: session.inputHost},
 	}
 	engineGuardFactory := state.security.guardFactory
 	approvalObserver := session.metrics.Approval
@@ -287,7 +295,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 				ctx context.Context,
 				threadID protocol.ThreadID,
 			) (*protocol.ThreadCompactedData, error) {
-				return app.LatestThreadHistorySeed(ctx, store, threadID)
+				return sessionhistory.LatestThreadHistorySeed(ctx, store, threadID)
 			},
 		)
 		threadManager.SetSequenceReader(
@@ -348,7 +356,7 @@ func (runtimeModule) Build(
 ) error {
 	session := state.session
 	if state.options.PersistentStore != nil {
-		runtime, err := apppersistence.PreparePersistentRuntime(ctx, apppersistence.PersistentRuntimeOptions{
+		runtime, err := PreparePersistentRuntime(ctx, PersistentRuntimeOptions{
 			Store:               state.options.PersistentStore,
 			WorkspaceRoot:       state.config.execution.Workspace,
 			Engine:              state.agent.threads,
@@ -370,8 +378,7 @@ func (runtimeModule) Build(
 			Engine:        state.agent.threads,
 			WorkspaceRoot: state.config.execution.Workspace,
 			ContentStore:  session.content,
-			Orchestration: state.orchestration.workGraph,
-			Observability: runtimeObservability(state),
+			Orchestration: state.orchestration.workGraph, Observability: runtimeObservability(state),
 		})
 		if err != nil {
 			return fmt.Errorf("prepare runtime: %w", err)
@@ -381,7 +388,7 @@ func (runtimeModule) Build(
 	if store := state.options.PersistentStore; store != nil &&
 		state.orchestration.subagents != nil {
 		control := state.orchestration.subagents
-		if err := apppersistence.ConfigurePersistentSubagents(
+		if err := ConfigurePersistentSubagents(
 			state.agent.threads, store,
 			state.config.execution.Workspace,
 			state.config.hookSessionID,

@@ -7,44 +7,11 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
-
-type recoveredInteraction[T any] struct {
-	pending map[string]struct{}
-	early   map[string]T
-}
-
-func (r *recoveredInteraction[T]) mark(requestID string) {
-	if r.pending == nil {
-		r.pending = make(map[string]struct{})
-		r.early = make(map[string]T)
-	}
-	r.pending[requestID] = struct{}{}
-}
-
-func (r *recoveredInteraction[T]) queue(requestID string, value T) bool {
-	if _, recovered := r.pending[requestID]; !recovered {
-		return false
-	}
-	if _, queued := r.early[requestID]; queued {
-		return false
-	}
-	r.early[requestID] = value
-	return true
-}
-
-func (r *recoveredInteraction[T]) take(requestID string) (T, bool) {
-	delete(r.pending, requestID)
-	value, ok := r.early[requestID]
-	delete(r.early, requestID)
-	return value, ok
-}
 
 func (e *Engine) configureApprovalHandlers() {
 	e.guard.SetApprovalHandler(e.emitApproval)
@@ -63,7 +30,7 @@ func (e *Engine) RestoreApprovalRequest(
 		return err
 	}
 	e.scopeMu.Lock()
-	e.approvalRecovery.mark(request.RequestID)
+	e.approvalRecovery.Mark(request.RequestID)
 	e.scopeMu.Unlock()
 	return nil
 }
@@ -76,13 +43,13 @@ func (e *Engine) RestoreInputRequest(request interact.Request) error {
 		return err
 	}
 	e.scopeMu.Lock()
-	e.inputRecovery.mark(request.RequestID)
+	e.inputRecovery.Mark(request.RequestID)
 	e.scopeMu.Unlock()
 	return nil
 }
 
 func (e *Engine) connectInputHost(
-	kernel *engineTurnKernel,
+	kernel *turnkernel.RuntimeKernel,
 	emit func(Event) error,
 ) func() {
 	if e.options.InputHost == nil {
@@ -90,7 +57,7 @@ func (e *Engine) connectInputHost(
 	}
 	e.options.InputHost.SetEmitter(
 		func(_ context.Context, request interact.Request) error {
-			if err := kernel.ensureInput(request.RequestID); err != nil {
+			if err := kernel.EnsureInput(request.RequestID); err != nil {
 				return err
 			}
 			scope := e.runningScope()
@@ -98,7 +65,7 @@ func (e *Engine) connectInputHost(
 				return errors.New("turn scope is not active")
 			}
 			if err := scope.state.requests.Register(
-				turnexec.RequestInput,
+				turnkernel.RequestInput,
 				request.RequestID,
 			); err != nil {
 				return err
@@ -112,7 +79,7 @@ func (e *Engine) connectInputHost(
 		},
 	)
 	e.options.InputHost.SetRecoveryHandler(func(request interact.Request) error {
-		if err := kernel.ensureInput(request.RequestID); err != nil {
+		if err := kernel.EnsureInput(request.RequestID); err != nil {
 			return err
 		}
 		scope := e.runningScope()
@@ -120,7 +87,7 @@ func (e *Engine) connectInputHost(
 			return errors.New("turn scope is not active")
 		}
 		if err := scope.state.requests.Register(
-			turnexec.RequestInput,
+			turnkernel.RequestInput,
 			request.RequestID,
 		); err != nil {
 			return err
@@ -140,7 +107,7 @@ func (e *Engine) connectInputHost(
 func (e *Engine) queueRecoveredInput(reply interact.Reply) bool {
 	e.scopeMu.Lock()
 	defer e.scopeMu.Unlock()
-	return e.inputRecovery.queue(reply.RequestID, reply)
+	return e.inputRecovery.Queue(reply.RequestID, reply)
 }
 
 func (e *Engine) takeRecoveredInput(
@@ -148,21 +115,21 @@ func (e *Engine) takeRecoveredInput(
 ) (interact.Reply, bool) {
 	e.scopeMu.Lock()
 	defer e.scopeMu.Unlock()
-	return e.inputRecovery.take(requestID)
+	return e.inputRecovery.Take(requestID)
 }
 
 func (e *Engine) ApplyPlan(plan interact.Plan) error {
 	current := e.buildTruthCapsule(e.buildCompactSummary(nil))
 	var resolved []string
 	for _, entity := range current.Entities {
-		if entity.Kind == compact.EntityGoal || entity.Kind == compact.EntityTodo {
+		if entity.Kind == agentcontext.EntityGoal || entity.Kind == agentcontext.EntityTodo {
 			resolved = append(resolved, entity.ID)
 		}
 	}
-	added := e.planTruthEntities(plan)
-	decision := (compact.ContextAdmissionController{
+	added := agentcontext.PlanTruthEntities(plan, e.turn)
+	decision := (agentcontext.ContextAdmissionController{
 		Policy: e.options.Context.TruthRetention,
-	}).Decide(current, compact.AdmissionRequest{
+	}).Decide(current, agentcontext.AdmissionRequest{
 		BaseContextRevision:  e.sessionRevision,
 		RouteCompatibility:   current.CompatibilityHash,
 		AddedMandatory:       added,
@@ -177,7 +144,14 @@ func (e *Engine) ApplyPlan(plan interact.Plan) error {
 		)
 	}
 	e.setPlan(plan)
-	e.observePaths(workingset.SourcePlan, plan.CriticalFiles)
+	for _, path := range plan.CriticalFiles {
+		e.contextAuthority().ObservePath(
+			e.options.Workspace,
+			agentcontext.SourcePlan,
+			e.turn,
+			path,
+		)
+	}
 	return nil
 }
 
@@ -198,7 +172,7 @@ func (e *Engine) ContextReceipts() []promptcontext.Receipt {
 // ContextSnapshot returns the sole model-context authority visible to the most
 // recent sample. Before the first sample it returns the equivalent initial
 // Stable+History ledger snapshot.
-func (e *Engine) ContextSnapshot() contextstore.Snapshot {
+func (e *Engine) ContextSnapshot() agentcontext.MessageSnapshot {
 	if scope := e.currentScope(); scope != nil {
 		scope.mu.Lock()
 		if scope.state.contextLedger != nil {
@@ -210,7 +184,7 @@ func (e *Engine) ContextSnapshot() contextstore.Snapshot {
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return contextstore.New(contextstore.Input{
+	return agentcontext.NewMessageLedger(agentcontext.LedgerInput{
 		Stable:  e.promptMessages(),
 		History: cloneMessages(e.history),
 	}).Snapshot()
@@ -292,11 +266,11 @@ func (e *Engine) registerApprovalWait(
 	if err != nil {
 		return nil, err
 	}
-	if err := kernel.ensureApproval(request.RequestID, request.CallID); err != nil {
+	if err := kernel.EnsureApproval(request.RequestID, request.CallID); err != nil {
 		return nil, err
 	}
 	if err := scope.state.requests.Register(
-		turnexec.RequestApproval,
+		turnkernel.RequestApproval,
 		request.RequestID,
 	); err != nil {
 		return nil, err
@@ -310,7 +284,7 @@ func (e *Engine) expireApprovalWait(wait toolguard.ApprovalWait) error {
 		return errors.New("approval host is not connected to an active turn")
 	}
 	if err := scope.state.requests.Resolve(
-		turnexec.RequestApproval,
+		turnkernel.RequestApproval,
 		wait.RequestID,
 	); err != nil {
 		return err
@@ -319,7 +293,7 @@ func (e *Engine) expireApprovalWait(wait toolguard.ApprovalWait) error {
 	if err != nil {
 		return err
 	}
-	if err := kernel.resolveApproval(wait.RequestID, false); err != nil {
+	if err := kernel.ResolveApproval(wait.RequestID, false); err != nil {
 		return err
 	}
 	scope.mu.Lock()
@@ -340,7 +314,7 @@ func (e *Engine) queueRecoveredApproval(
 ) bool {
 	e.scopeMu.Lock()
 	defer e.scopeMu.Unlock()
-	return e.approvalRecovery.queue(decision.RequestID, decision)
+	return e.approvalRecovery.Queue(decision.RequestID, decision)
 }
 
 func (e *Engine) takeRecoveredApproval(
@@ -348,5 +322,5 @@ func (e *Engine) takeRecoveredApproval(
 ) (toolguard.ApprovalDecision, bool) {
 	e.scopeMu.Lock()
 	defer e.scopeMu.Unlock()
-	return e.approvalRecovery.take(requestID)
+	return e.approvalRecovery.Take(requestID)
 }

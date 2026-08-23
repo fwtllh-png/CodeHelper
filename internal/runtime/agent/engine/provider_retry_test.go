@@ -10,15 +10,13 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestProviderRetryMatrix(t *testing.T) {
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
-	engine := &Engine{options: Options{
-		MaxRetries: 2, MaxRetryDelay: 2 * time.Minute,
-		Observability: trace.Runtime{Clock: func() time.Time { return now }},
-	}}
+	engine := &Engine{options: Options{ProviderConfig: ProviderConfig{MaxRetries: 2, MaxRetryDelay: 2 * time.Minute}, TelemetryConfig: TelemetryConfig{Observability: trace.Runtime{Clock: func() time.Time { return now }}}}}
 	failure := func(code provider.FailureCode, retryAfter uint64) error {
 		return protocol.NewProblem(
 			protocol.CodeUnavailable,
@@ -85,10 +83,7 @@ func TestProviderRetryMatrix(t *testing.T) {
 
 func TestProviderRetryCapsProviderDelay(t *testing.T) {
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
-	engine := &Engine{options: Options{
-		MaxRetries: 1, MaxRetryDelay: 5 * time.Second,
-		Observability: trace.Runtime{Clock: func() time.Time { return now }},
-	}}
+	engine := &Engine{options: Options{ProviderConfig: ProviderConfig{MaxRetries: 1, MaxRetryDelay: 5 * time.Second}, TelemetryConfig: TelemetryConfig{Observability: trace.Runtime{Clock: func() time.Time { return now }}}}}
 	err := protocol.NewProblem(
 		protocol.CodeUnavailable,
 		"rate limited",
@@ -108,10 +103,7 @@ func TestProviderRetryCapsProviderDelay(t *testing.T) {
 
 func TestProviderRetryUsesDeterministicBackoffWithoutRetryAfter(t *testing.T) {
 	now := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
-	engine := &Engine{options: Options{
-		MaxRetries: 2, MaxRetryDelay: time.Minute,
-		Observability: trace.Runtime{Clock: func() time.Time { return now }},
-	}}
+	engine := &Engine{options: Options{ProviderConfig: ProviderConfig{MaxRetries: 2, MaxRetryDelay: time.Minute}, TelemetryConfig: TelemetryConfig{Observability: trace.Runtime{Clock: func() time.Time { return now }}}}}
 	err := protocol.NewProblem(
 		protocol.CodeUnavailable,
 		"server unavailable",
@@ -166,8 +158,8 @@ func TestContextOverflowRetriesOnlyAfterVisibleCompaction(t *testing.T) {
 			len(runtime.requests),
 		)
 	}
-	before := historyBytes(runtime.requests[0].Messages)
-	after := historyBytes(runtime.requests[1].Messages)
+	before := agentcontext.HistoryBytes(runtime.requests[0].Messages)
+	after := agentcontext.HistoryBytes(runtime.requests[1].Messages)
 	if after >= before {
 		t.Fatalf(
 			"context did not shrink: before=%d after=%d bytes",

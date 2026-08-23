@@ -70,8 +70,7 @@ func TestReadBeforeEditContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	guard, err := toolguard.New(toolguard.Options{
-		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		Workspace: root,
+		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)

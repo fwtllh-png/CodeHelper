@@ -265,11 +265,11 @@ func TestRuntimeDispatchesControlOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = runtime.active.Release(lease) })
-	runtime.mu.Lock()
+	runtime.EventService.mu.Lock()
 	runtime.approvals["approval_1"] = PendingApproval{
 		RequestID: "approval_1", ThreadID: "thread", TurnID: "turn",
 	}
-	runtime.mu.Unlock()
+	runtime.EventService.mu.Unlock()
 	operations := []struct {
 		payload protocol.OperationPayload
 		event   protocol.EventKind
@@ -415,14 +415,14 @@ func TestApprovalHandlerProxiesParentOperationToChildIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = runtime.active.Release(lease) })
-	runtime.mu.Lock()
+	runtime.EventService.mu.Lock()
 	runtime.approvals["child-approval"] = PendingApproval{
 		RequestID: "child-approval",
 		ThreadID:  "child-thread",
 		TurnID:    "child-turn",
 		ItemID:    "child-item",
 	}
-	runtime.mu.Unlock()
+	runtime.EventService.mu.Unlock()
 	operation, err := protocol.NewOperation(&protocol.ApprovalDecisionPayload{
 		ThreadID: "parent-thread", TurnID: "parent-turn", ItemID: "parent-item",
 		RequestID: "child-approval", Decision: protocol.ApprovalApprove,

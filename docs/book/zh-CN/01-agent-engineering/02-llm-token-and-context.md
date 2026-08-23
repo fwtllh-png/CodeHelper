@@ -10,13 +10,13 @@ prerequisites:
 code_paths:
   - internal/adapter/provider
   - internal/adapter/model
-  - internal/runtime/agent/promptcontext
+  - internal/runtime/agent/prompt
 test_paths:
   - internal/adapter/provider/openai/stream_test.go
-  - internal/runtime/agent/promptcontext/context_test.go
+  - internal/runtime/agent/prompt/context_test.go
 source_of_truth:
   - internal/adapter/provider/types.go
-  - internal/runtime/agent/promptcontext/context.go
+  - internal/runtime/agent/prompt/context.go
 status: draft
 last_verified: null
 ---
@@ -157,7 +157,7 @@ Model Name 猜测。
 ```bash
 sed -n '126,190p' internal/adapter/provider/types.go
 sed -n '417,435p' internal/adapter/provider/types.go
-go test ./internal/runtime/agent/promptcontext
+go test ./internal/runtime/agent/prompt
 go test ./internal/adapter/provider/openai -run 'Test.*Stream'
 ```
 

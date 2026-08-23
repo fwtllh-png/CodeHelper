@@ -30,10 +30,10 @@ type guardFactory struct {
 
 func (f guardFactory) Build(context.Context) (*toolguard.Guard, error) {
 	options := toolguard.Options{
-		Registry: f.registry, Policy: f.runtime, Workspace: f.workspace,
+		Registry: f.registry, Policy: f.runtime,
+
+		ForceEditPlanApproval: f.forceEditReview, Now: f.now, Diagnostics: f.diagnostics, OnNetworkAllow: f.onNetworkAllow, Workspace: f.workspace,
 		ReadTracker: f.readTracker, Journal: f.journal,
-		Diagnostics: f.diagnostics, OnNetworkAllow: f.onNetworkAllow,
-		ForceEditPlanApproval: f.forceEditReview, Now: f.now,
 	}
 	if f.hooks != nil {
 		adapter := &hooks.Adapter{Manager: f.hooks}

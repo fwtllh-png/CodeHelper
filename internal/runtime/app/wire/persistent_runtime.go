@@ -1,0 +1,96 @@
+// Package persistence composes durable Runtime repositories and lifecycle.
+package wire
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
+	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+type PersistentRuntimeOptions struct {
+	Store               *state.Store
+	WorkspaceRoot       string
+	Engine              app.Engine
+	OperationBuffer     int
+	SubscriberBuffer    int
+	Observability       app.RuntimeObservability
+	DefaultProfile      protocol.SessionProfile
+	ProfileCapabilities protocol.SessionProfileCapabilities
+	ToolCatalog         *tool.Registry
+	SessionWorkspaces   app.SessionWorkspaceManager
+	SkipRuntimeRecovery bool
+}
+
+// PreparePersistentRuntime restores static durable state without starting
+// terminal projection or pending Turn recovery.
+func PreparePersistentRuntime(
+	ctx context.Context,
+	options PersistentRuntimeOptions,
+) (*app.Runtime, error) {
+	repositories, err := apppersistence.NewPersistentRepositories(options.Store)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := repositories.Tasks.RecoverInterrupted(ctx, time.Time{}); err != nil {
+		return nil, fmt.Errorf("recover interrupted tasks: %w", err)
+	}
+	terminalStore := turnstate.NewSQLiteRepository(options.Store.SQLite())
+	contextRebases := apppersistence.NewContextRebaseRepository(options.Store)
+	orchestration, err := orchestrationstore.Open(ctx, options.Store.SQLite())
+	if err != nil {
+		return nil, fmt.Errorf("open work graph orchestration: %w", err)
+	}
+	runtimeOptions := app.Options{
+		Engine:           options.Engine,
+		WorkspaceRoot:    options.WorkspaceRoot,
+		EventStore:       options.Store,
+		ContentStore:     options.Store.Content(),
+		Lifecycle:        repositories.Lifecycle,
+		OperationBuffer:  options.OperationBuffer,
+		SubscriberBuffer: options.SubscriberBuffer,
+
+		TerminalStore:       terminalStore,
+		ContextRebaseStore:  contextRebases,
+		Orchestration:       orchestration,
+		SkipRuntimeRecovery: options.SkipRuntimeRecovery, Observability: options.Observability,
+	}
+	if options.DefaultProfile.Version != 0 {
+		runtimeOptions.SessionProfiles = repositories.Sessions
+		runtimeOptions.DefaultProfile = options.DefaultProfile
+		runtimeOptions.ProfileCapabilities = options.ProfileCapabilities
+		runtimeOptions.ToolCatalog = options.ToolCatalog
+		runtimeOptions.SessionLifecycle = repositories.Sessions
+		runtimeOptions.SessionWorkspaces = options.SessionWorkspaces
+		runtimeOptions.SessionArtifacts = repositories.Snapshots
+	}
+	return app.PrepareRuntimeWithRecovery(ctx, runtimeOptions)
+}
+
+func ConfigurePersistentSubagents(
+	manager *app.ThreadManager,
+	store *state.Store,
+	workspaceRoot, sessionID string,
+	runtime *app.Runtime,
+	attach func(any) error,
+) error {
+	manager.SetChildRegistrar(func(threadID protocol.ThreadID, spec app.ChildSpec) error {
+		if spec.HostSeeded {
+			return nil
+		}
+		return apppersistence.EnsureThread(
+			context.Background(), store, threadID, sessionID, spec.Workspace,
+		)
+	})
+	return attach(state.NewAgentGraph(
+		store, workspaceRoot, sessionID, runtime,
+	))
+}

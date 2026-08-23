@@ -11,21 +11,21 @@ prerequisites:
 code_paths:
   - internal/adapter/memory
   - internal/adapter/tool/memory
-  - internal/runtime/agent/sessiondelta
+  - internal/runtime/agent/context
   - internal/runtime/agent/engine
   - internal/persist/snapshot
   - internal/runtime/app
 test_paths:
   - internal/adapter/memory/store_test.go
   - internal/adapter/tool/memory/memory_test.go
-  - internal/runtime/agent/sessiondelta/manifest_test.go
+  - internal/runtime/agent/context/session_manifest_test.go
   - internal/runtime/agent/engine/checkpoint_context_test.go
   - internal/persist/snapshot/repository_test.go
   - internal/runtime/app/session_artifacts_test.go
 source_of_truth:
   - internal/adapter/memory/records.go
-  - internal/runtime/agent/sessiondelta/context.go
-  - internal/runtime/agent/sessiondelta/manifest.go
+  - internal/runtime/agent/context/session_context.go
+  - internal/runtime/agent/context/session_manifest.go
   - internal/persist/snapshot/artifact.go
 status: draft
 last_verified: null
@@ -196,10 +196,10 @@ Hash Integrity 证明 Byte Equality，不证明 Freshness/Truth。
 | Memory Record/Selection | `internal/adapter/memory/records.go` |
 | Guarded Memory CRUD | `internal/adapter/tool/memory/memory.go` |
 | Turn Memory Snapshot | `runtime/agent/engine/turncontext.go` |
-| Context Snapshot/Binding | `runtime/agent/sessiondelta/context.go` |
-| Base/Tail/Owner Manifest | `runtime/agent/sessiondelta/manifest.go` |
+| Context Snapshot/Binding | `runtime/agent/context/session_context.go` |
+| Base/Tail/Owner Manifest | `runtime/agent/context/session_manifest.go` |
 | Checkpoint CAS | `internal/persist/snapshot/artifact.go` |
-| Restore/Fork | `runtime/app/session_artifacts.go` |
+| Restore/Fork | `persist/artifact/service.go` |
 
 ## 设计取舍
 
@@ -226,7 +226,7 @@ Event-only Replay 权威但昂贵；每 Turn 全量 Snapshot 又有线性写放�
 
 ```bash
 go test ./internal/adapter/memory ./internal/adapter/tool/memory
-go test ./internal/runtime/agent/sessiondelta
+go test ./internal/runtime/agent/context
 go test ./internal/runtime/agent/engine -run 'Test.*ContextSnapshot'
 go test ./internal/persist/snapshot
 go test ./internal/runtime/app -run 'Test.*Checkpoint'

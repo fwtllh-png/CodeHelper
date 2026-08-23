@@ -16,14 +16,14 @@ code_paths:
   - internal/observability/semantic
   - internal/observability/supportbundle
 test_paths:
-  - internal/runtime/app/reconstruct_test.go
+  - internal/persist/history/reconstruct_test.go
   - internal/runtime/app/wire/persistent_test.go
   - internal/persist/workspacejournal/recover_test.go
   - internal/observability/semantic/reducer_test.go
   - internal/observability/supportbundle/bundle_test.go
 source_of_truth:
-  - internal/runtime/app/reconstruct.go
-  - internal/runtime/app/receipt.go
+  - internal/persist/history/reconstruct.go
+  - internal/observability/receipt/receipt.go
   - internal/observability/semantic/reducer.go
   - internal/observability/semantic/explain.go
 status: draft

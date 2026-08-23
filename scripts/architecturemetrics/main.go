@@ -510,7 +510,114 @@ func measureRepository(root string) (map[string]int, error) {
 			return nil, err
 		}
 	}
-	return map[string]int{"event_switch_sites": sites}, nil
+	runtimePackages, oneFileRuntimePackages, err := runtimePackageCounts(root)
+	if err != nil {
+		return nil, err
+	}
+	agentPackages, unexpectedAgentPackages, err := runtimeChildPackageCounts(
+		root,
+		"agent",
+		map[string]struct{}{
+			"context": {}, "engine": {}, "prompt": {},
+			"repository": {}, "rlm": {}, "turnkernel": {},
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	appPackages, unexpectedAppPackages, err := runtimeChildPackageCounts(
+		root,
+		"app",
+		map[string]struct{}{
+			"eventhub": {}, "extension": {}, "persistence": {}, "wire": {},
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]int{
+		"event_switch_sites":                sites,
+		"runtime_package_dirs":              runtimePackages,
+		"runtime_one_file_packages":         oneFileRuntimePackages,
+		"runtime_agent_package_dirs":        agentPackages,
+		"runtime_agent_unexpected_packages": unexpectedAgentPackages,
+		"runtime_app_package_dirs":          appPackages,
+		"runtime_app_unexpected_packages":   unexpectedAppPackages,
+	}, nil
+}
+
+func runtimeChildPackageCounts(
+	root string,
+	owner string,
+	expected map[string]struct{},
+) (int, int, error) {
+	directory := filepath.Join(root, "internal", "runtime", owner)
+	entries, err := os.ReadDir(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	packages, unexpected := 0, 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		files, readErr := os.ReadDir(filepath.Join(directory, entry.Name()))
+		if readErr != nil {
+			return 0, 0, readErr
+		}
+		hasProductionGo := false
+		for _, file := range files {
+			if !file.IsDir() && filepath.Ext(file.Name()) == ".go" &&
+				!strings.HasSuffix(file.Name(), "_test.go") {
+				hasProductionGo = true
+				break
+			}
+		}
+		if !hasProductionGo {
+			continue
+		}
+		packages++
+		if _, ok := expected[entry.Name()]; !ok {
+			unexpected++
+		}
+	}
+	return packages, unexpected, nil
+}
+
+func runtimePackageCounts(root string) (int, int, error) {
+	directory := filepath.Join(root, "internal", "runtime")
+	productionFiles := make(map[string]int)
+	err := filepath.WalkDir(directory, func(
+		path string,
+		entry os.DirEntry,
+		walkErr error,
+	) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".go" ||
+			strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		productionFiles[filepath.Dir(path)]++
+		return nil
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	oneFile := 0
+	for _, count := range productionFiles {
+		if count == 1 {
+			oneFile++
+		}
+	}
+	return len(productionFiles), oneFile, nil
 }
 
 func goEventSwitches(path string) (int, error) {

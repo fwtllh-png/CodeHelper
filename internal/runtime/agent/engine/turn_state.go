@@ -2,8 +2,12 @@ package engine
 
 import (
 	"fmt"
+
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
+
+type TurnDiffEntry = turnkernel.TurnDiffEntry
 
 // TurnDiff returns the net file-tool changes recorded for the active/last turn (N18).
 func (e *Engine) TurnDiff() []TurnDiffEntry {

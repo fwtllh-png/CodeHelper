@@ -127,7 +127,7 @@ type Index struct {
 }
 
 // Execution configures the main agent loop. MaxOutputTokens is an optional
-// operator ceiling; zero uses the active model capability and remaining window.
+// operator ceiling; zero uses an adaptive ceiling bounded by the active model.
 type Execution struct {
 	Provider        string `json:"provider" toml:"provider"`
 	Model           string `json:"model" toml:"model"`

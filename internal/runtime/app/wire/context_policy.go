@@ -11,10 +11,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -23,10 +22,10 @@ import (
 type contextRuntimeBinding struct {
 	durable         *durableCoordinatorRuntime
 	coordinator     turnkernel.CoordinatorRuntime
-	commit          func(context.Context, sessiondelta.ContextRebaseEnvelope) error
+	commit          func(context.Context, agentcontext.ContextRebaseEnvelope) error
 	commitWithFacts func(
 		context.Context,
-		sessiondelta.ContextRebaseEnvelope,
+		agentcontext.ContextRebaseEnvelope,
 		turnkernel.DomainFactBatch,
 	) error
 }
@@ -105,10 +104,10 @@ func buildContextRuntime(
 
 func engineContextPolicy(
 	configuration config.Compact,
-	commit func(context.Context, sessiondelta.ContextRebaseEnvelope) error,
+	commit func(context.Context, agentcontext.ContextRebaseEnvelope) error,
 	commitWithFacts func(
 		context.Context,
-		sessiondelta.ContextRebaseEnvelope,
+		agentcontext.ContextRebaseEnvelope,
 		turnkernel.DomainFactBatch,
 	) error,
 ) agentengine.ContextPolicy {
@@ -119,7 +118,7 @@ func engineContextPolicy(
 			EmergencyTokens: uint64(configuration.EmergencyTokens),
 			Scope:           configuration.Scope,
 		},
-		TruthRetention: compact.RetentionPolicy{
+		TruthRetention: agentcontext.RetentionPolicy{
 			TruthMaxBytes:        configuration.TruthMaxBytes,
 			TruthMaxEntities:     configuration.TruthMaxEntities,
 			MandatoryMaxEntities: configuration.MandatoryMaxEntities,
@@ -133,7 +132,7 @@ func engineContextPolicy(
 			),
 		},
 		SemanticNarrative: configuration.SemanticNarrative,
-		NarrativeLimits: compact.NarrativeLimits{
+		NarrativeLimits: agentcontext.NarrativeLimits{
 			MaxInputBytes:  configuration.SemanticNarrativeMaxInputTokens * 4,
 			MaxOutputBytes: configuration.SemanticNarrativeMaxOutputTokens * 4,
 			MaxItems:       configuration.SemanticNarrativeMaxItems,

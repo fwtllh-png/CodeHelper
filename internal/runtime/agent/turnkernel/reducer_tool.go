@@ -1,0 +1,225 @@
+package turnkernel
+
+import (
+	"slices"
+	"strings"
+)
+
+func applyToolCalls(
+	transition *Transition,
+	current State,
+	command ToolCallsProposed,
+) error {
+	if err := requirePhase(
+		current,
+		command,
+		PhaseSampling,
+		PhaseExecutingTools,
+	); err != nil {
+		return err
+	}
+	if len(command.Calls) == 0 {
+		return illegal(current, command, "tool batch is empty")
+	}
+	if current.Cancellation.Accepted {
+		return illegal(current, command, "cancellation was accepted")
+	}
+	transition.State.Completion = nil
+	transition.State.OutputEligibility = false
+	if len(current.ProvisionalOutput) != 0 &&
+		current.Convergence == nil {
+		transition.State.ProvisionalOutput = nil
+		transition.Events = append(
+			transition.Events,
+			Event{Kind: EventOutputDiscarded},
+		)
+	}
+	seen := make(map[string]struct{}, len(command.Calls))
+	for _, call := range command.Calls {
+		if strings.TrimSpace(call.ID) == "" || strings.TrimSpace(call.Name) == "" {
+			return illegal(current, command, "tool call identity is incomplete")
+		}
+		if _, ok := seen[call.ID]; ok {
+			return illegal(current, command, "tool call id is duplicated")
+		}
+		if _, ok := current.OpenCalls[call.ID]; ok {
+			return illegal(current, command, "tool call id is already open")
+		}
+		if _, ok := current.ClosedCalls[call.ID]; ok {
+			return illegal(current, command, "tool call id was already closed")
+		}
+		seen[call.ID] = struct{}{}
+		transition.State.OpenCalls[call.ID] = call
+		transition.Events = append(transition.Events, Event{
+			Kind: EventToolStarted, CallID: call.ID,
+		})
+		requestEffect(
+			transition,
+			EffectExecuteTool,
+			call,
+			"tool:"+call.ID,
+			call.ID,
+		)
+	}
+	if current.Phase == PhaseSampling {
+		move(transition, PhaseExecutingTools)
+	}
+	return nil
+}
+
+func applyToolResult(
+	transition *Transition,
+	current State,
+	command ToolResultReceived,
+) error {
+	callAwaitingApproval := false
+	for _, approval := range current.PendingApprovals {
+		if approval.CallID == command.CallID {
+			callAwaitingApproval = true
+			break
+		}
+	}
+	cancelingApproval := callAwaitingApproval && current.Cancellation.Accepted
+	if err := requirePhase(
+		current,
+		command,
+		PhaseExecutingTools,
+		PhaseAwaitingApproval,
+	); err != nil {
+		return err
+	}
+	if callAwaitingApproval && !cancelingApproval {
+		return illegal(
+			current,
+			command,
+			"tool result cannot bypass a pending approval",
+		)
+	}
+	if strings.TrimSpace(command.EffectID) == "" {
+		return illegal(current, command, "tool effect id is empty")
+	}
+	call, ok := current.OpenCalls[command.CallID]
+	if !ok {
+		return illegal(current, command, "tool result does not match an open call")
+	}
+	effect, ok := current.PendingEffects[command.EffectID]
+	if !ok ||
+		effect.Kind != EffectExecuteTool ||
+		effect.CallID != command.CallID ||
+		effect.Status != EffectRunning {
+		return illegal(current, command, "tool result effect does not match call")
+	}
+	if err := finishEffect(
+		transition,
+		command.EffectID,
+		true,
+		"",
+	); err != nil {
+		return illegal(current, command, err.Error())
+	}
+	delete(transition.State.OpenCalls, command.CallID)
+	transition.State.ClosedCalls[command.CallID] = ToolResultState{
+		ID: command.CallID, Name: call.Name, IsError: command.IsError,
+	}
+	if cancelingApproval {
+		for requestID, approval := range current.PendingApprovals {
+			if approval.CallID != command.CallID {
+				continue
+			}
+			delete(transition.State.PendingApprovals, requestID)
+			closeEffectByIdentity(
+				transition,
+				EffectAwaitApproval,
+				requestID,
+				false,
+				current.Cancellation.Reason,
+			)
+		}
+	}
+	if command.IsError {
+		transition.State.UnresolvedToolFailure = true
+		transition.State.RecoveryToolSucceeded = false
+	} else if current.UnresolvedToolFailure {
+		transition.State.RecoveryToolSucceeded = true
+	}
+	transition.Events = append(transition.Events, Event{
+		Kind: EventToolClosed, CallID: command.CallID,
+	})
+	if len(command.Changes) != 0 {
+		transition.State.MutationRevision++
+		transition.State.Changes = append(
+			transition.State.Changes,
+			command.Changes...,
+		)
+		transition.State.Completion = nil
+		transition.State.Verification = VerificationState{
+			Status: VerificationNotEvaluated,
+		}
+		transition.State.Journal = JournalOpen
+		transition.Events = append(transition.Events, Event{
+			Kind:     EventMutationObserved,
+			Mutation: transition.State.MutationRevision,
+		})
+	}
+	switch {
+	case len(transition.State.PendingApprovals) != 0:
+		move(transition, PhaseAwaitingApproval)
+	case len(transition.State.OpenCalls) != 0:
+		move(transition, PhaseExecutingTools)
+	default:
+		move(transition, PhaseSampling)
+	}
+	return nil
+}
+
+func applyAbortOpenCalls(
+	transition *Transition,
+	current State,
+	command AbortOpenCalls,
+) error {
+	if err := requirePhase(
+		current,
+		command,
+		PhaseExecutingTools,
+		PhaseAwaitingApproval,
+	); err != nil {
+		return err
+	}
+	if strings.TrimSpace(command.Reason) == "" {
+		return illegal(current, command, "abort reason is empty")
+	}
+	if len(current.OpenCalls) == 0 {
+		return illegal(current, command, "no tool calls are open")
+	}
+	callIDs := make([]string, 0, len(current.OpenCalls))
+	for callID := range current.OpenCalls {
+		callIDs = append(callIDs, callID)
+	}
+	slices.Sort(callIDs)
+	for _, callID := range callIDs {
+		call := current.OpenCalls[callID]
+		delete(transition.State.OpenCalls, callID)
+		transition.State.ClosedCalls[callID] = ToolResultState{
+			ID: callID, Name: call.Name, IsError: true,
+		}
+		closeEffectByCall(
+			transition,
+			EffectExecuteTool,
+			callID,
+			false,
+			command.Reason,
+		)
+		transition.Events = append(transition.Events, Event{
+			Kind: EventToolClosed, CallID: callID,
+		})
+	}
+	clear(transition.State.PendingApprovals)
+	closeEffectsByKind(
+		transition,
+		EffectAwaitApproval,
+		false,
+		command.Reason,
+	)
+	move(transition, PhaseSampling)
+	return nil
+}

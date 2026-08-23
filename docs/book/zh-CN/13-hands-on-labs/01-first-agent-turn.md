@@ -146,7 +146,7 @@ rm -rf "$tmp"
 | CLI Flag/Output | `internal/host/cli/exec.go` |
 | Operation/Event | `internal/runtime/protocol/message.go` |
 | Queue/Sequence | `internal/runtime/app/runtime.go` |
-| Turn/Receipt Adapter | `internal/runtime/app/application.go`、`receipt.go` |
+| Turn/Receipt Adapter | `internal/runtime/app/extension/engine_adapter.go`、`receipt.go` |
 | Model/Tool State Machine | `internal/runtime/agent/engine/engine.go` |
 | Fixture Server | `internal/adapter/provider/fixture` |
 

@@ -20,10 +20,9 @@ import (
 )
 
 func TestThreadManagerIsolatesHistory(t *testing.T) {
-	seed, err := newTestAgentEngine(agentengine.Options{
-		Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
-		Tools: tool.NewRegistry(nil, nil), Metrics: telemetry.NewMetrics(),
-		MaxOutputTokens: 128,
+	seed, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -97,10 +96,9 @@ func TestThreadManagerBindsToolIdentityAndContextLookup(t *testing.T) {
 	if err := registry.Register(&identityCaptureTool{seen: seen}, nil); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := newTestAgentEngine(agentengine.Options{
-		Provider: &identityToolProvider{}, Route: runtimeTestRoute(t),
-		Tools: registry, Metrics: telemetry.NewMetrics(),
-		MaxOutputTokens: 128, SessionID: "process-session",
+	engine, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &identityToolProvider{}, Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: registry}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}, LifecycleConfig: agentengine.LifecycleConfig{SessionID: "process-session"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -158,11 +156,7 @@ func TestThreadManagerRestoresPendingApprovalOnChildThread(t *testing.T) {
 	if err := registry.Register(restoredApprovalTool{}, nil); err != nil {
 		t.Fatal(err)
 	}
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &restoredApprovalProvider{}, Route: runtimeTestRoute(t),
-		Tools: registry, Metrics: telemetry.NewMetrics(),
-		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
-	})
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &restoredApprovalProvider{}, Route: runtimeTestRoute(t)}, ToolConfig: agentengine.ToolConfig{Tools: registry}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,24 +2,21 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"slices"
-	"sort"
 	"strings"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -52,7 +49,6 @@ func (e *Engine) modelStep(
 	continued *bool,
 	pendingInputInjected *bool,
 	capturedReplay **provider.ReplayState,
-	convergence *turnkernel.ConvergenceRequested,
 	assembly *providerassembly.ResponseAssembly,
 	checkpoint func(*providerassembly.ResponseAssembly) error,
 	send func(State, Event) error,
@@ -65,9 +61,6 @@ func (e *Engine) modelStep(
 	}
 	if capturedReplay != nil {
 		*capturedReplay = nil
-	}
-	if convergence != nil {
-		*convergence = turnkernel.ConvergenceRequested{}
 	}
 	if assembly == nil {
 		assembly = providerassembly.NewResponseAssembly(sampleID)
@@ -123,7 +116,7 @@ func (e *Engine) modelStep(
 	*history = append(*history, cloneMessages(worldDelta)...)
 	scope.mu.Lock()
 	if scope.state.contextLedger == nil {
-		scope.state.contextLedger = contextstore.New(contextstore.Input{
+		scope.state.contextLedger = agentcontext.NewMessageLedger(agentcontext.LedgerInput{
 			Stable: stableContext, History: *history, Definitions: definitions,
 		})
 	}
@@ -150,7 +143,7 @@ func (e *Engine) modelStep(
 		}
 		continuationMessages = append(
 			continuationMessages,
-			incompleteOutputFeedback(
+			promptcontext.IncompleteOutputFeedback(
 				provider.StopReasonIncomplete,
 				assembly.IncompleteToolFragments(),
 				e.turn,
@@ -183,9 +176,15 @@ func (e *Engine) modelStep(
 		sampleReason := promptcontext.SampleReason(
 			reason, attempt, continuations > 0,
 		)
-		project := func() contextstore.Snapshot {
-			return contextLedger.Project(contextstore.Projection{
-				Stable: stableContext, History: *history, Dynamic: turnContext,
+		project := func() agentcontext.MessageSnapshot {
+			projectedHistory := *history
+			if !route.Model().Capabilities.IncrementalResponses {
+				projectedHistory = agentcontext.ProjectStatelessHistory(
+					projectedHistory,
+				)
+			}
+			return contextLedger.Project(agentcontext.LedgerProjection{
+				Stable: stableContext, History: projectedHistory, Dynamic: turnContext,
 				Continuation: continuationMessages, Definitions: requestTools,
 			})
 		}
@@ -205,7 +204,10 @@ func (e *Engine) modelStep(
 		snapshot = project()
 		if window.hardLimit > 0 &&
 			window.active >= e.prepareCompactLimit() {
-			turnContext = append(turnContext, contextWindowFeedback(e.turn))
+			turnContext = append(
+				turnContext,
+				promptcontext.ContextWindowFeedback(e.turn),
+			)
 			snapshot = project()
 			window, err = e.runCompactGate(
 				ctx,
@@ -223,9 +225,9 @@ func (e *Engine) modelStep(
 				append([]provider.ToolDefinition(nil), requestTools...),
 				func(definition provider.ToolDefinition) bool {
 					if convergenceOnly {
-						return !convergenceDefinitionAllowed(definition)
+						return !tool.ConvergenceDefinitionAllowed(definition)
 					}
-					return !finishOnlyDefinitionAllowed(catalog, definition)
+					return !tool.FinishOnlyDefinitionAllowed(catalog, definition)
 				})
 			reasoningEffort, nativeSearch = "low", false
 		}
@@ -282,43 +284,104 @@ func (e *Engine) modelStep(
 		}); err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
 		}
-		requestContext, cancel := context.WithCancelCause(ctx)
-		e.setActiveCancel(cancel)
 		call := sample{
 			index: e.nextSample(), provider: route.ProviderID(),
 			model: route.Model().ID, pricing: route.Model().Pricing, context: &attribution,
 			observe: e.observeTokenWindow,
 		}
-		callSpan := e.tracer().Start(trace.NameModelCall, 0, map[string]any{
-			"provider": call.provider, "model": call.model,
-			"sample": call.index, "attempt": attempt + 1,
-		})
-		requestContext = e.tracer().Context(
-			requestContext,
-			callSpan.ID(),
-		)
-		stream, err := e.options.Provider.Stream(requestContext, provider.ModelRequest{
-			Route: route, Messages: messages,
-			LogicalRequestID: sampleID,
-			TransportAttempt: assembly.NextTransportAttempt(),
-			Projection: provider.ProjectionContext{
-				ContextRevision: attribution.ContextRevision,
-				WindowID:        attribution.WindowID,
-				WindowNumber:    attribution.WindowNumber,
-				Retry: providerRetries > 0 ||
-					assembly.TransportCount() > 0,
-				RecoveryID: projectionRecoveryID(scope.spec.Request.Recovery),
+		transport, err := providerassembly.RunTransportAttempt(
+			ctx,
+			e.options.Provider,
+			provider.ModelRequest{
+				Route: route, Messages: messages,
+				LogicalRequestID: sampleID,
+				TransportAttempt: assembly.NextTransportAttempt(),
+				Projection: provider.ProjectionContext{
+					ContextRevision: attribution.ContextRevision,
+					WindowID:        attribution.WindowID,
+					WindowNumber:    attribution.WindowNumber,
+					Retry: providerRetries > 0 ||
+						assembly.TransportCount() > 0,
+					RecoveryID: providerassembly.ProjectionRecoveryID(
+						scope.spec.Request.Recovery,
+					),
+				},
+				MaxOutputTokens: maxOutputTokens, Tools: requestTools,
+				ReasoningEffort: reasoningEffort, NativeSearch: nativeSearch,
+				Idempotent: true,
+				PromptCacheKey: provider.StickyPromptCacheKey(
+					e.options.PromptCacheKey,
+					route,
+				),
 			},
-			MaxOutputTokens: maxOutputTokens, Tools: requestTools,
-			ReasoningEffort: reasoningEffort, NativeSearch: nativeSearch,
-			Idempotent:     true,
-			PromptCacheKey: provider.StickyPromptCacheKey(e.options.PromptCacheKey, route),
-		})
-		if err != nil {
-			e.clearActiveCancel()
-			cancel(nil)
-			callSpan.Set("error", errorText(err))
-			callSpan.End(trace.StatusError)
+			assembly,
+			providerassembly.ConsumeConfig{
+				FirstOutput: e.tracer().NoteFirstOutput,
+				Checkpoint:  checkpoint,
+				Project: func(projected providerassembly.StreamProjection) error {
+					if projected.Usage != nil {
+						agentcontext.ApplyTransport(
+							call.context,
+							projected.Transport,
+						)
+						copy := *projected.Usage
+						if call.observe != nil {
+							call.observe(
+								call.context,
+								copy.InputTokens,
+								copy.CachedTokens,
+							)
+						}
+						return send(Streaming, Event{
+							Usage: &copy,
+							CostUSD: provider.EstimateCost(
+								call.pricing,
+								copy,
+							),
+							CostKnown: provider.PricingKnown(
+								call.pricing,
+								copy,
+							),
+							Sample: call.index, Provider: call.provider,
+							Model: call.model, SampleContext: call.context,
+						})
+					}
+					return send(Streaming, Event{
+						Text: projected.Text, Block: projected.Block,
+						Search: projected.Search, Citation: projected.Citation,
+						Plan: projected.Plan,
+					})
+				},
+			},
+			providerassembly.TransportLifecycle{
+				Activate: e.setActiveCancel,
+				Clear:    e.clearActiveCancel,
+				Begin: func(callCtx context.Context) (
+					context.Context,
+					func(error),
+				) {
+					span := e.tracer().Start(
+						trace.NameModelCall,
+						0,
+						map[string]any{
+							"provider": call.provider,
+							"model":    call.model,
+							"sample":   call.index,
+							"attempt":  attempt + 1,
+						},
+					)
+					return e.tracer().Context(callCtx, span.ID()), func(err error) {
+						if err != nil {
+							span.Set("error", errorText(err))
+							span.End(trace.StatusError)
+							return
+						}
+						span.End(trace.StatusOK)
+					}
+				},
+			},
+		)
+		if err != nil && !transport.Opened {
 			if errors.Is(err, context.Canceled) && ctx.Err() == nil && e.appendSteering(history) {
 				attempt = -1
 				continue
@@ -357,31 +420,20 @@ func (e *Engine) modelStep(
 			}
 			return nil, nil, totalUsage, lastEstimate, err
 		}
-		var replay *provider.ReplayState
-		blocks, calls, usage, meaningful, err := consume(
-			stream, call, func(event Event) error {
-				return send(Streaming, event)
-			},
-			e.tracer().NoteFirstOutput,
-			&replay,
-			assembly,
-			checkpoint,
-		)
-		e.clearActiveCancel()
-		cancel(nil)
-		if err != nil {
-			callSpan.Set("error", errorText(err))
-			callSpan.End(trace.StatusError)
-		} else {
-			callSpan.End(trace.StatusOK)
-		}
+		consumed := transport.ConsumeResult
+		blocks, calls := consumed.Blocks, consumed.Calls
+		usage, meaningful := consumed.Usage, consumed.Meaningful
+		replay := consumed.Replay
 		totalUsage.Add(usage)
 		pending := e.drainPending()
 		if ctx.Err() == nil && len(pending) != 0 {
 			if pendingInputInjected != nil {
 				*pendingInputInjected = true
 			}
-			pendingBlocks := appendContinuedBlocks(continuedBlocks, blocks)
+			pendingBlocks := providerassembly.AppendBlocks(
+				continuedBlocks,
+				blocks,
+			)
 			if len(continuedBlocks) != 0 {
 				replay = nil
 			}
@@ -397,12 +449,15 @@ func (e *Engine) modelStep(
 			attempt = -1
 			continue
 		}
-		var incomplete *incompleteModelOutputError
+		var incomplete *providerassembly.IncompleteOutputError
 		if errors.As(err, &incomplete) && ctx.Err() == nil {
 			if continued != nil {
 				*continued = true
 			}
-			continuedBlocks = appendContinuedBlocks(continuedBlocks, blocks)
+			continuedBlocks = providerassembly.AppendBlocks(
+				continuedBlocks,
+				blocks,
+			)
 			if len(blocks) != 0 {
 				continuationMessages = append(
 					continuationMessages,
@@ -413,7 +468,7 @@ func (e *Engine) modelStep(
 			}
 			continuationMessages = append(
 				continuationMessages,
-				incompleteOutputFeedback(
+				promptcontext.IncompleteOutputFeedback(
 					incomplete.Reason,
 					incomplete.ToolFragments,
 					e.turn,
@@ -427,9 +482,14 @@ func (e *Engine) modelStep(
 			if len(continuedBlocks) != 0 {
 				replay = nil
 			}
-			completeBlocks := appendContinuedBlocks(continuedBlocks, blocks)
+			completeBlocks := providerassembly.AppendBlocks(
+				continuedBlocks,
+				blocks,
+			)
 			if continued != nil {
-				text := strings.TrimSpace(blocksText(completeBlocks))
+				text := strings.TrimSpace(
+					providerassembly.BlocksText(completeBlocks),
+				)
 				*continued = strings.HasSuffix(text, ":") || strings.HasSuffix(text, "：")
 			}
 			if capturedReplay != nil {
@@ -539,89 +599,10 @@ func observableCompactionReceipt(receipt *CompactionReceipt) CompactionReceipt {
 	return value
 }
 
-func projectionRecoveryID(
-	recovery *protocol.TurnRecoveryContext,
-) string {
-	if recovery == nil {
-		return ""
-	}
-	return string(recovery.Action) + "\x00" + string(recovery.SourceTurnID)
-}
-
-type incompleteModelOutputError struct {
-	Reason        provider.StopReason
-	ToolFragments []provider.ToolCallFragment
-	Cause         error
-}
-
-func (e *incompleteModelOutputError) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf(
-			"model output stopped before completion (%s): %v",
-			e.Reason,
-			e.Cause,
-		)
-	}
-	return fmt.Sprintf("model output stopped before completion (%s)", e.Reason)
-}
-
-func (e *incompleteModelOutputError) Unwrap() error {
-	if e == nil {
-		return nil
-	}
-	return e.Cause
-}
-
-func incompleteOutputFeedback(
-	reason provider.StopReason,
-	fragments []provider.ToolCallFragment,
-	turn uint64,
-) provider.Message {
-	instruction := `Continue exactly from the captured response. Do not repeat
-completed content. Finish the pending user-facing answer.`
-	if len(fragments) != 0 {
-		encoded, _ := json.Marshal(fragments)
-		instruction = fmt.Sprintf(
-			`The following tool call fragments were retained but were not
-executed because the provider response did not close them:
-%s
-Continue from these exact fragments. Emit only complete, independently valid
-tool calls. Split the operation into smaller calls when it is oversized. Do
-not assume that any retained fragment already ran.`,
-			encoded,
-		)
-	}
-	message := provider.TextMessage(provider.RoleUser, fmt.Sprintf(
-		`[continue_after_incomplete stop_reason=%s]
-The provider stopped the previous response before completion. %s`,
-		reason,
-		instruction,
-	))
-	message.Turn = turn
-	return message
-}
-
-func appendContinuedBlocks(
-	current []provider.ContentBlock,
-	next []provider.ContentBlock,
-) []provider.ContentBlock {
-	for _, block := range cloneBlocks(next) {
-		current = appendStreamBlock(current, -1, block)
-	}
-	return current
-}
-
 func (e *Engine) emitExtensionLifecycleChanges(
 	plan runtimeextension.Plan,
 	send func(State, Event) error,
 ) error {
-	current := append([]runtimeextension.Candidate(nil), plan.Extensions...)
-	sort.Slice(current, func(i, j int) bool {
-		if current[i].Kind != current[j].Kind {
-			return current[i].Kind < current[j].Kind
-		}
-		return current[i].Name < current[j].Name
-	})
 	scope := e.executionScope()
 	if scope == nil {
 		return errors.New("turn scope is not active")
@@ -633,27 +614,10 @@ func (e *Engine) emitExtensionLifecycleChanges(
 	}
 	scope.state.extensionsProjected = true
 	scope.mu.Unlock()
-	for _, candidate := range current {
-		if !candidate.Observable || candidate.Kind == "" || candidate.Name == "" {
-			continue
-		}
-		action := "active"
-		if !candidate.Enabled {
-			action = "disabled"
-		}
+	for _, change := range runtimeextension.ProjectLifecycle(plan) {
+		value := change
 		if err := send(CallingModel, Event{
-			ExtensionLifecycle: &ExtensionLifecycleChanged{
-				Action: action,
-				Current: ExtensionSnapshot{
-					Kind: candidate.Kind, Name: candidate.Name,
-					Version:   candidate.Version,
-					Source:    strings.TrimPrefix(candidate.Source.ID, "plugin:"),
-					Publisher: candidate.Publisher, Trust: candidate.Trust,
-					Digest: candidate.Digest, Generation: candidate.Generation,
-					Enabled: candidate.Enabled, LastAction: candidate.LastAction,
-					ChangedAt: candidate.ChangedAt,
-				},
-			},
+			ExtensionLifecycle: &value,
 		}); err != nil {
 			return err
 		}
@@ -665,7 +629,6 @@ func (e *Engine) emitMCPHealthChanges(
 	current []MCPHealthSnapshot,
 	send func(State, Event) error,
 ) error {
-	sort.Slice(current, func(i, j int) bool { return current[i].Server < current[j].Server })
 	scope := e.executionScope()
 	if scope == nil {
 		return errors.New("turn scope is not active")
@@ -677,12 +640,10 @@ func (e *Engine) emitMCPHealthChanges(
 	}
 	scope.state.mcpProjected = true
 	scope.mu.Unlock()
-	for _, snapshot := range current {
-		if snapshot.Server == "" {
-			continue
-		}
+	for _, change := range mcp.ProjectHealth(current) {
+		value := change
 		if err := send(CallingModel, Event{
-			MCPHealthChanged: &MCPHealthChanged{Current: snapshot},
+			MCPHealthChanged: &value,
 		}); err != nil {
 			return err
 		}
@@ -744,343 +705,16 @@ type sample struct {
 	observe  func(*protocol.SampleContextData, uint64, uint64)
 }
 
-func consume(
-	stream provider.Stream,
-	call sample,
-	emit func(Event) error,
-	firstOutput func(),
-	capturedReplay **provider.ReplayState,
-	assembly *providerassembly.ResponseAssembly,
-	checkpoint func(*providerassembly.ResponseAssembly) error,
-) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, bool, error) {
-	metadata := provider.Metadata(stream)
-	stream = newDeltaCoalescingStream(stream, firstOutput)
-	defer stream.Close()
-	if metadata.LogicalRequestID == "" {
-		metadata.LogicalRequestID = assembly.LogicalRequestID
-	}
-	if metadata.Attempt == 0 {
-		metadata.Attempt = assembly.NextTransportAttempt()
-	}
-	if err := assembly.BeginTransport(metadata); err != nil {
-		return nil, nil, provider.Usage{}, false, err
-	}
-	persist := func() error {
-		if checkpoint == nil {
-			return nil
-		}
-		return checkpoint(assembly)
-	}
-	if err := persist(); err != nil {
-		return nil, nil, provider.Usage{}, false, err
-	}
-	output := func() {
-		if firstOutput != nil {
-			firstOutput()
-		}
-	}
-	current := func() (
-		[]provider.ContentBlock,
-		provider.Usage,
-		bool,
-	) {
-		return assembly.CurrentBlocks(),
-			assembly.CurrentUsage(),
-			assembly.CurrentMeaningful()
-	}
-	var planParser ProposedPlanParser
-	for {
-		event, err := stream.Recv()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				err = protocol.NewProblem(
-					protocol.CodeUnavailable,
-					"model stream ended without a valid stop event",
-					true,
-					io.ErrUnexpectedEOF,
-				)
-			}
-			blocks, usage, meaningful := current()
-			if interruptErr := assembly.Interrupt(err); interruptErr != nil {
-				return blocks, nil, usage, meaningful,
-					errors.Join(err, interruptErr)
-			}
-			if persistErr := persist(); persistErr != nil {
-				return blocks, nil, usage, meaningful, persistErr
-			}
-			if errors.Is(err, context.Canceled) {
-				return blocks, nil, usage, meaningful, err
-			}
-			if meaningful {
-				return blocks, nil, usage, true,
-					&incompleteModelOutputError{
-						Reason: provider.StopReasonIncomplete,
-						ToolFragments: assembly.
-							IncompleteToolFragments(),
-						Cause: err,
-					}
-			}
-			return blocks, nil, usage, false, err
-		}
-		applied, applyErr := assembly.Apply(event)
-		if applyErr != nil {
-			failure := &provider.Failure{
-				Code:    provider.FailureMalformedResponse,
-				Message: "provider stream violated the incremental response contract",
-			}
-			_ = assembly.Fail(applyErr)
-			if persistErr := persist(); persistErr != nil {
-				return nil, nil, assembly.CurrentUsage(),
-					assembly.CurrentMeaningful(),
-					errors.Join(applyErr, persistErr)
-			}
-			return assembly.CurrentBlocks(), nil,
-				assembly.CurrentUsage(),
-				assembly.CurrentMeaningful(),
-				protocol.NewProblem(
-					protocol.CodeUnavailable,
-					failure.Message,
-					false,
-					errors.Join(failure, applyErr),
-				)
-		}
-		if !applied {
-			continue
-		}
-		if err := persist(); err != nil {
-			blocks, usage, meaningful := current()
-			return blocks, nil, usage, meaningful, err
-		}
-		blocks, usage, meaningful := current()
-		switch event.Type {
-		case provider.EventMessageStart,
-			provider.EventTransportProgress:
-		case provider.EventTextDelta:
-			output()
-			block := eventBlock(event, provider.ContentText)
-			visible := block
-			visible.Text = event.Text
-			if err := emit(Event{
-				Text:  event.Text,
-				Block: &visible,
-			}); err != nil {
-				return blocks, nil, usage, meaningful, err
-			}
-			for _, update := range planParser.Feed(event.Text) {
-				copy := update
-				if err := emit(Event{Plan: &copy}); err != nil {
-					return blocks, nil, usage, meaningful, err
-				}
-			}
-		case provider.EventReasoningDelta:
-			output()
-			block := eventBlock(event, provider.ContentReasoning)
-			visible := block
-			visible.Text = event.Text
-			if visible.Text == "" {
-				continue
-			}
-			if err := emit(Event{
-				Text:  event.Text,
-				Block: &visible,
-			}); err != nil {
-				return blocks, nil, usage, meaningful, err
-			}
-		case provider.EventSearchResult, provider.EventCitation:
-			output()
-			block := eventBlock(event, "")
-			engineEvent := Event{
-				Block: &block, Search: event.Search,
-				Citation: event.Citation,
-			}
-			if err := emit(engineEvent); err != nil {
-				return blocks, nil, usage, meaningful, err
-			}
-		case provider.EventUsage:
-			contextstore.ApplyTransport(
-				call.context,
-				event.Usage.Transport,
-			)
-			copy := usage
-			if call.observe != nil {
-				call.observe(
-					call.context,
-					copy.InputTokens,
-					copy.CachedTokens,
-				)
-			}
-			cost := estimateCost(call.pricing, copy)
-			if err := emit(Event{
-				Usage: &copy, CostUSD: cost,
-				CostKnown: pricingKnown(call.pricing, copy),
-				Sample:    call.index, Provider: call.provider,
-				Model: call.model, SampleContext: call.context,
-			}); err != nil {
-				return blocks, nil, usage, meaningful, err
-			}
-		case provider.EventReplayState, provider.EventResponseState:
-		case provider.EventToolCallDelta:
-			output()
-		case provider.EventMessageStop:
-			if capturedReplay != nil {
-				*capturedReplay = assembly.CurrentReplay()
-			}
-			reason := assembly.CurrentStopReason()
-			switch reason {
-			case provider.StopReasonMaxTokens,
-				provider.StopReasonIncomplete:
-				return blocks, nil, usage, meaningful,
-					&incompleteModelOutputError{
-						Reason: reason,
-						ToolFragments: assembly.
-							IncompleteToolFragments(),
-					}
-			case provider.StopReasonContentFilter:
-				return blocks, nil, usage, meaningful,
-					protocol.NewProblem(
-						protocol.CodeInvalidArgument,
-						"model output was blocked by the provider content filter",
-						false,
-						nil,
-					)
-			case provider.StopReasonUnknown:
-				return blocks, nil, usage, meaningful,
-					protocol.NewProblem(
-						protocol.CodeUnavailable,
-						"provider returned an unknown model stop reason",
-						true,
-						nil,
-					)
-			}
-			calls, callErr := assembly.ExecutableToolCalls()
-			if callErr != nil {
-				if len(assembly.Segments[len(assembly.Segments)-1].ToolFragments) != 0 {
-					return blocks, nil, usage, meaningful,
-						&incompleteModelOutputError{
-							Reason: provider.StopReasonIncomplete,
-							ToolFragments: assembly.
-								IncompleteToolFragments(),
-							Cause: callErr,
-						}
-				}
-				calls = nil
-			}
-			if reason == provider.StopReasonToolUse &&
-				len(calls) == 0 {
-				return blocks, nil, usage, meaningful,
-					protocol.NewProblem(
-						protocol.CodeUnavailable,
-						"provider stopped for tool use without emitting a tool call",
-						true,
-						nil,
-					)
-			}
-			return blocks, calls, usage, meaningful, nil
-		default:
-			return blocks, nil, usage, meaningful,
-				errors.New("unknown provider event")
-		}
-	}
-}
-
-const (
-	commonToolSet    = ",tool_search,result_get,handle_read,request_user_input,update_plan,turn_complete,"
-	readToolSet      = ",search_text,search_files,search_definition,search_references,file_read,file_list,file_write,file_edit,file_apply,shell_read,exec_command,write_stdin,quality_test,quality_verify,project_map,"
-	writeToolSet     = ",search_related_tests,quality_diagnostics,"
-	maxRelevantTools = 4
-)
-
 func (e *Engine) toolDefinitionsFromSnapshot(
 	snapshot tool.CatalogSnapshot,
 	request TurnRequest,
 ) ([]provider.ToolDefinition, map[string]bool, error) {
-	var descriptors []tool.Descriptor
-	var entries []tool.CatalogEntrySnapshot
-	for _, entry := range snapshot.Entries() {
-		if entry.Descriptor.Visibility == tool.VisibleModel &&
-			entry.Descriptor.Availability != tool.AvailabilityUnavailable &&
-			e.toolEnabled(entry) {
-			entries = append(entries, entry)
-			descriptors = append(descriptors, entry.Descriptor)
-		}
-	}
-	if onlyRetrievalHelpers(descriptors) {
-		return nil, map[string]bool{}, nil
-	}
-	selected := make(map[string]bool)
-	var search *tool.CatalogEntrySnapshot
-	relevant := 0
-	for index := range entries {
-		entry := entries[index]
-		if entry.Descriptor.Name == toolsearch.ToolName {
-			search = &entry
-			continue
-		}
-		if entry.State == tool.CatalogEntryDeferred {
-			continue
-		}
-		if coreTool(request.Intent, entry.Name) || entry.State == tool.CatalogEntryMaterialized ||
-			requiredAgentTool(request.Prompt, entry.Name) ||
-			entry.Name == "image_analyze" && strings.Contains(strings.ToLower(request.Prompt), "screenshot") {
-			selected[entry.Name] = true
-			continue
-		}
-		if relevant < maxRelevantTools &&
-			toolsearch.ScoreDescriptor(entry.Descriptor, request.Prompt) > 0 {
-			selected[entry.Name] = true
-			relevant++
-		}
-	}
-	if search == nil {
-		for _, entry := range entries {
-			if entry.State != tool.CatalogEntryDeferred {
-				selected[entry.Name] = true
-			}
-		}
-	} else if len(selected) < len(entries)-1 {
-		selected[toolsearch.ToolName] = true
-	}
-	result := make([]provider.ToolDefinition, 0, len(descriptors))
-	advertised := make(map[string]bool)
-	schemaBytes := 0
-	add := func(entry tool.CatalogEntrySnapshot, required bool) error {
-		descriptor := entry.Descriptor
-		data, _ := json.Marshal(descriptor.InputSchema)
-		if len(result)+1 > e.options.MaxToolDefinitions ||
-			schemaBytes+len(data) > e.options.MaxToolSchemaBytes {
-			if required {
-				return fmt.Errorf(
-					"%w: provider tools[] cannot fit required tool %q",
-					tool.ErrCatalogLimit, descriptor.Name,
-				)
-			}
-			return nil
-		}
-		result = append(result, provider.ToolDefinition{
-			Name: descriptor.Name, Description: descriptor.Description,
-			InputSchema: descriptor.InputSchema,
-		})
-		advertised[descriptor.Name] = true
-		schemaBytes += len(data)
-		return nil
-	}
-	if search != nil && selected[toolsearch.ToolName] {
-		if err := add(*search, true); err != nil {
-			return nil, nil, err
-		}
-	}
-	for _, entry := range entries {
-		if !selected[entry.Name] || entry.Name == toolsearch.ToolName {
-			continue
-		}
-		required := coreTool(request.Intent, entry.Name) ||
-			entry.State == tool.CatalogEntryMaterialized ||
-			requiredAgentTool(request.Prompt, entry.Name)
-		if err := add(entry, required); err != nil {
-			return nil, nil, err
-		}
-	}
-	return result, advertised, nil
+	return toolsearch.ProjectDefinitions(toolsearch.ProjectionRequest{
+		Catalog: snapshot, Prompt: request.Prompt, Intent: request.Intent,
+		MaxDefinitions: e.options.MaxToolDefinitions,
+		MaxSchemaBytes: e.options.MaxToolSchemaBytes,
+		Enabled:        e.toolEnabled,
+	})
 }
 
 func (e *Engine) recordSampledTools(
@@ -1101,155 +735,14 @@ func (e *Engine) recordSampledTools(
 	scope.mu.Unlock()
 }
 
-func coreTool(intent protocol.TurnIntent, name string) bool {
-	in := func(set string) bool { return strings.Contains(set, ","+name+",") }
-	if in(commonToolSet) || in(readToolSet) {
-		return true
-	}
-	switch protocol.NormalizeTurnIntent(intent) {
-	case protocol.TurnIntentWorkspaceChange:
-		return in(writeToolSet)
-	case protocol.TurnIntentOperation:
-		return in(writeToolSet)
-	default:
-		return false
-	}
-}
-
-func requiredAgentTool(prompt, name string) bool {
-	lower := strings.ToLower(prompt)
-	if strings.Contains(lower, name) {
-		return true
-	}
-	hasAgentSubject := strings.Contains(lower, "agent") ||
-		strings.Contains(lower, "child") ||
-		strings.Contains(lower, "explorer") ||
-		strings.Contains(lower, "implementer")
-	switch name {
-	case "spawn_agent":
-		return hasAgentSubject &&
-			(strings.Contains(lower, "spawn ") ||
-				strings.Contains(lower, "delegat"))
-	case "wait_agent":
-		return hasAgentSubject && strings.Contains(lower, "wait for")
-	case "integrate_agent":
-		return hasAgentSubject && strings.Contains(lower, "integrat")
-	default:
-		return false
-	}
-}
-
-func onlyRetrievalHelpers(descriptors []tool.Descriptor) bool {
-	if len(descriptors) == 0 {
-		return false
-	}
-	for _, descriptor := range descriptors {
-		switch descriptor.Name {
-		case "result_get", "handle_read":
-		default:
-			return false
-		}
-	}
-	return true
-}
-
 // maxOutputFor clamps the session ceiling to the active route.
 func (e *Engine) maxOutputFor(route model.ReadyRoute) uint64 {
 	modelLimit := route.Model().Limits.MaxOutputTokens
-	if e.options.MaxOutputTokens == 0 ||
-		e.options.MaxOutputTokens > modelLimit {
+	if e.options.MaxOutputTokens == 0 {
+		return min(modelLimit, 16_384)
+	}
+	if e.options.MaxOutputTokens > modelLimit {
 		return modelLimit
 	}
 	return e.options.MaxOutputTokens
-}
-
-func eventBlock(event provider.StreamEvent, fallback provider.ContentType) provider.ContentBlock {
-	if event.Block != nil {
-		return cloneBlocks([]provider.ContentBlock{*event.Block})[0]
-	}
-	switch event.Type {
-	case provider.EventTextDelta:
-		return provider.ContentBlock{Type: provider.ContentText, Text: event.Text}
-	case provider.EventReasoningDelta:
-		return provider.ContentBlock{Type: provider.ContentReasoning, Text: event.Text}
-	case provider.EventSearchResult:
-		return provider.ContentBlock{Type: provider.ContentSearch, Search: event.Search}
-	case provider.EventCitation:
-		return provider.ContentBlock{Type: provider.ContentCitation, Citation: event.Citation}
-	default:
-		return provider.ContentBlock{Type: fallback, Text: event.Text}
-	}
-}
-
-func appendStreamBlock(
-	blocks []provider.ContentBlock,
-	_ int,
-	block provider.ContentBlock,
-) []provider.ContentBlock {
-	if len(blocks) != 0 && block.Type == blocks[len(blocks)-1].Type {
-		last := &blocks[len(blocks)-1]
-		if block.Type == provider.ContentText {
-			last.Text += block.Text
-			return blocks
-		}
-		if block.Type == provider.ContentReasoning &&
-			(last.ID == "" || block.ID == "" || last.ID == block.ID) {
-			switch {
-			case last.Text == "":
-				last.Text = block.Text
-			case block.Text == "":
-
-			case strings.Contains(block.Text, last.Text) && len(block.Text) >= len(last.Text):
-				last.Text = block.Text
-			case strings.Contains(last.Text, block.Text):
-
-			default:
-				last.Text += block.Text
-			}
-			if last.ID == "" {
-				last.ID = block.ID
-			}
-			return blocks
-		}
-	}
-	return append(blocks, block)
-}
-
-func blocksText(blocks []provider.ContentBlock) string {
-	var result string
-	for _, block := range blocks {
-		if block.Type == provider.ContentText {
-			result += block.Text
-		}
-	}
-	return result
-}
-
-func blocksReasoning(blocks []provider.ContentBlock) string {
-	var result string
-	for _, block := range blocks {
-		if block.Type == provider.ContentReasoning {
-			result += block.Text
-		}
-	}
-	return result
-}
-
-func messageToolCalls(message provider.Message) []provider.ToolCall {
-	var calls []provider.ToolCall
-	for _, block := range message.Blocks {
-		if block.Type == provider.ContentToolCall && block.ToolCall != nil {
-			calls = append(calls, *block.ToolCall)
-		}
-	}
-	return calls
-}
-
-func messageToolResultID(message provider.Message) string {
-	for _, block := range message.Blocks {
-		if block.Type == provider.ContentToolResult && block.ToolResult != nil {
-			return block.ToolResult.CallID
-		}
-	}
-	return ""
 }

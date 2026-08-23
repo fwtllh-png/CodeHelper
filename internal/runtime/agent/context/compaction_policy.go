@@ -1,0 +1,157 @@
+package agentcontext
+
+import "github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+
+type WindowMeasurement struct {
+	Estimated    uint64
+	Total        uint64
+	Active       uint64
+	HardLimit    uint64
+	CompactLimit uint64
+	Projection   WindowProjection
+}
+
+type SurfacePruning struct {
+	Results int
+	Bytes   int
+}
+
+type CompactionSelectionRequest struct {
+	History             []provider.Message
+	Force               bool
+	AllowCurrentTurn    bool
+	Input               MessageSnapshot
+	OutputReserve       uint64
+	RecentTailTurns     int
+	RecentTailMaxTokens uint64
+	WindowScope         string
+	EmergencyLimit      uint64
+	AuthorityDigest     string
+	EstimateMessages    func([]provider.Message) uint64
+	Measure             func(MessageSnapshot, uint64) (WindowMeasurement, error)
+	Prune               func(
+		*[]provider.Message,
+		MessageSnapshot,
+		uint64,
+		bool,
+	) (SurfacePruning, WindowMeasurement, error)
+	Build func([]provider.Message, int, bool) (CompactionCandidate, error)
+}
+
+type CompactionSelection struct {
+	History          []provider.Message
+	OriginalMessages int
+	OriginalBytes    int
+	OriginalWindow   WindowMeasurement
+	RetainedWindow   WindowMeasurement
+	Pruning          SurfacePruning
+	Candidate        *CompactionCandidate
+}
+
+func SelectCompaction(
+	request CompactionSelectionRequest,
+) (CompactionSelection, error) {
+	result := CompactionSelection{
+		History:          CloneMessages(request.History),
+		OriginalMessages: len(request.History),
+		OriginalBytes:    HistoryBytes(request.History),
+	}
+	input := request.Input.WithHistory(request.History)
+	original, err := request.Measure(input, request.OutputReserve)
+	if err != nil {
+		return CompactionSelection{}, err
+	}
+	result.OriginalWindow = original
+	if !request.Force &&
+		original.Active < original.CompactLimit &&
+		original.Total <= original.HardLimit {
+		return result, nil
+	}
+	working := CloneMessages(request.History)
+	pruned, prunedWindow, err := request.Prune(
+		&working,
+		request.Input,
+		request.OutputReserve,
+		request.Force,
+	)
+	if err != nil {
+		return CompactionSelection{}, err
+	}
+	result.Pruning = pruned
+	result.RetainedWindow = prunedWindow
+	if pruned.Results != 0 &&
+		!ToolPairIdentityEquivalent(request.History, working) {
+		return result, nil
+	}
+	pruningEnough := pruned.Results != 0 &&
+		(prunedWindow.Active <= prunedWindow.CompactLimit &&
+			prunedWindow.Total <= prunedWindow.HardLimit ||
+			request.Force && original.Total <= original.HardLimit)
+	if pruningEnough {
+		result.History = working
+		return result, nil
+	}
+	workingWindow := original
+	if pruned.Results != 0 {
+		workingWindow = prunedWindow
+	}
+	cuts := RetainedTailCuts(
+		working,
+		request.AllowCurrentTurn,
+		request.RecentTailTurns,
+		request.RecentTailMaxTokens,
+		request.EstimateMessages,
+	)
+	for _, cut := range cuts {
+		candidate, buildErr := request.Build(working, cut, true)
+		if buildErr != nil {
+			continue
+		}
+		window, measureErr := request.Measure(
+			request.Input.WithHistory(candidate.History),
+			request.OutputReserve,
+		)
+		if measureErr == nil && window.Active > original.CompactLimit {
+			minimal, minimalErr := request.Build(working, cut, false)
+			if minimalErr == nil {
+				minimalWindow, minimalMeasureErr := request.Measure(
+					request.Input.WithHistory(minimal.History),
+					request.OutputReserve,
+				)
+				if minimalMeasureErr == nil &&
+					minimalWindow.Active < window.Active {
+					candidate, window = minimal, minimalWindow
+				}
+			}
+		}
+		if measureErr != nil ||
+			window.Active >= workingWindow.Active &&
+				window.Total >= workingWindow.Total ||
+			!ToolPairsClosed(candidate.History) ||
+			candidate.Capsule.ContainsAuthority(candidate.Authority) != nil {
+			continue
+		}
+		authorityDigest, digestErr := candidate.Authority.AuthorityDigest()
+		if digestErr != nil {
+			continue
+		}
+		candidate.AuthorityDigest = authorityDigest
+		candidate.SourceWindowID = original.Projection.ID
+		candidate.SourceContextDigest, _ = input.Digest()
+		candidate.RetainedTokens = window.Active
+		if request.Force ||
+			window.Active <= original.CompactLimit ||
+			request.WindowScope == "body_after_prefix" &&
+				original.Total > original.HardLimit &&
+				window.Total <= window.HardLimit {
+			result.History = candidate.History
+			result.RetainedWindow = window
+			result.Candidate = &candidate
+			return result, nil
+		}
+	}
+	if pruned.Results != 0 {
+		result.History = working
+	}
+	return result, nil
+}

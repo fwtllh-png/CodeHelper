@@ -7,7 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 )
 
 func resolveExecRoute(options execRouteOptions) (model.ReadyRoute, error) {
@@ -125,7 +126,7 @@ func defaultPromptBudgets() map[string]promptcontext.Budget {
 		promptcontext.PartitionMode:         {MaxBytes: 1 << 10, MaxTokens: 256},
 		promptcontext.PartitionRepository:   {MaxBytes: 128 << 10, MaxTokens: 32 << 10},
 		promptcontext.PartitionWorkingSet:   {MaxBytes: 256 << 10, MaxTokens: 64 << 10},
-		promptcontext.PartitionSkills:       {MaxBytes: promptcontext.MaxSkillsPromptBytes, MaxTokens: promptcontext.MaxFragmentTokens},
+		promptcontext.PartitionSkills:       {MaxBytes: prompt.MaxSkillsPromptBytes, MaxTokens: promptcontext.MaxFragmentTokens},
 		promptcontext.PartitionConstitution: {MaxBytes: 8 << 10, MaxTokens: promptcontext.MaxFragmentTokens},
 		promptcontext.PartitionToolPrefix:   {MaxBytes: 16 << 10, MaxTokens: 4 << 10},
 		// The catalog grows with every registered tool, including the MCP and

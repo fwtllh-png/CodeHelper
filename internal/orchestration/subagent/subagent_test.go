@@ -141,8 +141,7 @@ func TestMailboxMonotonicAndDrainOrder(t *testing.T) {
 func TestWorktreeCleanupDoesNotTouchSibling(t *testing.T) {
 	gate := &fakeGate{}
 	manager, err := subagent.Open(subagent.Options{
-		Root: t.TempDir(), Gate: gate,
-		Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+		Root: t.TempDir(), Gate: gate, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -288,8 +287,7 @@ func TestCloseDrainsToolExecutionWhenWorktreeCleanupIsRefused(t *testing.T) {
 
 func TestDepthAndConcurrencyBudgets(t *testing.T) {
 	manager, err := subagent.Open(subagent.Options{
-		Root: t.TempDir(), Gate: &fakeGate{},
-		Budget: subagent.Budget{MaxDepth: 1, MaxParallel: 1},
+		Root: t.TempDir(), Gate: &fakeGate{}, Budget: subagent.Budget{MaxDepth: 1, MaxParallel: 1},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -316,8 +314,7 @@ func TestDepthAndConcurrencyBudgets(t *testing.T) {
 		t.Fatal(err)
 	}
 	deep, err := subagent.Open(subagent.Options{
-		Root: t.TempDir(), Gate: &fakeGate{},
-		Budget: subagent.Budget{MaxDepth: 1, MaxParallel: 4},
+		Root: t.TempDir(), Gate: &fakeGate{}, Budget: subagent.Budget{MaxDepth: 1, MaxParallel: 4},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -338,8 +335,7 @@ func TestDepthAndConcurrencyBudgets(t *testing.T) {
 
 func TestResidentAndTotalTreeBudgets(t *testing.T) {
 	manager, err := subagent.Open(subagent.Options{
-		Root: t.TempDir(), Gate: &fakeGate{},
-		Budget: subagent.Budget{
+		Root: t.TempDir(), Gate: &fakeGate{}, Budget: subagent.Budget{
 			MaxDepth: 2, MaxParallel: 2, MaxResident: 2, MaxTotal: 3,
 		},
 	})
@@ -389,8 +385,7 @@ func TestResidentAndTotalTreeBudgets(t *testing.T) {
 
 func TestNestedAgentBudgetCanOnlyNarrowParentCeiling(t *testing.T) {
 	control, err := subagent.OpenControl(subagent.Options{
-		Root: t.TempDir(), Gate: &fakeGate{},
-		Budget: subagent.Budget{
+		Root: t.TempDir(), Gate: &fakeGate{}, Budget: subagent.Budget{
 			MaxSteps: 30, MaxTokens: 1000, MaxCostUSD: 10,
 			MaxDepth: 2, MaxParallel: 3, MaxResident: 3, MaxTotal: 3,
 		},
@@ -439,8 +434,7 @@ func TestNestedAgentBudgetCanOnlyNarrowParentCeiling(t *testing.T) {
 
 func TestDefaultAgentBudgetPartitionsTreeAcrossParallelSlots(t *testing.T) {
 	control, err := subagent.OpenControl(subagent.Options{
-		Root: t.TempDir(), Gate: &fakeGate{},
-		Budget: subagent.Budget{
+		Root: t.TempDir(), Gate: &fakeGate{}, Budget: subagent.Budget{
 			MaxTokens: 1000, MaxCostUSD: 10,
 			MaxParallel: 4, MaxResident: 4, MaxTotal: 4,
 		},

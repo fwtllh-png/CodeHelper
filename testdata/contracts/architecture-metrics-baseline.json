@@ -88,9 +88,6 @@
         "production_lines": 4443,
         "options_fields": 8,
         "mutex_fields": 3
-      },
-      "relaxations": {
-        "production_lines": "Subagent shutdown now owns cancellable tool execution leases and a persistence-ordered Mailbox close barrier"
       }
     },
     {
@@ -98,13 +95,14 @@
       "kind": "package",
       "path": "internal/runtime/app/eventhub",
       "limits": {
-        "internal_fanout": 1,
-        "production_lines": 292,
+        "internal_fanout": 4,
+        "production_lines": 812,
         "options_fields": 0,
         "mutex_fields": 2
       },
       "relaxations": {
-        "production_lines": "Stable Event retry now tracks projection-complete fanout so terminal events reach live subscribers exactly once"
+        "internal_fanout": "Terminal outbox commit and projection moved into the event owner",
+        "production_lines": "Terminal outbox commit and projection moved into the event owner"
       }
     },
     {
@@ -189,10 +187,14 @@
       "kind": "package",
       "path": "internal/adapter/tool/result",
       "limits": {
-        "internal_fanout": 1,
-        "production_lines": 171,
+        "internal_fanout": 8,
+        "production_lines": 529,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "Tool result recovery and model projection now integrate content, provider, protocol, and verification contracts",
+        "production_lines": "Stable result handles, bounded model projection, and recovery moved into the tool result owner"
       }
     },
     {
@@ -212,9 +214,12 @@
       "path": "internal/adapter/provider",
       "limits": {
         "internal_fanout": 2,
-        "production_lines": 798,
+        "production_lines": 820,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Shared pricing and transport metadata contracts moved into the provider owner"
       }
     },
     {
@@ -222,10 +227,15 @@
       "kind": "package",
       "path": "internal/adapter/provider/assembly",
       "limits": {
-        "internal_fanout": 1,
-        "production_lines": 728,
+        "internal_fanout": 4,
+        "production_lines": 1680,
         "options_fields": 0,
-        "mutex_fields": 0
+        "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "Provider transport, tool sampling, and stream consumption moved to the assembly owner",
+        "production_lines": "Provider delta coalescing, transport lifecycle, tool sampling, and stream parsing moved to the assembly owner",
+        "mutex_fields": "Response assembly now owns synchronized stream aggregation"
       }
     },
     {
@@ -245,9 +255,12 @@
       "path": "internal/adapter/provider/wire",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 192,
+        "production_lines": 386,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Provider retry classification and projection recovery contracts moved into provider wire"
       }
     },
     {
@@ -346,15 +359,15 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 78,
-        "production_lines": 9191,
-        "options_fields": 71,
-        "mutex_fields": 6
+        "internal_fanout": 76,
+        "production_lines": 9470,
+        "options_fields": 82,
+        "mutex_fields": 7
       },
       "relaxations": {
-        "internal_fanout": "Runtime construction now wires the sandbox-backed Workspace Query service for the Web host",
-        "production_lines": "Runtime construction now binds Web workspace identity, Runtime role, and fail-closed Workspace Query ownership",
-        "options_fields": "Runtime construction declares the interactive or worker role explicitly"
+        "production_lines": "Persistent Runtime construction moved back into the composition root",
+        "mutex_fields": "ResourceStack synchronization is now owned directly by the composition root",
+        "options_fields": "Persistent Runtime construction options moved back into the composition root"
       }
     },
     {
@@ -363,9 +376,12 @@
       "path": "internal/runtime/extension",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 1408,
+        "production_lines": 1470,
         "options_fields": 1,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Extension lifecycle projection moved into the extension owner"
       }
     },
     {
@@ -373,10 +389,14 @@
       "kind": "package",
       "path": "internal/runtime/app/extension",
       "limits": {
-        "internal_fanout": 9,
-        "production_lines": 1870,
+        "internal_fanout": 22,
+        "production_lines": 3178,
         "options_fields": 0,
         "mutex_fields": 6
+      },
+      "relaxations": {
+        "internal_fanout": "Engine Adapter and pending-work projections moved into the extension owner",
+        "production_lines": "Engine Adapter and pending-work projections moved into the extension owner"
       }
     },
     {
@@ -545,40 +565,14 @@
       }
     },
     {
-      "id": "runtime_app_chatmerge_package",
-      "kind": "package",
-      "path": "internal/runtime/app/chatmerge",
-      "limits": {
-        "internal_fanout": 6,
-        "production_lines": 592,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
       "id": "runtime_app_persistence_package",
       "kind": "package",
       "path": "internal/runtime/app/persistence",
       "limits": {
-        "internal_fanout": 14,
+        "internal_fanout": 11,
         "production_lines": 725,
-        "options_fields": 11,
-        "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Persistent Runtime construction forwards workspace ownership and worker recovery policy",
-        "options_fields": "Persistent Runtime construction accepts an explicit workspace binding and worker recovery policy"
-      }
-    },
-    {
-      "id": "wire_assembly_package",
-      "kind": "package",
-      "path": "internal/runtime/app/wire/assembly",
-      "limits": {
-        "internal_fanout": 0,
-        "production_lines": 134,
         "options_fields": 0,
-        "mutex_fields": 1
+        "mutex_fields": 0
       }
     },
     {
@@ -617,13 +611,25 @@
       "kind": "package",
       "path": "internal/runtime/agent/engine",
       "limits": {
-        "internal_fanout": 25,
-        "production_lines": 13448,
-        "options_fields": 61,
+        "internal_fanout": 22,
+        "production_lines": 7683,
+        "options_fields": 6,
+        "mutex_fields": 4
+      }
+    },
+    {
+      "id": "agent_turnkernel_package",
+      "kind": "package",
+      "path": "internal/runtime/agent/turnkernel",
+      "limits": {
+        "internal_fanout": 4,
+        "production_lines": 8023,
+        "options_fields": 0,
         "mutex_fields": 8
       },
       "relaxations": {
-      "production_lines": "Context optimization suppresses duplicate Compaction Receipts, and policy updates now snapshot Mode and Permission atomically"
+        "production_lines": "Tool effects, journal finalization, and split reducer commands moved to the authoritative state machine",
+        "mutex_fields": "Recovered interaction state now owns its synchronization"
       }
     },
     {
@@ -631,70 +637,13 @@
       "kind": "package",
       "path": "internal/runtime/app",
       "limits": {
-        "internal_fanout": 23,
-        "production_lines": 10508,
+        "internal_fanout": 20,
+        "production_lines": 5643,
         "options_fields": 21,
-        "mutex_fields": 8
+        "mutex_fields": 10
       },
       "relaxations": {
-        "production_lines": "Runtime owns Web Session lifecycle, Workspace authorization for forward and backward paged History/Profile, queued-operation activity projection, transactional presentation read fences, and synchronous inactive-Turn cancellation admission",
-        "mutex_fields": "Session lifecycle mutations serialize with operation acceptance so archive/delete cannot race an accepted Turn",
-        "options_fields": "Runtime accepts an explicit workspace root binding and worker recovery policy"
-      }
-    },
-    {
-      "id": "turnexec_package",
-      "kind": "package",
-      "path": "internal/runtime/agent/turnexec",
-      "limits": {
-        "internal_fanout": 3,
-        "production_lines": 257,
-        "options_fields": 0,
-        "mutex_fields": 2
-      }
-    },
-    {
-      "id": "compact_package",
-      "kind": "package",
-      "path": "internal/runtime/agent/compact",
-      "limits": {
-        "internal_fanout": 3,
-        "production_lines": 2445,
-        "options_fields": 0,
-        "mutex_fields": 1
-      }
-    },
-    {
-      "id": "contextstore_package",
-      "kind": "package",
-      "path": "internal/runtime/agent/contextstore",
-      "limits": {
-        "internal_fanout": 4,
-        "production_lines": 1206,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "evidence_package",
-      "kind": "package",
-      "path": "internal/runtime/agent/evidence",
-      "limits": {
-        "internal_fanout": 0,
-        "production_lines": 808,
-        "options_fields": 0,
-        "mutex_fields": 1
-      }
-    },
-    {
-      "id": "workingset_package",
-      "kind": "package",
-      "path": "internal/runtime/agent/workingset",
-      "limits": {
-        "internal_fanout": 0,
-        "production_lines": 374,
-        "options_fields": 0,
-        "mutex_fields": 1
+        "mutex_fields": "Operation, Event, Session, and Runtime lifecycle state now use owner-specific locks instead of one shared mutex"
       }
     },
     {
@@ -723,13 +672,12 @@
       "path": "internal/host/tui",
       "limits": {
         "internal_fanout": 23,
-        "production_lines": 7546,
+        "production_lines": 7549,
         "options_fields": 28,
         "mutex_fields": 2
       },
       "relaxations": {
-        "internal_fanout": "The retained TUI host consumes the shared Runtime session-control contract",
-        "production_lines": "The retained TUI host resolves the effective Data Dir before acquiring the shared interactive owner lease"
+        "production_lines": "Prompt package rename required explicit import aliases at shadowing call sites"
       }
     },
     {
@@ -741,9 +689,6 @@
         "production_lines": 6398,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Protocol v2 exposes context identity, retention, narrative, memory selection, workspace reconciliation receipts, and durable Context Commit references"
       }
     },
     {
@@ -751,11 +696,8 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2235,
-        "max_function_lines": 135
-      },
-      "relaxations": {
-        "lines": "Runtime Session entry points enforce Workspace ownership, Profile/Thread binding, and queued-operation lifecycle exclusion"
+        "lines": 2037,
+        "max_function_lines": 119
       }
     },
     {
@@ -763,11 +705,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/runtime.go",
       "limits": {
-        "lines": 441,
+        "lines": 383,
         "max_function_lines": 50
-      },
-      "relaxations": {
-        "lines": "Runtime wiring declares explicit interactive and worker roles for recovery ownership"
       }
     },
     {
@@ -786,10 +725,6 @@
       "limits": {
         "lines": 204,
         "max_function_lines": 67
-      },
-      "relaxations": {
-        "lines": "Platform assembly constructs the sandbox-backed Workspace Query service even when execution tools are disabled",
-        "max_function_lines": "Platform assembly keeps sandbox and Workspace Query construction in one ownership boundary"
       }
     },
     {
@@ -825,7 +760,10 @@
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
         "lines": 419,
-        "max_function_lines": 318
+        "max_function_lines": 322
+      },
+      "relaxations": {
+        "max_function_lines": "Engine construction now initializes explicit typed option groups"
       }
     },
     {
@@ -833,12 +771,10 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime_start.go",
       "limits": {
-        "lines": 172,
-        "max_function_lines": 84
+        "lines": 151,
+        "max_function_lines": 69
       },
-      "relaxations": {
-        "max_function_lines": "Runtime preparation binds workspace ownership before exposing Session services"
-      }
+      "relaxations": {}
     },
     {
       "id": "wire_module_outputs_file",
@@ -962,8 +898,11 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 496,
-        "max_function_lines": 124
+        "lines": 417,
+        "max_function_lines": 128
+      },
+      "relaxations": {
+        "max_function_lines": "Engine construction now normalizes typed option groups and stateless projection budgets in one validation pass"
       }
     },
     {
@@ -971,17 +910,21 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/world_state.go",
       "limits": {
-        "lines": 241,
-        "max_function_lines": 73
+        "lines": 76,
+        "max_function_lines": 64
       }
     },
     {
-      "id": "contextstore_window_file",
+      "id": "context_window_file",
       "kind": "file",
-      "path": "internal/runtime/agent/contextstore/window.go",
+      "path": "internal/runtime/agent/context/store_window.go",
       "limits": {
-        "lines": 150,
+        "lines": 234,
         "max_function_lines": 48
+      },
+      "relaxations": {
+        "lines": "Window construction, fallback, thresholds, and projection moved to the context owner",
+        "max_function_lines": "Window projection remains one cohesive field mapping operation"
       }
     },
     {
@@ -989,8 +932,11 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/window_ledger.go",
       "limits": {
-        "lines": 190,
-        "max_function_lines": 37
+        "lines": 148,
+        "max_function_lines": 41
+      },
+      "relaxations": {
+        "max_function_lines": "Engine window methods now delegate state mutation to Context Authority"
       }
     },
     {
@@ -1003,11 +949,11 @@
       }
     },
     {
-      "id": "contextstore_normalize_file",
+      "id": "context_normalize_file",
       "kind": "file",
-      "path": "internal/runtime/agent/contextstore/normalize.go",
+      "path": "internal/runtime/agent/context/store_normalize.go",
       "limits": {
-        "lines": 276,
+        "lines": 337,
         "max_function_lines": 130
       }
     },
@@ -1021,9 +967,9 @@
       }
     },
     {
-      "id": "compact_truth_file",
+      "id": "context_truth_file",
       "kind": "file",
-      "path": "internal/runtime/agent/compact/truth.go",
+      "path": "internal/runtime/agent/context/compact_truth.go",
       "limits": {
         "lines": 317,
         "max_function_lines": 73
@@ -1034,8 +980,8 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/compaction_truth.go",
       "limits": {
-        "lines": 102,
-        "max_function_lines": 77
+        "lines": 46,
+        "max_function_lines": 42
       }
     },
     {
@@ -1074,11 +1020,12 @@
       }
     },
     {
-      "id": "runtime_terminal_measurement_file",
+      "id": "turnkernel_reducer_dispatch_file",
       "kind": "file",
-      "path": "internal/runtime/app/terminal_measurement.go",
+      "path": "internal/runtime/agent/turnkernel/reducer.go",
       "limits": {
-        "lines": 130
+        "lines": 378,
+        "max_function_lines": 325
       }
     },
     {
@@ -1086,19 +1033,76 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 20
+        "event_switch_sites": 20,
+        "runtime_package_dirs": 20,
+        "runtime_one_file_packages": 7,
+        "runtime_agent_package_dirs": 6,
+        "runtime_agent_unexpected_packages": 0,
+        "runtime_app_package_dirs": 4,
+        "runtime_app_unexpected_packages": 0
       }
+    },
+    {
+      "id": "agent_context_package",
+      "kind": "package",
+      "path": "internal/runtime/agent/context",
+      "limits": {
+        "internal_fanout": 7,
+        "production_lines": 9091,
+        "options_fields": 0,
+        "mutex_fields": 3
+      },
+      "relaxations": {
+        "production_lines": "Context Authority, narrative generation, history invariants, and window construction moved to the context owner"
+      }
+    },
+    {
+      "id": "agent_prompt_package",
+      "kind": "package",
+      "path": "internal/runtime/agent/prompt",
+      "limits": {
+        "internal_fanout": 8,
+        "production_lines": 2470,
+        "options_fields": 22,
+        "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "Editor context rendering moved into the prompt owner",
+        "production_lines": "Editor context rendering and validation moved into the prompt owner"
+      }
+    },
+    {
+      "id": "agent_repository_package",
+      "kind": "package",
+      "path": "internal/runtime/agent/repository",
+      "limits": {
+        "internal_fanout": 1,
+        "production_lines": 298,
+        "options_fields": 5,
+        "mutex_fields": 0
+      }
+    },
+    {
+      "id": "extension_terminal_measurement_file",
+      "path": "internal/runtime/app/extension/terminal_measurement.go",
+      "limits": {
+        "lines": 80,
+        "max_function_lines": 59
+      },
+      "kind": "file"
     }
   ],
   "retirements": {
-    "acp_package": "ACP transport removed after Web Runtime service migration",
-    "acp_server_file": "ACP transport removed after Web Runtime service migration",
-    "vscode_chat_view_file": "VS Code host removed after Web primary entry migration",
-    "vscode_runtime_controller_file": "VS Code host removed after Web primary entry migration",
-    "vscode_chat_projector_file": "VS Code host removed after Web primary entry migration",
-    "vscode_chat_projector_index_file": "VS Code host removed after Web primary entry migration",
-    "vscode_chat_turn_projector_file": "VS Code host removed after Web primary entry migration",
-    "vscode_extension_view_file": "VS Code host removed after Web primary entry migration",
-    "vscode_extension_model_file": "VS Code host removed after Web primary entry migration"
+    "wire_assembly_package": "Construction-only ResourceStack moved into its sole owner, runtime/app/wire",
+    "turnexec_package": "Turn lifecycle and mailbox moved into their sole owner, runtime/agent/engine",
+    "compact_package": "Compaction merged into the Context Authority package",
+    "contextstore_package": "Model context ledger merged into the Context Authority package",
+    "evidence_package": "Evidence ledger merged into the Context Authority package",
+    "workingset_package": "Working-set ledger merged into the Context Authority package",
+    "compact_truth_file": "Moved unchanged into runtime/agent/context/compact_truth.go",
+    "contextstore_normalize_file": "Moved unchanged into runtime/agent/context/store_normalize.go",
+    "contextstore_window_file": "Moved unchanged into runtime/agent/context/store_window.go",
+    "runtime_app_chatmerge_package": "Chat merge service moved into its runtime/app owner",
+    "runtime_terminal_measurement_file": "Terminal measurement moved into its Engine Adapter owner, runtime/app/extension"
   }
 }

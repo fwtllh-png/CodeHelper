@@ -187,12 +187,27 @@ func TestEngineRecoveryResumesRunningInputToolWithEarlyReply(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	kernel := &engineTurnKernel{
-		state:       handle.Coordinator.Snapshot(),
-		coordinator: handle.Coordinator,
-		dispatcher:  handle.Dispatcher,
-		recorder:    trace.NewRecorder(time.Now),
-		metrics:     noopMetrics{},
+	if err := coordinators.Release(t.Context(), "input-recovery"); err != nil {
+		t.Fatal(err)
+	}
+	kernel, err := turnkernel.NewRuntimeKernel(
+		turnkernel.KernelIdentity{
+			TurnID: "input-recovery", ProfileRevision: 1,
+		},
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		false,
+		nil,
+		kernelTransitionObserver(trace.NewRecorder(time.Now), 0),
+		nil,
+		nil,
+		noopMetrics{},
+		turnkernel.DefaultPolicy(),
+		coordinators,
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
 	call := provider.ToolCall{
 		ID: "call-input", Name: "request_user_input",
@@ -202,13 +217,13 @@ func TestEngineRecoveryResumesRunningInputToolWithEarlyReply(t *testing.T) {
 		CatalogRevision:   binding.Revision,
 		CatalogAuthority:  binding.Authority,
 	}
-	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(call.ID); err != nil {
+	if err := kernel.StartTool(call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requireInput("input-recovery-request"); err != nil {
+	if err := kernel.RequireInput("input-recovery-request"); err != nil {
 		t.Fatal(err)
 	}
 	if err := coordinators.Release(t.Context(), "input-recovery"); err != nil {
@@ -394,14 +409,14 @@ func TestTurnKernelC2ToolResultsBypassObserver(t *testing.T) {
 		nil,
 	)
 	write := provider.ToolCall{ID: "write-1", Name: "file_write"}
-	if err := kernel.startTools([]provider.ToolCall{write}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{write}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(write.ID); err != nil {
+	if err := kernel.StartTool(write.ID); err != nil {
 		t.Fatal(err)
 	}
 	writeResult := tool.Result{Content: "written"}
-	if err := kernel.closeTool(
+	if err := kernel.CloseTool(
 		write,
 		writeResult,
 		[]tool.WorkspaceChange{{
@@ -411,10 +426,10 @@ func TestTurnKernelC2ToolResultsBypassObserver(t *testing.T) {
 		t.Fatal(err)
 	}
 	complete := provider.ToolCall{ID: "complete-1", Name: "turn_complete"}
-	if err := kernel.startTools([]provider.ToolCall{complete}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{complete}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(complete.ID); err != nil {
+	if err := kernel.StartTool(complete.ID); err != nil {
 		t.Fatal(err)
 	}
 	completeResult := tool.Result{
@@ -430,10 +445,10 @@ func TestTurnKernelC2ToolResultsBypassObserver(t *testing.T) {
 			"completion_declaration_accepted": true,
 		},
 	}
-	if err := kernel.closeTool(complete, completeResult, nil); err != nil {
+	if err := kernel.CloseTool(complete, completeResult, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := kernel.evaluateCompletion(turnkernel.CompletionCandidate{
+	if _, err := kernel.EvaluateCompletion(turnkernel.CompletionCandidate{
 		DeclarationValid: true,
 		Status:           "complete",
 		Summary:          "implemented",
@@ -442,15 +457,15 @@ func TestTurnKernelC2ToolResultsBypassObserver(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.beginVerification(); err != nil {
+	if err := kernel.BeginVerification(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := kernel.finishVerification(turnkernel.VerificationFinished{
+	if _, err := kernel.FinishVerification(turnkernel.VerificationFinished{
 		Status: turnkernel.VerificationPassed,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := kernel.releaseOutput(); err != nil {
+	if _, err := kernel.ReleaseOutput(); err != nil {
 		t.Fatal(err)
 	}
 	finalizeKernelForTest(t, kernel, turnkernel.TerminalDecision{
@@ -458,9 +473,9 @@ func TestTurnKernelC2ToolResultsBypassObserver(t *testing.T) {
 	})
 
 	assertKernelHealthy(t, kernel, records, turnkernel.PhaseCompleted)
-	if kernel.state.Journal != turnkernel.JournalCommitted ||
-		kernel.state.MutationRevision != 1 {
-		t.Fatalf("kernel state = %+v", kernel.state)
+	if kernel.Snapshot().Journal != turnkernel.JournalCommitted ||
+		kernel.Snapshot().MutationRevision != 1 {
+		t.Fatalf("kernel state = %+v", kernel.Snapshot())
 	}
 }
 
@@ -478,16 +493,16 @@ func TestTurnKernelC2TerminalFailureClosesParallelTools(t *testing.T) {
 	)
 	first := provider.ToolCall{ID: "call-1", Name: "first"}
 	second := provider.ToolCall{ID: "call-2", Name: "second"}
-	if err := kernel.startTools([]provider.ToolCall{first, second}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{first, second}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(first.ID); err != nil {
+	if err := kernel.StartTool(first.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(second.ID); err != nil {
+	if err := kernel.StartTool(second.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requireApproval("approval-1", first.ID); err != nil {
+	if err := kernel.RequireApproval("approval-1", first.ID); err != nil {
 		t.Fatal(err)
 	}
 	finalizeKernelForTest(t, kernel, turnkernel.TerminalDecision{
@@ -496,8 +511,8 @@ func TestTurnKernelC2TerminalFailureClosesParallelTools(t *testing.T) {
 	})
 
 	assertKernelHealthy(t, kernel, records, turnkernel.PhaseFailed)
-	if len(kernel.state.ClosedCalls) != 2 {
-		t.Fatalf("closed calls = %+v", kernel.state.ClosedCalls)
+	if len(kernel.Snapshot().ClosedCalls) != 2 {
+		t.Fatalf("closed calls = %+v", kernel.Snapshot().ClosedCalls)
 	}
 }
 
@@ -514,19 +529,19 @@ func TestTurnKernelOwnsToolStartAndResultRegistration(t *testing.T) {
 		nil,
 	)
 	call := provider.ToolCall{ID: "call-1", Name: "read"}
-	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(call.ID); err != nil {
+	if err := kernel.StartTool(call.ID); err != nil {
 		t.Fatal(err)
 	}
 	result := tool.Result{Content: "done"}
-	if err := kernel.closeTool(call, result, nil); err != nil {
+	if err := kernel.CloseTool(call, result, nil); err != nil {
 		t.Fatal(err)
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.ClosedCalls) != 1 {
-		t.Fatalf("tool ledger = %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 1 {
+		t.Fatalf("tool ledger = %+v", kernel.Snapshot())
 	}
 }
 
@@ -542,16 +557,16 @@ func TestTurnKernelToolBatchRejectsDuplicateIdentityBeforeExecution(t *testing.T
 		},
 		nil,
 	)
-	err := kernel.startTools([]provider.ToolCall{
+	err := kernel.StartTools([]provider.ToolCall{
 		{ID: "duplicate", Name: "first"},
 		{ID: "duplicate", Name: "second"},
 	})
 	if err == nil || protocol.CodeOf(err) != protocol.CodeConflict {
 		t.Fatalf("startTools() error = %v", err)
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		kernel.state.Phase != turnkernel.PhaseSampling {
-		t.Fatalf("rejected batch changed state: %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		kernel.Snapshot().Phase != turnkernel.PhaseSampling {
+		t.Fatalf("rejected batch changed state: %+v", kernel.Snapshot())
 	}
 	last := records[len(records)-1]
 	if last.Drift != "" || last.Rejection == "" {
@@ -568,21 +583,21 @@ func TestTurnKernelAbortClosesEveryOpenTool(t *testing.T) {
 		nil,
 		nil,
 	)
-	if err := kernel.startTools([]provider.ToolCall{
+	if err := kernel.StartTools([]provider.ToolCall{
 		{ID: "first", Name: "read"},
 		{ID: "second", Name: "search"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.abortTools("turn canceled"); err != nil {
+	if err := kernel.AbortTools("turn canceled"); err != nil {
 		t.Fatal(err)
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.ClosedCalls) != 2 ||
-		kernel.state.Phase != turnkernel.PhaseSampling {
-		t.Fatalf("aborted tool ledger = %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 2 ||
+		kernel.Snapshot().Phase != turnkernel.PhaseSampling {
+		t.Fatalf("aborted tool ledger = %+v", kernel.Snapshot())
 	}
-	for _, result := range kernel.state.ClosedCalls {
+	for _, result := range kernel.Snapshot().ClosedCalls {
 		if !result.IsError {
 			t.Fatalf("aborted result = %+v", result)
 		}
@@ -602,19 +617,19 @@ func TestTurnKernelCancellationClosesToolAwaitingApproval(t *testing.T) {
 		nil,
 	)
 	call := provider.ToolCall{ID: "edit", Name: "file_edit"}
-	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(call.ID); err != nil {
+	if err := kernel.StartTool(call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requireApproval("approval-edit", call.ID); err != nil {
+	if err := kernel.RequireApproval("approval-edit", call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requestCancel(protocol.CancelReasonHostInterrupted); err != nil {
+	if err := kernel.RequestCancel(protocol.CancelReasonHostInterrupted); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.closeTool(
+	if err := kernel.CloseTool(
 		call,
 		tool.Result{Content: "tool aborted: context canceled", IsError: true},
 		nil,
@@ -625,11 +640,11 @@ func TestTurnKernelCancellationClosesToolAwaitingApproval(t *testing.T) {
 		Kind: turnkernel.TerminalCanceled, Message: protocol.CancelReasonHostInterrupted,
 	})
 	assertKernelHealthy(t, kernel, records, turnkernel.PhaseCanceled)
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.PendingApprovals) != 0 ||
-		len(kernel.state.PendingEffects) != 0 ||
-		len(kernel.state.ClosedCalls) != 1 {
-		t.Fatalf("canceled approval ledger = %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().PendingApprovals) != 0 ||
+		len(kernel.Snapshot().PendingEffects) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 1 {
+		t.Fatalf("canceled approval ledger = %+v", kernel.Snapshot())
 	}
 }
 
@@ -646,16 +661,16 @@ func TestTurnKernelCancellationClosesToolAwaitingInput(t *testing.T) {
 		nil,
 	)
 	call := provider.ToolCall{ID: "interactive", Name: "request_input"}
-	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(call.ID); err != nil {
+	if err := kernel.StartTool(call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requireInput("input-1"); err != nil {
+	if err := kernel.RequireInput("input-1"); err != nil {
 		t.Fatal(err)
 	}
-	if effect, started, err := kernel.dispatcher.Routed(
+	if effect, started, err := kernel.RoutedEffect(
 		turnkernel.EffectAwaitInput,
 		"",
 	); err != nil || !started || effect.Status != turnkernel.EffectRunning {
@@ -665,11 +680,11 @@ func TestTurnKernelCancellationClosesToolAwaitingInput(t *testing.T) {
 		Kind: turnkernel.TerminalCanceled, Message: "turn canceled",
 	})
 	assertKernelHealthy(t, kernel, records, turnkernel.PhaseCanceled)
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.ClosedCalls) != 1 {
-		t.Fatalf("canceled input ledger = %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 1 {
+		t.Fatalf("canceled input ledger = %+v", kernel.Snapshot())
 	}
-	if pending := kernel.dispatcher.PendingRouted(
+	if pending := kernel.PendingRouted(
 		turnkernel.EffectAwaitInput,
 	); len(pending) != 0 {
 		t.Fatalf("canceled input dispatcher entries = %+v", pending)
@@ -686,28 +701,28 @@ func TestTurnKernelAcceptsApprovalResultBeforeResolution(t *testing.T) {
 		nil,
 	)
 	call := provider.ToolCall{ID: "approval-call", Name: "write"}
-	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(call.ID); err != nil {
+	if err := kernel.StartTool(call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requireApproval("approval-1", call.ID); err != nil {
+	if err := kernel.RequireApproval("approval-1", call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if effect, started, err := kernel.dispatcher.Routed(
+	if effect, started, err := kernel.RoutedEffect(
 		turnkernel.EffectAwaitApproval,
 		call.ID,
 	); err != nil || !started || effect.Status != turnkernel.EffectRunning {
 		t.Fatalf("approval wait effect was not started before waiting: effect=%+v started=%v err=%v", effect, started, err)
 	}
-	if err := kernel.resolveApproval("approval-1", false); err != nil {
+	if err := kernel.ResolveApproval("approval-1", false); err != nil {
 		t.Fatal(err)
 	}
-	if len(kernel.state.PendingApprovals) != 0 {
-		t.Fatalf("pending approvals = %+v", kernel.state.PendingApprovals)
+	if len(kernel.Snapshot().PendingApprovals) != 0 {
+		t.Fatalf("pending approvals = %+v", kernel.Snapshot().PendingApprovals)
 	}
-	for _, effect := range kernel.state.CompletedEffects {
+	for _, effect := range kernel.Snapshot().CompletedEffects {
 		if effect.Kind == turnkernel.EffectAwaitApproval &&
 			effect.Status != turnkernel.EffectSucceeded {
 			t.Fatalf("approval effect = %+v", effect)
@@ -725,13 +740,13 @@ func TestTurnKernelSerializesDuplicateApprovalResults(t *testing.T) {
 		nil,
 	)
 	call := provider.ToolCall{ID: "approval-call", Name: "write"}
-	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(call.ID); err != nil {
+	if err := kernel.StartTool(call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requireApproval("approval-1", call.ID); err != nil {
+	if err := kernel.RequireApproval("approval-1", call.ID); err != nil {
 		t.Fatal(err)
 	}
 	results := make(chan error, 2)
@@ -740,7 +755,7 @@ func TestTurnKernelSerializesDuplicateApprovalResults(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			results <- kernel.resolveApproval("approval-1", false)
+			results <- kernel.ResolveApproval("approval-1", false)
 		}()
 	}
 	group.Wait()
@@ -768,28 +783,28 @@ func TestTurnKernelAcceptsInputResultBeforeResolution(t *testing.T) {
 		nil,
 	)
 	call := provider.ToolCall{ID: "input-call", Name: "request_user_input"}
-	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(call.ID); err != nil {
+	if err := kernel.StartTool(call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requireInput("input-1"); err != nil {
+	if err := kernel.RequireInput("input-1"); err != nil {
 		t.Fatal(err)
 	}
-	if effect, started, err := kernel.dispatcher.Routed(
+	if effect, started, err := kernel.RoutedEffect(
 		turnkernel.EffectAwaitInput,
 		"",
 	); err != nil || !started || effect.Status != turnkernel.EffectRunning {
 		t.Fatalf("input wait effect was not started before waiting: effect=%+v started=%v err=%v", effect, started, err)
 	}
-	if err := kernel.resolveInput("input-1"); err != nil {
+	if err := kernel.ResolveInput("input-1"); err != nil {
 		t.Fatal(err)
 	}
-	if kernel.state.PendingInput != nil {
-		t.Fatalf("pending input = %+v", kernel.state.PendingInput)
+	if kernel.Snapshot().PendingInput != nil {
+		t.Fatalf("pending input = %+v", kernel.Snapshot().PendingInput)
 	}
-	for _, effect := range kernel.state.CompletedEffects {
+	for _, effect := range kernel.Snapshot().CompletedEffects {
 		if effect.Kind == turnkernel.EffectAwaitInput &&
 			effect.Status != turnkernel.EffectSucceeded {
 			t.Fatalf("input effect = %+v", effect)
@@ -806,21 +821,21 @@ func TestTurnKernelRejectsNewWorkAfterAcceptedCancel(t *testing.T) {
 		nil,
 		nil,
 	)
-	if err := kernel.requestCancel(protocol.CancelReasonUserInterrupted); err != nil {
+	if err := kernel.RequestCancel(protocol.CancelReasonUserInterrupted); err != nil {
 		t.Fatal(err)
 	}
-	if !kernel.state.Cancellation.Accepted {
-		t.Fatalf("cancellation = %+v", kernel.state.Cancellation)
+	if !kernel.Snapshot().Cancellation.Accepted {
+		t.Fatalf("cancellation = %+v", kernel.Snapshot().Cancellation)
 	}
-	if err := kernel.startTools([]provider.ToolCall{{
+	if err := kernel.StartTools([]provider.ToolCall{{
 		ID:   "late-tool",
 		Name: "read",
 	}}); err == nil {
 		t.Fatal("tool start succeeded after accepted cancel")
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.PendingEffects) != 0 {
-		t.Fatalf("post-cancel work leaked: %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().PendingEffects) != 0 {
+		t.Fatalf("post-cancel work leaked: %+v", kernel.Snapshot())
 	}
 }
 
@@ -833,10 +848,10 @@ func TestTurnKernelCancellationClosesRunningProviderBeforeTerminal(t *testing.T)
 		nil,
 		nil,
 	)
-	if err := kernel.beginModelSample(t.Context(), "sample"); err != nil {
+	if err := kernel.BeginModelSample(t.Context(), "sample"); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.requestCancel(protocol.CancelReasonShutdown); err != nil {
+	if err := kernel.RequestCancel(protocol.CancelReasonShutdown); err != nil {
 		t.Fatal(err)
 	}
 
@@ -845,12 +860,12 @@ func TestTurnKernelCancellationClosesRunningProviderBeforeTerminal(t *testing.T)
 		Message: protocol.CancelReasonShutdown,
 	})
 
-	if kernel.state.Phase != turnkernel.PhaseCanceled ||
-		len(kernel.state.PendingEffects) != 0 ||
-		kernel.state.ActiveSampleID != "" {
-		t.Fatalf("canceled provider state = %+v", kernel.state)
+	if kernel.Snapshot().Phase != turnkernel.PhaseCanceled ||
+		len(kernel.Snapshot().PendingEffects) != 0 ||
+		kernel.Snapshot().ActiveSampleID != "" {
+		t.Fatalf("canceled provider state = %+v", kernel.Snapshot())
 	}
-	sample := kernel.state.SampleLedger["sample"]
+	sample := kernel.Snapshot().SampleLedger["sample"]
 	if sample.Status != turnkernel.SampleFailed ||
 		!strings.Contains(sample.Error, protocol.CancelReasonShutdown) {
 		t.Fatalf("canceled sample = %+v", sample)
@@ -859,12 +874,12 @@ func TestTurnKernelCancellationClosesRunningProviderBeforeTerminal(t *testing.T)
 
 func finalizeKernelForTest(
 	t *testing.T,
-	kernel *engineTurnKernel,
+	kernel *turnkernel.RuntimeKernel,
 	decision turnkernel.TerminalDecision,
 ) {
 	t.Helper()
 	if decision.Kind != turnkernel.TerminalCompleted {
-		if err := kernel.abortForTerminal(decision.Message); err != nil {
+		if err := kernel.AbortForTerminal(decision.Message); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -875,11 +890,11 @@ func finalizeKernelForTest(
 		request.FailureCode = decision.Code
 		request.FailureMessage = decision.Message
 	}
-	if _, err := kernel.requestTerminal(request); err != nil {
+	if _, err := kernel.RequestTerminal(request); err != nil {
 		t.Fatal(err)
 	}
-	if kind, ok := kernel.journalEffectKind(); ok {
-		effect, err := kernel.startJournal(kind)
+	if kind, ok := kernel.JournalEffectKind(); ok {
+		effect, err := kernel.StartJournal(kind)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -887,24 +902,24 @@ func finalizeKernelForTest(
 		if kind == turnkernel.EffectCommitJournal {
 			status = turnkernel.JournalCommitted
 		}
-		if err := kernel.finishJournal(effect, status, nil); err != nil {
+		if err := kernel.FinishJournal(effect, status, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := kernel.finishTerminal(); err != nil {
+	if err := kernel.FinishTerminal(); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func assertKernelHealthy(
 	t *testing.T,
-	kernel *engineTurnKernel,
+	kernel *turnkernel.RuntimeKernel,
 	records []turnkernel.TransitionRecord,
 	want turnkernel.Phase,
 ) {
 	t.Helper()
-	if kernel.state.Phase != want {
-		t.Fatalf("phase = %s, want %s", kernel.state.Phase, want)
+	if kernel.Snapshot().Phase != want {
+		t.Fatalf("phase = %s, want %s", kernel.Snapshot().Phase, want)
 	}
 	for _, record := range records {
 		if record.Drift != "" || record.StateDigest == "" {

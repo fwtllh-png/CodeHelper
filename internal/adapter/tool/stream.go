@@ -1,6 +1,13 @@
 package tool
 
-import "context"
+import (
+	"context"
+	"sync"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+)
+
+const DefaultMaxOutputStreamBytes = 128 << 10
 
 type outputObserverKey struct{}
 
@@ -37,4 +44,87 @@ func WithOutputObserver(ctx context.Context, observe OutputObserver) context.Con
 func OutputObserverFrom(ctx context.Context) OutputObserver {
 	observe, _ := ctx.Value(outputObserverKey{}).(OutputObserver)
 	return observe
+}
+
+type OutputProjection struct {
+	Tool      string
+	CallID    string
+	Stream    string
+	Chunk     string
+	Cursor    uint64
+	Truncated bool
+}
+
+type OutputStream struct {
+	mu      sync.Mutex
+	project func(OutputProjection)
+	budget  int
+	spent   map[string]int
+	stopped map[string]bool
+	closed  bool
+}
+
+func NewOutputStream(
+	budget int,
+	project func(OutputProjection),
+) *OutputStream {
+	if budget <= 0 {
+		budget = DefaultMaxOutputStreamBytes
+	}
+	return &OutputStream{
+		project: project,
+		budget:  budget,
+		spent:   map[string]int{},
+		stopped: map[string]bool{},
+	}
+}
+
+func (s *OutputStream) Observe(call provider.ToolCall) OutputObserver {
+	if s == nil || s.project == nil {
+		return nil
+	}
+	name, id := call.Name, call.ID
+	return func(chunk OutputChunk) {
+		s.emit(name, id, chunk)
+	}
+}
+
+func (s *OutputStream) emit(
+	name string,
+	callID string,
+	chunk OutputChunk,
+) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.stopped[callID] {
+		return
+	}
+	remaining := s.budget - s.spent[callID]
+	if remaining <= 0 {
+		return
+	}
+	truncated := false
+	if len(chunk.Data) > remaining {
+		chunk.Data = chunk.Data[:remaining]
+		truncated = true
+	}
+	s.spent[callID] += len(chunk.Data)
+	if s.spent[callID] >= s.budget {
+		truncated = true
+		s.stopped[callID] = true
+	}
+	s.project(OutputProjection{
+		Tool: name, CallID: callID,
+		Stream: chunk.Stream, Chunk: chunk.Data,
+		Cursor: chunk.Cursor, Truncated: truncated,
+	})
+}
+
+func (s *OutputStream) Close() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
 }

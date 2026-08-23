@@ -27,9 +27,7 @@ func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	}}
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(turnContextBackend{})
-	options := Options{
-		Route: testRoute(t), Tools: registry, Security: security, Workspace: "/tmp/ws",
-	}
+	options := Options{ProviderConfig: ProviderConfig{Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: registry}, SecurityConfig: SecurityConfig{Security: security, Workspace: "/tmp/ws"}}
 	snapshot, err := SnapshotTurnSpec(
 		options,
 		TurnIdentity{SessionID: "session-1", TurnID: "turn-1", ProfileRevision: 7},
@@ -87,15 +85,12 @@ func TestSnapshotTurnSpecRequiresStructuredTerminalForEveryToolEnabledEngine(
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			spec, err := SnapshotTurnSpec(
-				Options{
-					Route: testRoute(t),
-					Tools: tool.NewRegistry(nil, nil),
-					Security: policy.DefaultRuntime(
-						policy.ModeAct,
-						policy.PermissionBypass,
-					),
-					RequireCompletionDeclaration: true,
-					InputHost:                    test.inputHost,
+				Options{ProviderConfig: ProviderConfig{Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil),
+
+					RequireCompletionDeclaration: true}, SecurityConfig: SecurityConfig{Security: policy.DefaultRuntime(
+					policy.ModeAct,
+					policy.PermissionBypass,
+				)}, LifecycleConfig: LifecycleConfig{InputHost: test.inputHost},
 				},
 				TurnIdentity{TurnID: "turn-1"},
 				TurnRequest{
@@ -134,14 +129,11 @@ func TestSnapshotTurnSpecFreezesExtensionPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := tool.NewRegistry(nil, nil)
-	options := Options{
-		Route: testRoute(t), Tools: registry,
-		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		TurnSnapshots: TurnSnapshotSources{
-			ExtensionPlan: func() (runtimeextension.Plan, error) {
-				return plan, nil
-			},
+	options := Options{ProviderConfig: ProviderConfig{Route: testRoute(t)}, ContextConfig: ContextConfig{TurnSnapshots: TurnSnapshotSources{
+		ExtensionPlan: func() (runtimeextension.Plan, error) {
+			return plan, nil
 		},
+	}}, ToolConfig: ToolConfig{Tools: registry}, SecurityConfig: SecurityConfig{Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)},
 	}
 	snapshot, err := SnapshotTurnSpec(
 		options,
@@ -158,10 +150,7 @@ func TestSnapshotTurnSpecFreezesExtensionPlan(t *testing.T) {
 }
 
 func TestSnapshotTurnSpecSelectsSkillsFromFrozenPrompt(t *testing.T) {
-	options := Options{
-		Route: testRoute(t), Tools: tool.NewRegistry(nil, nil),
-		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-	}
+	options := Options{ProviderConfig: ProviderConfig{Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: SecurityConfig{Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)}}
 	options.TurnSnapshots.SkillSelection = func(
 		query string,
 	) ([]SkillSummary, SkillSelectionMetrics, error) {
@@ -197,14 +186,11 @@ func TestSnapshotTurnSpecSelectsSkillsFromFrozenPrompt(t *testing.T) {
 }
 
 func TestSnapshotTurnSpecDegradesMemoryReadFailure(t *testing.T) {
-	options := Options{
-		Route: testRoute(t), Tools: tool.NewRegistry(nil, nil),
-		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		TurnSnapshots: TurnSnapshotSources{
-			Memory: func(string) (MemorySnapshot, error) {
-				return MemorySnapshot{}, errors.New("corrupt memory store")
-			},
+	options := Options{ProviderConfig: ProviderConfig{Route: testRoute(t)}, ContextConfig: ContextConfig{TurnSnapshots: TurnSnapshotSources{
+		Memory: func(string) (MemorySnapshot, error) {
+			return MemorySnapshot{}, errors.New("corrupt memory store")
 		},
+	}}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: SecurityConfig{Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)},
 	}
 	spec, err := SnapshotTurnSpec(
 		options,
@@ -248,10 +234,10 @@ func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{
-		Provider: providerRuntime, Route: testRoute(t), Tools: registry,
-		Security: security, Workspace: t.TempDir(), MaxOutputTokens: 128, MaxSteps: 8,
-		Authorize: func(provider.ToolCall) bool { return true },
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: providerRuntime, Route: testRoute(t),
+		MaxOutputTokens: 128, MaxSteps: 8}, ToolConfig: ToolConfig{Tools: registry,
+
+		Authorize: func(provider.ToolCall) bool { return true }}, SecurityConfig: SecurityConfig{Security: security, Workspace: t.TempDir()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -339,10 +325,10 @@ func TestRunForTurnNextTurnSeesUpdatedPolicy(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{
-		Provider: providerRuntime, Route: testRoute(t), Tools: registry,
-		Security: security, Workspace: t.TempDir(), MaxOutputTokens: 128,
-		Authorize: func(provider.ToolCall) bool { return true },
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: providerRuntime, Route: testRoute(t),
+		MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
+
+		Authorize: func(provider.ToolCall) bool { return true }}, SecurityConfig: SecurityConfig{Security: security, Workspace: t.TempDir()},
 	})
 	if err != nil {
 		t.Fatal(err)

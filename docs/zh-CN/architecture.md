@@ -85,7 +85,7 @@ State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh
 启动 Worker Scheduler。任一步失败都会终止构造并由 ResourceStack 回滚；Runtime
 Recovery 成功前不会启动后台 Worker。
 
-构造与关闭共享 `assembly.ResourceStack`。Session 只注册一次资源关闭函数；部分构造
+构造与关闭共享 `wire.ResourceStack`。Session 只注册一次资源关闭函数；部分构造
 失败回滚与正常关闭都按注册逆序关闭同一 Stack。每项资源最多关闭一次，单项关闭失败
 不会跳过后续资源，调用方会收到带资源标识的聚合错误。因此 Runtime 或 Scheduler 等
 后段构造失败也不会泄漏已创建资源。
@@ -96,17 +96,20 @@ Recovery 成功前不会启动后台 Worker。
 Web / CLI / TUI
         | Operation / Event
         v
-operationDispatcher -> ActiveTurnRegistry -> TurnCoordinator -> TurnScope
-        |                                        |
-        v                                        v
-    eventhub.Hub <-------------------------- Event Projection
+OperationService -> TurnService -> TurnCoordinator -> TurnScope
+        |                |               |
+        v                v               v
+ operationDispatcher  ActiveTurnRegistry  Context Authority Snapshot
+        |
+        v
+    EventService -> eventhub.Hub <-------- Event Projection
         |
         +-> TerminalPublisher -> app/persistence -> SQLite / Event Log / CAS
         |
         +-> SessionService / ArtifactService -> Host Query
 
 wire.NewExec -> 仅负责构造 Module
-chatmerge.Service -> 隔离 Chat Preview / Journal Apply / Git Baseline
+app.ChatMergeService -> 隔离 Chat Preview / Journal Apply / Git Baseline
 eventview + Web Projection -> 仅负责 Host Presentation
 ```
 
@@ -114,8 +117,10 @@ eventview + Web Projection -> 仅负责 Host Presentation
 | --- | --- | --- |
 | Composition Root | `internal/runtime/app/wire` | Concrete Construction 与 Resource Registration |
 | Durable Runtime Assembly | `internal/runtime/app/persistence` | Repository、Lifecycle Recovery、Persistent Runtime Options |
-| Chat Merge Service | `internal/runtime/app/chatmerge` | Isolated Baseline、Three-way Preview、Journaled Apply |
-| Operation Dispatcher | `internal/runtime/app` | Typed Operation Handler Selection 与 Synchronous Commit |
+| Chat Merge Service | `internal/runtime/app` | Isolated Baseline、Three-way Preview、Journaled Apply |
+| Operation Service | `internal/runtime/app` | Queue、Idempotency、Typed Dispatch 与 Operation Commit/Reject |
+| Turn Service | `internal/runtime/app` | Active Lease、Control、Cancel Provenance 与 Turn goroutine 生命周期 |
+| Event/Recovery Service | `internal/runtime/app` | Event Projection 索引、Observer 与 Durable Recovery |
 | Turn Coordinator/Scope | `internal/runtime/agent` | Reducer Authority、Effect、Control 与 Turn-local State |
 | Event Hub/Terminal Publisher | `internal/runtime/app/eventhub`、`internal/runtime/app` | Sequence/Fanout 与 Atomic Terminal Publication |
 | WorkGraph Kernel/Store | `internal/orchestration/kernel`、`internal/orchestration/store` | Durable Run、Node、Attempt、Lease 与 Effect Transition |
@@ -127,6 +132,14 @@ eventview + Web Projection -> 仅负责 Host Presentation
 
 Web 直接调用 Runtime 的窄化 Session、Operation、History 与 Artifact Service。
 浏览器 Transport 不复制 Agent 循环，也不存在第二条兼容执行路径。
+
+`Runtime` 是这些 Service 的兼容 Facade，不直接拥有 Operation Map 或 Active Turn Map。
+Session 生命周期写操作由 `SessionService` 的 mutation lock 串行化。`Engine.Execute`
+是唯一生产 Turn 入口；它冻结 `TurnRequest` 和 Context Authority，并为每个 Turn
+创建隔离 Scope。`turnkernel.Reducer.Apply` 是唯一状态转换入口，其实现按 Command
+Family 分布在 `reducer_sampling.go`、`reducer_tool.go`、
+`reducer_interaction.go`、`reducer_context.go`、
+`reducer_verification.go` 和 `reducer_terminal.go`。
 
 ## Runtime 协议
 
@@ -174,7 +187,7 @@ Application Runtime 是显式 Owner 组成的 Facade：
 
 执行前，Engine 构造不可变 `TurnSpec`，冻结 Identity、Request、Session Profile、
 Route、Policy、Limit、Prompt Prefix、Tool Catalog、Skill、MCP Health 与 Extension
-Snapshot。`turnexec.Factory` 从该 Spec 打开强类型 Scope；Scope 运行期间 Sampling
+Snapshot。Engine 内的 Scope Factory 从该 Spec 打开单 Turn `engine.Scope`；Scope 运行期间 Sampling
 不得重新读取这些可变来源。
 
 Scope 独占 Turn 级 Kernel、Trace、Diagnostics、Verification、Tool Spend、Diff 与
@@ -256,6 +269,13 @@ Result 的 Model-visible Surface。Tool 层把完整原文保存在 Durable Cont
 并返回稳定的 `result_get` Handle 与有界 Head/Tail 摘要；Call/Result 配对保持不变。
 Engine 在每次投影后重新测量，若 Surface Pruning 已恢复窗口，则跳过 Summary
 Replacement。
+
+完整传输 Route 还使用独立的滚动 Surface Budget：最新 Tool Batch 保持完整，已经被
+后续 Sample 消费的旧结果缩减为稳定 Handle 投影，不等待 Context 达到模型物理窗口的
+65%。默认累计预算为 64 KiB，单个已消费结果保留最多 384 Bytes。其 Provider 请求只
+物化每个 World Section 的最新版本，并移除已闭合 Tool Round 中的旧状态文本和
+Reasoning；Durable History、World Patch 链和原始 Tool Result 不被改写。
+增量 Route 保持严格追加投影，不执行这些会破坏 Response Chain 前缀的转换。
 
 `TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，
 不会反向生成 Command 写回状态机。Durable Runtime 构造必须显式提供 Event、Content、

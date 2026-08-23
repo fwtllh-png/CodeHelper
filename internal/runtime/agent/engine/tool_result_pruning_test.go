@@ -7,7 +7,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
 func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
@@ -33,7 +33,7 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 	window, err := engine.runCompactGate(
 		t.Context(),
 		&history,
-		contextstore.New(contextstore.Input{}).Snapshot(),
+		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
 		128,
 		CompactionPhaseMidTurn,
 		true,
@@ -104,7 +104,7 @@ func TestToolResultPruningSkipsMalformedAndRetrievalResults(t *testing.T) {
 	before := cloneMessages(history)
 	stats, _, err := engine.pruneToolResultSurfaces(
 		&history,
-		contextstore.New(contextstore.Input{}).Snapshot(),
+		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
 		128,
 		true,
 	)
@@ -112,8 +112,73 @@ func TestToolResultPruningSkipsMalformedAndRetrievalResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stats.results != 0 ||
-		historyBytes(history) != historyBytes(before) {
+		agentcontext.HistoryBytes(history) != agentcontext.HistoryBytes(before) {
 		t.Fatalf("stats=%+v history=%+v", stats, history)
+	}
+}
+
+func TestCompactGatePrunesConsumedResultsBelowWindowThreshold(t *testing.T) {
+	results := tool.NewResultStore(32 << 10)
+	engine := newEngine(
+		t,
+		&scriptedProvider{},
+		tool.NewRegistry(nil, results),
+	)
+	engine.options.Context.Window.AutoTokens = 3500
+	engine.options.MaxToolResultHistoryBytes = 1600
+	engine.options.MaxConsumedToolResultBytes = 128
+	large := strings.Repeat("result ", 160)
+	encoded, err := json.Marshal(tool.Result{Content: large})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := []provider.Message{
+		toolCallMessage(1, "old-1", "file_read", `{}`),
+		toolResultMessage(1, "old-1", string(encoded)),
+		toolCallMessage(1, "old-2", "file_read", `{}`),
+		toolResultMessage(1, "old-2", string(encoded)),
+		toolCallMessage(1, "latest", "file_read", `{}`),
+		toolResultMessage(1, "latest", string(encoded)),
+	}
+	latest := history[len(history)-1].Blocks[0].ToolResult.Content
+	var receipt *CompactionReceipt
+	_, err = engine.runCompactGate(
+		t.Context(),
+		&history,
+		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
+		0,
+		CompactionPhaseMidTurn,
+		true,
+		func(_ State, event Event) error {
+			receipt = event.Compaction
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt == nil ||
+		receipt.TruncationReason != "tool_result_surface_budget" ||
+		receipt.PrunedToolResults != 2 ||
+		!receipt.AuthorityEquivalent ||
+		receipt.AuthorityDigest == "" {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+	if history[len(history)-1].Blocks[0].ToolResult.Content != latest {
+		t.Fatal("latest batch changed")
+	}
+	if !agentcontext.ToolPairIdentityEquivalent(
+		[]provider.Message{
+			toolCallMessage(1, "old-1", "file_read", `{}`),
+			toolResultMessage(1, "old-1", string(encoded)),
+			toolCallMessage(1, "old-2", "file_read", `{}`),
+			toolResultMessage(1, "old-2", string(encoded)),
+			toolCallMessage(1, "latest", "file_read", `{}`),
+			toolResultMessage(1, "latest", string(encoded)),
+		},
+		history,
+	) {
+		t.Fatal("tool pairing changed")
 	}
 }
 
@@ -124,7 +189,7 @@ func TestToolPairIdentityEquivalenceRejectsRewrittenCalls(t *testing.T) {
 	}
 	after := cloneMessages(before)
 	after[1].Blocks[0].ToolResult.CallID = "call-drifted"
-	if toolPairIdentityEquivalent(before, after) {
+	if agentcontext.ToolPairIdentityEquivalent(before, after) {
 		t.Fatal("rewritten Tool Call/Result identity was accepted")
 	}
 }

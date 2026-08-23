@@ -20,7 +20,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
-	runtimeapp "github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -765,7 +765,7 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 				Data: &protocol.TurnCompletedData{Text: "done"},
 			},
 		}
-		reconstructed, err := runtimeapp.ReconstructThread(events, "thread-1")
+		reconstructed, err := sessionhistory.ReconstructThread(events, "thread-1")
 		if err != nil {
 			t.Fatal(err)
 		}

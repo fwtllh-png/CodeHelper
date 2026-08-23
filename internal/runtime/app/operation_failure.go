@@ -19,12 +19,12 @@ func (r *Runtime) rejectResumableOperation(
 	return true
 }
 
-func (r *Runtime) reject(
+func (r *OperationService) reject(
 	operation protocol.Operation,
 	err error,
 ) error {
 	problem := protocol.ProblemOf(err)
-	return (&runtimeSink{runtime: r, operation: operation}).Emit(
+	return (&runtimeSink{runtime: r.Runtime, operation: operation}).Emit(
 		&protocol.OperationRejectedData{
 			Code: problem.Code, Message: problem.Message,
 			Fault: problem.Fault,

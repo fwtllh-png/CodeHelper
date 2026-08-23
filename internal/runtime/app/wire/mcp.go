@@ -67,9 +67,8 @@ func ServeMCP(
 	}
 	security := policy.DefaultRuntime(options.Mode, options.Permission)
 	guard, err := toolguard.New(toolguard.Options{
-		Registry:  registry,
-		Policy:    security,
-		Workspace: options.Workspace,
+		Registry: registry,
+		Policy:   security, Workspace: options.Workspace,
 	})
 	if err != nil {
 		return err

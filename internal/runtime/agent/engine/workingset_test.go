@@ -10,9 +10,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
 
 func planFixture() interact.Plan {
@@ -26,8 +26,8 @@ func planFixture() interact.Plan {
 // what the engine handed it and when.
 type stubRepoContext struct {
 	turns    []uint64
-	entries  [][]workingset.Entry
-	evidence []evidence.Snapshot
+	entries  [][]agentcontext.WorkingSetEntry
+	evidence []agentcontext.EvidenceSnapshot
 	receipts []promptcontext.Receipt
 }
 
@@ -95,11 +95,11 @@ func TestObservedPathsAreStoredWorkspaceRelative(t *testing.T) {
 	engine.options.Workspace = t.TempDir()
 	engine.turn = 3
 
-	engine.observePath(workingset.SourceEdited, filepath.Join(engine.options.Workspace, "internal", "a.go"))
-	engine.observePath(workingset.SourceRead, filepath.Join("internal", "b.go"))
-	engine.observePath(workingset.SourceRead, filepath.Join(engine.options.Workspace, "..", "outside.go"))
-	engine.observePath(workingset.SourceRead, engine.options.Workspace)
-	engine.observePath(workingset.SourceRead, "")
+	engine.observePath(agentcontext.SourceEdited, filepath.Join(engine.options.Workspace, "internal", "a.go"))
+	engine.observePath(agentcontext.SourceRead, filepath.Join("internal", "b.go"))
+	engine.observePath(agentcontext.SourceRead, filepath.Join(engine.options.Workspace, "..", "outside.go"))
+	engine.observePath(agentcontext.SourceRead, engine.options.Workspace)
+	engine.observePath(agentcontext.SourceRead, "")
 
 	entries := engine.WorkingSetEntries(3, 10)
 	if len(entries) != 2 {
@@ -117,7 +117,7 @@ func TestReadObservationsFollowTheGuardMetadataKey(t *testing.T) {
 
 	// The engine learns about reads from typed outcome facts.
 	path := filepath.Join(engine.options.Workspace, "read.go")
-	engine.observePath(workingset.SourceRead, observedFileRead(tool.Result{
+	engine.observePath(agentcontext.SourceRead, turnkernel.ObservedFileRead(tool.Result{
 		Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
 			WorkspaceRead: &tool.WorkspaceReadFact{Path: path},
 		}},
@@ -125,7 +125,7 @@ func TestReadObservationsFollowTheGuardMetadataKey(t *testing.T) {
 	if paths := engine.ReadPaths(1); len(paths) != 1 || paths[0] != "read.go" {
 		t.Fatalf("read paths = %v", paths)
 	}
-	if observedFileRead(tool.Result{}) != "" {
+	if turnkernel.ObservedFileRead(tool.Result{}) != "" {
 		t.Fatal("a result without typed read facts must report no read")
 	}
 }
@@ -136,7 +136,7 @@ func TestDiagnosticsAndPlanFeedTheWorkingSet(t *testing.T) {
 	engine.turn = 2
 
 	engine.recordTurnDiagnostics([]diagnostics.Receipt{{Path: "broken.go", Status: "failed"}})
-	engine.observePaths(workingset.SourcePlan, []string{"design.md"})
+	engine.observePaths(agentcontext.SourcePlan, []string{"design.md"})
 
 	entries := engine.WorkingSetEntries(2, 10)
 	if len(entries) != 2 {
@@ -145,7 +145,7 @@ func TestDiagnosticsAndPlanFeedTheWorkingSet(t *testing.T) {
 	if entries[0].Path != "design.md" || !entries[0].Critical {
 		t.Fatalf("entries = %+v, want the plan's critical file first", entries)
 	}
-	if entries[1].Path != "broken.go" || entries[1].Sources[0] != workingset.SourceDiagnostic {
+	if entries[1].Path != "broken.go" || entries[1].Sources[0] != agentcontext.SourceDiagnostic {
 		t.Fatalf("entries = %+v", entries)
 	}
 }
@@ -156,8 +156,8 @@ func TestTheWorkingSetOutlivesTheTurnAndTheTurnDiffDoesNot(t *testing.T) {
 	engine.options.Workspace = t.TempDir()
 
 	engine.turn = 1
-	scope.state.diff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
-	engine.observePath(workingset.SourceEdited, "a.go")
+	scope.state.diff.Record(turnkernel.TurnDiffEntry{Path: "a.go", Kind: "modified"})
+	engine.observePath(agentcontext.SourceEdited, "a.go")
 
 	engine.turn = 2
 	scope.state.diff.Reset()
@@ -174,15 +174,15 @@ func TestForkInheritsTheWorkingSetWithoutSharingIt(t *testing.T) {
 	parent := newEngine(t, &scriptedProvider{}, nil)
 	parent.options.Workspace = t.TempDir()
 	parent.turn = 1
-	parent.observePath(workingset.SourceEdited, "shared.go")
+	parent.observePath(agentcontext.SourceEdited, "shared.go")
 
 	child, err := parent.Fork()
 	if err != nil {
 		t.Fatal(err)
 	}
 	child.turn = 2
-	child.observePath(workingset.SourceRead, "child.go")
-	parent.observePath(workingset.SourceRead, "parent.go")
+	child.observePath(agentcontext.SourceRead, "child.go")
+	parent.observePath(agentcontext.SourceRead, "parent.go")
 
 	if got := len(child.WorkingSetEntries(2, 10)); got != 2 {
 		t.Fatalf("child entries = %d, want the inherited edit plus its own read", got)
@@ -203,7 +203,7 @@ func TestWorldStateFullIsRetainedInDurableHistory(t *testing.T) {
 		provider.TextMessage(provider.RoleSystem, "stable prefix"),
 	}
 	engine.turn = 4
-	engine.observePath(workingset.SourceEdited, "a.go")
+	engine.observePath(agentcontext.SourceEdited, "a.go")
 	engine.ApplyPlan(planFixture())
 
 	engine.history = []provider.Message{messageWithText(provider.RoleUser, "do it", 4)}
@@ -290,7 +290,7 @@ func TestTurnContextRebuildsWithinTheSameTurn(t *testing.T) {
 	}
 	// A file read during the turn is in the working set for the very next sample,
 	// which is what makes the tail worth rebuilding instead of caching per turn.
-	engine.observePath(workingset.SourceRead, "found.go")
+	engine.observePath(agentcontext.SourceRead, "found.go")
 	messages, _ := engine.turnContextMessages(t.Context())
 	if len(stub.entries) != 2 || len(stub.entries[1]) != 1 {
 		t.Fatalf("second sample entries = %+v", stub.entries)
@@ -346,7 +346,7 @@ func TestTurnContextReceiptsJoinTheContextReceipts(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("repo map receipts = %d, want one", count)
 	}
-	engine.observePath(workingset.SourceRead, "internal/value.go")
+	engine.observePath(agentcontext.SourceRead, "internal/value.go")
 	_, _ = engine.turnContextMessages(t.Context())
 	selections := engine.ContextSelections()
 	if len(selections) != 1 || selections[0].Path != "internal/value.go" ||

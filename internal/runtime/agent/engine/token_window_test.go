@@ -12,7 +12,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -41,7 +41,7 @@ func (finishProcessTool) Execute(
 
 func TestTokenWindowIncludesStableDynamicToolsAndOutputReserve(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	input := contextstore.New(contextstore.Input{
+	input := agentcontext.NewMessageLedger(agentcontext.LedgerInput{
 		Stable:  []provider.Message{provider.TextMessage(provider.RoleSystem, strings.Repeat("s", 400))},
 		History: []provider.Message{provider.TextMessage(provider.RoleUser, strings.Repeat("h", 400))},
 		Dynamic: []provider.Message{provider.TextMessage(provider.RoleSystem, strings.Repeat("d", 400))},
@@ -91,7 +91,7 @@ func TestTokenWindowUsesObservedBaselineForPendingDelta(t *testing.T) {
 
 func TestCompactionAndReplacementAdvanceTokenWindow(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	first := engine.window
+	first := engine.context.Window()
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("old ", 300), 1),
 		messageWithText(provider.RoleAssistant, "old answer", 1),
@@ -100,17 +100,19 @@ func TestCompactionAndReplacementAdvanceTokenWindow(t *testing.T) {
 	if receipt := engine.CompactForced(); receipt == nil {
 		t.Fatal("forced compaction produced no receipt")
 	}
-	if engine.window.ID == first.ID || engine.window.Number != first.Number+1 ||
-		engine.window.PrefillObserved {
-		t.Fatalf("compacted window=%+v first=%+v", engine.window, first)
+	window := engine.context.Window()
+	if window.ID == first.ID || window.Number != first.Number+1 ||
+		window.PrefillObserved {
+		t.Fatalf("compacted window=%+v first=%+v", window, first)
 	}
-	compacted := engine.window
+	compacted := window
 	engine.ReplaceHistory([]provider.Message{
 		messageWithText(provider.RoleUser, "replacement", 3),
 	})
-	if engine.window.ID == compacted.ID ||
-		engine.window.Number != compacted.Number+1 {
-		t.Fatalf("replacement window=%+v compacted=%+v", engine.window, compacted)
+	window = engine.context.Window()
+	if window.ID == compacted.ID ||
+		window.Number != compacted.Number+1 {
+		t.Fatalf("replacement window=%+v compacted=%+v", window, compacted)
 	}
 }
 
@@ -127,7 +129,13 @@ func TestCompactionCutsPreserveConfiguredRecentTurns(t *testing.T) {
 		messageWithText(provider.RoleUser, "three", 3),
 		messageWithText(provider.RoleAssistant, "done three", 3),
 	}
-	cuts := engine.retainedTailCuts(history, false)
+	cuts := agentcontext.RetainedTailCuts(
+		history,
+		false,
+		engine.options.Context.RecentTailTurns,
+		engine.options.Context.RecentTailMaxTokens,
+		estimateMessageTokens,
+	)
 	if len(cuts) == 0 || cuts[len(cuts)-1] != 3 {
 		t.Fatalf("cuts=%v, want latest cut at start of final two turns", cuts)
 	}
@@ -152,7 +160,7 @@ func TestHeuristicEstimatorAccountsForImageTilesByKind(t *testing.T) {
 			Type: provider.ContentImage, Attachment: &attachment,
 		}},
 	}
-	measured, err := contextstore.New(contextstore.Input{
+	measured, err := agentcontext.NewMessageLedger(agentcontext.LedgerInput{
 		History: []provider.Message{message},
 	}).Snapshot().Measure("", "", estimator)
 	if err != nil {
@@ -197,7 +205,7 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 		messageWithText(provider.RoleUser, "current", 2),
 	}
 	var receipt *CompactionReceipt
-	input := contextstore.New(contextstore.Input{
+	input := agentcontext.NewMessageLedger(agentcontext.LedgerInput{
 		Stable: []provider.Message{
 			provider.TextMessage(provider.RoleSystem, strings.Repeat("s", 13_000)),
 		},

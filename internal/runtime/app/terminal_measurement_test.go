@@ -2,19 +2,22 @@ package app
 
 import (
 	"encoding/json"
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/observation"
+	executionreceipt "github.com/fwtllh-png/CodeHelper/internal/observability/receipt"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 func TestSO4ReceiptAndTraceUseOneFrozenMeasurement(t *testing.T) {
 	firstOutput := 250 * time.Millisecond
-	measurement, err := freezeTerminalMeasurement(
+	measurement, err := executionreceipt.FreezeTerminalMeasurement(
 		trace.FrozenMeasurement{
 			FrozenAt: time.Unix(20, 0),
 			Recorded: true,
@@ -32,10 +35,8 @@ func TestSO4ReceiptAndTraceUseOneFrozenMeasurement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt := newReceiptRecorder("answer").build(turnObservations{
-		measurement: &measurement,
-	})
-	records := terminalMeasurementTrace(
+	receipt := executionreceipt.New("answer").BuildWithMeasurement(&measurement)
+	records := appextension.TerminalMeasurementTrace(
 		measurement,
 		turnkernel.TerminalDecision{
 			Kind: turnkernel.TerminalCompleted,
@@ -66,12 +67,11 @@ func TestSO4MissingLatencyDoesNotProjectMeasuredZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt := newReceiptRecorder("startup failure").build(
-		turnObservations{measurement: &measurement},
-	)
+	receipt := executionreceipt.New("startup failure").
+		BuildWithMeasurement(&measurement)
 	if receipt.MeasurementRecorded ||
 		receipt.Latency != nil ||
-		len(terminalMeasurementTrace(
+		len(appextension.TerminalMeasurementTrace(
 			measurement,
 			turnkernel.TerminalDecision{
 				Kind: turnkernel.TerminalFailed,
@@ -83,7 +83,7 @@ func TestSO4MissingLatencyDoesNotProjectMeasuredZero(t *testing.T) {
 
 func TestTerminalObservationOutcomeOmitsRawFailureMessage(t *testing.T) {
 	const secret = "api-key-do-not-persist"
-	outcome := terminalObservationOutcome(turnkernel.TerminalDecision{
+	outcome := eventhub.TerminalObservationOutcome(turnkernel.TerminalDecision{
 		Kind:    turnkernel.TerminalFailed,
 		Code:    string(protocol.CodeUnavailable),
 		Message: secret,
@@ -115,7 +115,7 @@ func TestTerminalObservationOutcomeOmitsRawFailureMessage(t *testing.T) {
 }
 
 func BenchmarkSO4MeasurementTraceProjection(b *testing.B) {
-	measurement, err := freezeTerminalMeasurement(
+	measurement, err := executionreceipt.FreezeTerminalMeasurement(
 		trace.FrozenMeasurement{
 			FrozenAt: time.Unix(20, 0),
 			Recorded: true,
@@ -138,7 +138,7 @@ func BenchmarkSO4MeasurementTraceProjection(b *testing.B) {
 	}
 	b.ReportAllocs()
 	for b.Loop() {
-		if records := terminalMeasurementTrace(
+		if records := appextension.TerminalMeasurementTrace(
 			measurement,
 			terminal,
 		); len(records) == 0 {

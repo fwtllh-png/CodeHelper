@@ -16,7 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	rlmlib "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -139,22 +139,19 @@ func TestUpdatePlanAppearsInContextReceipts(t *testing.T) {
 	var eng *agentengine.Engine
 	registry := tool.NewRegistry(nil, nil)
 	if err := interact.Register(registry, interact.Options{
-		Host: interact.NewHost(0), Workspace: t.TempDir(),
+		Host: interact.NewHost(0),
 		OnPlan: func(plan interact.Plan) error {
 			eng.ApplyPlan(plan)
 			return nil
-		},
+		}, Workspace: t.TempDir(),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	var err error
-	eng, err = agentengine.New(agentengine.Options{
-		Provider: &noopProvider{}, Route: testRoute(t), Tools: registry,
-		Metrics: telemetry.NewMetrics(), MaxOutputTokens: 64,
-		TurnCoordinatorRuntime: turnkernel.NewEphemeralCoordinatorRuntime(),
-		StaticContextReceipts: []promptcontext.Receipt{{
-			Kind: promptcontext.PartitionBase, SourcePath: "builtin://base-system",
-		}},
+	eng, err = agentengine.New(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &noopProvider{}, Route: testRoute(t),
+		MaxOutputTokens: 64}, ContextConfig: agentengine.ContextConfig{StaticContextReceipts: []promptcontext.Receipt{{
+		Kind: promptcontext.PartitionBase, SourcePath: "builtin://base-system",
+	}}}, ToolConfig: agentengine.ToolConfig{Tools: registry}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}, LifecycleConfig: agentengine.LifecycleConfig{TurnCoordinatorRuntime: turnkernel.NewEphemeralCoordinatorRuntime()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -387,13 +384,13 @@ func TestImageAnalyzeAvailableWithFakeClient(t *testing.T) {
 	}
 	registry := tool.NewRegistry(nil, nil)
 	if err := interact.Register(registry, interact.Options{
-		Host: interact.NewHost(0), Workspace: root,
+		Host: interact.NewHost(0),
 		Vision: interact.FuncVision(func(_ context.Context, path, prompt string) (string, error) {
 			if !strings.HasSuffix(path, "shot.png") {
 				t.Fatalf("path = %q", path)
 			}
 			return "fixture:" + prompt, nil
-		}),
+		}), Workspace: root,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -420,10 +417,10 @@ func TestImageAnalyzeAvailableWithFakeClient(t *testing.T) {
 func TestImageAnalyzeRejectsEscapingPath(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := interact.Register(registry, interact.Options{
-		Host: interact.NewHost(0), Workspace: t.TempDir(),
+		Host: interact.NewHost(0),
 		Vision: interact.FuncVision(func(context.Context, string, string) (string, error) {
 			return "should-not-run", nil
-		}),
+		}), Workspace: t.TempDir(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -460,8 +457,8 @@ func TestCodeExecutionWithStrongPassthrough(t *testing.T) {
 	}
 	registry := tool.NewRegistry(nil, nil)
 	if err := interact.Register(registry, interact.Options{
-		Host: interact.NewHost(0), Workspace: root,
-		Backend: backend, RLM: store, Governor: rlmlib.NewGovernor(rlmlib.Limits{}),
+		Host:    interact.NewHost(0),
+		Backend: backend, RLM: store, Governor: rlmlib.NewGovernor(rlmlib.Limits{}), Workspace: root,
 	}); err != nil {
 		t.Fatal(err)
 	}

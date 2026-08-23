@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -47,7 +47,7 @@ func contextSessionDeltaRestorer(
 			}
 			expanded = []byte(raw)
 			if json.Unmarshal(raw, &probe) == nil && len(probe.Manifest) != 0 {
-				expanded, err = sessiondelta.ExpandContextEnvelope(
+				expanded, err = agentcontext.ExpandContextEnvelope(
 					ctx,
 					content,
 					raw,
@@ -65,17 +65,17 @@ func contextSessionDeltaRestorer(
 			return expanded, err
 		}
 		if len(expanded) == 0 {
-			accounting := sessiondelta.AccountingDelta{
+			accounting := agentcontext.AccountingDelta{
 				TurnID: "context-recovery:" + string(threadID),
 			}
 			accounting.Seal()
-			replaced, replaceErr := sessiondelta.NewDelta(rebase, accounting)
+			replaced, replaceErr := agentcontext.NewSessionDelta(rebase, accounting)
 			if replaceErr != nil {
 				return nil, replaceErr
 			}
 			return json.Marshal(replaced)
 		}
-		var delta sessiondelta.Delta
+		var delta agentcontext.SessionDelta
 		if err := json.Unmarshal(expanded, &delta); err != nil {
 			return nil, err
 		}
@@ -86,7 +86,7 @@ func contextSessionDeltaRestorer(
 		if rebase.Revision <= current.Revision {
 			return expanded, nil
 		}
-		replaced, err := sessiondelta.NewDelta(
+		replaced, err := agentcontext.NewSessionDelta(
 			rebase,
 			delta.AccountingDelta(),
 		)

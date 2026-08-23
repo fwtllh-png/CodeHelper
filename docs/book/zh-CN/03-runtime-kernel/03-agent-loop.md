@@ -9,17 +9,17 @@ prerequisites:
   - runtime-app
 code_paths:
   - internal/runtime/agent/engine
-  - internal/runtime/agent/turnexec
+  - internal/runtime/agent/engine
   - internal/runtime/agent/turnkernel
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
-  - internal/runtime/agent/engine/scheduler_test.go
+  - internal/runtime/agent/turnkernel/tool_scheduler_test.go
   - internal/runtime/agent/engine/verify_gate_test.go
   - internal/runtime/agent/turnkernel/reducer_test.go
   - internal/runtime/agent/turnkernel/effect_dispatcher_test.go
 source_of_truth:
   - internal/runtime/agent/engine/turn_handler.go
-  - internal/runtime/agent/engine/turn_kernel.go
+  - internal/runtime/agent/turnkernel/runtime_kernel.go
   - internal/runtime/agent/turnkernel/reducer.go
   - internal/runtime/agent/turnkernel/coordinator.go
 status: verified
@@ -70,7 +70,7 @@ Terminal Decision 的唯一生产 Owner；`TurnCoordinator` 是 `Reducer.Apply` 
 
 Turn 开始时 Engine 冻结 `TurnSpec`：Identity 与 Request、Session Profile、Route、
 Policy、Limits、Prompt Prefix、Tool Catalog、Skills、MCP Health 与 Extension
-Snapshot。冻结的 Spec 打开 `turnexec.Scope`，由它持有 Turn 局部的 Kernel、Trace、
+Snapshot。冻结的 Spec 打开 `engine.Scope`，由它持有 Turn 局部的 Kernel、Trace、
 Diagnostics、Verification、Tool Spend、Diff 与 Control 状态。Sample 前从
 Scope-local 状态组装 Stable History 与 Volatile Context；`ModelRequest` 只包含
 Catalog Budget 允许的 Tool Definition。
@@ -155,14 +155,14 @@ Turn 把不完整 Tool Exchange 当成事实。
 | 关注点 | 源码 |
 | --- | --- |
 | Loop/Sampling | `engine.go` |
-| Turn Scope/Mailbox | `turnexec` |
+| Turn Scope/Mailbox | `engine` |
 | Scope State/Control | `turn_scope.go` |
 | Session Delta | `session_delta.go` |
 | State、Command、Event 与 Effect | `turnkernel/state.go`、`turnkernel/command.go` |
 | 权威状态转换 | `turnkernel/reducer.go`、`turnkernel/coordinator.go` |
 | Durable Effect Routing | `turnkernel/effect_dispatcher.go` |
 | Scheduler | `scheduler.go` |
-| Failure Class | `toolfailure.go` |
+| Failure Class | `tool_failure.go` |
 | Verification | `verify.go` |
 | Compaction | `compaction.go` |
 | Trace/Latency | `tracing.go` |

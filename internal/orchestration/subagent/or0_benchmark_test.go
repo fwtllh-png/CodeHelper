@@ -19,12 +19,11 @@ func BenchmarkOR0ResidentAgents(b *testing.B) {
 						root,
 						fmt.Sprintf("%d-%d", count, iteration),
 					),
-					Workspace: root, SessionID: "or0-baseline",
-					Gate: &fakeGate{},
-					Budget: subagent.Budget{
+
+					Gate: &fakeGate{}, Budget: subagent.Budget{
 						MaxDepth: 5, MaxParallel: count,
 						MaxResident: count, MaxTotal: count,
-					},
+					}, Workspace: root, SessionID: "or0-baseline",
 				})
 				if err != nil {
 					b.Fatal(err)

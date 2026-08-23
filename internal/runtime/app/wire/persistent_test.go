@@ -25,9 +25,9 @@ import (
 
 func newPersistentRuntime(
 	ctx context.Context,
-	options apppersistence.PersistentRuntimeOptions,
+	options PersistentRuntimeOptions,
 ) (*app.Runtime, error) {
-	runtime, err := apppersistence.PreparePersistentRuntime(ctx, options)
+	runtime, err := PreparePersistentRuntime(ctx, options)
 	if err != nil {
 		return nil, err
 	}
@@ -500,7 +500,7 @@ func TestPersistentRuntimeRestartIsIdempotentAndKeepsOneTerminal(t *testing.T) {
 	root := t.TempDir()
 	store := seedPersistentState(t, root)
 	engine := &persistentTestEngine{}
-	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), PersistentRuntimeOptions{
 		Store: store, Engine: engine,
 	})
 	if err != nil {
@@ -521,7 +521,7 @@ func TestPersistentRuntimeRestartIsIdempotentAndKeepsOneTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	recovered, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
+	recovered, err := newPersistentRuntime(t.Context(), PersistentRuntimeOptions{
 		Store: reopened, Engine: engine,
 	})
 	if err != nil {
@@ -640,7 +640,7 @@ func TestC5SQLiteConcurrentOutboxRecoveryProjectsStableEventsOnce(
 		wait.Go(func() {
 			runtime, openErr := newPersistentRuntime(
 				t.Context(),
-				apppersistence.PersistentRuntimeOptions{
+				PersistentRuntimeOptions{
 					Store:  store,
 					Engine: app.NoopEngine{},
 				},
@@ -848,7 +848,7 @@ func round13TerminalEnvelope(
 func TestPersistentRuntimeEnforcesOneActiveTurnPerThread(t *testing.T) {
 	store := seedPersistentState(t, t.TempDir())
 	engine := &persistentTestEngine{block: true}
-	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), PersistentRuntimeOptions{
 		Store: store, Engine: engine,
 	})
 	if err != nil {
@@ -938,7 +938,7 @@ func TestPersistentRuntimeRestoresPendingWithoutReplayingEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := &persistentTestEngine{}
-	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), PersistentRuntimeOptions{
 		Store: reopened, Engine: engine,
 	})
 	if err != nil {
@@ -986,7 +986,7 @@ func TestPersistentRuntimeMarksInterruptedTaskFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), PersistentRuntimeOptions{
 		Store: reopened, Engine: &persistentTestEngine{},
 	})
 	if err != nil {
@@ -1032,7 +1032,7 @@ func TestPersistentRuntimeDoesNotRecoverAnotherWorkersLiveLease(t *testing.T) {
 		t.Fatalf("claimed %d tasks, want 1", len(claimed))
 	}
 
-	runtime, err := newPersistentRuntime(t.Context(), apppersistence.PersistentRuntimeOptions{
+	runtime, err := newPersistentRuntime(t.Context(), PersistentRuntimeOptions{
 		Store: store, Engine: &persistentTestEngine{},
 	})
 	if err != nil {

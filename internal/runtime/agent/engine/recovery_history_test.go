@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -22,9 +23,9 @@ func TestRecoveryHistoryReplacesSourceTurnByIdentity(t *testing.T) {
 		toolResultMessage(2, "call-1", "package a"),
 		messageWithText(provider.RoleAssistant, "unfinished", 2),
 	}
-	engine.reconcileHistoryTurns(engine.history, "turn-source", 2)
+	agentcontext.ReconcileHistoryTurns(&engine.historyTurns, engine.history, "turn-source", 2)
 
-	history := engine.recoveryBaseHistory(&protocol.TurnRecoveryContext{
+	history := agentcontext.RecoveryBaseHistory(engine.history, engine.historyTurns, &protocol.TurnRecoveryContext{
 		Action:       protocol.TurnRecoveryContinue,
 		SourceTurnID: "turn-source",
 	})
@@ -33,7 +34,7 @@ func TestRecoveryHistoryReplacesSourceTurnByIdentity(t *testing.T) {
 		history[1].Text() != "earlier answer" {
 		t.Fatalf("recovery base history = %+v", history)
 	}
-	if !toolPairsClosed(history) {
+	if !agentcontext.ToolPairsClosed(history) {
 		t.Fatalf("recovery base history broke tool pairs: %+v", history)
 	}
 	if len(engine.history) != 6 {
@@ -49,9 +50,9 @@ func TestRepeatedRecoveryDoesNotAccumulateRecoveryTurns(t *testing.T) {
 		messageWithText(provider.RoleUser, "recovery envelope one", 2),
 		messageWithText(provider.RoleAssistant, "partial one", 2),
 	}
-	engine.reconcileHistoryTurns(engine.history, "recovery-1", 2)
+	agentcontext.ReconcileHistoryTurns(&engine.historyTurns, engine.history, "recovery-1", 2)
 
-	second := engine.recoveryBaseHistory(&protocol.TurnRecoveryContext{
+	second := agentcontext.RecoveryBaseHistory(engine.history, engine.historyTurns, &protocol.TurnRecoveryContext{
 		Action:       protocol.TurnRecoveryContinue,
 		SourceTurnID: "recovery-1",
 	})
@@ -61,9 +62,9 @@ func TestRepeatedRecoveryDoesNotAccumulateRecoveryTurns(t *testing.T) {
 		messageWithText(provider.RoleAssistant, "partial two", 3),
 	)
 	engine.history = cloneMessages(second)
-	engine.reconcileHistoryTurns(engine.history, "recovery-2", 3)
+	agentcontext.ReconcileHistoryTurns(&engine.historyTurns, engine.history, "recovery-2", 3)
 
-	third := engine.recoveryBaseHistory(&protocol.TurnRecoveryContext{
+	third := agentcontext.RecoveryBaseHistory(engine.history, engine.historyTurns, &protocol.TurnRecoveryContext{
 		Action:       protocol.TurnRecoveryContinue,
 		SourceTurnID: "recovery-2",
 	})
@@ -85,7 +86,7 @@ func TestRecoveryRunProjectsOnlyCanonicalCurrentEnvelope(t *testing.T) {
 		messageWithText(provider.RoleUser, "stale recovery envelope", 2),
 		messageWithText(provider.RoleAssistant, "stale partial output", 2),
 	}
-	engine.reconcileHistoryTurns(engine.history, "turn-source", 2)
+	agentcontext.ReconcileHistoryTurns(&engine.historyTurns, engine.history, "turn-source", 2)
 
 	_, err := engine.RunForTurnWithRequest(
 		t.Context(),
@@ -130,7 +131,7 @@ func TestHistoryCompactionReconcilesRecoveryBindings(t *testing.T) {
 		messageWithText(provider.RoleUser, "source", 2),
 		messageWithText(provider.RoleAssistant, "partial", 2),
 	}
-	engine.reconcileHistoryTurns(engine.history, "turn-source", 2)
+	agentcontext.ReconcileHistoryTurns(&engine.historyTurns, engine.history, "turn-source", 2)
 	if engine.historyTurns["turn-source"] != 2 {
 		t.Fatalf("source binding = %+v", engine.historyTurns)
 	}
@@ -144,7 +145,7 @@ func TestHistoryCompactionReconcilesRecoveryBindings(t *testing.T) {
 			engine.historyTurns,
 		)
 	}
-	history := engine.recoveryBaseHistory(&protocol.TurnRecoveryContext{
+	history := agentcontext.RecoveryBaseHistory(engine.history, engine.historyTurns, &protocol.TurnRecoveryContext{
 		Action:       protocol.TurnRecoveryContinue,
 		SourceTurnID: "turn-source",
 	})

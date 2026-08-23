@@ -41,7 +41,7 @@ LDFLAGS := -s -w \
 # Run with: make stress
 stress:
 	$(GO) test -tags=stress -race -count=1 -timeout 5m -run '^TestStress' \
-		./internal/runtime/agent/turnexec/... \
+		./internal/runtime/agent/engine/... \
 		./internal/runtime/agent/engine/... \
 		./internal/adapter/mcp/... \
 		./internal/runtime/app/eventhub/... \
@@ -50,7 +50,7 @@ stress:
 # stress-nightly runs extended stress tests for nightly CI.
 stress-nightly:
 	$(GO) test -tags=stress -race -count=3 -timeout 15m -run '^TestStress' \
-		./internal/runtime/agent/turnexec/... \
+		./internal/runtime/agent/engine/... \
 		./internal/runtime/agent/engine/... \
 		./internal/adapter/mcp/... \
 		./internal/runtime/app/eventhub/... \
@@ -510,7 +510,7 @@ benchmark-v2: benchmark-v2-check bench
 catalog-bench:
 	$(GO) test -run '^$$' \
 		-bench 'BenchmarkTool(Catalog|RegistryStartup)Scale' \
-		-benchtime=10x -benchmem ./internal/runtime/agent/promptcontext
+		-benchtime=10x -benchmem ./internal/runtime/agent/prompt
 
 package: web-assets-check build
 	VERSION='$(VERSION)' RELEASE_STAGE='$(RELEASE_STAGE)' ./scripts/package-release.sh

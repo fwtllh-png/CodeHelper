@@ -9,13 +9,13 @@ prerequisites:
   - overview-model-context-tool
 code_paths:
   - internal/adapter/provider
-  - internal/runtime/agent/promptcontext
+  - internal/runtime/agent/prompt
 test_paths:
-  - internal/runtime/agent/promptcontext/context_test.go
-  - internal/runtime/agent/promptcontext/turn_test.go
+  - internal/runtime/agent/prompt/context_test.go
+  - internal/runtime/agent/prompt/turn_test.go
 source_of_truth:
   - internal/adapter/provider/types.go
-  - internal/runtime/agent/promptcontext/context.go
+  - internal/runtime/agent/prompt/context.go
 status: draft
 last_verified: null
 ---
@@ -90,7 +90,7 @@ Conversation。
 
 ## Stable Context Assembly
 
-`promptcontext.Assemble` 按确定顺序生成 Base、Mode、Repository Instruction、Pinned
+`prompt.Assemble` 按确定顺序生成 Base、Mode、Repository Instruction、Pinned
 File、Skill、User Memory、Plan、Constitution、World State 与 Tool Prefix。Repository
 Instruction 只从 Workspace 固定路径读取；Working File 经过 Canonicalization、排序和
 Symlink Escape 检查。每个 Partition 同时产生 Message 与 Receipt。
@@ -105,10 +105,10 @@ Engine 在每次 Sample 时将当前 Tool Catalog、Repo Map、Working Set、Evi
 | 关注点 | 源码 |
 | --- | --- |
 | Message/Block | `adapter/provider/types.go` |
-| 稳定组装 | `agent/promptcontext/context.go` |
-| Turn Tail | `agent/promptcontext/turn.go` |
-| World State | `agent/promptcontext/worldstate.go` |
-| Fragment Marker | `agent/promptcontext/fragment.go` |
+| 稳定组装 | `agent/prompt/context.go` |
+| Turn Tail | `agent/prompt/turn.go` |
+| World State | `agent/prompt/worldstate.go` |
+| Fragment Marker | `agent/prompt/fragment.go` |
 
 ## 设计取舍
 
@@ -127,7 +127,7 @@ CodeHelper 按语义所有者分区，并通过 Receipt 保留来源与裁剪事
 ## 测试与验证
 
 ```bash
-go test ./internal/runtime/agent/promptcontext \
+go test ./internal/runtime/agent/prompt \
   -run 'Test(AssembleStableOrderAndWorkspaceBoundaries|AssembleBudgetsAreDeterministicUTF8SafeAndReceipted|AssembleTurnRendersBothSectionsAsSystemMessages)'
 ```
 

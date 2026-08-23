@@ -9,8 +9,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
 func TestContextSnapshotUsesRunningTurnOwners(t *testing.T) {
@@ -27,9 +26,9 @@ func TestContextSnapshotUsesRunningTurnOwners(t *testing.T) {
 	engine.options.WorkspaceIdentity = "workspace:test"
 	engine.turn = 3
 	scope := &Scope{engine: engine, state: newScopeState(engine)}
-	scope.state.working.Observe(workingset.SourceEdited, 3, "changed.go")
-	scope.state.evidence.BeginTurn(3)
-	scope.state.evidence.MarkChanged("changed.go", 3, false)
+	scope.state.context.WorkingSet().Observe(agentcontext.SourceEdited, 3, "changed.go")
+	scope.state.context.Evidence().BeginTurn(3)
+	scope.state.context.Evidence().MarkChanged("changed.go", 3, false)
 	engine.publishScope(scope)
 
 	snapshot, err := engine.ExportContextSnapshot()
@@ -62,9 +61,9 @@ func TestContextCheckpointRestoresOwnersAndInvalidatesChangedWorkspace(t *testin
 		messageWithText(provider.RoleUser, "implement parser", 4),
 		messageWithText(provider.RoleAssistant, "working", 4),
 	}
-	engine.evidence.NoteRead("main.go", "sha256:old")
-	engine.evidence.MarkChanged("main.go", 4, true)
-	engine.evidence.MarkVerified([]string{"main.go"})
+	engine.context.Evidence().NoteRead("main.go", "sha256:old")
+	engine.context.Evidence().MarkChanged("main.go", 4, true)
+	engine.context.Evidence().MarkVerified([]string{"main.go"})
 	if err := engine.ApplyPlan(interact.Plan{
 		Objective: "implement parser",
 		Steps: []interact.PlanStep{{
@@ -117,9 +116,9 @@ func TestContextCheckpointRestoresOwnersAndInvalidatesChangedWorkspace(t *testin
 	}
 	capsule := engine.buildTruthCapsule(engine.buildCompactSummary(nil))
 	for _, entity := range capsule.Entities {
-		if entity.Kind == compact.EntityChange &&
+		if entity.Kind == agentcontext.EntityChange &&
 			entity.Key == "main.go" {
-			if entity.WorkspaceClaimStatus != compact.WorkspaceClaimStale ||
+			if entity.WorkspaceClaimStatus != agentcontext.WorkspaceClaimStale ||
 				entity.Verified {
 				t.Fatalf("restored change truth=%+v", entity)
 			}

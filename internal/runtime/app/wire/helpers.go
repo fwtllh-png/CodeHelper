@@ -17,9 +17,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/repocontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/repomap"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/repository"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -121,7 +120,7 @@ func openRepositoryIndex(
 // working set, which is pure bookkeeping, is unaffected.
 func newRepoContext(
 	index *repoindex.Index, settings config.Context, budgets map[string]promptcontext.Budget,
-) *repocontext.Provider {
+) *promptcontext.RepositoryProvider {
 	if !settings.RepoMap.Enabled && !settings.WorkingSet.Enabled && !settings.Evidence.Enabled {
 		return nil
 	}
@@ -146,16 +145,18 @@ func newRepoContext(
 	}
 	// A typed nil *repoindex.Index would satisfy the interface and then panic on
 	// use, so an absent index has to be passed as an untyped nil.
-	var source repomap.Index
+	var source repository.Index
 	if index != nil {
 		source = index
 	}
-	return repocontext.New(source, repocontext.Options{
+	return promptcontext.NewRepositoryProvider(source, promptcontext.RepositoryOptions{
 		RepoMap:    settings.RepoMap.Enabled,
 		WorkingSet: settings.WorkingSet.Enabled,
 		Evidence:   settings.Evidence.Enabled,
-		Map:        repomap.Options{MaxDirectories: settings.RepoMap.MaxDirectories},
-		Budgets:    scoped,
+		Map: repository.Options{
+			MaxDirectories: settings.RepoMap.MaxDirectories,
+		},
+		Budgets: scoped,
 	})
 }
 

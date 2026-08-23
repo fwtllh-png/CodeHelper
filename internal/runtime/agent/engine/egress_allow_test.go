@@ -27,15 +27,14 @@ func TestAllocatedGuardGrantsEgressAfterApproval(t *testing.T) {
 	var grantedMu sync.Mutex
 	var granted []string
 
-	engine, err := New(Options{
-		Provider: &scriptedProvider{}, Route: testRoute(t), Tools: registry,
-		Workspace: t.TempDir(),
-		Security:  policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: registry,
+
 		OnNetworkAllow: func(target egress.Target) {
 			grantedMu.Lock()
 			granted = append(granted, target.Host)
 			grantedMu.Unlock()
-		},
+		}}, SecurityConfig: SecurityConfig{Workspace: t.TempDir(),
+		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)},
 	})
 	if err != nil {
 		t.Fatal(err)

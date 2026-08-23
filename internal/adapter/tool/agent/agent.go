@@ -120,8 +120,8 @@ func Register(registry *tool.Registry, options Options) error {
 			return err
 		}
 		opened, err := subagent.Open(subagent.Options{
-			Root: root, Budget: options.Budget, Gate: options.Gate, Runtime: options.Runtime,
-			Roles: options.Roles,
+			Root: root, Gate: options.Gate, Runtime: options.Runtime,
+			Roles: options.Roles, Budget: options.Budget,
 		})
 		if err != nil {
 			return err

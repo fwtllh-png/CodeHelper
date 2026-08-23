@@ -8,9 +8,9 @@
 
 实现入口：
 
-- `internal/runtime/agent/compact`：Retention、Admission、Narrative Artifact 和
+- `internal/runtime/agent/context`：Retention、Admission、Narrative Artifact 和
   Compaction Plan；
-- `internal/runtime/agent/sessiondelta`：Context Snapshot、Workspace Binding、
+- `internal/runtime/agent/context`：Context Snapshot、Workspace Binding、
   Base/Tail Manifest 和 Rebase Envelope；
 - `internal/runtime/agent/engine`：三层 Context、Summary Route、Inline/Post-turn
   Rebase 与 Turn Kernel Effect；
@@ -60,10 +60,10 @@ Retention 和 Failure Policy，不能再次合并成一个不透明文本字段�
 
 当前实现已经具备以下必须保留的性质：
 
-- `contextstore.Ledger` 将每次模型输入分成 Stable、History、Dynamic 和 Continuation，
+- `agentcontext.MessageLedger` 将每次模型输入分成 Stable、History、Dynamic 和 Continuation，
   并生成 Revision、Digest 和 Token Attribution；
 - Working Set、Evidence、Failures、Plan、World Baseline 和 Token Window 随
-  `sessiondelta.Delta` 持久化；
+  `agentcontext.SessionDelta` 持久化；
 - Terminal Envelope、Domain Facts、Session Delta、Receipt 和 Outbox 原子提交，
   提交成功后才更新 Engine 内存；
 - Compaction 先裁剪大型 Tool Result Surface，再在安全 Tool Pair 边界替换历史；
@@ -111,7 +111,7 @@ Engine 的 Working Set、Evidence、Failures、Plan，再替换为旧 History。
 
 ### 3.4 Session Delta 有持久化写放大
 
-`sessiondelta.Delta` 是完整快照。即使 Wire 使用压缩编码，每个 Turn 仍会再次写入历史和
+`agentcontext.SessionDelta` 是完整快照。即使 Wire 使用压缩编码，每个 Turn 仍会再次写入历史和
 大部分账本。压缩发生前，N 个逐渐增长的 Turn 可能产生接近 O(N^2) 的累计历史写入。
 
 ### 3.5 用户 Memory 缺少治理和检索
@@ -880,12 +880,12 @@ type ContextSnapshot struct {
     Epoch        uint64
     Revision     uint64
     History      HistoryManifest
-    WorkingSet   workingset.Delta
+    WorkingSet   agentcontext.WorkingSetDelta
     Evidence     evidence.Delta
     Failures     compact.FailureDelta
     Plan         *interact.Plan
-    World        contextstore.WorldBaseline
-    Compaction   sessiondelta.Compaction
+    World        agentcontext.WorldBaseline
+    Compaction   agentcontext.Compaction
     Workspace    WorkspaceBinding
 }
 
@@ -985,8 +985,8 @@ type ContextManifest struct {
     Failures      OwnerManifest
     Plan          OwnerManifest
     Workspace     WorkspaceBinding
-    World         contextstore.WorldBaseline
-    Window        contextstore.WindowLedger
+    World         agentcontext.WorldBaseline
+    Window        agentcontext.WindowLedger
     Digest        string
 }
 
@@ -1167,9 +1167,9 @@ Host 只能展示这些 Runtime-owned Receipt。
 
 | 工作项 | 主要 Owner 路径 | 约束 |
 | --- | --- | --- |
-| Entity Class、Retention Planner、Omission | `internal/runtime/agent/compact` | 纯确定性逻辑，不调用 Provider 或 Persistence |
+| Entity Class、Retention Planner、Omission | `internal/runtime/agent/context` | 纯确定性逻辑，不调用 Provider 或 Persistence |
 | Mandatory Admission、Workspace Reconciliation | `internal/runtime/agent` | 使用 Canonical Projection；不在 Host 推断容量或有效性 |
-| Context Snapshot、Epoch、Manifest Codec | `internal/runtime/agent/sessiondelta` | 只定义 Durable Contract 和 Canonical Codec |
+| Context Snapshot、Epoch、Manifest Codec | `internal/runtime/agent/context` | 只定义 Durable Contract 和 Canonical Codec |
 | Compaction Gate、Narrative Effect、Scope 状态 | `internal/runtime/agent/engine` | 所有 Sample 继续经过 Turn Coordinator |
 | Terminal、Restore、Fork、Maintenance Operation | `internal/runtime/app` | 保持 Commit-before-apply 和 Runtime Authority |
 | Rebase/Restore 单一提交入口 | `internal/runtime/app/persistence` | 一个 Envelope、一个 SQLite 事务、一个 Commit Result |
@@ -1283,9 +1283,9 @@ State Machine 和 Digest 与 Phase 4 一致。
 标准验证：
 
 ```bash
-go test ./internal/runtime/agent/compact
-go test ./internal/runtime/agent/contextstore
-go test ./internal/runtime/agent/sessiondelta
+go test ./internal/runtime/agent/context
+go test ./internal/runtime/agent/context
+go test ./internal/runtime/agent/context
 go test ./internal/runtime/agent/engine
 go test ./internal/runtime/app
 go test ./internal/persist/...

@@ -61,9 +61,8 @@ func TestEngineWaitsForWorkspaceGateBeforeSampling(t *testing.T) {
 	}
 	defer release()
 	runtime := &scriptedProvider{}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t),
-		MaxOutputTokens: 128, WorkspaceTurnGate: gate,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+		MaxOutputTokens: 128}, SecurityConfig: SecurityConfig{WorkspaceTurnGate: gate},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -82,16 +81,14 @@ func TestEnginesSharingWorkspaceGateRunTurnsSerially(t *testing.T) {
 	gate := NewWorkspaceTurnGate()
 	parentProvider := &steerProvider{started: make(chan struct{})}
 	childProvider := &gateProbeProvider{called: make(chan struct{})}
-	parent, err := New(Options{
-		Provider: parentProvider, Route: testRoute(t),
-		MaxOutputTokens: 128, WorkspaceTurnGate: gate,
+	parent, err := New(Options{ProviderConfig: ProviderConfig{Provider: parentProvider, Route: testRoute(t),
+		MaxOutputTokens: 128}, SecurityConfig: SecurityConfig{WorkspaceTurnGate: gate},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := New(Options{
-		Provider: childProvider, Route: testRoute(t),
-		MaxOutputTokens: 128, WorkspaceTurnGate: gate,
+	child, err := New(Options{ProviderConfig: ProviderConfig{Provider: childProvider, Route: testRoute(t),
+		MaxOutputTokens: 128}, SecurityConfig: SecurityConfig{WorkspaceTurnGate: gate},
 	})
 	if err != nil {
 		t.Fatal(err)

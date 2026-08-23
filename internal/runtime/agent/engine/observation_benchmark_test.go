@@ -101,17 +101,14 @@ func runBenchmarkTurn(
 	turnID string,
 ) {
 	b.Helper()
-	engine, err := New(Options{
-		Provider:        observationBenchmarkProvider{},
-		Route:           route,
-		Tools:           tool.NewRegistry(nil, nil),
-		MaxOutputTokens: 128,
-		Observability: trace.Runtime{
-			Recorder:  observations,
-			RuntimeID: "runtime-benchmark",
-		},
-		SessionID:              "session-benchmark",
-		TurnCoordinatorRuntime: coordinator,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: observationBenchmarkProvider{},
+		Route: route,
+
+		MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil)}, TelemetryConfig: TelemetryConfig{Observability: trace.Runtime{
+		Recorder:  observations,
+		RuntimeID: "runtime-benchmark",
+	}}, LifecycleConfig: LifecycleConfig{SessionID: "session-benchmark",
+		TurnCoordinatorRuntime: coordinator},
 	})
 	if err != nil {
 		b.Fatal(err)

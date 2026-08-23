@@ -174,7 +174,7 @@ func TestVerifyGateAcceptsFullCurrentQualityCoverage(t *testing.T) {
 		Mode: VerifyModeSoft, Scope: verify.ScopeDiagnostics,
 		Runner: unavailableVerifier{}, MaxRepairSteps: 1,
 	}
-	scope.state.diff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
+	scope.state.diff.Record(turnkernel.TurnDiffEntry{Path: "a.go", Kind: "modified"})
 	result := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
 	engine.bindVerificationEvidence(provider.ToolCall{
 		ID: "verify-1", Name: "quality_verify",
@@ -206,7 +206,7 @@ func TestVerifyGateRequestsStructuredRepairForMissingCoverage(t *testing.T) {
 		Mode: VerifyModeSoft, Scope: verify.ScopeDiagnostics,
 		Runner: unavailableVerifier{}, MaxRepairSteps: 1,
 	}
-	scope.state.diff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
+	scope.state.diff.Record(turnkernel.TurnDiffEntry{Path: "a.go", Kind: "modified"})
 	kernel := newEngineTurnKernel(
 		protocol.TurnIntentAnswer, "act", nil, 0, nil, nil,
 	)
@@ -254,16 +254,16 @@ func TestFailedQualityFeedbackRequiresPassingStructuredRetry(t *testing.T) {
 	}
 }
 
-func seedKernelMutation(t *testing.T, kernel *engineTurnKernel) {
+func seedKernelMutation(t *testing.T, kernel *turnkernel.RuntimeKernel) {
 	t.Helper()
 	call := provider.ToolCall{ID: "write-1", Name: "file_write"}
-	if err := kernel.startTools([]provider.ToolCall{call}); err != nil {
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.startTool(call.ID); err != nil {
+	if err := kernel.StartTool(call.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := kernel.closeTool(
+	if err := kernel.CloseTool(
 		call,
 		tool.Result{},
 		[]tool.WorkspaceChange{{
@@ -284,7 +284,7 @@ func TestStrictVerifyGateDoesNotReportFailedVerification(t *testing.T) {
 	gate := verifyGate{
 		engine: engine, kernel: kernel,
 	}
-	if err := kernel.beginVerification(); err != nil {
+	if err := kernel.BeginVerification(); err != nil {
 		t.Fatal(err)
 	}
 	command := gate.verificationCommand(
@@ -292,17 +292,17 @@ func TestStrictVerifyGateDoesNotReportFailedVerification(t *testing.T) {
 		nil,
 		"broken",
 	)
-	action, err := kernel.finishVerification(command)
+	action, err := kernel.FinishVerification(command)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if action != turnkernel.VerificationActionRepair {
 		t.Fatalf("first strict failed verification action = %q", action)
 	}
-	if err := kernel.beginVerification(); err != nil {
+	if err := kernel.BeginVerification(); err != nil {
 		t.Fatal(err)
 	}
-	action, err = kernel.finishVerification(command)
+	action, err = kernel.FinishVerification(command)
 	if err != nil {
 		t.Fatal(err)
 	}

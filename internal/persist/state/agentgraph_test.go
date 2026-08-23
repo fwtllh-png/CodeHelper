@@ -215,10 +215,9 @@ func TestAgentGraphIsolatesSessionsWithinWorkspace(t *testing.T) {
 	const workspace = "/workspace/shared"
 	openControl := func(sessionID string) *subagent.AgentControl {
 		control, err := subagent.OpenControl(subagent.Options{
-			Root: t.TempDir(), Gate: passGate{}, SessionID: sessionID,
-			Budget: subagent.Budget{
+			Root: t.TempDir(), Gate: passGate{}, Budget: subagent.Budget{
 				MaxParallel: 1, MaxResident: 1, MaxTotal: 1,
-			},
+			}, SessionID: sessionID,
 		}, subagent.DelegationExplicit)
 		if err != nil {
 			t.Fatal(err)
@@ -280,8 +279,7 @@ func TestAgentTerminalCommitIsAtomicAndCASGuarded(t *testing.T) {
 	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
 	graph := NewAgentGraph(store, "/workspace/atomic", "session-atomic")
 	control, err := subagent.OpenControl(subagent.Options{
-		Root: t.TempDir(), Gate: passGate{},
-		Budget: subagent.Budget{MaxTokens: 20, MaxParallel: 4},
+		Root: t.TempDir(), Gate: passGate{}, Budget: subagent.Budget{MaxTokens: 20, MaxParallel: 4},
 	}, subagent.DelegationExplicit)
 	if err != nil {
 		t.Fatal(err)
@@ -358,8 +356,7 @@ func TestAgentTerminalCommitIsAtomicAndCASGuarded(t *testing.T) {
 		t.Fatal("spent token budget did not block a new child")
 	}
 	restarted, err := subagent.OpenControl(subagent.Options{
-		Root: t.TempDir(), Gate: passGate{},
-		Budget: subagent.Budget{MaxTokens: 20, MaxParallel: 4},
+		Root: t.TempDir(), Gate: passGate{}, Budget: subagent.Budget{MaxTokens: 20, MaxParallel: 4},
 	}, subagent.DelegationExplicit)
 	if err != nil {
 		t.Fatal(err)
@@ -947,7 +944,7 @@ func TestOrphanedWorktreeRecoversOwningSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager, err := subagent.Open(subagent.Options{
-		Root: root, SessionID: "process-restarted", Gate: passGate{},
+		Root: root, Gate: passGate{}, SessionID: "process-restarted",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1007,7 +1004,7 @@ func TestOrphanedWorktreeWithoutAllocationIsQuarantined(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager, err := subagent.Open(subagent.Options{
-		Root: root, SessionID: "process-restarted", Gate: passGate{},
+		Root: root, Gate: passGate{}, SessionID: "process-restarted",
 	})
 	if err != nil {
 		t.Fatal(err)

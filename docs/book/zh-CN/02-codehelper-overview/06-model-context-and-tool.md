@@ -11,17 +11,17 @@ code_paths:
   - internal/adapter/model
   - internal/adapter/provider
   - internal/adapter/tool
-  - internal/runtime/agent/promptcontext
+  - internal/runtime/agent/prompt
   - internal/runtime/agent/engine
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
-  - internal/runtime/agent/compact/retention_test.go
-  - internal/runtime/agent/compact/narrative_test.go
+  - internal/runtime/agent/context/compact_retention_test.go
+  - internal/runtime/agent/context/compact_narrative_test.go
   - internal/runtime/agent/engine/workingset_test.go
-  - internal/runtime/agent/promptcontext/turn_test.go
+  - internal/runtime/agent/prompt/turn_test.go
 source_of_truth:
   - internal/adapter/provider/types.go
-  - internal/runtime/agent/compact/truth.go
+  - internal/runtime/agent/context/compact_truth.go
   - internal/runtime/agent/engine/engine.go
   - internal/runtime/app/wire/route.go
 status: draft
@@ -117,7 +117,7 @@ Mandatory Truth 在模型上下文过载前通过 Admission 保留；Narrative �
 不能声明测试、修改、审批或权限事实。Authority Digest 只覆盖 Mandatory Truth。
 Compaction 每代都从当前 Owner State 和近期原文重建，不能递归总结旧 Narrative。
 
-`promptcontext.Assemble` 按显式 Byte/Token Budget 创建稳定 Partition 与 Receipt；
+`prompt.Assemble` 按显式 Byte/Token Budget 创建稳定 Partition 与 Receipt；
 `AssembleTurn` 在每次 Request 尾部渲染动态 Partition。动态尾部放在最后，可以保留
 Byte-identical Prefix 以利用 Provider Prompt Cache。
 
@@ -157,9 +157,9 @@ Result 可以包含 Content、Metadata、File Change、Error Category 和大输�
 | Request/Stream | `internal/adapter/provider/types.go` |
 | HTTP Provider | `internal/adapter/provider/httpclient` |
 | Tool Registry/Claim | `internal/adapter/tool/tool.go` |
-| Context | `internal/runtime/agent/promptcontext` |
-| Truth/Narrative | `internal/runtime/agent/compact` |
-| Working Set/Evidence | `internal/runtime/agent/workingset`、`evidence` |
+| Context | `internal/runtime/agent/prompt` |
+| Truth/Narrative | `internal/runtime/agent/context` |
+| Working Set/Evidence | `internal/runtime/agent/context`、`evidence` |
 | Collaboration Loop | `internal/runtime/agent/engine/engine.go` |
 | Default Budget | `internal/runtime/app/wire/route.go` |
 
@@ -187,7 +187,7 @@ Cache。Stable Prefix + Volatile Tail 在两者间平衡。
 ## 测试与验证
 
 ```bash
-go test ./internal/runtime/agent/promptcontext \
+go test ./internal/runtime/agent/prompt \
   -run 'TestAssembleTurn(RendersBothSectionsAsSystemMessages|ReportsBudgetTruncation)'
 go test ./internal/runtime/agent/engine \
   -run 'Test(EngineExecutesToolAndFeedsResultOnce|SamplingFailsClosedUntilToolCatalogSyncRecovers|TurnContextRebuildsWithinTheSameTurn)'

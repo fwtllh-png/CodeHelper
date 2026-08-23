@@ -10,7 +10,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -35,14 +35,14 @@ func NewContextRebaseRepository(
 
 func (r *ContextRebaseRepository) CommitContextRebase(
 	ctx context.Context,
-	envelope sessiondelta.ContextRebaseEnvelope,
+	envelope agentcontext.ContextRebaseEnvelope,
 ) error {
 	return r.commitContextRebase(ctx, envelope, nil)
 }
 
 func (r *ContextRebaseRepository) CommitContextRebaseWithFacts(
 	ctx context.Context,
-	envelope sessiondelta.ContextRebaseEnvelope,
+	envelope agentcontext.ContextRebaseEnvelope,
 	batch turnkernel.DomainFactBatch,
 ) error {
 	if batch.TurnID != string(envelope.TurnID) ||
@@ -54,7 +54,7 @@ func (r *ContextRebaseRepository) CommitContextRebaseWithFacts(
 
 func (r *ContextRebaseRepository) CommitCurrentContext(
 	ctx context.Context,
-	commit sessiondelta.CurrentContextCommit,
+	commit agentcontext.CurrentContextCommit,
 ) error {
 	if r == nil || r.store == nil {
 		return errors.New("current context store is unavailable")
@@ -66,11 +66,11 @@ func (r *ContextRebaseRepository) CommitCurrentContext(
 	if err != nil {
 		return err
 	}
-	var prior *sessiondelta.ContextManifest
+	var prior *agentcontext.ContextManifest
 	if found {
 		prior = &previous
 	}
-	manifest, err := sessiondelta.BuildContextManifest(
+	manifest, err := agentcontext.BuildContextManifest(
 		ctx,
 		r.store.Content(),
 		commit.ThreadID,
@@ -292,7 +292,7 @@ func (r *ContextRebaseRepository) DeleteCurrentContext(
 
 func (r *ContextRebaseRepository) commitContextRebase(
 	ctx context.Context,
-	envelope sessiondelta.ContextRebaseEnvelope,
+	envelope agentcontext.ContextRebaseEnvelope,
 	batch *turnkernel.DomainFactBatch,
 ) error {
 	if r == nil || r.store == nil {
@@ -308,11 +308,11 @@ func (r *ContextRebaseRepository) commitContextRebase(
 	if err != nil {
 		return err
 	}
-	var prior *sessiondelta.ContextManifest
+	var prior *agentcontext.ContextManifest
 	if found {
 		prior = &previous
 	}
-	manifest, err := sessiondelta.BuildContextManifest(
+	manifest, err := agentcontext.BuildContextManifest(
 		ctx,
 		r.store.Content(),
 		envelope.ThreadID,
@@ -442,7 +442,7 @@ type contextRebaseQueryer interface {
 func (r *ContextRebaseRepository) requireCurrentRebase(
 	ctx context.Context,
 	queryer contextRebaseQueryer,
-	envelope sessiondelta.ContextRebaseEnvelope,
+	envelope agentcontext.ContextRebaseEnvelope,
 ) error {
 	var compactionID string
 	if err := queryer.QueryRowContext(
@@ -461,22 +461,22 @@ func (r *ContextRebaseRepository) requireCurrentRebase(
 func (r *ContextRebaseRepository) LatestContextSnapshot(
 	ctx context.Context,
 	threadID protocol.ThreadID,
-) (sessiondelta.ContextSnapshot, bool, error) {
+) (agentcontext.ContextSnapshot, bool, error) {
 	if r == nil || r.store == nil {
-		return sessiondelta.ContextSnapshot{}, false,
+		return agentcontext.ContextSnapshot{}, false,
 			errors.New("context rebase store is unavailable")
 	}
 	manifest, found, err := r.latestManifest(ctx, threadID)
 	if err != nil || !found {
-		return sessiondelta.ContextSnapshot{}, found, err
+		return agentcontext.ContextSnapshot{}, found, err
 	}
-	snapshot, err := sessiondelta.LoadContextManifest(
+	snapshot, err := agentcontext.LoadContextManifest(
 		ctx,
 		r.store.Content(),
 		manifest,
 	)
 	if err != nil {
-		return sessiondelta.ContextSnapshot{}, false,
+		return agentcontext.ContextSnapshot{}, false,
 			fmt.Errorf("load current context manifest: %w", err)
 	}
 	return snapshot, true, nil
@@ -485,7 +485,7 @@ func (r *ContextRebaseRepository) LatestContextSnapshot(
 func (r *ContextRebaseRepository) latestManifest(
 	ctx context.Context,
 	threadID protocol.ThreadID,
-) (sessiondelta.ContextManifest, bool, error) {
+) (agentcontext.ContextManifest, bool, error) {
 	var raw string
 	err := r.store.SQLite().DB().QueryRowContext(
 		ctx,
@@ -496,25 +496,25 @@ func (r *ContextRebaseRepository) latestManifest(
 		threadID,
 	).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
-		return sessiondelta.ContextManifest{}, false, nil
+		return agentcontext.ContextManifest{}, false, nil
 	}
 	if err != nil {
-		return sessiondelta.ContextManifest{}, false, err
+		return agentcontext.ContextManifest{}, false, err
 	}
-	var manifest sessiondelta.ContextManifest
+	var manifest agentcontext.ContextManifest
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
-		return sessiondelta.ContextManifest{}, false, err
+		return agentcontext.ContextManifest{}, false, err
 	}
 	if err := manifest.Validate(); err != nil {
-		return sessiondelta.ContextManifest{}, false, err
+		return agentcontext.ContextManifest{}, false, err
 	}
 	return manifest, true, nil
 }
 
 func (r *ContextRebaseRepository) releaseNewRefs(
 	ctx context.Context,
-	previous *sessiondelta.ContextManifest,
-	current sessiondelta.ContextManifest,
+	previous *agentcontext.ContextManifest,
+	current agentcontext.ContextManifest,
 ) {
 	existing := make(map[string]struct{})
 	if previous != nil {
@@ -531,11 +531,11 @@ func (r *ContextRebaseRepository) releaseNewRefs(
 }
 
 func manifestRefs(
-	manifest sessiondelta.ContextManifest,
-) []sessiondelta.ContentRef {
-	result := []sessiondelta.ContentRef{manifest.History.BaseRef}
+	manifest agentcontext.ContextManifest,
+) []agentcontext.ContentRef {
+	result := []agentcontext.ContentRef{manifest.History.BaseRef}
 	result = append(result, manifest.History.TailRefs...)
-	for _, owner := range []sessiondelta.OwnerManifest{
+	for _, owner := range []agentcontext.OwnerManifest{
 		manifest.Working,
 		manifest.Evidence,
 		manifest.Failures,

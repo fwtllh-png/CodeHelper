@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,10 +37,10 @@ func TestValidToolArgumentsOmitsMalformedProviderPayload(t *testing.T) {
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := validToolArguments(testCase.value)
+			got := appextension.ValidToolArguments(testCase.value)
 			if string(got) != testCase.want {
 				t.Fatalf(
-					"validToolArguments(%q) = %q, want %q",
+					"appextension.ValidToolArguments(%q) = %q, want %q",
 					testCase.value, got, testCase.want,
 				)
 			}
@@ -57,13 +58,10 @@ func TestValidToolArgumentsOmitsMalformedProviderPayload(t *testing.T) {
 }
 
 func TestStartTurnSeparatesModelAndDisplayPrompts(t *testing.T) {
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider:        &singleAnswerProvider{},
-		Route:           runtimeTestRoute(t),
-		Tools:           tool.NewRegistry(nil, nil),
-		Workspace:       t.TempDir(),
-		Metrics:         telemetry.NewMetrics(),
-		MaxOutputTokens: 128,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &singleAnswerProvider{},
+		Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -106,10 +104,9 @@ func TestStartTurnSeparatesModelAndDisplayPrompts(t *testing.T) {
 }
 
 func TestStartTurnPreservesOrchestrationCorrelationThroughReceipt(t *testing.T) {
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &singleAnswerProvider{}, Route: runtimeTestRoute(t),
-		Tools: tool.NewRegistry(nil, nil), Workspace: t.TempDir(),
-		Metrics: telemetry.NewMetrics(), MaxOutputTokens: 128,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &singleAnswerProvider{}, Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -161,15 +158,13 @@ func TestStartTurnPreservesOrchestrationCorrelationThroughReceipt(t *testing.T) 
 
 func TestWorkspaceChangeReceiptMatchesTerminalOutcome(t *testing.T) {
 	t.Run("failed_without_changes", func(t *testing.T) {
-		worker, err := newTestAgentEngine(agentengine.Options{
-			Provider: &singleAnswerProvider{}, Route: runtimeTestRoute(t),
-			Tools: tool.NewRegistry(nil, nil),
-			Security: policy.DefaultRuntime(
-				policy.ModeAct,
-				policy.PermissionSuggest,
-			),
-			Workspace: t.TempDir(), Metrics: telemetry.NewMetrics(),
-			MaxOutputTokens: 128,
+		worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &singleAnswerProvider{}, Route: runtimeTestRoute(t),
+
+			MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionSuggest,
+		),
+			Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -198,19 +193,18 @@ func TestWorkspaceChangeReceiptMatchesTerminalOutcome(t *testing.T) {
 			t.Fatal(err)
 		}
 		root := t.TempDir()
-		worker, err := newTestAgentEngine(agentengine.Options{
-			Provider: &runtimeApprovalProvider{}, Route: runtimeTestRoute(t),
-			Tools: registry, Security: policy.DefaultRuntime(
-				policy.ModeAct,
-				policy.PermissionBypass,
-			),
-			Workspace: root, Journal: newTestWorkspaceJournal(t, root),
-			Metrics:         telemetry.NewMetrics(),
-			MaxOutputTokens: 128,
+		worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &runtimeApprovalProvider{}, Route: runtimeTestRoute(t),
+
+			MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: registry,
+
 			Verify: agentengine.VerifyOptions{
 				Mode: agentengine.VerifyModeHard, Scope: verify.ScopeDiagnostics,
 				Runner: passingVerifier{},
-			},
+			}}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionBypass,
+		),
+			Workspace: root, Journal: newTestWorkspaceJournal(t, root)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -301,17 +295,14 @@ func (*singleAnswerProvider) Stream(
 }
 
 func TestTerminalEnvelopeFailurePublishesNoReceiptOrTerminal(t *testing.T) {
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &singleAnswerProvider{},
-		Route:    runtimeTestRoute(t),
-		Tools:    tool.NewRegistry(nil, nil),
-		Security: policy.DefaultRuntime(
-			policy.ModeAct,
-			policy.PermissionBypass,
-		),
-		Workspace:       t.TempDir(),
-		Metrics:         telemetry.NewMetrics(),
-		MaxOutputTokens: 128,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &singleAnswerProvider{},
+		Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+		policy.ModeAct,
+		policy.PermissionBypass,
+	),
+		Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -394,11 +385,10 @@ func TestRuntimeApprovalPauseResumeE2E(t *testing.T) {
 			}
 			security := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 			root := t.TempDir()
-			worker, err := newTestAgentEngine(agentengine.Options{
-				Provider: &runtimeApprovalProvider{}, Route: runtimeTestRoute(t),
-				Tools: registry, Security: security, Workspace: root,
-				Journal: newTestWorkspaceJournal(t, root),
-				Metrics: telemetry.NewMetrics(), MaxOutputTokens: 128,
+			worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &runtimeApprovalProvider{}, Route: runtimeTestRoute(t),
+
+				MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: registry}, SecurityConfig: agentengine.SecurityConfig{Security: security, Workspace: root,
+				Journal: newTestWorkspaceJournal(t, root)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -607,15 +597,15 @@ func newRuntimeInputFixture(
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := newTestAgentEngine(agentengine.Options{
-		Provider: &runtimeInputProvider{}, Route: runtimeTestRoute(t),
-		Tools: registry, Security: policy.DefaultRuntime(
-			policy.ModeAct,
-			policy.PermissionBypass,
-		),
-		Workspace: t.TempDir(), InputHost: host,
-		Metrics: telemetry.NewMetrics(), MaxOutputTokens: 128,
-		TurnCoordinatorRuntime: coordinators,
+	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &runtimeInputProvider{}, Route: runtimeTestRoute(t),
+
+		MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: registry}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+		policy.ModeAct,
+		policy.PermissionBypass,
+	),
+		Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}, LifecycleConfig: agentengine.LifecycleConfig{InputHost: host,
+
+		TurnCoordinatorRuntime: coordinators},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -688,18 +678,14 @@ func TestRuntimeCancelDuringProviderAndToolHasOneCanceledTerminal(
 				if err != nil {
 					t.Fatal(err)
 				}
-				worker, err := newTestAgentEngine(agentengine.Options{
-					Provider: &runtimeBlockingProvider{started: started},
-					Route:    runtimeTestRoute(t),
-					Tools:    tool.NewRegistry(nil, nil),
-					Security: policy.DefaultRuntime(
-						policy.ModeAct,
-						policy.PermissionBypass,
-					),
-					Workspace:              t.TempDir(),
-					Metrics:                telemetry.NewMetrics(),
-					MaxOutputTokens:        128,
-					TurnCoordinatorRuntime: coordinators,
+				worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &runtimeBlockingProvider{started: started},
+					Route: runtimeTestRoute(t),
+
+					MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: tool.NewRegistry(nil, nil)}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+					policy.ModeAct,
+					policy.PermissionBypass,
+				),
+					Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}, LifecycleConfig: agentengine.LifecycleConfig{TurnCoordinatorRuntime: coordinators},
 				})
 				if err != nil {
 					t.Fatal(err)
@@ -727,18 +713,14 @@ func TestRuntimeCancelDuringProviderAndToolHasOneCanceledTerminal(
 				); err != nil {
 					t.Fatal(err)
 				}
-				worker, err := newTestAgentEngine(agentengine.Options{
-					Provider: &runtimeToolCancelProvider{},
-					Route:    runtimeTestRoute(t),
-					Tools:    registry,
-					Security: policy.DefaultRuntime(
-						policy.ModeAct,
-						policy.PermissionBypass,
-					),
-					Workspace:              t.TempDir(),
-					Metrics:                telemetry.NewMetrics(),
-					MaxOutputTokens:        128,
-					TurnCoordinatorRuntime: coordinators,
+				worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &runtimeToolCancelProvider{},
+					Route: runtimeTestRoute(t),
+
+					MaxOutputTokens: 128}, ToolConfig: agentengine.ToolConfig{Tools: registry}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(
+					policy.ModeAct,
+					policy.PermissionBypass,
+				),
+					Workspace: t.TempDir()}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}, LifecycleConfig: agentengine.LifecycleConfig{TurnCoordinatorRuntime: coordinators},
 				})
 				if err != nil {
 					t.Fatal(err)

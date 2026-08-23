@@ -62,8 +62,8 @@ func TestAgentSpawnReceiptAndHandleRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := agenttool.Register(registry, agenttool.Options{
-		Handles: handles, SessionID: "session-1", Root: root, Gate: gate,
-		Runtime: runtime, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+		Handles: handles, Root: root, Gate: gate,
+		Runtime: runtime, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4}, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -132,8 +132,8 @@ func TestAgentSpawnReceiptAndHandleRead(t *testing.T) {
 func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
-		Handles: handle.NewStore(), SessionID: "session-1",
-		Root: t.TempDir(), Gate: &recordingGate{},
+		Handles: handle.NewStore(),
+		Root:    t.TempDir(), Gate: &recordingGate{}, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -197,9 +197,9 @@ func TestAgentToolSurfaceIsExplicitAndPolicyVisible(t *testing.T) {
 
 	disabled := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(disabled, agenttool.Options{
-		Handles: handle.NewStore(), SessionID: "session-2",
-		Root: t.TempDir(), Gate: &recordingGate{},
-		Delegation: subagent.DelegationDisabled,
+		Handles: handle.NewStore(),
+		Root:    t.TempDir(), Gate: &recordingGate{},
+		Delegation: subagent.DelegationDisabled, SessionID: "session-2",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -215,8 +215,8 @@ func TestSendMessageQueuesWithoutStartingTurn(t *testing.T) {
 	runtime := &dualRuntime{}
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
-		Handles: handle.NewStore(), SessionID: "session-1",
-		Root: t.TempDir(), Gate: &recordingGate{}, Runtime: runtime,
+		Handles: handle.NewStore(),
+		Root:    t.TempDir(), Gate: &recordingGate{}, Runtime: runtime, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestAgentTaskCapsuleUsesRuntimeParentSnapshot(t *testing.T) {
 func TestAgentUnsupportedRoleFailClosed(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
-		Handles: handle.NewStore(), SessionID: "s", Root: t.TempDir(), Gate: &recordingGate{},
+		Handles: handle.NewStore(), Root: t.TempDir(), Gate: &recordingGate{}, SessionID: "s",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -357,8 +357,7 @@ func TestAgentDepthAndConcurrencyFailClosed(t *testing.T) {
 	handles := handle.NewStore()
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
-		Handles: handles, SessionID: "session-1", Root: root, Gate: &recordingGate{},
-		Budget: subagent.Budget{MaxDepth: 1, MaxParallel: 3},
+		Handles: handles, Root: root, Gate: &recordingGate{}, Budget: subagent.Budget{MaxDepth: 1, MaxParallel: 3}, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -384,8 +383,7 @@ func TestAgentDepthAndConcurrencyFailClosed(t *testing.T) {
 	registry2 := tool.NewRegistry(nil, nil)
 	handles2 := handle.NewStore()
 	if err := agenttool.Register(registry2, agenttool.Options{
-		Handles: handles2, SessionID: "session-1", Root: t.TempDir(), Gate: &recordingGate{},
-		Budget: subagent.Budget{MaxDepth: 2, MaxParallel: 1},
+		Handles: handles2, Root: t.TempDir(), Gate: &recordingGate{}, Budget: subagent.Budget{MaxDepth: 2, MaxParallel: 1}, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -405,8 +403,7 @@ func TestNestedAgentScopeBindsCallerAndRejectsSiblingControl(t *testing.T) {
 		Root: root, Gate: &recordingGate{}, Runtime: &dualRuntime{},
 		Worktrees: fixedWorktrees{
 			path: filepath.Join(root, "parent-worktree"),
-		},
-		Budget: subagent.Budget{
+		}, Budget: subagent.Budget{
 			MaxDepth: 3, MaxParallel: 4, MaxResident: 4, MaxTotal: 4,
 		},
 	})
@@ -572,13 +569,12 @@ func TestAgentAskFailClosedWithoutApprovalHost(t *testing.T) {
 	handles := handle.NewStore()
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
-		Handles: handles, SessionID: "session-1", Root: root, Gate: &recordingGate{},
+		Handles: handles, Root: root, Gate: &recordingGate{}, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	guard, err := toolguard.New(toolguard.Options{
-		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto),
-		Workspace: root,
+		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto), Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -598,8 +594,7 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 	handles := handle.NewStore()
 	gate := &recordingGate{}
 	manager, err := subagent.Open(subagent.Options{
-		Root: root, Gate: gate, Runtime: &dualRuntime{},
-		Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+		Root: root, Gate: gate, Runtime: &dualRuntime{}, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -714,8 +709,7 @@ func TestAgentWaitDefersSerializedChildUntilCallingTurnEnds(t *testing.T) {
 	root := t.TempDir()
 	manager, err := subagent.Open(subagent.Options{
 		Root: root, Gate: &recordingGate{}, Runtime: &dualRuntime{},
-		Worktrees: fixedWorktrees{path: root, serialized: true},
-		Budget:    subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+		Worktrees: fixedWorktrees{path: root, serialized: true}, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -796,8 +790,7 @@ func TestAgentInterruptFollowUpViaTools(t *testing.T) {
 
 func TestAgentToolsRejectCrossSessionTargets(t *testing.T) {
 	manager, err := subagent.Open(subagent.Options{
-		Root: t.TempDir(), Gate: &recordingGate{}, Runtime: &dualRuntime{},
-		SessionID: "session-a",
+		Root: t.TempDir(), Gate: &recordingGate{}, Runtime: &dualRuntime{}, SessionID: "session-a",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -856,8 +849,7 @@ func TestAgentToolsRejectCrossSessionTargets(t *testing.T) {
 func TestSpawnPostStartFailureReleasesChildRuntime(t *testing.T) {
 	runtime := &dualRuntime{}
 	manager, err := subagent.Open(subagent.Options{
-		Root: t.TempDir(), Gate: &recordingGate{}, Runtime: runtime,
-		SessionID: "session-1",
+		Root: t.TempDir(), Gate: &recordingGate{}, Runtime: runtime, SessionID: "session-1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -907,10 +899,10 @@ func TestSpawnPostStartFailureReleasesChildRuntime(t *testing.T) {
 	released := 0
 	registry := tool.NewRegistry(nil, nil)
 	if err := agenttool.Register(registry, agenttool.Options{
-		Control: control, Handles: handle.NewStore(), SessionID: "session-1",
+		Control: control, Handles: handle.NewStore(),
 		OnRelease: func(string) {
 			released++
-		},
+		}, SessionID: "session-1",
 	}); err != nil {
 		t.Fatal(err)
 	}

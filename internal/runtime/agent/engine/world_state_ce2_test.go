@@ -7,9 +7,8 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -23,9 +22,9 @@ func TestWorldStatePersistsAcrossTurnsAndEmitsOnlyChanges(t *testing.T) {
 	if _, err := engine.Run(t.Context(), "first", nil); err != nil {
 		t.Fatal(err)
 	}
-	if !contextstore.WorldBaselineValid(engine.History(), engine.world) ||
-		engine.world.Revision != 1 {
-		t.Fatalf("first baseline=%+v history=%+v", engine.world, engine.History())
+	if !agentcontext.WorldBaselineValid(engine.History(), engine.context.World()) ||
+		engine.context.World().Revision != 1 {
+		t.Fatalf("first baseline=%+v history=%+v", engine.context.World(), engine.History())
 	}
 	if _, err := engine.Run(t.Context(), "second", nil); err != nil {
 		t.Fatal(err)
@@ -33,19 +32,22 @@ func TestWorldStatePersistsAcrossTurnsAndEmitsOnlyChanges(t *testing.T) {
 	second := runtime.requests[1].Messages
 	if countWorldSection(second, "policy") != 1 ||
 		countWorldMode(second, "patch") != 0 ||
-		engine.world.Revision != 1 {
-		t.Fatalf("unchanged request=%+v baseline=%+v", second, engine.world)
+		engine.context.World().Revision != 1 {
+		t.Fatalf("unchanged request=%+v baseline=%+v", second, engine.context.World())
 	}
 
-	engine.observePath(workingset.SourceRead, "found.go")
+	engine.observePath(agentcontext.SourceRead, "found.go")
 	if _, err := engine.Run(t.Context(), "third", nil); err != nil {
 		t.Fatal(err)
 	}
 	third := runtime.requests[2].Messages
-	if countWorldSection(third, "working_set_ledger") != 2 ||
+	if countWorldSection(third, "working_set_ledger") != 1 ||
 		countWorldMode(third, "patch") != 1 ||
-		engine.world.Revision != 2 {
-		t.Fatalf("patched request=%+v baseline=%+v", third, engine.world)
+		engine.context.World().Revision != 2 {
+		t.Fatalf("patched request=%+v baseline=%+v", third, engine.context.World())
+	}
+	if countWorldSection(engine.History(), "working_set_ledger") != 2 {
+		t.Fatalf("durable world history was collapsed: %+v", engine.History())
 	}
 }
 
@@ -61,12 +63,12 @@ func TestWorldBaselineSurvivesSessionDeltaRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	fork.ReplaceHistory(source.History())
-	if !contextstore.WorldBaselineValid(fork.History(), fork.world) {
-		t.Fatalf("fork baseline=%+v history=%+v", fork.world, fork.History())
+	if !agentcontext.WorldBaselineValid(fork.History(), fork.context.World()) {
+		t.Fatalf("fork baseline=%+v history=%+v", fork.context.World(), fork.History())
 	}
-	delta, err := prepareSessionDelta(
+	delta, err := agentcontext.PrepareSessionDelta(
 		"turn-1", 0, source.History(), provider.Usage{}, 0,
-		SessionStateDelta{Turn: source.turn, World: source.world},
+		SessionStateDelta{Turn: source.turn, World: source.context.World()},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -82,8 +84,8 @@ func TestWorldBaselineSurvivesSessionDeltaRestart(t *testing.T) {
 	if err := target.RestoreSessionDelta(raw); err != nil {
 		t.Fatal(err)
 	}
-	if !contextstore.WorldBaselineValid(target.History(), target.world) {
-		t.Fatalf("restored baseline=%+v history=%+v", target.world, target.History())
+	if !agentcontext.WorldBaselineValid(target.History(), target.context.World()) {
+		t.Fatalf("restored baseline=%+v history=%+v", target.context.World(), target.History())
 	}
 	if _, err := target.Run(t.Context(), "second", nil); err != nil {
 		t.Fatal(err)
@@ -106,8 +108,8 @@ func TestHistoryReplacementAndCompactionInvalidateWorldBaseline(t *testing.T) {
 	engine.ReplaceHistory([]provider.Message{
 		provider.TextMessage(provider.RoleUser, "replacement"),
 	})
-	if engine.world.Revision != 0 {
-		t.Fatalf("replacement retained stale baseline=%+v", engine.world)
+	if engine.context.World().Revision != 0 {
+		t.Fatalf("replacement retained stale baseline=%+v", engine.context.World())
 	}
 	if _, err := engine.Run(t.Context(), "second", nil); err != nil {
 		t.Fatal(err)
@@ -125,11 +127,11 @@ func TestHistoryReplacementAndCompactionInvalidateWorldBaseline(t *testing.T) {
 	if receipt := engine.CompactForced(); receipt == nil {
 		t.Fatal("forced compaction did not produce a receipt")
 	}
-	if engine.world.Revision != 0 {
-		t.Fatalf("compaction retained stale baseline=%+v", engine.world)
+	if engine.context.World().Revision != 0 {
+		t.Fatalf("compaction retained stale baseline=%+v", engine.context.World())
 	}
 	for _, message := range engine.History() {
-		if _, _, ok := contextstore.InspectWorldMessage(message); ok {
+		if _, _, ok := agentcontext.InspectWorldMessage(message); ok {
 			t.Fatalf("compaction retained world fragment: %+v", engine.History())
 		}
 	}
@@ -156,7 +158,7 @@ func TestPolicyAndSkillsChangesProduceTypedPatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := runtime.requests[1].Messages
-	if countWorldSection(second, "policy") != 2 ||
+	if countWorldSection(second, "policy") != 1 ||
 		countWorldSection(second, "skills") != 1 ||
 		countWorldMode(second, "patch") != 1 {
 		t.Fatalf("policy patch request=%+v", second)
@@ -170,7 +172,7 @@ func TestPolicyAndSkillsChangesProduceTypedPatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	third := runtime.requests[2].Messages
-	if countWorldSection(third, "skills") != 2 ||
+	if countWorldSection(third, "skills") != 1 ||
 		countWorldMode(third, "patch") != 2 {
 		t.Fatalf("skills patch request=%+v", third)
 	}
@@ -198,7 +200,7 @@ func TestToolCatalogChangeProducesTypedPatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := runtime.requests[1].Messages
-	if countWorldSection(request, "tool_catalog") != 2 ||
+	if countWorldSection(request, "tool_catalog") != 1 ||
 		countWorldMode(request, "patch") != 1 {
 		t.Fatalf("catalog patch request=%+v", request)
 	}
@@ -221,7 +223,7 @@ func TestSkillWorldUsesSingleBudgetedAuthority(t *testing.T) {
 		}},
 	}
 	sections, receipts := engine.frozenWorldSections(spec, 1)
-	var skill *contextstore.WorldSection
+	var skill *agentcontext.WorldSection
 	for index := range sections {
 		if sections[index].ID == promptcontext.PartitionSkills {
 			skill = &sections[index]
@@ -246,7 +248,7 @@ func TestSkillWorldUsesSingleBudgetedAuthority(t *testing.T) {
 }
 
 func TestSkillWorldOmitsInternalPathsAndBoundsDescriptions(t *testing.T) {
-	rendered := renderSkillWorld([]SkillSummary{{
+	rendered := promptcontext.RenderSkillWorld([]SkillSummary{{
 		Name: "review", Description: strings.Repeat("界", 200),
 		Source: "workspace", Path: "/private/skills/review/SKILL.md",
 		Plugin: "private-plugin", Handle: "skh_handle",
@@ -264,7 +266,7 @@ func TestSkillWorldOmitsInternalPathsAndBoundsDescriptions(t *testing.T) {
 }
 
 func TestWorldReceiptsReflectOnlyProjectedChanges(t *testing.T) {
-	receipts := projectWorldReceipts([]promptcontext.Receipt{
+	receipts := promptcontext.ProjectWorldReceipts([]promptcontext.Receipt{
 		{
 			Kind:          promptcontext.PartitionMode,
 			RetainedBytes: 10, RetainedTokens: 3,
@@ -285,7 +287,7 @@ func TestWorldReceiptsReflectOnlyProjectedChanges(t *testing.T) {
 func countWorldSection(messages []provider.Message, id string) int {
 	count := 0
 	for _, message := range messages {
-		entry, _, ok := contextstore.InspectWorldMessage(message)
+		entry, _, ok := agentcontext.InspectWorldMessage(message)
 		if ok && entry.ID == id {
 			count++
 		}
@@ -296,8 +298,8 @@ func countWorldSection(messages []provider.Message, id string) int {
 func countWorldMode(messages []provider.Message, mode string) int {
 	count := 0
 	for _, message := range messages {
-		_, value, ok := contextstore.InspectWorldMessage(message)
-		if ok && value == contextstore.WorldMode(mode) {
+		_, value, ok := agentcontext.InspectWorldMessage(message)
+		if ok && value == agentcontext.WorldMode(mode) {
 			count++
 		}
 	}

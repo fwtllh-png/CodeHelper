@@ -12,14 +12,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnexec"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -39,20 +34,18 @@ type scopeState struct {
 	samples             uint32
 	toolSamples         map[uint32]toolSpend
 	approvalEmit        func(Event) error
-	kernel              *engineTurnKernel
+	kernel              *turnkernel.RuntimeKernel
 	recorder            *trace.Recorder
 	toolSpans           map[string]uint64
-	scheduler           *ToolScheduler
-	diff                *TurnDiffTracker
+	scheduler           *turnkernel.ToolScheduler
+	diff                *turnkernel.TurnDiffTracker
 	contextSeen         []promptcontext.Receipt
 	selections          []promptcontext.Selection
 	catalog             tool.CatalogSnapshot
 	catalogProjected    tool.CatalogSnapshot
 	sampledCatalog      tool.CatalogSnapshot
 	sampledTools        map[string]bool
-	world               contextstore.WorldBaseline
-	window              contextstore.WindowLedger
-	contextLedger       *contextstore.Ledger
+	contextLedger       *agentcontext.MessageLedger
 	extensionsProjected bool
 	mcpProjected        bool
 	diagnostics         []diagnostics.Receipt
@@ -60,16 +53,12 @@ type scopeState struct {
 	rollback            []string
 	budgetStage         uint8
 	reasoningEscalation uint8
-	mailbox             *turnexec.Mailbox[PendingInput]
-	requests            *turnexec.RequestLedger
+	mailbox             *turnkernel.Mailbox[PendingInput]
+	requests            *turnkernel.RequestLedger
 	cancel              context.CancelCauseFunc
 	cancelReason        string
 	delta               *SessionDelta
-	working             *workingset.Ledger
-	evidence            *evidence.Set
-	failures            *compact.Failures
-	compactions         int
-	contextCompaction   *sessiondelta.CompactionState
+	context             agentcontext.Authority
 	contextUsage        provider.Usage
 	contextCost         float64
 }
@@ -86,18 +75,11 @@ type ScopeSnapshot struct {
 
 func newScopeState(engine *Engine) scopeState {
 	return scopeState{
-		scheduler:   NewToolScheduler(engine.options.MaxToolConcurrent),
-		diff:        NewTurnDiffTracker(),
-		mailbox:     turnexec.NewMailbox[PendingInput](0),
-		requests:    turnexec.NewRequestLedger(),
-		working:     engine.working.Clone(),
-		evidence:    engine.evidence.Clone(),
-		failures:    engine.failures.Clone(),
-		compactions: engine.compactions,
-		contextCompaction: sessiondelta.CloneCompaction(
-			sessiondelta.Compaction{State: engine.contextCompaction},
-		).State,
-		window: contextstore.CloneWindowLedger(engine.window),
+		scheduler: turnkernel.NewToolScheduler(engine.options.MaxToolConcurrent),
+		diff:      turnkernel.NewTurnDiffTracker(),
+		mailbox:   turnkernel.NewMailbox[PendingInput](0),
+		requests:  turnkernel.NewRequestLedger(),
+		context:   engine.context.Clone(),
 	}
 }
 
@@ -115,8 +97,8 @@ func (s *Scope) Spec() TurnSpec {
 		recovery := *spec.Request.Recovery
 		spec.Request.Recovery = &recovery
 	}
-	spec.World = contextstore.CloneWorldBaseline(spec.World)
-	spec.Window = contextstore.CloneWindowLedger(spec.Window)
+	spec.World = agentcontext.CloneWorldBaseline(spec.World)
+	spec.Window = agentcontext.CloneWindowLedger(spec.Window)
 	spec.Skills = append([]SkillSummary(nil), spec.Skills...)
 	spec.MCP = append([]MCPHealthSnapshot(nil), spec.MCP...)
 	spec.ExtensionPlan = spec.ExtensionPlan.Clone()
@@ -200,64 +182,34 @@ func (e *Engine) TurnKernelPhase(turnID string) (turnkernel.Phase, bool) {
 	if kernel == nil {
 		return "", false
 	}
-	kernel.mu.Lock()
-	defer kernel.mu.Unlock()
-	return kernel.state.Phase, true
+	return kernel.Phase(), true
 }
-func (e *Engine) workingLedger() *workingset.Ledger {
-	if scope := e.runningScope(); scope != nil {
-		return scope.state.working
-	}
-	return e.working
+func (e *Engine) workingLedger() *agentcontext.WorkingSetLedger {
+	return e.contextAuthority().WorkingSet()
 }
-func (e *Engine) evidenceSet() *evidence.Set {
-	if scope := e.runningScope(); scope != nil {
-		return scope.state.evidence
-	}
-	return e.evidence
+func (e *Engine) evidenceSet() *agentcontext.EvidenceSet {
+	return e.contextAuthority().Evidence()
 }
-func (e *Engine) failureLedger() *compact.Failures {
-	if scope := e.runningScope(); scope != nil {
-		return scope.state.failures
-	}
-	return e.failures
+func (e *Engine) failureLedger() *agentcontext.Failures {
+	return e.contextAuthority().Failures()
 }
 func (e *Engine) compactionTotal() int {
-	if scope := e.runningScope(); scope != nil {
-		return scope.state.compactions
-	}
-	return e.compactions
+	return e.contextAuthority().Compaction().Count
 }
 func (e *Engine) noteCompaction() {
-	if scope := e.runningScope(); scope != nil {
-		scope.state.compactions++
-		return
-	}
-	e.compactions++
+	e.contextAuthority().NoteCompaction()
 }
 
-func (e *Engine) compactionState() sessiondelta.Compaction {
-	if scope := e.runningScope(); scope != nil {
-		return sessiondelta.CloneCompaction(sessiondelta.Compaction{
-			Count: e.compactionTotal(), State: scope.state.contextCompaction,
-		})
-	}
-	return sessiondelta.CloneCompaction(sessiondelta.Compaction{
-		Count: e.compactions, State: e.contextCompaction,
-	})
+func (e *Engine) compactionState() agentcontext.Compaction {
+	return e.contextAuthority().Compaction()
 }
 
 func (e *Engine) stageContextCompaction(
-	state *sessiondelta.CompactionState,
+	state *agentcontext.CompactionState,
 ) {
-	cloned := sessiondelta.CloneCompaction(
-		sessiondelta.Compaction{State: state},
-	).State
-	if scope := e.runningScope(); scope != nil {
-		scope.state.contextCompaction = cloned
-		return
-	}
-	e.contextCompaction = cloned
+	current := e.contextAuthority().Compaction()
+	current.State = state
+	e.contextAuthority().SetCompaction(current)
 }
 func (e *Engine) runningScope() *Scope {
 	if e == nil {
@@ -267,7 +219,7 @@ func (e *Engine) runningScope() *Scope {
 	defer e.scopeMu.Unlock()
 	return e.activeScope
 }
-func (s *Scope) kernel() (*engineTurnKernel, error) {
+func (s *Scope) kernel() (*turnkernel.RuntimeKernel, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.state.kernel == nil {
@@ -303,7 +255,7 @@ func (s *Scope) Cancel(reason string) error {
 	if err != nil {
 		return err
 	}
-	kernelErr := kernel.requestCancel(reason)
+	kernelErr := kernel.RequestCancel(reason)
 	s.mu.Lock()
 	s.state.cancelReason = reason
 	cancel := s.state.cancel
@@ -343,7 +295,7 @@ func (s *Scope) ResolveApproval(
 	}
 	engine := s.engine
 	if err := s.state.requests.Resolve(
-		turnexec.RequestApproval,
+		turnkernel.RequestApproval,
 		decision.RequestID,
 	); err != nil {
 		if engine.queueRecoveredApproval(decision) {
@@ -358,7 +310,7 @@ func (s *Scope) ResolveApproval(
 	if err != nil {
 		return err
 	}
-	if err := kernel.resolveApproval(decision.RequestID, decision.Canceled); err != nil {
+	if err := kernel.ResolveApproval(decision.RequestID, decision.Canceled); err != nil {
 		return err
 	}
 	if decision.Canceled {
@@ -377,7 +329,7 @@ func (s *Scope) ResolveInput(reply interact.Reply) error {
 		return interact.HostUnavailableError{}
 	}
 	if err := s.state.requests.Resolve(
-		turnexec.RequestInput,
+		turnkernel.RequestInput,
 		reply.RequestID,
 	); err != nil {
 		if engine.queueRecoveredInput(reply) {
@@ -392,7 +344,7 @@ func (s *Scope) ResolveInput(reply interact.Reply) error {
 	if err != nil {
 		return err
 	}
-	if err := kernel.resolveInput(reply.RequestID); err != nil {
+	if err := kernel.ResolveInput(reply.RequestID); err != nil {
 		return err
 	}
 	return engine.options.InputHost.Resume(reply.RequestID)

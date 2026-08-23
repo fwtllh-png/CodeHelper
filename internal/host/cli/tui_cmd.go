@@ -50,16 +50,18 @@ func newTUICommand(
 			if err := tui.Run(ctx, tui.Options{
 				ConfigPath: configPath, DataDir: dataDir, FleetRoot: fleetRoot,
 				MCPConfig: mcpConfig, FixturePath: fixturePath,
-				Provider: provider, Model: modelID, BaseURL: baseURL,
+				Model: modelID, BaseURL: baseURL,
 				Protocol: protocolName, APIKeyEnv: apiKeyEnv,
-				Workspace: workspace, EnableTools: enableTools,
-				Mode: modeName, Permission: posture,
-				MaxSteps:      maxSteps,
+				EnableTools: enableTools,
+				Mode:        modeName, Permission: posture,
+
 				ContextTokens: contextTokens, ModelMaxOutputTokens: modelMaxOutputTokens,
 				ModelCapabilities:    modelCapabilities,
 				InputPricePerMillion: inputPrice, OutputPricePerMillion: outputPrice,
 				PricingCurrency: pricingCurrency,
-				Stdin:           stdin, Stdout: stdout, Stderr: stderr,
+				Stdin:           stdin, Stdout: stdout, Stderr: stderr, Provider: provider,
+
+				MaxSteps: maxSteps, Workspace: workspace,
 			}); err != nil {
 				_, _ = fmt.Fprintf(stderr, "codehelper: tui: %v\n", err)
 				setCode(1)

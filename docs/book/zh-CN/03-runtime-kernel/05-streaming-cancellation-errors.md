@@ -18,7 +18,7 @@ test_paths:
   - internal/runtime/protocol/problem_test.go
 source_of_truth:
   - internal/runtime/protocol/problem.go
-  - internal/runtime/agent/engine/toolstream.go
+  - internal/adapter/tool/stream.go
 status: draft
 last_verified: null
 ---
@@ -121,7 +121,7 @@ Failure 可以反馈给 Model，Security Denial 与 Invariant Failure 不允许�
 | Provider Stream | `adapter/provider` |
 | Engine Stream | `agent/engine/engine.go` |
 | Tool Output | `agent/engine/toolstream.go` |
-| Tool Failure | `agent/engine/toolfailure.go` |
+| Tool Failure | `agent/engine/tool_failure.go` |
 | Cancellation | `runtime/app/runtime.go` |
 | Process Cleanup | `platform/process` |
 

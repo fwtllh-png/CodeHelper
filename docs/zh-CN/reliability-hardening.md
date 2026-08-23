@@ -214,7 +214,8 @@ R11 应把这些跳过项和时间敏感用例转换为确定性门禁。
 
 - Main Turn 的显式 Step Budget 已冻结进 Turn Kernel Policy，由 Reducer 根据已完成
   Sample 统一触发 Convergence；Engine 外层循环不再拥有固定步数终止器；
-- 默认 Main Turn、Subagent 和 Workflow `max_steps` 已改为 `0`，不再注入隐式上限；
+- 默认 Main Turn `max_steps` 为 32，且在预算之外保留一次结构化 Finalization；
+  Subagent 和 Workflow 的 `max_steps=0` 仍表示不注入隐式上限；
 - Kernel 授权的 Repair Steps 仍使用独立连续无进展预算，不会被普通工作预算吞掉；
 - Workflow 显式预算耗尽已改为 Durable `blocked`，保留节点并支持 Resume，不再
   Cancel 整个 Run；

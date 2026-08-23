@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 )
 
 type EngineResolver interface {
@@ -53,9 +53,9 @@ func (s *Source) Snapshot(
 		)
 	}
 	contextSnapshot := engine.ContextSnapshot()
-	history := contextSnapshot.Partition(contextstore.KindHistory)
+	history := contextSnapshot.Partition(agentcontext.KindHistory)
 	workspaceRules := promptcontext.PartitionTexts(
-		contextSnapshot.Partition(contextstore.KindStable),
+		contextSnapshot.Partition(agentcontext.KindStable),
 		engine.ContextReceipts(),
 		promptcontext.PartitionRepository,
 		promptcontext.PartitionConstitution,
@@ -113,7 +113,7 @@ func latestWorldText(
 ) string {
 	var result string
 	for _, message := range messages {
-		entry, _, ok := contextstore.InspectWorldMessage(message)
+		entry, _, ok := agentcontext.InspectWorldMessage(message)
 		if !ok || entry.ID != id {
 			continue
 		}

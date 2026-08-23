@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 )
 
@@ -87,12 +87,12 @@ func TestProjectMessagesExcludesOpaqueParentContent(t *testing.T) {
 
 func TestLatestWorldTextUsesTypedMarkerAndTombstone(t *testing.T) {
 	message := provider.TextMessage(provider.RoleSystem, "coding rules")
-	full, err := contextstore.ProjectWorld(
-		[]contextstore.WorldSection{{
+	full, err := agentcontext.ProjectWorld(
+		[]agentcontext.WorldSection{{
 			ID: "coding_policy", Digest: "digest-1",
 			Present: true, Message: &message,
 		}},
-		contextstore.WorldBaseline{},
+		agentcontext.WorldBaseline{},
 		nil,
 	)
 	if err != nil {
@@ -102,7 +102,7 @@ func TestLatestWorldTextUsesTypedMarkerAndTombstone(t *testing.T) {
 		t.Fatalf("world text=%q", got)
 	}
 	history := append([]provider.Message(nil), full.Messages...)
-	removed, err := contextstore.ProjectWorld(
+	removed, err := agentcontext.ProjectWorld(
 		nil,
 		full.Baseline,
 		history,

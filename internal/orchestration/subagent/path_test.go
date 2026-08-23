@@ -8,8 +8,7 @@ import (
 
 func TestCanonicalAgentPathsAreReadableNestedAndUnique(t *testing.T) {
 	control, err := subagent.OpenControl(subagent.Options{
-		Root: t.TempDir(), Gate: &fakeGate{},
-		Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+		Root: t.TempDir(), Gate: &fakeGate{}, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
 	}, subagent.DelegationExplicit)
 	if err != nil {
 		t.Fatal(err)

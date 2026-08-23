@@ -9,7 +9,7 @@ prerequisites:
   - practice-test-layers
 code_paths:
   - internal/host/bench
-  - internal/runtime/agent/promptcontext
+  - internal/runtime/agent/prompt
   - web/src/runtime
 test_paths:
   - internal/host/bench/bench_test.go

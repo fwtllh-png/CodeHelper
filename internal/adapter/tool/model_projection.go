@@ -1,0 +1,42 @@
+package tool
+
+import (
+	"encoding/json"
+	"errors"
+
+	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+)
+
+func ProjectModelResults(
+	calls []provider.ToolCall,
+	results []Result,
+	turn uint64,
+) ([]provider.Message, error) {
+	if len(calls) != len(results) {
+		return nil, errors.New("tool call and result counts differ")
+	}
+	messages := make([]provider.Message, 0, len(calls))
+	for index, call := range calls {
+		data, err := json.Marshal(ModelResult(call.Name, results[index]))
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, provider.Message{
+			Role: provider.RoleTool,
+			Turn: turn,
+			Blocks: []provider.ContentBlock{{
+				Type: provider.ContentToolResult,
+				ToolResult: &provider.ToolResult{
+					CallID:  call.ID,
+					Content: string(data),
+					IsError: results[index].IsError,
+					Admission: adaptercontent.CloneAdmissionReceipt(
+						results[index].Admission,
+					),
+				},
+			}},
+		})
+	}
+	return messages, nil
+}

@@ -156,7 +156,7 @@ func TestQualificationCommandsExecuteDeclaredTestKinds(t *testing.T) {
 	commands := qualificationCommands([]feature{{
 		RequiredQualifications: []string{
 			"internal/runtime/app/session_lifecycle_test.go#TestSessionControlCreatesActivatesAndSubmitsWithStableIdentity",
-			"internal/runtime/app/chatmerge",
+			"internal/runtime/app/eventhub",
 			"scripts/webprotocolgen/main_test.go#TestGenerateProducesDeterministicGuardedRoutes",
 			"testdata/contracts/host-journey-contract.json",
 			"web/src/runtime/client.test.ts#normalizes empty collections and submits act prompts as answers",
@@ -169,7 +169,7 @@ func TestQualificationCommandsExecuteDeclaredTestKinds(t *testing.T) {
 	}
 	for _, want := range []string{
 		"go test ./internal/runtime/app -run ^(?:TestSessionControlCreatesActivatesAndSubmitsWithStableIdentity)$",
-		"go test ./internal/runtime/app/chatmerge",
+		"go test ./internal/runtime/app/eventhub",
 		"go test ./scripts/webprotocolgen -run ^(?:TestGenerateProducesDeterministicGuardedRoutes)$",
 		"make host-journey-contract",
 		"npm --prefix web run check",

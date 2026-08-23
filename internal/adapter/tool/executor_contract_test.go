@@ -67,8 +67,7 @@ func TestExecutorContract(t *testing.T) {
 		Policy: policy.DefaultRuntime(
 			policy.ModeAct,
 			policy.PermissionBypass,
-		),
-		Workspace: t.TempDir(),
+		), Workspace: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatal(err)

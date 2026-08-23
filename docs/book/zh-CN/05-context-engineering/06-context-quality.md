@@ -9,16 +9,16 @@ prerequisites:
   - context-source-lifecycle
   - context-budget-compaction
 code_paths:
-  - internal/runtime/agent/evidence
-  - internal/runtime/agent/promptcontext
+  - internal/runtime/agent/context
+  - internal/runtime/agent/prompt
   - internal/observability
 test_paths:
-  - internal/runtime/agent/promptcontext/catalog_benchmark_test.go
-  - internal/runtime/agent/evidence/evidence_test.go
-  - internal/runtime/app/receipt_test.go
+  - internal/runtime/agent/prompt/catalog_benchmark_test.go
+  - internal/runtime/agent/context/evidence_evidence_test.go
+  - internal/observability/receipt/receipt_test.go
 source_of_truth:
-  - internal/runtime/agent/promptcontext/context.go
-  - internal/runtime/agent/evidence/evidence.go
+  - internal/runtime/agent/prompt/context.go
+  - internal/runtime/agent/context/evidence_evidence.go
 status: draft
 last_verified: null
 ---
@@ -129,11 +129,11 @@ Task/Route 不稳定时，Token/Success 差异无法归因于 Context。
 
 | 关注点 | 源码 |
 | --- | --- |
-| Partition Receipt | `promptcontext/context.go` |
+| Partition Receipt | `prompt/context.go` |
 | Evidence Ledger | `agent/evidence` |
-| Turn Receipt | `runtime/app/receipt.go` |
+| Turn Receipt | `observability/receipt/receipt.go` |
 | Usage/Latency | `internal/observability` |
-| Catalog Baseline | `promptcontext/catalog_benchmark_test.go` |
+| Catalog Baseline | `prompt/catalog_benchmark_test.go` |
 
 ## 设计取舍
 
@@ -152,8 +152,8 @@ Task/Route 不稳定时，Token/Success 差异无法归因于 Context。
 ## 测试与验证
 
 ```bash
-go test ./internal/runtime/agent/promptcontext
-go test ./internal/runtime/agent/evidence
+go test ./internal/runtime/agent/prompt
+go test ./internal/runtime/agent/context
 go test ./internal/runtime/app -run 'TestReceipt(ReportsReadPathsAndContextSections|ReportsEvidence)'
 ```
 

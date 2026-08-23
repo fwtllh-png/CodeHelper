@@ -5,12 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/model"
 	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/projection"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -81,7 +81,7 @@ func (r *Runtime) publishWorkGraphTerminal(
 	if err != nil {
 		return fmt.Errorf("load terminal WorkGraph %s: %w", effect.RunID, err)
 	}
-	data, err := projection.RunTerminal(graph)
+	data, err := appextension.RunTerminal(graph)
 	if err != nil {
 		return err
 	}

@@ -1,9 +1,10 @@
 package app
 
 import (
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -23,7 +24,7 @@ func TestContextCompactionUsageSampleIsStablePerAttempt(t *testing.T) {
 }
 
 func TestPostTurnCompactionReceiptProducesValidProtocolEvent(t *testing.T) {
-	data := protocolCompactionData(&agentengine.CompactionReceipt{
+	data := appextension.ProtocolCompactionData(&agentengine.CompactionReceipt{
 		CompactionID:        "compact-1",
 		Status:              "completed",
 		Mode:                "post_turn",
@@ -33,7 +34,7 @@ func TestPostTurnCompactionReceiptProducesValidProtocolEvent(t *testing.T) {
 		CompatibilityHash:   "sha256:compat",
 		AuthorityDigest:     "sha256:authority",
 		AuthorityEquivalent: true,
-		DownshiftPolicy:     compact.DownshiftRuntimeTruthOnly,
+		DownshiftPolicy:     agentcontext.DownshiftRuntimeTruthOnly,
 		NarrativeIncluded:   true,
 	})
 	if _, err := protocol.NewEvent(protocol.EventMeta{

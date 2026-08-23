@@ -16,7 +16,7 @@ test_paths:
   - internal/runtime/app/wire/bootstrap_test.go
   - internal/runtime/app/wire/model_test.go
   - internal/runtime/app/wire/build_state_test.go
-  - internal/runtime/app/wire/assembly/resources_test.go
+  - internal/runtime/app/wire/resource_stack_test.go
   - internal/runtime/app/wire/sandbox_architecture_test.go
 source_of_truth:
   - internal/runtime/app/wire/runtime.go
@@ -35,9 +35,9 @@ source_of_truth:
   - internal/runtime/app/wire/orchestration_components.go
   - internal/runtime/app/wire/scheduler_factory.go
   - internal/runtime/app/wire/modules_runtime.go
-  - internal/runtime/app/wire/assembly/resources.go
+  - internal/runtime/app/wire/resource_stack.go
   - internal/runtime/app/runtime_start.go
-  - internal/runtime/app/persistence/runtime.go
+  - internal/runtime/app/wire/persistent_runtime.go
   - internal/runtime/extension/registry.go
   - internal/runtime/extension/plan.go
 status: draft
@@ -93,7 +93,7 @@ flowchart TD
 - 装配 Observation Privacy、Journal、Router、Retention 与 OTLP Projection；
 - 构建 Child Runtime、Worktree 与 Background Executor；
 - 选择 Persistent 或 In-memory Application Runtime；
-- 构造 `chatmerge.Service` 与 Durable Assembly；Merge、Journal、Git 行为保留在
+- 构造 `app.ChatMergeService` 与 Durable Assembly；Merge、Journal、Git 行为保留在
   被构造的 Service 中。
 
 ## 组合根结构
@@ -117,7 +117,7 @@ Child Worktree/Toolset。Provider 发布所选 Provider/Model Catalog，Security
 发布 Permission Store 与 Guard Factory。Module 失败时以 `moduleBuildError` 中止
 并带上 Module 名，已打开资源通过共享 Resource Stack 关闭。Durable Assembly 与 Chat
 Merge 同样是构造模块：`app/persistence` 组合 Repository 与 Recovery，
-`chatmerge.Service` 拥有隔离 Workspace 的 Baseline、Preview 与 Journaled Apply。
+`app.ChatMergeService` 拥有隔离 Workspace 的 Baseline、Preview 与 Journaled Apply。
 
 Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Plugin、Skill、Memory、
 Dynamic Tool、Hook 和 MCP 注册 Typed Contributor，只接收显式 Capability，不接收
@@ -126,7 +126,7 @@ Permission Digest 的 Digested Plan；Runtime Lifecycle 随后拥有 Generation 
 Contributed Effect。Task/Automation 注册归 Orchestration Module，而非 Extension
 Contributor Chain。
 
-构造与关闭共享 `assembly.ResourceStack`。`NewExec` 只注册一次资源关闭函数；
+构造与关闭共享 `wire.ResourceStack`。`NewExec` 只注册一次资源关闭函数；
 部分构造失败回滚与正常关闭都按注册逆序关闭同一 Stack。每项资源最多关闭一次，
 单项关闭失败不会跳过后续资源，调用方会收到带资源标识的聚合错误。因此 Runtime
 或 Scheduler 等后段构造失败也不会泄漏资源。
@@ -194,7 +194,7 @@ Configuration 表达 Intent，不能制造 Environment Capability。
 | 资源生命周期 | `assembly/resources.go` |
 | Route/Budget | `route.go`、`routeset.go` |
 | Provider | `model.go`、`model_catalog.go`、`model_probe.go` |
-| Durable Runtime Assembly | `internal/runtime/app/persistence/runtime.go` |
+| Durable Runtime Assembly | `internal/runtime/app/wire/persistent_runtime.go` |
 | Chat Merge 构造 | `chatworktree.go`、`chatmerge/service.go` |
 | Sandbox Fact | `sandbox_info.go` |
 | MCP/Extension | `mcp.go`、`extensions.go` |

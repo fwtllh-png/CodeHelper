@@ -353,10 +353,8 @@ func TestIncompleteDeclarationContinuesCurrentTurn(t *testing.T) {
 }
 
 func TestEngineRejectsRequiredCompletionToolMissing(t *testing.T) {
-	_, err := New(Options{
-		Provider: &scriptedProvider{}, Route: testRoute(t),
-		Tools:                        tool.NewRegistry(nil, nil),
-		RequireCompletionDeclaration: true,
+	_, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil),
+		RequireCompletionDeclaration: true},
 	})
 	if err == nil || !strings.Contains(err.Error(), "turn_complete") {
 		t.Fatalf("New() error = %v", err)
@@ -366,7 +364,7 @@ func TestEngineRejectsRequiredCompletionToolMissing(t *testing.T) {
 func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	scope := attachTestScope(t, engine)
-	scope.state.diff.Record(TurnDiffEntry{Path: "a.go", Kind: "modified"})
+	scope.state.diff.Record(turnkernel.TurnDiffEntry{Path: "a.go", Kind: "modified"})
 	scope.state.verification = append(scope.state.verification, verify.Evidence{
 		SchemaVersion: 1, Kind: "verify", Status: verify.StatusPassed,
 		CoveredPaths: []string{"a.go"}, CallID: "verify-1",
@@ -628,18 +626,17 @@ func declarationEngine(
 ) *Engine {
 	t.Helper()
 	root := t.TempDir()
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), Tools: registry,
-		MaxOutputTokens: 256, MaxSteps: 12,
-		Workspace: root, Journal: newTestWorkspaceJournal(t, root),
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+		MaxOutputTokens: 256, MaxSteps: 12}, ToolConfig: ToolConfig{Tools: registry,
+
 		Authorize:                    func(provider.ToolCall) bool { return true },
 		RequireCompletionDeclaration: true,
-		InputHost:                    interact.NewHost(0),
+
 		Verify: VerifyOptions{
 			Mode: VerifyModeSoft, Scope: verify.ScopeDiagnostics,
 			MaxRepairSteps: 1,
 			Runner:         &scriptedVerifier{receipts: []verify.Receipt{receipt}},
-		},
+		}}, SecurityConfig: SecurityConfig{Workspace: root, Journal: newTestWorkspaceJournal(t, root)}, LifecycleConfig: LifecycleConfig{InputHost: interact.NewHost(0)},
 	})
 	if err != nil {
 		t.Fatal(err)

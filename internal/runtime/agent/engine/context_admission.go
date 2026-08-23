@@ -5,20 +5,20 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 const defaultWriteReservationEntities = 8
 
 func (e *Engine) ContextAdmission(
-	additions []compact.TruthEntity,
+	additions []agentcontext.TruthEntity,
 	resolvedIDs []string,
-) compact.AdmissionDecision {
+) agentcontext.AdmissionDecision {
 	current := e.buildTruthCapsule(e.buildCompactSummary(nil))
-	return (compact.ContextAdmissionController{
+	return (agentcontext.ContextAdmissionController{
 		Policy: e.options.Context.TruthRetention,
-	}).Decide(current, compact.AdmissionRequest{
+	}).Decide(current, agentcontext.AdmissionRequest{
 		BaseContextRevision:  e.sessionRevision,
 		RouteCompatibility:   current.CompatibilityHash,
 		AddedMandatory:       additions,
@@ -27,11 +27,11 @@ func (e *Engine) ContextAdmission(
 }
 
 func (e *Engine) admitToolBatch(calls []provider.ToolCall) error {
-	var reservations []compact.TruthEntity
+	var reservations []agentcontext.TruthEntity
 	for _, call := range calls {
 		if call.Name == "request_user_input" {
-			entity := compact.NewTruthEntity(
-				compact.EntityPendingInput,
+			entity := agentcontext.NewTruthEntity(
+				agentcontext.EntityPendingInput,
 				call.ID,
 				"pending user input",
 				"runtime.input",
@@ -41,7 +41,7 @@ func (e *Engine) admitToolBatch(calls []provider.ToolCall) error {
 		}
 		_, descriptor, _, err := e.options.Tools.ResolveBound(
 			call.Name,
-			bindingForCall(call),
+			tool.BindingForCall(call),
 		)
 		if err != nil || descriptor.AccessMode != tool.AccessWrite {
 			continue
@@ -52,8 +52,8 @@ func (e *Engine) admitToolBatch(calls []provider.ToolCall) error {
 		)
 		for index := 0; index < count; index++ {
 			key := fmt.Sprintf("reservation:%s:%d", call.ID, index)
-			entity := compact.NewTruthEntity(
-				compact.EntityChange,
+			entity := agentcontext.NewTruthEntity(
+				agentcontext.EntityChange,
 				key,
 				"reserved workspace change for "+call.Name,
 				"runtime.evidence",

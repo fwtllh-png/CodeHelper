@@ -9,11 +9,10 @@ import (
 )
 
 func TestEngineRejectsUnadvertisedFixedReasoningEffort(t *testing.T) {
-	options := Options{
-		Provider:        &scriptedProvider{},
-		Route:           testRoute(t),
-		Tools:           tool.NewRegistry(nil, nil),
-		ReasoningEffort: "unsupported",
+	options := Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{},
+		Route: testRoute(t),
+
+		ReasoningEffort: "unsupported"}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil)},
 	}
 	if _, err := New(options); err == nil ||
 		!strings.Contains(err.Error(), "does not support reasoning effort") {

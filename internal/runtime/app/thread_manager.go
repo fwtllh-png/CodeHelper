@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"sync"
+
+	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -373,10 +376,10 @@ func (m *ThreadManager) CompactThread(
 	receipt := engine.CompactForced()
 	summary := "context already within budget; no messages compacted"
 	if receipt != nil {
-		summary = formatCompactionSummary(receipt)
+		summary = appextension.FormatCompactionSummary(receipt)
 	}
 	history := engine.History()
-	encoded, err := EncodeCompactedHistory(history)
+	encoded, err := sessionhistory.EncodeCompactedHistory(history)
 	if err != nil {
 		return err
 	}
@@ -395,7 +398,7 @@ func (m *ThreadManager) CompactThread(
 		PreviousWindowID:   window.previous,
 		WindowID:           window.Current,
 	}
-	applyThreadCompactionTruth(data, receipt)
+	appextension.ApplyThreadCompactionTruth(data, receipt)
 	return sink.Emit(data)
 }
 
@@ -435,7 +438,7 @@ func (m *ThreadManager) ForkThread(
 			return fmt.Errorf("fork flush sequence: %w", err)
 		}
 	}
-	history, err := EncodeCompactedHistory(engine.History())
+	history, err := sessionhistory.EncodeCompactedHistory(engine.History())
 	if err != nil {
 		return err
 	}
@@ -443,7 +446,7 @@ func (m *ThreadManager) ForkThread(
 	if err != nil {
 		return err
 	}
-	child := AdaptEngineWithWorkspaceIdentity(forked, parent.workspaceIdentity)
+	child := AdaptEngineWithWorkspaceIdentity(forked, parent.WorkspaceIdentity())
 	childWindowID, childWindowNumber := "", uint64(0)
 	if childEngine := child.Underlying(); childEngine != nil {
 		childWindowID, childWindowNumber = childEngine.TokenWindowIdentity()
@@ -512,7 +515,7 @@ func (m *ThreadManager) ForkCheckpoint(
 	childEngine.ReplaceHistory(history)
 	child := AdaptEngineWithWorkspaceIdentity(
 		childEngine,
-		parent.workspaceIdentity,
+		parent.WorkspaceIdentity(),
 	)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -529,14 +532,14 @@ func (m *ThreadManager) ForkCheckpoint(
 
 func (m *ThreadManager) ContextSnapshot(
 	threadID protocol.ThreadID,
-) (sessiondelta.ContextSnapshot, error) {
+) (agentcontext.ContextSnapshot, error) {
 	adapter, err := m.forThread(threadID)
 	if err != nil {
-		return sessiondelta.ContextSnapshot{}, err
+		return agentcontext.ContextSnapshot{}, err
 	}
 	engine := adapter.Underlying()
 	if engine == nil {
-		return sessiondelta.ContextSnapshot{},
+		return agentcontext.ContextSnapshot{},
 			errors.New("checkpoint Thread engine is unavailable")
 	}
 	return engine.ExportContextSnapshot()
@@ -561,15 +564,15 @@ func (m *ThreadManager) RunPostTurnNarrative(
 
 func (m *ThreadManager) RestoreContext(
 	threadID protocol.ThreadID,
-	snapshot sessiondelta.ContextSnapshot,
-) (sessiondelta.ReconciliationReceipt, error) {
+	snapshot agentcontext.ContextSnapshot,
+) (agentcontext.ReconciliationReceipt, error) {
 	adapter, err := m.forThread(threadID)
 	if err != nil {
-		return sessiondelta.ReconciliationReceipt{}, err
+		return agentcontext.ReconciliationReceipt{}, err
 	}
 	engine := adapter.Underlying()
 	if engine == nil {
-		return sessiondelta.ReconciliationReceipt{},
+		return agentcontext.ReconciliationReceipt{},
 			errors.New("checkpoint Thread engine is unavailable")
 	}
 	return engine.RestoreContextSnapshot(snapshot)
@@ -577,34 +580,34 @@ func (m *ThreadManager) RestoreContext(
 
 func (m *ThreadManager) ForkContext(
 	parentThreadID, newThreadID protocol.ThreadID,
-	snapshot sessiondelta.ContextSnapshot,
-) (sessiondelta.ReconciliationReceipt, error) {
+	snapshot agentcontext.ContextSnapshot,
+) (agentcontext.ReconciliationReceipt, error) {
 	if parentThreadID == "" || newThreadID == "" ||
 		parentThreadID == newThreadID {
-		return sessiondelta.ReconciliationReceipt{},
+		return agentcontext.ReconciliationReceipt{},
 			errors.New("checkpoint Fork identity is invalid")
 	}
 	parent, err := m.forThread(parentThreadID)
 	if err != nil {
-		return sessiondelta.ReconciliationReceipt{}, err
+		return agentcontext.ReconciliationReceipt{}, err
 	}
 	engine := parent.Underlying()
 	if engine == nil {
-		return sessiondelta.ReconciliationReceipt{},
+		return agentcontext.ReconciliationReceipt{},
 			errors.New("checkpoint parent engine is unavailable")
 	}
 	childEngine, receipt, err := engine.ForkFromContextSnapshot(snapshot)
 	if err != nil {
-		return sessiondelta.ReconciliationReceipt{}, err
+		return agentcontext.ReconciliationReceipt{}, err
 	}
 	child := AdaptEngineWithWorkspaceIdentity(
 		childEngine,
-		parent.workspaceIdentity,
+		parent.WorkspaceIdentity(),
 	)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.threads[newThreadID]; exists {
-		return sessiondelta.ReconciliationReceipt{},
+		return agentcontext.ReconciliationReceipt{},
 			fmt.Errorf("checkpoint Fork target Thread %s already exists", newThreadID)
 	}
 	m.threads[newThreadID] = child
@@ -798,7 +801,7 @@ func (m *ThreadManager) restoreWindow(
 	if data == nil || len(data.ReplacementHistory) == 0 {
 		return nil
 	}
-	messages, err := DecodeCompactedHistory(data.ReplacementHistory)
+	messages, err := sessionhistory.DecodeCompactedHistory(data.ReplacementHistory)
 	if err != nil {
 		return err
 	}

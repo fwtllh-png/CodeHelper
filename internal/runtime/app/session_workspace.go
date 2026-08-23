@@ -2,17 +2,15 @@ package app
 
 import (
 	"context"
-	"errors"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/chatmerge"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 const SessionIsolationWorktree = "worktree"
 
-var ErrSessionWorkspaceClean = errors.New(
-	"Chat worktree has no changes to merge",
-)
+var ErrSessionWorkspaceClean = chatmerge.ErrWorkspaceClean
 
 // SessionWorkspace binds one durable host session to an isolated execution
 // root. Root is returned for diagnostics only; callers persist Mode and derive

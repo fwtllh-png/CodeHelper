@@ -41,8 +41,8 @@ func TestGitHubIssueAndPRContextReadonly(t *testing.T) {
 
 	registry := tool.NewRegistry(nil, nil)
 	if err := githubtool.Register(registry, githubtool.Options{
-		Workspace: t.TempDir(), Backend: passthroughBackend{},
-		BaseURL: server.URL, Token: "tok", Client: server.Client(),
+		Backend: passthroughBackend{},
+		BaseURL: server.URL, Token: "tok", Client: server.Client(), Workspace: t.TempDir(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -81,8 +81,8 @@ func TestGitHubCommentAndCloseWritePath(t *testing.T) {
 
 	registry := tool.NewRegistry(nil, nil)
 	if err := githubtool.Register(registry, githubtool.Options{
-		Workspace: root, Backend: passthroughBackend{},
-		BaseURL: server.URL, Token: "tok", Client: server.Client(),
+		Backend: passthroughBackend{},
+		BaseURL: server.URL, Token: "tok", Client: server.Client(), Workspace: root,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -123,14 +123,13 @@ func TestGitHubCommentAndCloseWritePath(t *testing.T) {
 func TestGitHubWriteFailClosedWithoutApprovalHost(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := githubtool.Register(registry, githubtool.Options{
-		Workspace: t.TempDir(), Backend: passthroughBackend{},
-		BaseURL: "http://example.invalid", Token: "tok",
+		Backend: passthroughBackend{},
+		BaseURL: "http://example.invalid", Token: "tok", Workspace: t.TempDir(),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	guard, err := toolguard.New(toolguard.Options{
-		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto),
-		Workspace: t.TempDir(),
+		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto), Workspace: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -152,8 +151,8 @@ func TestGitHubCommentFailureReceipt(t *testing.T) {
 
 	registry := tool.NewRegistry(nil, nil)
 	if err := githubtool.Register(registry, githubtool.Options{
-		Workspace: t.TempDir(), Backend: passthroughBackend{},
-		BaseURL: server.URL, Token: "tok", Client: server.Client(),
+		Backend: passthroughBackend{},
+		BaseURL: server.URL, Token: "tok", Client: server.Client(), Workspace: t.TempDir(),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +177,7 @@ func TestPRAttemptPreflightRejectReceipt(t *testing.T) {
 
 	registry := tool.NewRegistry(nil, nil)
 	if err := githubtool.Register(registry, githubtool.Options{
-		Workspace: root, Backend: passthroughBackend{},
+		Backend: passthroughBackend{}, Workspace: root,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +207,7 @@ func TestPRAttemptPreflightDoesNotMutate(t *testing.T) {
 
 	registry := tool.NewRegistry(nil, nil)
 	if err := githubtool.Register(registry, githubtool.Options{
-		Workspace: root, Backend: passthroughBackend{},
+		Backend: passthroughBackend{}, Workspace: root,
 	}); err != nil {
 		t.Fatal(err)
 	}

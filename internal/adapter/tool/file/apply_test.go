@@ -513,8 +513,7 @@ func TestFileApplyDryRunIsLowRiskAndDoesNotMutate(t *testing.T) {
 		Approvals: func(context.Context, toolguard.ApprovalRequest) error {
 			approvals++
 			return nil
-		},
-		Workspace: root,
+		}, Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -569,7 +568,7 @@ func TestPlannedWriteAppliesOnlyTheDisplayedContent(t *testing.T) {
 				PlanID: request.EditPlan.ID,
 			})
 		},
-		Workspace: root, ForceEditPlanApproval: true,
+		ForceEditPlanApproval: true, Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -596,8 +595,7 @@ func TestSuggestFileWriteUsesGuardedWriteWithoutApproval(t *testing.T) {
 		Policy:   policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
 		Approvals: func(_ context.Context, _ toolguard.ApprovalRequest) error {
 			return errors.New("file_write unexpectedly requested approval")
-		},
-		Workspace: root,
+		}, Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -631,7 +629,7 @@ func TestForcedEditPlanOverridesBroaderWriteGrant(t *testing.T) {
 				PlanID: request.EditPlan.ID,
 			})
 		},
-		Workspace: root, ForceEditPlanApproval: true,
+		ForceEditPlanApproval: true, Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -668,7 +666,7 @@ func TestPlannedWriteRejectsWorkspaceDriftWithZeroWrites(t *testing.T) {
 				PlanID: request.EditPlan.ID,
 			})
 		},
-		Workspace: root, ForceEditPlanApproval: true,
+		ForceEditPlanApproval: true, Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -699,7 +697,7 @@ func TestPlannedWriteRejectsWrongPlanIdentity(t *testing.T) {
 				PlanID: strings.Repeat("0", 64),
 			})
 		},
-		Workspace: root, ForceEditPlanApproval: true,
+		ForceEditPlanApproval: true, Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -725,8 +723,7 @@ func TestFileApplyRequiresEveryExistingPathToBeRead(t *testing.T) {
 		"first.txt": "first\n", "second.txt": "second\n", "source.txt": "source\n",
 	})
 	guard, err := toolguard.New(toolguard.Options{
-		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		Workspace: root,
+		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), Workspace: root,
 	})
 	if err != nil {
 		t.Fatal(err)

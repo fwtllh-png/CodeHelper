@@ -35,10 +35,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/evidence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/promptcontext"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -338,10 +336,10 @@ func TestCompletionRepairHasIndependentStepBudget(t *testing.T) {
 	if err := registry.Register(&echoTool{}, nil); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), Tools: registry,
-		MaxOutputTokens: 128, MaxSteps: 2,
-		Authorize: func(provider.ToolCall) bool { return true },
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+		MaxOutputTokens: 128, MaxSteps: 2}, ToolConfig: ToolConfig{Tools: registry,
+
+		Authorize: func(provider.ToolCall) bool { return true }},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -969,9 +967,9 @@ func TestRunToolsReturnsReadFailureToModelAndClosesEveryStartedCall(t *testing.T
 	if category, _ := emitted[1].Metadata["error_category"].(string); category != "tool_execution_failed" {
 		t.Fatalf("fatal error_category = %q", category)
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.ClosedCalls) != 2 {
-		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 2 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.Snapshot())
 	}
 }
 
@@ -992,7 +990,7 @@ func TestFinishOnlyClosesExplorationCallWithoutExecutingIt(t *testing.T) {
 	)
 
 	results, err := engine.runToolsWithCache(
-		withFinishOnly(t.Context()),
+		tool.WithFinishOnly(t.Context()),
 		"turn-finish-only",
 		[]provider.ToolCall{{
 			ID: "call_read", Name: "echo",
@@ -1016,9 +1014,9 @@ func TestFinishOnlyClosesExplorationCallWithoutExecutingIt(t *testing.T) {
 			results,
 		)
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.ClosedCalls) != 1 {
-		t.Fatalf("tool lifecycle not closed: %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 1 {
+		t.Fatalf("tool lifecycle not closed: %+v", kernel.Snapshot())
 	}
 }
 
@@ -1126,9 +1124,9 @@ func TestRunToolsDoesNotRepublishAlreadyClosedCall(t *testing.T) {
 			results,
 		)
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.ClosedCalls) != 1 {
-		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 1 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.Snapshot())
 	}
 }
 
@@ -1185,13 +1183,13 @@ func TestRunToolsClosesPublishedCallsWhenStartPublicationFails(t *testing.T) {
 			results,
 		)
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.ClosedCalls) != 2 {
-		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 2 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.Snapshot())
 	}
 	for _, callID := range []string{"first", "second"} {
-		if _, closed := kernel.state.ClosedCalls[callID]; !closed {
-			t.Fatalf("durable start %q was not closed: %+v", callID, kernel.state)
+		if _, closed := kernel.Snapshot().ClosedCalls[callID]; !closed {
+			t.Fatalf("durable start %q was not closed: %+v", callID, kernel.Snapshot())
 		}
 	}
 }
@@ -1244,13 +1242,13 @@ func TestRunToolsContinuesResultPublicationAfterSinkFailure(t *testing.T) {
 			results,
 		)
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.ClosedCalls) != 2 {
-		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 2 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.Snapshot())
 	}
 	for _, callID := range []string{"first", "second"} {
-		if _, closed := kernel.state.ClosedCalls[callID]; !closed {
-			t.Fatalf("durable result did not close %q: %+v", callID, kernel.state)
+		if _, closed := kernel.Snapshot().ClosedCalls[callID]; !closed {
+			t.Fatalf("durable result did not close %q: %+v", callID, kernel.Snapshot())
 		}
 		if _, cached := executed[callID]; !cached {
 			t.Fatalf("durable result missing from execution cache: %+v", executed)
@@ -1310,9 +1308,9 @@ func TestRunToolsCancellationClosesKernelLifecycle(t *testing.T) {
 			results,
 		)
 	}
-	if len(kernel.state.OpenCalls) != 0 ||
-		len(kernel.state.ClosedCalls) != 1 {
-		t.Fatalf("kernel tool ledger = %+v", kernel.state)
+	if len(kernel.Snapshot().OpenCalls) != 0 ||
+		len(kernel.Snapshot().ClosedCalls) != 1 {
+		t.Fatalf("kernel tool ledger = %+v", kernel.Snapshot())
 	}
 }
 
@@ -1428,10 +1426,9 @@ func TestEngineToolRoundTripAcrossProviderProtocols(t *testing.T) {
 				t.Fatal(err)
 			}
 			route := testRouteProtocol(t, server.URL, test.protocol)
-			runtime, err := New(Options{
-				Provider: testHTTPProvider(t, route), Route: route,
-				Tools: registry, MaxOutputTokens: 128,
-				Authorize: func(provider.ToolCall) bool { return true },
+			runtime, err := New(Options{ProviderConfig: ProviderConfig{Provider: testHTTPProvider(t, route), Route: route,
+				MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
+				Authorize: func(provider.ToolCall) bool { return true }},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -1804,9 +1801,8 @@ func TestEngineToolsOffAndOnUseSameImplementation(t *testing.T) {
 					{Type: provider.EventMessageStop},
 				}},
 			}}
-			engine, err := New(Options{
-				Provider: runtime, Route: testRoute(t), Tools: registry,
-				MaxOutputTokens: 128, MaxSteps: 2,
+			engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+				MaxOutputTokens: 128, MaxSteps: 2}, ToolConfig: ToolConfig{Tools: registry},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -1835,9 +1831,8 @@ func TestEngineBindsVersionedReplayToAssistantProvenance(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), NativeSearch: true,
-		MaxOutputTokens: 128,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), NativeSearch: true,
+		MaxOutputTokens: 128},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1872,10 +1867,7 @@ func TestEngineBindsVersionedReplayToAssistantProvenance(t *testing.T) {
 
 func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 	runtime := &scriptedProvider{}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128,
-		Budget: Budget{MaxTokens: 1},
-	})
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ContextConfig: ContextConfig{Budget: Budget{MaxTokens: 1}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1902,10 +1894,7 @@ func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 		t.Fatalf("failed turn committed history: %+v", history)
 	}
 
-	costEngine, err := New(Options{
-		Provider: &scriptedProvider{}, Route: testRoute(t), MaxOutputTokens: 128,
-		Budget: Budget{MaxCostUSD: 0.000001},
-	})
+	costEngine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t), MaxOutputTokens: 128}, ContextConfig: ContextConfig{Budget: Budget{MaxCostUSD: 0.000001}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1924,9 +1913,7 @@ func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
-	cancelEngine, err := New(Options{
-		Provider: cancelProvider{}, Route: testRoute(t), MaxOutputTokens: 128,
-	})
+	cancelEngine, err := New(Options{ProviderConfig: ProviderConfig{Provider: cancelProvider{}, Route: testRoute(t), MaxOutputTokens: 128}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1951,9 +1938,7 @@ func TestEngineUnauthorizedToolHasSingleFailedTerminal(t *testing.T) {
 	if err := registry.Register(&echoTool{}, nil); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), Tools: registry, MaxOutputTokens: 128,
-	})
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1969,9 +1954,8 @@ func TestEngineUnauthorizedToolHasSingleFailedTerminal(t *testing.T) {
 
 func TestRequestCancelHasSingleCanceledTerminalAndNoCommittedHistory(t *testing.T) {
 	started := make(chan struct{})
-	engine, err := New(Options{
-		Provider: &steerProvider{started: started},
-		Route:    testRoute(t), MaxOutputTokens: 128,
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &steerProvider{started: started},
+		Route: testRoute(t), MaxOutputTokens: 128},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -2015,9 +1999,7 @@ func TestRequestCancelHasSingleCanceledTerminalAndNoCommittedHistory(t *testing.
 func TestCanceledTurnContinuationRetainsTaskContext(t *testing.T) {
 	started := make(chan struct{})
 	runtime := &steerProvider{started: started}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128,
-	})
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2134,7 +2116,7 @@ func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 	}
 	summary := engine.history[0].Text()
 	if engine.history[0].Role != provider.RoleSystem ||
-		!strings.Contains(summary, compact.MarkerStart) ||
+		!strings.Contains(summary, agentcontext.MarkerStart) ||
 		!strings.Contains(summary, "Critical paths: a.go") ||
 		strings.Contains(summary, "old request") ||
 		strings.Contains(summary, "call_old") ||
@@ -2158,9 +2140,9 @@ func TestEngineCompactionPreservesTurnGroupsAndSummary(t *testing.T) {
 		!receipt.AuthorityEquivalent {
 		t.Fatalf("compaction receipt = %+v", receipt)
 	}
-	if !slices.Contains(receipt.Sections, compact.SectionTruth) ||
-		!slices.Contains(receipt.Sections, compact.SectionCritical) ||
-		slices.Contains(receipt.Sections, compact.SectionNarrative) {
+	if !slices.Contains(receipt.Sections, agentcontext.SectionTruth) ||
+		!slices.Contains(receipt.Sections, agentcontext.SectionCritical) ||
+		slices.Contains(receipt.Sections, agentcontext.SectionNarrative) {
 		t.Fatalf("compaction sections = %v", receipt.Sections)
 	}
 	assertToolPairs(t, engine.history)
@@ -2201,8 +2183,8 @@ func TestEngineCompactionMergesTruthCapsulesAcrossGenerations(t *testing.T) {
 		Objective: "teach the parser about trailing commas",
 		Steps:     []interact.PlanStep{{Title: "update the lexer", Status: interact.StepInProgress}},
 	})
-	engine.evidenceSet().Observe(evidence.Fact{
-		Kind: evidence.KindDefinition, Path: "parser/lex.go",
+	engine.evidenceSet().Observe(agentcontext.EvidenceFact{
+		Kind: agentcontext.KindDefinition, Path: "parser/lex.go",
 		Line: 41, Symbol: "Lex", Tool: "search_definition", Turn: 1,
 	})
 	engine.history = []provider.Message{
@@ -2214,17 +2196,17 @@ func TestEngineCompactionMergesTruthCapsulesAcrossGenerations(t *testing.T) {
 		t.Fatal("expected a first compaction")
 	}
 	first := engine.history[0].Text()
-	if _, ok := compact.Carry(first); !ok {
+	if _, ok := agentcontext.Carry(first); !ok {
 		t.Fatalf("first summary is not marked as one:\n%s", first)
 	}
-	firstCapsule, found, err := compact.ParseTruthCapsule(first)
+	firstCapsule, found, err := agentcontext.ParseTruthCapsule(first)
 	if err != nil || !found || firstCapsule.Generation != 1 {
 		t.Fatalf("first capsule=%+v found=%t err=%v", firstCapsule, found, err)
 	}
 
 	// Drop the live evidence to prove the second generation is rebuilt from the
 	// current owner snapshot instead of permanently unioning prior facts.
-	engine.evidence = evidence.New()
+	engine.context = agentcontext.NewAuthority()
 	engine.ApplyPlan(interact.Plan{
 		Objective: "also accept trailing commas in calls",
 		Steps:     []interact.PlanStep{{Title: "update the parser", Status: interact.StepPending}},
@@ -2240,14 +2222,14 @@ func TestEngineCompactionMergesTruthCapsulesAcrossGenerations(t *testing.T) {
 	if !strings.Contains(second, "Goal: also accept trailing commas in calls") {
 		t.Fatalf("second summary lost the current goal:\n%s", second)
 	}
-	secondCapsule, found, err := compact.ParseTruthCapsule(second)
+	secondCapsule, found, err := agentcontext.ParseTruthCapsule(second)
 	if err != nil || !found || secondCapsule.Generation != 2 {
 		t.Fatalf("second capsule=%+v found=%t err=%v", secondCapsule, found, err)
 	}
 	var retainedFact bool
 	for _, entity := range secondCapsule.Entities {
 		retainedFact = retainedFact ||
-			entity.Kind == compact.EntityFact &&
+			entity.Kind == agentcontext.EntityFact &&
 				strings.Contains(entity.Value, "parser/lex.go:41")
 	}
 	if retainedFact {
@@ -2256,7 +2238,7 @@ func TestEngineCompactionMergesTruthCapsulesAcrossGenerations(t *testing.T) {
 	if strings.Contains(second, "Earlier summary:") {
 		t.Fatalf("second summary carried prior narrative verbatim:\n%s", second)
 	}
-	if strings.Count(second, compact.MarkerStart) != 1 {
+	if strings.Count(second, agentcontext.MarkerStart) != 1 {
 		t.Fatalf("carried summary nested its markers:\n%s", second)
 	}
 }
@@ -2327,10 +2309,10 @@ func TestStructuredCompactionFailureLeavesOriginalHistoryIntact(t *testing.T) {
 	engine.history = []provider.Message{
 		provider.TextMessage(
 			provider.RoleSystem,
-			compact.MarkerStart+"\n"+
-				compact.TruthMarkerStart+"\n{invalid}\n"+
-				compact.TruthMarkerEnd+"\n"+
-				compact.MarkerEnd,
+			agentcontext.MarkerStart+"\n"+
+				agentcontext.TruthMarkerStart+"\n{invalid}\n"+
+				agentcontext.TruthMarkerEnd+"\n"+
+				agentcontext.MarkerEnd,
 		),
 		messageWithText(provider.RoleUser, strings.Repeat("old ", 400), 1),
 		messageWithText(provider.RoleAssistant, strings.Repeat("answer ", 400), 1),
@@ -2393,9 +2375,9 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 		toolCallMessage(1, "call_3", "read", `{}`),
 		toolResultMessage(1, "call_3", "latest"),
 	}
-	original := historyBytes(history)
+	original := agentcontext.HistoryBytes(history)
 	var receipt *CompactionReceipt
-	snapshot := contextstore.New(contextstore.Input{}).Snapshot()
+	snapshot := agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot()
 	_, err := engine.runCompactGate(t.Context(), &history, snapshot, 128, CompactionPhaseMidTurn, true, func(_ State, event Event) error {
 		receipt = event.Compaction
 		return nil
@@ -2408,9 +2390,9 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 		receipt.OriginalBytes != original {
 		t.Fatalf("mid-turn receipt = %+v", receipt)
 	}
-	capsule, found, parseErr := compact.ParseTruthCapsule(history[0].Text())
+	capsule, found, parseErr := agentcontext.ParseTruthCapsule(history[0].Text())
 	if parseErr != nil || !found ||
-		!truthEntityContains(capsule, compact.EntityGoal, "fix the parser") {
+		!truthEntityContains(capsule, agentcontext.EntityGoal, "fix the parser") {
 		t.Fatalf(
 			"summary lost active goal: capsule=%+v found=%t err=%v",
 			capsule,
@@ -2434,7 +2416,7 @@ func TestMidTurnCompactionFailsClosedWhenNoSafeCandidateFits(t *testing.T) {
 		messageWithText(provider.RoleUser, strings.Repeat("goal ", 4000), 1),
 	}
 	before := cloneMessages(history)
-	snapshot := contextstore.New(contextstore.Input{}).Snapshot()
+	snapshot := agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot()
 	window, err := engine.runCompactGate(t.Context(), &history, snapshot, 128, CompactionPhaseMidTurn, true, func(State, Event) error {
 		t.Fatal("failed compaction emitted an event")
 		return nil
@@ -2697,7 +2679,7 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 		compaction.TruthGeneration != 1 ||
 		compaction.TruthEntities == 0 ||
 		compaction.CompatibilityHash == "" ||
-		compaction.DownshiftPolicy != compact.DownshiftRuntimeTruthOnly ||
+		compaction.DownshiftPolicy != agentcontext.DownshiftRuntimeTruthOnly ||
 		compaction.RetainedTokens > engine.options.Context.Window.AutoTokens {
 		t.Fatalf("compaction event = %+v", compaction)
 	}
@@ -2808,7 +2790,7 @@ func TestEngineSteerContinuesCurrentTurnWithoutStaleInput(t *testing.T) {
 	if len(runtime.requests) != 2 {
 		t.Fatalf("requests = %+v", runtime.requests)
 	}
-	second := contextstore.StripWorldState(runtime.requests[1].Messages)
+	second := agentcontext.StripWorldState(runtime.requests[1].Messages)
 	if len(second) != 3 ||
 		second[0].Text() != "initial" ||
 		second[1].Text() != "partial" ||
@@ -2841,7 +2823,7 @@ func TestEnginePendingInputFIFOSteerAndMailbox(t *testing.T) {
 	if len(runtime.requests) < 2 {
 		t.Fatalf("requests = %d, want >= 2", len(runtime.requests))
 	}
-	second := contextstore.StripWorldState(runtime.requests[1].Messages)
+	second := agentcontext.StripWorldState(runtime.requests[1].Messages)
 	if len(second) < 4 {
 		t.Fatalf("steered messages = %+v", second)
 	}
@@ -3092,9 +3074,10 @@ func runWorkspaceEditTurn(
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), Tools: registry, Workspace: root,
-		MaxOutputTokens: 128, Journal: journal, Diagnostics: fakeDiagnosticRunner{},
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+		MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
+		Diagnostics: fakeDiagnosticRunner{}}, SecurityConfig: SecurityConfig{Workspace: root,
+		Journal: journal},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -3119,9 +3102,8 @@ func (fakeDiagnosticRunner) Run(_ context.Context, path string) (diagnostics.Rec
 
 func newEngine(t *testing.T, runtime provider.Provider, registry *tool.Registry) *Engine {
 	t.Helper()
-	engine, err := New(Options{
-		Provider: runtime, Route: testRoute(t), Tools: registry, MaxOutputTokens: 128,
-		Authorize: func(provider.ToolCall) bool { return true },
+	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
+		Authorize: func(provider.ToolCall) bool { return true }},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -3526,7 +3508,7 @@ func assertOneTerminal(t *testing.T, states []State, want State) {
 }
 
 func truthEntityContains(
-	capsule compact.TruthCapsule,
+	capsule agentcontext.TruthCapsule,
 	kind string,
 	fragment string,
 ) bool {

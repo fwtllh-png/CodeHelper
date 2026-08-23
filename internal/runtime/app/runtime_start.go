@@ -8,7 +8,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
 )
 
 func NewRuntime(options Options) *Runtime {
@@ -89,27 +89,12 @@ func prepareRuntime(
 		contextRebaseStore: options.ContextRebaseStore,
 		orchestration:      options.Orchestration,
 		workspaceRoot:      strings.TrimSpace(options.WorkspaceRoot),
-		operations:         make(chan acceptedOperation, options.OperationBuffer),
 		done:               make(chan struct{}),
-		terminals:          make(map[protocol.TurnID]protocol.EventKind),
-		approvals:          make(map[string]PendingApproval),
-		inputs:             make(map[string]PendingInput),
-		accepted:           make(map[protocol.OperationID]PendingOperation),
-		acceptedKeys:       make(map[string]protocol.OperationID),
-		committed:          make(map[protocol.OperationID]PendingOperation),
-		active:             NewActiveTurnRegistry(),
-		observers:          make(map[uint64]func(protocol.Event)),
-		toolItems:          make(map[EventItemOwner]protocol.ItemID),
-		approvalItems:      make(map[EventItemOwner]protocol.ItemID),
-		inputItems:         make(map[EventItemOwner]protocol.ItemID),
 		durable:            recoverDurable,
 	}
+	installRuntimeServices(runtime, options.OperationBuffer)
 	runtime.hub = newEventHub(runtimeContext, runtime)
-	runtime.terminal = &TerminalPublisher{runtime: runtime}
-	runtime.SessionService = &SessionService{Runtime: runtime}
-	runtime.OperationService = &OperationService{Runtime: runtime}
-	runtime.HistoryService = &HistoryService{Runtime: runtime}
-	runtime.ArtifactService = &ArtifactService{Runtime: runtime}
+	runtime.terminal = eventhub.NewTerminalPublisher(runtime)
 	if recovery != nil {
 		runtime.restore(*recovery)
 	}
@@ -140,22 +125,24 @@ func (r *Runtime) activate(ctx context.Context) error {
 			return fmt.Errorf("recover WorkGraph effects: %w", err)
 		}
 	}
-	r.mu.Lock()
+	r.lifecycleMu.Lock()
 	if r.closed {
-		r.mu.Unlock()
+		r.lifecycleMu.Unlock()
 		return errors.New("runtime is closed")
 	}
-	r.accepting = true
-	r.mu.Unlock()
+	r.lifecycleMu.Unlock()
+	r.OperationService.mu.Lock()
+	r.OperationService.accepting = true
+	r.OperationService.mu.Unlock()
 	go r.loop()
 	if !r.durable || r.opts.SkipRuntimeRecovery {
 		return nil
 	}
 	if err := r.recoverPendingTurns(ctx); err != nil {
-		r.mu.Lock()
-		r.accepting = false
+		r.OperationService.mu.Lock()
+		r.OperationService.accepting = false
 		close(r.operations)
-		r.mu.Unlock()
+		r.OperationService.mu.Unlock()
 		startErr := fmt.Errorf("recover pending turns: %w", err)
 		<-r.done
 		return startErr

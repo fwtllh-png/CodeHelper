@@ -4,16 +4,15 @@ import (
 	"context"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/compact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/sessiondelta"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
 
 type ContextPolicy struct {
 	Window                CompactWindowPolicy
-	TruthRetention        compact.RetentionPolicy
+	TruthRetention        agentcontext.RetentionPolicy
 	SemanticNarrative     string
-	NarrativeLimits       compact.NarrativeLimits
+	NarrativeLimits       agentcontext.NarrativeLimits
 	NarrativeTimeout      time.Duration
 	NarrativeRetryLimit   int
 	OwnerDeltaMaxSegments int
@@ -22,42 +21,47 @@ type ContextPolicy struct {
 	RecentTailMaxTokens   uint64
 	CommitRebase          func(
 		context.Context,
-		sessiondelta.ContextRebaseEnvelope,
+		agentcontext.ContextRebaseEnvelope,
 	) error
 	CommitRebaseWithFacts func(
 		context.Context,
-		sessiondelta.ContextRebaseEnvelope,
+		agentcontext.ContextRebaseEnvelope,
 		turnkernel.DomainFactBatch,
 	) error
 }
 
+const (
+	statelessPrepareTokens   = 48 << 10
+	statelessCompactTokens   = 64 << 10
+	statelessEmergencyTokens = 96 << 10
+)
+
+func (e *Engine) effectiveWindowPolicy() agentcontext.WindowPolicy {
+	policy := e.options.Context.Window
+	if e.activeRoute().Model().Capabilities.IncrementalResponses {
+		return policy
+	}
+	limit := e.activeRoute().Model().Limits.ContextTokens
+	if policy.PrepareTokens == 0 {
+		policy.PrepareTokens = min(limit*55/100, statelessPrepareTokens)
+	}
+	if policy.AutoTokens == 0 {
+		policy.AutoTokens = min(limit*65/100, statelessCompactTokens)
+	}
+	if policy.EmergencyTokens == 0 {
+		policy.EmergencyTokens = min(limit*85/100, statelessEmergencyTokens)
+	}
+	return policy
+}
+
 func (e *Engine) prepareCompactLimit() uint64 {
 	limit := e.activeRoute().Model().Limits.ContextTokens
-	prepare, _, _ := contextWindowThresholds(e.options.Context.Window, limit)
+	prepare, _, _ := agentcontext.WindowThresholds(e.effectiveWindowPolicy(), limit)
 	return prepare
 }
 
 func (e *Engine) emergencyCompactLimit() uint64 {
 	limit := e.activeRoute().Model().Limits.ContextTokens
-	_, _, emergency := contextWindowThresholds(e.options.Context.Window, limit)
+	_, _, emergency := agentcontext.WindowThresholds(e.effectiveWindowPolicy(), limit)
 	return emergency
-}
-
-func contextWindowThresholds(
-	policy CompactWindowPolicy,
-	limit uint64,
-) (uint64, uint64, uint64) {
-	compact := policy.AutoTokens
-	if compact == 0 {
-		compact = limit * 65 / 100
-	}
-	prepare := policy.PrepareTokens
-	if prepare == 0 {
-		prepare = min(limit*55/100, compact*55/65)
-	}
-	emergency := policy.EmergencyTokens
-	if emergency == 0 {
-		emergency = max(limit*85/100, compact+1)
-	}
-	return min(prepare, limit), min(compact, limit), min(emergency, limit)
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"strings"
 	"testing"
 	"time"
@@ -49,7 +50,7 @@ func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {
 		TerminalStatus: tool.OutcomeRejected,
 		TerminalOwner:  tool.TerminalOwnerGuard,
 	}
-	projected := projectToolExecutionReceipt(source)
+	projected := appextension.ProjectToolExecutionReceipt(source)
 	source.Attempts[0].ReadRoots[0] = "/tampered"
 	source.Attempts[0].Denial.Resource = "/tampered"
 	if projected == nil || projected.Tool.Name != "exec_command" ||

@@ -8,8 +8,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/workingset"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -37,7 +37,7 @@ func TestProgressSignatureCountsResearchReadsOnlyForResearchTurns(
 	answerBefore := engine.progressSignature(answer)
 	workspaceBefore := engine.progressSignature(workspace)
 
-	engine.working.Observe(workingset.SourceRead, engine.turn, "a.go")
+	engine.context.WorkingSet().Observe(agentcontext.SourceRead, engine.turn, "a.go")
 
 	if answerAfter := engine.progressSignature(answer); answerAfter == answerBefore {
 		t.Fatal("new research path did not advance answer progress")
@@ -58,8 +58,15 @@ func TestProgressSignatureCountsSuccessfulAgentLifecycleCalls(t *testing.T) {
 		nil,
 	)
 	before := engine.progressSignature(kernel)
-	kernel.state.ClosedCalls["spawn"] = turnkernel.ToolResultState{
-		ID: "spawn", Name: "spawn_agent",
+	call := provider.ToolCall{ID: "spawn", Name: "spawn_agent"}
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.StartTool(call.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.CloseTool(call, tool.Result{}, nil); err != nil {
+		t.Fatal(err)
 	}
 	if after := engine.progressSignature(kernel); after == before {
 		t.Fatal("successful Agent lifecycle transition did not advance progress")
@@ -83,11 +90,11 @@ func TestFinishOnlyAllowsMutationAndQualityTools(t *testing.T) {
 		{name: "shell_read", capability: tool.CapabilityRead, want: false},
 		{name: "search_text", capability: tool.CapabilityRead, want: false},
 	} {
-		if got := finishOnlyToolAllowed(test.name, tool.Descriptor{
+		if got := tool.FinishOnlyAllowed(test.name, tool.Descriptor{
 			Name: test.name, Capability: test.capability,
 		}); got != test.want {
 			t.Fatalf(
-				"finishOnlyToolAllowed(%q) = %v, want %v",
+				"tool.FinishOnlyAllowed(%q) = %v, want %v",
 				test.name,
 				got,
 				test.want,

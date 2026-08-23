@@ -61,8 +61,7 @@ func runRuntimeObserve(args []string, stdout, stderr io.Writer) int {
 		OperationBuffer:  snapshot.Config.Runtime.OperationBuffer,
 		EventHistory:     snapshot.Config.Runtime.EventHistory,
 		SubscriberBuffer: snapshot.Config.Runtime.SubscriberBuffer,
-		Engine:           app.NoopEngine{},
-		Observability: app.RuntimeObservability{
+		Engine:           app.NoopEngine{}, Observability: app.RuntimeObservability{
 			Metrics: metrics,
 			Logger:  logger,
 		},

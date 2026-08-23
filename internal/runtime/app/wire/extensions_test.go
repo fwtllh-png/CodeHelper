@@ -82,9 +82,8 @@ func TestGuardFailsClosedOnHookAskAndUpdatedInput(t *testing.T) {
 				t.Fatal(err)
 			}
 			guard, err := toolguard.New(toolguard.Options{
-				Registry:  registry,
-				Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-				Workspace: workspace, Hooks: &hooks.Adapter{Manager: manager},
+				Registry: registry,
+				Policy:   policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), Workspace: workspace, Hooks: &hooks.Adapter{Manager: manager},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -125,9 +124,7 @@ func TestEngineGuardFactoryRunsConfiguredHook(t *testing.T) {
 		policy.ModeAct,
 		policy.PermissionBypass,
 	)
-	options := agentengine.Options{
-		Tools: registry, Security: security, Workspace: workspace,
-	}
+	options := agentengine.Options{ToolConfig: agentengine.ToolConfig{Tools: registry}, SecurityConfig: agentengine.SecurityConfig{Security: security, Workspace: workspace}}
 	bindEngineGuardFactory(&options, guardFactory{
 		registry: registry, runtime: security,
 		workspace: workspace, hooks: manager,

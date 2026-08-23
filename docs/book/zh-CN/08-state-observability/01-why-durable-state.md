@@ -21,8 +21,8 @@ test_paths:
   - internal/observability/router/router_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
-  - internal/runtime/app/terminal_publisher.go
-  - internal/runtime/app/terminal_measurement.go
+  - internal/runtime/app/eventhub/terminal.go
+  - internal/runtime/app/extension/terminal_measurement.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
   - internal/observability/observation/envelope.go
   - internal/persist/state/store.go

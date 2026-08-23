@@ -146,7 +146,7 @@ func NewWithIndex(
 		return nil, nil, err
 	}
 	if err := githubtool.Register(registry, githubtool.Options{
-		Workspace: root, Backend: backend,
+		Backend: backend, Workspace: root,
 	}); err != nil {
 		return nil, nil, err
 	}

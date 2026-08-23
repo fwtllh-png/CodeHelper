@@ -1,53 +1,23 @@
 package engine
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
-
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextstore"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-func createWindowLedger(number uint64) (contextstore.WindowLedger, error) {
-	id, err := protocol.NewWindowID()
-	if err != nil {
-		return contextstore.WindowLedger{}, err
-	}
-	return contextstore.NewWindowLedger(id, number)
-}
-
-func fallbackWindowLedger(
-	current contextstore.WindowLedger,
-	seed string,
-) contextstore.WindowLedger {
-	number := current.Number + 1
-	if number == 1 {
-		number = 1
-	}
-	sum := sha256.Sum256([]byte(fmt.Sprintf(
-		"%s:%d:%s", current.ID, number, seed,
-	)))
-	value, _ := contextstore.NewWindowLedger(
-		"window_"+hex.EncodeToString(sum[:16]),
-		number,
-	)
-	return value
-}
-
-func (e *Engine) currentWindowLedger() contextstore.WindowLedger {
+func (e *Engine) currentWindowLedger() agentcontext.WindowLedger {
 	if scope := e.runningScope(); scope != nil {
 		scope.mu.Lock()
 		defer scope.mu.Unlock()
-		return contextstore.CloneWindowLedger(scope.state.window)
+		return scope.state.context.Window()
 	}
-	return contextstore.CloneWindowLedger(e.window)
+	return e.context.Window()
 }
 
 func (e *Engine) projectTokenWindow(
 	context *protocol.SampleContextData,
 	outputReserve uint64,
-) contextstore.WindowProjection {
+) agentcontext.WindowProjection {
 	window := e.currentWindowLedger()
 	return window.Prepare(
 		context,
@@ -60,23 +30,25 @@ func (e *Engine) projectTokenWindow(
 func (e *Engine) prepareTokenWindow(
 	context *protocol.SampleContextData,
 	outputReserve uint64,
-) contextstore.WindowProjection {
+) agentcontext.WindowProjection {
 	scope := e.runningScope()
 	if scope == nil {
-		projection := e.window.Prepare(
+		window := e.context.Window()
+		projection := window.Prepare(
 			context, outputReserve, e.autoCompactLimit(),
 			e.activeRoute().Model().Limits.ContextTokens,
 		)
-		applyWindowProjection(context, projection)
+		agentcontext.ApplyWindowProjection(context, projection)
 		return projection
 	}
 	scope.mu.Lock()
-	projection := scope.state.window.Prepare(
+	window := scope.state.context.Window()
+	projection := window.Prepare(
 		context, outputReserve, e.autoCompactLimit(),
 		e.activeRoute().Model().Limits.ContextTokens,
 	)
 	scope.mu.Unlock()
-	applyWindowProjection(context, projection)
+	agentcontext.ApplyWindowProjection(context, projection)
 	return projection
 }
 
@@ -96,52 +68,59 @@ func (e *Engine) observeTokenWindow(
 	pendingTokens := context.WindowPendingTokens
 	scope := e.runningScope()
 	if scope == nil {
-		e.window.Observe(*context, inputTokens, cachedTokens)
-		projection := e.window.Prepare(
+		window := e.context.Window()
+		window.Observe(*context, inputTokens, cachedTokens)
+		e.context.SetWindow(window)
+		projection := window.Prepare(
 			context, context.WindowOutputReserve, e.autoCompactLimit(),
 			hardLimit,
 		)
-		applyWindowProjection(context, projection)
+		agentcontext.ApplyWindowProjection(context, projection)
 		context.WindowProjectedTokens = projectedTokens
 		context.WindowPendingTokens = pendingTokens
 		return
 	}
 	scope.mu.Lock()
-	scope.state.window.Observe(*context, inputTokens, cachedTokens)
-	projection := scope.state.window.Prepare(
+	window := scope.state.context.Window()
+	window.Observe(*context, inputTokens, cachedTokens)
+	scope.state.context.SetWindow(window)
+	projection := window.Prepare(
 		context, context.WindowOutputReserve, e.autoCompactLimit(),
 		hardLimit,
 	)
 	scope.mu.Unlock()
-	applyWindowProjection(context, projection)
+	agentcontext.ApplyWindowProjection(context, projection)
 	context.WindowProjectedTokens = projectedTokens
 	context.WindowPendingTokens = pendingTokens
 }
 
-func (e *Engine) advanceTokenWindow() contextstore.WindowLedger {
+func (e *Engine) advanceTokenWindow() agentcontext.WindowLedger {
 	scope := e.runningScope()
 	if scope != nil {
 		scope.mu.Lock()
-		next, err := createWindowLedger(scope.state.window.Number + 1)
+		current := scope.state.context.Window()
+		next, err := agentcontext.CreateWindowLedger(current.Number + 1)
 		if err != nil {
-			next = fallbackWindowLedger(scope.state.window, e.options.SessionID)
+			next = agentcontext.FallbackWindowLedger(current, e.options.SessionID)
 		}
-		scope.state.window = next
+		scope.state.context.SetWindow(next)
 		scope.mu.Unlock()
 		return next
 	}
-	next, err := createWindowLedger(e.window.Number + 1)
+	current := e.context.Window()
+	next, err := agentcontext.CreateWindowLedger(current.Number + 1)
 	if err != nil {
-		next = fallbackWindowLedger(e.window, e.options.SessionID)
+		next = agentcontext.FallbackWindowLedger(current, e.options.SessionID)
 	}
-	e.window = next
+	e.context.SetWindow(next)
 	return next
 }
 
 func (e *Engine) TokenWindowIdentity() (string, uint64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.window.ID, e.window.Number
+	window := e.context.Window()
+	return window.ID, window.Number
 }
 
 func (e *Engine) AdvanceTokenWindow() (string, uint64) {
@@ -152,36 +131,18 @@ func (e *Engine) AdvanceTokenWindow() (string, uint64) {
 }
 
 func (e *Engine) RestoreTokenWindow(id string, number uint64) error {
-	value, err := contextstore.NewWindowLedger(id, number)
+	value, err := agentcontext.NewWindowLedger(id, number)
 	if err != nil {
 		return err
 	}
 	e.mu.Lock()
-	e.window = value
+	e.context.SetWindow(value)
 	e.mu.Unlock()
 	return nil
 }
 
 func (e *Engine) autoCompactLimit() uint64 {
 	limit := e.activeRoute().Model().Limits.ContextTokens
-	_, compact, _ := contextWindowThresholds(e.options.Context.Window, limit)
+	_, compact, _ := agentcontext.WindowThresholds(e.effectiveWindowPolicy(), limit)
 	return compact
-}
-
-func applyWindowProjection(
-	context *protocol.SampleContextData,
-	value contextstore.WindowProjection,
-) {
-	if context == nil {
-		return
-	}
-	context.WindowID = value.ID
-	context.WindowNumber = value.Number
-	context.WindowObserved = value.Observed
-	context.WindowProjectedTokens = value.FullActiveTokens
-	context.WindowFullActiveTokens = value.FullActiveTokens
-	context.WindowPrefillTokens = value.PrefillTokens
-	context.WindowBodyTokens = value.BodyTokens
-	context.WindowPendingTokens = value.PendingTokens
-	context.WindowOutputReserve = value.OutputReserve
 }

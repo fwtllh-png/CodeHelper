@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 )
 
 // errorThenBlockStream returns an error on the first Recv call, then blocks
@@ -40,7 +41,7 @@ func TestDeltaStreamReadExitsOnSourceError(t *testing.T) {
 	goroutinesBefore := runtime.NumGoroutine()
 
 	source := &errorThenBlockStream{block: make(chan struct{})}
-	stream := newDeltaCoalescingStream(source)
+	stream := providerassembly.NewDeltaCoalescingStream(source)
 	defer stream.Close()
 
 	// First Recv should get the error from the source.

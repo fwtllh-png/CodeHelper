@@ -9,16 +9,17 @@ prerequisites:
   - context-prompt-message
 code_paths:
   - internal/runtime/app
-  - internal/runtime/agent/repocontext
-  - internal/runtime/agent/repomap
+  - internal/runtime/agent/prompt
   - internal/persist/repoindex
 test_paths:
-  - internal/runtime/app/editor_context_test.go
-  - internal/runtime/agent/repocontext/repocontext_test.go
+  - internal/runtime/agent/prompt/editor_context_test.go
+  - internal/runtime/agent/prompt/repository_test.go
+  - internal/runtime/agent/repository/map_test.go
   - internal/persist/repoindex/index_test.go
 source_of_truth:
-  - internal/runtime/app/editor_context.go
-  - internal/runtime/agent/repocontext/repocontext.go
+  - internal/runtime/agent/prompt/editor_context.go
+  - internal/runtime/agent/prompt/repository.go
+  - internal/runtime/agent/repository/map.go
 status: draft
 last_verified: null
 ---
@@ -60,9 +61,9 @@ Symbol/Reference Query 优先使用语言级 Semantic Provider。结果记录 Se
 Lexical Source、Provider Version、Confidence 和 Fallback Reason。Language Service
 不可用时保留 Lexical Matching，但 Receipt 不会把降级结果标成 Semantic Answer。
 
-`repomap.Build` 将全量索引压缩为 Build Manifest、Entry Point、Directory
+`repository.Build` 将全量索引压缩为 Build Manifest、Entry Point、Directory
 Count/Language 和 Focused File Outline。限制内优先保留声明较多的目录，最终按路径展示。
-`repocontext.Provider` 每 Turn 最多构建一次昂贵 Repo Map，但每个 Sample 都重新渲染
+`prompt.RepositoryProvider` 每 Turn 最多构建一次昂贵 Repo Map，但每个 Sample 都重新渲染
 Working Set 与 Evidence。
 
 ## 三套 Freshness Clock
@@ -110,12 +111,12 @@ Receipt 保留 Digest、Range、Diagnostic Count 和 Retained Bytes。
 | 关注点 | 源码 |
 | --- | --- |
 | Workspace Identity | `runtime/protocol/workspace_identity.go` |
-| Editor Validation | `runtime/app/editor_context.go` |
+| Editor Validation | `runtime/agent/prompt/editor_context.go` |
 | Incremental Index | `persist/repoindex` |
 | Semantic Symbol/Reference | `adapter/lsp/semantic.go`、`platform/symbols/semantic.go` |
-| Repo Map | `runtime/agent/repomap` |
-| Per-sample Context | `runtime/agent/repocontext` |
-| Working Set | `runtime/agent/workingset` |
+| Repo Map | `runtime/agent/repository/map.go` |
+| Per-sample Context | `runtime/agent/prompt/repository.go` |
+| Working Set | `runtime/agent/context` |
 
 ## 设计取舍
 
@@ -136,7 +137,7 @@ Map、Focused Content 和 On-demand Tool Read。新读取文件立即进入 Work
 
 ```bash
 go test ./internal/runtime/app -run TestResolveEditorContext
-go test ./internal/runtime/agent/repocontext ./internal/runtime/agent/repomap
+go test ./internal/runtime/agent/prompt
 go test ./internal/persist/repoindex
 ```
 

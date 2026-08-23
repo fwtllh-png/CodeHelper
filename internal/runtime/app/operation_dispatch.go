@@ -128,21 +128,21 @@ func finishOutcome(err error) OperationOutcome {
 	}
 	return OperationOutcome{Kind: OutcomeCommitted, CommitMode: CommitNow}
 }
-func (d operationDispatcher) Apply(operation protocol.Operation, outcome OperationOutcome) {
+func (s *OperationService) Apply(operation protocol.Operation, outcome OperationOutcome) {
 	if err := validateOperationOutcome(outcome); err != nil {
-		if d.runtime.reject(operation, err) == nil {
-			d.runtime.commit(operation.ID)
+		if s.reject(operation, err) == nil {
+			s.commit(operation.ID)
 		}
 		return
 	}
 	if outcome.Kind == OutcomeRejected {
-		if d.runtime.reject(operation, outcome.Problem) == nil {
-			d.runtime.commit(operation.ID)
+		if s.reject(operation, outcome.Problem) == nil {
+			s.commit(operation.ID)
 		}
 		return
 	}
 	if outcome.Kind == OutcomeCommitted {
-		sink := &runtimeSink{runtime: d.runtime, operation: operation}
+		sink := &runtimeSink{runtime: s.Runtime, operation: operation}
 		for index, event := range outcome.Events {
 			var err error
 			if protocol.IsWorkGraphOperation(operation.Kind) {
@@ -157,10 +157,10 @@ func (d operationDispatcher) Apply(operation protocol.Operation, outcome Operati
 				return
 			}
 		}
-		d.runtime.commit(operation.ID)
+		s.commit(operation.ID)
 		if protocol.IsWorkGraphOperation(operation.Kind) {
-			if err := d.runtime.DrainWorkGraphEffects(d.runtime.ctx); err != nil {
-				d.runtime.logger.Warn(
+			if err := s.DrainWorkGraphEffects(s.ctx); err != nil {
+				s.logger.Warn(
 					"drain WorkGraph effects after operation",
 					"operation", operation.ID,
 					"error", err,

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -133,7 +135,7 @@ func TestContextEngineeringCE0LifecycleGolden(t *testing.T) {
 	}
 	actual := contextLifecycleGolden{SchemaVersion: 1}
 	for _, scenario := range scenarios {
-		reconstructed, err := ReconstructThread(scenario.events, protocol.ThreadID(scenario.thread))
+		reconstructed, err := sessionhistory.ReconstructThread(scenario.events, protocol.ThreadID(scenario.thread))
 		if err != nil {
 			t.Fatalf("%s: %v", scenario.name, err)
 		}
@@ -179,7 +181,7 @@ func TestContextEngineeringCE0LifecycleGolden(t *testing.T) {
 
 func encodeGoldenHistory(t *testing.T, messages []provider.Message) []protocol.CompactedMessage {
 	t.Helper()
-	encoded, err := EncodeCompactedHistory(messages)
+	encoded, err := sessionhistory.EncodeCompactedHistory(messages)
 	if err != nil {
 		t.Fatal(err)
 	}

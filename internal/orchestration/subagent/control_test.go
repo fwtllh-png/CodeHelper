@@ -53,8 +53,7 @@ func (r *recordingRuntime) CancelTurn(_ context.Context, _, turnID string) error
 func TestListFollowUpInterruptWaitContract(t *testing.T) {
 	runtime := &recordingRuntime{}
 	manager, err := subagent.Open(subagent.Options{
-		Root: t.TempDir(), Gate: &fakeGate{}, Runtime: runtime,
-		Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
+		Root: t.TempDir(), Gate: &fakeGate{}, Runtime: runtime, Budget: subagent.Budget{MaxDepth: 3, MaxParallel: 4},
 	})
 	if err != nil {
 		t.Fatal(err)
