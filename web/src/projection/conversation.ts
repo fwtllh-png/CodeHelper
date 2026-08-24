@@ -364,20 +364,20 @@ export class ConversationProjection {
           text: finalText
         });
       }
+      this.touch();
+      return;
     }
     this.put({
       id: `${event.id}-status`,
       kind: "status",
       turnID: event.turn_id,
       sequence: event.sequence,
-      title: event.kind === "turn.completed"
-        ? "Completed"
-        : event.kind === "turn.canceled" ? "Canceled" : "Failed",
+      title: event.kind === "turn.canceled" ? "Canceled" : "Failed",
       text: stringValue(
         event.data.outcome ??
         event.data.message ??
         event.data.reason ??
-        (failed ? "Turn did not complete" : "Turn completed")
+        "Turn did not complete"
       ),
       failed,
       recoverable: failed

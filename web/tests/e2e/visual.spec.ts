@@ -110,7 +110,10 @@ test("captures the authoritative diff state", async ({page}) => {
   await createSession(page);
   await page.getByLabel("Approval").selectOption("auto");
   await submitPrompt(page, "visual diff");
-  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+  await expect(page.locator(".assistantMessage").last())
+    .toContainText("Updated README and verified the diff.");
+  await expect(page.getByText("Completed", {exact: true})).toHaveCount(0);
+  await page.getByRole("button", {name: "Open detail panel"}).click();
   await page.getByRole("button", {name: "Refresh diff"}).click();
   await expect(page.locator(".mergePreview")).toContainText(
     "README.md (file_edit) modified +2 -0"
@@ -122,13 +125,19 @@ test("captures collapsed tools, expanded tool detail, and trajectory", async ({p
   await createSession(page);
   await page.getByLabel("Approval").selectOption("auto");
   await submitPrompt(page, "visual diff");
-  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+  await expect(page.locator(".assistantMessage").last())
+    .toContainText("Updated README and verified the diff.");
+  await expect(page.getByLabel("Session details")).toHaveCount(0);
 
   const tool = page.locator(".toolDisclosure").first();
   await expect(tool).toHaveAttribute("data-call-id", /.+/);
   await expect(tool.locator("pre")).toHaveCount(0);
+  await expect(tool.locator(".disclosureChevron")).toHaveCSS("opacity", "0");
+  await expect(tool.locator(":scope > button")).not.toContainText("completed");
   await expect(page).toHaveScreenshot("canonical-tool-collapsed.png");
 
+  await tool.locator(":scope > button").hover();
+  await expect(tool.locator(".disclosureChevron")).toHaveCSS("opacity", "1");
   await tool.locator(":scope > button").click();
   await expect(tool.locator("pre")).not.toHaveCount(0);
   await expect(page).toHaveScreenshot("canonical-tool-expanded.png");
@@ -145,7 +154,9 @@ test("captures streaming and completed states", async ({page}) => {
   await submitPrompt(page, "visual streaming");
   await expect(page.getByText("Working", {exact: true})).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-streaming.png");
-  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+  await expect(page.locator(".assistantMessage").last())
+    .toContainText("Review complete. Runtime evidence is consistent.");
+  await expect(page.getByText("Completed", {exact: true})).toHaveCount(0);
   await expect(page).toHaveScreenshot("canonical-completed.png");
 });
 
@@ -181,7 +192,8 @@ test("repeated reloads do not resubmit an active streaming turn", async ({page})
   }
 
   await expect(page.getByText("Connected", {exact: true})).toBeVisible();
-  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+  await expect(page.locator(".assistantMessage").last())
+    .toContainText("Review complete. Runtime evidence is consistent.");
   await expect(page.getByText("visual long streaming", {exact: true})).toHaveCount(1);
 });
 
@@ -196,7 +208,8 @@ test("a frozen tab converges after streaming completes", async ({page, context})
   await session.send("Page.setWebLifecycleState", {state: "active"});
   await page.bringToFront();
 
-  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+  await expect(page.locator(".assistantMessage").last())
+    .toContainText("Review complete. Runtime evidence is consistent.");
   await expect(page.getByText("visual long streaming", {exact: true})).toHaveCount(1);
   await session.detach();
 });

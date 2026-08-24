@@ -85,11 +85,11 @@
           ]
         },
         {
-          "id": "compact_receipt",
+          "id": "receipt_backed_stats",
           "points": 6,
           "evidence": [
-            "web/src/ui/App.tsx#ReceiptLine",
-            "web/src/ui/styles.css#.receiptLine"
+            "web/src/ui/App.tsx#latestReceipt",
+            "web/src/ui/App.tsx#ComposerStats"
           ]
         }
       ]

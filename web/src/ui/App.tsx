@@ -47,7 +47,8 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore
+  useSyncExternalStore,
+  type ReactNode
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -83,8 +84,7 @@ const Trajectory = lazy(async () => ({
 }));
 
 function initialDetailOpen(): boolean {
-  return typeof window.matchMedia !== "function" ||
-    window.matchMedia("(min-width: 1241px)").matches;
+  return false;
 }
 
 function initialRailCollapsed(): boolean {
@@ -179,12 +179,16 @@ export function App({client}: Props) {
   const selected = snapshot.sessions.find(
     (item) => item.session_id === snapshot.selectedSessionID
   );
-  const entries = useMemo(
+  const projectedEntries = useMemo(
     () => snapshot.conversation.order.flatMap((id) => {
       const node = snapshot.conversation.nodes.get(id);
       return node ? [node] : [];
     }),
     [snapshot.conversation]
+  );
+  const entries = useMemo(
+    () => projectedEntries.filter((entry) => entry.kind !== "receipt"),
+    [projectedEntries]
   );
   const transcriptEnd = Math.max(0, entries.length - transcriptPage * transcriptPageSize);
   const transcriptStart = Math.max(0, transcriptEnd - transcriptPageSize);
@@ -217,7 +221,7 @@ export function App({client}: Props) {
     "",
     ...(selectedModelEntry?.capabilities.reasoning_efforts ?? [])
   ];
-  const latestReceipt = [...entries].reverse().find(
+  const latestReceipt = [...projectedEntries].reverse().find(
     (entry): entry is Extract<ConversationNode, {kind: "receipt"}> =>
       entry.kind === "receipt"
   );
@@ -624,7 +628,7 @@ export function App({client}: Props) {
           <div className="conversationIdentity">
             <div>
               <h1>{selected?.title ?? "New Chat"}</h1>
-              <p>{snapshot.workspaceRoot}</p>
+              <p>{selected?.workspace_label || snapshot.workspaceRoot}</p>
             </div>
             {selected && entries.length > 0 && (
               <nav className="viewTabs" aria-label="Conversation views">
@@ -1527,8 +1531,10 @@ function SessionRow({
       <button className="sessionSelect" onClick={onClick}>
         <span className="sessionTitle">{session.title}</span>
         <span className="sessionMeta">
-          <span>{session.status.replaceAll("_", " ")}</span>
-          <span>{relativeTime(session.updated_at)}</span>
+          {session.status !== "idle" && session.status !== "completed" && (
+            <span>{session.status.replaceAll("_", " ")}</span>
+          )}
+          <span className="sessionAge">{relativeTime(session.updated_at)}</span>
         </span>
       </button>
       <div className="sessionActions">
@@ -1572,6 +1578,23 @@ function sessionIsBusy(session: SessionSummary): boolean {
   return session.status === "running" ||
     session.status === "awaiting_approval" ||
     session.status === "awaiting_input";
+}
+
+function DisclosureLeading({
+  open,
+  icon
+}: {
+  open: boolean;
+  icon: ReactNode;
+}) {
+  return (
+    <span className="disclosureLeading" aria-hidden="true">
+      <span className="disclosureIcon">{icon}</span>
+      <span className="disclosureChevron">
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </span>
+    </span>
+  );
 }
 
 const TranscriptItem = memo(function TranscriptItem({
@@ -1642,15 +1665,15 @@ const TranscriptItem = memo(function TranscriptItem({
     );
   }
   if (entry.kind === "receipt") {
-    return <ReceiptLine data={entry.data} />;
+    return null;
   }
   if (entry.kind === "context") {
     return (
       <div className="disclosure contextDisclosure">
         <button onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-          {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-          <FileCode2 size={15} />
+          <DisclosureLeading open={open} icon={<FileCode2 size={14} />} />
           <span className="disclosureTitle">{entry.title}</span>
+          <span className="disclosureSeparator" aria-hidden="true" />
           <small>{entry.summary}</small>
         </button>
         {open && <pre>{pretty(entry.data)}</pre>}
@@ -1661,9 +1684,9 @@ const TranscriptItem = memo(function TranscriptItem({
     return (
       <div className="disclosure reasoningDisclosure" data-running={entry.running || undefined}>
         <button onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-          {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-          <FileCode2 size={15} />
+          <DisclosureLeading open={open} icon={<FileCode2 size={14} />} />
           <span className="disclosureTitle">Reasoning</span>
+          <span className="disclosureSeparator" aria-hidden="true" />
           <small>{entry.summary}</small>
         </button>
         {open && <pre>{entry.text}</pre>}
@@ -1678,11 +1701,13 @@ const TranscriptItem = memo(function TranscriptItem({
       data-call-id={entry.callID}
     >
       <button onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-        {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-        <TerminalSquare size={15} />
+        <DisclosureLeading open={open} icon={<TerminalSquare size={14} />} />
         <span className="disclosureTitle">{entry.title}</span>
+        <span className="disclosureSeparator" aria-hidden="true" />
         <small>{entry.errorSummary || entry.summary}</small>
-        <span className="disclosureState">{entry.state}</span>
+        {entry.state !== "completed" && (
+          <span className="srOnly">{entry.state}</span>
+        )}
       </button>
       {open && (
         <>
@@ -1718,32 +1743,6 @@ const TranscriptItem = memo(function TranscriptItem({
     </div>
   );
 });
-
-function ReceiptLine({data}: {data: Readonly<Record<string, unknown>>}) {
-  const latency = isObject(data.latency) ? data.latency : undefined;
-  const total = numberValue(latency?.total_ms ?? data.latency_ms);
-  const tools = isObject(data.tool_execution)
-    ? Object.values(data.tool_execution).reduce<number>(
-      (sum, value) => sum + numberValue(value),
-      0
-    )
-    : 0;
-  return (
-    <dl className="receiptLine" aria-label="Turn receipt">
-      <div><dt>Result</dt><dd>{String(data.outcome ?? "recorded")}</dd></div>
-      {total > 0 && <div><dt>Total</dt><dd>{formatDuration(total)}</dd></div>}
-      {tools > 0 && <div><dt>Tools</dt><dd>{tools}</dd></div>}
-      <div>
-        <dt>Tokens</dt>
-        <dd>{numberValue(data.input_tokens) + numberValue(data.output_tokens)}</dd>
-      </div>
-      <div>
-        <dt>Cost</dt>
-        <dd>{data.cost_known ? `${numberValue(data.cost_microunits)} µ` : "Unpriced"}</dd>
-      </div>
-    </dl>
-  );
-}
 
 function TurnStatus({
   events,

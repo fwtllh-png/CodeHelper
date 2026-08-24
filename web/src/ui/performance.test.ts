@@ -42,7 +42,7 @@ describe("Web projection performance gate", () => {
     const duration = performance.now() - started;
 
     expect(duration).toBeLessThan(projectionBudgetMS);
-    expect(transcript).toHaveLength(1_500);
+    expect(transcript).toHaveLength(1_000);
   });
 });
 

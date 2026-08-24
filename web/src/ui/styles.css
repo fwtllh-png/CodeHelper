@@ -1,34 +1,39 @@
 :root {
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial,
     sans-serif;
   color: var(--ch-text);
   background: var(--ch-canvas);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --ch-canvas: #f5f6f7;
+  --ch-canvas: #ffffff;
   --ch-panel: #ffffff;
-  --ch-panel-subtle: #f0f2f3;
+  --ch-panel-subtle: #f5f6f7;
   --ch-panel-raised: #ffffff;
-  --ch-border: #d9dddf;
-  --ch-border-strong: #bcc3c7;
-  --ch-text: #192022;
-  --ch-text-muted: #626d70;
-  --ch-accent: #087f5b;
-  --ch-accent-hover: #066b4d;
-  --ch-accent-soft: #e2f4ed;
-  --ch-business: #3975e9;
-  --ch-business-soft: #eaf1ff;
+  --ch-sidebar: #f9fafb;
+  --ch-border: rgb(0 0 0 / 10%);
+  --ch-border-strong: rgb(0 0 0 / 12%);
+  --ch-text: #0f1115;
+  --ch-text-secondary: #61666b;
+  --ch-text-muted: #6f747a;
+  --ch-text-caption: #adb2b8;
+  --ch-accent: #376bd7;
+  --ch-accent-hover: #315fc0;
+  --ch-accent-soft: #e4edfd;
+  --ch-business: #376bd7;
+  --ch-business-soft: #edf3fe;
   --ch-reasoning: #805ad5;
   --ch-tool: #b7791f;
   --ch-on-accent: #ffffff;
-  --ch-danger: #c5362e;
-  --ch-danger-soft: #fbe8e6;
-  --ch-warning: #9a6700;
-  --ch-focus: #159a75;
-  --ch-code: #f3f5f5;
-  --ch-shadow: 0 12px 32px rgb(30 42 46 / 12%);
-  --ch-composer-shadow: 0 10px 28px rgb(30 42 46 / 10%), 0 0 46px rgb(71 132 255 / 10%);
+  --ch-danger: #ec1313;
+  --ch-danger-soft: #fef2f2;
+  --ch-warning: #f59e0b;
+  --ch-success: #22c55e;
+  --ch-focus: #376bd7;
+  --ch-code: #f9fafb;
+  --ch-shadow: 0 4px 12px rgb(0 0 0 / 2%), 0 2px 8px rgb(0 0 0 / 4%);
+  --ch-composer-shadow: 0 4px 12px rgb(0 0 0 / 2%), 0 2px 8px rgb(0 0 0 / 4%), 0 0 44px rgb(65 118 230 / 8%);
   --ch-rail-width: 280px;
   --ch-rail-collapsed-width: 56px;
   --ch-detail-width: 360px;
@@ -36,7 +41,7 @@
   --ch-composer-width: 780px;
   --ch-trajectory-row-height: 30px;
   --ch-trajectory-span-min: 2px;
-  --ch-header-height: 62px;
+  --ch-header-height: 80px;
   --ch-radius: 6px;
   --ch-radius-conversation: 22px;
   --ch-motion-none: 1ms;
@@ -58,29 +63,33 @@
 }
 
 :root[data-theme="dark"] {
-  --ch-canvas: #111516;
-  --ch-panel: #181d1f;
-  --ch-panel-subtle: #202729;
-  --ch-panel-raised: #242b2d;
-  --ch-border: #30393c;
-  --ch-border-strong: #465155;
-  --ch-text: #e8eded;
-  --ch-text-muted: #98a4a7;
-  --ch-accent: #43c59e;
-  --ch-accent-hover: #64d4b2;
-  --ch-accent-soft: #173d33;
-  --ch-business: #71a0ff;
-  --ch-business-soft: #1d2b48;
+  --ch-canvas: #151517;
+  --ch-panel: #151517;
+  --ch-panel-subtle: #232324;
+  --ch-panel-raised: #2c2c2e;
+  --ch-sidebar: #1b1b1c;
+  --ch-border: rgb(255 255 255 / 12%);
+  --ch-border-strong: rgb(255 255 255 / 16%);
+  --ch-text: #f9fafb;
+  --ch-text-secondary: #cfd3d6;
+  --ch-text-muted: #adb2b8;
+  --ch-text-caption: #81858c;
+  --ch-accent: #679efe;
+  --ch-accent-hover: #4176e6;
+  --ch-accent-soft: #34415b;
+  --ch-business: #679efe;
+  --ch-business-soft: #2c2c2e;
   --ch-reasoning: #b794f4;
   --ch-tool: #f6c45f;
-  --ch-on-accent: #10201c;
-  --ch-danger: #ff786f;
-  --ch-danger-soft: #472522;
-  --ch-warning: #e6b450;
-  --ch-focus: #55d5ae;
-  --ch-code: #101415;
-  --ch-shadow: 0 16px 38px rgb(0 0 0 / 32%);
-  --ch-composer-shadow: 0 12px 34px rgb(0 0 0 / 26%), 0 0 42px rgb(70 120 210 / 12%);
+  --ch-on-accent: #0f1115;
+  --ch-danger: #f25a5a;
+  --ch-danger-soft: #2c1c1d;
+  --ch-warning: #f59e0b;
+  --ch-success: #22c55e;
+  --ch-focus: #679efe;
+  --ch-code: #1b1b1c;
+  --ch-shadow: 0 4px 12px rgb(0 0 0 / 18%), 0 2px 8px rgb(0 0 0 / 24%);
+  --ch-composer-shadow: 0 4px 12px rgb(0 0 0 / 18%), 0 2px 8px rgb(0 0 0 / 24%), 0 0 44px rgb(103 158 254 / 8%);
 }
 
 * {
@@ -100,6 +109,8 @@ body,
 body {
   color: var(--ch-text);
   background: var(--ch-canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button,
@@ -170,7 +181,6 @@ textarea:disabled {
 .detailPanel {
   position: relative;
   min-width: 0;
-  background: var(--ch-panel-subtle);
 }
 
 .sessionRail {
@@ -182,6 +192,7 @@ textarea:disabled {
     "search"
     "list"
     "footer";
+  background: var(--ch-sidebar);
   border-right: 1px solid var(--ch-border);
 }
 
@@ -343,12 +354,11 @@ textarea:disabled {
 }
 
 .sessionRow:hover {
-  background: color-mix(in srgb, var(--ch-panel) 68%, transparent);
+  background: var(--ch-panel-subtle);
 }
 
 .sessionRow[data-active] {
-  background: var(--ch-panel);
-  box-shadow: inset 3px 0 var(--ch-accent);
+  background: var(--ch-panel-subtle);
 }
 
 .sessionSelect {
@@ -427,6 +437,10 @@ textarea:disabled {
   margin-top: 3px;
   color: var(--ch-text-muted);
   font-size: 11px;
+}
+
+.sessionAge {
+  margin-left: auto;
 }
 
 .railFooter {
@@ -529,7 +543,7 @@ textarea:disabled {
 }
 
 .connectionState[data-online] .statusDot {
-  background: var(--ch-accent);
+  background: var(--ch-success);
 }
 
 .conversation {
@@ -544,9 +558,10 @@ textarea:disabled {
 .conversationHeader {
   flex: 0 0 var(--ch-header-height);
   min-width: 0;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 16px 0 22px;
+  padding: 12px 28px 0 20px;
   border-bottom: 1px solid var(--ch-border);
 }
 
@@ -568,14 +583,16 @@ textarea:disabled {
 .conversationHeader h1 {
   margin: 0;
   font-size: 14px;
-  line-height: 21px;
+  font-weight: 500;
+  line-height: 20px;
 }
 
 .conversationHeader p {
   max-width: 65vw;
-  margin: 1px 0 0;
+  margin: 0;
   color: var(--ch-text-muted);
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .headerActions {
@@ -583,6 +600,7 @@ textarea:disabled {
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
+  padding-top: 2px;
 }
 
 .workingLabel {
@@ -605,11 +623,14 @@ textarea:disabled {
 }
 
 .transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   width: min(var(--ch-chat-width), calc(100% - 40px));
   min-height: 0;
   flex: 1 0 auto;
   margin: 0 auto;
-  padding: 30px 0 72px;
+  padding: 20px 0 72px;
 }
 
 .conversation[data-empty] .conversationScrollport {
@@ -627,7 +648,7 @@ textarea:disabled {
   min-height: 32px;
   justify-content: center;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 0;
 }
 
 .transcriptPagination button {
@@ -863,21 +884,22 @@ textarea:disabled {
 
 .userMessage {
   width: fit-content;
-  max-width: min(78%, 650px);
-  margin: 4px 0 24px auto;
-  padding: 10px 13px;
+  max-width: min(82%, 525px);
+  margin: 0 0 0 auto;
+  padding: 10px 16px;
   overflow-wrap: anywhere;
-  line-height: 1.55;
+  font-size: 16px;
+  line-height: 24px;
   white-space: pre-wrap;
   background: var(--ch-business-soft);
   border-radius: var(--ch-radius-conversation);
 }
 
 .assistantMessage {
-  margin: 0 0 24px;
+  margin: 0;
   overflow-wrap: anywhere;
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 16px;
+  line-height: 28px;
 }
 
 .assistantMessage > :first-child {
@@ -903,7 +925,7 @@ textarea:disabled {
 
 .assistantMessage code {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .assistantMessage :not(pre) > code {
@@ -913,12 +935,12 @@ textarea:disabled {
 }
 
 .disclosure {
-  margin: 4px 0;
-  border-left: 2px solid transparent;
+  margin: 0;
 }
 
 .disclosure[data-failed] {
-  border-color: var(--ch-danger);
+  border-radius: var(--ch-radius);
+  box-shadow: inset 2px 0 var(--ch-danger);
 }
 
 .disclosure > button {
@@ -926,14 +948,15 @@ textarea:disabled {
   width: 100%;
   height: 24px;
   align-items: center;
-  gap: 6px;
-  padding: 0 7px;
+  gap: 0;
+  padding: 0;
   overflow: hidden;
   text-align: left;
-  color: var(--ch-text-muted);
+  color: var(--ch-text-secondary);
   background: transparent;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--ch-radius);
+  font-size: 14px;
+  line-height: 24px;
 }
 
 .disclosure > button:hover {
@@ -941,19 +964,27 @@ textarea:disabled {
   background: var(--ch-panel-subtle);
 }
 
+.disclosure > button:hover .disclosureTitle {
+  color: var(--ch-text);
+}
+
+.disclosure > button:hover small {
+  color: var(--ch-text-secondary);
+}
+
 .disclosure pre {
   max-height: 360px;
-  margin: 0 9px 10px;
-  padding: 10px;
+  width: calc(100% - 22px);
+  margin: 4px 0 4px 22px;
+  padding: 12px 16px;
   color: var(--ch-text-muted);
-  font-size: 11px;
-  line-height: 1.55;
+  font-size: 12px;
+  line-height: 18px;
   white-space: pre-wrap;
 }
 
 .disclosureTitle,
-.disclosure small,
-.disclosureState {
+.disclosure small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -961,22 +992,63 @@ textarea:disabled {
 
 .disclosureTitle {
   flex: 0 0 auto;
-  color: var(--ch-text);
-  font-weight: 550;
+  color: var(--ch-text-secondary);
+  font-weight: 400;
 }
 
 .disclosure small {
   min-width: 0;
   flex: 1;
+  color: var(--ch-text-muted);
+  font-size: 14px;
+  line-height: 24px;
 }
 
-.disclosureState {
+.disclosureLeading {
+  position: relative;
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
-  font-size: 10px;
-  text-transform: capitalize;
+  place-items: center;
+  margin-right: 6px;
+  color: var(--ch-text-muted);
 }
 
-.disclosure[data-running] .disclosureState,
+.disclosureIcon,
+.disclosureChevron {
+  display: inline-flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  justify-content: center;
+  transition: opacity var(--ch-motion-disclosure) var(--ch-ease-in-out);
+}
+
+.disclosureChevron {
+  opacity: 0;
+}
+
+.disclosure > button[aria-expanded="true"] .disclosureIcon,
+.disclosure > button:hover .disclosureIcon,
+.disclosure > button:focus-visible .disclosureIcon {
+  opacity: 0;
+}
+
+.disclosure > button[aria-expanded="true"] .disclosureChevron,
+.disclosure > button:hover .disclosureChevron,
+.disclosure > button:focus-visible .disclosureChevron {
+  opacity: 1;
+}
+
+.disclosureSeparator {
+  width: 2px;
+  height: 2px;
+  flex: 0 0 auto;
+  margin: 0 8px;
+  background: var(--ch-text-caption);
+  border-radius: 1px;
+}
+
 .turnStatus > span {
   color: transparent;
   background: linear-gradient(
@@ -1009,7 +1081,7 @@ textarea:disabled {
 .toolBody {
   display: grid;
   gap: 8px;
-  padding: 4px 9px 10px;
+  padding: 0;
 }
 
 .toolBody section {
@@ -1039,7 +1111,7 @@ textarea:disabled {
 
 .terminalState {
   min-height: 28px;
-  margin: 10px 0 18px;
+  margin: 0;
   padding: 3px 7px;
   border-color: transparent;
   color: var(--ch-accent);
@@ -1067,31 +1139,6 @@ textarea:disabled {
 .terminalState span {
   color: var(--ch-text-muted);
   font-size: 12px;
-}
-
-.receiptLine {
-  display: flex;
-  min-height: 24px;
-  align-items: center;
-  gap: 12px;
-  margin: 2px 0 14px;
-  color: var(--ch-text-muted);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-.receiptLine div {
-  display: flex;
-  gap: 4px;
-}
-
-.receiptLine dt,
-.receiptLine dd {
-  margin: 0;
-}
-
-.receiptLine dd {
-  color: var(--ch-text);
 }
 
 .turnStatus {
@@ -1491,6 +1538,7 @@ textarea:disabled {
 .detailPanel {
   min-width: 0;
   overflow-y: auto;
+  background: var(--ch-panel);
   border-left: 1px solid var(--ch-border);
 }
 
@@ -1850,30 +1898,38 @@ textarea:disabled {
 
 .conversationIdentity {
   display: flex;
+  flex-direction: column;
   min-width: 0;
   height: 100%;
-  align-items: center;
-  gap: 28px;
+  align-items: flex-start;
+  gap: 0;
 }
 
 .conversationIdentity > div {
+  display: flex;
   min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 10px;
 }
 
 .viewTabs {
   display: flex;
-  height: 100%;
+  height: 35px;
   align-items: end;
-  gap: 28px;
+  gap: 36px;
+  padding-left: 8px;
 }
 
 .viewTabs button {
   position: relative;
-  height: 34px;
-  padding: 0;
+  height: auto;
+  padding: 0 0 11px;
   color: var(--ch-text-muted);
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 16px;
 }
 
 .viewTabs button[aria-current="page"] {
@@ -2286,10 +2342,13 @@ textarea:disabled {
     --ch-panel: Canvas;
     --ch-panel-subtle: Canvas;
     --ch-panel-raised: Canvas;
+    --ch-sidebar: Canvas;
     --ch-border: CanvasText;
     --ch-border-strong: CanvasText;
     --ch-text: CanvasText;
+    --ch-text-secondary: CanvasText;
     --ch-text-muted: CanvasText;
+    --ch-text-caption: CanvasText;
     --ch-accent: Highlight;
     --ch-accent-hover: Highlight;
     --ch-accent-soft: Canvas;
@@ -2301,6 +2360,7 @@ textarea:disabled {
     --ch-danger: Mark;
     --ch-danger-soft: Canvas;
     --ch-warning: CanvasText;
+    --ch-success: Highlight;
     --ch-focus: Highlight;
     --ch-code: Canvas;
     --ch-shadow: none;

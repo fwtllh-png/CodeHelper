@@ -210,7 +210,8 @@ AppFrame
 - User Bubble 最大宽度为内容列的约 70% 至 82%；
 - Assistant 内容不放进装饰性 Card；
 - Tool、Reasoning、Context、Compaction 和 Retry 使用同一 24px Disclosure Rhythm；
-- 完成状态不再作为大型绿色 Card 插入正文，只在 Turn 尾部显示紧凑状态和 Receipt；
+- 成功完成不插入独立 `Completed` 或 Receipt 行，只通过最终回答、Session 时间和底部
+  Stats 表达；失败与取消仍保留可恢复提示；
 - 最终 Assistant 输出是视觉主角，Tool 原文不能把它推离当前视口。
 
 ### Composer

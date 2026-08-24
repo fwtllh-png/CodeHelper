@@ -41,8 +41,7 @@ describe("projectTranscript", () => {
     ]);
 
     expect(entries).toMatchObject([
-      {kind: "assistant", text: "final"},
-      {kind: "status", title: "Completed"}
+      {kind: "assistant", text: "final"}
     ]);
   });
 
@@ -662,11 +661,18 @@ describe("projectTranscript", () => {
         is_error: false
       })
     ]);
+    value.sessions = value.sessions.map((session) => ({
+      ...session,
+      status: "completed"
+    }));
     const {container} = render(<App client={mockClient(value)} />);
 
     expect(container.querySelectorAll(".disclosure pre")).toHaveLength(0);
     expect(screen.getByText("README.md")).toBeTruthy();
     expect(screen.getByText("Checking the repository")).toBeTruthy();
+    expect(screen.queryByText("completed", {exact: true})).toBeNull();
+    expect(container.querySelectorAll(".disclosureLeading")).toHaveLength(2);
+    expect(container.querySelectorAll(".disclosureChevron")).toHaveLength(2);
   });
 
   it("disables Session-bound controls while the selected Session hydrates", () => {
@@ -755,11 +761,12 @@ describe("projectTranscript", () => {
     const {container} = render(<App client={mockClient(snapshot(events))} />);
 
     expect(container.querySelectorAll(".assistantMessage, .terminalState")).toHaveLength(200);
-    expect(screen.queryByText("message-399")).toBeNull();
+    expect(screen.queryByText("message-300")).toBeNull();
+    expect(screen.getByText("message-301")).toBeTruthy();
     expect(screen.getByText("message-500")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", {name: "Earlier messages"}));
-    expect(screen.getByText("message-399")).toBeTruthy();
+    expect(screen.getByText("message-300")).toBeTruthy();
     expect(screen.getByRole("button", {name: "Newer messages"})).toBeTruthy();
   });
 });
