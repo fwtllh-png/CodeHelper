@@ -96,9 +96,12 @@
       "path": "internal/runtime/app/eventhub",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 812,
+        "production_lines": 814,
         "options_fields": 0,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Classify the durable reasoning completion event in the Runtime event hub."
       }
     },
     {
@@ -562,9 +565,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 7738,
+        "production_lines": 7756,
         "options_fields": 6,
         "mutex_fields": 4
+      },
+      "relaxations": {
+        "production_lines": "Publish one durable reasoning completion fact for each logical model sample."
       }
     },
     {
@@ -629,9 +635,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6398,
+        "production_lines": 6406,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Define durable reasoning completion and bounded tool-result presentation metadata."
       }
     },
     {

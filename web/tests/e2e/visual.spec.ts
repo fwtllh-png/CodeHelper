@@ -138,8 +138,10 @@ test("captures collapsed tools, expanded tool detail, and trajectory", async ({p
 
   await tool.locator(":scope > .disclosureRow").hover();
   await expect(tool.locator(".disclosureChevron")).toHaveCSS("opacity", "1");
-  await tool.locator(":scope > .disclosureRow").click();
-  await expect(tool.locator("pre")).not.toHaveCount(0);
+  await tool.locator(":scope > .disclosureRow .disclosureLeading").click();
+  await expect(tool.locator(
+    ".toolIOCard, [data-read], [data-terminal], [data-search]"
+  )).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-tool-expanded.png");
 
   await tool.getByRole("button", {name: "Inspect"}).click();
@@ -161,7 +163,7 @@ test("captures Think and specialized Read, Bash, Grep, and Glob cards", async ({
   await expect(think).toContainText("I will inspect the file");
 
   const read = page.locator('.toolDisclosure[data-variant="read"]').first();
-  await read.locator(".disclosureRow").click();
+  await read.locator(".disclosureLeading").click();
   await expect(read.locator("[data-read]")).toBeVisible();
   await read.scrollIntoViewIfNeeded();
   await expect(page).toHaveScreenshot("canonical-think-read.png");

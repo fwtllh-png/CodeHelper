@@ -1112,7 +1112,7 @@ textarea:disabled {
 .disclosure > button:hover,
 .disclosureRow:hover {
   color: var(--ch-text);
-  background: var(--ch-panel-subtle);
+  background: transparent;
 }
 
 .disclosure > button:hover .disclosureTitle,
@@ -1450,7 +1450,7 @@ textarea:disabled {
   padding: 1px 6px;
   color: var(--ch-danger);
   background: var(--ch-danger-soft);
-  border-radius: 999px;
+  border-radius: var(--ch-radius);
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -1585,6 +1585,21 @@ textarea:disabled {
   margin: 2px 0 2px 4px;
   opacity: 0;
   transition: opacity var(--ch-motion-disclosure) var(--ch-ease-in-out);
+}
+
+.toolExpanded .toolActions button {
+  min-height: 22px;
+  padding: 0 8px;
+  color: var(--ch-text-muted);
+  background: var(--ch-panel);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius);
+}
+
+.toolExpanded .toolActions button:hover,
+.toolExpanded .toolActions button:focus-visible {
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
 }
 
 .toolDisclosure:hover .toolActions,
