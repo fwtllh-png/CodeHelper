@@ -425,6 +425,7 @@
             "turn.started",
             "output.delta",
             "reasoning.delta",
+            "reasoning.completed",
             "search.result",
             "citation",
             "usage",
@@ -4493,9 +4494,28 @@
       },
       "additionalProperties": false
     },
+    "reasoning.completed": {
+      "type": "object",
+      "properties": {
+        "sample_id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sample_id",
+        "text"
+      ],
+      "additionalProperties": false
+    },
     "reasoning.delta": {
       "type": "object",
       "properties": {
+        "sample_id": {
+          "type": "string"
+        },
         "text": {
           "type": "string"
         }
@@ -5434,6 +5454,9 @@
         },
         "tool": {
           "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
         },
         "workspace_write_scope": {
           "type": "string"
@@ -7710,6 +7733,13 @@
       "item_owner": "turn",
       "durability": "retained",
       "correlation": "plan",
+      "terminal": false
+    },
+    "reasoning.completed": {
+      "class": "stream",
+      "item_owner": "turn",
+      "durability": "retained",
+      "correlation": "turn",
       "terminal": false
     },
     "reasoning.delta": {

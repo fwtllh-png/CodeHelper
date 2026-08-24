@@ -61,6 +61,7 @@ var unaryRouteContracts = []RouteContract{
 	rpc("workspace/browse", "workspace_browse", "workspace_entries", false, false),
 	rpc("workspace/search", "workspace_search", "workspace_entries", false, false),
 	rpc("workspace/resource", "workspace_resource", "workspace_resource", false, false),
+	rpc("workspace/open", "workspace_open", "workspace_open_result", false, false),
 	rpc("workspace/image", "workspace_resource", "workspace_image", false, false),
 	rpc("workspace/symbols", "workspace_symbols", "workspace_symbol_list", false, false),
 	rpc("workspace/diagnostics", "session_identity", "workspace_diagnostics", false, false),

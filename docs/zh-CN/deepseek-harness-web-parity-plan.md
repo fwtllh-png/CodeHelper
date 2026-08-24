@@ -272,7 +272,17 @@ Tool Variant 至少覆盖：
 原调用通过 Handle、Call ID 或相邻运行事实关联；无法可靠关联时保持独立折叠行，不猜测。
 
 Reasoning 默认折叠。运行中摘要显示最新非空行并跟随行尾；结束后恢复第一条稳定摘要。
-完整 Reasoning 只在用户主动展开后进入普通文档流。
+完整 Reasoning 只在用户主动展开后进入普通文档流。每次模型 Sample 完成后必须生成
+可持久化的 `reasoning.completed` 事实；瞬时 Delta 只负责流式体验，重载和切换 Session
+时由完成事实恢复多个独立 Think 段。
+
+Read、Shell 与 Search 不能回退为通用 Input/Output JSON：
+
+- Read 展开后使用带原始行号、语言标签、头尾折叠和复制动作的文件面板；
+- 文件摘要和 Search 结果路径通过受 Workspace 约束的 Host RPC 打开本机编辑器；
+- Shell 展开后使用命令、工作目录、运行状态、退出码和输出组成的 Terminal 面板；
+- Grep 按文件分组展示行号与匹配文本，Glob/File List 使用平铺路径列表；
+- 所有卡片默认折叠，长内容在卡片内部滚动，不改变 Transcript 宽度。
 
 ### 运行状态和统计
 

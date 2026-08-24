@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_tools_bash","function":{"name":"exec_command","arguments":"{\"command\":\"printf 'main.go\\nREADME.md\\n'\",\"description\":\"List focused workspace files\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

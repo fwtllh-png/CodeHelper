@@ -499,10 +499,8 @@ describe("projectTranscript", () => {
     const client = mockClient(value);
     render(<App client={client} />);
 
-    fireEvent.click(screen.getByRole("button", {name: /Exec Command/}));
-    fireEvent.click(screen.getByRole("button", {
-      name: "Add tool output to prompt context"
-    }));
+    fireEvent.click(screen.getByRole("button", {name: /Bash go test/}));
+    fireEvent.click(screen.getByRole("button", {name: "Add output"}));
 
     await waitFor(() => {
       expect(client.addTerminalContext).toHaveBeenCalledWith("call-1", "ok");
@@ -687,19 +685,22 @@ describe("projectTranscript", () => {
     expect(screen.getByRole("button", {name: "Chat"})).toBeTruthy();
   });
 
-  it("keeps successful tools and reasoning collapsed by default", () => {
+  it("renders durable Think and opens a line-numbered Read card in the editor", () => {
     const value = snapshot([
       event(1, "turn.started", {display_prompt: "Inspect"}),
-      event(2, "reasoning.delta", {text: "Checking the repository"}),
+      event(2, "reasoning.completed", {
+        sample_id: "sample-1",
+        text: "Checking the repository\nReading the manifest"
+      }),
       event(3, "tool.start", {
         call_id: "call",
         tool: "file_read",
-        arguments: {path: "README.md"}
+        arguments: {path: "README.md", start_line: 41}
       }),
       event(4, "tool.result", {
         call_id: "call",
         tool: "file_read",
-        output: "content",
+        output: "first line\nsecond line",
         is_error: false
       })
     ]);
@@ -707,14 +708,73 @@ describe("projectTranscript", () => {
       ...session,
       status: "completed"
     }));
-    const {container} = render(<App client={mockClient(value)} />);
+    const client = mockClient(value);
+    const {container} = render(<App client={client} />);
 
     expect(container.querySelectorAll(".disclosure pre")).toHaveLength(0);
     expect(screen.getByText("README.md")).toBeTruthy();
     expect(screen.getByText("Checking the repository")).toBeTruthy();
+    expect(screen.getByText("Think")).toBeTruthy();
     expect(screen.queryByText("completed", {exact: true})).toBeNull();
     expect(container.querySelectorAll(".transcript .disclosureLeading")).toHaveLength(2);
     expect(container.querySelectorAll(".transcript .disclosureChevron")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", {name: /Read README\.md/}));
+    expect(container.querySelector("[data-read]")).toBeTruthy();
+    expect(screen.getByText("41")).toBeTruthy();
+    expect(screen.getByText("first line")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", {name: "README.md"})[0]!);
+    expect(client.openWorkspacePath).toHaveBeenCalledWith("README.md");
+  });
+
+  it("renders Bash output and grouped Grep results as dedicated cards", () => {
+    const value = snapshot([
+      event(1, "tool.start", {
+        call_id: "bash",
+        tool: "exec_command",
+        arguments: {command: "go test ./...", cwd: "."}
+      }),
+      event(2, "tool.result", {
+        call_id: "bash",
+        tool: "exec_command",
+        output: "ok example/project",
+        is_error: false
+      }),
+      event(3, "command.execution", {
+        call_id: "bash",
+        command: "go test ./...",
+        status: "completed",
+        exit_code: 0
+      }),
+      event(4, "tool.start", {
+        call_id: "grep",
+        tool: "search_text",
+        arguments: {query: "Serve"}
+      }),
+      event(5, "tool.result", {
+        call_id: "grep",
+        tool: "search_text",
+        output: JSON.stringify({
+          matches: [
+            {file: "server.go", line: 18, text: "func Serve() {}"},
+            {file: "server.go", line: 31, text: "Serve()"}
+          ],
+          total: 2,
+          truncated: false
+        }),
+        is_error: false
+      })
+    ]);
+    const {container} = render(<App client={mockClient(value)} />);
+
+    fireEvent.click(screen.getByRole("button", {name: /Bash go test/}));
+    expect(container.querySelector("[data-terminal]")).toBeTruthy();
+    expect(screen.getByText("ok example/project")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", {name: /Grep Serve/}));
+    expect(container.querySelector("[data-search='search-matches']")).toBeTruthy();
+    expect(screen.getByText("2 matches · 1 files")).toBeTruthy();
+    expect(screen.getByText("18:")).toBeTruthy();
   });
 
   it("disables Session-bound controls while the selected Session hydrates", () => {
@@ -782,7 +842,7 @@ describe("projectTranscript", () => {
     const client = mockClient(value);
     render(<App client={client} />);
 
-    fireEvent.click(screen.getByRole("button", {name: /File Read/}));
+    fireEvent.click(screen.getByRole("button", {name: /Read README\.md/}));
     fireEvent.click(screen.getByRole("button", {name: "Inspect"}));
 
     const trajectory = await screen.findByLabelText("Execution trajectory");
@@ -840,6 +900,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
   return {
     phase: "ready",
     workspaceRoot: "/workspace",
+    canOpenPath: true,
     includeArchived: false,
     contextResources: [],
     sessions: [session],
@@ -958,6 +1019,19 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
       path: ".",
       entries: [],
       more: false
+    })),
+    readWorkspaceResource: vi.fn(async () => ({
+      path: "README.md",
+      uri: "file:///workspace/README.md",
+      document_version: 1,
+      content: "",
+      digest: "0".repeat(64),
+      bytes: 0,
+      content_handle: "content"
+    })),
+    openWorkspacePath: vi.fn(async (path: string) => ({
+      opened: true as const,
+      path
     })),
     readWorkspaceImage: vi.fn(async () => {
       throw new Error("image not configured");

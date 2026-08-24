@@ -455,6 +455,16 @@
       "requires_capability": true
     },
     {
+      "path": "/api/v1/workspace/open",
+      "method": "POST",
+      "request": "workspace_open",
+      "response": "workspace_open_result",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
       "path": "/api/v1/workspace/resource",
       "method": "POST",
       "request": "workspace_resource",

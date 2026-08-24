@@ -48,6 +48,13 @@ export type ConversationNode =
       readonly output: string;
       readonly errorSummary: string;
       readonly execution?: Record<string, unknown>;
+      readonly command?: {
+        readonly command: string;
+        readonly status: string;
+        readonly exitCode?: number;
+        readonly durationMS?: number;
+      };
+      readonly truncated: boolean;
       readonly changes: readonly Record<string, unknown>[];
       readonly recovery?: Record<string, unknown>;
       readonly contextText?: string;
@@ -143,6 +150,9 @@ export class ConversationProjection {
       case "reasoning.delta":
         this.appendReasoning(event, stringValue(data.text));
         break;
+      case "reasoning.completed":
+        this.finishReasoning(event, stringValue(data.text));
+        break;
       case "tool.start":
         this.startTool(event);
         break;
@@ -151,6 +161,9 @@ export class ConversationProjection {
         break;
       case "tool.result":
         this.finishTool(event);
+        break;
+      case "command.execution":
+        this.updateCommandExecution(event);
         break;
       case "approval.required":
         this.approvals.set(requestID(event), event);
@@ -255,10 +268,11 @@ export class ConversationProjection {
   }
 
   private appendReasoning(event: RuntimeEvent, delta: string): void {
-    const id = this.reasoningByTurn.get(event.turn_id) ?? `reasoning-${event.turn_id}`;
+    const key = reasoningKey(event);
+    const id = this.reasoningByTurn.get(key) ?? `reasoning-${key}`;
     const previous = this.nodes.get(id);
     const text = previous?.kind === "reasoning" ? previous.text + delta : delta;
-    this.reasoningByTurn.set(event.turn_id, id);
+    this.reasoningByTurn.set(key, id);
     this.put({
       id,
       kind: "reasoning",
@@ -268,6 +282,25 @@ export class ConversationProjection {
       summary: lastNonEmptyLine(text) || "Thinking",
       running: this.activeTurns.has(event.turn_id)
     });
+  }
+
+  private finishReasoning(event: RuntimeEvent, text: string): void {
+    const key = reasoningKey(event);
+    const currentID = this.reasoningByTurn.get(key);
+    const current = currentID ? this.nodes.get(currentID) : undefined;
+    const id = current?.kind === "reasoning"
+      ? current.id
+      : `reasoning-${event.id}`;
+    this.put({
+      id,
+      kind: "reasoning",
+      turnID: event.turn_id,
+      sequence: current?.sequence ?? event.sequence,
+      text,
+      summary: firstNonEmptyLine(text) || "Thinking",
+      running: false
+    });
+    this.reasoningByTurn.delete(key);
   }
 
   private startTool(event: RuntimeEvent): void {
@@ -291,6 +324,7 @@ export class ConversationProjection {
       arguments: args,
       output: "",
       errorSummary: "",
+      truncated: false,
       changes: []
     });
   }
@@ -324,9 +358,26 @@ export class ConversationProjection {
       output,
       errorSummary: failed ? firstNonEmptyLine(output) || "Tool failed" : "",
       execution: isRecord(event.data.execution) ? event.data.execution : undefined,
+      truncated: Boolean(event.data.truncated),
       changes,
       recovery: isRecord(event.data.recovery) ? event.data.recovery : undefined,
       contextText: output || undefined
+    });
+  }
+
+  private updateCommandExecution(event: RuntimeEvent): void {
+    const node = this.toolNode(event);
+    if (!node) return;
+    const exitCode = numberValue(event.data.exit_code);
+    const durationMS = numberValue(event.data.duration_ms);
+    this.put({
+      ...node,
+      command: {
+        command: stringValue(event.data.command),
+        status: stringValue(event.data.status),
+        ...(exitCode === undefined ? {} : {exitCode}),
+        ...(durationMS === undefined ? {} : {durationMS})
+      }
     });
   }
 
@@ -338,14 +389,14 @@ export class ConversationProjection {
     for (const [key, pending] of this.inputs) {
       if (pending.turn_id === event.turn_id) this.inputs.delete(key);
     }
-    const reasoningID = this.reasoningByTurn.get(event.turn_id);
-    const reasoning = reasoningID ? this.nodes.get(reasoningID) : undefined;
-    if (reasoning?.kind === "reasoning") {
-      this.put({
-        ...reasoning,
-        summary: firstNonEmptyLine(reasoning.text) || "Reasoning",
-        running: false
-      });
+    for (const [key, reasoningID] of this.reasoningByTurn) {
+      const reasoning = this.nodes.get(reasoningID);
+      if (reasoning?.kind !== "reasoning" ||
+          reasoning.turnID !== event.turn_id) {
+        continue;
+      }
+      this.put({...reasoning, running: false});
+      this.reasoningByTurn.delete(key);
     }
     if (event.kind === "turn.completed") {
       const finalText = stringValue(event.data.text ?? event.data.summary);
@@ -406,8 +457,19 @@ function requestID(event: RuntimeEvent): string {
   return stringValue(event.data.request_id) || event.id;
 }
 
+function reasoningKey(event: RuntimeEvent): string {
+  const sampleID = stringValue(event.data.sample_id);
+  return `${event.turn_id}:${sampleID || "active"}`;
+}
+
 function stringValue(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function firstNonEmptyLine(value: string): string {
@@ -436,6 +498,10 @@ function toolVariant(tool: string, data: Record<string, unknown>): ToolVariant {
     case "read_file":
       return "read";
     case "text_search":
+    case "search_text":
+    case "search_project":
+    case "search_files":
+    case "file_list":
     case "file_search":
     case "symbol_search":
     case "grep":
@@ -455,6 +521,26 @@ function toolVariant(tool: string, data: Record<string, unknown>): ToolVariant {
 }
 
 function toolTitle(tool: string): string {
+  switch (tool) {
+    case "file_read":
+    case "read":
+    case "read_file":
+      return "Read";
+    case "exec_command":
+    case "shell":
+    case "shell_read":
+      return "Bash";
+    case "text_search":
+    case "search_text":
+    case "search_project":
+    case "grep":
+      return "Grep";
+    case "file_search":
+    case "search_files":
+    case "file_list":
+    case "glob":
+      return "Glob";
+  }
   return tool
     .replaceAll("_", " ")
     .replace(/\b\w/g, (value) => value.toUpperCase());

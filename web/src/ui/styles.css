@@ -1092,7 +1092,8 @@ textarea:disabled {
   box-shadow: inset 2px 0 var(--ch-danger);
 }
 
-.disclosure > button {
+.disclosure > button,
+.disclosureRow {
   display: flex;
   width: 100%;
   height: 24px;
@@ -1108,16 +1109,19 @@ textarea:disabled {
   line-height: 24px;
 }
 
-.disclosure > button:hover {
+.disclosure > button:hover,
+.disclosureRow:hover {
   color: var(--ch-text);
   background: var(--ch-panel-subtle);
 }
 
-.disclosure > button:hover .disclosureTitle {
+.disclosure > button:hover .disclosureTitle,
+.disclosureRow:hover .disclosureTitle {
   color: var(--ch-text);
 }
 
-.disclosure > button:hover small {
+.disclosure > button:hover small,
+.disclosureRow:hover small {
   color: var(--ch-text-secondary);
 }
 
@@ -1178,14 +1182,20 @@ textarea:disabled {
 }
 
 .disclosure > button[aria-expanded="true"] .disclosureIcon,
+.disclosureRow[aria-expanded="true"] .disclosureIcon,
 .disclosure > button:hover .disclosureIcon,
-.disclosure > button:focus-visible .disclosureIcon {
+.disclosure > button:focus-visible .disclosureIcon,
+.disclosureRow:hover .disclosureIcon,
+.disclosureRow:focus-visible .disclosureIcon {
   opacity: 0;
 }
 
 .disclosure > button[aria-expanded="true"] .disclosureChevron,
+.disclosureRow[aria-expanded="true"] .disclosureChevron,
 .disclosure > button:hover .disclosureChevron,
-.disclosure > button:focus-visible .disclosureChevron {
+.disclosure > button:focus-visible .disclosureChevron,
+.disclosureRow:hover .disclosureChevron,
+.disclosureRow:focus-visible .disclosureChevron {
   opacity: 1;
 }
 
@@ -1211,41 +1221,381 @@ textarea:disabled {
   animation: text-shimmer var(--ch-motion-shimmer) linear infinite;
 }
 
-.toolDisclosure[data-running] {
+.reasoningDisclosure[data-running] > button,
+.toolDisclosure[data-running] > .disclosureRow {
   position: relative;
   overflow: hidden;
 }
 
-.toolDisclosure[data-running]::after {
+.reasoningDisclosure[data-running] > button::after,
+.toolDisclosure[data-running] > .disclosureRow::after {
   position: absolute;
-  bottom: 0;
-  left: -35%;
-  width: 35%;
-  height: 1px;
+  inset-block: 0;
+  left: -300px;
+  width: 300px;
   content: "";
-  background: var(--ch-business);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--ch-panel) 60%, transparent) 55%,
+    transparent 100%
+  );
   animation: tool-sweep var(--ch-motion-tool) var(--ch-ease-in-out) infinite;
+  pointer-events: none;
 }
 
-.toolBody {
-  display: grid;
-  gap: 8px;
-  padding: 0;
+.reasoningDisclosure small[data-follow-end] {
+  text-overflow: clip;
 }
 
-.toolBody section {
-  min-width: 0;
-}
-
-.toolBody strong {
+.thinkBody {
+  padding: 4px 0 4px 22px;
   color: var(--ch-text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
+  font-size: 14px;
+  line-height: 24px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-.toolBody pre {
-  margin: 4px 0 0;
+.disclosureRow[role="button"] {
+  cursor: pointer;
+}
+
+.toolFileLink {
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+  color: var(--ch-text-secondary);
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--ch-text-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  text-underline-offset: 3px;
+}
+
+.toolFileLink:hover,
+.toolFileLink:focus-visible {
+  color: var(--ch-text);
+  text-decoration-color: currentcolor;
+}
+
+.toolExpanded {
+  display: flex;
+  flex-direction: column;
+}
+
+.toolSurface,
+.toolIOCard {
+  width: calc(100% - 4px);
+  margin: 4px 0 4px 4px;
+  overflow: hidden;
+  color: var(--ch-text-secondary);
+  background: var(--ch-code);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.toolSurfaceHeader,
+.terminalHeader {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.toolSurfaceHeader > span:first-child {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surfaceFileLink,
+.surfaceFileLabel {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  color: var(--ch-text);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surfaceFileLink {
+  padding: 0;
+  background: transparent;
+}
+
+.surfaceFileLink:hover,
+.surfaceFileLink:focus-visible {
+  color: var(--ch-business);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.surfaceMeta {
+  flex: 0 0 auto;
+  color: var(--ch-text-muted);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 11px;
+}
+
+.surfaceCopy {
+  display: inline-flex;
+  height: 22px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px;
+  color: var(--ch-text-muted);
+  background: transparent;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 11px;
+}
+
+.surfaceCopy:hover,
+.surfaceCopy:focus-visible {
+  color: var(--ch-text);
+}
+
+.readBody,
+.searchBody,
+.terminalOutput {
+  max-height: 288px;
+  padding: 10px 0;
+  overflow: auto;
+}
+
+.readLine,
+.searchMatch,
+.terminalLine {
+  display: grid;
+  min-width: max-content;
+  min-height: 18px;
+  align-items: baseline;
+}
+
+.readLine {
+  grid-template-columns: 54px minmax(max-content, 1fr);
+}
+
+.readLine > span,
+.searchMatch > span {
+  color: var(--ch-text-caption);
+  text-align: right;
+  user-select: none;
+}
+
+.readLine > span {
+  padding-right: 14px;
+}
+
+.readLine code {
+  padding-right: 16px;
+  color: var(--ch-text-secondary);
+  white-space: pre;
+}
+
+.terminalHeader {
+  align-items: baseline;
+}
+
+.terminalStateDot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  background: var(--ch-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--ch-accent-soft);
+}
+
+.terminalCard[data-failed] .terminalStateDot {
+  background: var(--ch-danger);
+  box-shadow: 0 0 0 3px var(--ch-danger-soft);
+}
+
+.terminalCard[data-running] .terminalStateDot {
+  animation: terminal-pulse var(--ch-motion-pending) ease-in-out infinite;
+}
+
+.terminalCwd {
+  flex: 0 0 auto;
+  color: var(--ch-text-muted);
+}
+
+.terminalHeader code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--ch-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminalExit {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  color: var(--ch-danger);
+  background: var(--ch-danger-soft);
+  border-radius: 999px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 10px;
+}
+
+.terminalOutput {
+  padding: 10px 16px;
+  white-space: pre;
+}
+
+.terminalLine {
+  display: block;
+}
+
+.searchBody {
+  padding: 8px 16px 10px;
+}
+
+.searchFile,
+.searchPath,
+.searchFileLabel,
+.searchPathLabel {
+  display: flex;
+  width: 100%;
+  min-width: max-content;
+  min-height: 24px;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  color: var(--ch-text);
+  text-align: left;
+  background: transparent;
+}
+
+.searchFile,
+.searchFileLabel {
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.searchFile:first-child,
+.searchFileLabel:first-child {
+  margin-top: 0;
+}
+
+.searchFile:hover span,
+.searchPath:hover span,
+.searchFile:focus-visible span,
+.searchPath:focus-visible span {
+  color: var(--ch-business);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.searchFile small,
+.searchFileLabel small {
+  color: var(--ch-text-caption);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.searchMatch {
+  grid-template-columns: 42px minmax(max-content, 1fr);
+}
+
+.searchMatch > span {
+  padding-right: 8px;
+}
+
+.searchMatch code {
+  padding-right: 16px;
+  color: var(--ch-text-secondary);
+  white-space: pre;
+}
+
+.expandRows {
+  display: block;
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  color: var(--ch-text-muted);
+  text-align: left;
+  background: transparent;
+}
+
+.expandRows:hover,
+.expandRows:focus-visible {
+  color: var(--ch-text);
+}
+
+.emptyToolOutput {
+  color: var(--ch-text-muted);
+}
+
+.toolIOCard section {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 14px;
+  max-height: 180px;
+  padding: 12px 16px;
+  overflow: auto;
+}
+
+.toolIOCard section + section {
+  border-top: 1px solid var(--ch-border);
+}
+
+.toolIOCard section > span {
+  color: var(--ch-text-caption);
+}
+
+.toolIOCard pre {
+  width: auto;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  color: var(--ch-text-secondary);
+  background: transparent;
+  border: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.toolIOCard pre[data-error] {
+  color: var(--ch-danger);
+}
+
+.toolActions {
+  min-height: 24px;
+  margin: 2px 0 2px 4px;
+  opacity: 0;
+  transition: opacity var(--ch-motion-disclosure) var(--ch-ease-in-out);
+}
+
+.toolDisclosure:hover .toolActions,
+.toolActions:focus-within {
+  opacity: 1;
+}
+
+@keyframes terminal-pulse {
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .terminalState,

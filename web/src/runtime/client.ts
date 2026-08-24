@@ -42,6 +42,7 @@ import type {
   WorkspaceDiagnostics,
   WorkspaceDiff,
   WorkspaceImage,
+  WorkspaceOpenResult,
   WorkspaceResource,
   WorkspaceSearchResult,
   WorkspaceSymbol,
@@ -75,6 +76,7 @@ export type RuntimePhase =
 export interface RuntimeSnapshot {
   phase: RuntimePhase;
   workspaceRoot: string;
+  canOpenPath: boolean;
   includeArchived: boolean;
   contextResources: readonly EditorContextReference[];
   sessions: readonly SessionSummary[];
@@ -112,6 +114,7 @@ type Hydration = {
 const emptySnapshot: RuntimeSnapshot = {
   phase: "booting",
   workspaceRoot: "",
+  canOpenPath: false,
   includeArchived: false,
   contextResources: [],
   sessions: [],
@@ -203,6 +206,7 @@ export class RuntimeClient {
         this.update({
           phase: bootstrap.problem ? "failed" : "booting",
           workspaceRoot: bootstrap.workspace_root ?? "",
+          canOpenPath: Boolean(bootstrap.can_open_path),
           problem: bootstrap.problem
         });
         if (!bootstrap.problem) {
@@ -214,6 +218,7 @@ export class RuntimeClient {
       this.update({
         phase: "reconnecting",
         workspaceRoot: bootstrap.workspace_root ?? "",
+        canOpenPath: Boolean(bootstrap.can_open_path),
         problem: undefined
       });
       this.socket?.close(1000, "client reconnect");
@@ -706,6 +711,10 @@ export class RuntimeClient {
 
   async readWorkspaceResource(path: string): Promise<WorkspaceResource> {
     return this.call<WorkspaceResource>("workspace/resource", {path});
+  }
+
+  async openWorkspacePath(path: string): Promise<WorkspaceOpenResult> {
+    return this.call<WorkspaceOpenResult>("workspace/open", {path});
   }
 
   async readWorkspaceImage(path: string): Promise<WorkspaceImage> {

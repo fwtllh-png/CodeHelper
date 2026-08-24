@@ -9,26 +9,30 @@ describe("ConversationProjection", () => {
   it("matches a full rebuild after incremental application", () => {
     const events = [
       event(1, "turn.started", {display_prompt: "Inspect the workspace"}),
-      event(2, "reasoning.delta", {text: "Find files\n"}),
-      event(3, "reasoning.delta", {text: "Read the manifest"}),
-      event(4, "tool.start", {
+      event(2, "reasoning.delta", {sample_id: "sample-1", text: "Find files\n"}),
+      event(3, "reasoning.delta", {sample_id: "sample-1", text: "Read the manifest"}),
+      event(4, "reasoning.completed", {
+        sample_id: "sample-1",
+        text: "Find files\nRead the manifest"
+      }),
+      event(5, "tool.start", {
         call_id: "call-1",
         tool: "file_read",
         arguments: {path: "README.md"}
       }),
-      event(5, "tool.output", {call_id: "call-1", chunk: "# Code"}),
-      event(6, "tool.result", {
+      event(6, "tool.output", {call_id: "call-1", chunk: "# Code"}),
+      event(7, "tool.result", {
         call_id: "call-1",
         output: "# CodeHelper",
         is_error: false
       }),
-      event(7, "output.delta", {text: "Done"}),
-      event(8, "turn.receipt", {
+      event(8, "output.delta", {text: "Done"}),
+      event(9, "turn.receipt", {
         outcome: "answered",
         input_tokens: 20,
         output_tokens: 4
       }),
-      event(9, "turn.completed", {text: "Done", outcome: "answered"})
+      event(10, "turn.completed", {text: "Done", outcome: "answered"})
     ];
     const incremental = new ConversationProjection();
     for (const value of events) incremental.apply(value);
@@ -36,6 +40,35 @@ describe("ConversationProjection", () => {
     expect(serializable(incremental.snapshot())).toEqual(
       serializable(projectConversation(events))
     );
+  });
+
+  it("replaces transient reasoning with one durable block per model sample", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.started", {display_prompt: "Inspect"}),
+      event(2, "reasoning.delta", {sample_id: "one", text: "First draft"}),
+      event(3, "reasoning.completed", {sample_id: "one", text: "First thought"}),
+      event(4, "tool.start", {
+        call_id: "call",
+        tool: "file_read",
+        arguments: {path: "README.md"}
+      }),
+      event(5, "tool.result", {
+        call_id: "call",
+        output: "content",
+        is_error: false
+      }),
+      event(6, "reasoning.completed", {sample_id: "two", text: "Second thought"}),
+      event(7, "turn.completed", {text: "Done"})
+    ]);
+    const reasoning = snapshot.order.flatMap((id) => {
+      const node = snapshot.nodes.get(id);
+      return node?.kind === "reasoning" ? [node] : [];
+    });
+
+    expect(reasoning).toMatchObject([
+      {text: "First thought", running: false},
+      {text: "Second thought", running: false}
+    ]);
   });
 
   it("keeps settled node references stable when a different node streams", () => {

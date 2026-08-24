@@ -53,6 +53,17 @@ func TestServiceBrowsesSearchesAndReadsWithinWorkspace(t *testing.T) {
 		resource.Digest == "" {
 		t.Fatalf("resource = %+v", resource)
 	}
+	resolved, err := service.ResolveFile("src/main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved != filepath.Join(canonicalRoot, "src", "main.go") {
+		t.Fatalf("resolved file = %q", resolved)
+	}
 }
 
 func TestServiceRejectsEscapesAndSkippedPaths(t *testing.T) {
@@ -64,6 +75,12 @@ func TestServiceRejectsEscapesAndSkippedPaths(t *testing.T) {
 	}
 	if _, err := service.Resource(t.Context(), "../secret"); err == nil {
 		t.Fatal("expected traversal rejection")
+	}
+	if _, err := service.ResolveFile("../secret"); err == nil {
+		t.Fatal("expected open traversal rejection")
+	}
+	if _, err := service.ResolveFile("."); err == nil {
+		t.Fatal("expected directory open rejection")
 	}
 	if _, err := service.Resource(t.Context(), "node_modules/secret"); err == nil {
 		t.Fatal("expected skipped path rejection")

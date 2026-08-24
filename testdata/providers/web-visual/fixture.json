@@ -25,6 +25,16 @@
       "streams": ["failure.sse"]
     },
     {
+      "match": ["visual tools"],
+      "streams": [
+        "tools-read.sse",
+        "tools-bash.sse",
+        "tools-grep.sse",
+        "tools-glob.sse",
+        "tools-complete.sse"
+      ]
+    },
+    {
       "match": ["visual diff"],
       "streams": [
         "diff-read.sse",

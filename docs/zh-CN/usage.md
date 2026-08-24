@@ -226,6 +226,12 @@ Web 的 Session usage 默认使用 `include_children=true`，因此父 Session �
 Composer 下方的 Stats 使用一条可整体省略的摘要展示 Turn、Tool、总耗时、模型耗时、
 Tool 耗时、TTFT、Token、Cache 和 Cost；完整明细保留在 Tooltip 中，不逐项压缩。
 
+模型推理在 Chat 中显示为可折叠的 `Think` 行。运行时摘要跟随最新内容，每次模型
+Sample 完成后持久化完整推理，因此重载页面或切换 Session 后仍可恢复多个独立 Think
+段。Read、Bash、Grep/Glob 分别使用带行号的文件面板、Terminal 面板和分组搜索面板；
+文件名与搜索结果路径可通过仅接受当前 Workspace 普通文件的 Host 接口在本机编辑器中
+打开。
+
 Web 删除 Session 时会要求显式确认。对于已失去执行者的未完成 Turn 或隔离 worktree，
 确认删除表示同时丢弃其未完成状态和隔离改动；仍有内存执行者或恢复中 Operation 的
 Session 会拒绝删除，必须先停止执行。

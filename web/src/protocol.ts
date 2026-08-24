@@ -31,6 +31,7 @@ export interface Bootstrap {
   draining: boolean;
   workspace_root?: string;
   workspace?: WorkspaceIdentity;
+  can_open_path?: boolean;
   problem?: Problem;
 }
 
@@ -402,6 +403,11 @@ export interface WorkspaceSearchResult {
   query: string;
   matches: WorkspaceSearchMatch[];
   more: boolean;
+}
+
+export interface WorkspaceOpenResult {
+  opened: true;
+  path: string;
 }
 
 export interface WorkspaceResource {

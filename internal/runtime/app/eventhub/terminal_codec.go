@@ -47,6 +47,8 @@ func EventKind(data protocol.EventData) protocol.EventKind {
 		return protocol.EventOutputDelta
 	case *protocol.ReasoningDeltaData:
 		return protocol.EventReasoningDelta
+	case *protocol.ReasoningCompletedData:
+		return protocol.EventReasoningCompleted
 	case *protocol.SearchResultData:
 		return protocol.EventSearchResult
 	case *protocol.CitationData:

@@ -37,6 +37,7 @@ var eventData = []struct {
 	{EventTurnStarted, func() EventData { return &TurnStartedData{} }},
 	{EventOutputDelta, func() EventData { return &OutputDeltaData{} }},
 	{EventReasoningDelta, func() EventData { return &ReasoningDeltaData{} }},
+	{EventReasoningCompleted, func() EventData { return &ReasoningCompletedData{} }},
 	{EventSearchResult, func() EventData { return &SearchResultData{} }},
 	{EventCitation, func() EventData { return &CitationData{} }},
 	{EventUsage, func() EventData { return &UsageData{} }},

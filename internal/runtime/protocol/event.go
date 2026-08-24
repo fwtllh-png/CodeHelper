@@ -17,6 +17,7 @@ const (
 	EventTurnStarted        EventKind = "turn.started"
 	EventOutputDelta        EventKind = "output.delta"
 	EventReasoningDelta     EventKind = "reasoning.delta"
+	EventReasoningCompleted EventKind = "reasoning.completed"
 	EventSearchResult       EventKind = "search.result"
 	EventCitation           EventKind = "citation"
 	EventUsage              EventKind = "usage"
@@ -157,11 +158,34 @@ func (*OutputDeltaData) eventKind() EventKind { return EventOutputDelta }
 
 func (d *OutputDeltaData) validate() error { return (*TextDeltaData)(d).validate() }
 
-type ReasoningDeltaData TextDeltaData
+type ReasoningDeltaData struct {
+	Text     string `json:"text"`
+	SampleID string `json:"sample_id,omitempty"`
+}
 
 func (*ReasoningDeltaData) eventKind() EventKind { return EventReasoningDelta }
 
-func (d *ReasoningDeltaData) validate() error { return (*TextDeltaData)(d).validate() }
+func (d *ReasoningDeltaData) validate() error {
+	return require(d.Text != "", "reasoning delta text is required")
+}
+
+// ReasoningCompletedData retains one complete model-sample reasoning block.
+// Streaming deltas remain transient and are replaced by this durable fact.
+type ReasoningCompletedData struct {
+	Text     string `json:"text"`
+	SampleID string `json:"sample_id"`
+}
+
+func (*ReasoningCompletedData) eventKind() EventKind {
+	return EventReasoningCompleted
+}
+
+func (d *ReasoningCompletedData) validate() error {
+	return require(
+		d.Text != "" && d.SampleID != "",
+		"completed reasoning text and sample_id are required",
+	)
+}
 
 type Source struct {
 	ID    string `json:"id"`
@@ -367,6 +391,7 @@ type ToolResultData struct {
 	Completion          *CompletionDeclaration `json:"completion,omitempty"`
 	WorkspaceWriteScope string                 `json:"workspace_write_scope,omitempty"`
 	ObservedChanges     *int                   `json:"observed_changes,omitempty"`
+	Truncated           bool                   `json:"truncated,omitempty"`
 }
 
 type CompletionDeclaration struct {

@@ -28,7 +28,6 @@ import {
   Play,
   RefreshCw,
   RotateCcw,
-  ScanSearch,
   Search,
   Send,
   Settings2,
@@ -75,6 +74,7 @@ import {RuntimeClient, type RuntimeSnapshot} from "../runtime/client";
 import {CapybaraMark} from "./brand/CapybaraMark";
 import {CodeHelperWordmark} from "./brand/CodeHelperWordmark";
 import {experience} from "./experience";
+import {ReasoningDisclosure, ToolDisclosure} from "./TranscriptCards";
 
 interface Props {
   client: RuntimeClient;
@@ -823,6 +823,7 @@ export function App({client}: Props) {
                   client={client}
                   onError={reportLocalError}
                   onInspect={inspectTool}
+                  canOpenPath={snapshot.canOpenPath}
                 />
               ))
             )}
@@ -1678,12 +1679,14 @@ const TranscriptItem = memo(function TranscriptItem({
   entry,
   client,
   onError,
-  onInspect
+  onInspect,
+  canOpenPath
 }: {
   entry: ConversationNode;
   client: RuntimeClient;
   onError: (error: unknown) => void;
   onInspect: (callID: string) => void;
+  canOpenPath: boolean;
 }) {
   const [open, setOpen] = useState(false);
   if (entry.kind === "user") {
@@ -1758,67 +1761,20 @@ const TranscriptItem = memo(function TranscriptItem({
     );
   }
   if (entry.kind === "reasoning") {
-    return (
-      <div className="disclosure reasoningDisclosure" data-running={entry.running || undefined}>
-        <button onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-          <DisclosureLeading open={open} icon={<FileCode2 size={14} />} />
-          <span className="disclosureTitle">Reasoning</span>
-          <span className="disclosureSeparator" aria-hidden="true" />
-          <small>{entry.summary}</small>
-        </button>
-        {open && <pre>{entry.text}</pre>}
-      </div>
-    );
+    return <ReasoningDisclosure entry={entry} />;
   }
-  return (
-    <div
-      className="disclosure toolDisclosure"
-      data-failed={entry.state === "failed" || undefined}
-      data-running={entry.state === "running" || undefined}
-      data-call-id={entry.callID}
-    >
-      <button onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-        <DisclosureLeading open={open} icon={<TerminalSquare size={14} />} />
-        <span className="disclosureTitle">{entry.title}</span>
-        <span className="disclosureSeparator" aria-hidden="true" />
-        <small>{entry.errorSummary || entry.summary}</small>
-        {entry.state !== "completed" && (
-          <span className="srOnly">{entry.state}</span>
-        )}
-      </button>
-      {open && (
-        <>
-          <div className="toolBody">
-            <section>
-              <strong>Input</strong>
-              <pre>{pretty(entry.arguments)}</pre>
-            </section>
-            {entry.output && (
-              <section>
-                <strong>Output</strong>
-                <pre>{entry.output}</pre>
-              </section>
-            )}
-          </div>
-          {entry.contextText && (
-            <div className="artifactActions">
-              <button onClick={() => onInspect(entry.callID)}>
-                <ScanSearch size={13} /> Inspect
-              </button>
-              <button
-                onClick={() => void client.addTerminalContext(
-                  entry.callID,
-                  entry.contextText ?? ""
-                ).catch(onError)}
-              >
-                <Plus size={13} /> Add tool output to prompt context
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+  return <ToolDisclosure
+    entry={entry}
+    onInspect={onInspect}
+    onAddContext={(callID, text) => {
+      void client.addTerminalContext(callID, text).catch(onError);
+    }}
+    {...(canOpenPath ? {
+      onOpenFile: (path: string) => {
+        void client.openWorkspacePath(path).catch(onError);
+      }
+    } : {})}
+  />;
 });
 
 function TurnStatus({

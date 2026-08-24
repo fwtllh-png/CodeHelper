@@ -133,12 +133,12 @@ test("captures collapsed tools, expanded tool detail, and trajectory", async ({p
   await expect(tool).toHaveAttribute("data-call-id", /.+/);
   await expect(tool.locator("pre")).toHaveCount(0);
   await expect(tool.locator(".disclosureChevron")).toHaveCSS("opacity", "0");
-  await expect(tool.locator(":scope > button")).not.toContainText("completed");
+  await expect(tool.locator(":scope > .disclosureRow")).not.toContainText("completed");
   await expect(page).toHaveScreenshot("canonical-tool-collapsed.png");
 
-  await tool.locator(":scope > button").hover();
+  await tool.locator(":scope > .disclosureRow").hover();
   await expect(tool.locator(".disclosureChevron")).toHaveCSS("opacity", "1");
-  await tool.locator(":scope > button").click();
+  await tool.locator(":scope > .disclosureRow").click();
   await expect(tool.locator("pre")).not.toHaveCount(0);
   await expect(page).toHaveScreenshot("canonical-tool-expanded.png");
 
@@ -147,6 +147,38 @@ test("captures collapsed tools, expanded tool detail, and trajectory", async ({p
   await expect(page.getByRole("complementary", {name: "Record inspector"}))
     .toBeVisible();
   await expect(page).toHaveScreenshot("canonical-trajectory.png");
+});
+
+test("captures Think and specialized Read, Bash, Grep, and Glob cards", async ({page}) => {
+  await createSession(page);
+  await page.getByLabel("Approval").selectOption("auto");
+  await submitPrompt(page, "visual tools");
+  await expect(page.locator(".assistantMessage").last())
+    .toContainText("Inspected the workspace with focused tools.");
+
+  const think = page.locator(".reasoningDisclosure");
+  await expect(think).toContainText("Think");
+  await expect(think).toContainText("I will inspect the file");
+
+  const read = page.locator('.toolDisclosure[data-variant="read"]').first();
+  await read.locator(".disclosureRow").click();
+  await expect(read.locator("[data-read]")).toBeVisible();
+  await read.scrollIntoViewIfNeeded();
+  await expect(page).toHaveScreenshot("canonical-think-read.png");
+
+  const bash = page.locator('.toolDisclosure[data-variant="shell"]').first();
+  await bash.locator(".disclosureRow").click();
+  await expect(bash.locator("[data-terminal]")).toBeVisible();
+  await bash.scrollIntoViewIfNeeded();
+  await expect(page).toHaveScreenshot("canonical-bash.png");
+
+  const searches = page.locator('.toolDisclosure[data-variant="search"]');
+  await searches.nth(0).locator(".disclosureRow").click();
+  await searches.nth(1).locator(".disclosureRow").click();
+  await expect(searches.nth(0).locator("[data-search]")).toBeVisible();
+  await expect(searches.nth(1).locator("[data-search]")).toBeVisible();
+  await searches.nth(0).scrollIntoViewIfNeeded();
+  await expect(page).toHaveScreenshot("canonical-search.png");
 });
 
 test("captures streaming and completed states", async ({page}) => {

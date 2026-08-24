@@ -507,6 +507,7 @@ func (a *EngineAdapter) StartTurn(
 					Changes:   changes, Recovery: recovery, Completion: completion,
 					WorkspaceWriteScope: workspaceWriteScope,
 					ObservedChanges:     observedChanges,
+					Truncated:           event.Result.Truncated,
 				}); err != nil {
 					return err
 				}
@@ -892,6 +893,12 @@ func CostMicrounits(costUSD float64) uint64 {
 	return uint64(math.Round(costUSD * 1e6))
 }
 func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
+	if event.ReasoningCompleted != nil {
+		return sink.Emit(&protocol.ReasoningCompletedData{
+			Text:     event.ReasoningCompleted.Text,
+			SampleID: event.ReasoningCompleted.SampleID,
+		})
+	}
 	if event.Plan != nil {
 		return sink.Emit(&protocol.PlanDeltaData{
 			Text: event.Plan.Delta, Body: event.Plan.Body, Done: event.Plan.Done,
@@ -927,7 +934,10 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 			return sink.Emit((*protocol.OutputDeltaData)(&protocol.TextDeltaData{Text: event.Block.Text}))
 		case provider.ContentReasoning:
 			if event.Block.Text != "" {
-				return sink.Emit((*protocol.ReasoningDeltaData)(&protocol.TextDeltaData{Text: event.Block.Text}))
+				return sink.Emit(&protocol.ReasoningDeltaData{
+					Text:     event.Block.Text,
+					SampleID: event.SampleID,
+				})
 			}
 			return nil
 		}

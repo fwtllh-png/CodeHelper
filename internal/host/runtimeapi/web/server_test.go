@@ -553,7 +553,23 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := newTestServer(t, host)
+	var opened string
+	server, err := webhost.New(webhost.Options{
+		Assets: fstest.MapFS{
+			"index.html": &fstest.MapFile{
+				Data: []byte("<main>CodeHelper</main>"),
+				Mode: fs.FileMode(0o444),
+			},
+		},
+		ExpectedHost: host,
+		OpenPath: func(_ context.Context, target string) error {
+			opened = target
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := server.Activate(webhost.Dependencies{
 		Runtime: runtime, WorkspaceRoot: root,
 		WorkspaceIdentity: identity, Workspace: query,
@@ -581,12 +597,35 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 		strings.Contains(response.Body.String(), `"digest":"sha256:`) {
 		t.Fatalf("resource status=%d body=%s", response.Code, response.Body.String())
 	}
+	resourceBody := append([]byte(nil), response.Body.Bytes()...)
+	response = postWeb(
+		t,
+		server,
+		host,
+		token,
+		"workspace/open",
+		`{"path":"main.go"}`,
+	)
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK ||
+		!strings.Contains(response.Body.String(), `"opened":true`) ||
+		opened != filepath.Join(canonicalRoot, "main.go") {
+		t.Fatalf(
+			"open status=%d opened=%q body=%s",
+			response.Code,
+			opened,
+			response.Body.String(),
+		)
+	}
 	var resourceEnvelope struct {
 		Result struct {
 			ContentHandle string `json:"content_handle"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &resourceEnvelope); err != nil {
+	if err := json.Unmarshal(resourceBody, &resourceEnvelope); err != nil {
 		t.Fatal(err)
 	}
 	contentRequest := httptest.NewRequest(
@@ -697,6 +736,17 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	)
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("escape status=%d body=%s", response.Code, response.Body.String())
+	}
+	response = postWeb(
+		t,
+		server,
+		host,
+		token,
+		"workspace/open",
+		`{"path":"../secret"}`,
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("open escape status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

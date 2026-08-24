@@ -49,6 +49,7 @@ type Options struct {
 	Token        string
 	Build        string
 	Capacity     Capacity
+	OpenPath     func(context.Context, string) error
 }
 
 type TaskQuery interface {
@@ -109,6 +110,7 @@ type Server struct {
 	build        string
 	index        []byte
 	capacity     Capacity
+	openPath     func(context.Context, string) error
 	handler      http.Handler
 
 	mu           sync.RWMutex
@@ -135,6 +137,7 @@ type bootstrapResponse struct {
 	Draining        bool                        `json:"draining"`
 	WorkspaceRoot   string                      `json:"workspace_root,omitempty"`
 	Workspace       *protocol.WorkspaceIdentity `json:"workspace,omitempty"`
+	CanOpenPath     bool                        `json:"can_open_path"`
 	Problem         *protocol.Problem           `json:"problem,omitempty"`
 }
 
@@ -174,7 +177,10 @@ func New(options Options) (*Server, error) {
 	server := &Server{
 		assets: options.Assets, expectedHost: options.ExpectedHost,
 		origin: options.Origin, token: token, build: options.Build, index: index,
-		capacity: options.Capacity.normalized(),
+		capacity: options.Capacity.normalized(), openPath: options.OpenPath,
+	}
+	if server.openPath == nil {
+		server.openPath = nativeTextPathOpener()
 	}
 	server.handler = server.routes()
 	return server, nil
@@ -264,6 +270,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		Ready:           s.ready.Load(),
 		Draining:        s.draining.Load(),
 		WorkspaceRoot:   dependencies.WorkspaceRoot,
+		CanOpenPath:     s.openPath != nil,
 		Problem:         problem,
 	}
 	if dependencies.WorkspaceIdentity.Version != 0 {
@@ -419,6 +426,8 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.workspaceSearch(r, dependencies)
 	case "workspace/resource":
 		result, err = s.workspaceResource(r, dependencies)
+	case "workspace/open":
+		result, err = s.workspaceOpen(r, dependencies)
 	case "workspace/image":
 		result, err = s.workspaceImage(r, dependencies)
 	case "workspace/symbols":
@@ -474,6 +483,7 @@ func (s *Server) describe(dependencies Dependencies) map[string]any {
 		"protocol_version": webProtocol,
 		"workspace_root":   dependencies.WorkspaceRoot,
 		"workspace":        dependencies.WorkspaceIdentity,
+		"can_open_path":    s.openPath != nil,
 		"profile":          dependencies.DefaultProfile,
 		"features": []string{
 			"sessions", "events", "profiles", "tools", "mcp_health",
@@ -1430,6 +1440,42 @@ func (s *Server) workspaceResource(
 		URI:             resourceURI,
 		DocumentVersion: 1,
 		ContentHandle:   contentHandle,
+	}, nil
+}
+
+func (s *Server) workspaceOpen(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	if dependencies.Workspace == nil {
+		return nil, unavailable("workspace query is unavailable")
+	}
+	if s.openPath == nil {
+		return nil, unavailable("local file opening is unavailable")
+	}
+	var request struct {
+		Path string `json:"path"`
+	}
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	target, err := dependencies.Workspace.ResolveFile(request.Path)
+	if err != nil {
+		return nil, workspaceQueryError(err)
+	}
+	if err := s.openPath(r.Context(), target); err != nil {
+		return nil, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"local editor could not open the workspace file",
+			true,
+			err,
+		)
+	}
+	return map[string]any{
+		"opened": true,
+		"path": path.Clean(
+			strings.ReplaceAll(strings.TrimSpace(request.Path), "\\", "/"),
+		),
 	}, nil
 }
 

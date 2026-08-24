@@ -29,6 +29,7 @@ var eventTraits = map[EventKind]EventTraits{
 	"operation.rejected":   {"terminal_operation", "operation", "retained", "operation", false},
 	"output.delta":         {"stream", "turn", "terminal_projection", "turn", false},
 	"plan.delta":           {"artifact_stream", "turn", "retained", "plan", false},
+	"reasoning.completed":  {"stream", "turn", "retained", "turn", false},
 	"reasoning.delta":      {"stream", "turn", "transient", "turn", false},
 	"run.canceled":         {"orchestration", "run", "retained", "run", false},
 	"run.completed":        {"orchestration", "run", "retained", "run", false},

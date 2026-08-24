@@ -111,6 +111,7 @@ describe("RuntimeClient", () => {
           ready: true,
           draining: false,
           workspace_root: "/workspace",
+          can_open_path: true,
           workspace: {
             version: 1,
             root_id: "workspace-id",
@@ -370,6 +371,9 @@ describe("RuntimeClient", () => {
           digest: "a".repeat(64),
           bytes: 13
         });
+      }
+      if (route.endsWith("/workspace/open")) {
+        return envelope({opened: true, path: "src/main.go"});
       }
       if (route.endsWith("/workspace/image")) {
         return envelope({
@@ -684,6 +688,21 @@ describe("RuntimeClient", () => {
       }
     });
     expect(client.getSnapshot().contextResources).toEqual([]);
+    client.stop();
+  });
+
+  it("opens a workspace path only through the authenticated Host route", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    expect(client.getSnapshot().canOpenPath).toBe(true);
+    await expect(client.openWorkspacePath("src/main.go")).resolves.toEqual({
+      opened: true,
+      path: "src/main.go"
+    });
+    expect(requests.find(
+      (request) => request.route.endsWith("/workspace/open")
+    )?.body).toEqual({path: "src/main.go"});
     client.stop();
   });
 

@@ -364,7 +364,9 @@
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
         "testdata/contracts/host-journey-contract.json",
         "web/src/ui/App.test.tsx#reconciles streamed output with the authoritative terminal text",
-        "web/src/ui/App.test.tsx#does not duplicate a complete tool result after streamed chunks"
+        "web/src/ui/App.test.tsx#does not duplicate a complete tool result after streamed chunks",
+        "web/src/projection/conversation.test.ts#replaces transient reasoning with one durable block per model sample",
+        "web/tests/e2e/web.spec.ts#restores the selected Session and transcript after a browser reload"
       ]
     },
     {
@@ -944,6 +946,7 @@
         "workspace/browse",
         "workspace/search",
         "workspace/resource",
+        "workspace/open",
         "workspace/image",
         "workspace/symbols",
         "workspace/diagnostics",
@@ -967,9 +970,12 @@
         "web/src/runtime/client.test.ts#submits only a persisted diagnostic receipt context",
         "web/src/runtime/client.test.ts#submits only the server-issued Git diff as inline context",
         "web/src/runtime/client.test.ts#binds terminal context to the projected tool call and output digest",
+        "web/src/runtime/client.test.ts#opens a workspace path only through the authenticated Host route",
         "web/src/ui/App.test.tsx#selects server-issued symbol and diagnostic contexts",
         "web/src/ui/App.test.tsx#previews and selects a validated workspace image",
         "web/src/ui/App.test.tsx#adds only a completed tool result to prompt context",
+        "web/src/ui/App.test.tsx#renders Bash output and grouped Grep results as dedicated cards",
+        "web/tests/e2e/visual.spec.ts#captures Think and specialized Read, Bash, Grep, and Glob cards",
         "web/tests/e2e/web.spec.ts#browses workspace resources and restores an archived Session"
       ]
     }

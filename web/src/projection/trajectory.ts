@@ -98,9 +98,13 @@ export function projectTrajectory(
         );
         break;
       case "reasoning.delta":
-        appendTextRecord(
-          event, "assistant", "ASSISTANT", reasoningByTurn, records, recordIndex,
-          put, "reasoning"
+        appendReasoningRecord(
+          event, reasoningByTurn, records, recordIndex, put, false
+        );
+        break;
+      case "reasoning.completed":
+        appendReasoningRecord(
+          event, reasoningByTurn, records, recordIndex, put, true
         );
         break;
       case "tool.start": {
@@ -352,6 +356,29 @@ function appendTextRecord(
   }));
 }
 
+function appendReasoningRecord(
+  event: RuntimeEvent,
+  bySample: Map<string, string>,
+  records: TrajectoryRecord[],
+  indexes: Map<string, number>,
+  put: (record: TrajectoryRecord) => void,
+  completed: boolean
+): void {
+  const key = `${event.turn_id}:${text(event.data.sample_id) || "active"}`;
+  const id = bySample.get(key) ?? `reasoning-${key}`;
+  const index = indexes.get(id);
+  const previous = index === undefined ? undefined : records[index];
+  const output = completed
+    ? text(event.data.text)
+    : text(previous?.output) + text(event.data.text);
+  bySample.set(key, id);
+  put(record(event, "assistant", "ASSISTANT", `Reasoning · ${lastLine(output)}`, {
+    id,
+    output,
+    raw: Object.freeze({...event.data, text: output})
+  }));
+}
+
 function record(
   event: RuntimeEvent,
   kind: TrajectoryKind,
@@ -429,9 +456,13 @@ function eventSpans(
       const id = `output-${event.turn_id}`;
       if (!startedByRecord.has(id)) startedByRecord.set(id, event);
     }
-    if (event.kind === "reasoning.delta") {
-      const id = `reasoning-${event.turn_id}`;
+    if (event.kind === "reasoning.delta" ||
+        event.kind === "reasoning.completed") {
+      const id = `reasoning-${event.turn_id}:${
+        text(event.data.sample_id) || "active"
+      }`;
       if (!startedByRecord.has(id)) startedByRecord.set(id, event);
+      if (event.kind === "reasoning.completed") endedByRecord.set(id, event);
     }
     if (event.kind === "turn.completed") {
       const id = `output-${event.turn_id}`;

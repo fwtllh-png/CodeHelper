@@ -146,6 +146,9 @@ test("creates a Session and completes a fixture-backed Turn", async ({page}) => 
   await page.getByRole("button", {name: "Send"}).click();
 
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".reasoningDisclosure")).toContainText(
+    "I should answer briefly."
+  );
   await expect(page.getByText("Working", {exact: true})).toHaveCount(0);
   await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
 });
@@ -156,6 +159,9 @@ test("opens the execution trajectory and inspects its event ledger", async ({pag
   await page.getByPlaceholder("Ask CodeHelper").fill("say hello");
   await page.getByRole("button", {name: "Send"}).click();
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".reasoningDisclosure")).toContainText(
+    "I should answer briefly."
+  );
 
   await page.getByRole("button", {name: "Trajectory"}).click();
   const trajectory = page.getByLabel("Execution trajectory");
@@ -198,12 +204,18 @@ test("restores the selected Session and transcript after a browser reload", asyn
   await composer.fill("say hello");
   await page.getByRole("button", {name: "Send"}).click();
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".reasoningDisclosure")).toContainText(
+    "I should answer briefly."
+  );
   await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
 
   await page.reload();
 
   await expect(page.getByText("Connected", {exact: true})).toBeVisible();
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".reasoningDisclosure")).toContainText(
+    "I should answer briefly."
+  );
   await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
 });
