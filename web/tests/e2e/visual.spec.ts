@@ -194,7 +194,9 @@ test("repeated reloads do not resubmit an active streaming turn", async ({page})
   await expect(page.getByText("Connected", {exact: true})).toBeVisible();
   await expect(page.locator(".assistantMessage").last())
     .toContainText("Review complete. Runtime evidence is consistent.");
-  await expect(page.getByText("visual long streaming", {exact: true})).toHaveCount(1);
+  await expect(page.locator(".userMessage", {
+    hasText: "visual long streaming"
+  })).toHaveCount(1);
 });
 
 test("a frozen tab converges after streaming completes", async ({page, context}) => {
@@ -210,7 +212,9 @@ test("a frozen tab converges after streaming completes", async ({page, context})
 
   await expect(page.locator(".assistantMessage").last())
     .toContainText("Review complete. Runtime evidence is consistent.");
-  await expect(page.getByText("visual long streaming", {exact: true})).toHaveCount(1);
+  await expect(page.locator(".userMessage", {
+    hasText: "visual long streaming"
+  })).toHaveCount(1);
   await session.detach();
 });
 

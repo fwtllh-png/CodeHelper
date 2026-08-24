@@ -9,12 +9,14 @@ import {
   CircleStop,
   Download,
   FileCode2,
+  FolderOpen,
   FolderTree,
   GitFork,
   GitCompareArrows,
   LoaderCircle,
   KeyRound,
   Moon,
+  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -79,6 +81,10 @@ interface Props {
 }
 
 const transcriptPageSize = 200;
+const compactCountFormat = new Intl.NumberFormat("en", {
+  notation: "compact",
+  maximumFractionDigits: 1
+});
 const Trajectory = lazy(async () => ({
   default: (await import("./Trajectory")).Trajectory
 }));
@@ -121,6 +127,8 @@ export function App({client}: Props) {
     client.getSnapshot
   );
   const [query, setQuery] = useState("");
+  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
   const [draft, setDraft] = useState("");
   const [draftOwner, setDraftOwner] = useState("");
   const [detailOpen, setDetailOpen] = useState(initialDetailOpen);
@@ -179,6 +187,10 @@ export function App({client}: Props) {
   const selected = snapshot.sessions.find(
     (item) => item.session_id === snapshot.selectedSessionID
   );
+  const workspaceLabel = selected?.workspace_label ||
+    snapshot.sessions[0]?.workspace_label ||
+    snapshot.workspaceRoot.split(/[\\/]/).filter(Boolean).at(-1) ||
+    "Workspace";
   const projectedEntries = useMemo(
     () => snapshot.conversation.order.flatMap((id) => {
       const node = snapshot.conversation.nodes.get(id);
@@ -484,22 +496,6 @@ export function App({client}: Props) {
       } as React.CSSProperties}
     >
       <aside className="sessionRail" aria-label="Sessions">
-        {selected && (
-          <div className="newSessionRow">
-            <span>New session</span>
-            <select
-              className="newSessionIsolation"
-              aria-label="New session isolation"
-              value={newIsolation}
-              onChange={(event) => setNewIsolation(
-                event.target.value as "shared" | "worktree"
-              )}
-            >
-              <option value="shared">Shared</option>
-              <option value="worktree">Worktree</option>
-            </select>
-          </div>
-        )}
         <div className="brandRow">
           <button
             className="railToggle"
@@ -515,84 +511,140 @@ export function App({client}: Props) {
             </span>
           </button>
           <span className="brandName">CodeHelper</span>
-          <IconButton
-            label="New chat"
-            icon={<Plus size={17} />}
+        </div>
+        <div className="newSessionRow">
+          <button
+            className="newSessionButton"
+            aria-label="New chat"
             disabled={creatingSession}
             onClick={() => void createSession()}
-          />
+          >
+            {creatingSession
+              ? <LoaderCircle className="spin" size={16} />
+              : <Plus size={16} />}
+            <span>New session</span>
+          </button>
         </div>
-        <label className="searchBox">
-          <Search size={15} aria-hidden="true" />
-          <span className="srOnly">Search sessions</span>
-          <input
-            value={query}
-            placeholder="Search"
-            onChange={(event) => {
-              const value = event.target.value;
-              setQuery(value);
-              void client.refreshSessions(value);
-            }}
-          />
-          {query && (
+        <div className="sessionSectionHeader">
+          <span className="sessionSectionTitle">Workspace</span>
+          <div className="sessionSectionActions">
+            <select
+              className="newSessionIsolation"
+              aria-label="New session isolation"
+              value={newIsolation}
+              onChange={(event) => setNewIsolation(
+                event.target.value as "shared" | "worktree"
+              )}
+            >
+              <option value="shared">Shared</option>
+              <option value="worktree">Worktree</option>
+            </select>
+            <IconButton
+              label="Search sessions"
+              icon={<Search size={15} />}
+              onClick={() => setSessionSearchOpen((value) => !value)}
+            />
+            <IconButton
+              label={snapshot.includeArchived
+                ? "Hide archived sessions"
+                : "Show archived sessions"}
+              icon={<Archive size={15} />}
+              onClick={() => void client.setArchivedVisible(
+                !snapshot.includeArchived
+              ).catch(reportLocalError)}
+            />
+          </div>
+        </div>
+        {(sessionSearchOpen || query) && (
+          <label className="searchBox">
+            <Search size={14} aria-hidden="true" />
+            <span className="srOnly">Search sessions</span>
+            <input
+              autoFocus
+              value={query}
+              placeholder="Search sessions"
+              onChange={(event) => {
+                const value = event.target.value;
+                setQuery(value);
+                void client.refreshSessions(value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                setQuery("");
+                setSessionSearchOpen(false);
+                void client.refreshSessions();
+              }}
+            />
             <button
               className="clearSearch"
-              aria-label="Clear search"
+              aria-label="Close session search"
               onClick={() => {
                 setQuery("");
+                setSessionSearchOpen(false);
                 void client.refreshSessions();
               }}
             >
               <X size={14} />
             </button>
+          </label>
+        )}
+        <div className="sessionList" role="tree" aria-label="Workspace sessions">
+          {!query && (
+            <button
+              className="workspaceRow"
+              role="treeitem"
+              aria-expanded={workspaceExpanded}
+              onClick={() => setWorkspaceExpanded((value) => !value)}
+            >
+              <DisclosureLeading
+                open={workspaceExpanded}
+                icon={<FolderOpen size={16} />}
+              />
+              <span>{workspaceLabel}</span>
+            </button>
           )}
-        </label>
-        <div className="sessionList">
-          {snapshot.sessions.map((session) => (
-            <SessionRow
-              key={session.session_id}
-              session={session}
-              active={session.session_id === snapshot.selectedSessionID}
-              onClick={() => void client.selectSession(session.session_id)}
-              onRename={() => {
-                const title = window.prompt("Rename session", session.title)?.trim();
-                if (title && title !== session.title) {
-                  void runSessionAction(session, () => client.updateSession(
-                    session.session_id, session.revision, {title}
-                  ));
-                }
-              }}
-              onPin={() => void runSessionAction(session, () => client.updateSession(
-                session.session_id, session.revision, {pinned: !session.pinned}
+          {(query || workspaceExpanded) && (
+            <div className="sessionGroup" role="group">
+              {snapshot.sessions.map((session) => (
+                <SessionRow
+                  key={session.session_id}
+                  session={session}
+                  active={session.session_id === snapshot.selectedSessionID}
+                  onClick={() => void client.selectSession(session.session_id)}
+                  onRename={() => {
+                    const title = window.prompt("Rename session", session.title)?.trim();
+                    if (title && title !== session.title) {
+                      void runSessionAction(session, () => client.updateSession(
+                        session.session_id, session.revision, {title}
+                      ));
+                    }
+                  }}
+                  onPin={() => void runSessionAction(session, () => client.updateSession(
+                    session.session_id, session.revision, {pinned: !session.pinned}
+                  ))}
+                  onArchive={() => {
+                    if (session.archived || window.confirm(`Archive "${session.title}"?`)) {
+                      void runSessionAction(session, () => client.updateSession(
+                        session.session_id, session.revision, {archived: !session.archived}
+                      ));
+                    }
+                  }}
+                  onDelete={() => deleteSession(session)}
+                  actionPending={
+                    sessionAction?.sessionID === session.session_id &&
+                    sessionAction.pending
+                  }
+                  actionError={
+                    sessionAction?.sessionID === session.session_id
+                      ? sessionAction.error
+                      : ""
+                  }
+                />
               ))}
-              onArchive={() => {
-                if (session.archived || window.confirm(`Archive "${session.title}"?`)) {
-                  void runSessionAction(session, () => client.updateSession(
-                    session.session_id, session.revision, {archived: !session.archived}
-                  ));
-                }
-              }}
-              onDelete={() => deleteSession(session)}
-              actionPending={
-                sessionAction?.sessionID === session.session_id &&
-                sessionAction.pending
-              }
-              actionError={
-                sessionAction?.sessionID === session.session_id
-                  ? sessionAction.error
-                  : ""
-              }
-            />
-          ))}
+            </div>
+          )}
         </div>
         <div className="railFooter">
-          <IconButton
-            label={snapshot.includeArchived ? "Hide archived sessions" : "Show archived sessions"}
-            icon={<Archive size={16} />}
-            onClick={() => void client.setArchivedVisible(
-              !snapshot.includeArchived
-            ).catch(reportLocalError)}
-          />
           <span className="connectionState" data-online={snapshot.socketConnected || undefined}>
             <span className="statusDot" />
             {snapshot.socketConnected ? "Connected" : snapshot.phase}
@@ -1522,47 +1574,72 @@ function SessionRow({
   actionPending: boolean;
   actionError: string;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const showStatus = session.status !== "idle" && session.status !== "completed";
+  const statusTone = session.status === "failed" || session.status === "interrupted"
+    ? "error"
+    : session.status === "awaiting_approval" || session.status === "awaiting_input"
+      ? "warning"
+      : "active";
+  const run = (action: () => void) => {
+    setMenuOpen(false);
+    action();
+  };
   return (
     <div
       className="sessionRow"
       data-active={active || undefined}
+      data-menu-open={menuOpen || undefined}
+      data-error={Boolean(actionError) || undefined}
       aria-busy={actionPending || undefined}
+      role="treeitem"
+      aria-selected={active}
+      onMouseLeave={() => setMenuOpen(false)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setMenuOpen(false);
+      }}
     >
       <button className="sessionSelect" onClick={onClick}>
-        <span className="sessionTitle">{session.title}</span>
-        <span className="sessionMeta">
-          {session.status !== "idle" && session.status !== "completed" && (
-            <span>{session.status.replaceAll("_", " ")}</span>
-          )}
-          <span className="sessionAge">{relativeTime(session.updated_at)}</span>
+        <span className="sessionStatusSlot">
+          {showStatus && <span className="sessionStatusDot" data-tone={statusTone} />}
         </span>
+        <span className="sessionTitle">{session.title}</span>
+        {showStatus && (
+          <span className="srOnly">{session.status.replaceAll("_", " ")}</span>
+        )}
+        <span className="sessionAge">{relativeTime(session.updated_at)}</span>
       </button>
       <div className="sessionActions">
         <IconButton
-          label="Rename session"
-          icon={<Pencil size={13} />}
+          label={`Session actions for ${session.title}`}
+          icon={actionPending
+            ? <LoaderCircle className="spin" size={14} />
+            : <MoreHorizontal size={15} />}
           disabled={actionPending}
-          onClick={onRename}
+          onClick={() => setMenuOpen((value) => !value)}
         />
-        <IconButton
-          label={session.pinned ? "Unpin session" : "Pin session"}
-          icon={session.pinned ? <PinOff size={13} /> : <Pin size={13} />}
-          disabled={actionPending}
-          onClick={onPin}
-        />
-        <IconButton
-          label={session.archived ? "Restore session" : "Archive session"}
-          icon={<Archive size={13} />}
-          disabled={actionPending}
-          onClick={onArchive}
-        />
-        <IconButton
-          label="Delete session"
-          danger
-          disabled={actionPending}
-          icon={actionPending ? <LoaderCircle className="spin" size={13} /> : <Trash2 size={13} />}
-          onClick={onDelete}
-        />
+        {menuOpen && (
+          <div className="sessionMenu" role="menu">
+            <button role="menuitem" onClick={() => run(onRename)}>
+              <Pencil size={14} /> Rename
+            </button>
+            <button role="menuitem" onClick={() => run(onPin)}>
+              {session.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+              {session.pinned ? "Unpin" : "Pin"}
+            </button>
+            <button role="menuitem" onClick={() => run(onArchive)}>
+              <Archive size={14} />
+              {session.archived ? "Restore" : "Archive"}
+            </button>
+            <button
+              className="dangerMenuItem"
+              role="menuitem"
+              onClick={() => run(onDelete)}
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+        )}
       </div>
       {actionError && (
         <span className="sessionActionError" role="alert">
@@ -2414,11 +2491,15 @@ function ComposerStats({
   const cacheShare = input > 0 && cached > 0
     ? `${Math.round(cached / input * 100)}% cache`
     : "";
-  const values = [
-    `${numberValue(usage?.turns) || (receipt ? 1 : 0)} turn`,
-    `${toolCalls} tools`,
+  const turns = numberValue(usage?.turns) || (receipt ? 1 : 0);
+  const cost = receipt?.cost_known === false || usage?.cost_known === false
+    ? "Unpriced"
+    : `${numberValue(receipt?.cost_microunits ?? usage?.cost_microunits)} µ`;
+  const detailedValues = [
+    `${turns} ${turns === 1 ? "turn" : "turns"}`,
+    `${toolCalls} ${toolCalls === 1 ? "tool" : "tools"}`,
     numberValue(latency?.total_ms) > 0
-      ? formatDuration(numberValue(latency?.total_ms))
+      ? `${formatDuration(numberValue(latency?.total_ms))} total`
       : "",
     numberValue(latency?.provider_ms) > 0
       ? `${formatDuration(numberValue(latency?.provider_ms))} model`
@@ -2435,13 +2516,40 @@ function ComposerStats({
     cached > 0 ? `${cached.toLocaleString()} cached` : "",
     totalTokens > 0 ? `${totalTokens.toLocaleString()} tokens` : "",
     cacheShare,
-    receipt?.cost_known === false || usage?.cost_known === false
-      ? "Unpriced"
-      : `${numberValue(receipt?.cost_microunits ?? usage?.cost_microunits)} µ`
+    cost
   ].filter(Boolean);
+  const summary = [
+    [
+      `${turns} ${turns === 1 ? "turn" : "turns"}`,
+      `${toolCalls} ${toolCalls === 1 ? "tool" : "tools"}`
+    ].join(" · "),
+    [
+      numberValue(latency?.total_ms) > 0
+        ? `${formatDuration(numberValue(latency?.total_ms))} total`
+        : "",
+      numberValue(latency?.provider_ms) > 0
+        ? `${formatDuration(numberValue(latency?.provider_ms))} model`
+        : "",
+      numberValue(latency?.tool_ms) > 0
+        ? `${formatDuration(numberValue(latency?.tool_ms))} tools`
+        : ""
+    ].filter(Boolean).join(" · "),
+    latency?.first_token_ms !== undefined
+      ? `${formatDuration(numberValue(latency.first_token_ms))} TTFT`
+      : "",
+    [
+      totalTokens > 0 ? `${formatCompactCount(totalTokens)} tokens` : "",
+      cacheShare
+    ].filter(Boolean).join(" · "),
+    cost
+  ].filter(Boolean).join(" | ");
   return (
-    <div className="composerMeta" aria-label="Run statistics" title={values.join(" · ")}>
-      {values.map((value) => <span key={value}>{value}</span>)}
+    <div
+      className="composerMeta"
+      aria-label={`Run statistics: ${summary}`}
+      title={detailedValues.join(" · ")}
+    >
+      <span>{summary}</span>
     </div>
   );
 }
@@ -2790,6 +2898,10 @@ function formatDuration(milliseconds: number): string {
   return milliseconds < 1_000
     ? `${Math.round(milliseconds)} ms`
     : `${(milliseconds / 1_000).toFixed(milliseconds < 10_000 ? 2 : 1)} s`;
+}
+
+function formatCompactCount(value: number): string {
+  return compactCountFormat.format(value);
 }
 
 function relativeTime(value: string): string {

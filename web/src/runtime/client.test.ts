@@ -478,6 +478,9 @@ describe("RuntimeClient", () => {
     expect(client.getSnapshot().tools).toEqual([]);
     expect(client.getSnapshot().checkpoints).toEqual([]);
 
+    const sessionListsBefore = requests.filter(
+      (request) => request.route.endsWith("/session/list")
+    ).length;
     await client.submitPrompt("say hello");
     const submit = requests.find((request) => request.route.endsWith("/operation/submit"));
     expect(submit?.body).toMatchObject({
@@ -488,6 +491,9 @@ describe("RuntimeClient", () => {
         intent: "answer"
       }
     });
+    expect(requests.filter(
+      (request) => request.route.endsWith("/session/list")
+    )).toHaveLength(sessionListsBefore + 1);
     client.stop();
   });
 

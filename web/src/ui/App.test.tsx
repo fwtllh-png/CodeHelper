@@ -108,6 +108,11 @@ describe("projectTranscript", () => {
   it("renders lifecycle, workspace, profile, and governed tool controls", () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
+    expect(screen.getByRole("button", {name: "New chat"}).textContent)
+      .toContain("New session");
+    expect(screen.getByRole("treeitem", {name: "workspace"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Search sessions"}));
+    expect(screen.getByRole("textbox", {name: "Search sessions"})).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Add context"}));
 
     expect(screen.getByLabelText("New session isolation")).toBeTruthy();
@@ -123,6 +128,41 @@ describe("projectTranscript", () => {
     });
     expect(screen.getAllByRole("button", {name: "Archive session"})).not.toHaveLength(0);
     expect(screen.getByText("read_file")).toBeTruthy();
+  });
+
+  it("renders run statistics as one readable line", () => {
+    const value = snapshot([
+      event(1, "turn.receipt", {
+        outcome: "answered",
+        latency: {
+          total_ms: 36_423,
+          provider_ms: 35_000,
+          tool_ms: 388,
+          first_token_ms: 1_340
+        },
+        input_tokens: 115_465,
+        output_tokens: 3_742,
+        reasoning_tokens: 694,
+        cached_tokens: 52_224,
+        cost_known: false
+      })
+    ]);
+    value.usage = {
+      turns: 1,
+      calls: 9,
+      total_tokens: 119_901,
+      cost_microunits: 0,
+      cost_known: false
+    };
+    const {container} = render(<App client={mockClient(value)} />);
+
+    const stats = screen.getByLabelText(/^Run statistics:/);
+    expect(stats.textContent).toBe(
+      "1 turn · 0 tools | 36.4 s total · 35.0 s model · 388 ms tools | " +
+      "1.34 s TTFT | 119.9K tokens · 45% cache | Unpriced"
+    );
+    expect(container.querySelectorAll(".composerMeta > span")).toHaveLength(1);
+    expect(stats.getAttribute("title")).toContain("115,465 in");
   });
 
   it("replaces the composer with a clear create-session action", async () => {
@@ -208,7 +248,8 @@ describe("projectTranscript", () => {
     render(<App client={client} />);
     fireEvent.click(screen.getByRole("button", {name: "Add context"}));
 
-    fireEvent.click(screen.getAllByRole("button", {name: "Delete session"})[0]);
+    fireEvent.click(screen.getByRole("button", {name: "Session actions for Chat"}));
+    fireEvent.click(screen.getByRole("menuitem", {name: "Delete"}));
 
     expect(window.confirm).toHaveBeenCalledWith(
       'Delete "Chat" and permanently discard its unfinished work?'
@@ -224,7 +265,8 @@ describe("projectTranscript", () => {
     );
     render(<App client={client} />);
 
-    fireEvent.click(screen.getAllByRole("button", {name: "Delete session"})[0]);
+    fireEvent.click(screen.getByRole("button", {name: "Session actions for Chat"}));
+    fireEvent.click(screen.getByRole("menuitem", {name: "Delete"}));
 
     expect((await screen.findByRole("alert")).textContent).toContain(
       "cannot delete session while its isolated worktree has unresolved changes"
@@ -671,8 +713,8 @@ describe("projectTranscript", () => {
     expect(screen.getByText("README.md")).toBeTruthy();
     expect(screen.getByText("Checking the repository")).toBeTruthy();
     expect(screen.queryByText("completed", {exact: true})).toBeNull();
-    expect(container.querySelectorAll(".disclosureLeading")).toHaveLength(2);
-    expect(container.querySelectorAll(".disclosureChevron")).toHaveLength(2);
+    expect(container.querySelectorAll(".transcript .disclosureLeading")).toHaveLength(2);
+    expect(container.querySelectorAll(".transcript .disclosureChevron")).toHaveLength(2);
   });
 
   it("disables Session-bound controls while the selected Session hydrates", () => {

@@ -81,7 +81,10 @@ test("boots the real Runtime with an accessible empty state", async ({page}) => 
   await expect(page.getByText("Connected", {exact: true})).toBeVisible();
   await expect(page.locator('button[aria-label="New chat"]')).toBeVisible();
   await expect(page.getByRole("button", {name: "Settings"})).toBeVisible();
-  await expect(page.getByRole("textbox", {name: "Search sessions"})).toBeVisible();
+  const searchSessions = page.getByRole("button", {name: "Search sessions"});
+  await expect(searchSessions).toBeVisible();
+  await searchSessions.click();
+  await expect(page.getByRole("textbox", {name: "Search sessions"})).toBeFocused();
   await expect(page.getByRole("heading", {name: "Start a new session"})).toBeVisible();
   await expect(page.getByText("Not required", {exact: true})).toBeVisible();
   await expect(page.getByRole("button", {name: "Create session"})).toBeVisible();
@@ -89,9 +92,6 @@ test("boots the real Runtime with an accessible empty state", async ({page}) => 
   await expect(page.getByLabel("Session details")).toHaveCount(0);
   await expect(page.getByRole("button", {name: /detail panel/i})).toHaveCount(0);
 
-  await page.locator('button[aria-label="New chat"]').focus();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("textbox", {name: "Search sessions"})).toBeFocused();
 });
 
 test("passes the WCAG A and AA accessibility scan", async ({page}) => {
@@ -111,6 +111,30 @@ test("passes the WCAG A and AA accessibility scan", async ({page}) => {
   }
 });
 
+test("groups Sessions by Workspace and reveals row actions on demand", async ({page}) => {
+  await page.goto(baseURL);
+  await page.locator('button[aria-label="New chat"]').click();
+
+  const workspace = page.locator(".workspaceRow");
+  await expect(workspace).toContainText(path.basename(workspaceDir));
+  await expect(workspace).toHaveAttribute("aria-expanded", "true");
+  const session = page.locator(".sessionRow[data-active]");
+  await expect(session).toContainText("New Chat");
+
+  await session.hover();
+  await session.getByRole("button", {name: /Session actions for/}).click();
+  await expect(session.getByRole("menuitem", {name: "Rename"})).toBeVisible();
+  await expect(session.getByRole("menuitem", {name: "Pin"})).toBeVisible();
+  await expect(session.getByRole("menuitem", {name: "Archive"})).toBeVisible();
+  await expect(session.getByRole("menuitem", {name: "Delete"})).toBeVisible();
+
+  await workspace.click();
+  await expect(workspace).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".sessionRow")).toHaveCount(0);
+  await workspace.click();
+  await expect(page.locator(".sessionRow")).toHaveCount(1);
+});
+
 test("creates a Session and completes a fixture-backed Turn", async ({page}) => {
   await page.goto(baseURL);
   await page.getByRole("button", {name: "Create session"}).click();
@@ -123,6 +147,7 @@ test("creates a Session and completes a fixture-backed Turn", async ({page}) => 
 
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
   await expect(page.getByText("Working", {exact: true})).toHaveCount(0);
+  await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
 });
 
 test("opens the execution trajectory and inspects its event ledger", async ({page}) => {
@@ -173,11 +198,13 @@ test("restores the selected Session and transcript after a browser reload", asyn
   await composer.fill("say hello");
   await page.getByRole("button", {name: "Send"}).click();
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
 
   await page.reload();
 
   await expect(page.getByText("Connected", {exact: true})).toBeVisible();
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
 });
 

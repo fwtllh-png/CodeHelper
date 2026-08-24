@@ -209,6 +209,10 @@ Runtime Provider、可选 Model、模型级 Reasoning、只写 API Key 状态和
 Isolation；创建 Session 时一次提交所选 Session Profile。同一 Provider 的可用 Model
 可在空闲 Session 中继续切换，跨 Provider 变更仍要求重新启动 Runtime。
 
+Session 侧栏按 Workspace 分组，并将搜索、归档与行级操作渐进披露。默认标题会在首个
+`turn.start` 被接受后，从用户可见 Prompt 生成单行、UTF-8 安全的短标题；已有
+`New Chat` 会话在首次激活时按同一规则回填。显式重命名的标题不会被后续 Prompt 覆盖。
+
 Web 的 Session usage 默认使用 `include_children=true`，因此父 Session 的汇总包含
 其 `agent_nodes` 下 Child Turn 的消耗；关闭该参数可读取 direct usage。两种口径都保留
 原始 Child Session/Thread/Turn 归属，不通过重写账本伪造父子关系。
@@ -218,6 +222,9 @@ Web 的 Session usage 默认使用 `include_children=true`，因此父 Session �
 并通过只读 `trace/query` 补充受控的 Model、Tool、Approval 和 Verification 时序。
 时间数据不可用时仍保留 Event Ledger，并明确显示不可用状态。点击 Chat 中已完成 Tool
 的 `Inspect` 可定位到同一 Call 的轨迹记录。
+
+Composer 下方的 Stats 使用一条可整体省略的摘要展示 Turn、Tool、总耗时、模型耗时、
+Tool 耗时、TTFT、Token、Cache 和 Cost；完整明细保留在 Tooltip 中，不逐项压缩。
 
 Web 删除 Session 时会要求显式确认。对于已失去执行者的未完成 Turn 或隔离 worktree，
 确认删除表示同时丢弃其未完成状态和隔离改动；仍有内存执行者或恢复中 Operation 的

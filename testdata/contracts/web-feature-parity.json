@@ -602,9 +602,11 @@
       "required_qualifications": [
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
         "internal/runtime/app/session_lifecycle_test.go#TestSessionControlCreatesActivatesAndSubmitsWithStableIdentity",
+        "internal/runtime/app/session_lifecycle_test.go#TestActivateSessionBackfillsLegacyDefaultTitle",
         "web/src/runtime/client.test.ts#changes operation ownership immediately while a Session hydrates",
         "web/src/runtime/client.test.ts#retries session creation with one stable idempotency key",
         "web/src/ui/App.test.tsx#disables Session-bound controls while the selected Session hydrates",
+        "web/tests/e2e/web.spec.ts#groups Sessions by Workspace and reveals row actions on demand",
         "web/tests/e2e/web.spec.ts#browses workspace resources and restores an archived Session"
       ]
     },

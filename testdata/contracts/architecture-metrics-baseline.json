@@ -584,9 +584,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 20,
-        "production_lines": 5826,
+        "production_lines": 5913,
         "options_fields": 22,
         "mutex_fields": 10
+      },
+      "relaxations": {
+        "production_lines": "Persist prompt-derived Session titles and backfill legacy default titles in the Runtime-owned lifecycle path."
       }
     },
     {

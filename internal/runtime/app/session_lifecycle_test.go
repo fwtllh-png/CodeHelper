@@ -275,7 +275,7 @@ func TestSessionControlCreatesActivatesAndSubmitsWithStableIdentity(t *testing.T
 	t.Cleanup(func() { closeRuntime(t, runtime) })
 	binding, err := runtime.CreateSession(t.Context(), CreateSessionRequest{
 		SessionID: "session-web", WorkspaceRoot: "/workspace",
-		Title: "Web", Isolation: "shared", IdempotencyKey: "create-1",
+		Title: defaultSessionTitle, Isolation: "shared", IdempotencyKey: "create-1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func TestSessionControlCreatesActivatesAndSubmitsWithStableIdentity(t *testing.T
 	}
 	replayed, err := runtime.CreateSession(t.Context(), CreateSessionRequest{
 		SessionID: "session-web", WorkspaceRoot: "/workspace",
-		Title: "Web", Isolation: "shared", IdempotencyKey: "create-1",
+		Title: defaultSessionTitle, Isolation: "shared", IdempotencyKey: "create-1",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -356,6 +356,118 @@ func TestSessionControlCreatesActivatesAndSubmitsWithStableIdentity(t *testing.T
 		first.TurnID != second.TurnID ||
 		first.ItemID != second.ItemID {
 		t.Fatalf("idempotent receipts differ: first=%+v second=%+v", first, second)
+	}
+	if store.summary.Title != "hello" || store.summary.Revision != 3 {
+		t.Fatalf("automatic title summary = %+v", store.summary)
+	}
+}
+
+func TestPromptSessionTitle(t *testing.T) {
+	tests := []struct {
+		name   string
+		prompt string
+		want   string
+	}{
+		{
+			name:   "normalizes and limits words",
+			prompt: "  Build\n durable session titles from prompts safely  ",
+			want:   "Build durable session titles from",
+		},
+		{
+			name:   "uses direct Chinese request",
+			prompt: "请只读分析当前工作区：概括项目用途、核心模块和主要技术栈；不要修改文件。",
+			want:   "只读分析当前工作区：概括项目用途",
+		},
+		{
+			name:   "removes terminal controls",
+			prompt: "\x1b[31m请帮我 修复 parser\x1b[0m",
+			want:   "修复 parser",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := promptSessionTitle(test.prompt); got != test.want {
+				t.Fatalf("promptSessionTitle() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestSessionControlPreservesExplicitTitle(t *testing.T) {
+	store := &memorySessionLifecycleStore{}
+	runtime := NewRuntime(Options{
+		Engine: NewThreadManager(nil), SessionLifecycle: store,
+		DefaultProfile: protocol.SessionProfile{
+			Provider: "fixture", Model: "fixture",
+		},
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	if _, err := runtime.CreateSession(t.Context(), CreateSessionRequest{
+		SessionID: "session-titled", WorkspaceRoot: "/workspace",
+		Title: "Pinned title", Isolation: "shared", IdempotencyKey: "create-titled",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	identity, err := protocol.NewWorkspaceIdentity(
+		"file:///workspace",
+		"/workspace",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.SubmitForSession(t.Context(), SubmitSessionOperation{
+		SessionID: "session-titled", Kind: protocol.OperationStartTurn,
+		Payload: &protocol.StartTurnPayload{
+			Prompt: "this must not replace the title",
+		},
+		IdempotencyKey: "request-titled", WorkspaceIdentity: &identity,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if store.summary.Title != "Pinned title" || store.summary.Revision != 1 {
+		t.Fatalf("explicit title summary = %+v", store.summary)
+	}
+}
+
+func TestActivateSessionBackfillsLegacyDefaultTitle(t *testing.T) {
+	now := time.Now().UTC()
+	store := &memorySessionLifecycleStore{summary: protocol.SessionSummary{
+		Version: protocol.SessionLifecycleVersion, Revision: 1,
+		SessionID: "session-legacy", ThreadID: "thread-legacy",
+		Title: defaultSessionTitle, Status: protocol.SessionStatusCompleted,
+		Isolation: "shared", WorkspaceRoot: "/workspace",
+		WorkspaceLabel: "workspace", ExecutionTarget: "local",
+		LatestSequence: 1, CreatedAt: now, UpdatedAt: now,
+	}}
+	events := NewMemoryEventStore(8)
+	started, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "op-legacy", ThreadID: "thread-legacy",
+		TurnID: "turn-legacy", ItemID: "item-legacy",
+	}, &protocol.TurnStartedData{
+		Provider: "fixture", Model: "fixture",
+		DisplayPrompt: "请分析当前工作区的核心模块与技术栈。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), started); err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{
+		WorkspaceRoot: "/workspace", EventStore: events,
+		SessionLifecycle: store, Engine: NewThreadManager(nil),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	if _, err := runtime.ActivateSession(t.Context(), ActivateSessionRequest{
+		SessionID: "session-legacy", WorkspaceRoot: "/workspace",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if store.summary.Title != "分析当前工作区的核心模块与技术栈" ||
+		store.summary.Revision != 3 {
+		t.Fatalf("backfilled legacy summary = %+v", store.summary)
 	}
 }
 
@@ -639,8 +751,9 @@ func (s *memorySessionLifecycleStore) PresentationReadFence(
 		return protocol.SessionReadFence{}, errors.New("session not found")
 	}
 	return protocol.SessionReadFence{
-		Session:   s.summary,
-		ThreadIDs: []protocol.ThreadID{s.summary.ThreadID},
+		Session:         s.summary,
+		ThreadIDs:       []protocol.ThreadID{s.summary.ThreadID},
+		ThroughSequence: s.summary.LatestSequence,
 	}, nil
 }
 
@@ -680,6 +793,9 @@ func (s *memorySessionLifecycleStore) UpdateLifecycle(
 	}
 	if patch.Archived != nil {
 		s.summary.Archived = *patch.Archived
+	}
+	if patch.Title != nil {
+		s.summary.Title = *patch.Title
 	}
 	s.summary.Revision++
 	return s.summary, nil

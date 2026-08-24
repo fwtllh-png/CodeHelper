@@ -7,9 +7,22 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+const (
+	defaultSessionTitle     = "New Chat"
+	sessionTitleMaxWords    = 5
+	sessionTitleMaxUTF8Byte = 48
+)
+
+var sessionTitleEscapeSequence = regexp.MustCompile(
+	`(?:\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-_])`,
 )
 
 type sessionCreateStore interface {
@@ -83,7 +96,7 @@ func (r *SessionService) CreateSession(
 	}
 	request.Title = strings.TrimSpace(request.Title)
 	if request.Title == "" {
-		request.Title = "New Chat"
+		request.Title = defaultSessionTitle
 	}
 	request.WorkspaceRoot = strings.TrimSpace(request.WorkspaceRoot)
 	if request.WorkspaceRoot == "" {
@@ -279,6 +292,7 @@ func (r *SessionService) ActivateSession(
 			nil,
 		)
 	}
+	summary = r.restoreDefaultSessionTitle(ctx, summary)
 	threadID := request.ThreadID
 	if threadID == "" {
 		threadID = summary.ThreadID
@@ -331,6 +345,67 @@ func (r *SessionService) ActivateSession(
 		}
 	}
 	return bindingFromSummary(summary), nil
+}
+
+func (r *SessionService) restoreDefaultSessionTitle(
+	ctx context.Context,
+	summary protocol.SessionSummary,
+) protocol.SessionSummary {
+	if summary.Title != defaultSessionTitle ||
+		summary.LatestSequence == 0 ||
+		r.HistoryService == nil {
+		return summary
+	}
+	snapshot, err := r.HistoryService.Snapshot(ctx, summary.SessionID)
+	if err != nil {
+		return summary
+	}
+	var title string
+	for _, event := range snapshot.Events {
+		started, ok := event.Data.(*protocol.TurnStartedData)
+		if !ok {
+			continue
+		}
+		prompt := started.DisplayPrompt
+		if prompt == "" {
+			prompt = started.Prompt
+		}
+		title = promptSessionTitle(prompt)
+		if title != "" {
+			break
+		}
+	}
+	if title == "" {
+		return summary
+	}
+	r.mutationMu.Lock()
+	defer r.mutationMu.Unlock()
+	current, err := r.sessionLifecycle.GetLifecycle(ctx, summary.SessionID)
+	if err != nil || current.Title != defaultSessionTitle {
+		if err == nil {
+			return current
+		}
+		return summary
+	}
+	updated, err := r.sessionLifecycle.UpdateLifecycle(
+		ctx,
+		summary.SessionID,
+		current.Revision,
+		protocol.SessionLifecyclePatch{Title: &title},
+	)
+	if err != nil {
+		if r.logger != nil {
+			r.logger.Warn(
+				"legacy session title backfill failed",
+				"session_id",
+				summary.SessionID,
+				"error",
+				err,
+			)
+		}
+		return summary
+	}
+	return updated
 }
 
 func (r *SessionService) SessionForThread(
@@ -502,6 +577,31 @@ func (r *OperationService) SubmitForSession(
 	); err != nil {
 		return OperationReceipt{}, err
 	}
+	if start, ok := request.Payload.(*protocol.StartTurnPayload); ok &&
+		summary.Title == defaultSessionTitle &&
+		summary.LatestSequence == 0 {
+		prompt := start.DisplayPrompt
+		if prompt == "" {
+			prompt = start.Prompt
+		}
+		if title := promptSessionTitle(prompt); title != "" {
+			titlePatch := protocol.SessionLifecyclePatch{Title: &title}
+			if _, titleErr := r.sessionLifecycle.UpdateLifecycle(
+				ctx,
+				request.SessionID,
+				summary.Revision,
+				titlePatch,
+			); titleErr != nil && r.logger != nil {
+				r.logger.Warn(
+					"automatic session title update failed",
+					"session_id",
+					request.SessionID,
+					"error",
+					titleErr,
+				)
+			}
+		}
+	}
 	if fork, ok := request.Payload.(*protocol.ForkThreadPayload); ok {
 		if err := r.BindThreadSession(
 			fork.NewThreadID,
@@ -518,6 +618,45 @@ func (r *OperationService) SubmitForSession(
 		ItemID:      itemID,
 		Accepted:    true,
 	}, nil
+}
+
+func promptSessionTitle(prompt string) string {
+	prompt = sessionTitleEscapeSequence.ReplaceAllString(prompt, "")
+	clean := strings.Map(func(value rune) rune {
+		if unicode.IsSpace(value) {
+			return ' '
+		}
+		if unicode.IsControl(value) || unicode.Is(unicode.Cf, value) {
+			return -1
+		}
+		return value
+	}, prompt)
+	clean = strings.Join(strings.Fields(clean), " ")
+	for _, prefix := range []string{"请帮我", "请你", "帮我", "请"} {
+		if strings.HasPrefix(clean, prefix) {
+			clean = strings.TrimSpace(strings.TrimPrefix(clean, prefix))
+			break
+		}
+	}
+	if end := strings.IndexAny(clean, "。！？!?；;"); end >= 0 {
+		clean = strings.TrimSpace(clean[:end])
+	}
+	words := strings.Fields(clean)
+	if len(words) > sessionTitleMaxWords {
+		clean = strings.Join(words[:sessionTitleMaxWords], " ")
+	}
+	if len(clean) <= sessionTitleMaxUTF8Byte {
+		return clean
+	}
+	var title strings.Builder
+	title.Grow(sessionTitleMaxUTF8Byte)
+	for _, value := range clean {
+		if title.Len()+utf8.RuneLen(value) > sessionTitleMaxUTF8Byte {
+			break
+		}
+		title.WriteRune(value)
+	}
+	return strings.TrimSpace(title.String())
 }
 
 func bindingFromSeed(seed protocol.SessionCreateSeed) SessionBinding {

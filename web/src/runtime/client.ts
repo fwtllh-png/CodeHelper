@@ -431,6 +431,8 @@ export class RuntimeClient {
     const refreshForForeignEvent = hydration.events.some(
       ({sessionID: owner}) => owner !== sessionID
     );
+    const refreshForDefaultTitle = summary?.title === "New Chat" &&
+      snapshotEvents.some((event) => event.kind === "turn.started");
     this.commitCursor(Math.max(
       snapshot.through_sequence,
       latestBufferedSequence
@@ -461,7 +463,7 @@ export class RuntimeClient {
       problem: undefined
     });
     this.persistSelectedSession(sessionID);
-    if (refreshForForeignEvent) {
+    if (refreshForForeignEvent || refreshForDefaultTitle) {
       void this.refreshSessions("", false);
     }
     } catch (error) {
@@ -491,6 +493,7 @@ export class RuntimeClient {
       }
     });
     this.update({contextResources: []});
+    await this.refreshSessions("", false);
     return receipt;
   }
 
@@ -1112,6 +1115,9 @@ export class RuntimeClient {
       this.eventNotifier.flushNow();
     } else {
       this.eventNotifier.schedule();
+    }
+    if (event.kind === "turn.started") {
+      this.scheduleSessionRefresh();
     }
     if (isTerminal(event.kind)) {
       this.scheduleSessionRefresh();

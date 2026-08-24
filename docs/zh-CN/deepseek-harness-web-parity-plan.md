@@ -194,6 +194,17 @@ AppFrame
     └── Usage / Diagnostics / Extensions
 ```
 
+### Sidebar 与会话管理
+
+- 展开态依次呈现 Brand、整行 New Session、Workspace 工具栏、Workspace/Session Tree
+  和底部连接状态；
+- Search 与 Session 行动作按需展开，默认列表只保留标题、状态点和相对时间；
+- Session 按 Workspace 缩进分组，Workspace 行默认显示目录图标，Hover 时原位切换
+  Chevron；
+- 首个用户 Prompt 被接受后，Runtime 生成并持久化短标题；已有默认标题在激活时回填，
+  显式重命名不被后续 Prompt 覆盖；
+- 成功与空闲状态不显示文字标签，运行、等待和失败状态通过颜色与可访问文本表达。
+
 ### 空状态
 
 - 无可用 Provider 或 Credential 时，显示 CodeHelper Setup Surface；
@@ -222,7 +233,8 @@ AppFrame
 - 右侧放置 Model、Reasoning、Context Meter、Send/Stop；
 - 控件空间不足时整组换行，不允许文本、图标或按钮重叠；
 - Approval 和 Input 使用原位 Takeover，保持 Shell 和主动作位置稳定；
-- Status/Stats 与 Composer 共用宽度轴，过长时省略并通过 Tooltip 显示全文。
+- Status/Stats 与 Composer 共用宽度轴；Stats 只做整行末尾省略，不逐项压缩，并通过
+  Tooltip 显示完整 Token 明细。
 
 ### Tool 和 Reasoning
 
