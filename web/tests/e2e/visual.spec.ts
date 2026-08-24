@@ -100,10 +100,35 @@ test("captures empty and settings states", async ({page}) => {
   await expect(page).toHaveScreenshot("canonical-settings.png");
 });
 
+test("captures populated model, tool, and agent settings", async ({page}) => {
+  await createSession(page);
+  await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Models"}).click();
+  await expect(page.getByText("Context window")).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-settings-models.png");
+
+  await page.getByRole("button", {name: "Tools"}).click();
+  await expect(page.getByRole("searchbox", {name: "Search tools"})).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-settings-tools.png");
+
+  await page.getByRole("button", {name: "Agent preset"}).click();
+  await expect(page.getByLabel("Agent mode")).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-settings-agent.png");
+});
+
 test("captures a blank session with the centered composer", async ({page}) => {
   await createSession(page);
   await expect(page.getByLabel("Session details")).toHaveCount(0);
   await expect(page).toHaveScreenshot("canonical-blank-session.png");
+});
+
+test("captures the modal workspace context browser", async ({page}) => {
+  await createSession(page);
+  await page.getByRole("button", {name: "Commands"}).click();
+  await page.getByRole("menuitem", {name: /context/}).click();
+  await expect(page.getByRole("dialog", {name: "Add context"})).toBeVisible();
+  await expect(page.getByRole("button", {name: /README.md/})).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-context-browser.png");
 });
 
 test("captures the authoritative diff state", async ({page}) => {
@@ -113,11 +138,10 @@ test("captures the authoritative diff state", async ({page}) => {
   await expect(page.locator(".assistantMessage").last())
     .toContainText("Updated README and verified the diff.");
   await expect(page.getByText("Completed", {exact: true})).toHaveCount(0);
-  await page.getByRole("button", {name: "Open detail panel"}).click();
-  await page.getByRole("button", {name: "Refresh diff"}).click();
-  await expect(page.locator(".mergePreview")).toContainText(
-    "README.md (file_edit) modified +2 -0"
-  );
+  const edit = page.locator('.toolDisclosure[data-variant="diff"]');
+  await edit.locator(".disclosureLeading").click();
+  await expect(edit.locator("[data-diff]")).toContainText("README.md");
+  await expect(edit.locator(".diffFooter")).toContainText("+2 -1");
   await expect(page).toHaveScreenshot("canonical-diff.png");
 });
 
@@ -140,15 +164,22 @@ test("captures collapsed tools, expanded tool detail, and trajectory", async ({p
   await expect(tool.locator(".disclosureChevron")).toHaveCSS("opacity", "1");
   await tool.locator(":scope > .disclosureRow .disclosureLeading").click();
   await expect(tool.locator(
-    ".toolIOCard, [data-read], [data-terminal], [data-search]"
+    ".toolIOCard, [data-read], [data-terminal], [data-search], [data-diff]"
   )).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-tool-expanded.png");
 
   await tool.getByRole("button", {name: "Inspect"}).click();
   await expect(page.getByLabel("Execution trajectory")).toBeVisible();
-  await expect(page.getByRole("complementary", {name: "Record inspector"}))
-    .toBeVisible();
+  const inspector = page.getByRole("complementary", {name: "Record inspector"});
+  await expect(inspector).toBeVisible();
+  await expect(inspector.getByRole("tab", {name: "Summary"}))
+    .toHaveAttribute("aria-selected", "true");
+  await expect(inspector.getByRole("tab", {name: "Input"})).toBeVisible();
+  await expect(inspector.getByRole("tab", {name: "Output"})).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-trajectory.png");
+  await inspector.getByRole("tab", {name: "Output"}).click();
+  await expect(inspector.getByRole("button", {name: "Copy output"})).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-trajectory-detail.png");
 });
 
 test("captures Think and specialized Read, Bash, Grep, and Glob cards", async ({page}) => {
@@ -181,6 +212,27 @@ test("captures Think and specialized Read, Bash, Grep, and Glob cards", async ({
   await expect(searches.nth(1).locator("[data-search]")).toBeVisible();
   await searches.nth(0).scrollIntoViewIfNeeded();
   await expect(page).toHaveScreenshot("canonical-search.png");
+});
+
+test("captures the back-to-bottom control at the transcript edge", async ({page}) => {
+  await page.setViewportSize({width: 1024, height: 600});
+  await createSession(page);
+  await page.getByLabel("Approval").selectOption("auto");
+  await submitPrompt(page, "visual tools");
+  await expect(page.locator(".assistantMessage").last())
+    .toContainText("Inspected the workspace with focused tools.");
+  for (const row of await page.locator(".toolDisclosure .disclosureRow").all()) {
+    await row.click();
+  }
+  await page.locator(".conversationScrollport").evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  const button = page.getByRole("button", {name: "Back to bottom"});
+  await expect(button).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-back-to-bottom.png");
+  await button.click();
+  await expect(button).toHaveCount(0);
 });
 
 test("captures streaming and completed states", async ({page}) => {
@@ -248,6 +300,24 @@ test("captures the approval state", async ({page}) => {
   await submitPrompt(page, "visual approval");
   await expect(page.getByText("exec_command requires approval")).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-approval.png");
+});
+
+test("captures a complex edit and approval workflow", async ({page}) => {
+  await createSession(page);
+  await submitPrompt(page, "visual edit approval");
+
+  await expect(page.getByText("Waiting for approval")).toBeVisible();
+  await expect(page.getByText("exec_command requires approval")).toBeVisible();
+  const pendingEdit = page.locator('.toolDisclosure[data-variant="diff"]');
+  await pendingEdit.locator(".disclosureLeading").click();
+  await expect(pendingEdit.locator("[data-diff]")).toContainText("README.md");
+  await expect(page).toHaveScreenshot("canonical-edit-approval.png");
+
+  await page.getByRole("button", {name: "Approve once"}).click();
+  await expect(page.locator(".assistantMessage").last())
+    .toContainText("Updated");
+  await expect(pendingEdit.locator("[data-diff]")).toContainText("README.md");
+  await expect(page).toHaveScreenshot("canonical-edit-completed.png");
 });
 
 test("captures the input state", async ({page}) => {

@@ -20,6 +20,7 @@ export type TrajectoryLane = "input" | "model" | "tools";
 export interface TrajectoryRecord {
   readonly id: string;
   readonly sequence: number;
+  readonly createdAt: string;
   readonly turnID: string;
   readonly itemID: string;
   readonly callID: string;
@@ -216,9 +217,25 @@ export function projectTrajectory(
           data.summary ?? data.reason ?? data.prompt ?? event.kind
         ), {output: data}));
         break;
-      case "tool.state":
       case "approval.required":
+        put(record(
+          event,
+          "tool",
+          "APPROVAL",
+          `${text(data.tool) || "Action"} · ${text(data.effect) || text(data.risk) || "Review"}`,
+          {output: data}
+        ));
+        break;
       case "approval.resolved":
+        put(record(
+          event,
+          "tool",
+          "APPROVAL",
+          `Decision · ${text(data.decision) || "resolved"}`,
+          {output: data, failed: data.decision === "deny" || data.decision === "cancel"}
+        ));
+        break;
+      case "tool.state":
       case "agent.spawned":
       case "agent.status":
       case "agent.message":
@@ -232,7 +249,7 @@ export function projectTrajectory(
         ));
         break;
       case "usage":
-        put(record(event, "receipt", "RECEIPT", usageSummary(data), {
+        put(record(event, "receipt", "USAGE", usageSummary(data), {
           usage: data
         }));
         break;
@@ -256,7 +273,7 @@ export function projectTrajectory(
         put(record(
           event,
           "receipt",
-          "RECEIPT",
+          "TURN",
           eventSummary(event),
           {output: data}
         ));
@@ -316,12 +333,24 @@ export function projectTrajectory(
 
   const traced = trace ? traceSpans(trace, records) : [];
   const tracedRecords = new Set(traced.map((span) => span.recordID));
+  const receiptTiming = new Map<string, Readonly<Record<string, unknown>>>();
+  for (const event of events) {
+    if (event.kind === "turn.receipt" && isRecord(event.data.latency)) {
+      receiptTiming.set(event.turn_id, event.data.latency);
+    }
+  }
   const spans = [
     ...traced,
     ...eventSpans(events, records).filter(
       (span) => !tracedRecords.has(span.recordID)
     )
-  ].sort((left, right) =>
+  ].map((span) => {
+    const latency = receiptTiming.get(span.turnID);
+    const ttftMS = span.lane === "model"
+      ? finiteNumber(latency?.first_token_ms)
+      : undefined;
+    return ttftMS === undefined ? span : {...span, ttftMS};
+  }).sort((left, right) =>
     left.startedAt - right.startedAt || left.id.localeCompare(right.id)
   );
   return Object.freeze({
@@ -372,7 +401,7 @@ function appendReasoningRecord(
     ? text(event.data.text)
     : text(previous?.output) + text(event.data.text);
   bySample.set(key, id);
-  put(record(event, "assistant", "ASSISTANT", `Reasoning · ${lastLine(output)}`, {
+  put(record(event, "assistant", "THINK", `Reasoning · ${lastLine(output)}`, {
     id,
     output,
     raw: Object.freeze({...event.data, text: output})
@@ -389,6 +418,7 @@ function record(
   return {
     id: event.id,
     sequence: event.sequence,
+    createdAt: event.created_at,
     turnID: event.turn_id,
     itemID: event.item_id,
     callID: "",
@@ -630,4 +660,10 @@ function text(value: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }

@@ -179,12 +179,12 @@ test("deletes the final Session after explicit confirmation", async ({page}) => 
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
   await expect(page.locator(".sessionRow")).toHaveCount(1);
-  await openContextDetails(page);
   page.once("dialog", (dialog) => dialog.accept());
 
-  await page.locator(".detailPanel").getByRole("button", {
-    name: "Delete session"
-  }).click();
+  const session = page.locator(".sessionRow").first();
+  await session.hover();
+  await session.getByRole("button", {name: /Session actions for/}).click();
+  await session.getByRole("menuitem", {name: "Delete"}).click();
 
   await expect(page.locator(".sessionRow")).toHaveCount(0);
   await expect(page.getByRole("heading", {name: "Start a new session"})).toBeVisible();
@@ -220,17 +220,18 @@ test("restores the selected Session and transcript after a browser reload", asyn
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
 });
 
-test("shows the fixed provider and single-model route as read-only", async ({page}) => {
+test("shows model routing and capabilities in Settings", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
-  await openContextDetails(page);
+  await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Models"}).click();
 
-  const provider = page.getByLabel("Provider");
-  const model = page.getByLabel("Model");
-  await expect(provider).toHaveText("fixture");
+  const provider = page.getByLabel("Provider", {exact: true});
+  const model = page.getByLabel("Settings model");
+  await expect(provider).toHaveValue("fixture");
   await expect(model).toHaveText("fixture-model");
-  await expect(provider).toHaveJSProperty("tagName", "OUTPUT");
-  await expect(model).toHaveJSProperty("tagName", "OUTPUT");
+  await expect(page.getByText("Context window")).toBeVisible();
+  await expect(page.getByText("Prompt cache", {exact: true})).toBeVisible();
 });
 
 test("browses workspace resources and restores an archived Session", async ({page}) => {
@@ -239,13 +240,12 @@ test("browses workspace resources and restores an archived Session", async ({pag
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
   await openContextDetails(page);
 
-  await page.getByRole("button", {name: "Browse workspace"}).click();
-  const fileEntry = page.locator(".workspaceEntries .resourceMatch").filter({
+  const fileEntry = page.locator(".contextResults button").filter({
     has: page.getByText("README.md", {exact: true})
   });
   await expect(fileEntry).toBeVisible();
   await fileEntry.click();
-  await expect(page.locator(".resourceViewer")).toBeVisible();
+  await expect(page.locator(".contextPreview")).toBeVisible();
   const resourceContent = page.getByLabel("Workspace resource content");
   await resourceContent.focus();
   await resourceContent.evaluate((element: HTMLTextAreaElement) => {
@@ -253,7 +253,7 @@ test("browses workspace resources and restores an archived Session", async ({pag
     element.dispatchEvent(new Event("select", {bubbles: true}));
     document.dispatchEvent(new Event("selectionchange", {bubbles: true}));
   });
-  await page.getByRole("button", {name: "Add selection to prompt context"}).click();
+  await page.getByRole("button", {name: "Add selection"}).click();
   await expect(page.getByLabel("Prompt context", {exact: true})).toContainText(
     /:1:1-1:6/
   );
@@ -261,9 +261,7 @@ test("browses workspace resources and restores an archived Session", async ({pag
     page.waitForEvent("download"),
     page.getByRole("button", {name: "Download resource"}).click()
   ]);
-  expect(download.suggestedFilename()).toBe(
-    await fileEntry.locator("strong").textContent()
-  );
+  expect(download.suggestedFilename()).toBe("README.md");
 
   const symbolSearch = page.getByLabel("Search workspace symbols");
   await symbolSearch.fill("helloFixture");
@@ -273,27 +271,31 @@ test("browses workspace resources and restores an archived Session", async ({pag
   await symbol.click();
   await expect(page.getByLabel("Prompt context", {exact: true})).toContainText("main.go");
 
-  const imageEntry = page.locator(".workspaceEntries .resourceMatch").filter({
+  const imageEntry = page.locator(".contextResults button").filter({
     has: page.getByText("diagram.png", {exact: true})
   });
   await imageEntry.click();
   await expect(page.getByRole("img", {name: "diagram.png"})).toBeVisible();
-  await page.getByRole("button", {name: "Add image to prompt context"}).click();
+  await page.getByRole("button", {name: "Add image"}).click();
   await expect(page.getByLabel("Prompt context", {exact: true})).toContainText(
     "diagram.png"
   );
 
-  const lifecycle = page.locator(".detailSection").filter({
-    has: page.getByRole("heading", {name: "Lifecycle"})
-  });
+  await page.getByRole("button", {name: "Close context browser"}).click();
+  let activeSession = page.locator(".sessionRow[data-active]");
+  await activeSession.hover();
+  await activeSession.getByRole("button", {name: /Session actions for/}).click();
   page.once("dialog", (dialog) => dialog.accept("Archive Target"));
-  await lifecycle.getByRole("button", {name: "Rename session"}).click();
+  await activeSession.getByRole("menuitem", {name: "Rename"}).click();
   await expect(page.locator(".sessionRow").filter({
     hasText: "Archive Target"
   })).toBeVisible();
 
+  activeSession = page.locator(".sessionRow[data-active]");
+  await activeSession.hover();
+  await activeSession.getByRole("button", {name: /Session actions for/}).click();
   page.once("dialog", (dialog) => dialog.accept());
-  await lifecycle.getByRole("button", {name: "Archive session"}).click();
+  await activeSession.getByRole("menuitem", {name: "Archive"}).click();
   await expect(page.getByRole("heading", {name: "Archive Target", level: 1})).toHaveCount(0);
 
   await page.getByRole("button", {name: "Show archived sessions"}).click();
@@ -301,8 +303,9 @@ test("browses workspace resources and restores an archived Session", async ({pag
     has: page.getByText("Archive Target", {exact: true})
   });
   await archived.locator(".sessionSelect").click();
-  await expect(lifecycle.getByRole("button", {name: "Restore session"})).toBeVisible();
-  await lifecycle.getByRole("button", {name: "Restore session"}).click();
+  await archived.hover();
+  await archived.getByRole("button", {name: /Session actions for/}).click();
+  await archived.getByRole("menuitem", {name: "Restore"}).click();
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
 });
 

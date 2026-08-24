@@ -120,12 +120,15 @@ func validate(value contract, root string) error {
 	}
 	if !sameSet(value.Stylesheets, []string{
 		"web/src/ui/styles.css",
+		"web/src/ui/SettingsDialog.css",
+		"web/src/ui/WorkspaceContextDialog.css",
 		"web/src/ui/Trajectory.css",
 	}) {
 		return errors.New("stylesheets must cover the production Web styles")
 	}
 	if !sameSet(value.LayoutRegions, []string{
-		"session_rail", "conversation", "composer", "detail",
+		"session_rail", "conversation", "composer", "settings_dialog",
+		"context_dialog", "trajectory_inspector",
 	}) {
 		return errors.New("layout regions drifted")
 	}
@@ -135,7 +138,8 @@ func validate(value contract, root string) error {
 	if !sameSet(value.CanonicalStates, []string{
 		"empty", "blank_session", "streaming", "tool_collapsed",
 		"tool_expanded", "approval", "input", "failure", "completed",
-		"diff", "settings", "trajectory",
+		"diff", "settings", "settings_models", "settings_tools",
+		"settings_agent", "context_browser", "edit_approval", "trajectory",
 	}) {
 		return errors.New("canonical states drifted")
 	}
@@ -160,7 +164,7 @@ func validate(value contract, root string) error {
 	if hasDuplicate(value.SemanticTokens) || hasDuplicate(value.StableGeometry) {
 		return errors.New("tokens and stable geometry selectors must be unique")
 	}
-	if len(value.Behavior) != 5 {
+	if len(value.Behavior) != 6 {
 		return errors.New("behavior matrix is incomplete")
 	}
 	if value.CSSPolicy.SemanticPrefix != "--ch-" ||
@@ -186,17 +190,25 @@ func validateGoldens(value contract, root string) error {
 	const directory = "web/tests/e2e/visual.spec.ts-snapshots"
 	expected := []string{
 		"canonical-approval.png",
+		"canonical-back-to-bottom.png",
 		"canonical-blank-session.png",
 		"canonical-completed.png",
 		"canonical-diff.png",
+		"canonical-edit-approval.png",
+		"canonical-edit-completed.png",
 		"canonical-empty.png",
 		"canonical-failure.png",
 		"canonical-input.png",
 		"canonical-settings.png",
+		"canonical-settings-models.png",
+		"canonical-settings-tools.png",
+		"canonical-settings-agent.png",
+		"canonical-context-browser.png",
 		"canonical-streaming.png",
 		"canonical-tool-collapsed.png",
 		"canonical-tool-expanded.png",
 		"canonical-trajectory.png",
+		"canonical-trajectory-detail.png",
 		"viewport-390x844-dark.png",
 		"viewport-390x844-light.png",
 		"viewport-1024x768-dark.png",

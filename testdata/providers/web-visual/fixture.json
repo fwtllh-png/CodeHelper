@@ -17,6 +17,16 @@
       "streams": ["approval-request.sse", "approval-complete.sse"]
     },
     {
+      "match": ["visual edit approval"],
+      "streams": [
+        "diff-read.sse",
+        "edit-request.sse",
+        "approval-request.sse",
+        "edit-verify.sse",
+        "edit-complete.sse"
+      ]
+    },
+    {
       "match": ["visual input"],
       "streams": ["input-request.sse", "input-answer.sse", "input-complete.sse"]
     },

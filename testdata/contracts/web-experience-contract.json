@@ -2,13 +2,17 @@
   "version": 1,
   "stylesheets": [
     "web/src/ui/styles.css",
+    "web/src/ui/SettingsDialog.css",
+    "web/src/ui/WorkspaceContextDialog.css",
     "web/src/ui/Trajectory.css"
   ],
   "layout_regions": [
     "session_rail",
     "conversation",
     "composer",
-    "detail"
+    "settings_dialog",
+    "context_dialog",
+    "trajectory_inspector"
   ],
   "responsive_tracks": [
     {
@@ -17,7 +21,6 @@
       "max_width": 720,
       "tracks": "56px minmax(0, 1fr)",
       "yield_order": [
-        "detail",
         "session_metadata",
         "session_search"
       ]
@@ -27,15 +30,13 @@
       "min_width": 721,
       "max_width": 1240,
       "tracks": "280px minmax(0, 1fr)",
-      "yield_order": [
-        "detail"
-      ]
+      "yield_order": []
     },
     {
       "mode": "wide",
       "min_width": 1241,
       "max_width": 3840,
-      "tracks": "280px minmax(0, 1fr) 360px",
+      "tracks": "280px minmax(0, 1fr)",
       "yield_order": []
     }
   ],
@@ -66,14 +67,17 @@
     "--ch-focus",
     "--ch-code",
     "--ch-shadow",
+    "--ch-modal-mask",
+    "--ch-modal-shadow",
     "--ch-composer-shadow",
     "--ch-rail-width",
     "--ch-rail-collapsed-width",
-    "--ch-detail-width",
     "--ch-chat-width",
     "--ch-composer-width",
     "--ch-header-height",
     "--ch-radius",
+    "--ch-radius-panel",
+    "--ch-radius-modal",
     "--ch-radius-conversation",
     "--ch-motion-none",
     "--ch-motion-spin",
@@ -106,6 +110,11 @@
     "completed",
     "diff",
     "settings",
+    "settings_models",
+    "settings_tools",
+    "settings_agent",
+    "context_browser",
+    "edit_approval",
     "trajectory"
   ],
   "motion": [
@@ -132,7 +141,7 @@
     },
     {
       "id": "pending_interaction",
-      "selector": ".pendingHeading",
+      "selector": ".approvalDot",
       "full": "pending_pulse_1000ms",
       "reduced": "single_frame",
       "still": "status_text"
@@ -146,7 +155,7 @@
     "transcript",
     "current_interaction",
     "composer",
-    "detail"
+    "modal_dialog"
   ],
   "keyboard_commands": [
     {
@@ -172,7 +181,8 @@
     ".composer",
     ".composerMeta",
     ".pendingComposer",
-    ".detailPanel",
+    ".settingsDialog",
+    ".contextDialog",
     ".iconButton",
     ".trajectoryTimeline",
     ".ledgerRow",
@@ -183,7 +193,8 @@
     "history_prepend_anchor": "preserve_visible_turn",
     "approval_takeover": "replace_composer_without_resizing_shell",
     "input_takeover": "replace_composer_without_resizing_shell",
-    "detail_open": "preserve_composer_and_primary_action"
+    "context_open": "modal_without_resizing_shell",
+    "trajectory_inspector": "view_local_resizable_panel"
   },
   "viewports": [
     "390x844",
@@ -203,17 +214,25 @@
   "golden_directory": "web/tests/e2e/visual.spec.ts-snapshots",
   "goldens": [
     "canonical-approval.png",
+    "canonical-back-to-bottom.png",
     "canonical-blank-session.png",
     "canonical-completed.png",
     "canonical-diff.png",
+    "canonical-edit-approval.png",
+    "canonical-edit-completed.png",
     "canonical-empty.png",
     "canonical-failure.png",
     "canonical-input.png",
     "canonical-settings.png",
+    "canonical-settings-models.png",
+    "canonical-settings-tools.png",
+    "canonical-settings-agent.png",
+    "canonical-context-browser.png",
     "canonical-streaming.png",
     "canonical-tool-collapsed.png",
     "canonical-tool-expanded.png",
     "canonical-trajectory.png",
+    "canonical-trajectory-detail.png",
     "viewport-390x844-dark.png",
     "viewport-390x844-light.png",
     "viewport-1024x768-dark.png",

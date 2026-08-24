@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"I will update the reviewed file and wait for approval before applying the change."},"finish_reason":null}]}
+
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_visual_edit","function":{"name":"file_edit","arguments":"{\"path\":\"README.md\",\"old\":\"A stable baseline for browser goldens.\",\"new\":\"A stable baseline for browser goldens.\\n\\nmode = safe\\nretries = 3\\ntimeout = 15s\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

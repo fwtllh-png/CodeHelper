@@ -44,7 +44,7 @@ describe("projectTrajectory", () => {
     const projection = projectTrajectory(events, trace);
 
     expect(projection.records.map((record) => record.label)).toEqual([
-      "USER", "ASSISTANT", "TOOL", "ASSISTANT"
+      "USER", "THINK", "TOOL", "ASSISTANT"
     ]);
     expect(projection.records.find((record) => record.callID === "call-1"))
       .toMatchObject({summary: "file_read · README.md -> # Project"});
@@ -65,7 +65,7 @@ describe("projectTrajectory", () => {
 
     expect(projection.timingAvailable).toBe(false);
     expect(projection.records.map((record) => record.label)).toEqual([
-      "USER", "ASSISTANT", "RECEIPT"
+      "USER", "ASSISTANT", "TURN"
     ]);
     expect(projection.records[1]).toMatchObject({output: "Hi"});
     expect(projection.spans).toHaveLength(3);
@@ -127,6 +127,36 @@ describe("projectTrajectory", () => {
     expect(projection.records.some(
       (record) => record.kind === "assistant" && record.output === "Done"
     )).toBe(true);
+  });
+
+  it("exposes approval semantics and model TTFT in the inspector projection", () => {
+    const projection = projectTrajectory([
+      event(1, "turn.started", {display_prompt: "Edit a file"}),
+      event(2, "output.delta", {text: "Preparing"}),
+      event(3, "approval.required", {
+        request_id: "approval",
+        call_id: "write",
+        tool: "file_write",
+        effect: "workspace_write"
+      }),
+      event(4, "usage", {
+        provider: "fixture",
+        input_tokens: 40,
+        output_tokens: 8
+      }),
+      event(5, "turn.receipt", {
+        outcome: "changed",
+        latency: {first_token_ms: 250, provider_ms: 900}
+      }),
+      event(6, "turn.completed", {text: "Done"})
+    ]);
+
+    expect(projection.records.find((record) => record.label === "APPROVAL"))
+      .toMatchObject({summary: "file_write · workspace_write"});
+    expect(projection.records.find((record) => record.label === "USAGE"))
+      .toBeTruthy();
+    expect(projection.spans.find((span) => span.recordID === "output-turn"))
+      .toMatchObject({ttftMS: 250});
   });
 });
 

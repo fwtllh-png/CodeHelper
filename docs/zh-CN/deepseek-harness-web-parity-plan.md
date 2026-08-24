@@ -154,7 +154,7 @@ System、User、Context、Assistant、Tool、Usage 和时间边界。Stats 是�
 
 | 动画 | 参考持续时间 | 用途 |
 | --- | ---: | --- |
-| Sidebar 和 Details 列宽过渡 | 300ms | 表达面板展开和收起 |
+| Sidebar 列宽过渡 | 300ms | 表达面板展开和收起 |
 | Sidebar 内容交叉淡入淡出 | 150ms | 避免列宽变化时文字重排 |
 | Disclosure 图标切换 | 100ms | 图标与 Chevron 切换 |
 | Running 文本 Shimmer | 1800ms | 表达 Agent 仍在生成 |
@@ -187,11 +187,14 @@ AppFrame
 │           ├── Approval 或 Input Takeover
 │           ├── Composer
 │           └── Stats
-└── Details
-    ├── Selected Tool
-    ├── Changes / Checkpoints
-    ├── Tasks / Agents
-    └── Usage / Diagnostics / Extensions
+├── Settings Dialog
+│   ├── General / Models
+│   ├── Tools / Extensions
+│   └── Agent Preset / Recovery
+└── Context Dialog
+    ├── Files / Symbols
+    ├── Changes
+    └── Diagnostics
 ```
 
 ### Sidebar 与会话管理
@@ -735,11 +738,11 @@ web/src/
 
 - 实现卡皮巴拉 Mark、Wordmark、Favicon 和 App Icon 资产生成；
 - 实现可收起 Sidebar Rail 和宽度偏好；
-- 实现 Center、Details 的列宽让步算法；
+- 保持 Sidebar + Center 两列主布局，Context 和 Settings 通过模态层渐进披露；
 - 统一 Empty 和 Active Composer；
 - 将高频 Profile 控件移动到 Composer；
-- 保留 Details 中的低频管理和诊断功能；
-- 把 Settings 改为同参考实现一致的分区浮层；
+- 将文件、Diff 和诊断迁移到独立 Context Dialog；
+- 把 Settings 改为同参考实现一致的分区模态框，并承载模型、工具、扩展和 Agent 配置；
 - 补齐窄屏、宽屏、Zoom 和恢复测试。
 
 ### Runtime Feedback
@@ -1188,13 +1191,16 @@ make verify
 - 最终回答尾部的复制与本地持久化赞踩、`+` 命令菜单和真实 `thread.compact`；
 - 基于 `usage.context` 的 Context Meter 与 System、Tool、Message、Provider 分类明细；
 - GFM 标题、列表、引用、代码和可横向滚动表格，以及按当前值收缩的 Profile 下拉框；
+- 移除混合多种职责的全局右侧栏，将 Context 与 Settings 拆成独立模态工作台；
+- 审批卡直接展示 Runtime Edit Plan，完成后的写入工具行保留文件级 Diff 摘要；
+- Trajectory Ledger 增加类型图标和 Turn 标识，Inspector 改为可调宽多标签详情；
 - Chat/Trajectory 双视图、三泳道 Timeline、虚拟化 Ledger、Inspector 和双向定位；
 - 受 Session/Turn 归属与 Watermark 约束的脱敏 `trace/query`；
 - Trajectory 独立 JS/CSS Chunk、首屏 gzip/brotli 预算和 100 分机器化复刻契约。
 
 自动化验证通过：
 
-- `make web-e2e`：20 个 Playwright 场景；
+- `make web-e2e`：27 个 Playwright 场景；
 - `make web-performance`、`make web-experience-check`、`make web-parity-check`；
 - `make web-assets-check`、`make web-supply-chain-check`、`make docs-check`；
 - `make verify`，包括 99 项架构 Ratchet、Hermetic 全仓测试和 `go test -race`。

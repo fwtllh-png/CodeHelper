@@ -18,11 +18,12 @@
           ]
         },
         {
-          "id": "three_column_shell",
+          "id": "focused_two_column_shell",
           "points": 4,
           "evidence": [
             "web/src/ui/App.tsx#data-rail-collapsed",
-            "web/src/ui/styles.css#--ch-detail-width"
+            "web/src/ui/App.tsx#WorkspaceContextDialog",
+            "web/src/ui/App.tsx#SettingsDialog"
           ]
         },
         {
@@ -30,7 +31,7 @@
           "points": 4,
           "evidence": [
             "web/src/ui/App.tsx#ResizeHandle",
-            "web/src/ui/experience.ts#sidebarMinimum"
+            "web/src/ui/Trajectory.tsx#recordInspectorResize"
           ]
         }
       ]
@@ -81,7 +82,9 @@
           "points": 6,
           "evidence": [
             "web/src/ui/App.tsx#useState(false)",
-            "web/src/projection/conversation.test.ts#summarizes result handles without exposing output by default"
+            "web/src/projection/conversation.test.ts#summarizes result handles without exposing output by default",
+            "web/src/ui/TranscriptCards.tsx#EditPlanPreview",
+            "web/src/projection/conversation.test.ts#retains an approval edit plan on the associated tool result"
           ]
         },
         {
@@ -161,6 +164,7 @@
           "points": 5,
           "evidence": [
             "web/src/ui/Trajectory.tsx#timelineLabels",
+            "web/src/ui/Trajectory.tsx#inspectorTabs",
             "web/src/ui/App.test.tsx#opens the three-lane trajectory and inspects a tool from chat"
           ]
         },

@@ -10,17 +10,11 @@ import {
   Download,
   FileCode2,
   FolderOpen,
-  FolderTree,
-  GitFork,
-  GitCompareArrows,
   LoaderCircle,
   KeyRound,
-  Moon,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
   Pencil,
   Pin,
   PinOff,
@@ -31,8 +25,6 @@ import {
   Search,
   Send,
   Settings2,
-  Sun,
-  TerminalSquare,
   TextSelect,
   Trash2,
   Wrench,
@@ -55,18 +47,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type {
   CredentialStatus,
-  EditorRange,
   RuntimeEvent,
-  SessionSummary,
-  WorkspaceDiagnosticContext,
-  WorkspaceEntry,
-  WorkspaceDiff,
-  WorkspaceImage,
-  WorkspaceResource,
-  WorkspaceSearchMatch,
-  WorkspaceSymbol
+  SessionSummary
 } from "../protocol";
 import {
+  projectEditPlan,
   projectConversation,
   type ConversationNode
 } from "../projection/conversation";
@@ -83,7 +68,14 @@ import {
   type MessageFeedbackRating
 } from "./ConversationChrome";
 import {experience} from "./experience";
-import {ReasoningDisclosure, ToolDisclosure} from "./TranscriptCards";
+import type {ThemeMode} from "./SettingsDialog";
+import {
+  EditPlanPreview,
+  ReasoningDisclosure,
+  ToolDisclosure
+} from "./TranscriptCards";
+
+export {selectionRange} from "./WorkspaceContextDialog";
 
 interface Props {
   client: RuntimeClient;
@@ -97,13 +89,21 @@ const compactCountFormat = new Intl.NumberFormat("en", {
 const Trajectory = lazy(async () => ({
   default: (await import("./Trajectory")).Trajectory
 }));
-
-function initialDetailOpen(): boolean {
-  return false;
-}
+const SettingsDialog = lazy(async () => ({
+  default: (await import("./SettingsDialog")).SettingsDialog
+}));
+const WorkspaceContextDialog = lazy(async () => ({
+  default: (await import("./WorkspaceContextDialog")).WorkspaceContextDialog
+}));
 
 function initialRailCollapsed(): boolean {
   return readPreference("ch.sidebar.collapsed") === "true";
+}
+
+function initialSessionIsolation(): "shared" | "worktree" {
+  return readPreference("ch.session.isolation") === "worktree"
+    ? "worktree"
+    : "shared";
 }
 
 function storedPanelWidth(key: string, fallback: number): number {
@@ -140,7 +140,7 @@ export function App({client}: Props) {
   const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
   const [draft, setDraft] = useState("");
   const [draftOwner, setDraftOwner] = useState("");
-  const [detailOpen, setDetailOpen] = useState(initialDetailOpen);
+  const [contextOpen, setContextOpen] = useState(false);
   const [railCollapsed, setRailCollapsed] = useState(initialRailCollapsed);
   const [railWidth, setRailWidth] = useState(
     () => storedPanelWidth(
@@ -148,16 +148,10 @@ export function App({client}: Props) {
       experience.layout.sidebarDefault
     )
   );
-  const [detailWidth, setDetailWidth] = useState(
-    () => storedPanelWidth(
-      "ch.details.width",
-      experience.layout.detailsDefault
-    )
-  );
   const [activeView, setActiveView] = useState<"chat" | "trajectory">("chat");
   const [inspectCallID, setInspectCallID] = useState("");
-  const [blankDetailRequested, setBlankDetailRequested] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
   const [submitting, setSubmitting] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
   const [localError, setLocalError] = useState("");
@@ -166,22 +160,9 @@ export function App({client}: Props) {
     pending: boolean;
     error: string;
   }>();
-  const [workspaceQuery, setWorkspaceQuery] = useState("");
-  const [workspaceMatches, setWorkspaceMatches] = useState<readonly WorkspaceSearchMatch[]>([]);
-  const [workspacePath, setWorkspacePath] = useState(".");
-  const [workspaceEntries, setWorkspaceEntries] = useState<readonly WorkspaceEntry[]>([]);
-  const [workspaceResource, setWorkspaceResource] = useState<WorkspaceResource>();
-  const [workspaceSelection, setWorkspaceSelection] = useState<EditorRange>();
-  const [workspaceImage, setWorkspaceImage] = useState<WorkspaceImage>();
-  const [workspaceImageURL, setWorkspaceImageURL] = useState("");
-  const [workspaceSymbolQuery, setWorkspaceSymbolQuery] = useState("");
-  const [workspaceSymbols, setWorkspaceSymbols] = useState<readonly WorkspaceSymbol[]>([]);
-  const [workspaceDiagnostics, setWorkspaceDiagnostics] =
-    useState<readonly WorkspaceDiagnosticContext[]>([]);
-  const [workspaceDiff, setWorkspaceDiff] = useState<WorkspaceDiff>();
-  const [newIsolation, setNewIsolation] = useState<"shared" | "worktree">("shared");
+  const [newIsolation, setNewIsolation] =
+    useState<"shared" | "worktree">(initialSessionIsolation);
   const [credentialStatus, setCredentialStatus] = useState<CredentialStatus>();
-  const [diagnostics, setDiagnostics] = useState("");
   const [transcriptPage, setTranscriptPage] = useState(0);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const transcriptContentRef = useRef<HTMLDivElement>(null);
@@ -221,9 +202,6 @@ export function App({client}: Props) {
   const activeTurn = snapshot.conversation.activeTurnID;
   const selectedProvider = snapshot.profile?.profile.provider ?? "";
   const selectedModel = snapshot.profile?.profile.model ?? "";
-  const selectedProviderEntry = snapshot.providers.find(
-    (provider) => provider.id === selectedProvider
-  );
   const selectedModelEntry = snapshot.models.find(
     (model) =>
       model.provider === selectedProvider &&
@@ -257,23 +235,16 @@ export function App({client}: Props) {
   const blankSession = Boolean(
     selected && entries.length === 0 && !snapshot.hydratingSessionID
   );
-  const detailVisible = Boolean(
-    selected &&
-    detailOpen &&
-    (!blankSession || blankDetailRequested)
-  );
   const reportLocalError = useCallback((error: unknown) => {
     setLocalError(error instanceof Error ? error.message : String(error));
   }, []);
+  const closeContext = useCallback(() => setContextOpen(false), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const inspectTool = useCallback((callID: string) => {
     setInspectCallID(callID);
     setActiveView("trajectory");
     void client.refreshTrace();
   }, [client]);
-
-  useEffect(() => {
-    setWorkspaceSelection(undefined);
-  }, [workspaceResource?.digest]);
 
   useEffect(() => {
     writePreference("ch.sidebar.collapsed", String(railCollapsed));
@@ -284,21 +255,17 @@ export function App({client}: Props) {
   }, [railWidth]);
 
   useEffect(() => {
-    writePreference("ch.details.width", String(detailWidth));
-  }, [detailWidth]);
+    writePreference("ch.session.isolation", newIsolation);
+  }, [newIsolation]);
 
   useEffect(() => {
     setTranscriptPage(0);
     setActiveView("chat");
     setInspectCallID("");
-    setBlankDetailRequested(false);
+    setContextOpen(false);
     atBottomRef.current = true;
     setAtBottom(true);
   }, [snapshot.selectedSessionID]);
-
-  useEffect(() => () => {
-    if (workspaceImageURL) URL.revokeObjectURL(workspaceImageURL);
-  }, [workspaceImageURL]);
 
   useEffect(() => {
     void client.start();
@@ -360,13 +327,15 @@ export function App({client}: Props) {
   }, [activeTurn, activeView, client]);
 
   useEffect(() => {
-    if (!settingsOpen) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSettingsOpen(false);
-    };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [settingsOpen]);
+    const media = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: dark)")
+      : undefined;
+    const apply = () => applyThemeMode(themeMode, media?.matches ?? false);
+    apply();
+    if (themeMode !== "system" || !media) return;
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [themeMode]);
 
   const submit = async () => {
     const prompt = draft.trim();
@@ -424,10 +393,7 @@ export function App({client}: Props) {
       label: "context",
       description: "Browse files, symbols, diagnostics, and diffs",
       icon: FileCode2,
-      run: () => {
-        setDetailOpen(true);
-        setBlankDetailRequested(true);
-      }
+      run: () => setContextOpen(true)
     },
     {
       id: "compact",
@@ -492,22 +458,6 @@ export function App({client}: Props) {
     }
   ];
 
-  const downloadWorkspaceResource = async (
-    resource: Pick<WorkspaceResource | WorkspaceImage, "content_handle" | "path">
-  ) => {
-    try {
-      const blob = await client.downloadWorkspaceContent(resource.content_handle);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = resource.path.split("/").at(-1) || "download";
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      reportLocalError(error);
-    }
-  };
-
   const runSessionAction = async (
     session: SessionSummary,
     action: () => Promise<void>
@@ -543,26 +493,6 @@ export function App({client}: Props) {
     ));
   };
 
-  const openWorkspacePath = async (path: string) => {
-    try {
-      if (isWorkspaceImagePath(path)) {
-        const image = await client.readWorkspaceImage(path);
-        const blob = await client.downloadWorkspaceContent(image.content_handle);
-        setWorkspaceResource(undefined);
-        setWorkspaceSelection(undefined);
-        setWorkspaceImage(image);
-        setWorkspaceImageURL(URL.createObjectURL(blob));
-        return;
-      }
-      const resource = await client.readWorkspaceResource(path);
-      setWorkspaceImage(undefined);
-      setWorkspaceImageURL("");
-      setWorkspaceResource(resource);
-    } catch (error) {
-      reportLocalError(error);
-    }
-  };
-
   if (snapshot.phase === "booting") {
     return <BootState title="Starting CodeHelper" detail={snapshot.workspaceRoot} />;
   }
@@ -579,11 +509,9 @@ export function App({client}: Props) {
   return (
     <div
       className="app"
-      data-detail-open={detailVisible || undefined}
       data-rail-collapsed={railCollapsed || undefined}
       style={{
-        "--ch-rail-width": `${railWidth}px`,
-        "--ch-detail-width": `${detailWidth}px`
+        "--ch-rail-width": `${railWidth}px`
       } as React.CSSProperties}
     >
       <aside className="sessionRail" aria-label="Sessions">
@@ -806,13 +734,6 @@ export function App({client}: Props) {
                   disabled={Boolean(snapshot.hydratingSessionID)}
                   icon={<Download size={17} />}
                   onClick={() => void exportSession()}
-                />
-                <IconButton
-                  label={detailOpen ? "Close detail panel" : "Open detail panel"}
-                  icon={detailOpen
-                    ? <PanelRightClose size={17} />
-                    : <PanelRightOpen size={17} />}
-                  onClick={() => setDetailOpen((value) => !value)}
                 />
               </>
             )}
@@ -1111,547 +1032,29 @@ export function App({client}: Props) {
         </div>
       </main>
 
-      {detailVisible && (
-        <aside className="detailPanel" aria-label="Session details">
-          <ResizeHandle
-            label="Resize details"
-            edge="start"
-            value={detailWidth}
-            minimum={experience.layout.detailsMinimum}
-            maximum={experience.layout.detailsMaximum}
-            onDelta={(delta) => setDetailWidth((width) =>
-              clamp(
-                width - delta,
-                experience.layout.detailsMinimum,
-                experience.layout.detailsMaximum
-              )
-            )}
+      {contextOpen && (
+        <Suspense fallback={null}>
+          <WorkspaceContextDialog
+            snapshot={snapshot}
+            client={client}
+            onClose={closeContext}
+            onError={reportLocalError}
           />
-          <div className="detailHeader">
-            <h2>Session</h2>
-            <IconButton
-              label="Close detail panel"
-              icon={<X size={16} />}
-              onClick={() => setDetailOpen(false)}
-            />
-          </div>
-          {selected && (
-            <section className="detailSection">
-              <h3>Lifecycle</h3>
-              <div className="lifecycleActions">
-                <IconButton
-                  label="Rename session"
-                  icon={<Pencil size={15} />}
-                  disabled={sessionAction?.pending}
-                  onClick={() => {
-                    const title = window.prompt("Rename session", selected.title)?.trim();
-                    if (title && title !== selected.title) {
-                      void runSessionAction(selected, () => client.updateSession(
-                        selected.session_id, selected.revision, {title}
-                      ));
-                    }
-                  }}
-                />
-                <IconButton
-                  label={selected.pinned ? "Unpin session" : "Pin session"}
-                  icon={selected.pinned ? <PinOff size={15} /> : <Pin size={15} />}
-                  disabled={sessionAction?.pending}
-                  onClick={() => void runSessionAction(selected, () => client.updateSession(
-                    selected.session_id, selected.revision, {pinned: !selected.pinned}
-                  ))}
-                />
-                <IconButton
-                  label={selected.archived ? "Restore session" : "Archive session"}
-                  icon={<Archive size={15} />}
-                  disabled={sessionAction?.pending}
-                  onClick={() => {
-                    if (selected.archived || window.confirm(`Archive "${selected.title}"?`)) {
-                      void runSessionAction(selected, () => client.updateSession(
-                        selected.session_id, selected.revision,
-                        {archived: !selected.archived}
-                      ));
-                    }
-                  }}
-                />
-                <IconButton
-                  label="Delete session"
-                  danger
-                  icon={<Trash2 size={15} />}
-                  disabled={sessionAction?.pending}
-                  onClick={() => deleteSession(selected)}
-                />
-              </div>
-            </section>
-          )}
-          <section className="detailSection">
-            <h3>Changes</h3>
-            <Metric
-              icon={<GitCompareArrows size={16} />}
-              label="Changed files"
-              value={String(selected?.changed_files ?? 0)}
-            />
-            <Metric
-              icon={<Check size={16} />}
-              label="Checkpoints"
-              value={String(selected?.checkpoint_count ?? 0)}
-            />
-            <button
-              className="settingsCommand"
-              disabled={!selected}
-              onClick={() => void client.workspaceDiff().then(
-                setWorkspaceDiff,
-                reportLocalError
-              )}
-            >
-              <GitCompareArrows size={14} /> Refresh diff
-            </button>
-            {workspaceDiff?.diff ? (
-              <>
-                <div className="artifactActions">
-                  <button onClick={() => client.addGitDiffContext(workspaceDiff)}>
-                    <Plus size={14} /> Add diff
-                  </button>
-                </div>
-                <pre className="mergePreview">{workspaceDiff.diff}</pre>
-              </>
-            ) : workspaceDiff ? (
-              <p className="artifactSummary">No workspace changes</p>
-            ) : null}
-            {selected?.isolation === "worktree" && (
-              <div className="artifactActions">
-                <button onClick={() => void client.previewMerge().catch(reportLocalError)}>
-                  <GitCompareArrows size={14} /> Preview
-                </button>
-                <button
-                  disabled={!snapshot.mergePlan}
-                  onClick={() => void client.applyMerge().catch(reportLocalError)}
-                >
-                  <Check size={14} /> Apply
-                </button>
-              </div>
-            )}
-            {snapshot.mergePlan && (
-              <pre className="mergePreview">{snapshot.mergePlan.diff}</pre>
-            )}
-          </section>
-          <section className="detailSection">
-            <h3>Activity</h3>
-            <div className="activityMetrics">
-              <Metric
-                icon={<TerminalSquare size={16} />}
-                label="Tasks"
-                value={String(snapshot.tasks.length)}
-              />
-              <Metric
-                icon={<GitFork size={16} />}
-                label="Agents"
-                value={String(snapshot.agents.length)}
-              />
-              <Metric
-                icon={<FileCode2 size={16} />}
-                label="Tokens"
-                value={String(snapshot.usage?.total_tokens ?? selected?.total_tokens ?? 0)}
-              />
-            </div>
-            {snapshot.tasks.length > 0 && (
-              <div className="activityList" aria-label="Tasks">
-                {snapshot.tasks.map((task) => (
-                  <div className="activityLine" key={task.id}>
-                    <span>
-                      <strong>{task.kind}</strong>
-                      <small>{task.id}</small>
-                    </span>
-                    <span>{task.state}</span>
-                    {(task.failure_reason || task.reason) && (
-                      <small>{task.failure_reason || task.reason}</small>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            {snapshot.agents.length > 0 && (
-              <div className="activityList" aria-label="Agents">
-                {snapshot.agents.map((agent) => (
-                  <div className="activityLine" key={agent.id}>
-                    <span>
-                      <strong>{agent.role}</strong>
-                      <small>{agent.id}</small>
-                    </span>
-                    <span>{agent.status}</span>
-                    {agent.last_message && <small>{agent.last_message}</small>}
-                  </div>
-                ))}
-              </div>
-            )}
-            {snapshot.usage && (
-              <dl className="usageFacts" aria-label="Usage">
-                <div><dt>Turns</dt><dd>{snapshot.usage.turns}</dd></div>
-                <div><dt>Calls</dt><dd>{snapshot.usage.calls}</dd></div>
-                <div>
-                  <dt>Cost</dt>
-                  <dd>
-                    {snapshot.usage.cost_known
-                      ? `${snapshot.usage.cost_microunits} µ`
-                      : "Unpriced"}
-                  </dd>
-                </div>
-              </dl>
-            )}
-          </section>
-          <section className="detailSection workspaceExplorer">
-            <div className="sectionTitleRow">
-              <h3>Workspace</h3>
-              <IconButton
-                label="Refresh diagnostics"
-                disabled={!selected}
-                icon={<AlertTriangle size={14} />}
-                onClick={() => void client.workspaceDiagnostics().then(
-                  (result) => setWorkspaceDiagnostics(result.diagnostics),
-                  reportLocalError
-                )}
-              />
-              <IconButton
-                label="Browse workspace"
-                icon={<FolderTree size={14} />}
-                onClick={() => void client.browseWorkspace(workspacePath).then(
-                  (result) => {
-                    setWorkspacePath(result.path);
-                    setWorkspaceEntries(result.entries);
-                  },
-                  reportLocalError
-                )}
-              />
-            </div>
-            <form
-              className="workspaceSearch"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!workspaceQuery.trim()) return;
-                void client.searchWorkspace(workspaceQuery).then(
-                  (result) => setWorkspaceMatches(result.matches),
-                  reportLocalError
-                );
-              }}
-            >
-              <FolderTree size={15} aria-hidden="true" />
-              <input
-                aria-label="Search workspace"
-                placeholder="Search files"
-                value={workspaceQuery}
-                onChange={(event) => setWorkspaceQuery(event.target.value)}
-              />
-            </form>
-            <form
-              className="workspaceSearch"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!workspaceSymbolQuery.trim()) return;
-                void client.searchWorkspaceSymbols(workspaceSymbolQuery).then(
-                  (result) => setWorkspaceSymbols(result.symbols),
-                  reportLocalError
-                );
-              }}
-            >
-              <Search size={15} aria-hidden="true" />
-              <input
-                aria-label="Search workspace symbols"
-                placeholder="Search symbols"
-                value={workspaceSymbolQuery}
-                onChange={(event) => setWorkspaceSymbolQuery(event.target.value)}
-              />
-            </form>
-            {workspaceEntries.length > 0 && (
-              <div className="workspaceEntries">
-                {workspacePath !== "." && (
-                  <button
-                    className="resourceMatch"
-                    onClick={() => {
-                      const parent = workspacePath.split("/").slice(0, -1).join("/") || ".";
-                      void client.browseWorkspace(parent).then((result) => {
-                        setWorkspacePath(result.path);
-                        setWorkspaceEntries(result.entries);
-                      }, reportLocalError);
-                    }}
-                  >
-                    <strong>..</strong>
-                  </button>
-                )}
-                {workspaceEntries.map((entry) => (
-                  <button
-                    className="resourceMatch"
-                    key={entry.path}
-                    onClick={() => {
-                      if (entry.kind === "directory") {
-                        void client.browseWorkspace(entry.path).then((result) => {
-                          setWorkspacePath(result.path);
-                          setWorkspaceEntries(result.entries);
-                        }, reportLocalError);
-                      } else {
-                        void openWorkspacePath(entry.path);
-                      }
-                    }}
-                  >
-                    <strong>{entry.path}</strong>
-                    <span>{entry.kind}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {workspaceMatches.map((match) => (
-              <button
-                className="resourceMatch"
-                key={`${match.path}:${match.line}:${match.column}`}
-                onClick={() => void openWorkspacePath(match.path)}
-              >
-                <strong>{match.path}:{match.line}</strong>
-                <span>{match.preview}</span>
-              </button>
-            ))}
-            {workspaceSymbols.map((symbol) => (
-              <button
-                className="resourceMatch"
-                key={`${symbol.path}:${symbol.line}:${symbol.name}`}
-                onClick={() => client.addSymbolContext(symbol)}
-              >
-                <strong>{symbol.name}</strong>
-                <span>{symbol.kind} · {symbol.path}:{symbol.line}</span>
-              </button>
-            ))}
-            {workspaceDiagnostics.map((diagnostic) => (
-              <button
-                className="resourceMatch"
-                key={`${diagnostic.call_id}:${diagnostic.context.path}`}
-                onClick={() => client.addDiagnosticsContext(diagnostic)}
-              >
-                <strong>{diagnostic.context.path}</strong>
-                <span>
-                  {diagnostic.status} · {diagnostic.context.diagnostics?.length ?? 0} diagnostics
-                </span>
-              </button>
-            ))}
-            {workspaceResource && (
-              <div className="resourceViewer">
-                <div className="resourceHeader">
-                  <strong>{workspaceResource.path}</strong>
-                  <IconButton
-                    label="Add file to prompt context"
-                    disabled={snapshot.contextResources.some((resource) =>
-                      resource.path === workspaceResource.path &&
-                      resource.kind === "file"
-                    )}
-                    icon={<Plus size={14} />}
-                    onClick={() => client.addWorkspaceContext(workspaceResource)}
-                  />
-                  <IconButton
-                    label="Add selection to prompt context"
-                    disabled={!workspaceSelection}
-                    icon={<TextSelect size={14} />}
-                    onClick={() => {
-                      if (workspaceSelection) {
-                        client.addWorkspaceContext(
-                          workspaceResource,
-                          workspaceSelection
-                        );
-                      }
-                    }}
-                  />
-                  <IconButton
-                    label="Download resource"
-                    icon={<Download size={14} />}
-                    onClick={() => void downloadWorkspaceResource(workspaceResource)}
-                  />
-                </div>
-                <textarea
-                  className="resourceContent"
-                  aria-label="Workspace resource content"
-                  readOnly
-                  spellCheck={false}
-                  value={workspaceResource.content}
-                  onSelect={(event) => setWorkspaceSelection(selectionRange(
-                    event.currentTarget.value,
-                    event.currentTarget.selectionStart,
-                    event.currentTarget.selectionEnd
-                  ))}
-                />
-              </div>
-            )}
-            {workspaceImage && workspaceImageURL && (
-              <div className="resourceViewer">
-                <div className="resourceHeader">
-                  <strong>{workspaceImage.path}</strong>
-                  <IconButton
-                    label="Add image to prompt context"
-                    disabled={snapshot.contextResources.some((resource) =>
-                      resource.path === workspaceImage.path &&
-                      resource.kind === "image"
-                    )}
-                    icon={<Plus size={14} />}
-                    onClick={() => client.addImageContext(workspaceImage)}
-                  />
-                  <IconButton
-                    label="Download image"
-                    icon={<Download size={14} />}
-                    onClick={() => void downloadWorkspaceResource(workspaceImage)}
-                  />
-                </div>
-                <img
-                  className="workspaceImagePreview"
-                  src={workspaceImageURL}
-                  alt={workspaceImage.label}
-                />
-              </div>
-            )}
-          </section>
-          <section className="detailSection">
-            <h3>Profile</h3>
-            <ReadOnlyField
-              label="Provider"
-              value={selectedProviderEntry?.display_name || selectedProvider}
-              detail="Runtime provider"
-            />
-            <SelectField
-              label="Execution"
-              value={snapshot.profile?.profile.execution_target ?? "local"}
-              values={["local", "sandbox"]}
-              disabled={!profileMutable(snapshot, "execution_target")}
-              onChange={(value) => void client.updateProfile({
-                execution_target: value
-              }).catch(reportLocalError)}
-            />
-            <NumberField
-              label="Max steps"
-              value={snapshot.profile?.profile.max_steps ?? 0}
-              disabled={!profileMutable(snapshot, "max_steps")}
-              onCommit={(value) => client.updateProfile({max_steps: value})}
-            />
-          </section>
-          {snapshot.plan && (
-            <section className="detailSection">
-              <h3>Plan</h3>
-              <p className="artifactSummary">{snapshot.plan.body}</p>
-              <div className="artifactActions">
-                <button
-                  disabled={!snapshot.plan.can_implement}
-                  onClick={() => void client.transitionPlan("implement").catch(reportLocalError)}
-                >
-                  <Play size={14} /> Implement
-                </button>
-                <button
-                  disabled={!snapshot.plan.can_autopilot}
-                  onClick={() => void client.transitionPlan("autopilot").catch(reportLocalError)}
-                >
-                  <LoaderCircle size={14} /> Autopilot
-                </button>
-              </div>
-            </section>
-          )}
-          {snapshot.checkpoints.length > 0 && (
-            <section className="detailSection">
-              <h3>Checkpoints</h3>
-              {snapshot.checkpoints.map((checkpoint) => (
-                <div className="checkpointLine" key={checkpoint.id}>
-                  <span title={checkpoint.summary}>{checkpoint.summary}</span>
-                  <IconButton
-                    label="Restore checkpoint"
-                    disabled={!checkpoint.can_restore}
-                    icon={<RotateCcw size={14} />}
-                    onClick={() => void client.restoreCheckpoint(checkpoint.id).catch(reportLocalError)}
-                  />
-                  <IconButton
-                    label="Fork checkpoint"
-                    disabled={!checkpoint.can_fork}
-                    icon={<GitFork size={14} />}
-                    onClick={() => void client.forkCheckpoint(checkpoint.id).catch(reportLocalError)}
-                  />
-                </div>
-              ))}
-            </section>
-          )}
-          {snapshot.extensions.length > 0 && (
-            <section className="detailSection">
-              <h3>Extensions</h3>
-              {snapshot.extensions.map((extension) => (
-                <label className="extensionLine" key={`${extension.kind}:${extension.name}`}>
-                  <span>
-                    <strong>{extension.name}</strong>
-                    <small>{extension.kind} / {extension.health}</small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={extension.enabled}
-                    onChange={(event) => void client.setExtensionEnabled(
-                      extension.kind,
-                      extension.name,
-                      event.target.checked
-                    ).catch(reportLocalError)}
-                  />
-                </label>
-              ))}
-            </section>
-          )}
-          <section className="detailSection toolList">
-            <h3>Tools</h3>
-            {snapshot.tools.slice(0, 20).map((tool) => (
-              <label className="toolLine" key={tool.id}>
-                <Wrench size={14} />
-                <span>{tool.name}</span>
-                <small>{tool.availability === "available"
-                  ? tool.risk_level
-                  : (tool.unavailable_reason ?? tool.availability)}
-                </small>
-                <input
-                  type="checkbox"
-                  checked={tool.enabled}
-                  disabled={tool.availability !== "available" ||
-                    !profileMutable(snapshot, "enabled_tool_ids")}
-                  onChange={(event) => void client.setToolEnabled(
-                    tool.id,
-                    event.target.checked
-                  ).catch(reportLocalError)}
-                />
-              </label>
-            ))}
-          </section>
-        </aside>
+        </Suspense>
       )}
-
       {settingsOpen && (
-        <div className="settingsPopover" role="dialog" aria-label="Settings">
-          <div className="popoverHeader">
-            <strong>Settings</strong>
-            <IconButton label="Close settings" icon={<X size={15} />} onClick={() => setSettingsOpen(false)} />
-          </div>
-          <div className="themeActions">
-            <button onClick={() => setTheme("light")}><Sun size={15} /> Light</button>
-            <button onClick={() => setTheme("dark")}><Moon size={15} /> Dark</button>
-          </div>
-          <CredentialSettings
-            status={credentialStatus}
-            onLoad={() => void client.credentialStatus().then(
-              setCredentialStatus,
-              reportLocalError
-            )}
-            onSet={(secret) => client.setKeyringCredential(secret)
-              .then(setCredentialStatus)
-              .catch(reportLocalError)}
-            onClear={() => client.clearKeyringCredential()
-              .then(setCredentialStatus)
-              .catch(reportLocalError)}
-            onValidate={() => client.validateCredential()
-              .then(setCredentialStatus)
-              .catch(reportLocalError)}
+        <Suspense fallback={null}>
+          <SettingsDialog
+            snapshot={snapshot}
+            client={client}
+            newIsolation={newIsolation}
+            theme={themeMode}
+            onIsolationChange={setNewIsolation}
+            onThemeChange={setThemeMode}
+            onClose={closeSettings}
+            onError={reportLocalError}
           />
-          <button
-            className="settingsCommand"
-            onClick={() => void client.diagnostics().then(
-              (value) => setDiagnostics(JSON.stringify(value, null, 2)),
-              reportLocalError
-            )}
-          >
-            <TerminalSquare size={15} /> Runtime diagnostics
-          </button>
-          {diagnostics && <pre className="diagnosticsOutput">{diagnostics}</pre>}
-        </div>
+        </Suspense>
       )}
     </div>
   );
@@ -1955,6 +1358,7 @@ function ApprovalComposer({
   const planID = typeof data.edit_plan === "object" && data.edit_plan
     ? String((data.edit_plan as Record<string, unknown>).id ?? "")
     : "";
+  const editPlan = projectEditPlan(data.edit_plan);
   const scopes = Array.isArray(data.allowed_scopes)
     ? data.allowed_scopes.map(String)
     : [];
@@ -1979,82 +1383,110 @@ function ApprovalComposer({
     }
   };
   return (
-    <div className="pendingComposer">
-      <div className="pendingText">
-        <div className="pendingHeading">
-          <strong>{String(data.tool ?? "Action")} requires approval</strong>
-          <span>{String(data.effect ?? data.risk ?? "Review the requested effect.")}</span>
+    <div className="pendingComposer approvalComposer" data-approval-key={requestID}>
+      <div className="approvalStrip">
+        <span className="approvalDot" />
+        <strong>Waiting for approval</strong>
+        <IconButton
+          label="Stop turn"
+          danger
+          disabled={submitting}
+          icon={<CircleStop size={16} />}
+          onClick={() => void client.cancel(activeTurn || event.turn_id)}
+        />
+      </div>
+      <div
+        className="approvalBody"
+        tabIndex={0}
+        role="group"
+        aria-label="Approval details"
+      >
+        <div className="approvalHeadline">
+          {editPlan
+            ? `Review ${editPlan.files.length} file ${
+              editPlan.files.length === 1 ? "change" : "changes"
+            }`
+            : `${String(data.tool ?? "Action")} requires approval`}
         </div>
+        <div className="approvalReason">
+          {String(data.effect ?? data.risk ?? "Review the requested effect.")}
+        </div>
+        {approvalCommand(data.arguments) && (
+          <code className="approvalCommand">{approvalCommand(data.arguments)}</code>
+        )}
+        {editPlan && (
+          <EditPlanPreview files={editPlan.files} diff={editPlan.diff} />
+        )}
         <div className="pendingMeta">
           {planID && <span>Plan {planID.slice(0, 12)}</span>}
+          {Array.isArray(data.resources) && (
+            <span>{data.resources.length} protected resources</span>
+          )}
           {typeof data.expires_at === "string" && (
             <span>Expires {new Date(data.expires_at).toLocaleString()}</span>
           )}
         </div>
         {error && <span className="composerError">{error}</span>}
+        {(scopes.length > 0 || replacementAllowed) && (
+          <details className="approvalOptions">
+            <summary>Approval options <ChevronDown size={13} /></summary>
+            {scopes.length > 0 && (
+              <label>
+                <span>Scope</span>
+                <select
+                  aria-label="Approval scope"
+                  value={scope}
+                  disabled={submitting}
+                  onChange={(event) => setScope(event.target.value)}
+                >
+                  <option value="">Once</option>
+                  {scopes.map((value) => (
+                    <option value={value} key={value}>{value}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {replacementAllowed && (
+              <button
+                type="button"
+                onClick={() => setReplacementOpen((value) => !value)}
+              >
+                <Braces size={14} />
+                {replacementOpen ? "Hide replacement arguments" : "Edit arguments"}
+              </button>
+            )}
+            {replacementAllowed && replacementOpen && (
+              <label className="replacementEditor">
+                <span>Replacement arguments (JSON)</span>
+                <textarea
+                  aria-label="Replacement arguments"
+                  placeholder={'{"argument": "value"}'}
+                  value={replacement}
+                  aria-invalid={!replacementValid}
+                  disabled={submitting}
+                  onChange={(event) => setReplacement(event.target.value)}
+                />
+                {!replacementValid && (
+                  <span className="composerError">Enter a JSON object.</span>
+                )}
+              </label>
+            )}
+          </details>
+        )}
       </div>
-      <div className="pendingActions">
-        <IconButton
-          label="Stop turn"
-          danger
-          disabled={submitting}
-          icon={<CircleStop size={17} />}
-          onClick={() => void client.cancel(activeTurn || event.turn_id)}
-        />
-        <button disabled={submitting} onClick={() => void decide("cancel")}>
-          Cancel
-        </button>
-        <button disabled={submitting} onClick={() => void decide("deny")}>
+      <div className="pendingActions approvalActions">
+        <button type="button" disabled={submitting} onClick={() => void decide("deny")}>
           Deny
         </button>
-        {scopes.length > 0 && (
-          <select
-            aria-label="Approval scope"
-            value={scope}
-            disabled={submitting}
-            onChange={(event) => setScope(event.target.value)}
-          >
-            <option value="">Once</option>
-            {scopes.map((value) => (
-              <option value={value} key={value}>{value}</option>
-            ))}
-          </select>
-        )}
-        {replacementAllowed && (
-          <IconButton
-            label={replacementOpen
-              ? "Hide replacement arguments"
-              : "Edit replacement arguments"}
-            icon={<Braces size={15} />}
-            expanded={replacementOpen}
-            disabled={submitting}
-            onClick={() => setReplacementOpen((value) => !value)}
-          />
-        )}
         <button
+          type="button"
           className="primaryText"
           disabled={submitting || !replacementValid}
           onClick={() => void decide("approve")}
         >
-          Approve
+          Approve once
         </button>
       </div>
-      {replacementAllowed && replacementOpen && (
-        <label className="replacementEditor">
-          <span>Replacement arguments (JSON)</span>
-          <textarea
-            aria-label="Replacement arguments"
-            placeholder={'{"argument": "value"}'}
-            value={replacement}
-            aria-invalid={!replacementValid}
-            disabled={submitting}
-            onChange={(event) => setReplacement(event.target.value)}
-          />
-          {!replacementValid && (
-            <span className="composerError">Enter a JSON object.</span>
-          )}
-        </label>
-      )}
     </div>
   );
 }
@@ -2407,64 +1839,6 @@ function apiKeyError(value: string): string {
   return "";
 }
 
-function CredentialSettings({
-  status,
-  onLoad,
-  onSet,
-  onClear,
-  onValidate
-}: {
-  status?: CredentialStatus;
-  onLoad: () => void;
-  onSet: (secret: string) => Promise<unknown>;
-  onClear: () => Promise<unknown>;
-  onValidate: () => Promise<unknown>;
-}) {
-  const [secret, setSecret] = useState("");
-  useEffect(() => onLoad(), []);
-  const keyring = status?.reference.kind === "keyring";
-  return (
-    <section className="credentialSettings">
-      <div className="credentialHeading">
-        <KeyRound size={15} />
-        <strong>Credential</strong>
-        <span>{status?.configured ? "Configured" : "Missing"}</span>
-      </div>
-      <small>{status?.reference.kind || "none"} · {status?.validation ?? "not_validated"}</small>
-      {status?.validation_detail && <small>{status.validation_detail}</small>}
-      {status?.restart_required && <small>Restart required</small>}
-      <input
-        type="password"
-        autoComplete="off"
-        aria-label="Provider credential"
-        placeholder="API key"
-        value={secret}
-        onChange={(event) => setSecret(event.target.value)}
-      />
-      <div className="credentialActions">
-        <button
-          disabled={!secret.trim()}
-          onClick={() => void onSet(secret).then(() => setSecret(""))}
-        >
-          Set key
-        </button>
-        <button disabled={!status?.configured} onClick={() => void onValidate()}>
-          Validate
-        </button>
-        {keyring && (
-          <button disabled={!status?.configured} onClick={() => void onClear()}>
-            Clear
-          </button>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function Metric({icon, label, value}: {icon: React.ReactNode; label: string; value: string}) {
-  return <div className="metric">{icon}<span>{label}</span><strong>{value}</strong></div>;
-}
-
 function CompactSelect({
   label,
   value,
@@ -2712,31 +2086,6 @@ function CatalogSelectField({
   );
 }
 
-function NumberField({
-  label,
-  value,
-  disabled,
-  onCommit
-}: {
-  label: string;
-  value: number;
-  disabled?: boolean;
-  onCommit: (value: number) => Promise<unknown>;
-}) {
-  return (
-    <label className="selectField">
-      <span>{label}</span>
-      <input
-        type="number"
-        min={1}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => void onCommit(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
 function profileMutable(snapshot: RuntimeSnapshot, field: string): boolean {
   return snapshot.profile?.capabilities.mutable_fields.includes(field) ?? false;
 }
@@ -2778,33 +2127,6 @@ function contextResourceLabel(
     `${resource.range.end.character + 1}`;
 }
 
-function isWorkspaceImagePath(path: string): boolean {
-  return /\.(?:png|jpe?g|gif|webp)$/i.test(path);
-}
-
-export function selectionRange(
-  content: string,
-  startOffset: number,
-  endOffset: number
-): EditorRange | undefined {
-  const start = Math.max(0, Math.min(startOffset, content.length));
-  const end = Math.max(start, Math.min(endOffset, content.length));
-  if (start === end) return undefined;
-  return {
-    start: positionAt(content, start),
-    end: positionAt(content, end)
-  };
-}
-
-function positionAt(content: string, offset: number) {
-  const prefix = content.slice(0, offset);
-  const lastNewline = prefix.lastIndexOf("\n");
-  return {
-    line: prefix.split("\n").length - 1,
-    character: lastNewline < 0 ? prefix.length : prefix.length - lastNewline - 1
-  };
-}
-
 function parseJSONObject(value: string): Record<string, unknown> | undefined {
   if (!value.trim()) return undefined;
   try {
@@ -2816,6 +2138,14 @@ function parseJSONObject(value: string): Record<string, unknown> | undefined {
     return undefined;
   }
   return undefined;
+}
+
+function approvalCommand(value: unknown): string {
+  const data = typeof value === "string"
+    ? parseJSONObject(value)
+    : isObject(value) ? value : undefined;
+  const command = data?.command ?? data?.cmd;
+  return typeof command === "string" ? command : "";
 }
 
 function ResizeHandle({
@@ -3059,10 +2389,18 @@ function relativeTime(value: string): string {
   return `${Math.floor(delta / 86_400_000)}d`;
 }
 
-function setTheme(theme: "light" | "dark") {
-  localStorage.setItem("ch.theme", theme);
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
+function readThemeMode(): ThemeMode {
+  const value = readPreference("ch.theme");
+  return value === "light" || value === "dark" ? value : "system";
+}
+
+function applyThemeMode(theme: ThemeMode, systemDark: boolean) {
+  writePreference("ch.theme", theme);
+  const resolved = theme === "system"
+    ? systemDark ? "dark" : "light"
+    : theme;
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.style.colorScheme = resolved;
 }
 
 function safeFilename(value: string): string {

@@ -130,6 +130,58 @@ describe("ConversationProjection", () => {
       pendingApproval: undefined
     });
   });
+
+  it("retains an approval edit plan on the associated tool result", () => {
+    const snapshot = projectConversation([
+      event(1, "tool.start", {
+        call_id: "write-1",
+        tool: "file_edit",
+        arguments: {path: "main.go", old: "old", new: "new"}
+      }),
+      event(2, "approval.required", {
+        request_id: "approval-1",
+        call_id: "write-1",
+        tool: "file_edit",
+        edit_plan: {
+          id: "plan-1",
+          diff: "--- a/main.go\n+++ b/main.go\n-old\n+new\n",
+          files: [{
+            path: "main.go",
+            kind: "modified",
+            before: "old\n",
+            after: "new\n",
+            before_exists: true,
+            after_exists: true
+          }]
+        }
+      }),
+      event(3, "approval.resolved", {
+        request_id: "approval-1",
+        decision: "approve"
+      }),
+      event(4, "tool.result", {
+        call_id: "write-1",
+        tool: "file_edit",
+        output: "modified main.go +1 -1",
+        changes: [{path: "main.go", kind: "modified", added: 1, removed: 1}],
+        is_error: false
+      })
+    ]);
+
+    expect(snapshot.nodes.get("tool-write-1")).toMatchObject({
+      kind: "tool",
+      variant: "diff",
+      approvalDecision: "approve",
+      editPlan: {
+        id: "plan-1",
+        files: [{
+          path: "main.go",
+          before: "old\n",
+          after: "new\n"
+        }]
+      }
+    });
+  });
 });
 
 function serializable(snapshot: ReturnType<typeof projectConversation>) {

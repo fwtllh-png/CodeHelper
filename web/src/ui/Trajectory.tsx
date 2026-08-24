@@ -1,13 +1,20 @@
 import {
-  ChevronDown,
+  Bot,
+  Check,
   ChevronLeft,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   Clock3,
+  Copy,
+  FileDiff,
+  Gauge,
   ListTree,
   RefreshCw,
   Search,
+  Settings2,
+  UserRound,
+  Wrench,
   X
 } from "lucide-react";
 import {
@@ -68,6 +75,7 @@ export function Trajectory({
   const ledgerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const selected = projection.records.find((record) => record.id === selectedID);
+  const selectedSpan = projection.spans.find((span) => span.recordID === selectedID);
   const matchingIDs = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
     if (!normalized) return undefined;
@@ -194,6 +202,7 @@ export function Trajectory({
         {selected && (
           <RecordInspector
             record={selected}
+            span={selectedSpan}
             records={visibleRecords}
             onClose={() => setSelectedID("")}
             onSelect={(id) => {
@@ -501,6 +510,12 @@ function Ledger({
   const end = virtual ? Math.min(records.length, start + budget) : records.length;
   const visible = records.slice(start, end);
   const timing = new Map(spans.map((span) => [span.recordID, span]));
+  const turnNumbers = new Map<string, number>();
+  for (const record of records) {
+    if (record.turnID && !turnNumbers.has(record.turnID)) {
+      turnNumbers.set(record.turnID, turnNumbers.size + 1);
+    }
+  }
   let previousTurn = "";
   return (
     <div
@@ -539,7 +554,13 @@ function Ledger({
             data-outside-range={outside || undefined}
             onClick={() => onSelect(record.id)}
           >
-            <span className="ledgerKind">{record.label}</span>
+            <span className="ledgerKind">
+              {turnStart && record.turnID && (
+                <b title={record.turnID}>T{turnNumbers.get(record.turnID)}</b>
+              )}
+              <RecordKindIcon record={record} />
+              <span>{record.label}</span>
+            </span>
             <span className="ledgerSummary">{record.summary}</span>
             {span?.durationMS !== undefined && (
               <span className="ledgerDuration">{formatMilliseconds(span.durationMS)}</span>
@@ -559,20 +580,69 @@ function Ledger({
 
 function RecordInspector({
   record,
+  span,
   records,
   onClose,
   onSelect
 }: {
   record: TrajectoryRecord;
+  span?: TrajectorySpan;
   records: readonly TrajectoryRecord[];
   onClose: () => void;
   onSelect: (id: string) => void;
 }) {
   const index = records.findIndex((candidate) => candidate.id === record.id);
+  const tabs = inspectorTabs(record);
+  const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? "summary");
+  const [width, setWidth] = useState(() => storedInspectorWidth());
+  const drag = useRef<{pointerID: number; x: number; width: number}>();
+  useEffect(() => {
+    setActiveTab(inspectorTabs(record)[0]?.id ?? "summary");
+  }, [record.id]);
+  const active = tabs.some((tab) => tab.id === activeTab)
+    ? activeTab
+    : tabs[0]?.id ?? "summary";
   return (
-    <aside className="recordInspector" aria-label="Record inspector">
+    <aside
+      className="recordInspector"
+      aria-label="Record inspector"
+      style={{"--ch-inspector-width": `${width}px`} as CSSProperties}
+    >
+      <div
+        className="recordInspectorResize"
+        role="separator"
+        aria-label="Resize record inspector"
+        aria-orientation="vertical"
+        aria-valuemin={320}
+        aria-valuemax={720}
+        aria-valuenow={width}
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") setInspectorWidth(width + 16, setWidth);
+          if (event.key === "ArrowRight") setInspectorWidth(width - 16, setWidth);
+        }}
+        onPointerDown={(event) => {
+          drag.current = {pointerID: event.pointerId, x: event.clientX, width};
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          if (drag.current?.pointerID !== event.pointerId) return;
+          setInspectorWidth(
+            drag.current.width + drag.current.x - event.clientX,
+            setWidth
+          );
+        }}
+        onPointerUp={(event) => {
+          if (drag.current?.pointerID !== event.pointerId) return;
+          drag.current = undefined;
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+      />
       <header>
-        <strong>Record</strong>
+        <span>
+          <strong>{record.label}</strong>
+          <small title={record.summary}>{record.summary}</small>
+        </span>
         <div>
           <button
             aria-label="Previous record"
@@ -593,48 +663,153 @@ function RecordInspector({
           </button>
         </div>
       </header>
-      <InspectorSection title="Summary">
-        <dl>
-          <div><dt>Kind</dt><dd>{record.label}</dd></div>
-          <div><dt>Turn</dt><dd>{record.turnID || "None"}</dd></div>
-          <div><dt>Call</dt><dd>{record.callID || "None"}</dd></div>
-          <div><dt>Sequence</dt><dd>{record.sequence}</dd></div>
-          <div><dt>Status</dt><dd>{record.failed ? "Failed" : "Recorded"}</dd></div>
-        </dl>
-      </InspectorSection>
-      {record.input !== undefined && (
-        <InspectorSection title="Input"><pre>{pretty(record.input)}</pre></InspectorSection>
-      )}
-      {record.output !== undefined && (
-        <InspectorSection title="Output"><pre>{pretty(record.output)}</pre></InspectorSection>
-      )}
-      {record.usage && (
-        <InspectorSection title="Usage"><pre>{pretty(record.usage)}</pre></InspectorSection>
-      )}
-      {record.timing && (
-        <InspectorSection title="Timing"><pre>{pretty(record.timing)}</pre></InspectorSection>
-      )}
-      {record.changes && record.changes.length > 0 && (
-        <InspectorSection title="Changes"><pre>{pretty(record.changes)}</pre></InspectorSection>
-      )}
-      <InspectorSection title="Raw"><pre>{pretty(record.raw)}</pre></InspectorSection>
+      <div className="inspectorTabs" role="tablist" aria-label="Record details">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={active === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div className="inspectorBody">
+        <InspectorContent record={record} span={span} tab={active} />
+      </div>
     </aside>
   );
 }
 
-function InspectorSection({
-  title,
-  children
+type InspectorTab = "summary" | "input" | "output" | "usage" | "timing" | "changes" | "raw";
+
+function inspectorTabs(record: TrajectoryRecord): readonly {
+  id: InspectorTab;
+  label: string;
+}[] {
+  return [
+    {id: "summary", label: "Summary"},
+    ...(record.input === undefined ? [] : [{id: "input", label: "Input"} as const]),
+    ...(record.output === undefined ? [] : [{id: "output", label: "Output"} as const]),
+    ...(record.usage === undefined ? [] : [{id: "usage", label: "Usage"} as const]),
+    ...(record.timing === undefined ? [] : [{id: "timing", label: "Timing"} as const]),
+    ...(record.changes?.length ? [{id: "changes", label: "Changes"} as const] : []),
+    {id: "raw", label: "Raw"}
+  ];
+}
+
+function InspectorContent({
+  record,
+  span,
+  tab
 }: {
-  title: string;
-  children: React.ReactNode;
+  record: TrajectoryRecord;
+  span?: TrajectorySpan;
+  tab: InspectorTab;
 }) {
+  if (tab === "summary") {
+    return (
+      <>
+        <dl className="inspectorFacts">
+          <div><dt>Status</dt><dd data-failed={record.failed || undefined}>
+            {record.failed ? "Failed" : "Recorded"}
+          </dd></div>
+          <div><dt>Started</dt><dd>{formatTimestamp(record.createdAt)}</dd></div>
+          <div><dt>Duration</dt><dd>
+            {span?.durationMS === undefined
+              ? "Not recorded"
+              : formatMilliseconds(span.durationMS)}
+          </dd></div>
+          {span?.ttftMS !== undefined && (
+            <div><dt>TTFT</dt><dd>{formatMilliseconds(span.ttftMS)}</dd></div>
+          )}
+          <div><dt>Turn</dt><dd>{record.turnID || "None"}</dd></div>
+          <div><dt>Call</dt><dd>{record.callID || "None"}</dd></div>
+          <div><dt>Item</dt><dd>{record.itemID || "None"}</dd></div>
+          <div><dt>Sequence</dt><dd>{record.sequence}</dd></div>
+        </dl>
+        <div className="inspectorPreview">
+          <span>Preview</span>
+          <p>{record.summary}</p>
+        </div>
+      </>
+    );
+  }
+  const value = tab === "input"
+    ? record.input
+    : tab === "output"
+      ? record.output
+      : tab === "usage"
+        ? record.usage
+        : tab === "timing"
+          ? record.timing
+          : tab === "changes"
+            ? record.changes
+            : record.raw;
+  const text = pretty(value);
   return (
-    <details className="inspectorSection" open={title === "Summary"}>
-      <summary>{title}<ChevronDown size={13} /></summary>
-      {children}
-    </details>
+    <div className="inspectorCode">
+      <button
+        type="button"
+        aria-label={`Copy ${tab}`}
+        onClick={() => {
+          void navigator.clipboard.writeText(text).catch(() => {});
+        }}
+      >
+        <Copy size={13} /> Copy
+      </button>
+      <pre>{text}</pre>
+    </div>
   );
+}
+
+function RecordKindIcon({record}: {record: TrajectoryRecord}) {
+  switch (record.kind) {
+    case "user":
+      return <UserRound size={13} />;
+    case "assistant":
+      return <Bot size={13} />;
+    case "tool":
+      return <Wrench size={13} />;
+    case "verification":
+      return <Check size={13} />;
+    case "receipt":
+      return <Gauge size={13} />;
+    case "context":
+      return <FileDiff size={13} />;
+    default:
+      return <Settings2 size={13} />;
+  }
+}
+
+function storedInspectorWidth(): number {
+  try {
+    const value = Number(window.localStorage?.getItem("ch.trajectory.inspector.width"));
+    return Number.isFinite(value) ? Math.min(720, Math.max(320, value)) : 420;
+  } catch {
+    return 420;
+  }
+}
+
+function setInspectorWidth(
+  value: number,
+  apply: (value: number) => void
+): void {
+  const width = Math.min(720, Math.max(320, Math.round(value)));
+  apply(width);
+  try {
+    window.localStorage?.setItem("ch.trajectory.inspector.width", String(width));
+  } catch {
+    // The panel remains usable when browser preferences are unavailable.
+  }
+}
+
+function formatTimestamp(value: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "Not recorded";
+  return new Date(timestamp).toLocaleString();
 }
 
 function pretty(value: unknown): string {

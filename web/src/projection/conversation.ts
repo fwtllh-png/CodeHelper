@@ -9,6 +9,21 @@ export type ToolVariant =
   | "agent"
   | "generic";
 
+export interface ProjectedEditPlanFile {
+  readonly path: string;
+  readonly kind: string;
+  readonly before: string;
+  readonly after: string;
+  readonly beforeExists: boolean;
+  readonly afterExists: boolean;
+}
+
+export interface ProjectedEditPlan {
+  readonly id: string;
+  readonly diff: string;
+  readonly files: readonly ProjectedEditPlanFile[];
+}
+
 export type ConversationNode =
   | {
       readonly id: string;
@@ -56,6 +71,8 @@ export type ConversationNode =
       };
       readonly truncated: boolean;
       readonly changes: readonly Record<string, unknown>[];
+      readonly editPlan?: ProjectedEditPlan;
+      readonly approvalDecision?: string;
       readonly recovery?: Record<string, unknown>;
       readonly contextText?: string;
     }
@@ -167,12 +184,23 @@ export class ConversationProjection {
         break;
       case "approval.required":
         this.approvals.set(requestID(event), event);
+        this.applyApproval(event);
         this.touch();
         break;
-      case "approval.resolved":
+      case "approval.resolved": {
+        const pending = this.approvals.get(requestID(event));
+        const callID = stringValue(pending?.data.call_id);
+        const node = callID ? this.toolNodeForCall(callID) : undefined;
+        if (node) {
+          this.put({
+            ...node,
+            approvalDecision: stringValue(data.decision) || "resolved"
+          });
+        }
         this.approvals.delete(requestID(event));
         this.touch();
         break;
+      }
       case "input.required":
         this.inputs.set(requestID(event), event);
         this.touch();
@@ -309,6 +337,7 @@ export class ConversationProjection {
     const callID = stringValue(event.data.call_id) || event.id;
     const id = `tool-${callID}`;
     const args = event.data.arguments;
+    const editPlan = editPlanFromArguments(tool, args);
     this.toolByCall.set(callID, id);
     this.put({
       id,
@@ -317,7 +346,7 @@ export class ConversationProjection {
       sequence: event.sequence,
       callID,
       tool,
-      variant: toolVariant(tool, event.data),
+      variant: editPlan ? "diff" : toolVariant(tool, event.data),
       title: toolTitle(tool),
       summary: toolSummary(tool, args),
       state: "running",
@@ -325,7 +354,8 @@ export class ConversationProjection {
       output: "",
       errorSummary: "",
       truncated: false,
-      changes: []
+      changes: [],
+      ...(editPlan ? {editPlan} : {})
     });
   }
 
@@ -363,6 +393,24 @@ export class ConversationProjection {
       recovery: isRecord(event.data.recovery) ? event.data.recovery : undefined,
       contextText: output || undefined
     });
+  }
+
+  private applyApproval(event: RuntimeEvent): void {
+    const callID = stringValue(event.data.call_id);
+    const node = this.toolNodeForCall(callID);
+    if (!node) return;
+    const editPlan = projectEditPlan(event.data.edit_plan);
+    this.put({
+      ...node,
+      variant: editPlan ? "diff" : node.variant,
+      ...(editPlan ? {editPlan} : {})
+    });
+  }
+
+  private toolNodeForCall(callID: string) {
+    const id = this.toolByCall.get(callID);
+    const node = id ? this.nodes.get(id) : undefined;
+    return node?.kind === "tool" ? node : undefined;
   }
 
   private updateCommandExecution(event: RuntimeEvent): void {
@@ -489,6 +537,51 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+export function projectEditPlan(value: unknown): ProjectedEditPlan | undefined {
+  if (!isRecord(value) || !Array.isArray(value.files)) return undefined;
+  const files = value.files.flatMap((entry) => {
+    if (!isRecord(entry) || typeof entry.path !== "string") return [];
+    return [{
+      path: entry.path,
+      kind: stringValue(entry.kind) || "modified",
+      before: stringValue(entry.before),
+      after: stringValue(entry.after),
+      beforeExists: Boolean(entry.before_exists),
+      afterExists: Boolean(entry.after_exists)
+    }];
+  });
+  if (files.length === 0) return undefined;
+  return Object.freeze({
+    id: stringValue(value.id),
+    diff: stringValue(value.diff),
+    files: Object.freeze(files)
+  });
+}
+
+function editPlanFromArguments(
+  tool: string,
+  value: unknown
+): ProjectedEditPlan | undefined {
+  if (tool !== "file_edit" && tool !== "edit_file") return undefined;
+  const input = isRecord(value) ? value : undefined;
+  const path = stringValue(input?.path);
+  const before = stringValue(input?.old);
+  const after = stringValue(input?.new);
+  if (!path || !before || before === after) return undefined;
+  return Object.freeze({
+    id: "",
+    diff: "",
+    files: Object.freeze([{
+      path,
+      kind: "modified",
+      before,
+      after,
+      beforeExists: true,
+      afterExists: true
+    }])
+  });
+}
+
 function toolVariant(tool: string, data: Record<string, unknown>): ToolVariant {
   if (Array.isArray(data.changes) && data.changes.length > 0) return "diff";
   switch (tool) {
@@ -513,6 +606,8 @@ function toolVariant(tool: string, data: Record<string, unknown>): ToolVariant {
       return "shell";
     case "file_write":
     case "write_file":
+    case "file_edit":
+    case "edit_file":
     case "apply_patch":
       return "write";
   }
@@ -540,6 +635,15 @@ function toolTitle(tool: string): string {
     case "file_list":
     case "glob":
       return "Glob";
+    case "file_edit":
+    case "edit_file":
+    case "file_apply":
+    case "file_patch":
+    case "apply_patch":
+      return "Edit";
+    case "file_write":
+    case "write_file":
+      return "Write";
   }
   return tool
     .replaceAll("_", " ")

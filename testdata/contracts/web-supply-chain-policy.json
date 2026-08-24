@@ -11,11 +11,11 @@
     "MPL-2.0"
   ],
   "bundle_budgets": {
-    "total_raw_bytes": 528000,
-    "javascript_raw_bytes": 455000,
-    "javascript_gzip_bytes": 137000,
-    "javascript_brotli_bytes": 120000,
-    "css_raw_bytes": 57000,
+    "total_raw_bytes": 570000,
+    "javascript_raw_bytes": 480000,
+    "javascript_gzip_bytes": 160000,
+    "javascript_brotli_bytes": 140000,
+    "css_raw_bytes": 75000,
     "initial_gzip_bytes": 143000,
     "initial_brotli_bytes": 125000
   }

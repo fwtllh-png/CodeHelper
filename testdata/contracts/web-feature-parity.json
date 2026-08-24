@@ -502,13 +502,13 @@
         "model/list"
       ],
       "web_surface": [
-        "Session details / Profile"
+        "Settings / Models"
       ],
       "required_qualifications": [
         "internal/runtime/app/session_profile_test.go#TestSessionProfileUpdateAppliesRevisionAndCacheReset",
         "web/src/runtime/client.test.ts#refreshes authoritative capabilities after changing the model",
         "web/src/ui/App.test.tsx#renders lifecycle, workspace, profile, and governed tool controls",
-        "web/tests/e2e/web.spec.ts#shows the fixed provider and single-model route as read-only"
+        "web/tests/e2e/web.spec.ts#shows model routing and capabilities in Settings"
       ]
     },
     {

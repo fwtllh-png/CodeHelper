@@ -112,7 +112,7 @@ describe("projectTranscript", () => {
     expect(client.recoverTurn).toHaveBeenCalledWith("turn", "retry");
   });
 
-  it("renders lifecycle, workspace, profile, and governed tool controls", () => {
+  it("renders lifecycle, workspace, profile, and governed tool controls", async () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
     expect(screen.getByRole("button", {name: "New chat"}).textContent)
@@ -120,21 +120,26 @@ describe("projectTranscript", () => {
     expect(screen.getByRole("treeitem", {name: "workspace"})).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Search sessions"}));
     expect(screen.getByRole("textbox", {name: "Search sessions"})).toBeTruthy();
-    openContextDetails();
+    await openContextDetails();
 
     expect(screen.getByLabelText("New session isolation")).toBeTruthy();
-    expect(screen.getByRole("button", {name: "Browse workspace"})).toBeTruthy();
-    expect(screen.getByLabelText("Mode")).toBeTruthy();
-    expect(screen.getByLabelText("Provider").textContent).toBe("Fixture");
-    fireEvent.change(screen.getByLabelText("Model"), {
+    expect(screen.getByRole("dialog", {name: "Add context"})).toBeTruthy();
+    expect(screen.queryByLabelText("Session details")).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Close context browser"}));
+    fireEvent.click(screen.getByRole("button", {name: "Settings"}));
+    expect(await screen.findByRole("dialog", {name: "Settings"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Models"}));
+    fireEvent.change(screen.getByLabelText("Settings model"), {
       target: {value: "reasoner"}
     });
     expect(client.updateProfile).toHaveBeenCalledWith({
       model: "reasoner",
       reasoning_effort: ""
     });
-    expect(screen.getAllByRole("button", {name: "Archive session"})).not.toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", {name: "Tools"}));
     expect(screen.getByText("read_file")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Agent preset"}));
+    expect(screen.getByLabelText("Agent mode")).toBeTruthy();
   });
 
   it("renders run statistics as one readable line", () => {
@@ -253,8 +258,6 @@ describe("projectTranscript", () => {
     }];
     const client = mockClient(value);
     render(<App client={client} />);
-    openContextDetails();
-
     fireEvent.click(screen.getByRole("button", {name: "Session actions for Chat"}));
     fireEvent.click(screen.getByRole("menuitem", {name: "Delete"}));
 
@@ -281,7 +284,7 @@ describe("projectTranscript", () => {
     expect(client.deleteSession).toHaveBeenCalledWith("session", 1, true);
   });
 
-  it("renders detailed activity artifacts and extension controls", () => {
+  it("renders detailed activity artifacts and extension controls", async () => {
     const value = snapshot();
     value.tasks = [{
       id: "task-1",
@@ -340,23 +343,21 @@ describe("projectTranscript", () => {
     }];
     const client = mockClient(value);
     render(<App client={client} />);
-    openContextDetails();
-
-    expect(screen.getByLabelText("Tasks").textContent).toContain(
-      "verificationtask-1failedtests failed"
-    );
-    expect(screen.getByLabelText("Agents").textContent).toContain(
-      "revieweragent-1workingreviewing diff"
-    );
+    fireEvent.click(screen.getByRole("button", {name: "Settings"}));
+    await screen.findByRole("dialog", {name: "Settings"});
+    fireEvent.click(screen.getByRole("button", {name: "Agent preset"}));
     expect(screen.getByLabelText("Usage").textContent).toContain(
-      "Turns2Calls3CostUnpriced"
+      "Turns2Calls3Tokens144CostUnpriced"
     );
+    expect(screen.getByText("tests failed")).toBeTruthy();
+    expect(screen.getByText("reviewing diff")).toBeTruthy();
     expect(screen.getByText("Implement the verified change")).toBeTruthy();
     expect(screen.getByText("Before implementation")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", {name: "Implement"}));
-    fireEvent.click(screen.getByRole("button", {name: "Restore checkpoint"}));
-    fireEvent.click(screen.getByRole("button", {name: "Fork checkpoint"}));
+    fireEvent.click(screen.getByRole("button", {name: "Restore"}));
+    fireEvent.click(screen.getByRole("button", {name: "Fork"}));
+    fireEvent.click(screen.getByRole("button", {name: "Extensions"}));
     fireEvent.click(screen.getByRole("checkbox", {name: /review-tools/}));
 
     expect(client.transitionPlan).toHaveBeenCalledWith("implement");
@@ -379,9 +380,9 @@ describe("projectTranscript", () => {
     };
     vi.mocked(client.workspaceDiff).mockResolvedValue(diff);
     render(<App client={client} />);
-    openContextDetails();
+    await openContextDetails();
 
-    fireEvent.click(screen.getByRole("button", {name: "Refresh diff"}));
+    fireEvent.click(screen.getByRole("button", {name: /Changes/}));
     await screen.findByText(/diff --git/);
     fireEvent.click(screen.getByRole("button", {name: "Add diff"}));
 
@@ -440,7 +441,7 @@ describe("projectTranscript", () => {
       diagnostics: [diagnostic]
     });
     render(<App client={client} />);
-    openContextDetails();
+    await openContextDetails();
 
     fireEvent.change(screen.getByLabelText("Search workspace symbols"), {
       target: {value: "Serve"}
@@ -449,7 +450,7 @@ describe("projectTranscript", () => {
     fireEvent.click(await screen.findByRole("button", {name: /Serve/}));
     expect(client.addSymbolContext).toHaveBeenCalledWith(symbol);
 
-    fireEvent.click(screen.getByRole("button", {name: "Refresh diagnostics"}));
+    fireEvent.click(screen.getByRole("button", {name: "Diagnostics"}));
     fireEvent.click(await screen.findByRole("button", {name: /main.go.*failed/}));
     expect(client.addDiagnosticsContext).toHaveBeenCalledWith(diagnostic);
   });
@@ -476,14 +477,13 @@ describe("projectTranscript", () => {
       new Blob(["image"], {type: "image/png"})
     );
     render(<App client={client} />);
-    openContextDetails();
+    await openContextDetails();
 
-    fireEvent.click(screen.getByRole("button", {name: "Browse workspace"}));
     fireEvent.click(await screen.findByRole("button", {name: /diagram.png/}));
     expect(
       (await screen.findByRole("img", {name: "diagram.png"})).getAttribute("src")
     ).toBe("blob:workspace-resource");
-    fireEvent.click(screen.getByRole("button", {name: "Add image to prompt context"}));
+    fireEvent.click(screen.getByRole("button", {name: "Add image"}));
     expect(client.addImageContext).toHaveBeenCalledWith(image);
   });
 
@@ -529,10 +529,11 @@ describe("projectTranscript", () => {
       configured: false
     });
     render(<App client={client} />);
-    openContextDetails();
 
     fireEvent.click(screen.getByRole("button", {name: "Settings"}));
-    await screen.findByText("Configured");
+    await screen.findByRole("dialog", {name: "Settings"});
+    fireEvent.click(screen.getByRole("button", {name: "Models"}));
+    await screen.findByText("valid");
     fireEvent.change(screen.getByLabelText("Provider credential"), {
       target: {value: "fixture-credential"}
     });
@@ -540,10 +541,15 @@ describe("projectTranscript", () => {
     await waitFor(() => {
       expect(client.setKeyringCredential).toHaveBeenCalledWith("fixture-credential");
     });
-    fireEvent.click(screen.getByRole("button", {name: "Validate"}));
-    fireEvent.click(screen.getByRole("button", {name: "Clear"}));
+    const validate = screen.getByRole("button", {name: "Validate"});
+    await waitFor(() => expect(validate).toHaveProperty("disabled", false));
+    fireEvent.click(validate);
+    await waitFor(() => expect(client.validateCredential).toHaveBeenCalledOnce());
+    const clear = screen.getByRole("button", {name: "Clear key"});
+    await waitFor(() => expect(clear).toHaveProperty("disabled", false));
+    fireEvent.click(clear);
     expect(client.validateCredential).toHaveBeenCalledOnce();
-    expect(client.clearKeyringCredential).toHaveBeenCalledOnce();
+    await waitFor(() => expect(client.clearKeyringCredential).toHaveBeenCalledOnce());
   });
 
   it("renders full approval decisions and structured input options", () => {
@@ -557,12 +563,12 @@ describe("projectTranscript", () => {
     });
     const client = mockClient(snapshot([approval]));
     const approvalView = render(<App client={client} />);
-    expect(screen.getByRole("button", {name: "Cancel"})).toBeTruthy();
     expect(screen.getByRole("button", {name: "Deny"})).toBeTruthy();
-    const approve = screen.getByRole("button", {name: "Approve"});
+    const approve = screen.getByRole("button", {name: "Approve once"});
+    fireEvent.click(screen.getByText("Approval options"));
     expect(screen.getByLabelText("Approval scope")).toBeTruthy();
     expect(screen.queryByLabelText("Replacement arguments")).toBeNull();
-    fireEvent.click(screen.getByRole("button", {name: "Edit replacement arguments"}));
+    fireEvent.click(screen.getByRole("button", {name: "Edit arguments"}));
     const replacement = screen.getByLabelText("Replacement arguments");
     fireEvent.change(replacement, {target: {value: "{"}});
     expect((approve as HTMLButtonElement).disabled).toBe(true);
@@ -599,6 +605,67 @@ describe("projectTranscript", () => {
     );
   });
 
+  it("shows a file edit plan before approval and retains it on the tool row", () => {
+    const value = snapshot([
+      event(1, "tool.start", {
+        call_id: "edit-1",
+        tool: "file_edit",
+        arguments: {
+          path: "config.ts",
+          old: "const enabled = false;\n",
+          new: "const enabled = true;\n"
+        }
+      }),
+      event(2, "approval.required", {
+        request_id: "approval-edit",
+        call_id: "edit-1",
+        tool: "file_edit",
+        effect: "workspace write",
+        edit_plan: {
+          id: "plan-edit",
+          diff: "--- a/config.ts\n+++ b/config.ts\n-const enabled = false;\n+const enabled = true;\n",
+          files: [{
+            path: "config.ts",
+            kind: "modified",
+            before: "const enabled = false;\n",
+            after: "const enabled = true;\n",
+            before_exists: true,
+            after_exists: true
+          }]
+        }
+      })
+    ]);
+    const client = mockClient(value);
+    const view = render(<App client={client} />);
+
+    expect(screen.getByText("Review 1 file change")).toBeTruthy();
+    expect(screen.getByText("const enabled = false;")).toBeTruthy();
+    expect(screen.getByText("const enabled = true;")).toBeTruthy();
+    view.unmount();
+
+    value.events = [
+      ...value.events,
+      event(3, "approval.resolved", {
+        request_id: "approval-edit",
+        decision: "approve"
+      }),
+      event(4, "tool.result", {
+        call_id: "edit-1",
+        tool: "file_edit",
+        output: "modified config.ts +1 -1",
+        changes: [{path: "config.ts", kind: "modified", added: 1, removed: 1}],
+        is_error: false
+      })
+    ];
+    value.conversation = projectConversation(value.events);
+    const completedView = render(<App client={mockClient(value)} />);
+    fireEvent.click(screen.getByRole("button", {name: /^Edit/}));
+
+    expect(completedView.container.querySelector(".diffFooter")?.textContent)
+      .toBe("+1 -1 · 1 file");
+    expect(screen.getByText("const enabled = true;")).toBeTruthy();
+  });
+
   it("resets approval submission state for a new request id", async () => {
     const firstClient = mockClient(snapshot([
       event(1, "approval.required", {
@@ -611,8 +678,8 @@ describe("projectTranscript", () => {
     );
     const view = render(<App client={firstClient} />);
 
-    fireEvent.click(screen.getByRole("button", {name: "Approve"}));
-    expect(screen.getByRole("button", {name: "Approve"}))
+    fireEvent.click(screen.getByRole("button", {name: "Approve once"}));
+    expect(screen.getByRole("button", {name: "Approve once"}))
       .toHaveProperty("disabled", true);
 
     const secondClient = mockClient(snapshot([
@@ -624,7 +691,7 @@ describe("projectTranscript", () => {
     view.rerender(<App client={secondClient} />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", {name: "Approve"}))
+      expect(screen.getByRole("button", {name: "Approve once"}))
         .toHaveProperty("disabled", false);
     });
   });
@@ -959,7 +1026,14 @@ describe("projectTranscript", () => {
     const trajectory = await screen.findByLabelText("Execution trajectory");
     expect(trajectory.querySelector(".timelineLabels")?.textContent)
       .toBe("InputModelTools");
-    expect(screen.getByLabelText("Record inspector").textContent).toContain("call-1");
+    const inspector = screen.getByLabelText("Record inspector");
+    expect(inspector.textContent).toContain("call-1");
+    expect(screen.getByRole("tab", {name: "Summary"}).getAttribute("aria-selected"))
+      .toBe("true");
+    fireEvent.click(screen.getByRole("tab", {name: "Input"}));
+    expect(screen.getByRole("button", {name: "Copy input"})).toBeTruthy();
+    expect(screen.getByRole("separator", {name: "Resize record inspector"}))
+      .toBeTruthy();
     expect(client.refreshTrace).toHaveBeenCalled();
   });
 
@@ -1097,9 +1171,10 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
   };
 }
 
-function openContextDetails(): void {
+async function openContextDetails(): Promise<void> {
   fireEvent.click(screen.getByRole("button", {name: "Commands"}));
   fireEvent.click(screen.getByRole("menuitem", {name: /context/}));
+  await screen.findByRole("dialog", {name: "Add context"});
 }
 
 function mockClient(value: RuntimeSnapshot): RuntimeClient {

@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  FilePenLine,
   FileText,
   FolderSearch,
   Plus,
@@ -18,7 +19,10 @@ import {
   type KeyboardEvent,
   type ReactNode
 } from "react";
-import type {ConversationNode} from "../projection/conversation";
+import type {
+  ConversationNode,
+  ProjectedEditPlanFile
+} from "../projection/conversation";
 
 type ReasoningNode = Extract<ConversationNode, {kind: "reasoning"}>;
 type ToolNode = Extract<ConversationNode, {kind: "tool"}>;
@@ -199,14 +203,29 @@ type SearchRenderRow =
   | {kind: "path"; path: string};
 
 type GenericPresentation = {kind: "generic"};
+type DiffPresentation = {
+  kind: "diff";
+  files: readonly ProjectedEditPlanFile[];
+  changes: readonly Record<string, unknown>[];
+  diff: string;
+};
 type ToolPresentation =
   | ReadPresentation
   | ShellPresentation
   | SearchPresentation
+  | DiffPresentation
   | GenericPresentation;
 
 function toolPresentation(entry: ToolNode): ToolPresentation {
   const args = recordValue(entry.arguments);
+  if (entry.variant === "diff") {
+    return {
+      kind: "diff",
+      files: entry.editPlan?.files ?? [],
+      changes: entry.changes,
+      diff: entry.editPlan?.diff ?? ""
+    };
+  }
   if (entry.variant === "read" && entry.tool !== "result_get") {
     const path = stringArgument(args, ["path", "file_path"]);
     if (path && !path.toLowerCase().endsWith(".pdf")) {
@@ -251,6 +270,8 @@ function renderToolBody(
     case "search-matches":
     case "search-paths":
       return <SearchCard value={presentation} onOpenFile={onOpenFile} />;
+    case "diff":
+      return <DiffCard value={presentation} onOpenFile={onOpenFile} />;
     default:
       return (
         <div className="toolIOCard">
@@ -269,6 +290,117 @@ function renderToolBody(
         </div>
       );
   }
+}
+
+type DiffRow =
+  | {kind: "path"; text: string; path: string}
+  | {kind: "removed" | "added"; text: string};
+
+function DiffCard({
+  value,
+  onOpenFile
+}: {
+  value: DiffPresentation;
+  onOpenFile?: (path: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const rows = useMemo<DiffRow[]>(() => {
+    if (value.files.length > 0) {
+      return value.files.flatMap((file) => [
+        {kind: "path", text: file.path, path: file.path} as const,
+        ...textLines(file.beforeExists ? file.before : "").map(
+          (text): DiffRow => ({kind: "removed", text})
+        ),
+        ...textLines(file.afterExists ? file.after : "").map(
+          (text): DiffRow => ({kind: "added", text})
+        )
+      ]);
+    }
+    return value.changes.flatMap((change) => {
+      const path = stringArgument(change, ["path"]) || "workspace";
+      const added = numberArgument(change, "added");
+      const removed = numberArgument(change, "removed");
+      return [{
+        kind: "path",
+        path,
+        text: `${path}  +${added} -${removed}`
+      } as const];
+    });
+  }, [value.changes, value.files]);
+  const window = previewWindow(rows, expanded);
+  const added = value.changes.reduce(
+    (total, change) => total + numberArgument(change, "added"),
+    0
+  ) || value.files.reduce(
+    (total, file) => total + textLines(file.afterExists ? file.after : "").length,
+    0
+  );
+  const removed = value.changes.reduce(
+    (total, change) => total + numberArgument(change, "removed"),
+    0
+  ) || value.files.reduce(
+    (total, file) => total + textLines(file.beforeExists ? file.before : "").length,
+    0
+  );
+  const paths = new Set([
+    ...value.files.map((file) => file.path),
+    ...value.changes.map((change) => stringArgument(change, ["path"])).filter(Boolean)
+  ]);
+  const copy = value.diff || rows.map((row) =>
+    row.kind === "added"
+      ? `+ ${row.text}`
+      : row.kind === "removed"
+        ? `- ${row.text}`
+        : row.text
+  ).join("\n");
+  const renderRow = (row: DiffRow, key: string) => row.kind === "path" ? (
+    onOpenFile ? (
+      <button
+        className="diffPath"
+        key={key}
+        title="Open in local editor"
+        onClick={() => onOpenFile(row.path)}
+      >
+        {row.text}
+      </button>
+    ) : <div className="diffPathLabel" key={key}>{row.text}</div>
+  ) : (
+    <div className="diffLine" data-line={row.kind} key={key}>{row.text || " "}</div>
+  );
+  return (
+    <div className="toolSurface diffCard" data-diff>
+      <div className="diffCopy"><CopyButton text={copy} /></div>
+      <div className="diffBody">
+        {window.head.map((row, index) => renderRow(row, `head-${index}`))}
+        {window.hidden > 0 && (
+          <ExpandRows
+            expanded={expanded}
+            hidden={window.hidden}
+            noun="lines"
+            onToggle={() => setExpanded((value) => !value)}
+          />
+        )}
+        {window.tail.map((row, index) => renderRow(row, `tail-${index}`))}
+      </div>
+      <div className="diffFooter">
+        +{added} -{removed} · {paths.size} {paths.size === 1 ? "file" : "files"}
+      </div>
+    </div>
+  );
+}
+
+export function EditPlanPreview({
+  files,
+  diff
+}: {
+  files: readonly ProjectedEditPlanFile[];
+  diff: string;
+}) {
+  return (
+    <DiffCard
+      value={{kind: "diff", files, diff, changes: []}}
+    />
+  );
 }
 
 function ReadCard({
@@ -612,6 +744,9 @@ function toolIcon(variant: ToolNode["variant"]): ReactNode {
       return <FolderSearch size={14} />;
     case "shell":
       return <TerminalSquare size={14} />;
+    case "write":
+    case "diff":
+      return <FilePenLine size={14} />;
     default:
       return <TerminalSquare size={14} />;
   }
