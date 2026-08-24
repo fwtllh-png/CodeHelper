@@ -146,7 +146,6 @@ type Options struct {
 	SessionLifecycle    SessionLifecycleStore
 	SessionWorkspaces   SessionWorkspaceManager
 	SessionArtifacts    SessionArtifactStore
-	TraceStore          TraceStore
 	TerminalStore       turnkernel.TerminalEnvelopeStore
 	ContextRebaseStore  ContextRebaseStore
 	Orchestration       OrchestrationController
@@ -206,7 +205,7 @@ type Runtime struct {
 	*HistoryService
 	*ArtifactService
 	*TurnService
-	*TraceService
+	TraceQuery RuntimeTraceQuery
 
 	done      chan struct{}
 	startOnce sync.Once

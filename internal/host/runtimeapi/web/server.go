@@ -26,6 +26,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
+	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
@@ -1262,7 +1263,7 @@ func (s *Server) traceQuery(
 	r *http.Request,
 	dependencies Dependencies,
 ) (any, error) {
-	var request app.TraceQuery
+	var request tracestate.TraceQuery
 	if err := s.decodeRequest(r, &request); err != nil {
 		return nil, err
 	}
@@ -1274,7 +1275,15 @@ func (s *Server) traceQuery(
 			nil,
 		)
 	}
-	return dependencies.Runtime.TraceService.Query(r.Context(), request)
+	if dependencies.Runtime.TraceQuery == nil {
+		return nil, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"trace query is unavailable",
+			false,
+			nil,
+		)
+	}
+	return dependencies.Runtime.TraceQuery.Query(r.Context(), request)
 }
 
 func boundedLimit(value, fallback int) (int, error) {

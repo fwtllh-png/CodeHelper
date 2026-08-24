@@ -1,4 +1,4 @@
-package app
+package trace
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -16,7 +15,14 @@ type TraceStore interface {
 		context.Context,
 		string,
 		protocol.TurnID,
-	) ([]tracestate.Record, error)
+	) ([]Record, error)
+}
+
+type SessionReader interface {
+	GetLifecycle(
+		context.Context,
+		string,
+	) (protocol.SessionSummary, error)
 }
 
 type TraceQuery struct {
@@ -52,17 +58,26 @@ type TraceSpan struct {
 	CallID     string     `json:"call_id,omitempty"`
 }
 
-type TraceService struct {
-	runtime *Runtime
-	store   TraceStore
+type QueryService struct {
+	sessions SessionReader
+	store    TraceStore
+	active   Runtime
 }
 
-func (s *TraceService) Query(
+func NewQueryService(
+	sessions SessionReader,
+	store TraceStore,
+	active Runtime,
+) *QueryService {
+	return &QueryService{sessions: sessions, store: store, active: active}
+}
+
+func (s *QueryService) Query(
 	ctx context.Context,
 	query TraceQuery,
 ) (TraceSnapshot, error) {
-	if s == nil || s.runtime == nil || s.store == nil {
-		return TraceSnapshot{}, runtimeProblem(
+	if s == nil || s.sessions == nil || s.store == nil {
+		return TraceSnapshot{}, queryProblem(
 			protocol.CodeUnavailable,
 			"trace query is unavailable",
 			nil,
@@ -70,14 +85,22 @@ func (s *TraceService) Query(
 	}
 	query.SessionID = strings.TrimSpace(query.SessionID)
 	if query.SessionID == "" || len(query.TurnIDs) == 0 {
-		return TraceSnapshot{}, runtimeProblem(
+		return TraceSnapshot{}, queryProblem(
 			protocol.CodeInvalidArgument,
 			"trace query requires a session and at least one turn",
 			nil,
 		)
 	}
-	if _, err := s.runtime.SessionStatus(ctx, query.SessionID); err != nil {
+	session, err := s.sessions.GetLifecycle(ctx, query.SessionID)
+	if err != nil {
 		return TraceSnapshot{}, err
+	}
+	if query.ThroughSequence > session.LatestSequence {
+		return TraceSnapshot{}, queryProblem(
+			protocol.CodeConflict,
+			"trace query watermark is ahead of the session",
+			nil,
+		)
 	}
 	result := TraceSnapshot{
 		Version: 1, SessionID: query.SessionID,
@@ -87,7 +110,7 @@ func (s *TraceService) Query(
 	seen := make(map[protocol.TurnID]struct{}, len(query.TurnIDs))
 	for _, turnID := range query.TurnIDs {
 		if turnID == "" {
-			return TraceSnapshot{}, runtimeProblem(
+			return TraceSnapshot{}, queryProblem(
 				protocol.CodeInvalidArgument,
 				"trace query turn id is required",
 				nil,
@@ -99,8 +122,8 @@ func (s *TraceService) Query(
 		seen[turnID] = struct{}{}
 		durable, err := s.store.QueryTurnInSession(ctx, query.SessionID, turnID)
 		if err != nil {
-			if errors.Is(err, tracestate.ErrNotFound) {
-				return TraceSnapshot{}, runtimeProblem(
+			if errors.Is(err, ErrNotFound) {
+				return TraceSnapshot{}, queryProblem(
 					protocol.CodeInvalidArgument,
 					fmt.Sprintf("turn %s does not belong to session", turnID),
 					err,
@@ -108,7 +131,7 @@ func (s *TraceService) Query(
 			}
 			return TraceSnapshot{}, err
 		}
-		records := s.runtime.opts.Observability.Runtime.ActiveTurnSpans(turnID)
+		records := s.active.ActiveTurnSpans(turnID)
 		if len(records) == 0 {
 			records = durable
 		}
@@ -119,7 +142,7 @@ func (s *TraceService) Query(
 
 func projectTraceTurn(
 	turnID protocol.TurnID,
-	records []tracestate.Record,
+	records []Record,
 ) TraceTurn {
 	result := TraceTurn{
 		TurnID: turnID,
@@ -152,7 +175,7 @@ func projectTraceTurn(
 			span.CallID = callID
 		}
 		result.Spans = append(result.Spans, span)
-		if record.Name == tracestate.NameTurn {
+		if record.Name == NameTurn {
 			started := record.Started
 			result.StartedAt = &started
 			result.Status = string(record.Status)
@@ -167,15 +190,15 @@ func projectTraceTurn(
 
 func publicTraceKind(name string) (string, bool) {
 	switch name {
-	case tracestate.NameTurn:
+	case NameTurn:
 		return "turn", true
-	case tracestate.NameModelCall:
+	case NameModelCall:
 		return "model", true
-	case tracestate.NameTool:
+	case NameTool:
 		return "tool", true
-	case tracestate.NameApprovalWait:
+	case NameApprovalWait:
 		return "approval", true
-	case tracestate.NameVerify:
+	case NameVerify:
 		return "verification", true
 	default:
 		return "", false
@@ -196,4 +219,12 @@ func unsigned32(value any) (uint32, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func queryProblem(
+	code protocol.ErrorCode,
+	message string,
+	cause error,
+) *protocol.Problem {
+	return protocol.NewProblem(code, message, false, cause)
 }

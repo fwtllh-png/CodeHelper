@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
@@ -8,7 +9,12 @@ import (
 )
 
 type RuntimeObservability struct {
-	Metrics *telemetry.Metrics
-	Logger  *slog.Logger
-	Runtime trace.Runtime
+	Metrics    *telemetry.Metrics
+	Logger     *slog.Logger
+	Runtime    trace.Runtime
+	TraceQuery RuntimeTraceQuery
+}
+
+type RuntimeTraceQuery interface {
+	Query(context.Context, trace.TraceQuery) (trace.TraceSnapshot, error)
 }

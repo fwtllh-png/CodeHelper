@@ -63,10 +63,7 @@ func installRuntimeServices(runtime *Runtime, operationBuffer int) {
 	runtime.RecoveryService = &RecoveryService{Runtime: runtime}
 	runtime.HistoryService = sessionhistory.NewService(runtime)
 	runtime.ArtifactService = artifact.NewArtifactService(runtime)
-	runtime.TraceService = &TraceService{
-		runtime: runtime,
-		store:   runtime.opts.TraceStore,
-	}
+	runtime.TraceQuery = runtime.opts.Observability.TraceQuery
 }
 
 // OperationService owns operation admission, idempotency, queueing, and

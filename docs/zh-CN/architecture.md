@@ -126,7 +126,7 @@ eventview + Web Projection -> 仅负责 Host Presentation
 | WorkGraph Kernel/Store | `internal/orchestration/kernel`、`internal/orchestration/store` | Durable Run、Node、Attempt、Lease 与 Effect Transition |
 | Extension Runtime | `internal/runtime/extension`、`internal/runtime/app/extension` | Typed Contributor、Source Plan、Generation、Lifecycle Effect 与 Control Receipt |
 | Observation Plane | `internal/observability/observation`、`internal/observability/router` | Evidence Schema、Privacy Admission、Durable Routing 与 Exporter Isolation |
-| Session/Artifact Service | `internal/runtime/app` | Runtime-owned Port 上的 Host-facing Query 行为 |
+| Session/Artifact/Trace Service | `internal/runtime/app` | Runtime-owned Port 上的 Host-facing Query 行为 |
 | Go Host Projection | `internal/runtime/eventview` | Event Payload 的唯一 Typed Interpretation |
 | Web Projection | `web/src` | 浏览器端 Event Projection 与交互状态 |
 
@@ -164,6 +164,9 @@ Go TUI、CLI 与 Bench 消费 `eventview` 的 Typed Semantic Update，不再分�
 
 Web Client 使用 Runtime Snapshot 完成 Hydration，再按全局 Cursor 消费 Event。
 Sequence 只要求严格单调；只有 Runtime 明确报告 Retention Gap 时才进入 Desync。
+浏览器 Conversation Projection 对高频 Delta 按动画帧合并发布，并保持未变化业务节点
+的引用稳定。Trajectory Event Ledger 与 Chat 复用该事件窗口；`trace/query` 只补充
+经过 Session/Turn 归属校验和字段白名单投影的时序，不返回任意 Span Attribute。
 
 ### Application Ownership
 

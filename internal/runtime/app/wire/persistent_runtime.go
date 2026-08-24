@@ -9,6 +9,7 @@ import (
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
@@ -50,6 +51,11 @@ func PreparePersistentRuntime(
 	if err != nil {
 		return nil, fmt.Errorf("open work graph orchestration: %w", err)
 	}
+	options.Observability.TraceQuery = tracestate.NewQueryService(
+		repositories.Sessions,
+		repositories.Trace,
+		options.Observability.Runtime,
+	)
 	runtimeOptions := app.Options{
 		Engine:           options.Engine,
 		WorkspaceRoot:    options.WorkspaceRoot,
@@ -61,7 +67,6 @@ func PreparePersistentRuntime(
 
 		TerminalStore:       terminalStore,
 		ContextRebaseStore:  contextRebases,
-		TraceStore:          repositories.Trace,
 		Orchestration:       orchestration,
 		SkipRuntimeRecovery: options.SkipRuntimeRecovery, Observability: options.Observability,
 	}
