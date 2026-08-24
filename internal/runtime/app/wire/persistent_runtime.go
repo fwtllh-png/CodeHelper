@@ -25,6 +25,7 @@ type PersistentRuntimeOptions struct {
 	Observability       app.RuntimeObservability
 	DefaultProfile      protocol.SessionProfile
 	ProfileCapabilities protocol.SessionProfileCapabilities
+	ProfileModels       map[string]protocol.ModelCapabilities
 	ToolCatalog         *tool.Registry
 	SessionWorkspaces   app.SessionWorkspaceManager
 	SkipRuntimeRecovery bool
@@ -67,6 +68,7 @@ func PreparePersistentRuntime(
 		runtimeOptions.SessionProfiles = repositories.Sessions
 		runtimeOptions.DefaultProfile = options.DefaultProfile
 		runtimeOptions.ProfileCapabilities = options.ProfileCapabilities
+		runtimeOptions.ProfileModels = options.ProfileModels
 		runtimeOptions.ToolCatalog = options.ToolCatalog
 		runtimeOptions.SessionLifecycle = repositories.Sessions
 		runtimeOptions.SessionWorkspaces = options.SessionWorkspaces

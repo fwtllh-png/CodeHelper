@@ -256,13 +256,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			}
 		}
 	}()
-	if len(spec.Skills) != 0 || spec.SkillSelection.Method != "" {
-		skills := make(map[string]string, len(spec.Skills))
-		for _, summary := range spec.Skills {
-			skills[summary.Name] = summary.Handle
-		}
-		ctx = tool.WithAllowedSkills(ctx, skills)
-	}
 	if e.guard != nil && spec.Policy != nil {
 		sessionPolicy := e.guard.SwapPolicy(spec.Policy)
 		defer e.guard.SwapPolicy(sessionPolicy)

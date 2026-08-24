@@ -82,6 +82,7 @@ func prepareRuntime(
 		metrics: options.Observability.Metrics, logger: options.Observability.Logger,
 		profiles: options.SessionProfiles, defaultProfile: options.DefaultProfile,
 		profileCapabilities: options.ProfileCapabilities,
+		profileModels:       options.ProfileModels,
 		toolCatalog:         options.ToolCatalog, sessionLifecycle: options.SessionLifecycle,
 		sessionWorkspaces:  options.SessionWorkspaces,
 		sessionArtifacts:   options.SessionArtifacts,

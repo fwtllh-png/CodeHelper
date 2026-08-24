@@ -51,8 +51,7 @@ func TestPermissionsSlashAndAlwaysApproval(t *testing.T) {
 	model = updated.(tui.Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("always")})
 	model = updated.(tui.Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(tui.Model)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if len(host.approvals) != 1 || host.approvals[0] != "req-always:always" {
 		t.Fatalf("approvals=%v", host.approvals)
 	}

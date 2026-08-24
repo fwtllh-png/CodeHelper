@@ -2,44 +2,44 @@
   "version": 1,
   "files": [
     {
-      "path": "assets/index-BA2RTT4h.js",
-      "sha256": "8ee8e419f655cff01d5293fc2ee07779b30a4574c9272d9845360bda3c0abb29",
-      "bytes": 372389,
+      "path": "assets/index-DjLsGGTr.js",
+      "sha256": "fd25c83f4e013fed9a4c080778462fb02fd0b83307864ea002fc09ef0dbf8d89",
+      "bytes": 379527,
       "media_type": "text/javascript; charset=utf-8"
     },
     {
-      "path": "assets/index-BA2RTT4h.js.br",
-      "sha256": "e67d4d4795fba7b01353c46590b761e7ff8a0d58cbcfac48842db4b2c0336aeb",
-      "bytes": 98027,
+      "path": "assets/index-DjLsGGTr.js.br",
+      "sha256": "a492ea33f248f7d1d1f4c0e712b9e13b09ad8b7fffa33d9fdc497bef10323a4e",
+      "bytes": 99549,
       "media_type": "application/octet-stream"
     },
     {
-      "path": "assets/index-BA2RTT4h.js.gz",
-      "sha256": "422a3c591e3648909f841f5324f0f80efc78ecffc56cc6968266ef6e47e1b639",
-      "bytes": 111949,
+      "path": "assets/index-DjLsGGTr.js.gz",
+      "sha256": "c55b4940bbc95b8932635f4811caf7b2bcec72bf8b3c3b236022e15a6df7451d",
+      "bytes": 113754,
       "media_type": "application/octet-stream"
     },
     {
-      "path": "assets/index-CFKuW6_9.css",
-      "sha256": "4eb162a67e33c5c5cf639f34aea844909ff26d63f650648fa2fb42dfe2e1f43a",
-      "bytes": 21035,
+      "path": "assets/index-iiHKyXni.css",
+      "sha256": "253305f70c150b507c5fdeb479428a4e7900e4bf5e3c77d8fe3cdf37f2d2a001",
+      "bytes": 25035,
       "media_type": "text/css; charset=utf-8"
     },
     {
-      "path": "assets/index-CFKuW6_9.css.br",
-      "sha256": "0e071b9ddbb0c058777ebdacb717e096d2b9afec655b84055e4251bfc6b4e644",
-      "bytes": 4133,
+      "path": "assets/index-iiHKyXni.css.br",
+      "sha256": "4f76144e7576ef4440d90e65d96d1f3c9b32b83b860bb42f9a0d5c0139e53ad5",
+      "bytes": 4687,
       "media_type": "application/octet-stream"
     },
     {
-      "path": "assets/index-CFKuW6_9.css.gz",
-      "sha256": "dc961a56c9db786d927377e47f47d48039906d0c24e76d5673262564c1e56388",
-      "bytes": 4739,
+      "path": "assets/index-iiHKyXni.css.gz",
+      "sha256": "23040a6639e6254564a9f3d5a71582b8787346928403bab12f79500d46665046",
+      "bytes": 5357,
       "media_type": "application/octet-stream"
     },
     {
       "path": "index.html",
-      "sha256": "dbef3244ed0e3421cff908a847fdb9b1e634345d168a8af6415dc9867be262d6",
+      "sha256": "b8d88b1126c6d7d6edb41a5ad8241aa9a179d117e6e5ee49baadb3518b53cd56",
       "bytes": 481,
       "media_type": "text/html; charset=utf-8"
     },

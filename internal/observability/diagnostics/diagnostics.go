@@ -2,7 +2,6 @@ package diagnostics
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -105,36 +104,25 @@ func (r *CommandRunner) Run(ctx context.Context, path string) (Receipt, error) {
 		return Receipt{}, err
 	}
 	defer directory.Close()
-	invocation, err := process.NewCommand(ctx, process.Options{
+	result, runErr := process.Run(ctx, process.Options{
 		Path: binary, Args: args, Dir: policy.WorkspaceRoot, DirFile: directory, Sandbox: backend,
 		RequireStrongSandbox: true, Env: []string{"OPENSSL_CONF=/dev/null"},
 	})
-	if err != nil {
-		return Receipt{}, err
+	if runErr != nil {
+		return Receipt{}, runErr
 	}
-	var stdout, stderr bytes.Buffer
-	invocation.Stdout, invocation.Stderr = &stdout, &stderr
-	runErr := invocation.Run()
 	if ctx.Err() != nil {
 		return Receipt{}, ctx.Err()
 	}
-	exitCode := process.ExitCode(runErr)
-	var exitError *exec.ExitError
-	if runErr != nil && !errors.As(runErr, &exitError) {
-		return Receipt{}, runErr
-	}
-	values := parse(stdout.String()+"\n"+stderr.String(), command.Name, path)
+	exitCode := result.ExitCode
+	values := parse(result.Stdout+"\n"+result.Stderr, command.Name, path)
 	status := "completed"
 	message := ""
 	if exitCode != 0 && len(values) == 0 {
 		status = "unavailable"
-		message = strings.TrimSpace(stderr.String())
+		message = strings.TrimSpace(result.Stderr)
 		if message == "" {
-			if runErr != nil {
-				message = runErr.Error()
-			} else {
-				message = fmt.Sprintf("%s exited with code %d", command.Name, exitCode)
-			}
+			message = fmt.Sprintf("%s exited with code %d", command.Name, exitCode)
 		}
 	}
 	return Receipt{

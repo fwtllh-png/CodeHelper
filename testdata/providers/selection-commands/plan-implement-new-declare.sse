@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_plan_new_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"new Session plan implemented and verified\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

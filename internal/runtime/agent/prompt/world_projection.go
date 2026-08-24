@@ -263,7 +263,7 @@ func RenderSkillWorld(values []SkillSummary) string {
 	})
 	var builder strings.Builder
 	builder.WriteString(
-		"Selected skills (metadata only). Use load_skill by name or skills_read with any exact advertised handle (handle, package, or resource) before following instructions. Use skills_list for more.\n",
+		"Selected skills (metadata only). Use skills_read with any exact advertised handle (handle, package, or resource) before following instructions. Use skills_list for more.\n",
 	)
 	for _, value := range values {
 		builder.WriteString("- name=")

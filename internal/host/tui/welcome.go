@@ -20,7 +20,6 @@ var (
 	styleTool         lipgloss.Style
 	styleToolLive     lipgloss.Style
 	styleToolDone     lipgloss.Style
-	styleToolWait     lipgloss.Style
 	styleHeader       lipgloss.Style
 	styleChip         lipgloss.Style
 	stylePhaseWorking lipgloss.Style

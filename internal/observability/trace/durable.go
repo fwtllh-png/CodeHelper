@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/health"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/journal"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/observation"
 	observationotel "github.com/fwtllh-png/CodeHelper/internal/observability/otel"
@@ -26,7 +25,6 @@ type ObservationRouter interface {
 	observation.Recorder
 	Flush(context.Context) error
 	Close(context.Context) error
-	Snapshot() health.HealthSnapshot
 }
 
 type DurableOptions struct {
@@ -75,12 +73,7 @@ func OpenDurableRuntime(
 		context.Background(),
 	)
 	if projectorErr != nil {
-		projector, _ = observationotel.New(
-			context.Background(),
-			observationotel.Options{
-				Protocol: observationotel.ExportMemory,
-			},
-		)
+		projector = nil
 	}
 	capturePolicy, err := privacy.New(privacy.Options{
 		Mode:            options.CaptureMode,

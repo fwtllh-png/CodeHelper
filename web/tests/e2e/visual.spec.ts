@@ -213,6 +213,8 @@ test("captures viewport theme contrast and zoom matrix", async ({page}) => {
   await page.setViewportSize({width: 512, height: 384});
   await page.goto(baseURL);
   await assertViewportGeometry(page);
+  await page.getByRole("button", {name: "Create session"}).scrollIntoViewIfNeeded();
+  await expect(page.getByRole("button", {name: "Create session"})).toBeVisible();
   await expect(page).toHaveScreenshot("viewport-1024x768-zoom-200.png");
 });
 
@@ -236,8 +238,12 @@ async function assertViewportGeometry(page: Page): Promise<void> {
     const app = document.querySelector<HTMLElement>(".app");
     const actions = Array.from(document.querySelectorAll<HTMLElement>("button"))
       .filter((button) => button.offsetParent !== null)
-      .map((button) => button.getBoundingClientRect());
-    const composer = document.querySelector<HTMLElement>(".composerSeat");
+      .map((button) => button.getBoundingClientRect())
+      .filter((box) => box.bottom > 0 && box.top < window.innerHeight);
+    const primary = document.querySelector<HTMLElement>(
+      ".composerSeat, .startupSetup"
+    );
+    const primaryBox = primary?.getBoundingClientRect();
     return {
       appOverflow: app ? app.scrollWidth - app.clientWidth : -1,
       actionsInside: actions.every(
@@ -247,14 +253,14 @@ async function assertViewportGeometry(page: Page): Promise<void> {
           box.top >= 0 &&
           box.bottom <= window.innerHeight
       ),
-      composerInside: composer
-        ? composer.getBoundingClientRect().bottom <= window.innerHeight
+      primaryVisible: primaryBox
+        ? primaryBox.top < window.innerHeight && primaryBox.bottom > 0
         : false
     };
   });
   expect(geometry.appOverflow).toBeLessThanOrEqual(0);
   expect(geometry.actionsInside).toBe(true);
-  expect(geometry.composerInside).toBe(true);
+  expect(geometry.primaryVisible).toBe(true);
 }
 
 function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {

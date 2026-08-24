@@ -51,21 +51,20 @@ type serverRuntime struct {
 }
 
 type Pool struct {
-	lifecycle          sync.Mutex
-	mu                 sync.RWMutex
-	factory            TransportFactory
-	hash               string
-	invalidated        bool
-	servers            map[string]*serverRuntime
-	connections        map[string]*Connection
-	catalog            []CatalogEntry
-	resources          []ResourceCatalogEntry
-	resourceTemplates  []ResourceTemplateCatalogEntry
-	prompts            []PromptCatalogEntry
-	healthSubscribers  map[uint64]func(HealthChange)
-	catalogSubscribers map[uint64]func()
-	refreshing         map[string]bool
-	nextSubscriberID   uint64
+	lifecycle         sync.Mutex
+	mu                sync.RWMutex
+	factory           TransportFactory
+	hash              string
+	invalidated       bool
+	servers           map[string]*serverRuntime
+	connections       map[string]*Connection
+	catalog           []CatalogEntry
+	resources         []ResourceCatalogEntry
+	resourceTemplates []ResourceTemplateCatalogEntry
+	prompts           []PromptCatalogEntry
+	healthSubscribers map[uint64]func(HealthChange)
+	refreshing        map[string]bool
+	nextSubscriberID  uint64
 }
 
 var errPoolNil = errors.New("MCP pool is nil")
@@ -75,12 +74,11 @@ func NewPool(factory TransportFactory) *Pool {
 		factory = NewDefaultTransport
 	}
 	return &Pool{
-		factory:            factory,
-		servers:            make(map[string]*serverRuntime),
-		connections:        make(map[string]*Connection),
-		healthSubscribers:  make(map[uint64]func(HealthChange)),
-		catalogSubscribers: make(map[uint64]func()),
-		refreshing:         make(map[string]bool),
+		factory:           factory,
+		servers:           make(map[string]*serverRuntime),
+		connections:       make(map[string]*Connection),
+		healthSubscribers: make(map[uint64]func(HealthChange)),
+		refreshing:        make(map[string]bool),
 	}
 }
 
@@ -171,7 +169,6 @@ func (p *Pool) Reload(ctx context.Context, config Config) (bool, error) {
 	p.hash = hash
 	p.invalidated = false
 	p.mu.Unlock()
-	p.emitCatalog()
 	closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	var closeErrors []error
@@ -373,7 +370,6 @@ func (p *Pool) ReloadServer(ctx context.Context, name string) error {
 	p.resourceTemplates = templates
 	p.prompts = prompts
 	p.mu.Unlock()
-	p.emitCatalog()
 	if oldConnection != nil && oldConnection != runtime.connection {
 		closeCtx, cancel := context.WithTimeout(context.Background(), current.config.ShutdownTimeout)
 		defer cancel()
@@ -629,7 +625,6 @@ func (p *Pool) RemoveServerPrefix(
 	p.hash = ""
 	p.invalidated = true
 	p.mu.Unlock()
-	p.emitCatalog()
 	var closeErr error
 	for _, connection := range removed {
 		closeErr = errors.Join(closeErr, connection.Close(ctx))
@@ -699,22 +694,6 @@ func (p *Pool) SubscribeHealth(observer func(HealthChange)) func() {
 	}
 }
 
-func (p *Pool) SubscribeCatalog(observer func()) func() {
-	if p == nil || observer == nil {
-		return func() {}
-	}
-	p.mu.Lock()
-	p.nextSubscriberID++
-	id := p.nextSubscriberID
-	p.catalogSubscribers[id] = observer
-	p.mu.Unlock()
-	return func() {
-		p.mu.Lock()
-		delete(p.catalogSubscribers, id)
-		p.mu.Unlock()
-	}
-}
-
 func (p *Pool) emitHealth(change HealthChange) {
 	p.mu.RLock()
 	observers := make([]func(HealthChange), 0, len(p.healthSubscribers))
@@ -724,18 +703,6 @@ func (p *Pool) emitHealth(change HealthChange) {
 	p.mu.RUnlock()
 	for _, observer := range observers {
 		observer(change)
-	}
-}
-
-func (p *Pool) emitCatalog() {
-	p.mu.RLock()
-	observers := make([]func(), 0, len(p.catalogSubscribers))
-	for _, observer := range p.catalogSubscribers {
-		observers = append(observers, observer)
-	}
-	p.mu.RUnlock()
-	for _, observer := range observers {
-		observer()
 	}
 }
 

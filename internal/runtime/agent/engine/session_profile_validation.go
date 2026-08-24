@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -23,12 +24,12 @@ func (e *Engine) validateSessionProfileLocked(
 	if e.runningScope() != nil {
 		return errors.New("session profile cannot change while a turn is active")
 	}
-	route := e.options.Routes.Act()
-	if profile.Provider != route.ProviderID() || profile.Model != route.Model().ID {
-		return errors.New("session profile route is unavailable in this runtime")
+	routes, err := e.routesForProfileLocked(profile)
+	if err != nil {
+		return err
 	}
-	if profile.ReasoningEffort != "" && !route.Model().Capabilities.Reasoning {
-		return errors.New("session profile model does not support reasoning effort")
+	if err := validateReasoningEffort(routes, profile.ReasoningEffort); err != nil {
+		return err
 	}
 	for _, id := range profile.EnabledToolIDs {
 		if _, _, ok := tool.ParseCatalogToolID(id); !ok {
@@ -36,4 +37,24 @@ func (e *Engine) validateSessionProfileLocked(
 		}
 	}
 	return nil
+}
+
+func (e *Engine) routesForProfileLocked(
+	profile protocol.SessionProfile,
+) (model.RouteSet, error) {
+	current := e.options.Routes.Act()
+	if profile.Provider == current.ProviderID() &&
+		profile.Model == current.Model().ID {
+		return e.options.Routes, nil
+	}
+	route, ok := e.options.SelectableRoutes[model.RouteKey(
+		profile.Provider,
+		profile.Model,
+	)]
+	if !ok {
+		return model.RouteSet{}, errors.New(
+			"session profile route is unavailable in this runtime",
+		)
+	}
+	return e.options.Routes.WithAct(route)
 }

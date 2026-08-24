@@ -119,6 +119,14 @@ type SessionLifecycleStore interface {
 	) (protocol.SessionDeleteResult, error)
 }
 
+type sessionDiscardStore interface {
+	DiscardLifecycle(
+		context.Context,
+		string,
+		uint64,
+	) (protocol.SessionDeleteResult, error)
+}
+
 type Options struct {
 	OperationBuffer     int
 	EventHistory        int
@@ -133,6 +141,7 @@ type Options struct {
 	SessionProfiles     SessionProfileStore
 	DefaultProfile      protocol.SessionProfile
 	ProfileCapabilities protocol.SessionProfileCapabilities
+	ProfileModels       map[string]protocol.ModelCapabilities
 	ToolCatalog         SessionToolCatalog
 	SessionLifecycle    SessionLifecycleStore
 	SessionWorkspaces   SessionWorkspaceManager
@@ -177,6 +186,7 @@ type Runtime struct {
 	profiles             SessionProfileStore
 	defaultProfile       protocol.SessionProfile
 	profileCapabilities  protocol.SessionProfileCapabilities
+	profileModels        map[string]protocol.ModelCapabilities
 	toolCatalog          SessionToolCatalog
 	sessionLifecycle     SessionLifecycleStore
 	sessionWorkspaces    SessionWorkspaceManager
@@ -529,6 +539,23 @@ func (r *SessionService) DeleteSession(
 	sessionID string,
 	expectedRevision uint64,
 ) (protocol.SessionDeleteResult, error) {
+	return r.deleteSession(ctx, sessionID, expectedRevision, false)
+}
+
+func (r *SessionService) DiscardSession(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+) (protocol.SessionDeleteResult, error) {
+	return r.deleteSession(ctx, sessionID, expectedRevision, true)
+}
+
+func (r *SessionService) deleteSession(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+	discard bool,
+) (protocol.SessionDeleteResult, error) {
 	r.mutationMu.Lock()
 	defer r.mutationMu.Unlock()
 	if r.sessionLifecycle == nil {
@@ -538,11 +565,26 @@ func (r *SessionService) DeleteSession(
 	if err != nil {
 		return protocol.SessionDeleteResult{}, err
 	}
-	if err := ensureSessionQuiescent(current, "delete"); err != nil {
-		return protocol.SessionDeleteResult{}, err
-	}
 	threadIDs, err := r.sessionLifecycle.ThreadIDs(ctx, sessionID)
 	if err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
+	if discard {
+		for _, threadID := range threadIDs {
+			if _, active := r.active.LookupThread(threadID); active {
+				return protocol.SessionDeleteResult{}, sessionBusyProblem(
+					"cannot discard session while a turn is active",
+					current,
+				)
+			}
+		}
+		if r.OperationService.hasPendingSession(sessionID) {
+			return protocol.SessionDeleteResult{}, sessionBusyProblem(
+				"cannot discard session while a turn is recovering",
+				current,
+			)
+		}
+	} else if err := ensureSessionQuiescent(current, "delete"); err != nil {
 		return protocol.SessionDeleteResult{}, err
 	}
 	if current.Isolation == SessionIsolationWorktree {
@@ -556,23 +598,42 @@ func (r *SessionService) DeleteSession(
 		); err != nil {
 			return protocol.SessionDeleteResult{}, err
 		}
-		plan, err := r.sessionWorkspaces.PlanMerge(
-			ctx,
-			current.SessionID,
-			current.ThreadID,
-		)
-		if err != nil && !errors.Is(err, ErrSessionWorkspaceClean) {
-			return protocol.SessionDeleteResult{}, err
-		}
-		if err == nil && len(plan.Files) != 0 {
-			return protocol.SessionDeleteResult{}, runtimeProblem(protocol.CodeConflict, "cannot delete session with unmerged worktree changes", nil)
+		if !discard {
+			plan, err := r.sessionWorkspaces.PlanMerge(
+				ctx,
+				current.SessionID,
+				current.ThreadID,
+			)
+			if err != nil && !errors.Is(err, ErrSessionWorkspaceClean) {
+				return protocol.SessionDeleteResult{}, runtimeProblem(
+					protocol.CodeConflict,
+					"cannot delete session while its isolated worktree has unresolved changes",
+					err,
+				)
+			}
+			if err == nil && len(plan.Files) != 0 {
+				return protocol.SessionDeleteResult{}, runtimeProblem(protocol.CodeConflict, "cannot delete session with unmerged worktree changes", nil)
+			}
 		}
 	}
-	result, err := r.sessionLifecycle.DeleteLifecycle(
-		ctx,
-		sessionID,
-		expectedRevision,
-	)
+	var result protocol.SessionDeleteResult
+	if discard {
+		store, ok := r.sessionLifecycle.(sessionDiscardStore)
+		if !ok {
+			return protocol.SessionDeleteResult{}, runtimeProblem(
+				protocol.CodeUnavailable,
+				"discarding a session is unavailable",
+				nil,
+			)
+		}
+		result, err = store.DiscardLifecycle(ctx, sessionID, expectedRevision)
+	} else {
+		result, err = r.sessionLifecycle.DeleteLifecycle(
+			ctx,
+			sessionID,
+			expectedRevision,
+		)
+	}
 	if err != nil {
 		return protocol.SessionDeleteResult{}, err
 	}
@@ -580,6 +641,9 @@ func (r *SessionService) DeleteSession(
 		for _, threadID := range threadIDs {
 			manager.Release(threadID)
 		}
+	}
+	if discard {
+		r.clearSessionInteractions(threadIDs)
 	}
 	if current.Isolation == SessionIsolationWorktree {
 		if discardErr := r.sessionWorkspaces.Discard(
@@ -596,6 +660,27 @@ func (r *SessionService) DeleteSession(
 		}
 	}
 	return result, nil
+}
+
+func (r *SessionService) clearSessionInteractions(threadIDs []protocol.ThreadID) {
+	threads := make(map[protocol.ThreadID]struct{}, len(threadIDs))
+	for _, threadID := range threadIDs {
+		threads[threadID] = struct{}{}
+	}
+	r.EventService.mu.Lock()
+	defer r.EventService.mu.Unlock()
+	for requestID, approval := range r.approvals {
+		if _, ok := threads[approval.ThreadID]; ok {
+			delete(r.approvals, requestID)
+			delete(r.approvalItems, eventItemOwner(approval.TurnID, requestID))
+		}
+	}
+	for requestID, input := range r.inputs {
+		if _, ok := threads[input.ThreadID]; ok {
+			delete(r.inputs, requestID)
+			delete(r.inputItems, eventItemOwner(input.TurnID, requestID))
+		}
+	}
 }
 func (r *SessionService) projectSessionActivity(
 	ctx context.Context,
@@ -848,9 +933,10 @@ func (r *SessionService) SessionProfile(
 	) {
 		profile.ReasoningEffort = r.defaultProfile.ReasoningEffort
 	}
-	capabilities := r.profileCapabilities
-	capabilities.Provider = profile.Provider
-	capabilities.Model = profile.Model
+	capabilities, err := r.capabilitiesForProfile(profile)
+	if err != nil {
+		return protocol.SessionProfileSnapshot{}, err
+	}
 	if err := capabilities.Validate(profile); err != nil {
 		return protocol.SessionProfileSnapshot{}, err
 	}
@@ -859,6 +945,29 @@ func (r *SessionService) SessionProfile(
 		Capabilities: capabilities,
 	}, nil
 }
+
+func (r *Runtime) capabilitiesForProfile(
+	profile protocol.SessionProfile,
+) (protocol.SessionProfileCapabilities, error) {
+	capabilities := r.profileCapabilities
+	capabilities.Provider = profile.Provider
+	capabilities.Model = profile.Model
+	key := profile.Provider + "\x00" + profile.Model
+	if modelCapabilities, ok := r.profileModels[key]; ok {
+		capabilities.ModelCapabilities = modelCapabilities
+		return capabilities, nil
+	}
+	if profile.Provider == r.defaultProfile.Provider &&
+		profile.Model == r.defaultProfile.Model {
+		return capabilities, nil
+	}
+	return protocol.SessionProfileCapabilities{}, runtimeProblem(
+		protocol.CodeInvalidArgument,
+		"session profile route is unavailable in this Runtime",
+		nil,
+	)
+}
+
 func profileFieldMutable(fields []string, target string) bool {
 	for _, field := range fields {
 		if field == target {

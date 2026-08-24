@@ -386,6 +386,3 @@ func (t *Tool) invocationSession(ctx context.Context) string {
 	}
 	return t.sessionID
 }
-
-// Manager exposes the underlying manager for tests and cleanup.
-func (t *Tool) Manager() *subagent.Manager { return t.control.Manager() }

@@ -519,47 +519,6 @@ func (r *Repository) GetItem(ctx context.Context, id protocol.ItemID) (Item, err
 	return value, nil
 }
 
-func (r *Repository) CompleteTurn(
-	ctx context.Context,
-	id protocol.TurnID,
-	status TurnStatus,
-	at time.Time,
-) (Turn, error) {
-	if !isTerminal(status) {
-		return Turn{}, fmt.Errorf("status %q is not terminal", status)
-	}
-	if at.IsZero() {
-		at = time.Now().UTC()
-	}
-	result, err := r.db.ExecContext(ctx, `
-		UPDATE turns SET status = ?, updated_at = ?, completed_at = ?
-		WHERE id = ? AND status = ?`,
-		status, timestamp(at), timestamp(at), id, TurnActive,
-	)
-	if err != nil {
-		return Turn{}, fmt.Errorf("complete turn: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return Turn{}, err
-	}
-	if affected == 0 {
-		current, getErr := r.GetTurn(ctx, id)
-		if getErr != nil {
-			return Turn{}, getErr
-		}
-		if current.Status == status {
-			return current, nil
-		}
-		return Turn{}, ErrTerminal
-	}
-	return r.GetTurn(ctx, id)
-}
-
-func isTerminal(status TurnStatus) bool {
-	return status == TurnCompleted || status == TurnFailed || status == TurnCanceled
-}
-
 func timestamp(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
 }

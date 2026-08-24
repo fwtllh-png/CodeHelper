@@ -166,11 +166,6 @@ func (s *Store) ensureRecordsFile() error {
 	return nil
 }
 
-// AsSystemBlock wraps content for prompt injection with a hard 100 KiB budget.
-func AsSystemBlock(content, source string) string {
-	return AsSystemBlockBounded(content, source, MaxPromptBytes)
-}
-
 func previousUTF8Boundary(value string, index int) int {
 	if index >= len(value) {
 		return len(value)

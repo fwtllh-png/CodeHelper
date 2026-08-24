@@ -71,51 +71,6 @@ type NarrativeArtifact struct {
 	Digest          string            `json:"digest"`
 }
 
-type ContextDataBlock struct {
-	Version          int             `json:"version"`
-	Kind             string          `json:"kind"`
-	NonAuthoritative bool            `json:"non_authoritative"`
-	Provenance       string          `json:"provenance"`
-	Content          json.RawMessage `json:"content"`
-	Digest           string          `json:"digest"`
-}
-
-func NewContextDataBlock(
-	kind string,
-	nonAuthoritative bool,
-	provenance string,
-	value any,
-) (ContextDataBlock, error) {
-	content, err := json.Marshal(value)
-	if err != nil {
-		return ContextDataBlock{}, err
-	}
-	block := ContextDataBlock{
-		Version: NarrativeSchemaVersion, Kind: strings.TrimSpace(kind),
-		NonAuthoritative: nonAuthoritative,
-		Provenance:       strings.TrimSpace(provenance),
-		Content:          content,
-	}
-	block.Digest = digestString(string(content))
-	return block, block.Validate()
-}
-
-func (b ContextDataBlock) Validate() error {
-	if b.Version != NarrativeSchemaVersion || b.Kind == "" ||
-		b.Provenance == "" || len(b.Content) == 0 ||
-		!json.Valid(b.Content) ||
-		b.Digest != digestString(string(b.Content)) {
-		return errors.New("context data block is invalid")
-	}
-	if b.Kind == "truth" && b.NonAuthoritative {
-		return errors.New("truth data block cannot be non-authoritative")
-	}
-	if b.Kind == "narrative" && !b.NonAuthoritative {
-		return errors.New("narrative data block must be non-authoritative")
-	}
-	return nil
-}
-
 type CompactedContext struct {
 	Version             int                `json:"version"`
 	CompactionID        string             `json:"compaction_id"`

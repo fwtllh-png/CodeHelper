@@ -1,7 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_complete_electron_a","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\","}}]},"finish_reason":null}]}
-
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"summary\":\"completed the delegated context inspection\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":21,"completion_tokens":11}}
-
-data: [DONE]

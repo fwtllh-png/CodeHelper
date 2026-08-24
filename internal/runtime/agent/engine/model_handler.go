@@ -201,7 +201,6 @@ func (e *Engine) modelStep(
 		if err != nil {
 			return nil, nil, totalUsage, window.estimated, err
 		}
-		snapshot = project()
 		if window.hardLimit > 0 &&
 			window.active >= e.prepareCompactLimit() {
 			turnContext = append(

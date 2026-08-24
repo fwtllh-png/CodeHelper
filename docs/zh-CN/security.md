@@ -127,7 +127,7 @@ name = "OPENAI_API_KEY"
 - CI 优先由 Secret Manager 注入 Environment；
 - Secret File 使用限制性权限；
 - 怀疑泄漏后立即 Rotation；
-- 即使开启 Redaction，Log、Receipt、Crash Dump 与 Support Bundle 仍视为敏感。
+- 即使开启 Redaction，Log、Receipt、Crash Dump 与导出的诊断材料仍视为敏感。
 
 Web 写入凭证时会创建 Workspace/Provider 隔离的新 Keyring Entry，并以不含 Secret 的
 `prepared`、`config_committed`、`completed` Intent 和 Generation CAS 提交 Reference。
@@ -195,12 +195,12 @@ Reference 比 Audit Metadata 更早过期；只有 Reference Count 降为 0 后�
 
 OTLP Export 是脱敏 Observation Envelope 的独立有界 Projection。Metric Label 使用
 固定低基数 Allowlist，绝不能包含 Prompt、Path、Argument、Resource ID 或 Raw Error。
-Collector Endpoint 与 Header 是安全敏感环境配置。Exporter Failure 会反映在
-Observation Health 中，但不能改变业务 Turn Result。
+Collector Endpoint 与 Header 是安全敏感环境配置。Exporter Failure 会通过
+`Flush`/`Shutdown` 返回，但不能改变业务 Turn Result。
 
-内部 Support Bundle Builder 会读取 Observation Journal，对所有 Summary/Payload
-再次脱敏，默认不包含 Payload，以独占方式创建 Archive，并强制 mode `0600`。Bundle
-仍是敏感数据，分享前必须人工检查。
+导出 Observation Journal 诊断材料前必须再次经过 Privacy Policy，默认不包含
+Payload，并以独占方式创建 mode `0600` 的文件。导出结果仍是敏感数据，分享前必须
+人工检查。
 
 ## 安全测试
 

@@ -14,7 +14,7 @@ func TestTierOneToolsUseTypedBoundary(t *testing.T) {
 		"lsp/lsp.go",
 		"memory/memory.go",
 		"revert/revert.go",
-		"skill/skill.go",
+		"skill/discovery.go",
 		"toolsearch/tool_search.go",
 	}
 	for _, relative := range files {

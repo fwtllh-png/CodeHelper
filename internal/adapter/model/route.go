@@ -37,6 +37,11 @@ type RouteDescriptor struct {
 	Provenance Provenance    `json:"provenance"`
 }
 
+// RouteKey returns the collision-free identity used by selectable route maps.
+func RouteKey(providerID, modelID string) string {
+	return providerID + "\x00" + modelID
+}
+
 func (r ReadyRoute) ProviderID() string        { return r.providerID }
 func (r ReadyRoute) Adapter() AdapterID        { return r.adapter }
 func (r ReadyRoute) Endpoint() string          { return r.endpoint }

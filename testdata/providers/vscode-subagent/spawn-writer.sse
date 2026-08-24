@@ -1,5 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_spawn_electron_writer","function":{"name":"spawn_agent","arguments":"{\"task_name\":\"write_child_note\",\"role\":\"implementer\",\"objective\":\"Write child-note.txt and verify it exists.\",\"expected_output\":\"A verified child-note.txt change.\",\"owned_paths\":[\"child-note.txt\"],\"trigger\":\"user\"}"}}]},"finish_reason":"tool_calls"}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":28,"completion_tokens":24}}
-
-data: [DONE]

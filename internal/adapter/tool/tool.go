@@ -1131,7 +1131,7 @@ func (s *ResultStore) projectionLimit(name, content string) (int, string, int) {
 	case name == "file_read" || name == "file_list" || name == "shell_read" ||
 		strings.HasPrefix(name, "search_") || strings.HasPrefix(name, "git_"):
 		kind, tokens = "read", 4096
-	case name == "load_skill" || name == "skills.read" || name == "skills.list" ||
+	case name == "skills.read" || name == "skills.list" ||
 		name == "skills_read" || name == "skills_list":
 		kind, tokens = "skill", 10_000
 	case strings.HasPrefix(name, "quality_"):

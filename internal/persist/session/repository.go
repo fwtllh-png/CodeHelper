@@ -14,8 +14,7 @@ import (
 )
 
 var (
-	ErrNotFound          = errors.New("session record not found")
-	ErrInvalidTransition = errors.New("invalid session state transition")
+	ErrNotFound = errors.New("session record not found")
 )
 
 type Status string
@@ -59,80 +58,6 @@ func NewSQLiteRepository(store *sqlitestate.Store) *Repository {
 	return NewRepository(store.DB())
 }
 
-func (r *Repository) CreateWorkspace(ctx context.Context, workspace Workspace) (Workspace, error) {
-	if r.db == nil {
-		return Workspace{}, errors.New("session repository database is required")
-	}
-	if workspace.ID == "" || workspace.RootPath == "" {
-		return Workspace{}, errors.New("workspace id and root path are required")
-	}
-	now := time.Now().UTC()
-	if workspace.CreatedAt.IsZero() {
-		workspace.CreatedAt = now
-	}
-	if workspace.UpdatedAt.IsZero() {
-		workspace.UpdatedAt = workspace.CreatedAt
-	}
-	metadata, err := sqlkit.CanonicalObject(workspace.Metadata)
-	if err != nil {
-		return Workspace{}, fmt.Errorf("workspace metadata: %w", err)
-	}
-	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO workspaces(id, root_path, display_name, metadata_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		workspace.ID, workspace.RootPath, workspace.DisplayName, metadata,
-		sqlkit.Timestamp(workspace.CreatedAt), sqlkit.Timestamp(workspace.UpdatedAt),
-	)
-	if err != nil {
-		return Workspace{}, fmt.Errorf("create workspace: %w", err)
-	}
-	workspace.Metadata = metadata
-	return workspace, nil
-}
-
-func (r *Repository) Create(ctx context.Context, value Session) (Session, error) {
-	if r.db == nil {
-		return Session{}, errors.New("session repository database is required")
-	}
-	if value.ID == "" || value.WorkspaceID == "" {
-		return Session{}, errors.New("session id and workspace id are required")
-	}
-	if value.Status == "" {
-		value.Status = StatusOpen
-	}
-	if value.Status != StatusOpen && value.Status != StatusClosed {
-		return Session{}, fmt.Errorf("unsupported session status %q", value.Status)
-	}
-	now := time.Now().UTC()
-	if value.CreatedAt.IsZero() {
-		value.CreatedAt = now
-	}
-	if value.UpdatedAt.IsZero() {
-		value.UpdatedAt = value.CreatedAt
-	}
-	if value.Status == StatusClosed && value.ClosedAt == nil {
-		closedAt := value.UpdatedAt
-		value.ClosedAt = &closedAt
-	}
-	metadata, err := sqlkit.CanonicalObject(value.Metadata)
-	if err != nil {
-		return Session{}, fmt.Errorf("session metadata: %w", err)
-	}
-	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO sessions(
-			id, workspace_id, status, metadata_json, created_at, updated_at, closed_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		value.ID, value.WorkspaceID, value.Status, metadata,
-		sqlkit.Timestamp(value.CreatedAt), sqlkit.Timestamp(value.UpdatedAt),
-		sqlkit.NullableTime(value.ClosedAt),
-	)
-	if err != nil {
-		return Session{}, fmt.Errorf("create session: %w", err)
-	}
-	value.Metadata = metadata
-	return value, nil
-}
-
 func (r *Repository) Get(ctx context.Context, id string) (Session, error) {
 	if r.db == nil {
 		return Session{}, errors.New("session repository database is required")
@@ -171,112 +96,6 @@ func (r *Repository) Get(ctx context.Context, id string) (Session, error) {
 		value.ClosedAt = &parsed
 	}
 	return value, nil
-}
-
-func (r *Repository) Close(ctx context.Context, id string, at time.Time) (Session, error) {
-	if at.IsZero() {
-		at = time.Now().UTC()
-	}
-	result, err := r.db.ExecContext(ctx, `
-		UPDATE sessions
-		SET status = ?, updated_at = ?, closed_at = ?
-		WHERE id = ? AND status = ?`,
-		StatusClosed, sqlkit.Timestamp(at), sqlkit.Timestamp(at), id, StatusOpen,
-	)
-	if err != nil {
-		return Session{}, fmt.Errorf("close session: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return Session{}, err
-	}
-	if affected == 0 {
-		current, getErr := r.Get(ctx, id)
-		if getErr != nil {
-			return Session{}, getErr
-		}
-		if current.Status == StatusClosed {
-			return current, nil
-		}
-		return Session{}, ErrInvalidTransition
-	}
-	return r.Get(ctx, id)
-}
-
-// Filter selects sessions for List (B5 session index).
-type Filter struct {
-	WorkspaceID string
-	Status      Status
-	Limit       int
-}
-
-// List returns sessions newest-first for resume/search UX.
-func (r *Repository) List(ctx context.Context, filter Filter) ([]Session, error) {
-	if r.db == nil {
-		return nil, errors.New("session repository database is required")
-	}
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	query := `
-		SELECT id, workspace_id, status, metadata_json, created_at, updated_at, closed_at
-		FROM sessions`
-	args := make([]any, 0, 3)
-	where := make([]string, 0, 2)
-	if filter.WorkspaceID != "" {
-		where = append(where, "workspace_id = ?")
-		args = append(args, filter.WorkspaceID)
-	}
-	if filter.Status != "" {
-		where = append(where, "status = ?")
-		args = append(args, filter.Status)
-	}
-	if len(where) > 0 {
-		query += " WHERE " + where[0]
-		for _, clause := range where[1:] {
-			query += " AND " + clause
-		}
-	}
-	query += " ORDER BY updated_at DESC LIMIT ?"
-	args = append(args, limit)
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list sessions: %w", err)
-	}
-	defer rows.Close()
-	var out []Session
-	for rows.Next() {
-		var value Session
-		var metadata []byte
-		var createdAt, updatedAt string
-		var closedAt sql.NullString
-		if err := rows.Scan(
-			&value.ID, &value.WorkspaceID, &value.Status, &metadata,
-			&createdAt, &updatedAt, &closedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan session: %w", err)
-		}
-		value.Metadata, err = sqlkit.CanonicalObject(json.RawMessage(metadata))
-		if err != nil {
-			return nil, fmt.Errorf("decode persisted session metadata: %w", err)
-		}
-		if value.CreatedAt, err = parseTime(createdAt); err != nil {
-			return nil, err
-		}
-		if value.UpdatedAt, err = parseTime(updatedAt); err != nil {
-			return nil, err
-		}
-		if closedAt.Valid {
-			parsed, parseErr := parseTime(closedAt.String)
-			if parseErr != nil {
-				return nil, parseErr
-			}
-			value.ClosedAt = &parsed
-		}
-		out = append(out, value)
-	}
-	return out, rows.Err()
 }
 
 func parseTime(value string) (time.Time, error) {

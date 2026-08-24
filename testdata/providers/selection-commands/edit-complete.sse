@@ -1,5 +1,0 @@
-data: {"choices":[{"delta":{"content":"selection edit completed"},"finish_reason":null}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":24,"completion_tokens":3}}
-
-data: [DONE]

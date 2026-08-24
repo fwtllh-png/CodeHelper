@@ -62,7 +62,7 @@ func TestPrepareSessionRestoreNormalizesDurableState(t *testing.T) {
 		provider.TextMessage(provider.RoleUser, "request"),
 		provider.TextMessage(provider.RoleAssistant, "answer"),
 	}
-	delta, err := PrepareSessionDelta(
+	delta, err := prepareSessionDeltaForTest(
 		"turn-4",
 		3,
 		history,
@@ -103,7 +103,7 @@ func TestPrepareSessionRestoreNormalizesDurableState(t *testing.T) {
 }
 
 func TestDecodeSessionDeltaRejectsTampering(t *testing.T) {
-	delta, err := PrepareSessionDelta(
+	delta, err := prepareSessionDeltaForTest(
 		"turn-1",
 		0,
 		nil,
@@ -136,4 +136,52 @@ func TestDecodeSessionDeltaRejectsTampering(t *testing.T) {
 	if _, err := DecodeSessionDelta(tampered); err == nil {
 		t.Fatal("tampered session delta was accepted")
 	}
+}
+
+func prepareSessionDeltaForTest(
+	turnID string,
+	baseRevision uint64,
+	history []provider.Message,
+	usage provider.Usage,
+	cost float64,
+	states ...SessionState,
+) (SessionDelta, error) {
+	var state SessionState
+	if len(states) != 0 {
+		state = states[0]
+	}
+	turn := state.Turn
+	for _, message := range history {
+		turn = max(turn, message.Turn)
+	}
+	historyTurns := CloneHistoryTurns(state.HistoryTurns)
+	ReconcileHistoryTurns(&historyTurns, history, turnID, turn)
+	window := CloneWindowLedger(state.Window)
+	if !window.Valid() {
+		var err error
+		window, err = CreateWindowLedger(1)
+		if err != nil {
+			return SessionDelta{}, err
+		}
+	}
+	workspace := state.Workspace
+	if workspace.WorkspaceIdentity == "" {
+		workspace.WorkspaceIdentity = "workspace:test"
+	}
+	snapshot := ContextSnapshot{
+		Epoch: max(uint64(1), state.Epoch), Revision: baseRevision + 1,
+		Turn: turn, History: history, HistoryTurns: historyTurns,
+		WorkingSet: state.WorkingSet, Evidence: state.Evidence,
+		Failures: state.Failures, Compaction: state.Compaction,
+		Plan: state.Plan, World: state.World, Workspace: workspace,
+		Window: window,
+	}
+	if err := snapshot.Seal(); err != nil {
+		return SessionDelta{}, err
+	}
+	accounting, err := PrepareAccountingDelta(turnID, usage, cost)
+	if err != nil {
+		return SessionDelta{}, err
+	}
+	return NewSessionDelta(snapshot, accounting, state.Manifest)
 }

@@ -7,10 +7,13 @@
       "kind": "package",
       "path": "internal/orchestration/task",
       "limits": {
-        "internal_fanout": 7,
-        "production_lines": 1974,
+        "internal_fanout": 8,
+        "production_lines": 1869,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "Delegate workspace and session seed creation to the authoritative persist/session repository."
       }
     },
     {
@@ -29,10 +32,13 @@
       "kind": "package",
       "path": "internal/orchestration/automation",
       "limits": {
-        "internal_fanout": 5,
+        "internal_fanout": 6,
         "production_lines": 1084,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "Delegate workspace and session seed creation to the authoritative persist/session repository."
       }
     },
     {
@@ -88,9 +94,6 @@
         "production_lines": 4452,
         "options_fields": 8,
         "mutex_fields": 3
-      },
-      "relaxations": {
-        "production_lines": "Bound default child reservations by the remaining shared tree token budget."
       }
     },
     {
@@ -198,9 +201,12 @@
       "path": "internal/adapter/model",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 940,
+        "production_lines": 954,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Allow a validated act-route replacement while preserving explicit purpose slots."
       }
     },
     {
@@ -223,9 +229,6 @@
         "production_lines": 1708,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Use payload-relative geometric stream checkpoints while preserving structural recovery boundaries."
       }
     },
     {
@@ -346,13 +349,15 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 76,
-        "production_lines": 9498,
-        "options_fields": 82,
+        "internal_fanout": 77,
+        "production_lines": 9616,
+        "options_fields": 84,
         "mutex_fields": 7
       },
       "relaxations": {
-        "production_lines": "Derive parent and child token ceilings from active model metadata while preserving explicit operator ceilings."
+        "internal_fanout": "Wire Credential Control into per-request Provider credential resolution.",
+        "production_lines": "Publish selectable same-provider model routes and live Web credentials.",
+        "options_fields": "Carry selectable routes and model capabilities through the composition root."
       }
     },
     {
@@ -371,7 +376,7 @@
       "kind": "package",
       "path": "internal/runtime/app/extension",
       "limits": {
-        "internal_fanout": 22,
+        "internal_fanout": 21,
         "production_lines": 3178,
         "options_fields": 0,
         "mutex_fields": 6
@@ -385,7 +390,7 @@
         "internal_fanout": 2,
         "production_lines": 4479,
         "options_fields": 3,
-        "mutex_fields": 6
+        "mutex_fields": 5
       }
     },
     {
@@ -404,10 +409,13 @@
       "kind": "package",
       "path": "internal/persist/extensionplan",
       "limits": {
-        "internal_fanout": 1,
+        "internal_fanout": 2,
         "production_lines": 220,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "Reuse the shared durable atomic-file replacement primitive."
       }
     },
     {
@@ -415,10 +423,13 @@
       "kind": "package",
       "path": "internal/persist/extensionlifecycle",
       "limits": {
-        "internal_fanout": 1,
+        "internal_fanout": 2,
         "production_lines": 204,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "Reuse the shared durable atomic-file replacement primitive."
       }
     },
     {
@@ -460,7 +471,7 @@
       "path": "internal/adapter/tool/skill",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 482,
+        "production_lines": 321,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -472,17 +483,6 @@
       "limits": {
         "internal_fanout": 2,
         "production_lines": 179,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "observability_semantic_package",
-      "kind": "package",
-      "path": "internal/observability/semantic",
-      "limits": {
-        "internal_fanout": 2,
-        "production_lines": 1964,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -504,9 +504,9 @@
       "path": "internal/observability/otel",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 1141,
+        "production_lines": 1001,
         "options_fields": 5,
-        "mutex_fields": 4
+        "mutex_fields": 3
       }
     },
     {
@@ -528,17 +528,6 @@
         "internal_fanout": 3,
         "production_lines": 139,
         "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "observability_supportbundle_package",
-      "kind": "package",
-      "path": "internal/observability/supportbundle",
-      "limits": {
-        "internal_fanout": 3,
-        "production_lines": 195,
-        "options_fields": 6,
         "mutex_fields": 0
       }
     },
@@ -590,12 +579,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 7730,
+        "production_lines": 7738,
         "options_fields": 6,
         "mutex_fields": 4
       },
       "relaxations": {
-        "production_lines": "Add independent turn-budget convergence, bounded stream checkpoints, terminal tail compaction, and live provider/tool activity snapshots."
+        "production_lines": "Resolve a Session-selected model route only between turns."
       }
     },
     {
@@ -615,12 +604,13 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 20,
-        "production_lines": 5666,
-        "options_fields": 21,
+        "production_lines": 5826,
+        "options_fields": 22,
         "mutex_fields": 10
       },
       "relaxations": {
-        "production_lines": "Aggregate live provider and tool activity across thread-owned engines for runtime health."
+        "production_lines": "Keep guarded session discard and interaction cleanup in the authoritative runtime lifecycle.",
+        "options_fields": "Carry the model capability map used to validate Session-level route selection."
       }
     },
     {
@@ -670,11 +660,11 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2044,
+        "lines": 2153,
         "max_function_lines": 119
       },
       "relaxations": {
-        "lines": "Expose live provider and tool activity in the authoritative runtime snapshot."
+        "lines": "Keep guarded session lifecycle and resolve capabilities for the selected Session model."
       }
     },
     {
@@ -682,8 +672,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/runtime.go",
       "limits": {
-        "lines": 383,
+        "lines": 385,
         "max_function_lines": 50
+      },
+      "relaxations": {
+        "lines": "Accept Credential Control at the composition boundary for Web live rotation."
       }
     },
     {
@@ -691,8 +684,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/build_state.go",
       "limits": {
-        "lines": 94,
+        "lines": 95,
         "max_function_lines": 15
+      },
+      "relaxations": {
+        "lines": "Carry model capability choices from Provider assembly to Runtime assembly."
       }
     },
     {
@@ -736,11 +732,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 419,
-        "max_function_lines": 323
+        "lines": 425,
+        "max_function_lines": 330
       },
       "relaxations": {
-        "max_function_lines": "Wire the independent per-turn token ceiling alongside the existing session budget."
+        "lines": "Wire same-provider model selection into Engine and Session profile construction.",
+        "max_function_lines": "Assemble model profile capabilities beside the authoritative Engine options."
       }
     },
     {
@@ -748,8 +745,12 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime_start.go",
       "limits": {
-        "lines": 151,
-        "max_function_lines": 69
+        "lines": 152,
+        "max_function_lines": 70
+      },
+      "relaxations": {
+        "lines": "Install the selectable model capability map in the Runtime.",
+        "max_function_lines": "Install the selectable model capability map with the existing Runtime construction."
       }
     },
     {
@@ -757,8 +758,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/module_outputs.go",
       "limits": {
-        "lines": 105,
+        "lines": 106,
         "max_function_lines": 0
+      },
+      "relaxations": {
+        "lines": "Carry the selectable model route map out of Provider assembly."
       }
     },
     {
@@ -766,8 +770,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_provider.go",
       "limits": {
-        "lines": 188,
+        "lines": 189,
         "max_function_lines": 53
+      },
+      "relaxations": {
+        "lines": "Pass Credential Control to the Provider client resolver."
       }
     },
     {
@@ -829,7 +836,7 @@
       "kind": "file",
       "path": "internal/persist/extensionlifecycle/store.go",
       "limits": {
-        "lines": 204,
+        "lines": 175,
         "max_function_lines": 39
       }
     },
@@ -874,8 +881,11 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
-        "lines": 417,
+        "lines": 423,
         "max_function_lines": 128
+      },
+      "relaxations": {
+        "lines": "Apply the selected ReadyRoute atomically with the Session Profile."
       }
     },
     {
@@ -955,10 +965,13 @@
       "kind": "package",
       "path": "internal/persist/extensioncontrol",
       "limits": {
-        "internal_fanout": 1,
-        "production_lines": 396,
+        "internal_fanout": 2,
+        "production_lines": 267,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "internal_fanout": "Reuse the shared durable atomic-file replacement primitive."
       }
     },
     {
@@ -1014,12 +1027,9 @@
       "path": "internal/runtime/agent/context",
       "limits": {
         "internal_fanout": 7,
-        "production_lines": 9095,
+        "production_lines": 8974,
         "options_fields": 0,
         "mutex_fields": 3
-      },
-      "relaxations": {
-        "production_lines": "Make the configured recent-tail token ceiling override turn-count retention when they conflict."
       }
     },
     {
@@ -1048,10 +1058,14 @@
       "id": "extension_terminal_measurement_file",
       "path": "internal/runtime/app/extension/terminal_measurement.go",
       "limits": {
-        "lines": 80,
-        "max_function_lines": 59
+        "lines": 17,
+        "max_function_lines": 10
       },
       "kind": "file"
     }
-  ]
+  ],
+  "retirements": {
+    "observability_semantic_package": "Removed the unreferenced semantic projection subsystem.",
+    "observability_supportbundle_package": "Removed the support-bundle package because no production entry point consumed it."
+  }
 }

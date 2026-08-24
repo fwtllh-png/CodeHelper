@@ -66,7 +66,7 @@ func TestWorldBaselineSurvivesSessionDeltaRestart(t *testing.T) {
 	if !agentcontext.WorldBaselineValid(fork.History(), fork.context.World()) {
 		t.Fatalf("fork baseline=%+v history=%+v", fork.context.World(), fork.History())
 	}
-	delta, err := agentcontext.PrepareSessionDelta(
+	delta, err := prepareSessionDeltaForTest(
 		"turn-1", 0, source.History(), provider.Usage{}, 0,
 		SessionStateDelta{Turn: source.turn, World: source.context.World()},
 	)

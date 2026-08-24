@@ -3,8 +3,6 @@ package plugin
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -56,19 +54,16 @@ type LifecycleSnapshot struct {
 
 // Registry owns discovery, trust, staging, enablement, and loaded authority.
 type Registry struct {
-	config         RegistryConfig
-	stager         *Stager
-	state          *StateStore
-	loader         *Loader
-	distributor    *Distributor
-	mu             sync.Mutex
-	authorities    map[string]map[*authority]struct{}
-	subscriberMu   sync.Mutex
-	subscribers    map[uint64]func()
-	nextSubscriber uint64
-	closed         bool
-	stop           chan struct{}
-	watchDone      chan struct{}
+	config      RegistryConfig
+	stager      *Stager
+	state       *StateStore
+	loader      *Loader
+	distributor *Distributor
+	mu          sync.Mutex
+	authorities map[string]map[*authority]struct{}
+	closed      bool
+	stop        chan struct{}
+	watchDone   chan struct{}
 }
 
 func NewRegistry(config RegistryConfig) (*Registry, error) {
@@ -131,32 +126,10 @@ func NewRegistry(config RegistryConfig) (*Registry, error) {
 		},
 		distributor: distributor,
 		authorities: make(map[string]map[*authority]struct{}),
-		subscribers: make(map[uint64]func()),
 		stop:        make(chan struct{}), watchDone: make(chan struct{}),
 	}
 	go registry.watchDurableAuthority()
 	return registry, nil
-}
-
-// SubscribeLifecycle observes durable state transitions, including changes
-// committed by another process. The callback runs outside Registry locks.
-func (r *Registry) SubscribeLifecycle(callback func()) func() {
-	if r == nil || callback == nil {
-		return func() {}
-	}
-	r.subscriberMu.Lock()
-	r.nextSubscriber++
-	id := r.nextSubscriber
-	r.subscribers[id] = callback
-	r.subscriberMu.Unlock()
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			r.subscriberMu.Lock()
-			delete(r.subscribers, id)
-			r.subscriberMu.Unlock()
-		})
-	}
 }
 
 // Trust reviews and persists the currently selected candidate. It always
@@ -928,7 +901,6 @@ func (r *Registry) watchDurableAuthority() {
 	defer close(r.watchDone)
 	ticker := time.NewTicker(r.config.WatchInterval)
 	defer ticker.Stop()
-	var fingerprint string
 	for {
 		select {
 		case <-r.stop:
@@ -951,36 +923,7 @@ func (r *Registry) watchDurableAuthority() {
 				}
 			}
 			r.mu.Unlock()
-			nextFingerprint := lifecycleFingerprint(state, err)
-			if nextFingerprint != fingerprint {
-				fingerprint = nextFingerprint
-				r.notifyLifecycleSubscribers()
-			}
 		}
-	}
-}
-
-func lifecycleFingerprint(state PersistentState, err error) string {
-	if err != nil {
-		return "error:" + err.Error()
-	}
-	data, marshalErr := json.Marshal(state)
-	if marshalErr != nil {
-		return "error:" + marshalErr.Error()
-	}
-	sum := sha256.Sum256(data)
-	return fmt.Sprintf("state:%x", sum)
-}
-
-func (r *Registry) notifyLifecycleSubscribers() {
-	r.subscriberMu.Lock()
-	callbacks := make([]func(), 0, len(r.subscribers))
-	for _, callback := range r.subscribers {
-		callbacks = append(callbacks, callback)
-	}
-	r.subscriberMu.Unlock()
-	for _, callback := range callbacks {
-		callback()
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
@@ -106,6 +107,77 @@ func TestSessionProfileModeProjectsThroughWorldState(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("world receipts = %+v", receipts)
+	}
+}
+
+func TestSessionProfileSelectsAvailableModelBetweenTurns(t *testing.T) {
+	resolver, err := model.NewResolver(model.DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat, err := resolver.Resolve(model.RouteRequest{
+		ProviderID: "deepseek",
+		ModelID:    "deepseek-chat",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reasoner, err := resolver.Resolve(model.RouteRequest{
+		ProviderID: "deepseek",
+		ModelID:    "deepseek-reasoner",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes, err := model.NewRouteSet(chat, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := New(Options{
+		ProviderConfig: ProviderConfig{
+			Provider: &scriptedProvider{},
+			Route:    chat,
+			Routes:   routes,
+			SelectableRoutes: map[string]model.ReadyRoute{
+				model.RouteKey(chat.ProviderID(), chat.Model().ID):         chat,
+				model.RouteKey(reasoner.ProviderID(), reasoner.Model().ID): reasoner,
+			},
+			MaxOutputTokens: 128,
+		},
+		ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil)},
+		SecurityConfig: SecurityConfig{
+			Security: policy.DefaultRuntime(
+				policy.ModeAct,
+				policy.PermissionSuggest,
+			),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := protocol.SessionProfile{
+		Version: protocol.SessionProfileVersion, Revision: 2,
+		Mode: "act", Provider: "deepseek", Model: "deepseek-reasoner",
+		ReasoningEffort: "high", ApprovalPosture: "suggest",
+		ExecutionTarget: "local", MaxSteps: 8, PromptCacheRevision: 2,
+	}
+	if err := engine.ApplySessionProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := SnapshotTurnSpec(
+		engine.options,
+		TurnIdentity{
+			SessionID: "session", TurnID: "turn",
+			ProfileRevision: profile.Revision,
+		},
+		TurnRequest{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Route.Model().ID != "deepseek-reasoner" ||
+		spec.Profile.ReasoningEffort != "high" {
+		t.Fatalf("turn spec route/profile = %+v / %+v", spec.Route.Model(), spec.Profile)
 	}
 }
 

@@ -56,6 +56,15 @@ func (s RouteSet) Locked() bool { return s.locked }
 // Act is the route every purpose without a slot of its own falls back to.
 func (s RouteSet) Act() ReadyRoute { return s.act }
 
+// WithAct replaces the act route while preserving explicit purpose slots and
+// the fallback lock. Callers use it only between turns.
+func (s RouteSet) WithAct(route ReadyRoute) (RouteSet, error) {
+	if !s.ready {
+		return RouteSet{}, errors.New("route set was not produced by NewRouteSet")
+	}
+	return NewRouteSet(route, s.slots, s.locked)
+}
+
 // For resolves a purpose override or the act fallback.
 func (s RouteSet) For(purpose Purpose) (ReadyRoute, error) {
 	if !s.ready {

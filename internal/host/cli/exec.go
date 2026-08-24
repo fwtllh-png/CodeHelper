@@ -506,7 +506,7 @@ func runRuntimeTurn(
 				return "", err
 			}
 			parentEvent := event.TurnID == turnID
-			if !parentEvent && !execWorkspaceEvent(update) {
+			if !parentEvent && !eventview.WorkspaceEvent(update) {
 				continue
 			}
 			if err := encoder.Encode(event); err != nil {
@@ -621,20 +621,5 @@ func runRuntimeTurn(
 				return "", fmt.Errorf("submit cancellation after interrupt: %w", err)
 			}
 		}
-	}
-}
-
-func execWorkspaceEvent(update eventview.Update) bool {
-	switch data := update.(type) {
-	case eventview.AgentUpdate:
-		return true
-	case eventview.InteractionUpdate:
-		source := data.Source
-		if data.ApprovalRequired != nil {
-			source = data.ApprovalRequired.Source
-		}
-		return source != nil && source.Kind == "agent"
-	default:
-		return false
 	}
 }

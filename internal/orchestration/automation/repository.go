@@ -391,10 +391,6 @@ func (r *Repository) Tick(ctx context.Context, now time.Time) ([]Run, error) {
 	return runs, err
 }
 
-func (r *Repository) GetRun(ctx context.Context, id string) (Run, error) {
-	return getRun(ctx, r.db, id)
-}
-
 func (r *Repository) ListRuns(ctx context.Context, automationID string) ([]Run, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, version, automation_id, scheduled_for, trigger, status, task_id,
@@ -675,18 +671,6 @@ func scanAutomation(row sqlkit.RowScanner) (Automation, error) {
 		value.LastRunAt = &parsed
 	}
 	return value, nil
-}
-
-func getRun(ctx context.Context, db queryable, id string) (Run, error) {
-	row := db.QueryRowContext(ctx, `
-		SELECT id, version, automation_id, scheduled_for, trigger, status, task_id,
-			task_idempotency_key, thread_id, turn_id, created_at, updated_at
-		FROM automation_runs WHERE id = ?`, id)
-	value, err := scanRun(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Run{}, ErrRunNotFound
-	}
-	return value, err
 }
 
 func scanRun(row sqlkit.RowScanner) (Run, error) {

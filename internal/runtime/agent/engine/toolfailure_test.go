@@ -202,7 +202,7 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			content, recoverable := recoverableToolFailure(test.err)
+			content, recoverable := toolresult.RecoverableFailure(test.err)
 			if recoverable != test.wantRecoverable {
 				t.Fatalf(
 					"recoverableToolFailure(%v) recoverable = %v, want %v",
@@ -258,7 +258,7 @@ func TestEditPlanStaleRecoveryMetadataRequiresNewPlan(t *testing.T) {
 	err := &policy.DecisionError{
 		Code: "edit_plan_stale", Reason: "workspace changed after edit preview",
 	}
-	metadata := toolFailureMetadata(err)
+	metadata := toolresult.FailureMetadata(err)
 	if metadata["error_category"] != "edit_plan_stale" ||
 		metadata["required_action"] != "file_read" ||
 		metadata["retry_original"] != false ||
@@ -282,7 +282,7 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 		}),
 	))
 
-	metadata := toolFailureMetadata(err)
+	metadata := toolresult.FailureMetadata(err)
 
 	if metadata["error_category"] != "edit_precondition_failed" ||
 		metadata["required_action"] != "replace_failed_change" ||
@@ -296,7 +296,7 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 		t.Fatalf("metadata = %#v", metadata)
 	}
 
-	content, recoverable := recoverableToolFailure(err)
+	content, recoverable := toolresult.RecoverableFailure(err)
 	if !recoverable ||
 		!strings.Contains(content, "failed_change=6; match_count=0") ||
 		!strings.Contains(content, "current_excerpt_lines=74-80:\ncurrent text") {
@@ -363,7 +363,7 @@ func TestMissingPathRecoveryExposesExactCandidatesToModel(t *testing.T) {
 		},
 	))
 
-	content, recoverable := recoverableToolFailure(err)
+	content, recoverable := toolresult.RecoverableFailure(err)
 	if !recoverable ||
 		!strings.Contains(
 			content,
@@ -372,7 +372,7 @@ func TestMissingPathRecoveryExposesExactCandidatesToModel(t *testing.T) {
 		) {
 		t.Fatalf("content = %q, recoverable = %v", content, recoverable)
 	}
-	metadata := toolFailureMetadata(err)
+	metadata := toolresult.FailureMetadata(err)
 	candidates, ok := metadata["candidate_paths"].([]string)
 	if !ok || len(candidates) != 2 ||
 		candidates[0] != "docs/01-prompt-message-context.md" {

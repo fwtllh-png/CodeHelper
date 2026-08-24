@@ -15,9 +15,9 @@ import (
 func TestStorePersistsContentAndReferencesAcrossRestart(t *testing.T) {
 	root := t.TempDir()
 	content := []byte("persistent content")
-	id := StableID(content)
+	id := ID(content)
 
-	store, err := New(root)
+	store, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestStorePersistsContentAndReferencesAcrossRestart(t *testing.T) {
 
 func TestStoreDeduplicatesRepeatedPut(t *testing.T) {
 	root := t.TempDir()
-	store, err := New(root)
+	store, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestStoreDeduplicatesRepeatedPut(t *testing.T) {
 
 func TestGetFailsClosedWhenObjectIsTampered(t *testing.T) {
 	root := t.TempDir()
-	store, err := New(root)
+	store, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestGetFailsClosedWhenObjectIsTampered(t *testing.T) {
 
 func TestStoreRejectsInvalidIDsPathsAndMismatchedContent(t *testing.T) {
 	root := t.TempDir()
-	store, err := New(root)
+	store, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestStoreRejectsInvalidIDsPathsAndMismatchedContent(t *testing.T) {
 
 func TestStoreRejectsSymlinkedObject(t *testing.T) {
 	root := t.TempDir()
-	store, err := New(root)
+	store, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestStoreRejectsSymlinkedObject(t *testing.T) {
 
 func TestStoreCoordinatesConcurrentInstances(t *testing.T) {
 	root := t.TempDir()
-	first, err := New(root)
+	first, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +247,7 @@ func TestStoreCoordinatesConcurrentInstances(t *testing.T) {
 }
 
 func TestStoreDeleteCloseAndContext(t *testing.T) {
-	store, err := New(t.TempDir())
+	store, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestStoreDeleteCloseAndContext(t *testing.T) {
 
 func TestStoreRejectsTamperedReferenceMetadata(t *testing.T) {
 	root := t.TempDir()
-	store, err := New(root)
+	store, err := Open(root)
 	if err != nil {
 		t.Fatal(err)
 	}

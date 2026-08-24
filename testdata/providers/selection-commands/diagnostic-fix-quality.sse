@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_diagnostic_fix_quality","function":{"name":"quality_verify","arguments":"{\"command\":\"test -f diagnostic-fix.txt\",\"covered_paths\":[\"diagnostic-fix.txt\"]}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

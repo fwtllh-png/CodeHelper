@@ -98,16 +98,6 @@ func TestRoleCatalogAndAgentControlFreezeSpawnContract(t *testing.T) {
 		!strings.Contains(agent.RoleInstructions, "do not modify") {
 		t.Fatalf("spawned agent = %+v", agent)
 	}
-	prompt := subagent.ChildPrompt(*agent, "inspect runtime")
-	for _, fragment := range []string{
-		"task_name=inspect_runtime",
-		"expected_output=key files and findings",
-		"role_instructions=",
-	} {
-		if !strings.Contains(prompt, fragment) {
-			t.Fatalf("child prompt %q missing %q", prompt, fragment)
-		}
-	}
 }
 
 func TestAgentControlPropagatesChildTraceIntoTurn(t *testing.T) {

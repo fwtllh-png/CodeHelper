@@ -53,6 +53,11 @@ flowchart LR
 等 Purpose 映射到 Route。Request 在网络前验证 Reasoning、Native Search、Tool Call、
 Prompt Cache 和 Output Limit。
 
+交互 Runtime 可以把同一 Provider 下已解析并标记为 `hot` 的 Model 交给 Session
+Profile 选择。Engine 只在没有活动 Turn 时用新 Act Route 替换 RouteSet 的 Act 项，
+保留显式 Purpose Slot 与 Lock；下一次 Turn 再冻结新的 Route。跨 Provider 选择需要
+不同的凭据与 Endpoint Authority，仍属于 Runtime 重启边界。
+
 ## Capability Evidence
 
 Capability 从 Catalog Declaration 开始，Runtime Observation 可以记录 Evidence 与

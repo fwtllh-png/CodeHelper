@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/health"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/observation"
 )
 
@@ -30,10 +29,6 @@ type Journal interface {
 type PayloadStore interface {
 	Put(context.Context, string, []byte) error
 	Release(context.Context, string) error
-}
-
-type payloadReferenceCounter interface {
-	References(context.Context, string) (uint64, error)
 }
 
 type Sanitizer interface {
@@ -65,7 +60,6 @@ type Router struct {
 	persistMu       sync.Mutex
 	journal         Journal
 	payloads        PayloadStore
-	health          *health.Tracker
 	ids             *observation.IDGenerator
 	options         Options
 	projector       observation.Projector
@@ -119,7 +113,7 @@ func New(
 		return nil, err
 	}
 	router := &Router{
-		journal: journal, payloads: payloads, health: health.NewTracker(),
+		journal: journal, payloads: payloads,
 		ids: ids, options: options, projector: options.Projector,
 		queues:    make(map[observation.Priority][]queuedRecord),
 		accepting: true, wake: make(chan struct{}, 1),
@@ -143,7 +137,6 @@ func (r *Router) Record(
 		record, disabled, payloadDropped, err =
 			r.options.Sanitizer.Sanitize(record)
 		if err != nil {
-			r.health.Failure("privacy", err)
 			return observation.AdmissionReceipt{
 				Status: observation.AdmissionWriterFailed,
 			}
@@ -155,11 +148,9 @@ func (r *Router) Record(
 		}
 		if payloadDropped {
 			status = observation.AdmissionPayloadDropped
-			r.health.PayloadDropped()
 		}
 	}
 	if err := record.Validate(); err != nil {
-		r.health.Failure("validation", err)
 		return observation.AdmissionReceipt{Status: observation.AdmissionWriterFailed}
 	}
 	id := r.ids.Next()
@@ -168,7 +159,6 @@ func (r *Router) Record(
 	payloadPolicy, _ := observation.PayloadPolicyFor(record.Kind)
 	if record.Payload != nil && len(record.Payload.Data) > r.options.MaxPayloadBytes {
 		if payloadPolicy == observation.PayloadRequired {
-			r.health.Drop("payload_too_large")
 			return observation.AdmissionReceipt{
 				Status: observation.AdmissionPayloadDropped,
 				ID:     id,
@@ -176,7 +166,6 @@ func (r *Router) Record(
 		}
 		record.Payload = nil
 		status = observation.AdmissionPayloadDropped
-		r.health.PayloadDropped()
 	}
 	item := queuedRecord{
 		id: id, observed: r.observed.Add(1),
@@ -212,7 +201,6 @@ func (r *Router) Record(
 			ID:     id,
 		}
 	}
-	r.health.Accepted()
 	return observation.AdmissionReceipt{Status: status, ID: id}
 }
 
@@ -244,13 +232,6 @@ func (r *Router) Flush(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
-}
-
-func (r *Router) Snapshot() health.HealthSnapshot {
-	if r == nil {
-		return health.HealthSnapshot{}
-	}
-	return r.health.Snapshot()
 }
 
 func (r *Router) Close(ctx context.Context) error {
@@ -290,24 +271,20 @@ func (r *Router) enqueue(item queuedRecord) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.accepting || r.closed {
-		r.health.Drop("closed")
 		return false
 	}
 	if item.bytes > r.options.PayloadBytes {
-		r.health.Drop("record_too_large")
 		return false
 	}
 	for r.depth >= r.options.MetadataCapacity ||
 		r.bytes+item.bytes > r.options.PayloadBytes {
 		if !r.evictLowerPriorityLocked(item.priority) {
-			r.health.Drop("queue_full")
 			return false
 		}
 	}
 	r.queues[item.priority] = append(r.queues[item.priority], item)
 	r.depth++
 	r.bytes += item.bytes
-	r.updateQueueHealthLocked()
 	select {
 	case r.wake <- struct{}{}:
 	default:
@@ -337,8 +314,6 @@ func (r *Router) evictLowerPriorityLocked(priority observation.Priority) bool {
 		r.queues[candidate] = queue[1:]
 		r.depth--
 		r.bytes -= evicted.bytes
-		r.health.Drop("priority_eviction")
-		r.updateQueueHealthLocked()
 		return true
 	}
 	return false
@@ -348,12 +323,9 @@ func (r *Router) beginSynchronous() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.accepting || r.closed {
-		r.health.Drop("closed")
 		return false
 	}
 	r.inFlight++
-	r.updateQueueHealthLocked()
-	r.health.Accepted()
 	return true
 }
 
@@ -361,7 +333,6 @@ func (r *Router) finishSynchronous() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.inFlight--
-	r.updateQueueHealthLocked()
 }
 
 func (r *Router) run() {
@@ -401,7 +372,6 @@ func (r *Router) dequeue() (queuedRecord, bool) {
 		r.depth--
 		r.bytes -= item.bytes
 		r.inFlight++
-		r.updateQueueHealthLocked()
 		return item, true
 	}
 	return queuedRecord{}, false
@@ -411,7 +381,6 @@ func (r *Router) finishAsynchronous() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.inFlight--
-	r.updateQueueHealthLocked()
 }
 
 func (r *Router) persist(
@@ -429,25 +398,16 @@ func (r *Router) persist(
 		Summary:          item.record.Summary,
 	}
 	var payloadID string
-	payloadDeduplicated := false
 	payloadUnavailable := false
 	if item.record.Payload != nil {
 		if r.payloads == nil {
-			err := errors.New("observation payload store is unavailable")
-			r.health.Failure("payload_store", err)
 			payloadUnavailable = true
 		} else {
 			sum := sha256.Sum256(item.record.Payload.Data)
 			payloadID = hex.EncodeToString(sum[:])
 			if err := r.payloads.Put(ctx, payloadID, item.record.Payload.Data); err != nil {
-				r.health.Failure("payload_write", err)
 				payloadUnavailable = true
 				payloadID = ""
-			} else if counter, ok := r.payloads.(payloadReferenceCounter); ok {
-				references, referenceErr := counter.References(ctx, payloadID)
-				if referenceErr == nil {
-					payloadDeduplicated = references > 1
-				}
 			}
 		}
 		if payloadID != "" {
@@ -461,8 +421,6 @@ func (r *Router) persist(
 				DataClass:     item.record.Payload.DataClass,
 				Redaction:     item.record.Payload.Redaction,
 			}
-		} else {
-			r.health.PayloadDropped()
 		}
 	}
 	r.persistMu.Lock()
@@ -484,18 +442,12 @@ func (r *Router) persist(
 		if payloadID != "" {
 			_ = r.payloads.Release(context.Background(), payloadID)
 		}
-		r.health.Failure("journal_write", err)
 		return payloadUnavailable, err
 	}
-	r.health.Written(payloadID != "", payloadDeduplicated)
 	if r.projector != nil {
 		r.projector.Project(appended)
 	}
 	return payloadUnavailable, nil
-}
-
-func (r *Router) updateQueueHealthLocked() {
-	r.health.Queue(r.depth, r.bytes, r.inFlight)
 }
 
 func (r *Router) recordWriteError(err error) {

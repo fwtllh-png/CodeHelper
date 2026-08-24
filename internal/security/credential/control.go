@@ -80,6 +80,25 @@ func OpenControl(
 	return control, config.Reference, nil
 }
 
+func (c *Control) Reference(ctx context.Context) (Reference, error) {
+	if c == nil {
+		return Reference{}, errors.New("credential control is required")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return Reference{}, err
+	}
+	config, err := c.readConfig()
+	if err != nil {
+		return Reference{}, err
+	}
+	if config.Generation == 0 {
+		return c.base, nil
+	}
+	return config.Reference, nil
+}
+
 func keyringStore() store {
 	return keyring.New()
 }

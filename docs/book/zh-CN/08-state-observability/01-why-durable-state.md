@@ -73,7 +73,7 @@ Delta、Receipt、Operation Commit 与 Projection Outbox；版本化 Observation
 | Pending Effect | Executable Intent/Payload/Idempotency | Conditional Continuation |
 | Terminal Measurement | Frozen Usage/Latency Fact | Receipt/Trace/Terminal 一致性 |
 | Event Sequence | Canonical Lifecycle Fact | Replay/Host/Audit |
-| Observation Journal | 脱敏因果证据 | Diagnosis/Telemetry/Semantic Replay |
+| Observation Journal | 脱敏因果证据 | Diagnosis/Telemetry/Cursor Replay |
 | SQLite Projection | Derived Query View | List/Filter/Aggregate |
 | Snapshot | Integrity-checked Checkpoint | Accelerate Reconstruction |
 | Workspace Journal | Filesystem Effect Evidence | Rollback/Recovery |
@@ -81,8 +81,8 @@ Delta、Receipt、Operation Commit 与 Projection Outbox；版本化 Observation
 | Execution Receipt | Turn-level Joined Projection | Explanation |
 
 Derived Record 不高于 Source：Projection 可从 Event 重建；Snapshot 不覆盖 Later Event；
-Receipt 不能让 Unobserved Effect 消失。Observation Writer/Exporter Failure 会进入
-Observation Health，但不能改写业务 Turn Result。
+Receipt 不能让 Unobserved Effect 消失。Observation Writer/Exporter Failure 会通过
+Admission Receipt 或 `Flush`/`Shutdown` 暴露，但不能改写业务 Turn Result。
 
 ## Acceptance 不等于 Completion
 

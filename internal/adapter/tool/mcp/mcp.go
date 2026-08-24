@@ -35,19 +35,11 @@ type helperInput struct {
 	Arguments map[string]string `json:"arguments,omitempty"`
 }
 
-func Register(registry *tool.Registry, pool *mcpruntime.Pool) error {
-	_, err := NewAdapter(registry, pool)
-	return err
-}
-
 type Adapter struct {
-	mu             sync.Mutex
-	registry       *tool.Registry
-	pool           *mcpruntime.Pool
-	sources        map[string]bool
-	unsubscribe    []func()
-	lastErr        error
-	refreshPending bool
+	mu       sync.Mutex
+	registry *tool.Registry
+	pool     *mcpruntime.Pool
+	sources  map[string]bool
 }
 
 type registrationIdentity struct {
@@ -65,18 +57,7 @@ func NewAdapter(registry *tool.Registry, pool *mcpruntime.Pool) (*Adapter, error
 	adapter := &Adapter{
 		registry: registry, pool: pool, sources: make(map[string]bool),
 	}
-	requestRefresh := func() {
-		adapter.mu.Lock()
-		adapter.refreshPending = true
-		adapter.mu.Unlock()
-	}
-	adapter.unsubscribe = append(
-		adapter.unsubscribe,
-		pool.SubscribeHealth(func(mcpruntime.HealthChange) { requestRefresh() }),
-		pool.SubscribeCatalog(requestRefresh),
-	)
 	if err := adapter.Sync(); err != nil {
-		adapter.Close()
 		return nil, err
 	}
 	return adapter, nil
@@ -88,17 +69,13 @@ func (a *Adapter) Sync() error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	err := a.syncLocked()
-	if err != nil {
+	if err := a.syncLocked(); err != nil {
 		if quarantineErr := a.quarantineLocked(); quarantineErr != nil {
-			err = errors.Join(err, fmt.Errorf("quarantine MCP catalog: %w", quarantineErr))
+			return errors.Join(err, fmt.Errorf("quarantine MCP catalog: %w", quarantineErr))
 		}
+		return err
 	}
-	a.lastErr = err
-	if err == nil {
-		a.refreshPending = false
-	}
-	return err
+	return nil
 }
 
 func (a *Adapter) quarantineLocked() error {
@@ -242,34 +219,6 @@ func registrationMatchesDescriptor(
 	default:
 		return false
 	}
-}
-
-func (a *Adapter) LastError() error {
-	if a == nil {
-		return nil
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.lastErr
-}
-
-func (a *Adapter) RefreshPending() bool {
-	if a == nil {
-		return false
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.refreshPending
-}
-
-func (a *Adapter) Close() {
-	if a == nil {
-		return
-	}
-	for _, unsubscribe := range a.unsubscribe {
-		unsubscribe()
-	}
-	a.unsubscribe = nil
 }
 
 func sourceForServer(server string) string {

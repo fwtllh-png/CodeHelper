@@ -146,14 +146,6 @@ func retryableProblem(code protocol.ErrorCode, message string) *protocol.Problem
 func turnNotActiveProblem() *protocol.Problem {
 	return runtimeProblem(protocol.CodeInvalidArgument, "turn is not active", nil)
 }
-func resourceProblem(code protocol.ErrorCode, message string, retryable bool, reason, resourceID string) *protocol.Problem {
-	return protocol.NewProblemWithDetails(code, message, retryable, protocol.ProblemDetails{Reason: reason, ResourceID: resourceID}, nil)
-}
-func revisionProblem(message, resourceID string, expected, actual uint64) *protocol.Problem {
-	return protocol.NewProblemWithDetails(protocol.CodeConflict, message, true,
-		protocol.ProblemDetails{Reason: protocol.ProblemReasonStaleProfileRevision,
-			ResourceID: resourceID, ExpectedRevision: expected, ActualRevision: actual}, nil)
-}
 func sessionBusyProblem(message string, summary protocol.SessionSummary) *protocol.Problem {
 	return protocol.NewProblemWithDetails(protocol.CodeConflict, message, true,
 		protocol.ProblemDetails{Reason: protocol.ProblemReasonSessionBusy,

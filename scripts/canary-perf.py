@@ -5,11 +5,11 @@ Usage:
   scripts/canary-perf.py baseline [--output BASELINE]
       Record the current performance numbers as the baseline.
 
-  scripts/canary-perf.py check [--baseline BASELINE] [--report REPORT]
+  scripts/canary-perf.py check [--baseline BASELINE] [--report REPORT] [--reuse-report]
       Run benchmarks and compare performance against the baseline.
       Exits non-zero when any task exceeds the regression threshold.
 
-  scripts/canary-perf.py show [--baseline BASELINE] [--report REPORT]
+  scripts/canary-perf.py show [--baseline BASELINE] [--report REPORT] [--reuse-report]
       Display a performance comparison table between the current run and baseline.
 
 The script runs the hermetic benchmark suite and extracts duration and token-usage
@@ -234,20 +234,32 @@ def cmd_baseline(output: Path):
     print(f"  baseline:   {output}")
 
 
-def cmd_check(baseline_path: Path, report_path: Path, threshold: float):
+def current_report(report_path: Path, reuse_report: bool) -> dict:
+    if not reuse_report:
+        run_benchmarks(report_path)
+    elif not report_path.exists():
+        print(f"canary-perf: shared report not found at {report_path}")
+        sys.exit(1)
+    return load_report(report_path)
+
+
+def cmd_check(
+    baseline_path: Path,
+    report_path: Path,
+    threshold: float,
+    reuse_report: bool,
+):
     """Check current performance against baseline."""
     if not baseline_path.exists():
         print(f"canary-perf: no baseline found at {baseline_path}")
         print("  Run 'scripts/canary-perf.py baseline' to create one.")
         sys.exit(1)
 
-    run_benchmarks(report_path)
-
     baseline_report = load_report(baseline_path)
-    current_report = load_report(report_path)
+    current = current_report(report_path, reuse_report)
 
     baseline_metrics = extract_metrics(baseline_report)
-    current_metrics = extract_metrics(current_report)
+    current_metrics = extract_metrics(current)
 
     diff = compare_perf(baseline_metrics, current_metrics, threshold)
 
@@ -294,19 +306,17 @@ def cmd_check(baseline_path: Path, report_path: Path, threshold: float):
     print("\ncanary-perf: OK — no performance regressions detected")
 
 
-def cmd_show(baseline_path: Path, report_path: Path):
+def cmd_show(baseline_path: Path, report_path: Path, reuse_report: bool):
     """Display a performance comparison table."""
     if not baseline_path.exists():
         print(f"canary-perf: no baseline found at {baseline_path}")
         sys.exit(1)
 
-    run_benchmarks(report_path)
-
     baseline_report = load_report(baseline_path)
-    current_report = load_report(report_path)
+    current = current_report(report_path, reuse_report)
 
     baseline_metrics = extract_metrics(baseline_report)
-    current_metrics = extract_metrics(current_report)
+    current_metrics = extract_metrics(current)
 
     # Table header.
     print(f"{'Task':<40} {'Category':<20} {'Base(ms)':>10} {'Curr(ms)':>10} {'Delta':>10}")
@@ -345,6 +355,7 @@ def main():
     report_path = DEFAULT_REPORT
     output_path = DEFAULT_BASELINE
     threshold = float(os.environ.get("CANARY_PERF_THRESHOLD", DEFAULT_THRESHOLD))
+    reuse_report = False
 
     i = 0
     while i < len(args):
@@ -360,6 +371,9 @@ def main():
         elif args[i] == "--threshold" and i + 1 < len(args):
             threshold = float(args[i + 1])
             i += 2
+        elif args[i] == "--reuse-report":
+            reuse_report = True
+            i += 1
         else:
             print(f"canary-perf: unknown argument: {args[i]}")
             sys.exit(1)
@@ -372,9 +386,9 @@ def main():
     if mode == "baseline":
         cmd_baseline(output_path)
     elif mode == "check":
-        cmd_check(baseline_path, report_path, threshold)
+        cmd_check(baseline_path, report_path, threshold, reuse_report)
     elif mode == "show":
-        cmd_show(baseline_path, report_path)
+        cmd_show(baseline_path, report_path, reuse_report)
     else:
         print(f"canary-perf: unknown mode: {mode}")
         print("  Use: baseline, check, or show")

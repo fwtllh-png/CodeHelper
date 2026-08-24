@@ -3,7 +3,6 @@ package skill
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -101,53 +100,6 @@ func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {
 		hint.ErrorCategory != skillruntime.ErrorCategoryHandleInvalid ||
 		hint.RequiredAction != "skills_list" || hint.RetryOriginal {
 		t.Fatalf("stale skill recovery hint = %+v, found = %t", hint, ok)
-	}
-}
-
-func TestLoadSkillUsesTurnFrozenAuthorityHandle(t *testing.T) {
-	workspace := t.TempDir()
-	root := filepath.Join(workspace, ".agents", "skills")
-	writeToolSkill(t, root, "review", "Review code.", "review body")
-	catalog, err := skillruntime.Discover(skillruntime.DiscoveryOptions{
-		Workspace: workspace, UserHome: t.TempDir(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handle, err := catalog.HandleForName(t.Context(), "review")
-	if err != nil {
-		t.Fatal(err)
-	}
-	executor, err := New(catalog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := WithAllowedSkills(t.Context(), map[string]string{
-		"review": handle,
-	})
-	result, err := executor.Execute(ctx, json.RawMessage(`{"name":"review"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Metadata["handle"] != handle {
-		t.Fatalf("load_skill handle = %v", result.Metadata["handle"])
-	}
-	if _, err := executor.Execute(
-		WithAllowedSkills(t.Context(), map[string]string{"review": "skh_" + strings.Repeat("0", 40)}),
-		json.RawMessage(`{"name":"review"}`),
-	); err == nil {
-		t.Fatal("stale turn handle was accepted")
-	}
-	if _, err := executor.Execute(
-		WithAllowedSkills(t.Context(), map[string]string{}),
-		json.RawMessage(`{"name":"review"}`),
-	); !errors.Is(err, skillruntime.ErrNotSelected) {
-		t.Fatalf("unselected skill error = %v", err)
-	} else if hint, ok := tool.RecoveryHintFromError(err); !ok ||
-		hint.ErrorCategory != skillruntime.ErrorCategoryNotSelected ||
-		hint.RequiredAction != "skills_list" ||
-		hint.RetryOriginal {
-		t.Fatalf("unselected skill recovery hint = %+v, found = %t", hint, ok)
 	}
 }
 

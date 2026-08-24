@@ -18,7 +18,7 @@ func TestSessionDeltaApplyIsRevisionedAndIdempotent(t *testing.T) {
 		messageWithText(provider.RoleUser, "request", 1),
 		messageWithText(provider.RoleAssistant, "answer", 1),
 	}
-	delta, err := agentcontext.PrepareSessionDelta(
+	delta, err := prepareSessionDeltaForTest(
 		"turn-1",
 		0,
 		history,
@@ -58,7 +58,7 @@ func TestSessionDeltaRestoresRecoveryHistoryIdentity(t *testing.T) {
 		messageWithText(provider.RoleUser, "recovery envelope", 2),
 		messageWithText(provider.RoleAssistant, "partial", 2),
 	}
-	delta, err := agentcontext.PrepareSessionDelta(
+	delta, err := prepareSessionDeltaForTest(
 		"recovery-1",
 		0,
 		history,
@@ -99,7 +99,7 @@ func TestSessionDeltaRestoresRecoveryHistoryIdentity(t *testing.T) {
 func TestSessionDeltaRejectsRevisionAndDigestConflicts(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	scope := attachTestScope(t, engine)
-	first, err := agentcontext.PrepareSessionDelta(
+	first, err := prepareSessionDeltaForTest(
 		"turn-1", 0, nil, provider.Usage{InputTokens: 1}, 0,
 	)
 	if err != nil {
@@ -115,7 +115,7 @@ func TestSessionDeltaRejectsRevisionAndDigestConflicts(t *testing.T) {
 	if err := engine.applySessionDelta(); err == nil {
 		t.Fatal("digest conflict was accepted")
 	}
-	stale, err := agentcontext.PrepareSessionDelta("turn-2", 0, nil, provider.Usage{}, 0)
+	stale, err := prepareSessionDeltaForTest("turn-2", 0, nil, provider.Usage{}, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestSessionDeltaPreservesToolAdmissionReceipt(t *testing.T) {
 			}},
 		},
 	}
-	delta, err := agentcontext.PrepareSessionDelta(
+	delta, err := prepareSessionDeltaForTest(
 		"turn-admission", 0, history, provider.Usage{}, 0,
 	)
 	if err != nil {
@@ -196,7 +196,7 @@ func TestSessionDeltaRestoresLatestDurableSnapshot(t *testing.T) {
 	window.Prepare(&windowContext, 128, 2662, 4096)
 	window.Observe(windowContext, 960, 400)
 	source.context.SetWindow(window)
-	delta, err := agentcontext.PrepareSessionDelta(
+	delta, err := prepareSessionDeltaForTest(
 		"turn-5",
 		4,
 		[]provider.Message{assistant},

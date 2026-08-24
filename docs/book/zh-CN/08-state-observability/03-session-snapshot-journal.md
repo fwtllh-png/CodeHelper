@@ -16,7 +16,6 @@ code_paths:
   - internal/persist/sqlkit
   - internal/observability/privacy
   - internal/observability/retention
-  - internal/observability/supportbundle
 test_paths:
   - internal/runtime/app/session_artifacts_test.go
   - internal/persist/session/lifecycle_test.go
@@ -25,7 +24,6 @@ test_paths:
   - internal/persist/workspacejournal/recover_test.go
   - internal/persist/sqlkit/ownership_test.go
   - internal/observability/retention/retention_test.go
-  - internal/observability/supportbundle/bundle_test.go
 source_of_truth:
   - internal/persist/artifact/service.go
   - internal/persist/session/lifecycle.go
@@ -121,8 +119,8 @@ Payload Reference 使用时间类别，而不是 Runtime Event 条数限制：
 | Ephemeral | 1 小时 |
 
 启动 Retention 会释放过期 Reference，只有 CAS Object 已无引用时才删除。Payload
-过期后 Observation Metadata 仍可用于解释。Support Bundle 会再次脱敏所选记录，默认
-不包含 Payload，并以独占 mode `0600` 创建 Archive。
+过期后 Observation Metadata 仍可用于解释；任何外部导出都必须重新经过 Privacy
+Policy，而不能直接复制 Journal 或 CAS 内容。
 
 ## Identity Boundary
 
@@ -157,7 +155,6 @@ go test ./internal/persist/session ./internal/persist/snapshot
 go test ./internal/persist/state/cas ./internal/persist/workspacejournal
 go test ./internal/persist/sqlkit
 go test ./internal/observability/privacy ./internal/observability/retention
-go test ./internal/observability/supportbundle
 ```
 
 ## 动手实验

@@ -315,8 +315,7 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 			}
 		}
 	}
-	if event.ToolCall.Name == "load_skill" ||
-		event.ToolCall.Name == "skills_read" ||
+	if event.ToolCall.Name == "skills_read" ||
 		event.ToolCall.Name == "skills.read" {
 		var resolved []struct {
 			Name, Version, Source, Plugin, Digest string

@@ -69,7 +69,6 @@ func BenchmarkSO2TurnObservationOverhead(b *testing.B) {
 			)
 		}
 		b.ReportAllocs()
-		before := observations.Snapshot().Written
 		b.ResetTimer()
 		for b.Loop() {
 			runBenchmarkTurn(
@@ -77,9 +76,6 @@ func BenchmarkSO2TurnObservationOverhead(b *testing.B) {
 				benchmarkTurnID("enabled", 0),
 			)
 		}
-		b.StopTimer()
-		after := observations.Snapshot().Written
-		b.ReportMetric(float64(after-before)/float64(b.N), "observations/turn")
 	})
 	_ = database
 }

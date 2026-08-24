@@ -85,7 +85,7 @@ func TestInputCardReply(t *testing.T) {
 func TestPlanWritesPolicyRuntime(t *testing.T) {
 	host := &recordingHost{mode: policy.ModeAct, perm: policy.PermissionAuto}
 	model := tui.NewModel(tui.Options{}, host)
-	model = enterSlash(model, "/plan")
+	_ = enterSlash(model, "/plan")
 	if host.mode != policy.ModePlan {
 		t.Fatalf("mode=%s", host.mode)
 	}

@@ -40,6 +40,7 @@ import (
 type providerBuildState struct {
 	routes            model.RouteSet
 	route             model.ReadyRoute
+	selectableRoutes  map[string]model.ReadyRoute
 	egress            *egress.Gate
 	provider          provider.Provider
 	toolSampler       *agentengine.ToolSampler

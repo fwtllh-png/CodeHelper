@@ -18,17 +18,15 @@ func TestProfilePersistsWithRevisionCASAndPreservesMetadata(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	repository := session.NewSQLiteRepository(store)
-	workspace, err := repository.CreateWorkspace(t.Context(), session.Workspace{
-		ID: "workspace", RootPath: t.TempDir(),
-	})
-	if err != nil {
+	if err := repository.EnsureSeed(t.Context(), "session", t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	_, err = repository.Create(t.Context(), session.Session{
-		ID: "session", WorkspaceID: workspace.ID,
-		Metadata: json.RawMessage(`{"transport":"web","isolation":"worktree"}`),
-	})
-	if err != nil {
+	if _, err := store.DB().ExecContext(
+		t.Context(),
+		`UPDATE sessions SET metadata_json = ? WHERE id = ?`,
+		[]byte(`{"transport":"web","isolation":"worktree"}`),
+		"session",
+	); err != nil {
 		t.Fatal(err)
 	}
 	defaults := persistedProfile()
@@ -90,22 +88,22 @@ func TestEnsureProfileMigratesOnlyUntouchedLegacyStepDefaults(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	repository := session.NewSQLiteRepository(store)
-	workspace, err := repository.CreateWorkspace(t.Context(), session.Workspace{
-		ID: "workspace", RootPath: t.TempDir(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	workspaceRoot := t.TempDir()
 	legacy := persistedProfile()
 	legacy.MaxSteps = 64
 	encoded, err := json.Marshal(map[string]any{"profile": legacy})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = repository.Create(t.Context(), session.Session{
-		ID: "legacy", WorkspaceID: workspace.ID, Metadata: encoded,
-	})
-	if err != nil {
+	if err := repository.EnsureSeed(t.Context(), "legacy", workspaceRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().ExecContext(
+		t.Context(),
+		`UPDATE sessions SET metadata_json = ? WHERE id = ?`,
+		[]byte(encoded),
+		"legacy",
+	); err != nil {
 		t.Fatal(err)
 	}
 	defaults := persistedProfile()
@@ -125,10 +123,15 @@ func TestEnsureProfileMigratesOnlyUntouchedLegacyStepDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = repository.Create(t.Context(), session.Session{
-		ID: "explicit", WorkspaceID: workspace.ID, Metadata: encoded,
-	})
-	if err != nil {
+	if err := repository.EnsureSeed(t.Context(), "explicit", workspaceRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().ExecContext(
+		t.Context(),
+		`UPDATE sessions SET metadata_json = ? WHERE id = ?`,
+		[]byte(encoded),
+		"explicit",
+	); err != nil {
 		t.Fatal(err)
 	}
 	preserved, err := repository.EnsureProfile(t.Context(), "explicit", defaults)

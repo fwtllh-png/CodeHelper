@@ -750,8 +750,7 @@ make web-parity-check
 - `internal/observability/observation`：版本化 Envelope；
 - `internal/observability/privacy`：写入前 Admission；
 - `internal/observability/router`：Journal/CAS/Exporter 路由；
-- `internal/observability/semantic`：从事实重建解释图；
-- `internal/observability/supportbundle`：支持材料；
+- `internal/observability/journal`：按 Cursor 保留可重放证据；
 - `internal/observability/telemetry`：低基数指标。
 
 三个容易混淆的数据源：
@@ -941,7 +940,7 @@ go test -race -p 1 ./internal/runtime/agent/... ./internal/runtime/app/...
 - WorkGraph Revision 与 Lease Epoch 分别防止哪种竞态？
 - Child Agent 的预算、权限、Context 和 Workspace 如何从父级收窄？
 - Web Hydration 如何处理 Snapshot 与并发 Live Event？
-- 哪些故障可以改变业务结果，哪些只能改变 Observation Health？
+- 哪些故障可以改变业务结果，哪些只影响 Observation Admission/Flush？
 
 这些问题都能从上述代码与测试中得到确定答案；如果答案只能来自文档措辞而无法由测试
 证明，应继续追到对应的 Authority 和持久化边界。

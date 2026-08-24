@@ -73,10 +73,11 @@ Recovery Intent。浏览器状态只包含 Credential Status、Reference 和 San
 Validation Metadata，不包含 Value。
 
 切换分为 `prepared`、Keyring 写入、Config Generation CAS、`config_committed` 和
-Provider Probe。当前 Runtime 不替换已冻结的 Route，而是返回 `restart_required`；
-下次启动在 Runtime 构造前 Reconcile：未提交的新 Entry 作为 Orphan 删除，已提交的
-Reference 保留，旧托管 Entry 只有在全引用扫描确认无人使用后才删除。用户自定义
-Keyring Name 不会被自动删除。
+Provider Probe。Web Runtime 不改写已经冻结到 Turn 的 Route；Provider Credential
+Resolver 在每次新请求前从 Credential Control 读取最新 Reference，因此提交后的
+Keyring Entry 无需重启即可用于下一次请求。Runtime 构造前仍会 Reconcile：未提交的
+新 Entry 作为 Orphan 删除，已提交的 Reference 保留，旧托管 Entry 只有在全引用扫描
+确认无人使用后才删除。用户自定义 Keyring Name 不会被自动删除。
 
 Credential Validation 通过 Runtime Wiring 调用 Provider Model-list Endpoint。持久化
 结果仅限 Validation Status、Timestamp 与 Sanitized Failure Category。Untrusted

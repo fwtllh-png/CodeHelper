@@ -339,6 +339,12 @@ codehelper model resolve --provider openai-responses --model gpt-4.1
 
 即使 Model ID 相同，Provider ID 也可能不同。存在歧义时必须显式指定 Provider。
 
+Web 首屏在创建 Session 前显示当前 Runtime Provider、该 Provider 内可用的 Model、
+对应 Model 支持的 Reasoning 档位和凭据状态。同一 Provider 内标记为 `hot` 的 Model
+可作为 Session Profile 在 Turn 之间切换；运行中的 Turn 继续使用启动时冻结的 Route。
+跨 Provider 切换仍属于 Runtime 启动配置，必须修改 `[execution]` 后重启，界面以只读值
+呈现该边界，不显示不可操作的 Provider 下拉框。
+
 用途路由支持 `plan`、`vision` 和 `subquery`。设置 `route.lock=true` 后，缺失用途路由
 会直接报错，不再静默回落到主执行路由。
 
@@ -353,6 +359,9 @@ codehelper model resolve --provider openai-responses --model gpt-4.1
 | `keyring` | `name` 是系统 Keyring Key | 桌面交互环境优先 |
 
 使用 `codehelper auth` 管理引用。常规配置与诊断输出会对 Secret 做脱敏处理。
+本机 Web 的启动配置页也可以把 API Key 只写入系统 Keychain；浏览器和响应只接收
+`configured`、`validation` 与引用类型，不会读回密钥值。Web Provider 每次请求解析
+Credential Control 的最新引用，因此页面完成 Keychain 轮换后无需重启。
 
 ## Mode、Posture 与验证
 
@@ -405,7 +414,7 @@ Suite。每个 `turn.verification` Check 都包含命令推导原因。无法识
 | 变量 | 取值 | 行为 |
 | --- | --- | --- |
 | `CODEHELPER_OBSERVATION_CAPTURE` | `off`、`metadata`、`failure`、`full` | 控制 Durable Observation Admission；默认为 `metadata` |
-| `CODEHELPER_OTEL_EXPORTER` | `memory`、`off`、`http/protobuf`、`grpc` | 选择 Observation OTLP Projector |
+| `CODEHELPER_OTEL_EXPORTER` | `memory`、`off`、`http/protobuf`、`grpc` | 选择 Observation OTLP Projector；未配置 Endpoint 时默认 `off` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector Endpoint | 使用标准 OTLP Endpoint 配置 |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` 或 `http/protobuf` | 配置 Endpoint 时选择标准 Protocol |
 
@@ -419,9 +428,9 @@ Observation Payload Retention 与 `[state].event_retention` 不同。
 按内部时间类别管理：Audit/Diagnostic 默认 30 天，Sensitive 24 小时，Ephemeral
 1 小时。启动清理释放过期 Reference，只删除已无引用的 CAS Object。
 
-Remote OTLP 构造失败时，Runtime 会回退到 In-memory Projector。Observation Queue、
-Journal 或 Exporter Failure 会反映在 Observation Health 中，但绝不会改变 Turn 的
-业务结果。
+Remote OTLP 构造失败时，Runtime 会关闭 OTLP Projection，避免无界本地累积。
+Observation Queue、Journal 或 Exporter Failure 会通过 Admission Receipt 或
+`Flush`/`Shutdown` 返回，但绝不会改变 Turn 的业务结果。
 
 ## 上下文控制
 

@@ -26,12 +26,12 @@ func TestTUIWorkspaceEventAcceptsAgentFacts(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if !tuiWorkspaceEvent(update) {
+			if !facade.WorkspaceEvent(update) {
 				t.Fatalf("%s was not projected as a workspace event", name)
 			}
 		})
 	}
-	if tuiWorkspaceEvent(facade.InteractionUpdate{}) {
+	if facade.WorkspaceEvent(facade.InteractionUpdate{}) {
 		t.Fatal("parent interaction was projected as an Agent workspace event")
 	}
 }

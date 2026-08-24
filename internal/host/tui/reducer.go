@@ -384,9 +384,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyPgDown:
 		return m.scrollTranscript(func(model *Model) { model.viewport.PageDown() }), nil
 	case tea.KeyCtrlU:
-		return m.scrollTranscript(func(model *Model) { model.viewport.HalfViewUp() }), nil
+		return m.scrollTranscript(func(model *Model) { model.viewport.HalfPageUp() }), nil
 	case tea.KeyCtrlD:
-		return m.scrollTranscript(func(model *Model) { model.viewport.HalfViewDown() }), nil
+		return m.scrollTranscript(func(model *Model) { model.viewport.HalfPageDown() }), nil
 	case tea.KeyEnd:
 		return m.scrollTranscript(func(model *Model) { model.viewport.GotoBottom() }), nil
 	case tea.KeyHome:

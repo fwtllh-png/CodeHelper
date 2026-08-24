@@ -68,7 +68,6 @@ func TestAdapterTracksDurableEnableReplaceDisableAndRevoke(t *testing.T) {
 	if err := control.Enable("fixture"); err != nil {
 		t.Fatal(err)
 	}
-	waitForRefreshPending(t, adapter)
 	assertToolRevoked(t, tools, name)
 	if err := adapter.Sync(); err != nil {
 		t.Fatal(err)
@@ -327,18 +326,6 @@ func waitForToolOutput(
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("tool %q did not produce %q; adapter error = %v", name, expected, nil)
-}
-
-func waitForRefreshPending(t *testing.T, adapter *Adapter) {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if adapter.RefreshPending() {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("plugin watcher did not request a refresh operation")
 }
 
 func waitForToolRevoked(t *testing.T, registry *tool.Registry, name string) {

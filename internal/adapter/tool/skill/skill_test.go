@@ -12,7 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
-func TestLoadSkillExecutesOnlyThroughAuthorizedRegistry(t *testing.T) {
+func TestSkillsReadExecutesOnlyThroughAuthorizedRegistry(t *testing.T) {
 	workspace := t.TempDir()
 	directory := filepath.Join(workspace, ".agents", "skills", "review")
 	if err := os.MkdirAll(directory, 0o755); err != nil {
@@ -33,17 +33,24 @@ Follow the review checklist.
 		t.Fatal(err)
 	}
 	registry := tool.NewRegistry(nil, nil)
-	if err := Register(registry, catalog); err != nil {
+	if err := RegisterDiscovery(registry, catalog); err != nil {
 		t.Fatal(err)
 	}
-	arguments := json.RawMessage(`{"name":"review"}`)
+	handle, err := catalog.HandleForName(t.Context(), "review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	arguments, err := json.Marshal(map[string]string{"handle": handle})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := registry.Execute(context.Background(), tool.Call{
-		Name: "load_skill", Arguments: arguments,
+		Name: "skills_read", Arguments: arguments,
 	}); err == nil || !strings.Contains(err.Error(), "not authorized") {
 		t.Fatalf("unauthorized execution error = %v", err)
 	}
 	result, err := registry.Execute(context.Background(), tool.Call{
-		Name: "load_skill", Arguments: arguments, Authorized: true,
+		Name: "skills_read", Arguments: arguments, Authorized: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +61,7 @@ Follow the review checklist.
 	}
 }
 
-func TestLoadSkillReturnsLockedDependencyPlan(t *testing.T) {
+func TestSkillsReadReturnsLockedDependencyPlan(t *testing.T) {
 	workspace := t.TempDir()
 	configured := filepath.Join(workspace, "configured")
 	writeGoverned := func(name, version, body, dependencies string) {
@@ -101,11 +108,14 @@ codehelper = ">=1.0.0 <2.0.0"
 	if _, err := catalog.WriteLock(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	executor, err := New(catalog)
+	handle, err := catalog.HandleForName(t.Context(), "review")
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := executor.Execute(t.Context(), json.RawMessage(`{"name":"review"}`))
+	result, err := (&readTool{catalog: catalog}).run(
+		t.Context(),
+		readInput{Handle: handle},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

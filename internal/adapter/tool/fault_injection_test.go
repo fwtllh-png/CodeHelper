@@ -47,5 +47,3 @@ func TestFaultInjectionToolCancelReleasesClaim(t *testing.T) {
 	}
 	second()
 }
-
-type errReader struct{ err error }

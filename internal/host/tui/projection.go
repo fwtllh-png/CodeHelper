@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fwtllh-png/CodeHelper/internal/host/tui/facade"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -302,34 +301,4 @@ type streamMsg struct {
 	// above can express.
 	usage   *turnAccounting
 	receipt *turnAccounting
-}
-
-// StreamOutputMessage injects an assistant output delta (appended in-place).
-func StreamOutputMessage(text string) tea.Msg {
-	return streamMsg{kind: streamKindOutput, text: text}
-}
-
-// StreamReasoningMessage injects a reasoning delta (appended in-place).
-func StreamReasoningMessage(text string) tea.Msg {
-	return streamMsg{kind: streamKindReasoning, text: text}
-}
-
-// StreamDoneMessage marks the end of a turn stream (triggers markdown render).
-func StreamDoneMessage() tea.Msg {
-	return streamDoneMsg{}
-}
-
-// StreamApprovalMessage injects an approval prompt into the TUI update loop.
-func StreamApprovalMessage(id, text string) tea.Msg {
-	return streamMsg{text: text, approvalID: id}
-}
-
-// StreamInputMessage injects a request_user_input card into the TUI update loop.
-func StreamInputMessage(id, text string, options ...string) tea.Msg {
-	return streamMsg{text: text, inputID: id, inputOptions: append([]string(nil), options...)}
-}
-
-// StreamToolMessage injects a structured tool card.
-func StreamToolMessage(id, name, detail string) tea.Msg {
-	return streamMsg{toolID: id, tool: name, text: detail}
 }

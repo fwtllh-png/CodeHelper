@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fwtllh-png/CodeHelper/internal/persist/atomicfile"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -241,37 +242,7 @@ func (s *Store) writeLocked(value document) error {
 		return err
 	}
 	data = append(data, '\n')
-	directory := filepath.Dir(s.path)
-	temporary, err := os.CreateTemp(directory, ".extension-control-*.tmp")
-	if err != nil {
-		return err
-	}
-	temporaryPath := temporary.Name()
-	defer func() {
-		_ = temporary.Close()
-		_ = os.Remove(temporaryPath)
-	}()
-	if err := temporary.Chmod(0o600); err != nil {
-		return err
-	}
-	if _, err := temporary.Write(data); err != nil {
-		return err
-	}
-	if err := temporary.Sync(); err != nil {
-		return err
-	}
-	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(temporaryPath, s.path); err != nil {
-		return err
-	}
-	handle, err := os.Open(directory)
-	if err != nil {
-		return err
-	}
-	defer handle.Close()
-	return handle.Sync()
+	return atomicfile.Replace(s.path, data, 0o600)
 }
 
 func validateFile(path string) error {

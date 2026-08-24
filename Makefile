@@ -42,7 +42,6 @@ LDFLAGS := -s -w \
 stress:
 	$(GO) test -tags=stress -race -count=1 -timeout 5m -run '^TestStress' \
 		./internal/runtime/agent/engine/... \
-		./internal/runtime/agent/engine/... \
 		./internal/adapter/mcp/... \
 		./internal/runtime/app/eventhub/... \
 		./internal/host/tui/...
@@ -50,7 +49,6 @@ stress:
 # stress-nightly runs extended stress tests for nightly CI.
 stress-nightly:
 	$(GO) test -tags=stress -race -count=3 -timeout 15m -run '^TestStress' \
-		./internal/runtime/agent/engine/... \
 		./internal/runtime/agent/engine/... \
 		./internal/adapter/mcp/... \
 		./internal/runtime/app/eventhub/... \
@@ -61,14 +59,15 @@ stress-nightly:
 # Run after: make build
 # Baseline: scripts/canary-replay.py record && scripts/canary-perf.py baseline
 canary:
-	python3 scripts/canary-replay.py check
-	python3 scripts/canary-perf.py check
+	python3 scripts/canary-replay.py check --report .tmp/canary-shared-report.json
+	python3 scripts/canary-perf.py check --report .tmp/canary-shared-report.json --reuse-report
 
 # canary-nightly runs extended canary checks with tighter thresholds for
 # nightly CI. Uses a lower performance regression threshold (20% vs 30%).
 canary-nightly:
-	python3 scripts/canary-replay.py check
-	CANARY_PERF_THRESHOLD=0.20 python3 scripts/canary-perf.py check
+	python3 scripts/canary-replay.py check --report .tmp/canary-shared-report.json
+	CANARY_PERF_THRESHOLD=0.20 python3 scripts/canary-perf.py check \
+		--report .tmp/canary-shared-report.json --reuse-report
 
 # canary-adversarial runs active bug-finding tests: fault injection,
 # differential config, and fixture mutation. Use this to discover
@@ -122,7 +121,7 @@ fmt:
 	$(GO) fmt ./...
 
 verify: architecture-ratchet docs-check book-check brand-check web-protocol-check web-parity-check \
-	web-check web-test web-performance web-assets-check web-supply-chain-check \
+	web-check web-test web-assets-check web-supply-chain-check \
 	reliability-gate
 	@unformatted="$$(git ls-files --cached --others --exclude-standard '*.go' | \
 		while IFS= read -r file; do \

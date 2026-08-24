@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_selection_tests_quality","function":{"name":"quality_verify","arguments":"{\"command\":\"test -f selection-test.txt\",\"covered_paths\":[\"selection-test.txt\"]}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

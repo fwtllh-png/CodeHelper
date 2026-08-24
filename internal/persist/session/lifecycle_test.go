@@ -199,12 +199,6 @@ func TestLifecycleListSearchUpdateAndDeleteProtection(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	repository := session.NewSQLiteRepository(store)
-	workspace, err := repository.CreateWorkspace(t.Context(), session.Workspace{
-		ID: "workspace", RootPath: "/workspace", DisplayName: "fixture",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	now := time.Now().UTC()
 	for _, value := range []struct {
 		sessionID string
@@ -221,19 +215,23 @@ func TestLifecycleListSearchUpdateAndDeleteProtection(t *testing.T) {
 			`{"transport":"web","provider":"fixture","model":"model"}`,
 		},
 	} {
-		if _, err := repository.Create(t.Context(), session.Session{
-			ID: value.sessionID, WorkspaceID: workspace.ID,
-			Metadata:  json.RawMessage(value.metadata),
-			CreatedAt: now, UpdatedAt: now,
-		}); err != nil {
+		var metadata map[string]any
+		if err := json.Unmarshal([]byte(value.metadata), &metadata); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.DB().ExecContext(t.Context(), `
-			INSERT INTO threads(
-				id, session_id, title, status, created_at, updated_at
-			) VALUES (?, ?, ?, 'open', ?, ?)`,
-			value.threadID, value.sessionID, value.title,
-			now.Format(time.RFC3339Nano), now.Format(time.RFC3339Nano),
+		isolation, _ := metadata["isolation"].(string)
+		if isolation == "" {
+			isolation = "shared"
+		}
+		if _, err := repository.CreateLifecycle(
+			t.Context(),
+			protocol.SessionCreateSeed{
+				Version:   protocol.SessionLifecycleVersion,
+				SessionID: value.sessionID, WorkspaceID: "workspace",
+				WorkspaceRoot: "/workspace", WorkspaceLabel: "fixture",
+				ThreadID: protocol.ThreadID(value.threadID), Title: value.title,
+				Provider: "fixture", Model: "model", Isolation: isolation,
+			},
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -338,6 +336,23 @@ func TestLifecycleListSearchUpdateAndDeleteProtection(t *testing.T) {
 	); err == nil {
 		t.Fatal("last open session was deleted")
 	}
+	if _, err := repository.DiscardLifecycle(
+		t.Context(),
+		"session-a",
+		3,
+	); err != nil {
+		t.Fatal(err)
+	}
+	remaining, err := repository.ListLifecycle(
+		t.Context(),
+		protocol.SessionListQuery{WorkspaceRoot: "/workspace"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remaining.Sessions) != 0 {
+		t.Fatalf("discarded final session remained: %+v", remaining.Sessions)
+	}
 }
 
 func TestLifecyclePersistsTheActiveForkThread(t *testing.T) {
@@ -350,28 +365,27 @@ func TestLifecyclePersistsTheActiveForkThread(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	repository := session.NewSQLiteRepository(store)
-	workspace, err := repository.CreateWorkspace(t.Context(), session.Workspace{
-		ID: "workspace", RootPath: "/workspace", DisplayName: "fixture",
-	})
-	if err != nil {
+	if _, err := repository.CreateLifecycle(
+		t.Context(),
+		protocol.SessionCreateSeed{
+			Version:   protocol.SessionLifecycleVersion,
+			SessionID: "session", WorkspaceID: "workspace",
+			WorkspaceRoot: "/workspace", WorkspaceLabel: "fixture",
+			ThreadID: "root", Title: "Root",
+			Provider: "fixture", Model: "model", Isolation: "shared",
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if _, err := repository.Create(t.Context(), session.Session{
-		ID: "session", WorkspaceID: workspace.ID,
-		Metadata:  json.RawMessage(`{"transport":"web"}`),
-		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-	}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := store.DB().ExecContext(t.Context(), `
 		INSERT INTO threads(
 			id, session_id, parent_thread_id, title, status,
 			source_cursor, created_at, updated_at
-		) VALUES
-			('root', 'session', NULL, 'Root', 'open', 0, ?, ?),
-			('child', 'session', 'root', 'Checkpoint Fork', 'open', 8, ?, ?)`,
-		now, now, now, now,
+		) VALUES (
+			'child', 'session', 'root', 'Checkpoint Fork', 'open', 8, ?, ?
+		)`,
+		now, now,
 	); err != nil {
 		t.Fatal(err)
 	}

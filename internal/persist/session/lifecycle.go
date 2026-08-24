@@ -609,6 +609,23 @@ func (r *Repository) DeleteLifecycle(
 	sessionID string,
 	expectedRevision uint64,
 ) (protocol.SessionDeleteResult, error) {
+	return r.deleteLifecycle(ctx, sessionID, expectedRevision, false)
+}
+
+func (r *Repository) DiscardLifecycle(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+) (protocol.SessionDeleteResult, error) {
+	return r.deleteLifecycle(ctx, sessionID, expectedRevision, true)
+}
+
+func (r *Repository) deleteLifecycle(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+	discard bool,
+) (protocol.SessionDeleteResult, error) {
 	if expectedRevision == 0 {
 		return protocol.SessionDeleteResult{},
 			errors.New("expected lifecycle revision is required")
@@ -653,26 +670,28 @@ func (r *Repository) DeleteLifecycle(
 				Current:  lifecycle.Revision,
 			}
 		}
-		if err := requireNoActiveTurns(ctx, tx, sessionID, "delete"); err != nil {
-			return err
-		}
-		var count int
-		if err := tx.QueryRowContext(ctx, `
+		if !discard {
+			if err := requireNoActiveTurns(ctx, tx, sessionID, "delete"); err != nil {
+				return err
+			}
+			var count int
+			if err := tx.QueryRowContext(ctx, `
 			SELECT COUNT(*)
 			FROM sessions s
 			JOIN workspaces w ON w.id = s.workspace_id
 			WHERE w.root_path = ?`,
-			workspaceRoot,
-		).Scan(&count); err != nil {
-			return err
-		}
-		if count <= 1 {
-			return protocol.NewProblem(
-				protocol.CodeConflict,
-				"cannot delete the last session in a workspace",
-				false,
-				nil,
-			)
+				workspaceRoot,
+			).Scan(&count); err != nil {
+				return err
+			}
+			if count <= 1 {
+				return protocol.NewProblem(
+					protocol.CodeConflict,
+					"cannot delete the last session in a workspace",
+					false,
+					nil,
+				)
+			}
 		}
 		result, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, sessionID)
 		if err != nil {

@@ -79,18 +79,6 @@ type rpcClient struct {
 	closeOnce sync.Once
 }
 
-func (c Checker) Check(ctx context.Context, files ...string) (string, error) {
-	diagnostics, err := c.Analyze(ctx, files, nil)
-	if err != nil {
-		return "", err
-	}
-	encoded, err := json.Marshal(diagnostics)
-	if err != nil {
-		return "", err
-	}
-	return string(encoded), nil
-}
-
 func (c Checker) Analyze(ctx context.Context, files []string, changes []Change) ([]Diagnostic, error) {
 	client, err := c.start(ctx)
 	if err != nil {

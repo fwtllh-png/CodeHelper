@@ -82,25 +82,6 @@ func ServeMCP(
 	})
 }
 
-func RegisterMCPTools(
-	_ context.Context,
-	registry *tool.Registry,
-	configPath string,
-) (*mcpruntime.Pool, *MCPPrewarm, error) {
-	config, err := mcpruntime.LoadConfig(configPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := config.Validate(); err != nil {
-		return nil, nil, err
-	}
-	pool := mcpruntime.NewPool(nil)
-	prewarm := NewMCPPrewarm(pool, configPath)
-	prewarm.SetRegistry(registry)
-	prewarm.RequestRefresh()
-	return pool, prewarm, nil
-}
-
 func RegisterMCPConfig(
 	registry *tool.Registry,
 	config mcpruntime.Config,

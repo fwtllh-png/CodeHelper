@@ -335,9 +335,9 @@ Policy、Retention Class、必需 Correlation、OpenTelemetry Mapping 与 Queue 
 
 Router 会在任何 Journal 或 CAS 写入前应用 Privacy Policy。Critical Evidence 在脱离
 业务 Cancellation 的同步路径持久化；Normal 与 Bulk Record 进入有界 Queue。Queue
-Pressure、Privacy Error、Journal Failure、Payload Drop 与 Exporter Failure 只更新
-Observation Health，绝不改写业务 Turn 的成功或失败结果。`Flush` 与 `Shutdown`
-负责排空 Observation/OTLP Queue，但 Observation Plane 不获得执行权威。
+Pressure、Privacy Error 和 Payload Drop 由 Admission Receipt 显式返回，Journal 或
+Exporter Failure 由 `Flush`/`Shutdown` 返回；这些故障绝不改写业务 Turn 的成功或
+失败结果。Observation Plane 不获得执行权威。
 
 Capture 由 `CODEHELPER_OBSERVATION_CAPTURE` 控制：
 
@@ -353,10 +353,10 @@ Root 会在写入前脱敏。Payload 复用 Content Store，并按 Retention Cla
 用于解释。
 
 W3C Trace Context 会跨 Provider HTTP、MCP HTTP/stdio、Process、Workflow 与
-Subagent 传播。OTLP Projector 支持通过环境变量选择 In-memory、HTTP/protobuf 和
+Subagent 传播。OTLP Projector 默认关闭，可通过环境变量选择 In-memory、HTTP/protobuf 和
 gRPC Exporter。Metric Label 来自固定的低基数 Allowlist，不能包含 Path、Prompt、
-Tool Argument 或 Resource ID。Semantic Reducer 可从 Raw Journal 确定性重建可解释
-Graph；Support Bundle 构造会再次脱敏所选记录，并以独占 mode `0600` 写入 Archive。
+Tool Argument 或 Resource ID。故障分析直接按 Cursor 重放 Raw Journal，并与 Runtime
+Event、Trace、Usage、Receipt 和 Workspace Journal 交叉核对。
 
 ## 上下文架构
 

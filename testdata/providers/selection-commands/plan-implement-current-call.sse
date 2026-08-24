@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_plan_current","function":{"name":"file_write","arguments":"{\"path\":\"plan-current-session.txt\",\"content\":\"implemented approved plan in current session\\n\"}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

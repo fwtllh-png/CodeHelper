@@ -49,10 +49,6 @@ func pricingKnown(pricing model.Pricing, usage provider.Usage) bool {
 	return provider.PricingKnown(pricing, usage)
 }
 
-func (e *Engine) workspaceRelative(path string) (string, bool) {
-	return agentcontext.WorkspaceRelative(e.options.Workspace, path)
-}
-
 func (e *Engine) observePath(
 	source agentcontext.WorkingSetSource,
 	path string,

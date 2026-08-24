@@ -17,7 +17,10 @@ Object.defineProperty(URL, "revokeObjectURL", {
   value: vi.fn()
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("selectionRange", () => {
   it("converts browser offsets into zero-based protocol positions", () => {
@@ -109,48 +112,122 @@ describe("projectTranscript", () => {
     expect(screen.getByLabelText("New session isolation")).toBeTruthy();
     expect(screen.getByRole("button", {name: "Browse workspace"})).toBeTruthy();
     expect(screen.getByLabelText("Mode")).toBeTruthy();
-    expect(screen.getByLabelText("Provider")).toBeTruthy();
-    expect(screen.getByRole("option", {name: "Offline (Credential missing)"}))
-      .toHaveProperty("disabled", true);
+    expect(screen.getByLabelText("Provider").textContent).toBe("Fixture");
     fireEvent.change(screen.getByLabelText("Model"), {
       target: {value: "reasoner"}
     });
-    expect(client.updateProfile).toHaveBeenCalledWith({model: "reasoner"});
+    expect(client.updateProfile).toHaveBeenCalledWith({
+      model: "reasoner",
+      reasoning_effort: ""
+    });
     expect(screen.getAllByRole("button", {name: "Archive session"})).not.toHaveLength(0);
     expect(screen.getByText("read_file")).toBeTruthy();
   });
 
-  it("changes provider and model as one valid catalog route", () => {
+  it("replaces the composer with a clear create-session action", async () => {
     const value = snapshot();
-    value.providers = [
-      ...value.providers,
-      {
-        id: "second",
-        display_name: "Second",
-        selected: false,
-        availability: "available"
-      }
-    ];
-    value.models = [
-      ...value.models,
-      {
-        provider: "second",
-        id: "second-default",
-        selected: true,
-        capabilities: modelCapabilities("Second Default")
-      }
-    ];
+    value.sessions = [];
+    value.selectedSessionID = "";
+    value.profile = undefined;
     const client = mockClient(value);
     render(<App client={client} />);
 
-    fireEvent.change(screen.getByLabelText("Provider"), {
-      target: {value: "second"}
-    });
+    expect(screen.queryByPlaceholderText("Create a chat to begin")).toBeNull();
+    expect(screen.queryByPlaceholderText("Ask CodeHelper")).toBeNull();
+    expect(screen.getByRole("heading", {name: "Start a new session"})).toBeTruthy();
+    expect(screen.queryByLabelText("Session details")).toBeNull();
+    expect(screen.queryByRole("button", {name: /detail panel/i})).toBeNull();
 
-    expect(client.updateProfile).toHaveBeenCalledWith({
-      provider: "second",
-      model: "second-default"
+    fireEvent.change(screen.getByLabelText("Session workspace isolation"), {
+      target: {value: "worktree"}
     });
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: {value: "reasoner"}
+    });
+    fireEvent.change(screen.getByLabelText("Reasoning"), {
+      target: {value: "high"}
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Create session"}));
+
+    await waitFor(() => {
+      expect(client.createSession).toHaveBeenCalledWith("worktree", {
+        model: "reasoner",
+        reasoning_effort: "high"
+      });
+    });
+  });
+
+  it("validates and stores a startup API key without echoing it", async () => {
+    const value = snapshot();
+    value.sessions = [];
+    value.selectedSessionID = "";
+    value.profile = undefined;
+    const client = mockClient(value);
+    vi.mocked(client.credentialStatus).mockResolvedValue({
+      reference: {kind: "keyring", name: "deepseek/default"},
+      configured: false,
+      validation: "not_validated"
+    });
+    vi.mocked(client.setKeyringCredential).mockResolvedValue({
+      reference: {kind: "keyring", name: "deepseek/default"},
+      configured: true,
+      validation: "valid"
+    });
+    render(<App client={client} />);
+
+    const key = await screen.findByLabelText("API key");
+    fireEvent.change(key, {
+      target: {value: "DEEPSEEK_API_KEY=secret"}
+    });
+    expect(screen.getByText(
+      "Enter the API key value, not an environment assignment."
+    )).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Save key"}))
+      .toHaveProperty("disabled", true);
+
+    fireEvent.change(key, {target: {value: "sk-live"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save key"}));
+
+    await waitFor(() => {
+      expect(client.setKeyringCredential).toHaveBeenCalledWith("sk-live");
+    });
+    expect(screen.queryByDisplayValue("sk-live")).toBeNull();
+    expect(await screen.findByText("Validated")).toBeTruthy();
+  });
+
+  it("requests explicit discard when deleting an active session", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const value = snapshot();
+    value.sessions = [{
+      ...value.sessions[0],
+      status: "awaiting_approval",
+      pending_approvals: 1
+    }];
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getAllByRole("button", {name: "Delete session"})[0]);
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      'Delete "Chat" and permanently discard its unfinished work?'
+    );
+    expect(client.deleteSession).toHaveBeenCalledWith("session", 1, true);
+  });
+
+  it("shows session lifecycle failures next to the affected row", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const client = mockClient(snapshot());
+    vi.mocked(client.deleteSession).mockRejectedValue(
+      new Error("cannot delete session while its isolated worktree has unresolved changes")
+    );
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getAllByRole("button", {name: "Delete session"})[0]);
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "cannot delete session while its isolated worktree has unresolved changes"
+    );
+    expect(client.deleteSession).toHaveBeenCalledWith("session", 1, true);
   });
 
   it("renders detailed activity artifacts and extension controls", () => {
@@ -428,6 +505,8 @@ describe("projectTranscript", () => {
     expect(screen.getByRole("button", {name: "Deny"})).toBeTruthy();
     const approve = screen.getByRole("button", {name: "Approve"});
     expect(screen.getByLabelText("Approval scope")).toBeTruthy();
+    expect(screen.queryByLabelText("Replacement arguments")).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Edit replacement arguments"}));
     const replacement = screen.getByLabelText("Replacement arguments");
     fireEvent.change(replacement, {target: {value: "{"}});
     expect((approve as HTMLButtonElement).disabled).toBe(true);
@@ -705,6 +784,12 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
     getSnapshot: () => value,
     start: vi.fn(async () => {}),
     stop: vi.fn(),
+    refreshSessions: vi.fn(async () => {}),
+    setArchivedVisible: vi.fn(async () => {}),
+    createSession: vi.fn(async () => {}),
+    selectSession: vi.fn(async () => {}),
+    updateSession: vi.fn(async () => {}),
+    deleteSession: vi.fn(async () => {}),
     loadDraft: vi.fn(async () => ""),
     saveDraft: vi.fn(),
     decideApproval: vi.fn(async () => ({})),

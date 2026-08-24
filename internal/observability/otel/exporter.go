@@ -63,7 +63,7 @@ func (e *MemoryExporter) ExportSpans(
 			Attributes: make(map[string]string),
 		}
 		for _, item := range value.Attributes() {
-			span.Attributes[string(item.Key)] = item.Value.Emit()
+			span.Attributes[string(item.Key)] = item.Value.String()
 		}
 		e.spans = append(e.spans, span)
 	}
@@ -88,7 +88,7 @@ func (e *MemoryExporter) Snapshot() []MemorySpan {
 
 func defaultOptions(options Options) Options {
 	if options.Protocol == "" {
-		options.Protocol = ExportMemory
+		options.Protocol = ExportOff
 	}
 	if options.QueueCapacity <= 0 {
 		options.QueueCapacity = 4096
@@ -112,7 +112,7 @@ func environmentOptions() Options {
 				protocol = ExportGRPC
 			}
 		} else {
-			protocol = ExportMemory
+			protocol = ExportOff
 		}
 	}
 	switch strings.ToLower(string(protocol)) {

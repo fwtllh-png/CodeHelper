@@ -99,8 +99,7 @@ func NewFault(
 	)
 }
 
-func ProblemOf(err error) *Problem          { return runtimefault.Of(err) }
-func CloneProblem(source *Problem) *Problem { return runtimefault.Clone(source) }
+func ProblemOf(err error) *Problem { return runtimefault.Of(err) }
 func CloneFaultMetadata(source *FaultMetadata) *FaultMetadata {
 	return runtimefault.CloneMetadata(source)
 }

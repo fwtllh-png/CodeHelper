@@ -576,30 +576,3 @@ func (c *AgentControl) Mailbox() *Mailbox {
 func (c *AgentControl) AttachGraph(graph Graph) error {
 	return c.manager.AttachGraph(graph)
 }
-
-// Manager exposes synchronized runtime state only to construction and legacy
-// test helpers. New lifecycle callers must use AgentControl.
-func (c *AgentControl) Manager() *Manager {
-	if c == nil {
-		return nil
-	}
-	return c.manager
-}
-
-// ChildPrompt renders the role and ownership contract shared by model tools and
-// durable background executors.
-func ChildPrompt(agent Agent, objective string) string {
-	lines := []string{
-		fmt.Sprintf("role=%s profile=%s stance=%s", agent.Role, agent.Profile, agent.Stance),
-		"task_name=" + agent.TaskName,
-		"objective=" + strings.TrimSpace(objective),
-		"expected_output=" + agent.ExpectedOutput,
-	}
-	if len(agent.OwnedPaths) != 0 {
-		lines = append(lines, "owned_paths="+strings.Join(agent.OwnedPaths, ","))
-	}
-	if strings.TrimSpace(agent.RoleInstructions) != "" {
-		lines = append(lines, "role_instructions="+agent.RoleInstructions)
-	}
-	return strings.Join(lines, "\n")
-}

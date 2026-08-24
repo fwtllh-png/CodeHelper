@@ -42,7 +42,6 @@ type Service struct {
 	meterProvider *sdkmetric.MeterProvider
 	tracer        oteltrace.Tracer
 	memory        *MemoryExporter
-	metrics       *MetricRegistry
 
 	observationCount otelmetric.Int64Counter
 	observationDrop  otelmetric.Int64Counter
@@ -117,8 +116,7 @@ func New(ctx context.Context, options Options) (*Service, error) {
 	service := &Service{
 		queue: make(chan observation.Envelope, options.QueueCapacity),
 		stop:  make(chan struct{}), done: make(chan struct{}),
-		memory: memory, metrics: NewMetricRegistry(512),
-		spans: make(map[string]spanEntry),
+		memory: memory, spans: make(map[string]spanEntry),
 	}
 	observed := &observedExporter{
 		SpanExporter: traceExporter,
@@ -182,11 +180,6 @@ func (s *Service) Project(envelope observation.Envelope) {
 			context.Background(),
 			1,
 			otelmetric.WithAttributes(metricAttributes(labels)...),
-		)
-		s.metrics.Add(
-			"codehelper.observation.dropped",
-			labels,
-			1,
 		)
 	}
 }
@@ -263,13 +256,6 @@ func (s *Service) MemorySpans() []MemorySpan {
 	return s.memory.Snapshot()
 }
 
-func (s *Service) MetricSnapshot() ([]MetricPoint, uint64) {
-	if s == nil {
-		return nil, 0
-	}
-	return s.metrics.Snapshot()
-}
-
 func (s *Service) run() {
 	defer close(s.done)
 	for {
@@ -299,7 +285,6 @@ func (s *Service) project(envelope observation.Envelope) {
 		"status":            "recorded",
 		"observation_class": class,
 	}
-	s.metrics.Add("codehelper.observation.count", labels, 1)
 	s.observationCount.Add(
 		context.Background(),
 		1,
@@ -316,18 +301,12 @@ func (s *Service) project(envelope observation.Envelope) {
 		lagMS,
 		otelmetric.WithAttributes(metricAttributes(lagLabels)...),
 	)
-	s.metrics.Add("codehelper.projection.lag", lagLabels, lagMS)
 	if envelope.Payload != nil {
 		payloadLabels := Labels{"observation_class": class}
 		s.payloadBytes.Record(
 			context.Background(),
 			int64(envelope.Payload.StoredBytes),
 			otelmetric.WithAttributes(metricAttributes(payloadLabels)...),
-		)
-		s.metrics.Add(
-			"codehelper.payload.bytes",
-			payloadLabels,
-			float64(envelope.Payload.StoredBytes),
 		)
 	}
 	if traits.OTEL == observation.OTELMetric {
@@ -408,11 +387,6 @@ func (s *Service) endSpan(
 			metricAttributes(labels)...,
 		)
 		s.inconsistency.Add(context.Background(), 1, attributes)
-		s.metrics.Add(
-			"codehelper.reducer.inconsistency",
-			labels,
-			1,
-		)
 		return
 	}
 	status := "completed"
@@ -460,11 +434,6 @@ func (s *Service) endSpan(
 			context.Background(),
 			terminalDuration,
 			attributes,
-		)
-		s.metrics.Add(
-			"codehelper.terminal.commit.duration",
-			labels,
-			terminalDuration,
 		)
 	}
 }
@@ -579,11 +548,6 @@ func (s *Service) recordMetric(
 	if class == "operation" &&
 		envelope.Kind == observation.KindOperationAccepted {
 		s.operationCount.Add(context.Background(), 1)
-		s.metrics.Add(
-			"codehelper.operation.count",
-			Labels{"status": "accepted"},
-			1,
-		)
 	}
 	if envelope.Kind == observation.KindTurnTerminalCommitted {
 		summary, err := observation.DecodeTerminalSummary(envelope.Summary)
@@ -597,7 +561,6 @@ func (s *Service) recordMetric(
 				1,
 				otelmetric.WithAttributes(metricAttributes(labels)...),
 			)
-			s.metrics.Add("codehelper.turn.terminal.count", labels, 1)
 		}
 	}
 }
@@ -615,7 +578,6 @@ func (s *Service) recordMappedMetric(
 	}
 	attributes := otelmetric.WithAttributes(metricAttributes(labels)...)
 	s.observationDrop.Add(context.Background(), 1, attributes)
-	s.metrics.Add("codehelper.observation.dropped", labels, 1)
 }
 
 func (s *Service) recordCount(class, status string) {
@@ -624,10 +586,8 @@ func (s *Service) recordCount(class, status string) {
 	switch class {
 	case "provider":
 		s.providerCount.Add(context.Background(), 1, attributes)
-		s.metrics.Add("codehelper.provider.request.count", labels, 1)
 	case "tool":
 		s.toolCount.Add(context.Background(), 1, attributes)
-		s.metrics.Add("codehelper.tool.count", labels, 1)
 	}
 }
 
@@ -640,24 +600,12 @@ func (s *Service) recordDuration(
 	switch class {
 	case "turn":
 		s.turnDuration.Record(context.Background(), durationMS, attributes)
-		s.metrics.Add("codehelper.turn.duration", labels, durationMS)
 	case "provider":
 		s.providerDuration.Record(context.Background(), durationMS, attributes)
-		s.metrics.Add(
-			"codehelper.provider.request.duration",
-			labels,
-			durationMS,
-		)
 	case "tool":
 		s.toolDuration.Record(context.Background(), durationMS, attributes)
-		s.metrics.Add("codehelper.tool.duration", labels, durationMS)
 	case "approval":
 		s.approvalDuration.Record(context.Background(), durationMS, attributes)
-		s.metrics.Add(
-			"codehelper.approval.wait.duration",
-			labels,
-			durationMS,
-		)
 	}
 }
 

@@ -82,8 +82,8 @@ func TestStressConcurrentPoolHealthSnapshots(t *testing.T) {
 	}
 }
 
-// TestStressConcurrentPoolSubscriptions verifies that SubscribeHealth and
-// SubscribeCatalog are safe under concurrent access.
+// TestStressConcurrentPoolSubscriptions verifies that health subscriptions are
+// safe under concurrent access.
 func TestStressConcurrentPoolSubscriptions(t *testing.T) {
 	pool := NewPool(nil)
 
@@ -99,13 +99,9 @@ func TestStressConcurrentPoolSubscriptions(t *testing.T) {
 			unsubHealth := pool.SubscribeHealth(func(change HealthChange) {
 				// No-op observer.
 			})
-			unsubCatalog := pool.SubscribeCatalog(func() {
-				// No-op observer.
-			})
-			subscribed.Add(2)
+			subscribed.Add(1)
 			unsubHealth()
-			unsubCatalog()
-			unsubscribed.Add(2)
+			unsubscribed.Add(1)
 		}()
 	}
 
@@ -250,9 +246,7 @@ func TestStressNilPoolIsSafe(t *testing.T) {
 			safeCall(func() { _ = pool.ProbeOpen(t.Context()) })
 			safeCall(func() { _, _ = pool.Connection("any") })
 			safeCall(func() { _ = pool.SubscribeHealth(nil) })
-			safeCall(func() { _ = pool.SubscribeCatalog(nil) })
 			safeCall(func() { _ = pool.SubscribeHealth(func(HealthChange) {}) })
-			safeCall(func() { _ = pool.SubscribeCatalog(func() {}) })
 		}()
 	}
 

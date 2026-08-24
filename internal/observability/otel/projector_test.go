@@ -9,11 +9,17 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/observation"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func TestObservationProjectionPreservesW3CIdentity(t *testing.T) {
-	service, err := New(t.Context(), Options{Protocol: ExportMemory})
+	reader := sdkmetric.NewManualReader()
+	service, err := New(t.Context(), Options{
+		Protocol: ExportMemory, MetricReader: reader,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,12 +40,9 @@ func TestObservationProjectionPreservesW3CIdentity(t *testing.T) {
 		spans[0].End.Sub(spans[0].Start) != 1250*time.Millisecond {
 		t.Fatalf("spans = %+v", spans)
 	}
-	points, dropped := service.MetricSnapshot()
-	if dropped != 0 || !hasMetric(
-		points,
-		"codehelper.provider.request.duration",
-	) {
-		t.Fatalf("metrics=%+v dropped=%d", points, dropped)
+	metrics := collectMetrics(t, reader)
+	if !hasMetric(metrics, "codehelper.provider.request.duration") {
+		t.Fatalf("metrics=%+v", metrics)
 	}
 }
 
@@ -61,7 +64,7 @@ func TestExporterFailureDoesNotEscapeProjection(t *testing.T) {
 	}
 }
 
-func TestMetricCardinalityPolicyRejectsIdentityAndPaths(t *testing.T) {
+func TestMetricLabelPolicyRejectsIdentityAndPaths(t *testing.T) {
 	for _, labels := range []Labels{
 		{"turn_id": "turn-1"},
 		{"status": "/workspace/private"},
@@ -77,19 +80,13 @@ func TestMetricCardinalityPolicyRejectsIdentityAndPaths(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	registry := NewMetricRegistry(2)
-	if !registry.Add("metric", Labels{"status": "one"}, 1) ||
-		!registry.Add("metric", Labels{"status": "two"}, 1) ||
-		registry.Add("metric", Labels{"status": "three"}, 1) {
-		t.Fatal("metric series bound was not enforced")
-	}
-	if _, dropped := registry.Snapshot(); dropped != 1 {
-		t.Fatalf("dropped series = %d", dropped)
-	}
 }
 
 func TestTerminalCommitMetricUsesPreparedObservation(t *testing.T) {
-	service, err := New(t.Context(), Options{Protocol: ExportMemory})
+	reader := sdkmetric.NewManualReader()
+	service, err := New(t.Context(), Options{
+		Protocol: ExportMemory, MetricReader: reader,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,19 +113,19 @@ func TestTerminalCommitMetricUsesPreparedObservation(t *testing.T) {
 	if err := service.ForceFlush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	points, _ := service.MetricSnapshot()
-	point, ok := metricNamed(
-		points,
+	metrics := collectMetrics(t, reader)
+	duration, ok := floatHistogramPoint(
+		metrics,
 		"codehelper.terminal.commit.duration",
 	)
-	if !ok || point.Count != 1 || point.Sum != 250 {
-		t.Fatalf("terminal metric = %+v, all=%+v", point, points)
+	if !ok || duration.Count != 1 || duration.Sum != 250 {
+		t.Fatalf("terminal metric = %+v, all=%+v", duration, metrics)
 	}
-	outcome, ok := metricNamed(points, "codehelper.turn.terminal.count")
-	if !ok || outcome.Count != 1 ||
-		outcome.Labels["status"] != "failed" ||
-		outcome.Labels["error_category"] != "resource_exhausted" {
-		t.Fatalf("terminal outcome metric = %+v, all=%+v", outcome, points)
+	outcome, ok := intSumPoint(metrics, "codehelper.turn.terminal.count")
+	if !ok || outcome.Value != 1 ||
+		attributeValue(outcome.Attributes, "status") != "failed" ||
+		attributeValue(outcome.Attributes, "error_category") != "resource_exhausted" {
+		t.Fatalf("terminal outcome metric = %+v, all=%+v", outcome, metrics)
 	}
 }
 
@@ -209,21 +206,72 @@ func otelEnvelope(
 	}
 }
 
-func hasMetric(values []MetricPoint, name string) bool {
+func collectMetrics(t *testing.T, reader *sdkmetric.ManualReader) []metricdata.Metrics {
+	t.Helper()
+	var resource metricdata.ResourceMetrics
+	if err := reader.Collect(t.Context(), &resource); err != nil {
+		t.Fatal(err)
+	}
+	var values []metricdata.Metrics
+	for _, scope := range resource.ScopeMetrics {
+		values = append(values, scope.Metrics...)
+	}
+	return values
+}
+
+func hasMetric(values []metricdata.Metrics, name string) bool {
 	_, ok := metricNamed(values, name)
 	return ok
 }
 
 func metricNamed(
-	values []MetricPoint,
+	values []metricdata.Metrics,
 	name string,
-) (MetricPoint, bool) {
+) (metricdata.Metrics, bool) {
 	for _, value := range values {
 		if value.Name == name {
 			return value, true
 		}
 	}
-	return MetricPoint{}, false
+	return metricdata.Metrics{}, false
+}
+
+func floatHistogramPoint(
+	values []metricdata.Metrics,
+	name string,
+) (metricdata.HistogramDataPoint[float64], bool) {
+	value, ok := metricNamed(values, name)
+	if !ok {
+		return metricdata.HistogramDataPoint[float64]{}, false
+	}
+	histogram, ok := value.Data.(metricdata.Histogram[float64])
+	if !ok || len(histogram.DataPoints) != 1 {
+		return metricdata.HistogramDataPoint[float64]{}, false
+	}
+	return histogram.DataPoints[0], true
+}
+
+func intSumPoint(
+	values []metricdata.Metrics,
+	name string,
+) (metricdata.DataPoint[int64], bool) {
+	value, ok := metricNamed(values, name)
+	if !ok {
+		return metricdata.DataPoint[int64]{}, false
+	}
+	sum, ok := value.Data.(metricdata.Sum[int64])
+	if !ok || len(sum.DataPoints) != 1 {
+		return metricdata.DataPoint[int64]{}, false
+	}
+	return sum.DataPoints[0], true
+}
+
+func attributeValue(values attribute.Set, name string) string {
+	value, ok := values.Value(attribute.Key(name))
+	if !ok {
+		return ""
+	}
+	return value.AsString()
 }
 
 type failingExporter struct{}

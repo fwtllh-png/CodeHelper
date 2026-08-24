@@ -33,15 +33,6 @@ type TerminalSummary struct {
 	Outcome           *TerminalOutcome `json:"outcome,omitempty"`
 }
 
-func CloneTerminalOutcome(source *TerminalOutcome) *TerminalOutcome {
-	if source == nil {
-		return nil
-	}
-	cloned := *source
-	cloned.Fault = protocol.CloneFaultMetadata(source.Fault)
-	return &cloned
-}
-
 func EncodeTerminalSummary(
 	measurementDigest string,
 	outcome TerminalOutcome,

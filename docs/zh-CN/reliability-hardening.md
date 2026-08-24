@@ -136,9 +136,9 @@ Terminal Receipt、Trace 和 Event 共用同一份冻结 Measurement。Runtime H
 状态来自 Active Registry 与 Engine Recorder；终态事实来自 Terminal Envelope。
 
 Observation Plane 在 Privacy Admission 后持久化和导出。Queue、Journal、CAS 或
-Exporter Failure 更新 Observation Health，但没有执行权威。判断泄漏时必须同时检查
-Active Turn、Provider/Tool Recorder、Lease 和 Pending Interaction，不能只检查
-`spans` 表。
+Exporter Failure 通过 Admission Receipt 或 `Flush`/`Shutdown` 暴露，但没有执行
+权威。判断泄漏时必须同时检查 Active Turn、Provider/Tool Recorder、Lease 和 Pending
+Interaction，不能只检查 `spans` 表。
 
 ## 验证矩阵
 

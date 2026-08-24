@@ -658,9 +658,17 @@ func (s *Server) deleteSession(
 	var request struct {
 		SessionID        string `json:"session_id"`
 		ExpectedRevision uint64 `json:"expected_revision"`
+		Discard          bool   `json:"discard,omitempty"`
 	}
 	if err := s.decodeRequest(r, &request); err != nil {
 		return nil, err
+	}
+	if request.Discard {
+		return dependencies.Runtime.DiscardSession(
+			r.Context(),
+			request.SessionID,
+			request.ExpectedRevision,
+		)
 	}
 	return dependencies.Runtime.DeleteSession(
 		r.Context(),

@@ -82,6 +82,12 @@ test("boots the real Runtime with an accessible empty state", async ({page}) => 
   await expect(page.locator('button[aria-label="New chat"]')).toBeVisible();
   await expect(page.getByRole("button", {name: "Settings"})).toBeVisible();
   await expect(page.getByRole("textbox", {name: "Search sessions"})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Start a new session"})).toBeVisible();
+  await expect(page.getByText("Not required", {exact: true})).toBeVisible();
+  await expect(page.getByRole("button", {name: "Create session"})).toBeVisible();
+  await expect(page.getByPlaceholder("Ask CodeHelper")).toHaveCount(0);
+  await expect(page.getByLabel("Session details")).toHaveCount(0);
+  await expect(page.getByRole("button", {name: /detail panel/i})).toHaveCount(0);
 
   await page.locator('button[aria-label="New chat"]').focus();
   await page.keyboard.press("Tab");
@@ -107,15 +113,33 @@ test("passes the WCAG A and AA accessibility scan", async ({page}) => {
 
 test("creates a Session and completes a fixture-backed Turn", async ({page}) => {
   await page.goto(baseURL);
-  await page.locator('button[aria-label="New chat"]').click();
+  await page.getByRole("button", {name: "Create session"}).click();
 
   const composer = page.getByPlaceholder("Ask CodeHelper");
   await expect(composer).toBeEnabled();
+  await expect(page.getByLabel("Session details")).toBeVisible();
   await composer.fill("say hello");
   await page.getByRole("button", {name: "Send"}).click();
 
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
   await expect(page.getByText("Working", {exact: true})).toHaveCount(0);
+});
+
+test("deletes the final Session after explicit confirmation", async ({page}) => {
+  await page.goto(baseURL);
+  await page.locator('button[aria-label="New chat"]').click();
+  await expect(page.locator(".sessionRow")).toHaveCount(1);
+  page.once("dialog", (dialog) => dialog.accept());
+
+  await page.locator(".detailPanel").getByRole("button", {
+    name: "Delete session"
+  }).click();
+
+  await expect(page.locator(".sessionRow")).toHaveCount(0);
+  await expect(page.getByRole("heading", {name: "Start a new session"})).toBeVisible();
+  await expect(page.getByRole("button", {name: "Create session"})).toBeVisible();
+  await expect(page.getByPlaceholder("Ask CodeHelper")).toHaveCount(0);
+  await expect(page.getByLabel("Session details")).toHaveCount(0);
 });
 
 test("restores the selected Session and transcript after a browser reload", async ({page}) => {
@@ -137,18 +161,16 @@ test("restores the selected Session and transcript after a browser reload", asyn
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
 });
 
-test("loads the Runtime provider and model catalogs into profile controls", async ({page}) => {
+test("shows the fixed provider and single-model route as read-only", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
 
   const provider = page.getByLabel("Provider");
   const model = page.getByLabel("Model");
-  await expect(provider).toHaveValue("fixture");
-  await expect(model).toHaveValue("fixture-model");
-  await expect(provider).toHaveJSProperty("tagName", "SELECT");
-  await expect(model).toHaveJSProperty("tagName", "SELECT");
-  await expect(provider.locator("option")).not.toHaveCount(0);
-  await expect(model.locator("option")).not.toHaveCount(0);
+  await expect(provider).toHaveText("fixture");
+  await expect(model).toHaveText("fixture-model");
+  await expect(provider).toHaveJSProperty("tagName", "OUTPUT");
+  await expect(model).toHaveJSProperty("tagName", "OUTPUT");
 });
 
 test("browses workspace resources and restores an archived Session", async ({page}) => {
@@ -267,7 +289,7 @@ test("keeps primary UI inside supported viewports with reduced motion", async ({
   const zoomed = await page.evaluate(() => ({
     overflow: document.documentElement.scrollWidth - window.innerWidth,
     composerVisible: Boolean(
-      document.querySelector<HTMLElement>(".composer textarea")?.offsetParent
+      document.querySelector<HTMLElement>(".composer, .startupSetup")?.offsetParent
     )
   }));
   expect(zoomed.overflow).toBeLessThanOrEqual(0);

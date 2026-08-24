@@ -19,9 +19,10 @@ import (
 )
 
 type ProviderConfig struct {
-	Provider provider.Provider
-	Route    model.ReadyRoute
-	Routes   model.RouteSet
+	Provider         provider.Provider
+	Route            model.ReadyRoute
+	Routes           model.RouteSet
+	SelectableRoutes map[string]model.ReadyRoute
 
 	MaxOutputTokens uint64
 	MaxSteps        int

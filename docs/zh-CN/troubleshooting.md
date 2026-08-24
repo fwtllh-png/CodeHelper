@@ -164,12 +164,12 @@ env | rg '^(CODEHELPER_OBSERVATION_CAPTURE|CODEHELPER_OTEL_EXPORTER|OTEL_EXPORTE
 - `metadata` 会有意省略 Raw Payload；
 - `failure` 只为 Failure-like Observation 保留符合条件的 Payload；
 - 无效 Capture Mode 会显式阻止 Runtime 构造；
-- Remote OTLP Exporter 不可用时会回退 In-memory Projector。
+- Remote OTLP Exporter 不可用时会关闭 OTLP Projection。
 
 Durable Observation Journal 位于所选 State Directory 下的
 `observability/journal-v1`；修改 `--data-dir` 会改变该位置。Observation Payload
 Retention 按时间管理，与 `state.event_retention` 不同。OTLP 缺失或 Observation
-Drop 只影响 Observation Health，不改变权威 Turn Outcome。排查 Collector 时不能
+Drop 通过 Admission Receipt 或 Flush 错误体现，不改变权威 Turn Outcome。排查 Collector 时不能
 重写 Runtime Event、Receipt 或 Terminal Envelope。
 
 ## Web Runtime 不可用

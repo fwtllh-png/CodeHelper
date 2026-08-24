@@ -54,6 +54,7 @@ type agentBuildState struct {
 	seedOptions         agentengine.Options
 	defaultProfile      protocol.SessionProfile
 	profileCapabilities protocol.SessionProfileCapabilities
+	profileModels       map[string]protocol.ModelCapabilities
 	threads             *app.ThreadManager
 }
 

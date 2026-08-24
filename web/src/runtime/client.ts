@@ -235,7 +235,10 @@ export class RuntimeClient {
     await this.refreshSessions("", true, includeArchived);
   }
 
-  async createSession(isolation: "shared" | "worktree" = "shared"): Promise<void> {
+  async createSession(
+    isolation: "shared" | "worktree" = "shared",
+    profilePatch?: Record<string, unknown>
+  ): Promise<void> {
     const idempotencyKey = crypto.randomUUID();
     const sessionID = `session_web_${idempotencyKey}`;
     const binding = await this.call<SessionBinding>(
@@ -245,6 +248,9 @@ export class RuntimeClient {
     );
     await this.refreshSessions("", false);
     await this.selectSession(binding.session_id);
+    if (profilePatch && Object.keys(profilePatch).length > 0) {
+      await this.updateProfile(profilePatch);
+    }
   }
 
   async updateSession(
@@ -260,10 +266,15 @@ export class RuntimeClient {
     await this.refreshSessions();
   }
 
-  async deleteSession(sessionID: string, expectedRevision: number): Promise<void> {
+  async deleteSession(
+    sessionID: string,
+    expectedRevision: number,
+    discard = false
+  ): Promise<void> {
     await this.call<SessionDeleteResult>("session/delete", {
       session_id: sessionID,
-      expected_revision: expectedRevision
+      expected_revision: expectedRevision,
+      discard
     });
     if (this.state.selectedSessionID === sessionID) {
       this.selectionGeneration += 1;

@@ -216,8 +216,6 @@ func (m Model) dispatchSlash(action commands.Action) Model {
 			m = m.popLastStatus()
 			m = m.noteStatus(label + ":ok")
 		}
-	case commands.KindRedo, commands.KindCopy:
-		m = m.noteStatus(string(action.Kind) + ":noop")
 	case commands.KindCost, commands.KindUsage:
 
 		return m.openPanel(PanelCost)
@@ -326,7 +324,7 @@ func (m Model) cyclePosture() Model {
 }
 
 func (m Model) applyToolModeArg(args []string) Model {
-	next := m.toolMode
+	var next policy.Mode
 	if len(args) == 0 {
 		switch m.toolMode {
 		case policy.ModePlan:

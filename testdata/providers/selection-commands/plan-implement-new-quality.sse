@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_plan_new_quality","function":{"name":"quality_verify","arguments":"{\"command\":\"test -f plan-new-session.txt\",\"covered_paths\":[\"plan-new-session.txt\"]}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

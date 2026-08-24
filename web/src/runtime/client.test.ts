@@ -69,6 +69,7 @@ describe("RuntimeClient", () => {
   let snapshotGate: Promise<void> | undefined;
   let profileGate: Promise<void> | undefined;
   let failNextCreate = false;
+  let createdSession = false;
   let failToolCatalog = false;
   let currentProvider = "fixture";
   let currentModel = "fixture";
@@ -85,6 +86,7 @@ describe("RuntimeClient", () => {
     snapshotGate = undefined;
     profileGate = undefined;
     failNextCreate = false;
+    createdSession = false;
     failToolCatalog = false;
     currentProvider = "fixture";
     currentModel = "fixture";
@@ -178,6 +180,7 @@ describe("RuntimeClient", () => {
           failNextCreate = false;
           throw new TypeError("connection reset");
         }
+        createdSession = true;
         return envelope({
           session_id: "session-new",
           thread_id: "thread-new",
@@ -187,32 +190,49 @@ describe("RuntimeClient", () => {
           isolation: body.isolation
         });
       }
-      if (route.endsWith("/session/list")) {
+      if (route.endsWith("/session/delete")) {
         return envelope({
           version: 1,
-          sessions: [{
-            version: 1,
-            revision: 1,
-            session_id: "session",
-            thread_id: "thread",
-            title: "Chat",
-            status: "idle",
-            pinned: false,
-            archived: false,
-            isolation: "shared",
-            workspace_root: "/workspace",
-            workspace_label: "workspace",
-            latest_sequence: 0,
-            pending_approvals: 0,
-            pending_inputs: 0,
-            checkpoint_count: 0,
-            changed_files: 0,
-            total_tokens: 0,
-            cost_microunits: 0,
-            cost_known: true,
-            created_at: "2026-01-01T00:00:00Z",
-            updated_at: "2026-01-01T00:00:00Z"
-          }]
+          session_id: body.session_id,
+          thread_id: "thread",
+          deleted_at: "2026-01-01T00:00:00Z"
+        });
+      }
+      if (route.endsWith("/session/list")) {
+        const sessions = [{
+          version: 1,
+          revision: 1,
+          session_id: "session",
+          thread_id: "thread",
+          title: "Chat",
+          status: "idle",
+          pinned: false,
+          archived: false,
+          isolation: "shared",
+          workspace_root: "/workspace",
+          workspace_label: "workspace",
+          latest_sequence: 0,
+          pending_approvals: 0,
+          pending_inputs: 0,
+          checkpoint_count: 0,
+          changed_files: 0,
+          total_tokens: 0,
+          cost_microunits: 0,
+          cost_known: true,
+          created_at: "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z"
+        }];
+        if (createdSession) {
+          sessions.push({
+            ...sessions[0],
+            session_id: "session-new",
+            thread_id: "thread-new",
+            title: "New Chat"
+          });
+        }
+        return envelope({
+          version: 1,
+          sessions
         });
       }
       if (route.endsWith("/session/activate")) {
@@ -564,6 +584,43 @@ describe("RuntimeClient", () => {
     });
     expect(creates[0]?.headers.get("Idempotency-Key")).toBe("request-id");
     expect(creates[1]?.headers.get("Idempotency-Key")).toBe("request-id");
+    client.stop();
+  });
+
+  it("applies startup model choices after creating the session", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.createSession("worktree", {
+      model: "reasoner",
+      reasoning_effort: "high"
+    });
+
+    const update = requests.find(
+      (request) => request.route.endsWith("/profile/update")
+    );
+    expect(update?.body).toMatchObject({
+      patch: {
+        model: "reasoner",
+        reasoning_effort: "high"
+      }
+    });
+    expect(client.getSnapshot().profile?.profile.model).toBe("reasoner");
+    client.stop();
+  });
+
+  it("sends explicit discard intent when deleting a session", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.deleteSession("session", 1, true);
+
+    expect(requests.find((request) => request.route.endsWith("/session/delete"))?.body)
+      .toEqual({
+        session_id: "session",
+        expected_revision: 1,
+        discard: true
+      });
     client.stop();
   });
 

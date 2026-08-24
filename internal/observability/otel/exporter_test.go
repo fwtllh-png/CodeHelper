@@ -17,3 +17,11 @@ func TestEnvironmentExporterAliases(t *testing.T) {
 		})
 	}
 }
+
+func TestEnvironmentExporterDefaultsOffWithoutEndpoint(t *testing.T) {
+	t.Setenv("CODEHELPER_OTEL_EXPORTER", "")
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	if got := environmentOptions().Protocol; got != ExportOff {
+		t.Fatalf("protocol = %q, want %q", got, ExportOff)
+	}
+}

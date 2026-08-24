@@ -53,14 +53,6 @@ type Store struct {
 	closed   bool
 }
 
-// Disk is an alias for Store.
-type Disk = Store
-
-// New opens or creates a store at root.
-func New(root string) (*Store, error) {
-	return Open(root)
-}
-
 // Open opens or creates a store at root.
 func Open(root string) (_ *Store, retErr error) {
 	if root == "" {
@@ -115,11 +107,6 @@ func Open(root string) (_ *Store, retErr error) {
 func ID(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
-}
-
-// StableID returns the canonical lowercase SHA-256 ID for data.
-func StableID(data []byte) string {
-	return ID(data)
 }
 
 // Root returns the absolute directory anchoring the store.

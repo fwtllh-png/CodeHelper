@@ -97,6 +97,61 @@ func TestSessionLifecycleOverlaysLiveStateAndProtectsArchiveDelete(t *testing.T)
 	}
 }
 
+func TestDiscardSessionRejectsLiveTurnAndClearsOrphanedApproval(t *testing.T) {
+	store := &memorySessionLifecycleStore{summary: protocol.SessionSummary{
+		Version: protocol.SessionLifecycleVersion, Revision: 1,
+		SessionID: "session-discard", ThreadID: "thread-discard",
+		Title: "Discard", Status: protocol.SessionStatusCompleted,
+		Isolation: "shared", WorkspaceRoot: "/workspace",
+		ExecutionTarget: "local", WorkspaceLabel: "workspace",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}}
+	runtime := NewRuntime(Options{SessionLifecycle: store})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	lease, err := runtime.active.Reserve(
+		"thread-discard",
+		"turn-discard",
+		"operation-discard",
+		"item-discard",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.EventService.mu.Lock()
+	runtime.approvals["approval-discard"] = PendingApproval{
+		RequestID: "approval-discard", ThreadID: "thread-discard",
+		TurnID: "turn-discard",
+	}
+	runtime.EventService.mu.Unlock()
+
+	if _, err := runtime.DiscardSession(
+		t.Context(),
+		store.summary.SessionID,
+		store.summary.Revision,
+	); err == nil || !protocol.IsCode(err, protocol.CodeConflict) {
+		t.Fatalf("live discard error = %v", err)
+	}
+	if store.deleted {
+		t.Fatal("live session was discarded")
+	}
+	if err := runtime.active.Release(lease); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.DiscardSession(
+		t.Context(),
+		store.summary.SessionID,
+		store.summary.Revision,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !store.deleted || !store.discarded {
+		t.Fatal("orphaned session was not explicitly discarded")
+	}
+	if snapshot := runtime.Snapshot(t.Context()); snapshot.PendingApprovals != 0 {
+		t.Fatalf("orphaned approvals were not cleared: %+v", snapshot)
+	}
+}
+
 func TestSessionSearchProjectsPreciseTurnMatchAndSnippet(t *testing.T) {
 	now := time.Now().UTC()
 	store := &memorySessionLifecycleStore{searchMiss: true, summary: protocol.SessionSummary{
@@ -391,11 +446,25 @@ func TestDeleteSessionProtectsAndDiscardsWorktree(t *testing.T) {
 		t.Context(),
 		store.summary.SessionID,
 		store.summary.Revision,
-	); err == nil {
+	); err == nil || !protocol.IsCode(err, protocol.CodeConflict) {
 		t.Fatal("session with unmerged worktree changes was deleted")
 	}
 	if store.deleted || workspaces.discarded {
 		t.Fatal("protected worktree deletion changed durable state")
+	}
+	workspaces.plan.Files = nil
+	workspaces.planErr = errors.New("merge preview failed")
+	if _, err := runtime.DeleteSession(
+		t.Context(),
+		store.summary.SessionID,
+		store.summary.Revision,
+	); err == nil ||
+		!protocol.IsCode(err, protocol.CodeConflict) ||
+		err.Error() != "cannot delete session while its isolated worktree has unresolved changes" {
+		t.Fatalf("worktree validation error = %v", err)
+	}
+	if store.deleted || workspaces.discarded {
+		t.Fatal("failed worktree validation changed durable state")
 	}
 	workspaces.plan.Files = nil
 	workspaces.planErr = ErrSessionWorkspaceClean
@@ -411,9 +480,42 @@ func TestDeleteSessionProtectsAndDiscardsWorktree(t *testing.T) {
 	}
 }
 
+func TestDiscardSessionDiscardsUnmergedWorktree(t *testing.T) {
+	store := &memorySessionLifecycleStore{summary: protocol.SessionSummary{
+		Version: protocol.SessionLifecycleVersion, Revision: 1,
+		SessionID: "session-worktree-discard", ThreadID: "thread-worktree-discard",
+		Title: "Worktree discard", Status: protocol.SessionStatusCompleted,
+		Isolation: "worktree", WorkspaceRoot: "/workspace",
+		WorkspaceLabel: "workspace",
+		CreatedAt:      time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}}
+	workspaces := &memorySessionWorkspaces{
+		plan: tool.EditPlan{
+			ID: "plan", Files: []tool.EditPlanFile{{Path: "changed.go"}},
+		},
+	}
+	runtime := NewRuntime(Options{
+		SessionLifecycle:  store,
+		SessionWorkspaces: workspaces,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	if _, err := runtime.DiscardSession(
+		t.Context(),
+		store.summary.SessionID,
+		store.summary.Revision,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if !store.deleted || !store.discarded || !workspaces.discarded {
+		t.Fatal("explicit discard did not remove the session and worktree")
+	}
+}
+
 type memorySessionLifecycleStore struct {
 	summary    protocol.SessionSummary
 	deleted    bool
+	discarded  bool
 	searchMiss bool
 }
 
@@ -598,4 +700,13 @@ func (s *memorySessionLifecycleStore) DeleteLifecycle(
 		SessionID: sessionID, ThreadID: s.summary.ThreadID,
 		DeletedAt: time.Now().UTC(),
 	}, nil
+}
+
+func (s *memorySessionLifecycleStore) DiscardLifecycle(
+	ctx context.Context,
+	sessionID string,
+	expectedRevision uint64,
+) (protocol.SessionDeleteResult, error) {
+	s.discarded = true
+	return s.DeleteLifecycle(ctx, sessionID, expectedRevision)
 }

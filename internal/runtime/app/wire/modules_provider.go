@@ -35,17 +35,33 @@ func (providerModule) Build(ctx context.Context, state *buildState) error {
 	}
 	egressGate := &egress.Gate{Enforce: true}
 	grantRouteHosts(egressGate, routes)
-	client := configureProviderClient(execution, egressGate, session.metrics)
+	client := configureProviderClient(
+		execution,
+		egressGate,
+		session.metrics,
+		options.CredentialControl,
+		routes.Act().Credential(),
+	)
 	runtimeProvider, err := newProviderRouter(client, routes)
 	if err != nil {
 		return err
 	}
 	capabilities := selectedModelCapabilities(routes.Act())
+	selectableRoutes, err := runtimeSelectableRoutes(
+		routes.Act(),
+		options.BaseURL == "" && session.fixture == nil,
+	)
+	if err != nil {
+		return fmt.Errorf("selectable model routes: %w", err)
+	}
 	providerCatalog, modelCatalog := runtimeModelCatalog(
-		routes.Act().ProviderID(), routes.Act().Model().ID, capabilities,
+		routes.Act(),
+		capabilities,
+		selectableRoutes,
 	)
 	state.provider = providerBuildState{
-		routes: routes, route: routes.Act(), egress: egressGate, provider: runtimeProvider,
+		routes: routes, route: routes.Act(), selectableRoutes: selectableRoutes,
+		egress: egressGate, provider: runtimeProvider,
 		toolSampler:     agentengine.NewToolSampler(runtimeProvider),
 		providerCatalog: providerCatalog, modelCatalog: modelCatalog,
 		modelCapabilities: capabilities,
@@ -169,10 +185,5 @@ func buildRouteSet(
 }
 
 func selectedModelCapabilities(route model.ReadyRoute) protocol.ModelCapabilities {
-	capabilities := catalogModelCapabilities(route.Model())
-	if !capabilities.Reasoning {
-		return capabilities
-	}
-	capabilities.DefaultReasoningEffort = "low"
-	return capabilities
+	return catalogModelCapabilities(route.Model())
 }

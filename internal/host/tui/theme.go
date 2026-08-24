@@ -91,7 +91,6 @@ func applyTheme(t Theme) {
 	styleTool = lipgloss.NewStyle().Foreground(t.Info)
 	styleToolLive = lipgloss.NewStyle().Foreground(t.Live)
 	styleToolDone = lipgloss.NewStyle().Foreground(t.ToolDone)
-	styleToolWait = lipgloss.NewStyle().Foreground(t.ToolWait)
 	styleHeader = lipgloss.NewStyle().Bold(true).Foreground(t.HeaderFg).Background(t.HeaderBg).Padding(0, 1)
 	styleChip = lipgloss.NewStyle().Foreground(t.ChipFg).Background(t.ChipBg).Bold(true)
 	stylePhaseWorking = lipgloss.NewStyle().Foreground(t.HeaderBg).Background(t.PhaseWork)

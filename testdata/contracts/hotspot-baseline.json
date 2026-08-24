@@ -23,9 +23,7 @@
           "attachImage"
         ],
         "state_projection": [
-          "streamMsg",
-          "StreamOutputMessage",
-          "StreamDoneMessage"
+          "streamMsg"
         ],
         "panels": [
           "openPanel",

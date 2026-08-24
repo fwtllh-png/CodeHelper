@@ -156,7 +156,7 @@ func writeDocument(path string, doc Document) error {
 	}
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath)
-	if err := tmp.Chmod(0o600); err == nil {
+	if err = tmp.Chmod(0o600); err == nil {
 		_, err = tmp.Write(data)
 	}
 	if err == nil {

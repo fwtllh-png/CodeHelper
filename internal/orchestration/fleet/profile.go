@@ -71,22 +71,3 @@ func LoadRoster(dir, name string) (Profile, error) {
 	path := filepath.Join(dir, name+".toml")
 	return LoadProfile(path)
 }
-
-// WriteTemplate writes a minimal profile template if missing.
-func WriteTemplate(path string) error {
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	body := []byte(`name = "default"
-max_workers = 2
-lease_timeout = "2m"
-heartbeat_alert = "2m"
-
-[roles]
-worker = "default"
-`)
-	return os.WriteFile(path, body, 0o600)
-}

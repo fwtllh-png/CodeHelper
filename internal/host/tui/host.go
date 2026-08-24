@@ -196,7 +196,7 @@ func (h *SessionHost) pump(ctx context.Context, events <-chan protocol.Event, tu
 				continue
 			}
 			parentEvent := event.TurnID == turnID
-			if !parentEvent && !tuiWorkspaceEvent(update) {
+			if !parentEvent && !facade.WorkspaceEvent(update) {
 				continue
 			}
 			h.rememberInteraction(event, update)
@@ -260,8 +260,8 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 	case facade.InteractionUpdate:
 		if data.ApprovalRequired != nil {
 			approval := data.ApprovalRequired
-			id, text := string(event.ItemID), "approval required"
 			id, tool, args := approval.RequestID, approval.Tool, approval.Arguments
+			text := "approval required"
 			if approval.Network != nil && approval.Network.Host != "" {
 				scheme := approval.Network.Protocol
 				if scheme == "" {
@@ -397,21 +397,6 @@ func mapRuntimeEvent(event protocol.Event) tea.Msg {
 		}
 	}
 	return nil
-}
-
-func tuiWorkspaceEvent(update facade.EventUpdate) bool {
-	switch data := update.(type) {
-	case facade.AgentUpdate:
-		return true
-	case facade.InteractionUpdate:
-		source := data.Source
-		if data.ApprovalRequired != nil {
-			source = data.ApprovalRequired.Source
-		}
-		return source != nil && source.Kind == "agent"
-	default:
-		return false
-	}
 }
 
 func (h *SessionHost) rememberInteraction(

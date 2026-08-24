@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
@@ -34,7 +35,11 @@ func TestMCPContributorDefersAdapterUntilBackgroundRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := tool.NewRegistry(nil, nil)
-	pool, prewarm, err := RegisterMCPTools(t.Context(), registry, path)
+	config, err := mcpruntime.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, prewarm, err := RegisterMCPConfig(registry, config)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,6 +18,7 @@ import (
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/credential"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -43,6 +44,7 @@ type ExecOptions struct {
 	WorkingSet          []ContextFile
 	PromptBudgets       map[string]promptcontext.Budget
 	PersistentStore     *state.Store
+	CredentialControl   *credential.Control
 	Extensions          ExtensionOptions
 	// TrustProbe lets probe "supported" observations widen catalog capabilities.
 	// Without it, probes may only tighten.

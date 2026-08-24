@@ -78,7 +78,7 @@ func TestStateGraphCanonicalPathsCoverEveryPhaseAndTerminal(t *testing.T) {
 		},
 	}).State)
 	verified = record(apply(t, verified, VerificationStarted{}).State)
-	verified = record(apply(t, verified, VerificationFinished{
+	_ = record(apply(t, verified, VerificationFinished{
 		Status: VerificationPassed,
 		EvidenceCalls: []string{
 			"verify-1",

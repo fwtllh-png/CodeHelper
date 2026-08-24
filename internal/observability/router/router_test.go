@@ -322,11 +322,10 @@ func TestPayloadDeduplicationRateIsObservable(t *testing.T) {
 	if err := router.Flush(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	health := router.Snapshot()
-	if health.PayloadWritten != 2 ||
-		health.PayloadDeduplicated != 1 ||
-		health.PayloadDedupRate != 0.5 {
-		t.Fatalf("health = %+v", health)
+	id := cas.ID([]byte("same payload"))
+	if references, err := payloads.References(t.Context(), id); err != nil ||
+		references != 2 {
+		t.Fatalf("payload references = %d, error = %v", references, err)
 	}
 }
 
@@ -351,9 +350,6 @@ func TestJournalFailureReleasesPayloadAndDoesNotEscape(t *testing.T) {
 	}
 	if payloads.releaseCount() != 1 {
 		t.Fatalf("payload releases = %d", payloads.releaseCount())
-	}
-	if router.Snapshot().WriteFailures["journal_write"] != 1 {
-		t.Fatalf("health = %+v", router.Snapshot())
 	}
 	if len(projector.snapshot()) != 0 {
 		t.Fatal("failed journal append reached the OTEL projector")
@@ -381,9 +377,6 @@ func TestAsynchronousJournalFailureIsReturnedByFlush(t *testing.T) {
 	}
 	if err := router.Close(t.Context()); !errors.Is(err, writeErr) {
 		t.Fatalf("Close() error = %v, want %v", err, writeErr)
-	}
-	if router.Snapshot().WriteFailures["journal_write"] != 1 {
-		t.Fatalf("health = %+v", router.Snapshot())
 	}
 }
 
@@ -449,11 +442,6 @@ func TestPayloadFailureRetainsMetadataWithoutDanglingReference(t *testing.T) {
 	envelopes := writer.snapshot()
 	if len(envelopes) != 1 || envelopes[0].Payload != nil {
 		t.Fatalf("envelopes = %+v", envelopes)
-	}
-	snapshot := router.Snapshot()
-	if snapshot.WriteFailures["payload_write"] != 1 ||
-		snapshot.PayloadDropped != 1 {
-		t.Fatalf("health = %+v", snapshot)
 	}
 }
 
@@ -541,9 +529,6 @@ func TestQueuePriorityEvictsBulkBeforeNormal(t *testing.T) {
 		if envelope.Kind == observation.KindToolRuntimeOutput {
 			t.Fatal("bulk record was not evicted")
 		}
-	}
-	if router.Snapshot().Dropped["priority_eviction"] != 1 {
-		t.Fatalf("health = %+v", router.Snapshot())
 	}
 }
 

@@ -78,8 +78,9 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	session.turnCoordinators = contextRuntime.durable
 	catalog := state.tools.skillCatalog
 	seedOptions := agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: state.provider.provider,
-		Route:  route,
-		Routes: state.provider.routes,
+		Route:            route,
+		Routes:           state.provider.routes,
+		SelectableRoutes: state.provider.selectableRoutes,
 
 		MaxOutputTokens: execution.MaxOutputTokens,
 
@@ -208,7 +209,12 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		PromptCacheRevision: 1,
 	}
 	session.configuration.profile = defaultProfile
-	mutableFields := []string{"mode", "max_steps"}
+	profileModels, modelFields := runtimeProfileModels(
+		state.provider.modelCatalog,
+		defaultProfile.Provider,
+		state.provider.modelCapabilities,
+	)
+	mutableFields := append([]string{"mode", "max_steps"}, modelFields...)
 	if modelCapabilities.ToolCalls {
 		mutableFields = append(mutableFields, "enabled_tool_ids")
 	}
@@ -342,6 +348,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		seedOptions:         seedOptions,
 		defaultProfile:      defaultProfile,
 		profileCapabilities: profileCapabilities,
+		profileModels:       profileModels,
 		threads:             threadManager,
 	}
 	return nil
@@ -367,6 +374,7 @@ func (runtimeModule) Build(
 			DefaultProfile:      state.agent.defaultProfile,
 			ToolCatalog:         state.tools.registry,
 			ProfileCapabilities: state.agent.profileCapabilities,
+			ProfileModels:       state.agent.profileModels,
 			SessionWorkspaces:   session.chatWorkspaces,
 			SkipRuntimeRecovery: state.options.RuntimeRole == RuntimeRoleWorker,
 		})

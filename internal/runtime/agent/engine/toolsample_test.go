@@ -18,7 +18,6 @@ import (
 type samplingTool struct {
 	sampler provider.Provider
 	route   model.ReadyRoute
-	usage   provider.Usage
 }
 
 func (samplingTool) Descriptor() tool.Descriptor {

@@ -70,6 +70,35 @@ func TestOneSlotChangesOnlyItsOwnPurpose(t *testing.T) {
 	}
 }
 
+func TestWithActPreservesPurposeSlotsAndLock(t *testing.T) {
+	act := testRoute(t, "deepseek", "deepseek-chat")
+	reasoner := testRoute(t, "deepseek", "deepseek-reasoner")
+	routes, err := NewRouteSet(
+		act,
+		map[Purpose]ReadyRoute{PurposePlan: reasoner},
+		true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := routes.WithAct(reasoner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Act().Model().ID != "deepseek-reasoner" ||
+		!updated.Locked() {
+		t.Fatalf("updated route set = %+v", updated)
+	}
+	planned, err := updated.For(PurposePlan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if planned.Model().ID != "deepseek-reasoner" {
+		t.Fatalf("plan route model = %q", planned.Model().ID)
+	}
+}
+
 func TestLockRefusesToFallBackInsteadOfSubstitutingAct(t *testing.T) {
 	act := testRoute(t, "anthropic", "claude-sonnet")
 	plan := testRoute(t, "openai", "gpt-4.1")

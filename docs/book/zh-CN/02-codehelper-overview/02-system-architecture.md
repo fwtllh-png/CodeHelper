@@ -217,7 +217,7 @@ Chat Merge 与 Durable Repository 行为成为可独立测试的 Service，不�
 SQLite 保存关系 Projection 与 WorkGraph/Turn Fact；Runtime Event Log 保存 Host-facing
 Lifecycle Evidence；CAS 保存不可变 Payload；Snapshot 加速恢复；Workspace Journal
 记录 Edit Before-image。独立 Observation Journal 保存通过 Privacy Admission 的因果
-证据，用于 Semantic Replay/OTLP，但不获得执行权威。
+证据，用于按 Cursor 重放和 OTLP 投影，但不获得执行权威。
 
 Task、Workflow、Automation、Background Command、Verification 与 Agent Work 编译为
 统一 Durable WorkGraph。Worker 是唯一 Claim Authority；Fleet 是 Read/Audit

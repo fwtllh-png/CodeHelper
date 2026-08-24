@@ -33,6 +33,7 @@ type Service struct {
 	keyring         store
 	probe           func(context.Context, Reference) error
 	control         *Control
+	liveReload      bool
 	restartRequired bool
 }
 
@@ -56,6 +57,12 @@ func WithControl(control *Control) Option {
 		if control != nil {
 			service.keyring = control.keyring
 		}
+	}
+}
+
+func WithLiveReload() Option {
+	return func(service *Service) {
+		service.liveReload = true
 	}
 }
 
@@ -98,8 +105,13 @@ func (s *Service) SetKeyring(
 			return Status{}, err
 		}
 		s.reference = reference
-		s.restartRequired = true
-		return s.statusFor(ctx, true, reference, true)
+		s.restartRequired = !s.liveReload
+		return s.statusFor(
+			ctx,
+			true,
+			reference,
+			s.restartRequired,
+		)
 	}
 	if err := s.keyring.Set(s.reference.Name, secret); err != nil {
 		return Status{}, err
@@ -121,9 +133,10 @@ func (s *Service) ClearKeyring(ctx context.Context) (Status, error) {
 			return Status{}, err
 		}
 		s.reference = Reference{}
-		s.restartRequired = true
+		s.restartRequired = !s.liveReload
 		return Status{
-			Validation: "not_validated", RestartRequired: true,
+			Validation:      "not_validated",
+			RestartRequired: s.restartRequired,
 		}, nil
 	}
 	if err := s.keyring.Delete(s.reference.Name); err != nil {

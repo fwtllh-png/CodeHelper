@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_high_risk","function":{"name":"exec_command","arguments":"{\"command\":\"printf 'approved high risk mutation\\\\n' > risk.txt\",\"write_paths\":[\"risk.txt\"]}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

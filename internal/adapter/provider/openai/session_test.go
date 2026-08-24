@@ -260,7 +260,7 @@ func TestResponsesSessionConnectionResetDefersFullFallbackToNextCall(t *testing.
 		provider.TextMessage(provider.RoleAssistant, "answer"),
 		provider.TextMessage(provider.RoleUser, "next"),
 	)
-	stream, err = client.Stream(t.Context(), second)
+	_, err = client.Stream(t.Context(), second)
 	if !protocol.IsCode(err, protocol.CodeUnavailable) {
 		t.Fatalf("reset Stream() error = %v", err)
 	}

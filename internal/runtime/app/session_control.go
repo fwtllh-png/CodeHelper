@@ -12,8 +12,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const maxPresentationSnapshotBytes = 2 << 20
-
 type sessionCreateStore interface {
 	CreateLifecycle(
 		context.Context,

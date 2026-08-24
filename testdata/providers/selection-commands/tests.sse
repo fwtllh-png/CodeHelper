@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_selection_tests","function":{"name":"file_write","arguments":"{\"path\":\"selection-test.txt\",\"content\":\"selection test generated\\n\"}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

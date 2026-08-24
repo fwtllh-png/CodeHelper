@@ -32,8 +32,10 @@ func ClassifySurface(toolName string, capability Capability) Surface {
 	switch {
 	case strings.HasPrefix(name, "mcp_") || strings.Contains(name, "__mcp__"):
 		return SurfaceMCP
-	case name == "load_skill" || name == "skill" ||
-		strings.HasPrefix(name, "skill_") || strings.HasPrefix(name, "skills."):
+	case name == "skill" ||
+		strings.HasPrefix(name, "skill_") ||
+		strings.HasPrefix(name, "skills_") ||
+		strings.HasPrefix(name, "skills."):
 		return SurfaceSkills
 	case name == "exec_command" || name == "write_stdin" ||
 		name == "shell_read" || name == "shell" ||

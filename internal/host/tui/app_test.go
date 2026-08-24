@@ -281,8 +281,7 @@ func TestApprovalQueueFIFOAdvances(t *testing.T) {
 	if strings.Contains(view, "queued") {
 		t.Fatalf("no remaining queue expected: %q", view)
 	}
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	model = updated.(tui.Model)
+	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if len(host.approvals) != 2 || host.approvals[1] != "req-b:cancel" {
 		t.Fatalf("second decision = %v", host.approvals)
 	}

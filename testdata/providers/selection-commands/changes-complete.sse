@@ -1,5 +1,0 @@
-data: {"choices":[{"delta":{"content":"multi-file plan applied"},"finish_reason":null}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":48,"completion_tokens":3}}
-
-data: [DONE]

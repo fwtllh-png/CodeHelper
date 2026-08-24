@@ -65,7 +65,7 @@ func EnsureThread(
 	if sessionID == "" {
 		sessionID = "session-local"
 	}
-	absRoot, err := taskstate.NormalizeWorkspaceRoot(workspaceRoot)
+	absRoot, err := sessionstate.NormalizeWorkspaceRoot(workspaceRoot)
 	if err != nil {
 		return fmt.Errorf("resolve workspace root: %w", err)
 	}
@@ -77,16 +77,11 @@ func EnsureThread(
 	} else if !errors.Is(err, sessionstate.ErrNotFound) {
 		return err
 	}
-	workspaceID := "workspace-" + sessionID
-	_, err = repositories.Threads.CreateSeed(
-		ctx,
-		sessionstate.Workspace{
-			ID: workspaceID, RootPath: absRoot, DisplayName: "codehelper",
-		},
-		sessionstate.Session{
-			ID: sessionID, WorkspaceID: workspaceID, Status: sessionstate.StatusOpen,
-		},
-		threadstate.Thread{ID: threadID, SessionID: sessionID, Title: "exec"},
-	)
+	if err := repositories.Sessions.EnsureSeed(ctx, sessionID, absRoot); err != nil {
+		return err
+	}
+	_, err = repositories.Threads.Create(ctx, threadstate.Thread{
+		ID: threadID, SessionID: sessionID, Title: "exec",
+	})
 	return err
 }

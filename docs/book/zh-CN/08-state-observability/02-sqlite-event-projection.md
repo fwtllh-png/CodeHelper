@@ -103,10 +103,11 @@ Runtime Event 与 Observation 回答不同问题：
 | Stream | Authority | Primary Consumer |
 | --- | --- | --- |
 | Runtime Event Log | Lifecycle 与 Host Replay | Runtime Recovery/Host |
-| Observation Journal | 脱敏因果证据 | Diagnostics、Semantic Reducer、OTLP |
+| Observation Journal | 脱敏因果证据 | Diagnostics、Cursor Replay、OTLP |
 
-Observation Queue、Journal 或 Exporter Failure 会更新 Health Counter，但不能合成
-Runtime Event、修改 Receipt Outcome 或回滚已完成的业务 Transition。
+Observation Queue、Journal 或 Exporter Failure 会通过 Admission Receipt 或
+`Flush`/`Shutdown` 暴露，但不能合成 Runtime Event、修改 Receipt Outcome 或回滚已
+完成的业务 Transition。
 
 ## Projection Rules
 

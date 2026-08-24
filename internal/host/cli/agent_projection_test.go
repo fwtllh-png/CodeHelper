@@ -26,12 +26,12 @@ func TestExecWorkspaceEventAcceptsAgentFacts(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if !execWorkspaceEvent(update) {
+			if !eventview.WorkspaceEvent(update) {
 				t.Fatalf("%s was not projected as a workspace event", name)
 			}
 		})
 	}
-	if execWorkspaceEvent(eventview.InteractionUpdate{}) {
+	if eventview.WorkspaceEvent(eventview.InteractionUpdate{}) {
 		t.Fatal("parent interaction was projected as an Agent workspace event")
 	}
 }

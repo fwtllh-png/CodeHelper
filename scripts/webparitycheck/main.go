@@ -553,15 +553,6 @@ func check(root, inventoryPath, ledgerPath string) error {
 	return nil
 }
 
-func containsString(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
 func hasPrefix(values []string, prefix string) bool {
 	for _, value := range values {
 		if strings.HasPrefix(value, prefix) {

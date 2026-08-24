@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   Archive,
+  Braces,
   Check,
   ChevronDown,
   ChevronRight,
@@ -93,7 +94,13 @@ export function App({client}: Props) {
   const [detailOpen, setDetailOpen] = useState(initialDetailOpen);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [sessionAction, setSessionAction] = useState<{
+    sessionID: string;
+    pending: boolean;
+    error: string;
+  }>();
   const [workspaceQuery, setWorkspaceQuery] = useState("");
   const [workspaceMatches, setWorkspaceMatches] = useState<readonly WorkspaceSearchMatch[]>([]);
   const [workspacePath, setWorkspacePath] = useState(".");
@@ -130,20 +137,14 @@ export function App({client}: Props) {
   const activeTurn = latestActiveTurn(snapshot.events);
   const selectedProvider = snapshot.profile?.profile.provider ?? "";
   const selectedModel = snapshot.profile?.profile.model ?? "";
-  const providerOptions = snapshot.providers.map((provider) => {
-    const hasAvailableModel = snapshot.models.some(
-      (model) =>
-        model.provider === provider.id &&
-        model.capabilities.availability === "available"
-    );
-    const reason = provider.reason || (!hasAvailableModel ? "No available models" : "");
-    return {
-      value: provider.id,
-      label: provider.display_name,
-      disabled: provider.availability !== "available" || !hasAvailableModel,
-      reason
-    };
-  });
+  const selectedProviderEntry = snapshot.providers.find(
+    (provider) => provider.id === selectedProvider
+  );
+  const selectedModelEntry = snapshot.models.find(
+    (model) =>
+      model.provider === selectedProvider &&
+      model.id === selectedModel
+  );
   const modelOptions = snapshot.models
     .filter((model) => model.provider === selectedProvider)
     .map((model) => ({
@@ -153,6 +154,10 @@ export function App({client}: Props) {
       reason: model.capabilities.unavailable_reason,
       detail: modelCapabilityLabel(model.capabilities)
     }));
+  const reasoningValues = [
+    "",
+    ...(selectedModelEntry?.capabilities.reasoning_efforts ?? [])
+  ];
 
   useEffect(() => {
     setWorkspaceSelection(undefined);
@@ -225,6 +230,19 @@ export function App({client}: Props) {
     }
   };
 
+  const createSession = async (profilePatch?: Record<string, unknown>) => {
+    if (creatingSession) return;
+    setCreatingSession(true);
+    setLocalError("");
+    try {
+      await client.createSession(newIsolation, profilePatch);
+    } catch (error) {
+      reportLocalError(error);
+    } finally {
+      setCreatingSession(false);
+    }
+  };
+
   const exportSession = async () => {
     try {
       const value = await client.exportSession();
@@ -256,6 +274,41 @@ export function App({client}: Props) {
     } catch (error) {
       reportLocalError(error);
     }
+  };
+
+  const runSessionAction = async (
+    session: SessionSummary,
+    action: () => Promise<void>
+  ) => {
+    setSessionAction({
+      sessionID: session.session_id,
+      pending: true,
+      error: ""
+    });
+    try {
+      await action();
+      setSessionAction(undefined);
+    } catch (error) {
+      setSessionAction({
+        sessionID: session.session_id,
+        pending: false,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  };
+
+  const deleteSession = (session: SessionSummary) => {
+    const hasUnfinishedWork =
+      sessionIsBusy(session) || session.isolation === "worktree";
+    const prompt = hasUnfinishedWork
+      ? `Delete "${session.title}" and permanently discard its unfinished work?`
+      : `Delete "${session.title}"?`;
+    if (!window.confirm(prompt)) return;
+    void runSessionAction(session, () => client.deleteSession(
+      session.session_id,
+      session.revision,
+      true
+    ));
   };
 
   const openWorkspacePath = async (path: string) => {
@@ -292,29 +345,35 @@ export function App({client}: Props) {
   }
 
   return (
-    <div className="app" data-detail-open={detailOpen || undefined}>
+    <div
+      className="app"
+      data-detail-open={selected && detailOpen ? true : undefined}
+    >
       <aside className="sessionRail" aria-label="Sessions">
-        <div className="newSessionRow">
-          <span>New session</span>
-          <select
-            className="newSessionIsolation"
-            aria-label="New session isolation"
-            value={newIsolation}
-            onChange={(event) => setNewIsolation(
-              event.target.value as "shared" | "worktree"
-            )}
-          >
-            <option value="shared">Shared</option>
-            <option value="worktree">Worktree</option>
-          </select>
-        </div>
+        {selected && (
+          <div className="newSessionRow">
+            <span>New session</span>
+            <select
+              className="newSessionIsolation"
+              aria-label="New session isolation"
+              value={newIsolation}
+              onChange={(event) => setNewIsolation(
+                event.target.value as "shared" | "worktree"
+              )}
+            >
+              <option value="shared">Shared</option>
+              <option value="worktree">Worktree</option>
+            </select>
+          </div>
+        )}
         <div className="brandRow">
           <div className="brandMark" aria-hidden="true"><TerminalSquare size={17} /></div>
           <strong>CodeHelper</strong>
           <IconButton
             label="New chat"
             icon={<Plus size={17} />}
-            onClick={() => void client.createSession(newIsolation).catch(reportLocalError)}
+            disabled={creatingSession}
+            onClick={() => void createSession()}
           />
         </div>
         <label className="searchBox">
@@ -352,35 +411,31 @@ export function App({client}: Props) {
               onRename={() => {
                 const title = window.prompt("Rename session", session.title)?.trim();
                 if (title && title !== session.title) {
-                  void client.updateSession(
-                    session.session_id,
-                    session.revision,
-                    {title}
-                  ).catch(reportLocalError);
+                  void runSessionAction(session, () => client.updateSession(
+                    session.session_id, session.revision, {title}
+                  ));
                 }
               }}
-              onPin={() => void client.updateSession(
-                session.session_id,
-                session.revision,
-                {pinned: !session.pinned}
-              ).catch(reportLocalError)}
+              onPin={() => void runSessionAction(session, () => client.updateSession(
+                session.session_id, session.revision, {pinned: !session.pinned}
+              ))}
               onArchive={() => {
                 if (session.archived || window.confirm(`Archive "${session.title}"?`)) {
-                  void client.updateSession(
-                    session.session_id,
-                    session.revision,
-                    {archived: !session.archived}
-                  ).catch(reportLocalError);
+                  void runSessionAction(session, () => client.updateSession(
+                    session.session_id, session.revision, {archived: !session.archived}
+                  ));
                 }
               }}
-              onDelete={() => {
-                if (window.confirm(`Delete "${session.title}"?`)) {
-                  void client.deleteSession(
-                    session.session_id,
-                    session.revision
-                  ).catch(reportLocalError);
-                }
-              }}
+              onDelete={() => deleteSession(session)}
+              actionPending={
+                sessionAction?.sessionID === session.session_id &&
+                sessionAction.pending
+              }
+              actionError={
+                sessionAction?.sessionID === session.session_id
+                  ? sessionAction.error
+                  : ""
+              }
             />
           ))}
         </div>
@@ -416,17 +471,23 @@ export function App({client}: Props) {
             ) : activeTurn ? (
               <span className="workingLabel">Working</span>
             ) : null}
-            <IconButton
-              label="Export session"
-              disabled={!selected || Boolean(snapshot.hydratingSessionID)}
-              icon={<Download size={17} />}
-              onClick={() => void exportSession()}
-            />
-            <IconButton
-              label={detailOpen ? "Close detail panel" : "Open detail panel"}
-              icon={detailOpen ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}
-              onClick={() => setDetailOpen((value) => !value)}
-            />
+            {selected && (
+              <>
+                <IconButton
+                  label="Export session"
+                  disabled={Boolean(snapshot.hydratingSessionID)}
+                  icon={<Download size={17} />}
+                  onClick={() => void exportSession()}
+                />
+                <IconButton
+                  label={detailOpen ? "Close detail panel" : "Open detail panel"}
+                  icon={detailOpen
+                    ? <PanelRightClose size={17} />
+                    : <PanelRightOpen size={17} />}
+                  onClick={() => setDetailOpen((value) => !value)}
+                />
+              </>
+            )}
           </div>
         </header>
 
@@ -466,10 +527,22 @@ export function App({client}: Props) {
               )}
             </div>
           )}
-          {entries.length === 0 ? (
+          {!selected ? (
+            <StartupSetup
+              snapshot={snapshot}
+              isolation={newIsolation}
+              creating={creatingSession}
+              error={localError}
+              credentialStatus={credentialStatus}
+              onIsolationChange={setNewIsolation}
+              onCredentialStatus={setCredentialStatus}
+              onCreate={(patch) => void createSession(patch)}
+              client={client}
+            />
+          ) : entries.length === 0 ? (
             <div className="emptyConversation">
               <div className="emptyMark"><TerminalSquare size={22} /></div>
-              <h2>{selected ? selected.title : "What are we working on?"}</h2>
+              <h2>{selected.title}</h2>
               <p>{snapshot.workspaceRoot}</p>
             </div>
           ) : (
@@ -484,7 +557,7 @@ export function App({client}: Props) {
           )}
         </div>
 
-        <div className="composerSeat">
+        {selected && <div className="composerSeat">
           {localError && <div className="composerError">{localError}</div>}
           {snapshot.contextResources.length > 0 && (
             <div className="contextTray" aria-label="Prompt context">
@@ -528,8 +601,8 @@ export function App({client}: Props) {
               <textarea
                 value={draft}
                 rows={1}
-                placeholder={selected ? "Ask CodeHelper" : "Create a chat to begin"}
-                disabled={!selected || Boolean(snapshot.hydratingSessionID) || submitting}
+                placeholder="Ask CodeHelper"
+                disabled={Boolean(snapshot.hydratingSessionID) || submitting}
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
@@ -550,7 +623,6 @@ export function App({client}: Props) {
                   label="Send"
                   primary
                   disabled={
-                    !selected ||
                     Boolean(snapshot.hydratingSessionID) ||
                     !draft.trim() ||
                     submitting
@@ -563,12 +635,12 @@ export function App({client}: Props) {
           )}
           <div className="composerMeta">
             <span>{snapshot.profile?.profile.mode ?? "act"}</span>
-            <span>{snapshot.profile?.profile.model ?? selected?.model ?? ""}</span>
+            <span>{snapshot.profile?.profile.model ?? selected.model ?? ""}</span>
           </div>
-        </div>
+        </div>}
       </main>
 
-      {detailOpen && (
+      {selected && detailOpen && (
         <aside className="detailPanel" aria-label="Session details">
           <div className="detailHeader">
             <h2>Session</h2>
@@ -585,36 +657,34 @@ export function App({client}: Props) {
                 <IconButton
                   label="Rename session"
                   icon={<Pencil size={15} />}
+                  disabled={sessionAction?.pending}
                   onClick={() => {
                     const title = window.prompt("Rename session", selected.title)?.trim();
                     if (title && title !== selected.title) {
-                      void client.updateSession(
-                        selected.session_id,
-                        selected.revision,
-                        {title}
-                      ).catch(reportLocalError);
+                      void runSessionAction(selected, () => client.updateSession(
+                        selected.session_id, selected.revision, {title}
+                      ));
                     }
                   }}
                 />
                 <IconButton
                   label={selected.pinned ? "Unpin session" : "Pin session"}
                   icon={selected.pinned ? <PinOff size={15} /> : <Pin size={15} />}
-                  onClick={() => void client.updateSession(
-                    selected.session_id,
-                    selected.revision,
-                    {pinned: !selected.pinned}
-                  ).catch(reportLocalError)}
+                  disabled={sessionAction?.pending}
+                  onClick={() => void runSessionAction(selected, () => client.updateSession(
+                    selected.session_id, selected.revision, {pinned: !selected.pinned}
+                  ))}
                 />
                 <IconButton
                   label={selected.archived ? "Restore session" : "Archive session"}
                   icon={<Archive size={15} />}
+                  disabled={sessionAction?.pending}
                   onClick={() => {
                     if (selected.archived || window.confirm(`Archive "${selected.title}"?`)) {
-                      void client.updateSession(
-                        selected.session_id,
-                        selected.revision,
+                      void runSessionAction(selected, () => client.updateSession(
+                        selected.session_id, selected.revision,
                         {archived: !selected.archived}
-                      ).catch(reportLocalError);
+                      ));
                     }
                   }}
                 />
@@ -622,14 +692,8 @@ export function App({client}: Props) {
                   label="Delete session"
                   danger
                   icon={<Trash2 size={15} />}
-                  onClick={() => {
-                    if (window.confirm(`Delete "${selected.title}"?`)) {
-                      void client.deleteSession(
-                        selected.session_id,
-                        selected.revision
-                      ).catch(reportLocalError);
-                    }
-                  }}
+                  disabled={sessionAction?.pending}
+                  onClick={() => deleteSession(selected)}
                 />
               </div>
             </section>
@@ -955,53 +1019,64 @@ export function App({client}: Props) {
           </section>
           <section className="detailSection">
             <h3>Profile</h3>
+            <ReadOnlyField
+              label="Provider"
+              value={selectedProviderEntry?.display_name || selectedProvider}
+              detail="Runtime provider"
+            />
+            {profileMutable(snapshot, "model") &&
+            modelOptions.filter((option) => !option.disabled).length > 1 ? (
+              <CatalogSelectField
+                label="Model"
+                value={selectedModel}
+                options={modelOptions}
+                onChange={(model) => {
+                  const target = snapshot.models.find(
+                    (entry) =>
+                      entry.provider === selectedProvider &&
+                      entry.id === model
+                  );
+                  void client.updateProfile({
+                    model,
+                    reasoning_effort:
+                      target?.capabilities.default_reasoning_effort ?? ""
+                  }).catch(reportLocalError);
+                }}
+              />
+            ) : (
+              <ReadOnlyField
+                label="Model"
+                value={selectedModelEntry?.capabilities.display_name || selectedModel}
+                detail={modelOptions.length > 1
+                  ? "Restart Runtime to change"
+                  : "Only model available"}
+              />
+            )}
+            {profileMutable(snapshot, "reasoning_effort") &&
+            reasoningValues.length > 1 ? (
+              <SelectField
+                label="Reasoning"
+                value={snapshot.profile?.profile.reasoning_effort ?? ""}
+                values={reasoningValues}
+                onChange={(value) => void client.updateProfile({
+                  reasoning_effort: value
+                }).catch(reportLocalError)}
+              />
+            ) : (
+              <ReadOnlyField
+                label="Reasoning"
+                value={snapshot.profile?.profile.reasoning_effort || "Default"}
+                detail={selectedModelEntry?.capabilities.reasoning
+                  ? "Runtime default"
+                  : "Not supported"}
+              />
+            )}
             <SelectField
               label="Mode"
               value={snapshot.profile?.profile.mode ?? "act"}
               values={["plan", "act", "operate"]}
               disabled={!profileMutable(snapshot, "mode")}
               onChange={(value) => void client.updateProfile({mode: value}).catch(reportLocalError)}
-            />
-            <SelectField
-              label="Reasoning"
-              value={snapshot.profile?.profile.reasoning_effort ?? ""}
-              values={["", "minimal", "low", "medium", "high"]}
-              disabled={!profileMutable(snapshot, "reasoning_effort")}
-              onChange={(value) => void client.updateProfile({
-                reasoning_effort: value
-              }).catch(reportLocalError)}
-            />
-            <CatalogSelectField
-              label="Provider"
-              value={selectedProvider}
-              options={providerOptions}
-              disabled={!profileMutable(snapshot, "provider")}
-              onChange={(provider) => {
-                const models = snapshot.models.filter(
-                  (model) =>
-                    model.provider === provider &&
-                    model.capabilities.availability === "available"
-                );
-                const model = models.find((item) => item.selected) ?? models[0];
-                if (model) {
-                  void client.updateProfile({
-                    provider,
-                    model: model.id
-                  }).catch(reportLocalError);
-                }
-              }}
-            />
-            <CatalogSelectField
-              label="Model"
-              value={selectedModel}
-              options={modelOptions}
-              disabled={
-                !profileMutable(snapshot, "model") ||
-                modelOptions.length === 0
-              }
-              onChange={(model) => void client.updateProfile({
-                model
-              }).catch(reportLocalError)}
             />
             <SelectField
               label="Approval"
@@ -1171,7 +1246,9 @@ function SessionRow({
   onRename,
   onPin,
   onArchive,
-  onDelete
+  onDelete,
+  actionPending,
+  actionError
 }: {
   session: SessionSummary;
   active: boolean;
@@ -1180,9 +1257,15 @@ function SessionRow({
   onPin: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  actionPending: boolean;
+  actionError: string;
 }) {
   return (
-    <div className="sessionRow" data-active={active || undefined}>
+    <div
+      className="sessionRow"
+      data-active={active || undefined}
+      aria-busy={actionPending || undefined}
+    >
       <button className="sessionSelect" onClick={onClick}>
         <span className="sessionTitle">{session.title}</span>
         <span className="sessionMeta">
@@ -1191,26 +1274,46 @@ function SessionRow({
         </span>
       </button>
       <div className="sessionActions">
-        <IconButton label="Rename session" icon={<Pencil size={13} />} onClick={onRename} />
+        <IconButton
+          label="Rename session"
+          icon={<Pencil size={13} />}
+          disabled={actionPending}
+          onClick={onRename}
+        />
         <IconButton
           label={session.pinned ? "Unpin session" : "Pin session"}
           icon={session.pinned ? <PinOff size={13} /> : <Pin size={13} />}
+          disabled={actionPending}
           onClick={onPin}
         />
         <IconButton
           label={session.archived ? "Restore session" : "Archive session"}
           icon={<Archive size={13} />}
+          disabled={actionPending}
           onClick={onArchive}
         />
         <IconButton
           label="Delete session"
           danger
-          icon={<Trash2 size={13} />}
+          disabled={actionPending}
+          icon={actionPending ? <LoaderCircle className="spin" size={13} /> : <Trash2 size={13} />}
           onClick={onDelete}
         />
       </div>
+      {actionError && (
+        <span className="sessionActionError" role="alert">
+          <AlertTriangle size={13} aria-hidden="true" />
+          <span>{actionError}</span>
+        </span>
+      )}
     </div>
   );
+}
+
+function sessionIsBusy(session: SessionSummary): boolean {
+  return session.status === "running" ||
+    session.status === "awaiting_approval" ||
+    session.status === "awaiting_input";
 }
 
 function TranscriptItem({
@@ -1317,6 +1420,7 @@ function ApprovalComposer({
 }) {
   const [scope, setScope] = useState("");
   const [replacement, setReplacement] = useState("");
+  const [replacementOpen, setReplacementOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const data = event.data;
@@ -1350,12 +1454,16 @@ function ApprovalComposer({
   return (
     <div className="pendingComposer">
       <div className="pendingText">
-        <strong>{String(data.tool ?? "Action")} requires approval</strong>
-        <span>{String(data.effect ?? data.risk ?? "Review the requested effect.")}</span>
-        {planID && <span>Plan {planID.slice(0, 12)}</span>}
-        {typeof data.expires_at === "string" && (
-          <span>Expires {new Date(data.expires_at).toLocaleString()}</span>
-        )}
+        <div className="pendingHeading">
+          <strong>{String(data.tool ?? "Action")} requires approval</strong>
+          <span>{String(data.effect ?? data.risk ?? "Review the requested effect.")}</span>
+        </div>
+        <div className="pendingMeta">
+          {planID && <span>Plan {planID.slice(0, 12)}</span>}
+          {typeof data.expires_at === "string" && (
+            <span>Expires {new Date(data.expires_at).toLocaleString()}</span>
+          )}
+        </div>
         {error && <span className="composerError">{error}</span>}
       </div>
       <div className="pendingActions">
@@ -1385,6 +1493,17 @@ function ApprovalComposer({
             ))}
           </select>
         )}
+        {replacementAllowed && (
+          <IconButton
+            label={replacementOpen
+              ? "Hide replacement arguments"
+              : "Edit replacement arguments"}
+            icon={<Braces size={15} />}
+            expanded={replacementOpen}
+            disabled={submitting}
+            onClick={() => setReplacementOpen((value) => !value)}
+          />
+        )}
         <button
           className="primaryText"
           disabled={submitting || !replacementValid}
@@ -1393,15 +1512,21 @@ function ApprovalComposer({
           Approve
         </button>
       </div>
-      {replacementAllowed && (
-        <textarea
-          aria-label="Replacement arguments"
-          placeholder="Optional replacement arguments (JSON)"
-          value={replacement}
-          aria-invalid={!replacementValid}
-          disabled={submitting}
-          onChange={(event) => setReplacement(event.target.value)}
-        />
+      {replacementAllowed && replacementOpen && (
+        <label className="replacementEditor">
+          <span>Replacement arguments (JSON)</span>
+          <textarea
+            aria-label="Replacement arguments"
+            placeholder={'{"argument": "value"}'}
+            value={replacement}
+            aria-invalid={!replacementValid}
+            disabled={submitting}
+            onChange={(event) => setReplacement(event.target.value)}
+          />
+          {!replacementValid && (
+            <span className="composerError">Enter a JSON object.</span>
+          )}
+        </label>
       )}
     </div>
   );
@@ -1479,6 +1604,280 @@ function InputComposer({
       </button>
     </div>
   );
+}
+
+function StartupSetup({
+  snapshot,
+  isolation,
+  creating,
+  error,
+  credentialStatus,
+  onIsolationChange,
+  onCredentialStatus,
+  onCreate,
+  client
+}: {
+  snapshot: RuntimeSnapshot;
+  isolation: "shared" | "worktree";
+  creating: boolean;
+  error: string;
+  credentialStatus?: CredentialStatus;
+  onIsolationChange: (value: "shared" | "worktree") => void;
+  onCredentialStatus: (status: CredentialStatus) => void;
+  onCreate: (profile: Record<string, unknown>) => void;
+  client: RuntimeClient;
+}) {
+  const provider = snapshot.providers.find((entry) => entry.selected) ??
+    snapshot.providers.find((entry) => entry.availability === "available");
+  const models = useMemo(
+    () => snapshot.models.filter(
+      (entry) =>
+        entry.provider === provider?.id &&
+        entry.capabilities.availability === "available"
+    ),
+    [provider?.id, snapshot.models]
+  );
+  const defaultModel = models.find((entry) => entry.selected) ?? models[0];
+  const [modelID, setModelID] = useState(defaultModel?.id ?? "");
+  const [reasoning, setReasoning] = useState("");
+  const [secret, setSecret] = useState("");
+  const [credentialBusy, setCredentialBusy] = useState(false);
+  const [credentialError, setCredentialError] = useState("");
+
+  useEffect(() => {
+    setModelID((current) =>
+      models.some((entry) => entry.id === current)
+        ? current
+        : (defaultModel?.id ?? "")
+    );
+  }, [defaultModel?.id, models]);
+
+  useEffect(() => {
+    setReasoning("");
+  }, [modelID]);
+
+  useEffect(() => {
+    let active = true;
+    void client.credentialStatus().then(
+      (status) => {
+        if (active) onCredentialStatus(status);
+      },
+      (loadError) => {
+        if (active) {
+          setCredentialError(
+            loadError instanceof Error ? loadError.message : String(loadError)
+          );
+        }
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, [client, onCredentialStatus]);
+
+  const model = models.find((entry) => entry.id === modelID) ?? defaultModel;
+  const reasoningOptions = model?.capabilities.reasoning_efforts ?? [];
+  const keyError = apiKeyError(secret);
+  const credentialRequired = Boolean(credentialStatus?.reference.kind);
+  const credentialState = credentialStatus === undefined
+    ? "Checking"
+    : credentialStatus.configured
+      ? credentialStatus.validation === "valid" ? "Validated" : "Configured"
+      : credentialRequired ? "Missing" : "Not required";
+
+  const saveCredential = async () => {
+    if (!secret || keyError || credentialBusy) return;
+    setCredentialBusy(true);
+    setCredentialError("");
+    try {
+      const status = await client.setKeyringCredential(secret);
+      onCredentialStatus(status);
+      setSecret("");
+    } catch (saveError) {
+      setCredentialError(
+        saveError instanceof Error ? saveError.message : String(saveError)
+      );
+    } finally {
+      setCredentialBusy(false);
+    }
+  };
+
+  const validateCredential = async () => {
+    if (credentialBusy) return;
+    setCredentialBusy(true);
+    setCredentialError("");
+    try {
+      onCredentialStatus(await client.validateCredential());
+    } catch (validationError) {
+      setCredentialError(
+        validationError instanceof Error
+          ? validationError.message
+          : String(validationError)
+      );
+    } finally {
+      setCredentialBusy(false);
+    }
+  };
+
+  const create = () => {
+    if (!provider || !model) return;
+    const profile: Record<string, unknown> = {};
+    if (models.length > 1 && model.id !== defaultModel?.id) {
+      profile.model = model.id;
+      profile.reasoning_effort = reasoning;
+    } else if (reasoning) {
+      profile.reasoning_effort = reasoning;
+    }
+    onCreate(profile);
+  };
+
+  return (
+    <section className="startupSetup" aria-labelledby="startup-title">
+      <div className="startupHeading">
+        <div className="emptyMark"><TerminalSquare size={22} /></div>
+        <div>
+          <h2 id="startup-title">Start a new session</h2>
+          <p>Confirm the model route and credential before you begin.</p>
+        </div>
+      </div>
+
+      <div className="startupSection">
+        <div className="startupSectionHeading">
+          <span>1</span>
+          <strong>Model</strong>
+        </div>
+        <div className="startupFields">
+          <ReadOnlyField
+            label="Provider"
+            value={provider?.display_name || "Unavailable"}
+            detail="Runtime provider"
+          />
+          {models.length > 1 ? (
+            <CatalogSelectField
+              label="Model"
+              value={modelID}
+              options={models.map((entry) => ({
+                value: entry.id,
+                label: entry.capabilities.display_name || entry.id,
+                detail: modelCapabilityLabel(entry.capabilities)
+              }))}
+              onChange={setModelID}
+            />
+          ) : (
+            <ReadOnlyField
+              label="Model"
+              value={model?.capabilities.display_name || model?.id || "Unavailable"}
+              detail={models.length === 1
+                ? "Only model available"
+                : "No routable model"}
+            />
+          )}
+          {reasoningOptions.length > 0 ? (
+            <SelectField
+              label="Reasoning"
+              value={reasoning}
+              values={["", ...reasoningOptions]}
+              onChange={setReasoning}
+            />
+          ) : (
+            <ReadOnlyField
+              label="Reasoning"
+              value="Not supported"
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="startupSection">
+        <div className="startupSectionHeading">
+          <span>2</span>
+          <strong>API credential</strong>
+          <small data-ready={credentialStatus?.configured || !credentialRequired}>
+            {credentialState}
+          </small>
+        </div>
+        {credentialRequired ? (
+          <>
+            <div className="startupCredential">
+              <KeyRound size={16} aria-hidden="true" />
+              <input
+                type="password"
+                autoComplete="off"
+                aria-label="API key"
+                autoFocus={!credentialStatus?.configured}
+                placeholder={credentialStatus?.configured
+                  ? "Enter a new API key"
+                  : "Enter API key"}
+                value={secret}
+                disabled={credentialBusy}
+                onChange={(event) => setSecret(event.target.value)}
+              />
+              <button
+                disabled={!secret || Boolean(keyError) || credentialBusy}
+                onClick={() => void saveCredential()}
+              >
+                {credentialBusy ? "Saving..." : "Save key"}
+              </button>
+              <button
+                disabled={!credentialStatus?.configured || credentialBusy}
+                onClick={() => void validateCredential()}
+              >
+                Validate
+              </button>
+            </div>
+            {keyError && <p className="startupError">{keyError}</p>}
+            {credentialError && <p className="startupError">{credentialError}</p>}
+            {credentialStatus?.validation_detail && (
+              <p className="startupError">
+                {credentialStatus.validation_detail}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="startupNote">This provider does not require an API key.</p>
+        )}
+      </div>
+
+      <div className="startupFooter">
+        <label>
+          <span>Session workspace</span>
+          <select
+            aria-label="Session workspace isolation"
+            value={isolation}
+            onChange={(event) => onIsolationChange(
+              event.target.value as "shared" | "worktree"
+            )}
+          >
+            <option value="shared">Shared</option>
+            <option value="worktree">Worktree</option>
+          </select>
+        </label>
+        <button
+          className="startupCreate"
+          disabled={!provider || !model || creating}
+          onClick={create}
+        >
+          {creating
+            ? <LoaderCircle className="spin" size={17} />
+            : <Plus size={17} />}
+          <span>{creating ? "Creating..." : "Create session"}</span>
+        </button>
+      </div>
+      {error && <p className="startupError">{error}</p>}
+    </section>
+  );
+}
+
+function apiKeyError(value: string): string {
+  if (!value) return "";
+  if (value.trim() !== value || !/^[\x21-\x7e]+$/.test(value)) {
+    return "Enter the API key only, without spaces or quotes.";
+  }
+  if (/^[A-Z][A-Z0-9_]*=[^=]/.test(value) ||
+      (/^([\"'`]).*\1$/.test(value))) {
+    return "Enter the API key value, not an environment assignment.";
+  }
+  return "";
 }
 
 function CredentialSettings({
@@ -1566,6 +1965,24 @@ function SelectField({
   );
 }
 
+function ReadOnlyField({
+  label,
+  value,
+  detail
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
+  return (
+    <div className="selectField readOnlyField">
+      <span>{label}</span>
+      <output aria-label={label}>{value}</output>
+      {detail && <small>{detail}</small>}
+    </div>
+  );
+}
+
 interface CatalogOption {
   value: string;
   label: string;
@@ -1608,34 +2025,6 @@ function CatalogSelectField({
           </option>
         ))}
       </select>
-    </label>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  disabled,
-  onCommit
-}: {
-  label: string;
-  value: string;
-  disabled?: boolean;
-  onCommit: (value: string) => Promise<unknown>;
-}) {
-  const [draft, setDraft] = useState(value);
-  useEffect(() => setDraft(value), [value]);
-  return (
-    <label className="selectField">
-      <span>{label}</span>
-      <input
-        value={draft}
-        disabled={disabled}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => {
-          if (draft.trim() && draft !== value) void onCommit(draft.trim());
-        }}
-      />
     </label>
   );
 }
@@ -1752,7 +2141,8 @@ function IconButton({
   onClick,
   disabled,
   primary,
-  danger
+  danger,
+  expanded
 }: {
   label: string;
   icon: React.ReactNode;
@@ -1760,6 +2150,7 @@ function IconButton({
   disabled?: boolean;
   primary?: boolean;
   danger?: boolean;
+  expanded?: boolean;
 }) {
   return (
     <button
@@ -1767,6 +2158,7 @@ function IconButton({
       data-primary={primary || undefined}
       data-danger={danger || undefined}
       aria-label={label}
+      aria-expanded={expanded}
       title={label}
       disabled={disabled}
       onClick={onClick}

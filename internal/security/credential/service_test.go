@@ -207,6 +207,38 @@ func TestCredentialControlRecoversRotationAndDeferredCleanup(t *testing.T) {
 	}
 }
 
+func TestCredentialControlLiveReloadPublishesCurrentReference(t *testing.T) {
+	registry := t.TempDir()
+	control := &Control{
+		root: filepath.Join(registry, "workspace"), registry: registry,
+		namespace: "workspace-provider",
+		base:      Reference{Kind: "env", Name: "API_KEY"},
+		keyring:   &memoryStore{values: make(map[string]string)},
+	}
+	service := New(
+		control.base,
+		WithControl(control),
+		WithLiveReload(),
+		WithProbe(func(context.Context, Reference) error { return nil }),
+	)
+
+	status, err := service.SetKeyring(t.Context(), "new-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.Configured || status.RestartRequired ||
+		status.Validation != "valid" {
+		t.Fatalf("live status = %+v", status)
+	}
+	current, err := control.Reference(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != status.Reference {
+		t.Fatalf("control reference = %+v, want %+v", current, status.Reference)
+	}
+}
+
 func TestCredentialControlRemovesPreparedOrphan(t *testing.T) {
 	registry := t.TempDir()
 	storage := &memoryStore{values: map[string]string{

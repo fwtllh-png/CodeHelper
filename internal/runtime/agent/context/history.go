@@ -54,19 +54,6 @@ func ReconcileHistoryTurns(
 	}
 }
 
-func ReconcileHistoryTurnBindings(
-	bindings map[string]uint64,
-	messageTurns []uint64,
-) {
-	visible := make(map[uint64]struct{}, len(messageTurns))
-	for _, turn := range messageTurns {
-		if turn != 0 {
-			visible[turn] = struct{}{}
-		}
-	}
-	reconcileHistoryTurnBindingsFromSet(bindings, visible)
-}
-
 func reconcileHistoryTurnBindingsFromSet(
 	bindings map[string]uint64,
 	visible map[uint64]struct{},
@@ -76,15 +63,6 @@ func reconcileHistoryTurnBindingsFromSet(
 			delete(bindings, turnID)
 		}
 	}
-}
-
-func HistoryContainsTurn(history []provider.Message, turn uint64) bool {
-	for _, message := range history {
-		if message.Turn == turn {
-			return true
-		}
-	}
-	return false
 }
 
 func CloneHistoryTurns(source map[string]uint64) map[string]uint64 {

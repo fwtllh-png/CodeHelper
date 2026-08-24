@@ -42,8 +42,7 @@ func TestHelpTextOperableOnly(t *testing.T) {
 			t.Fatalf("stub %s missing from CLI-only: %s", token, footnote)
 		}
 	}
-	for _, kind := range []commands.Kind{commands.KindRedo, commands.KindCopy} {
-		token := "/" + string(kind)
+	for _, token := range []string{"/redo", "/copy"} {
 		if strings.Contains(help, token) {
 			t.Fatalf("noop %s should not appear in help: %s", token, help)
 		}

@@ -253,7 +253,8 @@ func CatalogSourceKind(name, source string) string {
 		return "plugin"
 	case strings.HasPrefix(source, "dynamic:"):
 		return "dynamic"
-	case name == "load_skill":
+	case name == "skills_read" || name == "skills_list" ||
+		name == "skills.read" || name == "skills.list":
 		return "skill"
 	default:
 		return "builtin"

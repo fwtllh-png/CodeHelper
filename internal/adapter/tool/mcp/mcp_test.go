@@ -117,7 +117,7 @@ func TestCapabilityHelpersUseAdvertisedCatalogOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := tool.NewRegistry(nil, nil)
-	if err := Register(registry, pool); err != nil {
+	if _, err := NewAdapter(registry, pool); err != nil {
 		t.Fatal(err)
 	}
 	guard, err := toolguard.New(toolguard.Options{
@@ -204,7 +204,7 @@ func TestAdapterModelCallRequiresToolGuardPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := tool.NewRegistry(nil, nil)
-	if err := Register(registry, pool); err != nil {
+	if _, err := NewAdapter(registry, pool); err != nil {
 		t.Fatal(err)
 	}
 	descriptors := registry.Descriptors(tool.VisibleModel)
@@ -310,7 +310,6 @@ func TestLargeMCPToolCatalogIsDeferredUntilSearchMaterializes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer adapter.Close()
 
 	assertMCPStates(t, registry, toolCount, 0)
 	target := "mcp_large_remote_042"
@@ -478,7 +477,6 @@ func TestAdapterRevokesOpenServerAndRestoresAfterProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer adapter.Close()
 	if _, _, _, err := registry.Resolve("mcp_remote_danger"); err != nil {
 		t.Fatal(err)
 	}
@@ -488,9 +486,6 @@ func TestAdapterRevokesOpenServerAndRestoresAfterProbe(t *testing.T) {
 		t.Context(), "danger", json.RawMessage(`{}`),
 	); err == nil {
 		t.Fatal("failing MCP call succeeded")
-	}
-	if !adapter.RefreshPending() {
-		t.Fatal("MCP health watcher did not request refresh")
 	}
 	if err := adapter.Sync(); err != nil {
 		t.Fatal(err)
@@ -559,7 +554,6 @@ func TestAsyncSyncQuarantinesStaleCatalogAndRecovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer adapter.Close()
 
 	before, err := registry.Snapshot()
 	if err != nil {
@@ -592,13 +586,9 @@ func TestAsyncSyncQuarantinesStaleCatalogAndRecovers(t *testing.T) {
 	if _, err := pool.Reload(t.Context(), config); err != nil {
 		t.Fatal(err)
 	}
-	if !adapter.RefreshPending() {
-		t.Fatal("MCP catalog watcher did not request refresh")
-	}
-	_ = adapter.Sync()
-	syncErr := adapter.LastError()
+	syncErr := adapter.Sync()
 	if syncErr == nil {
-		t.Fatal("async Sync error was not retained")
+		t.Fatal("Sync error was not returned")
 	}
 	if _, _, _, err := registry.ResolveBound(
 		"mcp_remote_danger",
@@ -620,9 +610,6 @@ func TestAsyncSyncQuarantinesStaleCatalogAndRecovers(t *testing.T) {
 	}
 	if err := adapter.Sync(); err != nil {
 		t.Fatal(err)
-	}
-	if adapter.LastError() != nil {
-		t.Fatalf("LastError() after recovery = %v", adapter.LastError())
 	}
 	if _, _, _, err := registry.Resolve("mcp_remote_danger"); err != nil {
 		t.Fatalf("MCP tool was not restored after recovery: %v", err)
@@ -659,7 +646,6 @@ func TestAdapterReplacesExecutorWhenConnectionChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer adapter.Close()
 	before, err := registry.Snapshot()
 	if err != nil {
 		t.Fatal(err)
@@ -676,9 +662,6 @@ func TestAdapterReplacesExecutorWhenConnectionChanges(t *testing.T) {
 	pool.Invalidate()
 	if _, err := pool.Reload(t.Context(), config); err != nil {
 		t.Fatal(err)
-	}
-	if !adapter.RefreshPending() {
-		t.Fatal("MCP reconnect did not request refresh")
 	}
 	if err := adapter.Sync(); err != nil {
 		t.Fatal(err)
@@ -737,7 +720,6 @@ func TestCatalogNotificationReconcilesOnlyServerSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer adapter.Close()
 	before, err := registry.Snapshot()
 	if err != nil {
 		t.Fatal(err)
@@ -748,8 +730,7 @@ func TestCatalogNotificationReconcilesOnlyServerSource(t *testing.T) {
 	for time.Now().Before(deadline) {
 		catalog := pool.Catalog()
 		if len(catalog) == 1 &&
-			catalog[0].Tool.Description == "version 2" &&
-			adapter.RefreshPending() {
+			catalog[0].Tool.Description == "version 2" {
 			break
 		}
 		time.Sleep(time.Millisecond)

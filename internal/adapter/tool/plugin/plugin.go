@@ -40,14 +40,11 @@ type managedHandle struct {
 // lifecycle state. Replaced executors reject new calls while already-started
 // calls drain; their immutable handles close when the last call exits.
 type Adapter struct {
-	mu             sync.Mutex
-	registry       *tool.Registry
-	lifecycle      *pluginruntime.Registry
-	active         map[string]managedHandle
-	unsubscribe    func()
-	lastErr        error
-	refreshPending bool
-	closed         bool
+	mu        sync.Mutex
+	registry  *tool.Registry
+	lifecycle *pluginruntime.Registry
+	active    map[string]managedHandle
+	closed    bool
 }
 
 func NewAdapter(
@@ -61,13 +58,6 @@ func NewAdapter(
 		registry: registry, lifecycle: lifecycle,
 		active: make(map[string]managedHandle),
 	}
-	adapter.unsubscribe = lifecycle.SubscribeLifecycle(func() {
-		adapter.mu.Lock()
-		if !adapter.closed {
-			adapter.refreshPending = true
-		}
-		adapter.mu.Unlock()
-	})
 	if err := adapter.Sync(); err != nil {
 		_ = adapter.Close()
 		return nil, err
@@ -160,8 +150,6 @@ func (a *Adapter) Sync() error {
 		}
 	}
 	a.active = nextActive
-	a.lastErr = nil
-	a.refreshPending = false
 	return nil
 }
 
@@ -176,32 +164,9 @@ func (a *Adapter) failClosedLocked(cause error) error {
 	return cause
 }
 
-func (a *Adapter) LastError() error {
-	if a == nil {
-		return nil
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.lastErr
-}
-
-// RefreshPending reports a watcher-observed source change. Watchers never
-// mutate runtime authority; the runtime consumes this signal through Sync.
-func (a *Adapter) RefreshPending() bool {
-	if a == nil {
-		return false
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.refreshPending
-}
-
 func (a *Adapter) Close() error {
 	if a == nil {
 		return nil
-	}
-	if a.unsubscribe != nil {
-		a.unsubscribe()
 	}
 	a.mu.Lock()
 	if a.closed {

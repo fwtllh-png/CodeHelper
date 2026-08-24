@@ -1,5 +1,0 @@
-data: {"choices":[{"delta":{"content":"<proposed_plan>1. Update parser from destination B\n2. Verify the current Session</proposed_plan>"},"finish_reason":null}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":18,"completion_tokens":14}}
-
-data: [DONE]

@@ -58,9 +58,6 @@ func (c skillContributor) Contribute(
 			if err := catalog.Verify(ctx); err != nil {
 				return fmt.Errorf("skill lock verify: %w", err)
 			}
-			if err := skilltool.Register(registry, catalog); err != nil {
-				return fmt.Errorf("skill tool: %w", err)
-			}
 			if err := skilltool.RegisterDiscovery(registry, catalog); err != nil {
 				return fmt.Errorf("skill discovery tools: %w", err)
 			}

@@ -13,19 +13,19 @@ code_paths:
   - internal/persist/state
   - internal/persist/workspacejournal
   - internal/observability/journal
-  - internal/observability/semantic
-  - internal/observability/supportbundle
+  - internal/observability/trace
+  - internal/observability/usage
 test_paths:
   - internal/persist/history/reconstruct_test.go
   - internal/runtime/app/wire/persistent_test.go
   - internal/persist/workspacejournal/recover_test.go
-  - internal/observability/semantic/reducer_test.go
-  - internal/observability/supportbundle/bundle_test.go
+  - internal/observability/trace/trace_test.go
+  - internal/observability/usage/repository_test.go
 source_of_truth:
   - internal/persist/history/reconstruct.go
   - internal/observability/receipt/receipt.go
-  - internal/observability/semantic/reducer.go
-  - internal/observability/semantic/explain.go
+  - internal/observability/journal/journal.go
+  - internal/observability/trace/trace.go
 status: draft
 last_verified: null
 ---
@@ -46,7 +46,7 @@ flowchart TD
     E --> P[Projection Cross-check]
     H --> J[Journal / Workspace Residue]
     P --> T[Trace / Usage / Verification]
-    I --> O[Observation Journal / Semantic Graph]
+    I --> O[Observation Journal]
     O --> T
     J --> R[Failure Explanation]
     T --> R
@@ -60,21 +60,16 @@ Tool Result Pair；Orphan Result 与 Interrupted Partial Turn 不进入 Model Hi
 Byte 是 Restored 还是 Conflicted；最后关联 Provider、Tool、Approval、Verification
 Span、Usage 与 Execution Receipt。
 
-## Observation Evidence 与 Semantic Replay
+## Observation Evidence 与 Replay
 
-Raw Observation Journal 按顺序保留通过 Privacy Admission 的 Envelope。Semantic
-Reducer 确定性 Fold 为 Entity、Causal Edge、Attempt、Failure 与 Terminal
-Explanation。Reducer Output 是可重建 Projection，不能授权 Retry 或覆盖 Runtime
-Lifecycle Fact。
+Raw Observation Journal 按顺序保留通过 Privacy Admission 的 Envelope。排障时直接按
+Cursor 重放这些记录，并与持久化 Event、Trace、Usage 和 Receipt 交叉核对；诊断投影
+不能授权 Retry，也不能覆盖 Runtime Lifecycle Fact。
 
 使用 Observation ID、Trace/Span ID、Parent Observation ID 与 Domain Correlation
 连接 Provider、Tool、WorkGraph、Extension 与 Process Evidence。Capture Mode 限制
 可得结论：Metadata-only Record 有意省略 Raw Payload；过期 Payload Reference 保持为
 Unavailable Content，不能伪造成 Empty Data。
-
-内部 Support Bundle Builder 选择有界记录，对 Summary/Payload 再次脱敏，默认排除
-Payload，并以 mode `0600` 写入私有 Archive。Bundle 只是 Evidence Transport，不高于
-其包含的 Source Record。
 
 ## Failure Class
 
@@ -93,7 +88,7 @@ Record 冲突时，优先使用最接近 Claim 的 Evidence：
 durable runtime event / workspace journal bytes
   > transactional projection with matching event
   > raw observation journal envelope
-  > deterministic semantic projection
+  > observation journal with matching correlation
   > observed trace/usage/verification
   > execution receipt projection
   > model/child self-report
@@ -115,7 +110,7 @@ Lifecycle 最强；Verification 对 Named Check Scope 最强。每个结论必�
 | Cost？ | Per-call/Sample Usage/Actual Route |
 | Time？ | Completed/Open Phase Span |
 | 哪些 Causal Link 存在？ | Observation ID、Trace Context、Semantic Edge |
-| Evidence 是否被 Drop？ | Observation Health/Capture Mode |
+| Evidence 是否被 Drop？ | Admission Receipt/Capture Mode |
 | 建立何种 Correctness？ | Verification Status/Scope/Command |
 | 哪些 Unknown？ | Gap/Unavailable/Conflict |
 
@@ -133,7 +128,7 @@ Effect，还需检查 Journal 与 External Side Effect。
 - 不把 Child Self-report 当作 Gate-proven。
 - Redact Credential，同时保留 ID/Category。
 - Metadata Capture/Retention 下缺少 Payload 不能解释为空的成功证据。
-- Semantic Projection/Support Bundle 不能成为执行权威。
+- Observation Projection 不能成为执行权威。
 
 ## 测试与验证
 
@@ -141,8 +136,8 @@ Effect，还需检查 Journal 与 External Side Effect。
 go test ./internal/runtime/app -run TestReconstructThread
 go test ./internal/runtime/app/wire -run TestPersistentRuntime
 go test ./internal/persist/workspacejournal
-go test ./internal/observability/semantic
-go test ./internal/observability/supportbundle
+go test ./internal/observability/journal
+go test ./internal/observability/trace ./internal/observability/usage
 ```
 
 ## 动手实验

@@ -92,7 +92,8 @@ Durability、必需 Correlation、Retention Class、Priority 与 OTLP Mapping。
 
 Privacy Admission 先于 Journal/CAS Persistence。Critical Evidence 同步写入；Normal 与
 Bulk Evidence 使用有界 Queue。Capture 默认只保留 Metadata。Writer、Queue 与 Exporter
-Failure 更新 Observation Health，但绝不改变业务 Turn Result。
+Failure 通过 Admission Receipt 或 `Flush`/`Shutdown` 暴露，但绝不改变业务 Turn
+Result。
 
 ## W3C Trace Context 与 OTLP
 

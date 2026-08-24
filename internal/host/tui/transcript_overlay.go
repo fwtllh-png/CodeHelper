@@ -139,9 +139,9 @@ func (m Model) handleTranscriptOverlayKey(msg tea.KeyMsg) (Model, bool, tea.Cmd)
 	case tea.KeyPgDown:
 		return m.scrollOverlay(func(vp *viewport.Model) { vp.PageDown() }), true, nil
 	case tea.KeyCtrlU:
-		return m.scrollOverlay(func(vp *viewport.Model) { vp.HalfViewUp() }), true, nil
+		return m.scrollOverlay(func(vp *viewport.Model) { vp.HalfPageUp() }), true, nil
 	case tea.KeyCtrlD:
-		return m.scrollOverlay(func(vp *viewport.Model) { vp.HalfViewDown() }), true, nil
+		return m.scrollOverlay(func(vp *viewport.Model) { vp.HalfPageDown() }), true, nil
 	case tea.KeyHome:
 		return m.scrollOverlay(func(vp *viewport.Model) { vp.GotoTop() }), true, nil
 	case tea.KeyEnd:

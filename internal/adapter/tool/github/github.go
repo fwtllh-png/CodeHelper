@@ -304,47 +304,18 @@ type contextInput struct {
 }
 
 func (c *client) issueContext(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input contextInput
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
-	if err := validateRepo(input.Provider, input.Repository, input.Number); err != nil {
-		return tool.Result{}, err
-	}
-	if c.baseURL == "" {
-		return failure("unavailable", 0, "hosted Git endpoint is not configured"), nil
-	}
-	include := setOf(input.Include)
-	if len(include) == 0 {
-		include = map[string]bool{"body": true, "comments": true}
-	}
-	path := issuePath(input.Provider, input.Repository, input.Number)
-	body, status, category, err := c.request(ctx, http.MethodGet, input.Provider, path, nil)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	if category != "" {
-		return failure(category, status, string(body)), nil
-	}
-	payload := map[string]any{"issue": json.RawMessage(body)}
-	if include["comments"] {
-		commentsPath := issueCommentsPath(input.Provider, input.Repository, input.Number)
-		comments, cStatus, cCategory, cErr := c.request(ctx, http.MethodGet, input.Provider, commentsPath, nil)
-		if cErr != nil {
-			return tool.Result{}, cErr
-		}
-		if cCategory == "" {
-			payload["comments"] = json.RawMessage(comments)
-		} else {
-			payload["comments_error"] = map[string]any{"category": cCategory, "status": cStatus}
-		}
-	}
-	return compactResult(payload, map[string]any{
-		"provider": input.Provider, "repository": input.Repository, "number": input.Number,
-	})
+	return c.context(ctx, raw, false)
 }
 
 func (c *client) prContext(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+	return c.context(ctx, raw, true)
+}
+
+func (c *client) context(
+	ctx context.Context,
+	raw json.RawMessage,
+	pullRequest bool,
+) (tool.Result, error) {
 	var input contextInput
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
@@ -357,27 +328,51 @@ func (c *client) prContext(ctx context.Context, raw json.RawMessage) (tool.Resul
 	}
 	include := setOf(input.Include)
 	if len(include) == 0 {
-		include = map[string]bool{"body": true, "reviews": true}
+		include = map[string]bool{"body": true}
 	}
-	path := prPath(input.Provider, input.Repository, input.Number)
-	body, status, category, err := c.request(ctx, http.MethodGet, input.Provider, path, nil)
+	primaryKey, relatedKey := "issue", "comments"
+	primaryPath := issuePath(input.Provider, input.Repository, input.Number)
+	relatedPath := issueCommentsPath(input.Provider, input.Repository, input.Number)
+	if pullRequest {
+		primaryKey, relatedKey = "pull_request", "reviews"
+		primaryPath = prPath(input.Provider, input.Repository, input.Number)
+		relatedPath = reviewsPath(input.Provider, input.Repository, input.Number)
+	}
+	if len(input.Include) == 0 {
+		include[relatedKey] = true
+	}
+	body, status, category, err := c.request(
+		ctx,
+		http.MethodGet,
+		input.Provider,
+		primaryPath,
+		nil,
+	)
 	if err != nil {
 		return tool.Result{}, err
 	}
 	if category != "" {
 		return failure(category, status, string(body)), nil
 	}
-	payload := map[string]any{"pull_request": json.RawMessage(body)}
-	if include["reviews"] {
-		reviewsPath := reviewsPath(input.Provider, input.Repository, input.Number)
-		reviews, rStatus, rCategory, rErr := c.request(ctx, http.MethodGet, input.Provider, reviewsPath, nil)
-		if rErr != nil {
-			return tool.Result{}, rErr
+	payload := map[string]any{primaryKey: json.RawMessage(body)}
+	if include[relatedKey] {
+		related, relatedStatus, relatedCategory, err := c.request(
+			ctx,
+			http.MethodGet,
+			input.Provider,
+			relatedPath,
+			nil,
+		)
+		if err != nil {
+			return tool.Result{}, err
 		}
-		if rCategory == "" {
-			payload["reviews"] = json.RawMessage(reviews)
+		if relatedCategory == "" {
+			payload[relatedKey] = json.RawMessage(related)
 		} else {
-			payload["reviews_error"] = map[string]any{"category": rCategory, "status": rStatus}
+			payload[relatedKey+"_error"] = map[string]any{
+				"category": relatedCategory,
+				"status":   relatedStatus,
+			}
 		}
 	}
 	return compactResult(payload, map[string]any{

@@ -271,6 +271,12 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 	if err := e.validateSessionProfileLocked(profile); err != nil {
 		return err
 	}
+	routes, err := e.routesForProfileLocked(profile)
+	if err != nil {
+		return err
+	}
+	e.options.Routes = routes
+	e.options.Route = routes.Act()
 	e.options.ReasoningEffort = profile.ReasoningEffort
 	e.options.MaxSteps = profile.MaxSteps
 	e.options.ProfileRevision = profile.Revision

@@ -874,7 +874,6 @@ func (g *Guard) waitForApproval(
 	if recovering {
 		requestID = recovered.RequestID
 	}
-	request.RequestID = requestID
 	fields := schemaProperties(invocation.Descriptor.InputSchema)
 	scopes := []policy.ApprovalScope{policy.ApprovalOnce}
 	if request.Grant != nil {
@@ -1083,8 +1082,6 @@ func (g *Guard) cacheApproval(
 		if decision.ExpiresAt.IsZero() || !decision.ExpiresAt.After(g.now()) {
 			decision.ExpiresAt = g.now().Add(24 * time.Hour)
 		}
-	}
-	if decision.Scope == policy.ApprovalOnce {
 	}
 	g.grantNetworkHosts(invocation.Resources)
 	request, err := policy.NewApprovalRequestForScope(

@@ -39,7 +39,7 @@ func TestRangeReadsFromAnyOffsetAndReportsWhatIsLeft(t *testing.T) {
 		t.Fatalf("bounded range = %q total=%d", data, total)
 	}
 	// A caller that is up to date is not wrong: no data, no error.
-	data, total, err = store.Range("job-1", total, 0)
+	data, _, err = store.Range("job-1", total, 0)
 	if err != nil || len(data) != 0 {
 		t.Fatalf("range at the end = %q, %v", data, err)
 	}

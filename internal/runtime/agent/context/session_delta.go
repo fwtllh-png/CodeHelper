@@ -342,60 +342,6 @@ func PrepareSessionRestore(
 	}, nil
 }
 
-func PrepareSessionDelta(
-	turnID string,
-	baseRevision uint64,
-	history []provider.Message,
-	usage provider.Usage,
-	cost float64,
-	state ...SessionState,
-) (SessionDelta, error) {
-	if turnID == "" {
-		return SessionDelta{}, errors.New("session delta turn id is required")
-	}
-	accounting, err := PrepareAccountingDelta(turnID, usage, cost)
-	if err != nil {
-		return SessionDelta{}, err
-	}
-	var sessionState SessionState
-	if len(state) != 0 {
-		sessionState = state[0]
-	}
-	delta := SessionDelta{
-		TurnID: turnID, Version: ContextEnvelopeVersion,
-		Epoch: sessionState.Epoch, BaseRevision: baseRevision,
-		History:        CloneMessages(history),
-		MessageTurns:   make([]uint64, len(history)),
-		HistoryTurns:   CloneHistoryTurns(sessionState.HistoryTurns),
-		Usage:          accounting.Usage,
-		CostMicrounits: accounting.CostMicrounits,
-		WorkingSet:     sessionState.WorkingSet, Evidence: sessionState.Evidence,
-		Failures: sessionState.Failures, Compaction: sessionState.Compaction,
-		Plan: sessionState.Plan, World: CloneWorldBaseline(sessionState.World),
-		Workspace:      sessionState.Workspace,
-		Window:         CloneWindowLedger(sessionState.Window),
-		ManifestLimits: sessionState.Manifest, Turn: sessionState.Turn,
-	}
-	for index, message := range history {
-		delta.Turn = max(delta.Turn, message.Turn)
-		delta.MessageTurns[index] = message.Turn
-	}
-	if sessionState.Turn != 0 && HistoryContainsTurn(history, sessionState.Turn) {
-		if delta.HistoryTurns == nil {
-			delta.HistoryTurns = make(map[string]uint64)
-		}
-		delta.HistoryTurns[turnID] = sessionState.Turn
-	}
-	ReconcileHistoryTurnBindings(delta.HistoryTurns, delta.MessageTurns)
-	payload, err := json.Marshal(delta)
-	if err != nil {
-		return SessionDelta{}, fmt.Errorf("encode session delta: %w", err)
-	}
-	sum := sha256.Sum256(payload)
-	delta.Digest = hex.EncodeToString(sum[:])
-	return delta, nil
-}
-
 func PrepareAccountingDelta(
 	turnID string,
 	usage provider.Usage,

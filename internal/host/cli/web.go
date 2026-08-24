@@ -273,6 +273,7 @@ func runWeb(
 		Permission:        options.posture,
 		MCPConfigPath:     options.mcpConfig,
 		PersistentStore:   store,
+		CredentialControl: credentialControl,
 		WorkspaceIdentity: workspaceIdentity,
 		RuntimeRole:       wire.RuntimeRoleInteractive,
 		Extensions:        extensionOptions,
@@ -302,6 +303,7 @@ func runWeb(
 	credentials := credential.New(
 		effectiveCredential,
 		credential.WithControl(credentialControl),
+		credential.WithLiveReload(),
 		credential.WithProbe(func(
 			ctx context.Context,
 			reference credential.Reference,

@@ -38,7 +38,7 @@ func TestClassifySurface(t *testing.T) {
 	if got := ClassifySurface("mcp_foo", CapabilityNetwork); got != SurfaceMCP {
 		t.Fatalf("mcp = %s", got)
 	}
-	if got := ClassifySurface("load_skill", CapabilityRead); got != SurfaceSkills {
+	if got := ClassifySurface("skills_read", CapabilityRead); got != SurfaceSkills {
 		t.Fatalf("skills = %s", got)
 	}
 	if got := ClassifySurface("exec_command", CapabilityProcess); got != SurfaceSandbox {

@@ -204,9 +204,18 @@ Web 只监听 `127.0.0.1`，使用 Capability Token、Host/Origin Fence、类型
 Plan、Credential 与 Operation 都由 Runtime 或其所属安全组件校验；浏览器只提交 Intent
 并投影结果。
 
+没有 Session 时，Web 使用启动配置页代替 Composer 和 Session 详情栏。该页面集中显示
+Runtime Provider、可选 Model、模型级 Reasoning、只写 API Key 状态和 Workspace
+Isolation；创建 Session 时一次提交所选 Session Profile。同一 Provider 的可用 Model
+可在空闲 Session 中继续切换，跨 Provider 变更仍要求重新启动 Runtime。
+
 Web 的 Session usage 默认使用 `include_children=true`，因此父 Session 的汇总包含
 其 `agent_nodes` 下 Child Turn 的消耗；关闭该参数可读取 direct usage。两种口径都保留
 原始 Child Session/Thread/Turn 归属，不通过重写账本伪造父子关系。
+
+Web 删除 Session 时会要求显式确认。对于已失去执行者的未完成 Turn 或隔离 worktree，
+确认删除表示同时丢弃其未完成状态和隔离改动；仍有内存执行者或恢复中 Operation 的
+Session 会拒绝删除，必须先停止执行。
 
 `system/diagnostics` 的 `runtime_health` 从 Runtime active registry 和各 Thread Engine
 的 in-memory recorder 读取 active Turn、Provider Call、Tool Execution 与 Pending
@@ -431,9 +440,9 @@ codehelper tui --config ./codehelper.toml --workspace .
 ```
 
 Capture 默认只保留 Metadata。`failure` 与 `full` 只有在完成 Redaction 后才可能保留
-符合条件的 Payload；Credential 与 Restricted Payload 永不持久化。OTLP 支持 gRPC
-与 HTTP/protobuf。Observation Journal、Queue 或 Exporter Failure 只影响
-Observation Health，不改变 Turn 的 Completed/Failed/Canceled 业务结果。
+符合条件的 Payload；Credential 与 Restricted Payload 永不持久化。OTLP 默认关闭，
+显式配置后支持 gRPC 与 HTTP/protobuf。Observation Journal、Queue 或 Exporter Failure 只影响
+对应的 Admission/Flush 结果，不改变 Turn 的 Completed/Failed/Canceled 业务结果。
 
 ## Shell 补全
 

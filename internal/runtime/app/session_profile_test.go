@@ -479,7 +479,7 @@ func TestProjectToolSourceCoversUnifiedFamilies(t *testing.T) {
 		"builtin": {name: "file_read", source: "builtin:file_read", kind: "builtin"},
 		"mcp":     {name: "issues", source: "mcp:github", kind: "mcp"},
 		"plugin":  {name: "plugin_demo_run", source: "plugin:lifecycle", kind: "plugin"},
-		"skill":   {name: "load_skill", source: "builtin:load_skill", kind: "skill"},
+		"skill":   {name: "skills_read", source: "builtin:skills_read", kind: "skill"},
 		"dynamic": {name: "host_echo", source: "dynamic:3", kind: "dynamic"},
 	}
 	for label, test := range tests {
@@ -517,6 +517,42 @@ func (*profileCatalogTool) Execute(
 	json.RawMessage,
 ) (tool.Result, error) {
 	return tool.Result{Content: "ok"}, nil
+}
+
+func TestSessionProfileReturnsCapabilitiesForSelectedModel(t *testing.T) {
+	defaults := runtimeTestProfile()
+	selected := defaults
+	selected.Model = "fixture-reasoner"
+	capabilities := runtimeTestCapabilities(defaults)
+	capabilities.MutableFields = append(
+		capabilities.MutableFields,
+		"model",
+	)
+	selectedCapabilities := capabilities.ModelCapabilities
+	selectedCapabilities.DisplayName = "Fixture Reasoner"
+	selectedCapabilities.DefaultReasoningEffort = "medium"
+	selectedCapabilities.SelectionMode = "hot"
+	runtime := NewRuntime(Options{
+		Engine:              &profileTestEngine{},
+		SessionProfiles:     &memoryProfileStore{profile: selected},
+		DefaultProfile:      defaults,
+		ProfileCapabilities: capabilities,
+		ProfileModels: map[string]protocol.ModelCapabilities{
+			"fixture\x00fixture-reasoner": selectedCapabilities,
+		},
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	snapshot, err := runtime.SessionProfile(t.Context(), "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Capabilities.Model != selected.Model ||
+		snapshot.Capabilities.ModelCapabilities.DisplayName !=
+			"Fixture Reasoner" ||
+		snapshot.Capabilities.ModelCapabilities.SelectionMode != "hot" {
+		t.Fatalf("selected capabilities = %+v", snapshot.Capabilities)
+	}
 }
 
 func runtimeTestProfile() protocol.SessionProfile {

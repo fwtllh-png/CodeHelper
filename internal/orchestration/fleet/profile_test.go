@@ -1,6 +1,7 @@
 package fleet_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,7 +12,12 @@ import (
 func TestLoadProfileAndRoster(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "default.toml")
-	if err := fleet.WriteTemplate(path); err != nil {
+	if err := os.WriteFile(path, []byte(`
+name = "default"
+max_workers = 2
+lease_timeout = "2m"
+heartbeat_alert = "2m"
+`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	profile, err := fleet.LoadProfile(path)

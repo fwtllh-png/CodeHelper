@@ -280,7 +280,7 @@ func retryableTransportError(err error) bool {
 		return true
 	}
 	var networkError net.Error
-	return errors.As(err, &networkError) && (networkError.Timeout() || networkError.Temporary())
+	return errors.As(err, &networkError) && networkError.Timeout()
 }
 func requestKey(body []byte) string {
 	digest := sha256.Sum256(body)

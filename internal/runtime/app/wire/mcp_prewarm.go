@@ -27,16 +27,6 @@ type MCPPrewarm struct {
 	done        sync.WaitGroup
 }
 
-func NewMCPPrewarm(pool *mcpruntime.Pool, configPath string) *MCPPrewarm {
-	return &MCPPrewarm{
-		ch: make(chan struct{}, 1), pool: pool,
-		blocked: make(map[string]bool),
-		loadConfig: func() (mcpruntime.Config, error) {
-			return mcpruntime.LoadConfig(configPath)
-		},
-	}
-}
-
 func NewMCPPrewarmConfig(
 	pool *mcpruntime.Pool,
 	config mcpruntime.Config,
@@ -146,9 +136,6 @@ func (p *MCPPrewarm) Stop() {
 		p.unsubscribe = nil
 	}
 	p.done.Wait()
-	if p.adapter != nil {
-		p.adapter.Close()
-	}
 }
 
 func (p *MCPPrewarm) requestRetry() {

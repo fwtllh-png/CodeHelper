@@ -29,6 +29,9 @@ type TerminalUpdate = eventview.TerminalUpdate
 func ProjectEvent(event protocol.Event) (EventUpdate, error) {
 	return eventview.Project(event)
 }
+func WorkspaceEvent(update EventUpdate) bool {
+	return eventview.WorkspaceEvent(update)
+}
 func TerminalEvent(update EventUpdate) bool {
 	traits := update.Traits()
 	return traits.Terminal || traits.Class == protocol.EventClassTerminalOperation

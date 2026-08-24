@@ -27,8 +27,6 @@ const (
 	KindDiff         Kind = "diff"
 	KindUndo         Kind = "undo"
 	KindRestore      Kind = "restore"
-	KindRedo         Kind = "redo"
-	KindCopy         Kind = "copy"
 	KindCost         Kind = "cost"
 	KindStatus       Kind = "status"
 	KindCancel       Kind = "cancel"

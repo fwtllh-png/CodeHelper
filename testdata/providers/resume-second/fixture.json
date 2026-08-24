@@ -1,9 +1,0 @@
-{
-  "protocol": "openai_chat",
-  "path": "/chat/completions",
-  "model": "fixture-model",
-  "expected_prompt": "second question",
-  "expected_request_fragments": [
-    ["first question", "first answer", "second question"]
-  ]
-}

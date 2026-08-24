@@ -14,7 +14,6 @@ import (
 	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
-	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
@@ -1176,7 +1175,8 @@ func TestPersistentRepositoriesProjectThreadLifecycleEvents(t *testing.T) {
 }
 
 func TestPersistentRecoveryIgnoresEventsFromDeletedSessions(t *testing.T) {
-	store := seedPersistentState(t, t.TempDir())
+	root := t.TempDir()
+	store := seedPersistentState(t, root)
 	defer store.CloseAll(context.Background())
 	event, err := protocol.NewEvent(protocol.EventMeta{
 		Sequence: 1, OperationID: "operation-deleted",
@@ -1198,10 +1198,11 @@ func TestPersistentRecoveryIgnoresEventsFromDeletedSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = repositories.Sessions.Create(t.Context(), sessionstate.Session{
-		ID: "session-replacement", WorkspaceID: "workspace-1",
-	})
-	if err != nil {
+	if err := repositories.Sessions.EnsureSeed(
+		t.Context(),
+		"session-replacement",
+		filepath.Join(root, "workspace"),
+	); err != nil {
 		t.Fatal(err)
 	}
 	_, err = repositories.Threads.Create(t.Context(), threadstate.Thread{
@@ -1239,16 +1240,11 @@ func seedPersistentState(t *testing.T, root string) *state.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = repositories.Sessions.CreateWorkspace(t.Context(), sessionstate.Workspace{
-		ID: "workspace-1", RootPath: filepath.Join(root, "workspace"),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = repositories.Sessions.Create(t.Context(), sessionstate.Session{
-		ID: "session-1", WorkspaceID: "workspace-1",
-	})
-	if err != nil {
+	if err := repositories.Sessions.EnsureSeed(
+		t.Context(),
+		"session-1",
+		filepath.Join(root, "workspace"),
+	); err != nil {
 		t.Fatal(err)
 	}
 	_, err = repositories.Threads.Create(t.Context(), threadstate.Thread{
