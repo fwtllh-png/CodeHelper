@@ -19,6 +19,52 @@ type Runtime struct {
 	Recorder  observation.Recorder
 	RuntimeID string
 	contexts  *turnContextRegistry
+	active    *activeRecorderRegistry
+}
+
+type activeRecorderRegistry struct {
+	mu    sync.RWMutex
+	turns map[protocol.TurnID]*Recorder
+}
+
+func newActiveRecorderRegistry() *activeRecorderRegistry {
+	return &activeRecorderRegistry{turns: make(map[protocol.TurnID]*Recorder)}
+}
+
+func (r *activeRecorderRegistry) bind(
+	turnID protocol.TurnID,
+	recorder *Recorder,
+) {
+	if r == nil || turnID == "" || recorder == nil {
+		return
+	}
+	r.mu.Lock()
+	r.turns[turnID] = recorder
+	r.mu.Unlock()
+}
+
+func (r *activeRecorderRegistry) snapshot(
+	turnID protocol.TurnID,
+) []Record {
+	if r == nil || turnID == "" {
+		return nil
+	}
+	r.mu.RLock()
+	recorder := r.turns[turnID]
+	r.mu.RUnlock()
+	if recorder == nil {
+		return nil
+	}
+	return recorder.Spans()
+}
+
+func (r *activeRecorderRegistry) release(turnID protocol.TurnID) {
+	if r == nil || turnID == "" {
+		return
+	}
+	r.mu.Lock()
+	delete(r.turns, turnID)
+	r.mu.Unlock()
 }
 
 type turnContextRegistry struct {
@@ -109,15 +155,30 @@ func (r Runtime) NewTurnRecorder(
 		},
 	)
 	typedTurnID := protocol.TurnID(turnID)
+	if r.active != nil {
+		r.active.bind(typedTurnID, recorder)
+	}
 	if r.contexts != nil {
 		recorder.onRoot = func(value observation.TraceContext) {
 			r.contexts.bind(typedTurnID, value)
 		}
 		recorder.onClose = func() {
 			r.contexts.release(typedTurnID)
+			r.active.release(typedTurnID)
+		}
+	} else if r.active != nil {
+		recorder.onClose = func() {
+			r.active.release(typedTurnID)
 		}
 	}
 	return recorder
+}
+
+// ActiveTurnSpans returns a detached snapshot for a currently running turn.
+// Completed turns are deliberately absent and must be read from the durable
+// repository.
+func (r Runtime) ActiveTurnSpans(turnID protocol.TurnID) []Record {
+	return r.active.snapshot(turnID)
 }
 
 func (r Runtime) ObserveTransition(

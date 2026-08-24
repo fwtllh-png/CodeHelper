@@ -54,6 +54,7 @@ var unaryRouteContracts = []RouteContract{
 	rpc("plan/transition", "plan_transition", "operation_receipt", true, true),
 	rpc("task/list", "task_query", "task_list", false, false),
 	rpc("agent/list", "agent_query", "agent_list", false, false),
+	rpc("trace/query", "trace_query", "trace_snapshot", false, false),
 	rpc("usage/query", "usage_query", "usage_summary", false, false),
 	rpc("extension/list", "extension_query", "extension_list", false, false),
 	rpc("extension/control", "extension_control", "extension_control_result", true, true),

@@ -404,6 +404,8 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.taskList(r, dependencies)
 	case "agent/list":
 		result, err = s.agentList(r, dependencies)
+	case "trace/query":
+		result, err = s.traceQuery(r, dependencies)
 	case "usage/query":
 		result, err = s.usageQuery(r, dependencies)
 	case "extension/list":
@@ -475,6 +477,7 @@ func (s *Server) describe(dependencies Dependencies) map[string]any {
 		"features": []string{
 			"sessions", "events", "profiles", "tools", "mcp_health",
 			"workspace", "credentials", "diagnostics", "session_export",
+			"trajectory", "trace_query",
 		},
 	}
 }
@@ -1253,6 +1256,25 @@ func (s *Server) usageQuery(
 			usagestate.Fold(scope, values),
 		),
 	}, nil
+}
+
+func (s *Server) traceQuery(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request app.TraceQuery
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	if len(request.TurnIDs) > s.capacity.MaxTraceTurns {
+		return nil, protocol.NewProblem(
+			protocol.CodeResourceExhausted,
+			"trace query exceeds the Web API turn limit",
+			false,
+			nil,
+		)
+	}
+	return dependencies.Runtime.TraceService.Query(r.Context(), request)
 }
 
 func boundedLimit(value, fallback int) (int, error) {

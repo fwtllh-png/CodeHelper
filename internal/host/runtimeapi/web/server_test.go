@@ -321,6 +321,49 @@ func TestRequestPanicIsContainedAndRedacted(t *testing.T) {
 	}
 }
 
+func TestTraceQueryRejectsRequestsAboveCapacityBeforeRepositoryAccess(t *testing.T) {
+	const host = "127.0.0.1:43212"
+	server := newTestServerWithOptions(t, webhost.Options{
+		Assets: fstest.MapFS{
+			"index.html": &fstest.MapFile{
+				Data: []byte("<main>CodeHelper</main>"),
+				Mode: fs.FileMode(0o444),
+			},
+		},
+		ExpectedHost: host,
+		Origin:       "http://" + host,
+		Capacity:     webhost.Capacity{MaxTraceTurns: 2},
+	})
+	runtime := app.NewRuntime(app.Options{})
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	identity, err := protocol.NewWorkspaceIdentity(
+		"file:///workspace",
+		"/workspace",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Activate(webhost.Dependencies{
+		Runtime: runtime, WorkspaceRoot: "/workspace",
+		WorkspaceIdentity: identity,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	response := postWeb(
+		t,
+		server,
+		host,
+		bootstrapToken(t, server, host),
+		"trace/query",
+		`{"session_id":"session","turn_ids":["one","two","three"],"through_sequence":1}`,
+	)
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+}
+
 func TestSystemDiagnosticsReportsAuthoritativeRuntimeHealth(t *testing.T) {
 	const host = "127.0.0.1:43211"
 	server := newTestServer(t, host)

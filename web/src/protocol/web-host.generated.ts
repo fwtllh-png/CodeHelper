@@ -37,6 +37,7 @@ export const webRPCRoutes = [
   "system/readiness",
   "task/list",
   "tool/catalog",
+  "trace/query",
   "turn/recover",
   "usage/query",
   "workspace/browse",

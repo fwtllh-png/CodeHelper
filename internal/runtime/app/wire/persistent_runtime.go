@@ -61,6 +61,7 @@ func PreparePersistentRuntime(
 
 		TerminalStore:       terminalStore,
 		ContextRebaseStore:  contextRebases,
+		TraceStore:          repositories.Trace,
 		Orchestration:       orchestration,
 		SkipRuntimeRecovery: options.SkipRuntimeRecovery, Observability: options.Observability,
 	}

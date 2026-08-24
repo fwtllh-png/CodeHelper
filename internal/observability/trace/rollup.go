@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 // Scope names which turns a Rollup covers. An empty field is not a filter, so a
@@ -183,6 +185,40 @@ func (r *Repository) QueryTurnInThread(
 		return nil, fmt.Errorf("resolve trace turn: %w", err)
 	}
 	return r.QueryByTurn(ctx, turnID)
+}
+
+// QueryTurnInSession reads one turn only after proving that its thread belongs
+// to the requested session. The ownership check prevents host-facing trace
+// queries from using a valid turn identifier to cross a session boundary.
+func (r *Repository) QueryTurnInSession(
+	ctx context.Context,
+	sessionID string,
+	turnID protocol.TurnID,
+) ([]Record, error) {
+	if r.db == nil {
+		return nil, errors.New("trace repository database is required")
+	}
+	var exists int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT 1
+		FROM turns tr
+		JOIN threads th ON th.id = tr.thread_id
+		WHERE tr.id = ? AND th.session_id = ?`,
+		turnID,
+		sessionID,
+	).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf(
+			"%w: turn %s in session %s",
+			ErrNotFound,
+			turnID,
+			sessionID,
+		)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("resolve trace turn session: %w", err)
+	}
+	return r.QueryByTurn(ctx, string(turnID))
 }
 
 // sortPhases orders phases the way a turn runs so two reports of the same scope

@@ -312,6 +312,40 @@ export interface UsageQueryResult {
   rollup: UsageRollup;
 }
 
+export type TraceSpanKind =
+  | "turn"
+  | "model"
+  | "tool"
+  | "approval"
+  | "verification";
+
+export interface TraceSpan {
+  id: number;
+  parent_id?: number;
+  kind: TraceSpanKind;
+  status: "open" | "ok" | "error" | "canceled";
+  started_at: string;
+  ended_at?: string;
+  duration_ms?: number;
+  sample?: number;
+  call_id?: string;
+}
+
+export interface TraceTurn {
+  turn_id: string;
+  started_at?: string;
+  ended_at?: string;
+  status: "unavailable" | "open" | "ok" | "error" | "canceled";
+  spans: TraceSpan[];
+}
+
+export interface TraceSnapshot {
+  version: number;
+  session_id: string;
+  through_sequence: Cursor;
+  turns: TraceTurn[];
+}
+
 export interface ExtensionProjection {
   kind: "plugin" | "skill";
   name: string;
