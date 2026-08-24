@@ -1,6 +1,7 @@
 import {cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {afterEach, describe, expect, it, vi} from "vitest";
 import type {RuntimeEvent, SessionSummary} from "../protocol";
+import {projectConversation} from "../projection/conversation";
 import type {RuntimeClient, RuntimeSnapshot} from "../runtime/client";
 import {App, projectTranscript, selectionRange} from "./App";
 
@@ -40,8 +41,8 @@ describe("projectTranscript", () => {
     ]);
 
     expect(entries).toMatchObject([
-      {type: "assistant", text: "final"},
-      {type: "status", title: "Completed"}
+      {kind: "assistant", text: "final"},
+      {kind: "status", title: "Completed"}
     ]);
   });
 
@@ -54,10 +55,10 @@ describe("projectTranscript", () => {
 
     expect(entries).toMatchObject([
       {
-        type: "tool",
-        title: "read",
-        text: "content",
-        failed: false,
+        kind: "tool",
+        title: "Read",
+        output: "content",
+        state: "completed",
         callID: "call",
         contextText: "content"
       }
@@ -72,9 +73,9 @@ describe("projectTranscript", () => {
     ]);
 
     expect(entries).toMatchObject([
-      {type: "status", title: "Verification", text: "passed", failed: false},
-      {type: "status", title: "Receipt", text: "changed", failed: false},
-      {type: "status", title: "Rejected", text: "stale request", failed: true}
+      {kind: "status", title: "Verification", text: "passed", failed: false},
+      {kind: "receipt", data: {outcome: "changed"}},
+      {kind: "status", title: "Rejected", text: "stale request", failed: true}
     ]);
   });
 
@@ -85,8 +86,8 @@ describe("projectTranscript", () => {
     ]);
 
     expect(entries).toMatchObject([
-      {type: "status", title: "Failed", failed: true, turnID: "turn"},
-      {type: "status", title: "Canceled", failed: true, turnID: "turn"}
+      {kind: "status", title: "Failed", failed: true, turnID: "turn"},
+      {kind: "status", title: "Canceled", failed: true, turnID: "turn"}
     ]);
   });
 
@@ -108,6 +109,7 @@ describe("projectTranscript", () => {
   it("renders lifecycle, workspace, profile, and governed tool controls", () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
 
     expect(screen.getByLabelText("New session isolation")).toBeTruthy();
     expect(screen.getByRole("button", {name: "Browse workspace"})).toBeTruthy();
@@ -205,6 +207,7 @@ describe("projectTranscript", () => {
     }];
     const client = mockClient(value);
     render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
 
     fireEvent.click(screen.getAllByRole("button", {name: "Delete session"})[0]);
 
@@ -289,6 +292,7 @@ describe("projectTranscript", () => {
     }];
     const client = mockClient(value);
     render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
 
     expect(screen.getByLabelText("Tasks").textContent).toContain(
       "verificationtask-1failedtests failed"
@@ -327,6 +331,7 @@ describe("projectTranscript", () => {
     };
     vi.mocked(client.workspaceDiff).mockResolvedValue(diff);
     render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
 
     fireEvent.click(screen.getByRole("button", {name: "Refresh diff"}));
     await screen.findByText(/diff --git/);
@@ -387,6 +392,7 @@ describe("projectTranscript", () => {
       diagnostics: [diagnostic]
     });
     render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
 
     fireEvent.change(screen.getByLabelText("Search workspace symbols"), {
       target: {value: "Serve"}
@@ -422,6 +428,7 @@ describe("projectTranscript", () => {
       new Blob(["image"], {type: "image/png"})
     );
     render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
 
     fireEvent.click(screen.getByRole("button", {name: "Browse workspace"}));
     fireEvent.click(await screen.findByRole("button", {name: /diagram.png/}));
@@ -447,9 +454,11 @@ describe("projectTranscript", () => {
         is_error: false
       })
     ];
+    value.conversation = projectConversation(value.events);
     const client = mockClient(value);
     render(<App client={client} />);
 
+    fireEvent.click(screen.getByRole("button", {name: /Exec Command/}));
     fireEvent.click(screen.getByRole("button", {
       name: "Add tool output to prompt context"
     }));
@@ -474,6 +483,7 @@ describe("projectTranscript", () => {
       configured: false
     });
     render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
 
     fireEvent.click(screen.getByRole("button", {name: "Settings"}));
     await screen.findByText("Configured");
@@ -622,6 +632,43 @@ describe("projectTranscript", () => {
     });
   });
 
+  it("preserves the textarea DOM node when a blank session becomes active", () => {
+    const value = snapshot();
+    const client = mockClient(value);
+    const view = render(<App client={client} />);
+    const textarea = screen.getByPlaceholderText("Ask CodeHelper");
+
+    value.events = [event(1, "turn.started", {display_prompt: "Hello"})];
+    value.conversation = projectConversation(value.events);
+    view.rerender(<App client={client} />);
+
+    expect(screen.getByPlaceholderText("Ask CodeHelper")).toBe(textarea);
+    expect(screen.getByRole("button", {name: "Chat"})).toBeTruthy();
+  });
+
+  it("keeps successful tools and reasoning collapsed by default", () => {
+    const value = snapshot([
+      event(1, "turn.started", {display_prompt: "Inspect"}),
+      event(2, "reasoning.delta", {text: "Checking the repository"}),
+      event(3, "tool.start", {
+        call_id: "call",
+        tool: "file_read",
+        arguments: {path: "README.md"}
+      }),
+      event(4, "tool.result", {
+        call_id: "call",
+        tool: "file_read",
+        output: "content",
+        is_error: false
+      })
+    ]);
+    const {container} = render(<App client={mockClient(value)} />);
+
+    expect(container.querySelectorAll(".disclosure pre")).toHaveLength(0);
+    expect(screen.getByText("README.md")).toBeTruthy();
+    expect(screen.getByText("Checking the repository")).toBeTruthy();
+  });
+
   it("disables Session-bound controls while the selected Session hydrates", () => {
     const value = snapshot([]);
     value.hydratingSessionID = value.selectedSessionID;
@@ -647,6 +694,54 @@ describe("projectTranscript", () => {
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
     expect(container.querySelector("img")).toBeNull();
     expect(screen.getByText("remote")).toBeTruthy();
+  });
+
+  it("opens the three-lane trajectory and inspects a tool from chat", async () => {
+    const value = snapshot([
+      event(1, "turn.started", {display_prompt: "Inspect"}),
+      event(2, "tool.start", {
+        call_id: "call-1",
+        tool: "file_read",
+        arguments: {path: "README.md"}
+      }),
+      event(3, "tool.result", {
+        call_id: "call-1",
+        tool: "file_read",
+        output: "# Project",
+        is_error: false
+      }),
+      event(4, "turn.completed", {text: "Done"})
+    ]);
+    value.tracePhase = "ready";
+    value.trace = {
+      version: 1,
+      session_id: "session",
+      through_sequence: 4,
+      turns: [{
+        turn_id: "turn",
+        status: "ok",
+        spans: [{
+          id: 1,
+          kind: "tool",
+          status: "ok",
+          started_at: "2026-01-01T00:00:02Z",
+          ended_at: "2026-01-01T00:00:03Z",
+          duration_ms: 1_000,
+          call_id: "call-1"
+        }]
+      }]
+    };
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getByRole("button", {name: /File Read/}));
+    fireEvent.click(screen.getByRole("button", {name: "Inspect"}));
+
+    const trajectory = await screen.findByLabelText("Execution trajectory");
+    expect(trajectory.querySelector(".timelineLabels")?.textContent)
+      .toBe("InputModelTools");
+    expect(screen.getByLabelText("Record inspector").textContent).toContain("call-1");
+    expect(client.refreshTrace).toHaveBeenCalled();
   });
 
   it("windows 500-turn transcripts to 200 projected rows with older and newer navigation", () => {
@@ -702,6 +797,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
     selectedSessionID: session.session_id,
     hydratingSessionID: "",
     events,
+    conversation: projectConversation(events),
     historyMoreBefore: false,
     providers: [
       {
@@ -774,6 +870,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
     tasks: [],
     agents: [],
     extensions: [],
+    tracePhase: "idle",
     socketConnected: true
   };
 }
@@ -837,7 +934,8 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
     addTerminalContext: vi.fn(async () => {}),
     addSymbolContext: vi.fn(),
     addDiagnosticsContext: vi.fn(),
-    addImageContext: vi.fn()
+    addImageContext: vi.fn(),
+    refreshTrace: vi.fn(async () => {})
   } as unknown as RuntimeClient;
 }
 

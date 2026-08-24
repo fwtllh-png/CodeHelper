@@ -505,8 +505,8 @@
       "required_qualifications": [
         "internal/runtime/app/session_profile_test.go#TestSessionProfileUpdateAppliesRevisionAndCacheReset",
         "web/src/runtime/client.test.ts#refreshes authoritative capabilities after changing the model",
-        "web/src/ui/App.test.tsx#changes provider and model as one valid catalog route",
-        "web/tests/e2e/web.spec.ts#loads the Runtime provider and model catalogs into profile controls"
+        "web/src/ui/App.test.tsx#renders lifecycle, workspace, profile, and governed tool controls",
+        "web/tests/e2e/web.spec.ts#shows the fixed provider and single-model route as read-only"
       ]
     },
     {
@@ -629,6 +629,28 @@
       "required_qualifications": [
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
         "web/src/ui/App.test.tsx#renders detailed activity artifacts and extension controls"
+      ]
+    },
+    {
+      "id": "trajectory",
+      "disposition": "required",
+      "legacy_inventory_ids": [],
+      "runtime_owner": "internal/runtime/app/runtime_observability.go",
+      "web_api": [
+        "trace/query",
+        "session/history",
+        "events WebSocket"
+      ],
+      "web_surface": [
+        "Conversation / Trajectory timeline, ledger, and record inspector"
+      ],
+      "required_qualifications": [
+        "internal/observability/trace/query_service_test.go#TestProjectTraceTurnUsesPublicKindsAndAllowlistedIdentity",
+        "internal/observability/trace/rollup_test.go#TestQueryTurnInSessionRejectsForeignTurn",
+        "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
+        "web/src/projection/trajectory.test.ts#coalesces streaming records and links trace spans to tool calls",
+        "web/src/ui/App.test.tsx#opens the three-lane trajectory and inspects a tool from chat",
+        "web/tests/e2e/web.spec.ts#opens the execution trajectory and inspects its event ledger"
       ]
     },
     {

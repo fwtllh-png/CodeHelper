@@ -30,7 +30,8 @@ LDFLAGS := -s -w \
 	canary canary-nightly \
 		canary-adversarial canary-adversarial-quick \
 	cli-smoke tui-smoke protocol-contract protocol-schema \
-	web-install web-check web-test web-build web-assets-check web-e2e web-parity-check web-parity-report \
+	web-install web-check web-test web-build web-brand-assets web-assets-check web-e2e web-parity-check web-parity-report \
+		web-harness-parity-check \
 		web-release-drill web-streaming-soak web-performance web-supply-chain-check web-vulnerability-check \
 	deepseek-init deepseek-tui deepseek-web deepseek-live-smoke \
 	deepseek-multi-agent-smoke \
@@ -274,7 +275,10 @@ web-build:
 	$(NPM) --prefix web run build
 	$(GO) run ./scripts/webassetmanifest -dist web/dist -output web/dist/asset-manifest.json
 
-web-assets-check:
+web-brand-assets:
+	$(NPM) --prefix web run brand-assets
+
+web-assets-check: web-brand-assets
 	@tmp="$$(mktemp -d)"; \
 	trap 'rm -rf "$$tmp"' EXIT; \
 	$(NPM) --prefix web run build -- --outDir "$$tmp/dist" >/dev/null; \
@@ -285,8 +289,11 @@ web-assets-check:
 web-e2e: web-assets-check build
 	$(NPM) --prefix web run test:e2e
 
-web-parity-check:
+web-parity-check: web-harness-parity-check
 	$(GO) run ./scripts/webparitycheck -root . -mode check
+
+web-harness-parity-check:
+	$(GO) run ./scripts/webharnessparity
 
 web-parity-report:
 	$(GO) run ./scripts/webparitycheck -root . -mode report

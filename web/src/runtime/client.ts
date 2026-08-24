@@ -33,6 +33,7 @@ import type {
   SessionSummary,
   TaskList,
   TaskSummary,
+  TraceSnapshot,
   ToolCatalog,
   UsageQueryResult,
   UsageRollup,
@@ -56,6 +57,12 @@ import {
   type BrowserProjectionState,
   type BrowserStorage
 } from "./storage";
+import {
+  ConversationProjection,
+  emptyConversationSnapshot,
+  type ConversationSnapshot
+} from "../projection/conversation";
+import {FrameNotifier} from "./notifier";
 
 export type RuntimePhase =
   | "booting"
@@ -74,6 +81,7 @@ export interface RuntimeSnapshot {
   selectedSessionID: string;
   hydratingSessionID: string;
   events: readonly RuntimeEvent[];
+  conversation: ConversationSnapshot;
   historyMoreBefore: boolean;
   providers: readonly ProviderCatalogEntry[];
   models: readonly ModelCatalogEntry[];
@@ -84,6 +92,9 @@ export interface RuntimeSnapshot {
   tasks: readonly TaskSummary[];
   agents: readonly AgentSummary[];
   usage?: UsageRollup;
+  trace?: TraceSnapshot;
+  tracePhase: "idle" | "loading" | "ready" | "unavailable";
+  traceProblem?: string;
   extensions: readonly ExtensionProjection[];
   mergePlan?: EditPlan;
   problem?: Problem;
@@ -107,6 +118,7 @@ const emptySnapshot: RuntimeSnapshot = {
   selectedSessionID: "",
   hydratingSessionID: "",
   events: [],
+  conversation: emptyConversationSnapshot(),
   historyMoreBefore: false,
   providers: [],
   models: [],
@@ -115,8 +127,21 @@ const emptySnapshot: RuntimeSnapshot = {
   tasks: [],
   agents: [],
   extensions: [],
+  tracePhase: "idle",
   socketConnected: false
 };
+
+const immediateEventKinds = new Set([
+  "approval.required",
+  "approval.resolved",
+  "input.required",
+  "input.resolved",
+  "operation.rejected",
+  "turn.completed",
+  "turn.failed",
+  "turn.canceled",
+  "turn.receipt"
+]);
 
 export class RuntimeClient {
   private token = "";
@@ -131,6 +156,11 @@ export class RuntimeClient {
   private hydration?: Hydration;
   private state: RuntimeSnapshot = emptySnapshot;
   private listeners = new Set<Listener>();
+  private conversationProjection = new ConversationProjection();
+  private pendingSelectedEvents: RuntimeEvent[] = [];
+  private readonly eventNotifier = new FrameNotifier(
+    () => this.flushSelectedEvents()
+  );
   private storageScope = "";
   private stored: BrowserProjectionState = {
     cursor: 0,
@@ -138,10 +168,17 @@ export class RuntimeClient {
     drafts: {}
   };
   private storageWrite: Promise<void> = Promise.resolve();
+  private storageTimer?: number;
+  private pendingStorage?: {scope: string; value: BrowserProjectionState};
 
   constructor(
     private readonly storage: BrowserStorage = new IndexedDBBrowserStorage()
-  ) {}
+  ) {
+    if (typeof window !== "undefined") {
+      window.addEventListener("pagehide", this.flushBrowserState);
+      document.addEventListener("visibilitychange", this.flushWhenHidden);
+    }
+  }
 
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -192,6 +229,8 @@ export class RuntimeClient {
   }
 
   stop(): void {
+    this.eventNotifier.flushNow();
+    this.flushBrowserState();
     this.generation += 1;
     if (this.reconnectTimer !== undefined) {
       window.clearTimeout(this.reconnectTimer);
@@ -283,6 +322,7 @@ export class RuntimeClient {
         selectedSessionID: "",
         hydratingSessionID: "",
         events: [],
+        conversation: this.replaceConversation([]),
         historyMoreBefore: false,
         profile: undefined,
         tools: [],
@@ -291,6 +331,9 @@ export class RuntimeClient {
         tasks: [],
         agents: [],
         usage: undefined,
+        trace: undefined,
+        tracePhase: "idle",
+        traceProblem: undefined,
         mergePlan: undefined,
         contextResources: []
       });
@@ -299,6 +342,8 @@ export class RuntimeClient {
   }
 
   async selectSession(sessionID: string): Promise<void> {
+    this.eventNotifier.cancel();
+    this.pendingSelectedEvents = [];
     const previousSessionID = this.state.selectedSessionID;
     const generation = ++this.selectionGeneration;
     const hydration: Hydration = {generation, sessionID, events: []};
@@ -307,6 +352,7 @@ export class RuntimeClient {
       selectedSessionID: sessionID,
       hydratingSessionID: sessionID,
       events: [],
+      conversation: this.replaceConversation([]),
       historyMoreBefore: false,
       profile: undefined,
       tools: [],
@@ -315,6 +361,9 @@ export class RuntimeClient {
       tasks: [],
       agents: [],
       usage: undefined,
+      trace: undefined,
+      tracePhase: "loading",
+      traceProblem: undefined,
       extensions: [],
       mergePlan: undefined,
       contextResources: [],
@@ -331,6 +380,8 @@ export class RuntimeClient {
       session_id: sessionID
     });
     if (generation !== this.selectionGeneration) return;
+    const snapshotEvents = snapshot.events ?? [];
+    const traceTurnIDs = turnIDs(snapshotEvents);
     const details = await Promise.allSettled([
       this.call<SessionProfileSnapshot>("profile/get", {session_id: sessionID}),
       this.call<ToolCatalog>("tool/catalog", {session_id: sessionID}),
@@ -343,7 +394,19 @@ export class RuntimeClient {
         include_children: true,
         limit: 100
       }),
-      this.call<ExtensionControlResult>("extension/list", {kind: "all"})
+      this.call<ExtensionControlResult>("extension/list", {kind: "all"}),
+      traceTurnIDs.length > 0
+        ? this.call<TraceSnapshot>("trace/query", {
+          session_id: sessionID,
+          turn_ids: traceTurnIDs,
+          through_sequence: snapshot.through_sequence
+        })
+        : Promise.resolve<TraceSnapshot>({
+          version: 1,
+          session_id: sessionID,
+          through_sequence: snapshot.through_sequence,
+          turns: []
+        })
     ]);
     if (generation !== this.selectionGeneration || this.hydration !== hydration) return;
     const profile = fulfilled(details[0]);
@@ -354,6 +417,7 @@ export class RuntimeClient {
     const agents = fulfilled(details[5]);
     const usage = fulfilled(details[6]);
     const extensions = fulfilled(details[7]);
+    const trace = fulfilled(details[8]);
     const liveEvents = hydration.events
       .filter(({event, sessionID: owner}) =>
         owner === sessionID && event.sequence > snapshot.through_sequence
@@ -372,10 +436,12 @@ export class RuntimeClient {
       latestBufferedSequence
     ));
     this.hydration = undefined;
+    const events = [...(snapshot.events ?? []), ...liveEvents];
     this.update({
       selectedSessionID: sessionID,
       hydratingSessionID: "",
-      events: [...(snapshot.events ?? []), ...liveEvents],
+      events,
+      conversation: this.replaceConversation(events),
       historyMoreBefore: Boolean(snapshot.history_truncated_before),
       profile,
       tools: catalog?.tools ?? [],
@@ -385,6 +451,11 @@ export class RuntimeClient {
       tasks: tasks?.tasks ?? [],
       agents: agents?.agents ?? [],
       usage: usage?.rollup,
+      trace,
+      tracePhase: trace ? "ready" : "unavailable",
+      traceProblem: details[8]?.status === "rejected"
+        ? errorMessage(details[8].reason)
+        : undefined,
       extensions: extensions?.extensions ?? [],
       contextResources: [],
       problem: undefined
@@ -539,8 +610,10 @@ export class RuntimeClient {
     if (sessionID !== this.state.selectedSessionID) return 0;
     const known = new Set(this.state.events.map((event) => event.sequence));
     const earlier = page.events.filter((event) => !known.has(event.sequence));
+    const events = [...earlier, ...this.state.events];
     this.update({
-      events: [...earlier, ...this.state.events],
+      events,
+      conversation: this.replaceConversation(events),
       historyMoreBefore: Boolean(page.more_before)
     });
     return earlier.length;
@@ -993,11 +1066,14 @@ export class RuntimeClient {
   }
 
   private resetProjection(): void {
+    this.eventNotifier.cancel();
+    this.pendingSelectedEvents = [];
     this.commitCursor(0, true);
     this.selectionGeneration += 1;
     this.hydration = undefined;
     this.update({
       events: [],
+      conversation: this.replaceConversation([]),
       historyMoreBefore: false,
       hydratingSessionID: "",
       profile: undefined,
@@ -1007,6 +1083,9 @@ export class RuntimeClient {
       tasks: [],
       agents: [],
       usage: undefined,
+      trace: undefined,
+      tracePhase: "idle",
+      traceProblem: undefined,
       extensions: [],
       mergePlan: undefined,
       contextResources: []
@@ -1028,11 +1107,36 @@ export class RuntimeClient {
       }
       return;
     }
-    this.update({events: [...this.state.events, event]});
+    this.pendingSelectedEvents.push(event);
+    if (immediateEventKinds.has(event.kind)) {
+      this.eventNotifier.flushNow();
+    } else {
+      this.eventNotifier.schedule();
+    }
     if (isTerminal(event.kind)) {
       this.scheduleSessionRefresh();
       void this.refreshUsage(sessionID);
+      void this.refreshTrace(sessionID);
     }
+  }
+
+  private flushSelectedEvents(): void {
+    if (this.pendingSelectedEvents.length === 0) return;
+    const pending = this.pendingSelectedEvents;
+    this.pendingSelectedEvents = [];
+    for (const event of pending) this.conversationProjection.apply(event);
+    this.update({
+      events: [...this.state.events, ...pending],
+      conversation: this.conversationProjection.snapshot()
+    });
+  }
+
+  private replaceConversation(
+    events: readonly RuntimeEvent[]
+  ): ConversationSnapshot {
+    this.conversationProjection = new ConversationProjection();
+    this.conversationProjection.applyAll(events);
+    return this.conversationProjection.snapshot();
   }
 
   private async refreshUsage(sessionID: string): Promise<void> {
@@ -1047,6 +1151,44 @@ export class RuntimeClient {
       sessionID === this.state.selectedSessionID
     ) {
       this.update({usage: result.rollup});
+    }
+  }
+
+  async refreshTrace(sessionID = this.state.selectedSessionID): Promise<void> {
+    if (!sessionID || sessionID !== this.state.selectedSessionID) return;
+    this.eventNotifier.flushNow();
+    const generation = this.selectionGeneration;
+    const events = this.state.events;
+    const ids = turnIDs(events);
+    if (ids.length === 0) {
+      this.update({trace: undefined, tracePhase: "ready", traceProblem: undefined});
+      return;
+    }
+    this.update({tracePhase: "loading", traceProblem: undefined});
+    try {
+      const trace = await this.call<TraceSnapshot>("trace/query", {
+        session_id: sessionID,
+        turn_ids: ids,
+        through_sequence: events.at(-1)?.sequence ?? 0
+      });
+      if (
+        generation !== this.selectionGeneration ||
+        sessionID !== this.state.selectedSessionID ||
+        trace.through_sequence < (this.state.events.at(-1)?.sequence ?? 0)
+      ) {
+        return;
+      }
+      this.update({trace, tracePhase: "ready", traceProblem: undefined});
+    } catch (error) {
+      if (
+        generation === this.selectionGeneration &&
+        sessionID === this.state.selectedSessionID
+      ) {
+        this.update({
+          tracePhase: "unavailable",
+          traceProblem: errorMessage(error)
+        });
+      }
     }
   }
 
@@ -1096,6 +1238,7 @@ export class RuntimeClient {
     this.update({
       selectedSessionID: this.stored.selectedSessionID,
       events: [],
+      conversation: this.replaceConversation([]),
       historyMoreBefore: false,
       providers: [],
       models: [],
@@ -1106,6 +1249,9 @@ export class RuntimeClient {
       tasks: [],
       agents: [],
       usage: undefined,
+      trace: undefined,
+      tracePhase: "idle",
+      traceProblem: undefined,
       extensions: [],
       mergePlan: undefined,
       contextResources: []
@@ -1128,17 +1274,35 @@ export class RuntimeClient {
 
   private persistBrowserState(): void {
     if (!this.storageScope) return;
-    const scope = this.storageScope;
-    const value: BrowserProjectionState = {
-      cursor: this.stored.cursor,
-      selectedSessionID: this.stored.selectedSessionID,
-      drafts: {...this.stored.drafts}
+    this.pendingStorage = {
+      scope: this.storageScope,
+      value: {
+        cursor: this.stored.cursor,
+        selectedSessionID: this.stored.selectedSessionID,
+        drafts: {...this.stored.drafts}
+      }
     };
+    if (this.storageTimer !== undefined) return;
+    this.storageTimer = window.setTimeout(this.flushBrowserState, 100);
+  }
+
+  private readonly flushWhenHidden = (): void => {
+    if (document.visibilityState === "hidden") this.flushBrowserState();
+  };
+
+  private readonly flushBrowserState = (): void => {
+    if (this.storageTimer !== undefined) {
+      window.clearTimeout(this.storageTimer);
+      this.storageTimer = undefined;
+    }
+    const pending = this.pendingStorage;
+    this.pendingStorage = undefined;
+    if (!pending) return;
     this.storageWrite = this.storageWrite
       .catch(() => undefined)
-      .then(() => this.storage.save(scope, value))
+      .then(() => this.storage.save(pending.scope, pending.value))
       .catch(() => undefined);
-  }
+  };
 
   private fail(error: unknown): void {
     const problem =
@@ -1210,6 +1374,14 @@ function protocolProblem(error: unknown): Problem {
 
 function fulfilled<T>(result: PromiseSettledResult<T>): T | undefined {
   return result.status === "fulfilled" ? result.value : undefined;
+}
+
+function turnIDs(events: readonly RuntimeEvent[]): string[] {
+  return [...new Set(events.map((event) => event.turn_id).filter(Boolean))];
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function sha256Hex(value: string): Promise<string> {

@@ -2,46 +2,106 @@
   "version": 1,
   "files": [
     {
-      "path": "assets/index-DjLsGGTr.js",
-      "sha256": "fd25c83f4e013fed9a4c080778462fb02fd0b83307864ea002fc09ef0dbf8d89",
-      "bytes": 379527,
+      "path": "assets/Trajectory-B4COW4CW.js",
+      "sha256": "e2493e98095454fdbd67eab4b65181c104b77e7a21ee8fb573f25219f5b72f70",
+      "bytes": 20110,
       "media_type": "text/javascript; charset=utf-8"
     },
     {
-      "path": "assets/index-DjLsGGTr.js.br",
-      "sha256": "a492ea33f248f7d1d1f4c0e712b9e13b09ad8b7fffa33d9fdc497bef10323a4e",
-      "bytes": 99549,
+      "path": "assets/Trajectory-B4COW4CW.js.br",
+      "sha256": "0a3e909fe2f4337d41264e97345650c8ced72623fac99273b3431be761cb046f",
+      "bytes": 5976,
       "media_type": "application/octet-stream"
     },
     {
-      "path": "assets/index-DjLsGGTr.js.gz",
-      "sha256": "c55b4940bbc95b8932635f4811caf7b2bcec72bf8b3c3b236022e15a6df7451d",
-      "bytes": 113754,
+      "path": "assets/Trajectory-B4COW4CW.js.gz",
+      "sha256": "e31de7bb73928d131d2a05c8a1cbf903ff18fbc6c8e2f7b4b071ff9d439ec8d8",
+      "bytes": 6602,
       "media_type": "application/octet-stream"
     },
     {
-      "path": "assets/index-iiHKyXni.css",
-      "sha256": "253305f70c150b507c5fdeb479428a4e7900e4bf5e3c77d8fe3cdf37f2d2a001",
-      "bytes": 25035,
+      "path": "assets/Trajectory-D6Keo3sn.css",
+      "sha256": "86954528ea3c59e45fde3bbaddf4c3317ca6791ede48174eb02c3f96e81378f6",
+      "bytes": 6997,
       "media_type": "text/css; charset=utf-8"
     },
     {
-      "path": "assets/index-iiHKyXni.css.br",
-      "sha256": "4f76144e7576ef4440d90e65d96d1f3c9b32b83b860bb42f9a0d5c0139e53ad5",
-      "bytes": 4687,
+      "path": "assets/Trajectory-D6Keo3sn.css.br",
+      "sha256": "6f1fe204d69639b7b506a8df793cf8210fa2530bf91df3bac058de589fd053ab",
+      "bytes": 1572,
       "media_type": "application/octet-stream"
     },
     {
-      "path": "assets/index-iiHKyXni.css.gz",
-      "sha256": "23040a6639e6254564a9f3d5a71582b8787346928403bab12f79500d46665046",
-      "bytes": 5357,
+      "path": "assets/Trajectory-D6Keo3sn.css.gz",
+      "sha256": "bec3b00ea4ece0039a9fd31496d9fa79ffc1206264755ba57172b1b5a045d244",
+      "bytes": 1875,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "assets/index-Dqhbu1h7.js",
+      "sha256": "0d4185afa70cef9fdd1597e120cd649915c3a92754d50eca3e336f048aeaec19",
+      "bytes": 403208,
+      "media_type": "text/javascript; charset=utf-8"
+    },
+    {
+      "path": "assets/index-Dqhbu1h7.js.br",
+      "sha256": "1e8ce322955f8f6f9237545c6c979593fca921bc3a87415a4ccd933368821b2c",
+      "bytes": 105365,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "assets/index-Dqhbu1h7.js.gz",
+      "sha256": "c56d86f404e84c91428b58cf5993313e9accf054f2c06c5a116ddefff8190c8c",
+      "bytes": 120762,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "assets/index-T_wGPW95.css",
+      "sha256": "328c59c60621bc08b69b79237998cea11f83fccb9398e87c5e931434bbb6d27e",
+      "bytes": 33524,
+      "media_type": "text/css; charset=utf-8"
+    },
+    {
+      "path": "assets/index-T_wGPW95.css.br",
+      "sha256": "545906bcee13781e1aa3c4a016a786cbd9ae872d2f567c227cd3491b571fc30c",
+      "bytes": 6243,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "assets/index-T_wGPW95.css.gz",
+      "sha256": "71c1356fc972e9d6c47326ce262461112c5e47a8182c2b7c55152394b8ad4f2e",
+      "bytes": 7096,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "favicon.svg",
+      "sha256": "bdb94e69c3f18b32372b0c1b23a801e29c47631cd9a771850d7ebd5678a08f94",
+      "bytes": 721,
+      "media_type": "image/svg+xml"
+    },
+    {
+      "path": "icon-192.png",
+      "sha256": "3d679419ba1e8918d1d93eb79ba90c1098edde54b3e9769b85dbdde9bead996b",
+      "bytes": 4361,
+      "media_type": "application/octet-stream"
+    },
+    {
+      "path": "icon-512.png",
+      "sha256": "058e19092914ab79c24c5b7f91db27b5aa5799e6c84e4bab765c23106a939c99",
+      "bytes": 12592,
       "media_type": "application/octet-stream"
     },
     {
       "path": "index.html",
-      "sha256": "b8d88b1126c6d7d6edb41a5ad8241aa9a179d117e6e5ee49baadb3518b53cd56",
-      "bytes": 481,
+      "sha256": "e5d3062ddf4931ce59083aa8601fbbcda3a7e6e1cd60c61df6898ef648bb6b98",
+      "bytes": 660,
       "media_type": "text/html; charset=utf-8"
+    },
+    {
+      "path": "manifest.webmanifest",
+      "sha256": "eacf55e803f484b490616e5fdfd31f64d58eb0888625c3d05a96738be3869efe",
+      "bytes": 352,
+      "media_type": "application/octet-stream"
     },
     {
       "path": "theme-bootstrap.js",

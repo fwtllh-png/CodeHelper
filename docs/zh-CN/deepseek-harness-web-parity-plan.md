@@ -1,6 +1,7 @@
 # Web 体验对齐 DeepSeek Harness 实施方案
 
-> 状态：约束性实施方案。后续 Web 体验改造必须以本文为验收基线。
+> 状态：核心实现与自动化门禁已完成。双实例真实验收已覆盖 Read Analysis、
+> Tool Chain 和 Long Trajectory；其余真实 Prompt 场景仍按本文作为发布前验收项。
 >
 > 参考仓库：`/Users/bytedance/flow/deepseek-harness`
 >
@@ -1154,3 +1155,26 @@ make verify
 - 新 UI 没有复制业务 Authority；
 - 文档、体验契约、Feature Parity 和 Golden 已同步；
 - `make verify` 通过，或环境限制被明确记录且没有隐藏失败。
+
+## 实施记录
+
+2026-08-24 在分支 `feat/deepseek-harness-web-parity` 完成核心实现：
+
+- Conversation Projection、帧级流式发布、Cursor Write-behind 和单滚动轴；
+- Harness 风格 Shell、Composer、渐进披露、Stats、品牌资产和响应式状态；
+- Chat/Trajectory 双视图、三泳道 Timeline、虚拟化 Ledger、Inspector 和双向定位；
+- 受 Session/Turn 归属与 Watermark 约束的脱敏 `trace/query`；
+- Trajectory 独立 JS/CSS Chunk、首屏 gzip/brotli 预算和 100 分机器化复刻契约。
+
+自动化验证通过：
+
+- `make web-e2e`：20 个 Playwright 场景；
+- `make web-performance`、`make web-experience-check`、`make web-parity-check`；
+- `make web-assets-check`、`make web-supply-chain-check`、`make docs-check`；
+- `make verify`，包括 99 项架构 Ratchet、Hermetic 全仓测试和 `go test -race`。
+
+真实双实例证据保存在 `.tmp/web-parity/20260824-read-analysis/`。冻结 Harness
+提交、CodeHelper、浏览器、Viewport、Theme、Reasoning 和工作区保持一致；该样本覆盖
+Read Analysis、20 次只读 Tool 调用和 Long Trajectory。Write Change、Multi-turn、
+Mid-stream Control 与 Failure/Recovery 尚未执行双实例真实 Prompt，因此在这些证据
+补齐前不宣称满足本节的完整完成定义。

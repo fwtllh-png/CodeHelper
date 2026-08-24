@@ -117,7 +117,7 @@ test("creates a Session and completes a fixture-backed Turn", async ({page}) => 
 
   const composer = page.getByPlaceholder("Ask CodeHelper");
   await expect(composer).toBeEnabled();
-  await expect(page.getByLabel("Session details")).toBeVisible();
+  await expect(page.getByLabel("Session details")).toHaveCount(0);
   await composer.fill("say hello");
   await page.getByRole("button", {name: "Send"}).click();
 
@@ -125,10 +125,30 @@ test("creates a Session and completes a fixture-backed Turn", async ({page}) => 
   await expect(page.getByText("Working", {exact: true})).toHaveCount(0);
 });
 
+test("opens the execution trajectory and inspects its event ledger", async ({page}) => {
+  await page.goto(baseURL);
+  await page.getByRole("button", {name: "Create session"}).click();
+  await page.getByPlaceholder("Ask CodeHelper").fill("say hello");
+  await page.getByRole("button", {name: "Send"}).click();
+  await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+
+  await page.getByRole("button", {name: "Trajectory"}).click();
+  const trajectory = page.getByLabel("Execution trajectory");
+  await expect(trajectory).toBeVisible();
+  await expect(trajectory.locator(".timelineLabels")).toHaveText("InputModelTools");
+  await expect(trajectory.locator(".ledgerRow")).not.toHaveCount(0);
+
+  await trajectory.locator(".ledgerRow").first().click();
+  await expect(page.getByRole("complementary", {name: "Record inspector"}))
+    .toBeVisible();
+  await expect(page.getByRole("button", {name: "Previous record"})).toBeDisabled();
+});
+
 test("deletes the final Session after explicit confirmation", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
   await expect(page.locator(".sessionRow")).toHaveCount(1);
+  await page.getByRole("button", {name: "Add context"}).click();
   page.once("dialog", (dialog) => dialog.accept());
 
   await page.locator(".detailPanel").getByRole("button", {
@@ -164,6 +184,7 @@ test("restores the selected Session and transcript after a browser reload", asyn
 test("shows the fixed provider and single-model route as read-only", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
+  await page.getByRole("button", {name: "Add context"}).click();
 
   const provider = page.getByLabel("Provider");
   const model = page.getByLabel("Model");
@@ -177,6 +198,7 @@ test("browses workspace resources and restores an archived Session", async ({pag
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+  await page.getByRole("button", {name: "Add context"}).click();
 
   await page.getByRole("button", {name: "Browse workspace"}).click();
   const fileEntry = page.locator(".workspaceEntries .resourceMatch").filter({
@@ -227,7 +249,9 @@ test("browses workspace resources and restores an archived Session", async ({pag
   });
   page.once("dialog", (dialog) => dialog.accept("Archive Target"));
   await lifecycle.getByRole("button", {name: "Rename session"}).click();
-  await expect(page.getByRole("heading", {name: "Archive Target", level: 1})).toBeVisible();
+  await expect(page.locator(".sessionRow").filter({
+    hasText: "Archive Target"
+  })).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
   await lifecycle.getByRole("button", {name: "Archive session"}).click();

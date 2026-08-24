@@ -213,6 +213,12 @@ Web 的 Session usage 默认使用 `include_children=true`，因此父 Session �
 其 `agent_nodes` 下 Child Turn 的消耗；关闭该参数可读取 direct usage。两种口径都保留
 原始 Child Session/Thread/Turn 归属，不通过重写账本伪造父子关系。
 
+会话主区域提供 `Chat` 和 `Trajectory` 两个视图。Chat 将 Reasoning、Context 和 Tool
+按稳定业务节点渐进披露，成功 Tool 默认折叠；Trajectory 使用同一组 Runtime Event，
+并通过只读 `trace/query` 补充受控的 Model、Tool、Approval 和 Verification 时序。
+时间数据不可用时仍保留 Event Ledger，并明确显示不可用状态。点击 Chat 中已完成 Tool
+的 `Inspect` 可定位到同一 Call 的轨迹记录。
+
 Web 删除 Session 时会要求显式确认。对于已失去执行者的未完成 Turn 或隔离 worktree，
 确认删除表示同时丢弃其未完成状态和隔离改动；仍有内存执行者或恢复中 Operation 的
 Session 会拒绝删除，必须先停止执行。

@@ -333,6 +333,18 @@ describe("RuntimeClient", () => {
       if (route.endsWith("/agent/list")) {
         return envelope({agents: []});
       }
+      if (route.endsWith("/trace/query")) {
+        return envelope({
+          version: 1,
+          session_id: body.session_id,
+          through_sequence: body.through_sequence,
+          turns: (body.turn_ids as string[]).map((turnID) => ({
+            turn_id: turnID,
+            status: "ok",
+            spans: []
+          }))
+        });
+      }
       if (route.endsWith("/usage/query")) {
         return envelope({
           usage: [],
@@ -509,6 +521,25 @@ describe("RuntimeClient", () => {
       selectedSessionID: "session",
       tools: []
     });
+    client.stop();
+  });
+
+  it("queries trace timing against the hydrated event watermark", async () => {
+    snapshotSequence = 2;
+    snapshotEvents = [
+      runtimeEvent(1, "turn.started"),
+      runtimeEvent(2, "turn.completed")
+    ];
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    expect(requests.find((request) => request.route.endsWith("/trace/query"))?.body)
+      .toEqual({
+        session_id: "session",
+        turn_ids: ["turn"],
+        through_sequence: 2
+      });
+    expect(client.getSnapshot().tracePhase).toBe("ready");
     client.stop();
   });
 
@@ -1015,6 +1046,64 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
+  it("publishes streaming deltas at most once per animation frame", async () => {
+    let flush: FrameRequestCallback | undefined;
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+      flush = callback;
+      return 1;
+    }));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const client = new RuntimeClient();
+    const socket = await startClient(client);
+    let notifications = 0;
+    const unsubscribe = client.subscribe(() => {
+      notifications += 1;
+    });
+
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "session",
+      sequence: 1,
+      event: runtimeEvent(1, "output.delta")
+    });
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "session",
+      sequence: 2,
+      event: runtimeEvent(2, "output.delta")
+    });
+
+    expect(notifications).toBe(0);
+    flush?.(performance.now());
+    expect(notifications).toBe(1);
+    expect(client.getSnapshot().events).toHaveLength(2);
+    unsubscribe();
+    client.stop();
+  });
+
+  it("writes a burst of cursor updates as one browser-state checkpoint", async () => {
+    const storage = new MemoryBrowserStorage();
+    const client = new RuntimeClient(storage);
+    const socket = await startClient(client);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    storage.saveCalls = 0;
+
+    for (let sequence = 1; sequence <= 100; sequence += 1) {
+      socket.emit("message", {
+        type: "watermark",
+        protocol_version: 1,
+        sequence
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(storage.saveCalls).toBe(1);
+    expect(storage.values.get("v1:build:workspace-id")?.cursor).toBe(100);
+    client.stop();
+  });
+
   it("bootstraps a fresh token before reconnecting the socket", async () => {
     vi.useFakeTimers();
     const client = new RuntimeClient();
@@ -1166,12 +1255,14 @@ function envelopeProblem(code: string, message: string, retryable: boolean): Res
 
 class MemoryBrowserStorage implements BrowserStorage {
   readonly values = new Map<string, BrowserProjectionState>();
+  saveCalls = 0;
 
   async load(scope: string): Promise<BrowserProjectionState | undefined> {
     return this.values.get(scope);
   }
 
   async save(scope: string, state: BrowserProjectionState): Promise<void> {
+    this.saveCalls += 1;
     this.values.set(scope, structuredClone(state));
   }
 }

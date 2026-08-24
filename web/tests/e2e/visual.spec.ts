@@ -100,6 +100,12 @@ test("captures empty and settings states", async ({page}) => {
   await expect(page).toHaveScreenshot("canonical-settings.png");
 });
 
+test("captures a blank session with the centered composer", async ({page}) => {
+  await createSession(page);
+  await expect(page.getByLabel("Session details")).toHaveCount(0);
+  await expect(page).toHaveScreenshot("canonical-blank-session.png");
+});
+
 test("captures the authoritative diff state", async ({page}) => {
   await createSession(page);
   await page.getByLabel("Approval").selectOption("auto");
@@ -110,6 +116,28 @@ test("captures the authoritative diff state", async ({page}) => {
     "README.md (file_edit) modified +2 -0"
   );
   await expect(page).toHaveScreenshot("canonical-diff.png");
+});
+
+test("captures collapsed tools, expanded tool detail, and trajectory", async ({page}) => {
+  await createSession(page);
+  await page.getByLabel("Approval").selectOption("auto");
+  await submitPrompt(page, "visual diff");
+  await expect(page.getByText("Completed", {exact: true})).toBeVisible();
+
+  const tool = page.locator(".toolDisclosure").first();
+  await expect(tool).toHaveAttribute("data-call-id", /.+/);
+  await expect(tool.locator("pre")).toHaveCount(0);
+  await expect(page).toHaveScreenshot("canonical-tool-collapsed.png");
+
+  await tool.locator(":scope > button").click();
+  await expect(tool.locator("pre")).not.toHaveCount(0);
+  await expect(page).toHaveScreenshot("canonical-tool-expanded.png");
+
+  await tool.getByRole("button", {name: "Inspect"}).click();
+  await expect(page.getByLabel("Execution trajectory")).toBeVisible();
+  await expect(page.getByRole("complementary", {name: "Record inspector"}))
+    .toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-trajectory.png");
 });
 
 test("captures streaming and completed states", async ({page}) => {
