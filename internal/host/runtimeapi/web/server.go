@@ -2631,7 +2631,7 @@ var webOperationExposure = map[protocol.OperationKind]bool{
 	protocol.OperationSteerTurn:        false,
 	protocol.OperationApprovalDecision: true,
 	protocol.OperationInputReply:       true,
-	protocol.OperationCompactThread:    false,
+	protocol.OperationCompactThread:    true,
 	protocol.OperationForkThread:       false,
 	protocol.OperationRevertTurn:       false,
 	protocol.OperationSubmitRun:        false,

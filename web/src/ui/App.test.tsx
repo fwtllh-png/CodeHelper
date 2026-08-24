@@ -5,9 +5,15 @@ import {projectConversation} from "../projection/conversation";
 import type {RuntimeClient, RuntimeSnapshot} from "../runtime/client";
 import {App, projectTranscript, selectionRange} from "./App";
 
+const clipboardWrite = vi.fn(async () => {});
+
 Object.defineProperty(HTMLElement.prototype, "scrollTo", {
   configurable: true,
   value: vi.fn()
+});
+Object.defineProperty(navigator, "clipboard", {
+  configurable: true,
+  value: {writeText: clipboardWrite}
 });
 Object.defineProperty(URL, "createObjectURL", {
   configurable: true,
@@ -20,6 +26,7 @@ Object.defineProperty(URL, "revokeObjectURL", {
 
 afterEach(() => {
   cleanup();
+  clipboardWrite.mockClear();
   vi.restoreAllMocks();
 });
 
@@ -113,7 +120,7 @@ describe("projectTranscript", () => {
     expect(screen.getByRole("treeitem", {name: "workspace"})).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Search sessions"}));
     expect(screen.getByRole("textbox", {name: "Search sessions"})).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
+    openContextDetails();
 
     expect(screen.getByLabelText("New session isolation")).toBeTruthy();
     expect(screen.getByRole("button", {name: "Browse workspace"})).toBeTruthy();
@@ -246,7 +253,7 @@ describe("projectTranscript", () => {
     }];
     const client = mockClient(value);
     render(<App client={client} />);
-    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
+    openContextDetails();
 
     fireEvent.click(screen.getByRole("button", {name: "Session actions for Chat"}));
     fireEvent.click(screen.getByRole("menuitem", {name: "Delete"}));
@@ -333,7 +340,7 @@ describe("projectTranscript", () => {
     }];
     const client = mockClient(value);
     render(<App client={client} />);
-    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
+    openContextDetails();
 
     expect(screen.getByLabelText("Tasks").textContent).toContain(
       "verificationtask-1failedtests failed"
@@ -372,7 +379,7 @@ describe("projectTranscript", () => {
     };
     vi.mocked(client.workspaceDiff).mockResolvedValue(diff);
     render(<App client={client} />);
-    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
+    openContextDetails();
 
     fireEvent.click(screen.getByRole("button", {name: "Refresh diff"}));
     await screen.findByText(/diff --git/);
@@ -433,7 +440,7 @@ describe("projectTranscript", () => {
       diagnostics: [diagnostic]
     });
     render(<App client={client} />);
-    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
+    openContextDetails();
 
     fireEvent.change(screen.getByLabelText("Search workspace symbols"), {
       target: {value: "Serve"}
@@ -469,7 +476,7 @@ describe("projectTranscript", () => {
       new Blob(["image"], {type: "image/png"})
     );
     render(<App client={client} />);
-    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
+    openContextDetails();
 
     fireEvent.click(screen.getByRole("button", {name: "Browse workspace"}));
     fireEvent.click(await screen.findByRole("button", {name: /diagram.png/}));
@@ -522,7 +529,7 @@ describe("projectTranscript", () => {
       configured: false
     });
     render(<App client={client} />);
-    fireEvent.click(screen.getByRole("button", {name: "Add context"}));
+    openContextDetails();
 
     fireEvent.click(screen.getByRole("button", {name: "Settings"}));
     await screen.findByText("Configured");
@@ -804,6 +811,110 @@ describe("projectTranscript", () => {
     expect(screen.getByText("remote")).toBeTruthy();
   });
 
+  it("renders settled response actions and persists feedback through the client", async () => {
+    const value = snapshot([
+      {
+        ...event(1, "turn.started", {display_prompt: "Summarize"}),
+        created_at: "2026-01-01T00:00:00Z"
+      },
+      event(2, "turn.receipt", {
+        latency: {
+          total_ms: 29_000,
+          provider_ms: 6_000,
+          first_token_ms: 900
+        },
+        output_tokens: 826
+      }),
+      {
+        ...event(3, "turn.completed", {text: "Final answer"}),
+        created_at: "2026-01-01T00:00:29Z"
+      }
+    ]);
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    expect(screen.getByText(/Ran for 29s.*0.9s TTFT.*~162 tok\/s/))
+      .toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Copy response"}));
+    await waitFor(() => {
+      expect(clipboardWrite).toHaveBeenCalledWith("Final answer");
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Like response"}));
+    expect(client.toggleMessageFeedback).toHaveBeenCalledWith(
+      "output-turn",
+      "positive"
+    );
+  });
+
+  it("opens the command menu and submits context compaction", async () => {
+    const value = snapshot([
+      event(1, "turn.completed", {text: "Done"})
+    ]);
+    value.sessions = value.sessions.map((session) => ({
+      ...session,
+      latest_turn_id: "turn"
+    }));
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Commands"}));
+    expect(screen.getByRole("menu", {name: "Commands"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", {name: /compact/}));
+
+    await waitFor(() => {
+      expect(client.compactThread).toHaveBeenCalled();
+    });
+  });
+
+  it("shows provider-attributed context usage beside the send action", () => {
+    const value = snapshot([
+      event(1, "usage", {
+        context: {
+          estimated_tokens: 32_000,
+          stable_tokens: 2_000,
+          dynamic_tokens: 1_000,
+          continuation_tokens: 500,
+          tool_definition_tokens: 6_000,
+          history_tool_tokens: 1_000,
+          history_user_tokens: 8_000,
+          history_assistant_tokens: 10_000,
+          history_other_tokens: 500,
+          provider_framing_tokens: 3_000
+        }
+      })
+    ]);
+    render(<App client={mockClient(value)} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "25% of context used"}));
+    const panel = screen.getByRole("dialog", {name: "Context usage"});
+    expect(panel.textContent).toContain("~32K / 128K");
+    expect(panel.textContent).toContain("Stable / system~3.5K");
+    expect(panel.textContent).toContain("Tools~7K");
+    expect(panel.textContent).toContain("Messages~18.5K");
+    expect(panel.textContent).toContain("Provider framing~3K");
+  });
+
+  it("renders GFM tables in a keyboard-scrollable Markdown wrapper", () => {
+    const value = snapshot([
+      event(1, "turn.completed", {
+        text: [
+          "## Core modules",
+          "",
+          "| Package | Role |",
+          "| --- | --- |",
+          "| runtime | Agent loop |"
+        ].join("\n")
+      })
+    ]);
+    const {container} = render(<App client={mockClient(value)} />);
+
+    expect(screen.getByRole("heading", {name: "Core modules"})).toBeTruthy();
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("region", {name: "Response table"}).getAttribute("tabindex"))
+      .toBe("0");
+    expect(container.querySelector(".assistantMarkdown")).toBeTruthy();
+  });
+
   it("opens the three-lane trajectory and inspects a tool from chat", async () => {
     const value = snapshot([
       event(1, "turn.started", {display_prompt: "Inspect"}),
@@ -903,6 +1014,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
     canOpenPath: true,
     includeArchived: false,
     contextResources: [],
+    messageFeedback: {},
     sessions: [session],
     selectedSessionID: session.session_id,
     hydratingSessionID: "",
@@ -985,6 +1097,11 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
   };
 }
 
+function openContextDetails(): void {
+  fireEvent.click(screen.getByRole("button", {name: "Commands"}));
+  fireEvent.click(screen.getByRole("menuitem", {name: /context/}));
+}
+
 function mockClient(value: RuntimeSnapshot): RuntimeClient {
   return {
     subscribe: () => () => {},
@@ -1058,7 +1175,9 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
     addSymbolContext: vi.fn(),
     addDiagnosticsContext: vi.fn(),
     addImageContext: vi.fn(),
-    refreshTrace: vi.fn(async () => {})
+    refreshTrace: vi.fn(async () => {}),
+    compactThread: vi.fn(async () => ({})),
+    toggleMessageFeedback: vi.fn()
   } as unknown as RuntimeClient;
 }
 

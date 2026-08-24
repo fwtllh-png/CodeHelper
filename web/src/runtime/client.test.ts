@@ -212,6 +212,7 @@ describe("RuntimeClient", () => {
           isolation: "shared",
           workspace_root: "/workspace",
           workspace_label: "workspace",
+          latest_turn_id: "turn",
           latest_sequence: 0,
           pending_approvals: 0,
           pending_inputs: 0,
@@ -558,7 +559,8 @@ describe("RuntimeClient", () => {
     storage.values.set("v1:build:workspace-id", {
       cursor: 41,
       selectedSessionID: "session",
-      drafts: {session: "unfinished prompt"}
+      drafts: {session: "unfinished prompt"},
+      messageFeedback: {"session:output-turn": "negative"}
     });
     const client = new RuntimeClient(storage);
     await startClient(client);
@@ -571,6 +573,9 @@ describe("RuntimeClient", () => {
       cursor: 41
     });
     expect(await client.loadDraft()).toBe("unfinished prompt");
+    expect(client.getSnapshot().messageFeedback).toEqual({
+      "session:output-turn": "negative"
+    });
 
     socket?.emit("message", {
       type: "watermark",
@@ -578,14 +583,38 @@ describe("RuntimeClient", () => {
       sequence: 42
     });
     client.saveDraft("next prompt");
+    client.toggleMessageFeedback("output-turn", "positive");
     await vi.waitFor(() => {
       expect(storage.values.get("v1:build:workspace-id")).toMatchObject({
         cursor: 42,
         selectedSessionID: "session",
-        drafts: {session: "next prompt"}
+        drafts: {session: "next prompt"},
+        messageFeedback: {"session:output-turn": "positive"}
       });
     });
     expect(JSON.stringify(storage.values)).not.toContain("token");
+    client.stop();
+  });
+
+  it("submits context compaction against the active Session's latest turn", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.compactThread();
+
+    const submit = requests.filter(
+      (request) => request.route.endsWith("/operation/submit")
+    ).at(-1);
+    expect(submit?.body).toEqual({
+      session_id: "session",
+      kind: "thread.compact",
+      idempotency_key: "request-id",
+      payload: {
+        thread_id: "thread",
+        turn_id: "turn",
+        item_id: "compact-request-id"
+      }
+    });
     client.stop();
   });
 

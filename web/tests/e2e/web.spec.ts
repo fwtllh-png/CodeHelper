@@ -1,4 +1,4 @@
-import {expect, test} from "@playwright/test";
+import {expect, test, type Page} from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import {
   execFileSync,
@@ -179,7 +179,7 @@ test("deletes the final Session after explicit confirmation", async ({page}) => 
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
   await expect(page.locator(".sessionRow")).toHaveCount(1);
-  await page.getByRole("button", {name: "Add context"}).click();
+  await openContextDetails(page);
   page.once("dialog", (dialog) => dialog.accept());
 
   await page.locator(".detailPanel").getByRole("button", {
@@ -223,7 +223,7 @@ test("restores the selected Session and transcript after a browser reload", asyn
 test("shows the fixed provider and single-model route as read-only", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
-  await page.getByRole("button", {name: "Add context"}).click();
+  await openContextDetails(page);
 
   const provider = page.getByLabel("Provider");
   const model = page.getByLabel("Model");
@@ -237,7 +237,7 @@ test("browses workspace resources and restores an archived Session", async ({pag
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
-  await page.getByRole("button", {name: "Add context"}).click();
+  await openContextDetails(page);
 
   await page.getByRole("button", {name: "Browse workspace"}).click();
   const fileEntry = page.locator(".workspaceEntries .resourceMatch").filter({
@@ -374,6 +374,11 @@ test("keeps primary UI inside supported viewports with reduced motion", async ({
     (element) => element.getAnimations()[0]?.effect?.getTiming().iterations ?? 0
   )).toBeLessThanOrEqual(1);
 });
+
+async function openContextDetails(page: Page): Promise<void> {
+  await page.getByRole("button", {name: "Commands"}).click();
+  await page.getByRole("menuitem", {name: /context/}).click();
+}
 
 function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {
   return new Promise((resolve, reject) => {

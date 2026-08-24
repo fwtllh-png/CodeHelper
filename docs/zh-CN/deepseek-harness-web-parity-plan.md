@@ -1185,6 +1185,9 @@ make verify
 
 - Conversation Projection、帧级流式发布、Cursor Write-behind 和单滚动轴；
 - Harness 风格 Shell、Composer、渐进披露、Stats、品牌资产和响应式状态；
+- 最终回答尾部的复制与本地持久化赞踩、`+` 命令菜单和真实 `thread.compact`；
+- 基于 `usage.context` 的 Context Meter 与 System、Tool、Message、Provider 分类明细；
+- GFM 标题、列表、引用、代码和可横向滚动表格，以及按当前值收缩的 Profile 下拉框；
 - Chat/Trajectory 双视图、三泳道 Timeline、虚拟化 Ledger、Inspector 和双向定位；
 - 受 Session/Turn 归属与 Watermark 约束的脱敏 `trace/query`；
 - Trajectory 独立 JS/CSS Chunk、首屏 gzip/brotli 预算和 100 分机器化复刻契约。

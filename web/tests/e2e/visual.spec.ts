@@ -194,6 +194,55 @@ test("captures streaming and completed states", async ({page}) => {
   await expect(page).toHaveScreenshot("canonical-completed.png");
 });
 
+test("captures message actions, commands, context usage, and rich Markdown", async ({page}) => {
+  await createSession(page);
+  await submitPrompt(page, "visual chrome");
+  await expect(page.getByRole("heading", {name: "Core modules"})).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByRole("button", {name: "Copy response"})).toBeVisible();
+  await expect(page.getByRole("button", {
+    name: "Like response",
+    exact: true
+  })).toBeVisible();
+  await expect(page.getByRole("button", {
+    name: "Dislike response",
+    exact: true
+  })).toBeVisible();
+
+  const selectWidths = await page.evaluate(() => ({
+    mode: document.querySelector<HTMLSelectElement>('select[aria-label="Mode"]')
+      ?.getBoundingClientRect().width ?? 0,
+    approval: document.querySelector<HTMLSelectElement>('select[aria-label="Approval"]')
+      ?.getBoundingClientRect().width ?? 0
+  }));
+  expect(selectWidths.mode).toBeLessThan(72);
+  expect(selectWidths.approval).toBeLessThan(92);
+  await expect(page).toHaveScreenshot("canonical-message-chrome.png");
+
+  await page.getByRole("button", {name: "Commands"}).click();
+  await expect(page.getByRole("menu", {name: "Commands"})).toBeVisible();
+  await expect(page.getByRole("menuitem", {name: /compact/})).toBeEnabled();
+  await expect(page).toHaveScreenshot("canonical-command-menu.png");
+  await page.getByRole("button", {name: "Commands"}).click();
+
+  const context = page.getByRole("button", {name: /of context used/});
+  await expect(context).toBeVisible();
+  await context.click();
+  await expect(page.getByRole("dialog", {name: "Context usage"})).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-context-usage.png");
+
+  await page.getByRole("button", {
+    name: "Dislike response",
+    exact: true
+  }).click();
+  await expect(page.getByRole("button", {name: "Remove dislike"}))
+    .toHaveAttribute("aria-pressed", "true");
+  await page.waitForTimeout(200);
+  await page.reload();
+  await expect(page.getByRole("button", {name: "Remove dislike"}))
+    .toHaveAttribute("aria-pressed", "true");
+});
+
 test("captures the approval state", async ({page}) => {
   await createSession(page);
   await submitPrompt(page, "visual approval");

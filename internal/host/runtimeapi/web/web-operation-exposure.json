@@ -48,11 +48,11 @@
     },
     {
       "operation_kind": "thread.compact",
-      "disposition": "denied",
-      "web_intent_schema": "",
-      "identity_binding": "none",
-      "admission_policy": "deny",
-      "required_surface": "",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#thread.compact",
+      "identity_binding": "active_session_thread_latest_turn_new_item",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "composer_command_menu",
       "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
     },
     {

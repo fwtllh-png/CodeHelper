@@ -73,6 +73,15 @@ import {
 import {RuntimeClient, type RuntimeSnapshot} from "../runtime/client";
 import {CapybaraMark} from "./brand/CapybaraMark";
 import {CodeHelperWordmark} from "./brand/CodeHelperWordmark";
+import {
+  compactSelectWidth,
+  ComposerCommandMenu,
+  ContextMeter,
+  MessageActions,
+  type ContextAttribution,
+  type MessageChrome,
+  type MessageFeedbackRating
+} from "./ConversationChrome";
 import {experience} from "./experience";
 import {ReasoningDisclosure, ToolDisclosure} from "./TranscriptCards";
 
@@ -237,6 +246,14 @@ export function App({client}: Props) {
     (entry): entry is Extract<ConversationNode, {kind: "receipt"}> =>
       entry.kind === "receipt"
   );
+  const turnChrome = useMemo(
+    () => projectMessageChrome(snapshot.events),
+    [snapshot.events]
+  );
+  const contextAttribution = useMemo(
+    () => latestContextAttribution(snapshot.events),
+    [snapshot.events]
+  );
   const blankSession = Boolean(
     selected && entries.length === 0 && !snapshot.hydratingSessionID
   );
@@ -400,6 +417,80 @@ export function App({client}: Props) {
       reportLocalError(error);
     }
   };
+
+  const composerCommands = [
+    {
+      id: "context",
+      label: "context",
+      description: "Browse files, symbols, diagnostics, and diffs",
+      icon: FileCode2,
+      run: () => {
+        setDetailOpen(true);
+        setBlankDetailRequested(true);
+      }
+    },
+    {
+      id: "compact",
+      label: "compact",
+      description: "Compact older conversation history",
+      icon: Braces,
+      disabled: Boolean(activeTurn) || !selected?.latest_turn_id,
+      run: async () => {
+        try {
+          await client.compactThread();
+        } catch (error) {
+          reportLocalError(error);
+        }
+      }
+    },
+    {
+      id: "export",
+      label: "export",
+      description: "Download this Session log as JSON",
+      icon: Download,
+      run: exportSession
+    },
+    {
+      id: "plan",
+      label: "plan",
+      description: "Analyze and propose a plan before implementation",
+      icon: TextSelect,
+      active: snapshot.profile?.profile.mode === "plan",
+      disabled: !profileMutable(snapshot, "mode"),
+      run: () => client.updateProfile({mode: "plan"}).catch(reportLocalError)
+    },
+    {
+      id: "act",
+      label: "act",
+      description: "Execute the requested coding task",
+      icon: Wrench,
+      active: snapshot.profile?.profile.mode === "act",
+      disabled: !profileMutable(snapshot, "mode"),
+      run: () => client.updateProfile({mode: "act"}).catch(reportLocalError)
+    },
+    {
+      id: "suggest",
+      label: "suggest",
+      description: "Ask before consequential tool actions",
+      icon: AlertTriangle,
+      active: snapshot.profile?.profile.approval_posture === "suggest",
+      disabled: !profileMutable(snapshot, "approval_posture"),
+      run: () => client.updateProfile({
+        approval_posture: "suggest"
+      }).catch(reportLocalError)
+    },
+    {
+      id: "auto",
+      label: "auto",
+      description: "Approve actions allowed by the current policy",
+      icon: Check,
+      active: snapshot.profile?.profile.approval_posture === "auto",
+      disabled: !profileMutable(snapshot, "approval_posture"),
+      run: () => client.updateProfile({
+        approval_posture: "auto"
+      }).catch(reportLocalError)
+    }
+  ];
 
   const downloadWorkspaceResource = async (
     resource: Pick<WorkspaceResource | WorkspaceImage, "content_handle" | "path">
@@ -824,6 +915,14 @@ export function App({client}: Props) {
                   onError={reportLocalError}
                   onInspect={inspectTool}
                   canOpenPath={snapshot.canOpenPath}
+                  chrome={turnChrome.get(entry.turnID)}
+                  feedback={snapshot.messageFeedback[
+                    `${snapshot.selectedSessionID}:${entry.id}`
+                  ]}
+                  onFeedback={(rating) => client.toggleMessageFeedback(
+                    entry.id,
+                    rating
+                  )}
                 />
               ))
             )}
@@ -902,6 +1001,19 @@ export function App({client}: Props) {
                       }
                     }}
                   />
+                  <ContextMeter
+                    attribution={contextAttribution}
+                    fallbackUsed={numberValue(
+                      isObject(latestReceipt?.data.context_budget)
+                        ? latestReceipt.data.context_budget.active_tokens
+                        : 0
+                    )}
+                    capacity={numberValue(
+                      isObject(latestReceipt?.data.context_budget)
+                        ? latestReceipt.data.context_budget.max_context_tokens
+                        : 0
+                    ) || selectedModelEntry?.capabilities.context_window}
+                  />
                   {activeTurn ? (
                     <IconButton
                       label="Stop turn"
@@ -925,13 +1037,9 @@ export function App({client}: Props) {
                 </div>
                 <div className="composerControls">
                   <div>
-                    <IconButton
-                      label="Add context"
-                      icon={<Plus size={15} />}
-                      onClick={() => {
-                        setDetailOpen(true);
-                        setBlankDetailRequested(true);
-                      }}
+                    <ComposerCommandMenu
+                      commands={composerCommands}
+                      disabled={Boolean(snapshot.hydratingSessionID)}
                     />
                     <CompactSelect
                       label="Mode"
@@ -990,10 +1098,6 @@ export function App({client}: Props) {
                         }).catch(reportLocalError)}
                       />
                     )}
-                    <ContextMeter
-                      receipt={latestReceipt?.data}
-                      capacity={selectedModelEntry?.capabilities.context_window}
-                    />
                   </div>
                 </div>
               </div>
@@ -1680,13 +1784,19 @@ const TranscriptItem = memo(function TranscriptItem({
   client,
   onError,
   onInspect,
-  canOpenPath
+  canOpenPath,
+  chrome,
+  feedback,
+  onFeedback
 }: {
   entry: ConversationNode;
   client: RuntimeClient;
   onError: (error: unknown) => void;
   onInspect: (callID: string) => void;
   canOpenPath: boolean;
+  chrome?: MessageChrome;
+  feedback?: MessageFeedbackRating;
+  onFeedback: (rating: MessageFeedbackRating) => void;
 }) {
   const [open, setOpen] = useState(false);
   if (entry.kind === "user") {
@@ -1694,25 +1804,45 @@ const TranscriptItem = memo(function TranscriptItem({
   }
   if (entry.kind === "assistant") {
     return (
-      <article className="assistantMessage">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            a: ({href, children, ...properties}) => (
-              <a
-                {...properties}
-                href={href}
-                rel={isExternalURL(href) ? "noopener noreferrer" : undefined}
-                target={isExternalURL(href) ? "_blank" : undefined}
-              >
-                {children}
-              </a>
-            ),
-            img: ({alt}) => <span>{alt ?? "Image"}</span>
-          }}
-        >
-          {entry.text}
-        </ReactMarkdown>
+      <article className="assistantMessage" data-time-hover-root>
+        <div className="assistantMarkdown">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({href, children, ...properties}) => (
+                <a
+                  {...properties}
+                  href={href}
+                  rel={isExternalURL(href) ? "noopener noreferrer" : undefined}
+                  target={isExternalURL(href) ? "_blank" : undefined}
+                >
+                  {children}
+                </a>
+              ),
+              img: ({alt}) => <span className="markdownImageAlt">{alt ?? "Image"}</span>,
+              table: ({children}) => (
+                <div
+                  className="markdownTable"
+                  role="region"
+                  aria-label="Response table"
+                  tabIndex={0}
+                >
+                  <table>{children}</table>
+                </div>
+              )
+            }}
+          >
+            {entry.text}
+          </ReactMarkdown>
+        </div>
+        {chrome && (
+          <MessageActions
+            text={entry.text}
+            chrome={chrome}
+            feedback={feedback}
+            onFeedback={onFeedback}
+          />
+        )}
       </article>
     );
   }
@@ -2354,6 +2484,7 @@ function CompactSelect({
       <select
         aria-label={label}
         value={value}
+        style={compactSelectWidth(value || "Default")}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -2361,6 +2492,7 @@ function CompactSelect({
           <option value={item} key={item}>{item || "Default"}</option>
         ))}
       </select>
+      <ChevronDown size={13} aria-hidden="true" />
     </label>
   );
 }
@@ -2384,6 +2516,9 @@ function CompactCatalogSelect({
       <select
         aria-label={label}
         value={value}
+        style={compactSelectWidth(
+          options.find((option) => option.value === value)?.label ?? value
+        )}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       >
@@ -2397,32 +2532,8 @@ function CompactCatalogSelect({
           </option>
         ))}
       </select>
+      <ChevronDown size={13} aria-hidden="true" />
     </label>
-  );
-}
-
-function ContextMeter({
-  receipt,
-  capacity
-}: {
-  receipt?: Readonly<Record<string, unknown>>;
-  capacity?: number;
-}) {
-  const budget = isObject(receipt?.context_budget)
-    ? receipt.context_budget
-    : undefined;
-  const used = numberValue(budget?.active_tokens);
-  const maximum = numberValue(budget?.max_context_tokens) || capacity || 0;
-  if (used <= 0 || maximum <= 0) return null;
-  const share = Math.min(1, used / maximum);
-  return (
-    <span
-      className="contextMeter"
-      title={`Context ${used.toLocaleString()} / ${maximum.toLocaleString()} tokens`}
-      aria-label={`Context ${Math.round(share * 100)} percent`}
-    >
-      <span style={{"--ch-context-share": share} as React.CSSProperties} />
-    </span>
   );
 }
 
@@ -2832,6 +2943,80 @@ export function projectTranscript(events: readonly RuntimeEvent[]): Conversation
   });
 }
 
+export function projectMessageChrome(
+  events: readonly RuntimeEvent[]
+): Map<string, MessageChrome> {
+  const startedAt = new Map<string, number>();
+  const receipts = new Map<string, Readonly<Record<string, unknown>>>();
+  const completed = new Map<string, RuntimeEvent>();
+  for (const event of events) {
+    if (event.kind === "turn.started") {
+      const timestamp = Date.parse(event.created_at);
+      if (Number.isFinite(timestamp)) startedAt.set(event.turn_id, timestamp);
+    } else if (event.kind === "turn.receipt") {
+      receipts.set(event.turn_id, event.data);
+    } else if (event.kind === "turn.completed") {
+      completed.set(event.turn_id, event);
+    }
+  }
+  const result = new Map<string, MessageChrome>();
+  for (const [turnID, event] of completed) {
+    const receipt = receipts.get(turnID);
+    const latency = isObject(receipt?.latency) ? receipt.latency : undefined;
+    const completedAt = Date.parse(event.created_at);
+    const started = startedAt.get(turnID);
+    const recordedTotal = optionalNumber(latency?.total_ms);
+    const totalMS = recordedTotal ?? (
+      started !== undefined && Number.isFinite(completedAt)
+        ? Math.max(0, completedAt - started)
+        : undefined
+    );
+    const firstTokenMS = optionalNumber(latency?.first_token_ms);
+    const providerMS = optionalNumber(latency?.provider_ms);
+    const outputTokens = optionalNumber(receipt?.output_tokens);
+    const decodeMS = providerMS !== undefined && firstTokenMS !== undefined
+      ? providerMS - firstTokenMS
+      : undefined;
+    const tokensPerSecond = decodeMS !== undefined && decodeMS > 0 &&
+      outputTokens !== undefined && outputTokens > 0
+      ? outputTokens / (decodeMS / 1_000)
+      : undefined;
+    result.set(turnID, {
+      completedAt: event.created_at,
+      ...(totalMS === undefined ? {} : {totalMS}),
+      ...(firstTokenMS === undefined ? {} : {firstTokenMS}),
+      ...(tokensPerSecond === undefined ? {} : {tokensPerSecond})
+    });
+  }
+  return result;
+}
+
+export function latestContextAttribution(
+  events: readonly RuntimeEvent[]
+): ContextAttribution | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.kind !== "usage" || !isObject(event.data.context)) continue;
+    const context = event.data.context;
+    return {
+      estimatedTokens: numberValue(context.estimated_tokens),
+      stableTokens:
+        numberValue(context.stable_tokens) +
+        numberValue(context.dynamic_tokens) +
+        numberValue(context.continuation_tokens),
+      toolTokens:
+        numberValue(context.tool_definition_tokens) +
+        numberValue(context.history_tool_tokens),
+      messageTokens:
+        numberValue(context.history_user_tokens) +
+        numberValue(context.history_assistant_tokens) +
+        numberValue(context.history_other_tokens),
+      framingTokens: numberValue(context.provider_framing_tokens)
+    };
+  }
+  return undefined;
+}
+
 function pendingRequestKey(sessionID: string, event?: RuntimeEvent): string {
   return `${sessionID}:${String(event?.data.request_id ?? "")}`;
 }
@@ -2848,6 +3033,12 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function numberValue(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
 }
 
 function formatDuration(milliseconds: number): string {

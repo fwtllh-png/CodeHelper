@@ -25,6 +25,10 @@
   --ch-business-soft: #edf3fe;
   --ch-reasoning: #805ad5;
   --ch-tool: #b7791f;
+  --ch-context-stable: #aeb6c2;
+  --ch-context-tools: #a78bfa;
+  --ch-context-messages: #5b8ff9;
+  --ch-context-framing: #e9a23b;
   --ch-on-accent: #15315d;
   --ch-danger: #ec1313;
   --ch-danger-soft: #fef2f2;
@@ -81,6 +85,10 @@
   --ch-business-soft: #2c2c2e;
   --ch-reasoning: #b794f4;
   --ch-tool: #f6c45f;
+  --ch-context-stable: #aeb6c2;
+  --ch-context-tools: #a78bfa;
+  --ch-context-messages: #5b8ff9;
+  --ch-context-framing: #e9a23b;
   --ch-on-accent: #0f1115;
   --ch-danger: #f25a5a;
   --ch-danger-soft: #2c1c1d;
@@ -1051,15 +1059,95 @@ textarea:disabled {
   line-height: 28px;
 }
 
-.assistantMessage > :first-child {
+.assistantMarkdown {
+  min-width: 0;
+}
+
+.assistantMarkdown > :first-child,
+.assistantMarkdown > :first-child > :first-child {
   margin-top: 0;
 }
 
-.assistantMessage > :last-child {
+.assistantMarkdown > :last-child,
+.assistantMarkdown > :last-child > :last-child {
   margin-bottom: 0;
 }
 
-.assistantMessage pre,
+.assistantMarkdown strong {
+  font-weight: 600;
+}
+
+.assistantMarkdown h1 {
+  margin: 32px 0 16px;
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 36px;
+}
+
+.assistantMarkdown h2 {
+  margin: 32px 0 16px;
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 32px;
+}
+
+.assistantMarkdown h3 {
+  margin: 28px 0 14px;
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 28px;
+}
+
+.assistantMarkdown :where(h4, h5, h6) {
+  margin: 16px 0 8px;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 24px;
+}
+
+.assistantMarkdown p {
+  margin: 16px 0;
+}
+
+.assistantMarkdown :where(ul, ol) {
+  margin: 16px 0;
+  padding-left: 22px;
+}
+
+.assistantMarkdown li + li {
+  margin-top: 6px;
+}
+
+.assistantMarkdown li > p {
+  margin: 8px 0;
+}
+
+.assistantMarkdown blockquote {
+  margin: 16px 0;
+  padding-left: 14px;
+  color: var(--ch-text-secondary);
+  border-left: 2px solid var(--ch-text-caption);
+}
+
+.assistantMarkdown hr {
+  height: 1px;
+  margin: 32px 0;
+  background: var(--ch-border-strong);
+  border: 0;
+}
+
+.assistantMarkdown a {
+  color: var(--ch-business);
+  text-decoration: none;
+}
+
+.assistantMarkdown a:hover,
+.assistantMarkdown a:focus {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.assistantMarkdown pre,
 .disclosure pre {
   max-width: 100%;
   overflow: auto;
@@ -1068,19 +1156,125 @@ textarea:disabled {
   border-radius: var(--ch-radius);
 }
 
-.assistantMessage pre {
-  padding: 13px;
+.assistantMarkdown pre {
+  margin: 16px 0;
+  padding: 16px;
+  line-height: 22px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.assistantMessage code {
+.assistantMarkdown code {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 14px;
 }
 
-.assistantMessage :not(pre) > code {
-  padding: 2px 4px;
+.assistantMarkdown :not(pre) > code {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
   background: var(--ch-code);
-  border-radius: 3px;
+  border-radius: var(--ch-radius);
+  font-size: 0.875em;
+  line-height: 1.7;
+}
+
+.markdownTable {
+  max-width: 100%;
+  margin: 20px 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.markdownTable:focus-visible {
+  outline: 2px solid var(--ch-focus);
+  outline-offset: 2px;
+}
+
+.markdownTable table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+}
+
+.markdownTable th,
+.markdownTable td {
+  min-width: 100px;
+  max-width: 320px;
+  padding: 10px 16px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.markdownTable th {
+  color: var(--ch-text);
+  font-size: 14px;
+  font-weight: 650;
+  border-bottom-color: var(--ch-border-strong);
+}
+
+.markdownTable td {
+  color: var(--ch-text-secondary);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.markdownTable :is(th, td):first-child {
+  padding-left: 0;
+}
+
+.markdownTable :is(th, td):last-child {
+  padding-right: 0;
+}
+
+.markdownImageAlt {
+  color: var(--ch-text-muted);
+  font-style: italic;
+}
+
+.messageActions {
+  display: flex;
+  min-width: 0;
+  height: 28px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  margin-left: -6px;
+  color: var(--ch-text-muted);
+}
+
+.messageActions button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0;
+  place-items: center;
+  color: var(--ch-text-muted);
+  background: transparent;
+  border-radius: 50%;
+}
+
+.messageActions button:hover,
+.messageActions button:focus-visible {
+  color: var(--ch-text-secondary);
+  background: var(--ch-panel-subtle);
+}
+
+.messageActions button[aria-pressed="true"] {
+  color: var(--ch-business);
+}
+
+.messageFacts {
+  min-width: 0;
+  padding-left: 2px;
+  overflow: hidden;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .disclosure {
@@ -1762,6 +1956,85 @@ textarea:disabled {
   gap: 3px;
 }
 
+.commandMenuRoot {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.commandMenuTrigger {
+  display: grid;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  color: var(--ch-text-muted);
+  background: transparent;
+  border-radius: 50%;
+}
+
+.commandMenuTrigger:hover,
+.commandMenuTrigger[aria-expanded="true"] {
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
+}
+
+.commandMenu {
+  position: absolute;
+  z-index: var(--ch-layer-popover);
+  bottom: calc(100% + 12px);
+  left: 0;
+  display: grid;
+  width: min(520px, calc(100vw - 48px));
+  max-height: min(420px, calc(100vh - 180px));
+  gap: 2px;
+  padding: 8px;
+  overflow-y: auto;
+  color: var(--ch-text);
+  background: var(--ch-panel-raised);
+  border: 1px solid var(--ch-border-strong);
+  border-radius: 8px;
+  box-shadow: var(--ch-shadow);
+  outline: 0;
+}
+
+.commandMenuTitle {
+  padding: 3px 8px 7px;
+  color: var(--ch-text-muted);
+  font-size: 12px;
+}
+
+.commandMenu > button {
+  display: grid;
+  grid-template-columns: 18px minmax(76px, auto) minmax(0, 1fr) 16px;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  color: var(--ch-text);
+  text-align: left;
+  background: transparent;
+  border-radius: 6px;
+}
+
+.commandMenu > button[data-active] {
+  background: var(--ch-panel-subtle);
+}
+
+.commandMenu > button > span {
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.commandMenu > button > small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ch-text-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composerControls .iconButton {
   width: 26px;
   height: 24px;
@@ -1781,7 +2054,17 @@ textarea:disabled {
   overflow-y: auto;
 }
 
+.compactSelect {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
 .compactSelect select {
+  appearance: none;
+  min-width: 0;
   max-width: 142px;
   height: 24px;
   padding: 0 18px 0 5px;
@@ -1790,6 +2073,14 @@ textarea:disabled {
   border: 0;
   border-radius: 4px;
   font-size: 11px;
+}
+
+.compactSelect > svg {
+  position: absolute;
+  right: 3px;
+  flex: 0 0 auto;
+  color: var(--ch-text-muted);
+  pointer-events: none;
 }
 
 .compactSelect select:hover,
@@ -1810,23 +2101,155 @@ textarea:disabled {
   white-space: nowrap;
 }
 
-.contextMeter {
-  display: block;
-  width: 28px;
-  height: 8px;
-  padding: 2px;
-  overflow: hidden;
-  background: var(--ch-panel-subtle);
-  border: 1px solid var(--ch-border);
-  border-radius: 4px;
+.contextMeterRoot {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
 }
 
-.contextMeter > span {
-  display: block;
-  width: calc(var(--ch-context-share) * 100%);
-  height: 100%;
-  background: var(--ch-business);
+.contextMeter {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  color: var(--ch-text-secondary);
+  background: transparent;
+  border-radius: 50%;
+}
+
+.contextMeter:hover,
+.contextMeter[aria-expanded="true"] {
+  background: var(--ch-panel-subtle);
+}
+
+.contextMeter svg {
+  width: 16px;
+  height: 16px;
+}
+
+.contextTrack,
+.contextFill {
+  fill: none;
+  stroke-width: 2;
+}
+
+.contextTrack {
+  stroke: var(--ch-border-strong);
+}
+
+.contextFill {
+  stroke: var(--ch-text-muted);
+  stroke-linecap: round;
+}
+
+.contextPanel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: var(--ch-layer-popover);
+  width: 280px;
+  padding: 12px;
+  color: var(--ch-text-secondary);
+  background: var(--ch-panel-raised);
+  border: 1px solid var(--ch-border-strong);
+  border-radius: 8px;
+  box-shadow: var(--ch-shadow);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.contextPanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ch-text-muted);
+}
+
+.contextPanelHeader strong,
+.contextPanelHeader b {
+  color: var(--ch-text);
+  font-weight: 600;
+}
+
+.contextPanelHeader b {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.contextBar {
+  display: flex;
+  height: 4px;
+  gap: 1px;
+  margin: 10px 0 12px;
+  overflow: hidden;
+  background: var(--ch-panel-subtle);
   border-radius: 2px;
+}
+
+.contextBar > span {
+  min-width: 2px;
+  height: 100%;
+  background: var(--ch-text-muted);
+}
+
+.contextBar > span[data-tone="stable"],
+.contextRows [data-tone="stable"] {
+  background: var(--ch-context-stable);
+}
+
+.contextBar > span[data-tone="tools"],
+.contextRows [data-tone="tools"] {
+  background: var(--ch-context-tools);
+}
+
+.contextBar > span[data-tone="messages"],
+.contextRows [data-tone="messages"] {
+  background: var(--ch-context-messages);
+}
+
+.contextBar > span[data-tone="framing"],
+.contextRows [data-tone="framing"] {
+  background: var(--ch-context-framing);
+}
+
+.contextRows {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.contextRows > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contextRows dt {
+  display: flex;
+  align-items: center;
+  color: var(--ch-text-secondary);
+}
+
+.contextRows dt > span {
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 2px;
+}
+
+.contextRows dd {
+  margin: 0;
+  color: var(--ch-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.contextPanel > small {
+  display: block;
+  margin-top: 10px;
+  color: var(--ch-text-caption);
+  line-height: 16px;
 }
 
 .composerMeta {
@@ -2771,6 +3194,19 @@ textarea:disabled {
 
   .composerControls > div:last-child {
     justify-content: flex-end;
+  }
+
+  .commandMenu {
+    width: min(440px, calc(100vw - 76px));
+  }
+
+  .commandMenu > button {
+    grid-template-columns: 18px minmax(68px, auto) minmax(0, 1fr) 16px;
+  }
+
+  .contextPanel {
+    right: -44px;
+    width: min(280px, calc(100vw - 76px));
   }
 
   .resizeHandle {

@@ -79,6 +79,7 @@ export interface RuntimeSnapshot {
   canOpenPath: boolean;
   includeArchived: boolean;
   contextResources: readonly EditorContextReference[];
+  messageFeedback: Readonly<Record<string, "positive" | "negative">>;
   sessions: readonly SessionSummary[];
   selectedSessionID: string;
   hydratingSessionID: string;
@@ -117,6 +118,7 @@ const emptySnapshot: RuntimeSnapshot = {
   canOpenPath: false,
   includeArchived: false,
   contextResources: [],
+  messageFeedback: {},
   sessions: [],
   selectedSessionID: "",
   hydratingSessionID: "",
@@ -168,7 +170,8 @@ export class RuntimeClient {
   private stored: BrowserProjectionState = {
     cursor: 0,
     selectedSessionID: "",
-    drafts: {}
+    drafts: {},
+    messageFeedback: {}
   };
   private storageWrite: Promise<void> = Promise.resolve();
   private storageTimer?: number;
@@ -520,6 +523,44 @@ export class RuntimeClient {
     }
     this.stored = {...this.stored, drafts};
     this.persistBrowserState();
+  }
+
+  toggleMessageFeedback(
+    messageID: string,
+    rating: "positive" | "negative",
+    sessionID = this.state.selectedSessionID
+  ): void {
+    if (!sessionID || !messageID) return;
+    const key = `${sessionID}:${messageID}`;
+    const messageFeedback = {...(this.stored.messageFeedback ?? {})};
+    if (messageFeedback[key] === rating) {
+      delete messageFeedback[key];
+    } else {
+      messageFeedback[key] = rating;
+    }
+    this.stored = {...this.stored, messageFeedback};
+    this.update({messageFeedback});
+    this.persistBrowserState();
+  }
+
+  async compactThread(): Promise<OperationReceipt> {
+    const session = this.state.sessions.find(
+      (item) => item.session_id === this.state.selectedSessionID
+    );
+    const turnID = session?.latest_turn_id;
+    if (!session || !turnID || this.state.conversation.activeTurnID) {
+      throw new Error("No completed turn is available to compact");
+    }
+    return this.call<OperationReceipt>("operation/submit", {
+      session_id: session.session_id,
+      kind: "thread.compact",
+      idempotency_key: crypto.randomUUID(),
+      payload: {
+        thread_id: session.thread_id,
+        turn_id: turnID,
+        item_id: `compact-${crypto.randomUUID()}`
+      }
+    });
   }
 
   async cancel(turnID: string): Promise<OperationReceipt> {
@@ -1244,10 +1285,11 @@ export class RuntimeClient {
     if (scope === this.storageScope) return;
     this.storageScope = scope;
     const restored = await this.storage.load(scope).catch(() => undefined);
-    this.stored = restored ?? {
-      cursor: 0,
-      selectedSessionID: "",
-      drafts: {}
+    this.stored = {
+      cursor: Math.max(0, restored?.cursor ?? 0),
+      selectedSessionID: restored?.selectedSessionID ?? "",
+      drafts: {...(restored?.drafts ?? {})},
+      messageFeedback: {...(restored?.messageFeedback ?? {})}
     };
     this.cursor = Math.max(0, this.stored.cursor);
     this.update({
@@ -1269,7 +1311,8 @@ export class RuntimeClient {
       traceProblem: undefined,
       extensions: [],
       mergePlan: undefined,
-      contextResources: []
+      contextResources: [],
+      messageFeedback: {...(this.stored.messageFeedback ?? {})}
     });
   }
 
@@ -1294,7 +1337,8 @@ export class RuntimeClient {
       value: {
         cursor: this.stored.cursor,
         selectedSessionID: this.stored.selectedSessionID,
-        drafts: {...this.stored.drafts}
+        drafts: {...this.stored.drafts},
+        messageFeedback: {...(this.stored.messageFeedback ?? {})}
       }
     };
     if (this.storageTimer !== undefined) return;

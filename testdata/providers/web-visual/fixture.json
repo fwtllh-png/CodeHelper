@@ -35,6 +35,10 @@
       ]
     },
     {
+      "match": ["visual chrome"],
+      "streams": ["chrome-summary.sse", "chrome-complete.sse"]
+    },
+    {
       "match": ["visual diff"],
       "streams": [
         "diff-read.sse",
