@@ -4,7 +4,7 @@
 
 `benchmarks/` 是 hermetic coding benchmark 任务集，由 `internal/host/bench` 执行（`make bench`），格式见 [benchmarks/README.md](./benchmarks/README.md)。
 
-`contracts/` 保存当前 CI、跨 Host 和架构门禁直接消费的机器契约。它不保存一次性阶段
+`contracts/` 保存当前 CI、Web Host 和架构门禁直接消费的机器契约。它不保存一次性阶段
 Evidence 或已退休的重构 Baseline。
 
 新增 Fixture 时就近放在对应包的 `testdata/` 或本目录，并在测试中直接引用。

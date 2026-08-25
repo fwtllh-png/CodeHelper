@@ -59,8 +59,8 @@ git diff --check
 | `make web-parity-report` | 执行声明的资格测试并生成带输入和产物摘要的报告 |
 | `make protocol-schema` | 生成 Runtime Protocol Schema |
 | `make observation-traits` | 生成 Go、Web TypeScript 与 JSON Schema Trait |
-| `make experience-baseline` | 校验 Web/TUI 体验契约 |
-| `make host-journey-contract` | 校验 Runtime、Web、CLI 与 TUI 主旅程 |
+| `make web-experience-check` | 校验 Web 体验契约 |
+| `make host-journey-contract` | 校验 Runtime 与 Web 主旅程 |
 | `make architecture-ratchet` | 校验架构预算 |
 
 `make verify` 是完整门禁。Web Build 和依赖嵌入 Go Binary 的测试应串行执行，避免
@@ -101,14 +101,12 @@ Bundle Budget，并拒绝 npm Audit 报告中的 High 或 Critical 漏洞。
 - `docs/protocol/observation.schema.json`
 - `internal/observability/observation/traits.gen.go`
 - `web/src/protocol/observation.generated.ts`
-- `docs/zh-CN/usage.md` 的命令清单区块
 
 使用：
 
 ```bash
 make protocol-schema
 make observation-traits
-make command-docs
 ```
 
 ## 架构约束

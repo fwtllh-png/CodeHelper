@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
+import type {AgentPreset} from "../protocol";
 import {RuntimeClient} from "./client";
 import type {
   BrowserProjectionState,
@@ -77,6 +78,8 @@ describe("RuntimeClient", () => {
   let snapshotTruncatedBefore = 0;
   let earlierEvents: ReturnType<typeof runtimeEvent>[] = [];
   let moreBefore = false;
+  let presets: AgentPreset[] = [];
+  let presetRevision = 0;
 
   beforeEach(() => {
     requests.length = 0;
@@ -94,6 +97,8 @@ describe("RuntimeClient", () => {
     snapshotTruncatedBefore = 0;
     earlierEvents = [];
     moreBefore = false;
+    presets = [];
+    presetRevision = 0;
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("crypto", {
       randomUUID: () => "request-id",
@@ -111,6 +116,7 @@ describe("RuntimeClient", () => {
           ready: true,
           draining: false,
           workspace_root: "/workspace",
+          can_open_path: true,
           workspace: {
             version: 1,
             root_id: "workspace-id",
@@ -211,6 +217,7 @@ describe("RuntimeClient", () => {
           isolation: "shared",
           workspace_root: "/workspace",
           workspace_label: "workspace",
+          latest_turn_id: "turn",
           latest_sequence: 0,
           pending_approvals: 0,
           pending_inputs: 0,
@@ -333,6 +340,21 @@ describe("RuntimeClient", () => {
       if (route.endsWith("/agent/list")) {
         return envelope({agents: []});
       }
+      if (route.endsWith("/turn/queue")) {
+        return envelope({version: 1, items: []});
+      }
+      if (route.endsWith("/trace/query")) {
+        return envelope({
+          version: 1,
+          session_id: body.session_id,
+          through_sequence: body.through_sequence,
+          turns: (body.turn_ids as string[]).map((turnID) => ({
+            turn_id: turnID,
+            status: "ok",
+            spans: []
+          }))
+        });
+      }
       if (route.endsWith("/usage/query")) {
         return envelope({
           usage: [],
@@ -348,6 +370,78 @@ describe("RuntimeClient", () => {
       if (route.endsWith("/extension/list")) {
         return envelope({revision: 1, extensions: []});
       }
+      if (route.endsWith("/extension/control")) {
+        return envelope({
+          operation_id: body.id,
+          revision: 2,
+          detail: {name: body.name, action: body.action},
+          receipt: {
+            operation_id: body.id,
+            action: body.action,
+            kind: body.kind,
+            name: body.name,
+            status: "committed",
+            digest: "f".repeat(64),
+            revision: 2,
+            occurred_at: "2026-01-01T00:00:00Z"
+          }
+        });
+      }
+      if (route.endsWith("/agent-preset/list")) {
+        return envelope({
+          version: 1,
+          revision: presetRevision,
+          presets
+        });
+      }
+      if (route.endsWith("/agent-preset/save")) {
+        const previous = presets.find((preset) => preset.id === body.id);
+        presetRevision += 1;
+        const preset: AgentPreset = {
+          version: 1,
+          id: String(body.id),
+          revision: (previous?.revision ?? 0) + 1,
+          name: String(body.name),
+          description: String(body.description ?? ""),
+          scope: "workspace",
+          profile: body.profile as AgentPreset["profile"],
+          created_at: previous?.created_at ?? "2026-01-01T00:00:00Z",
+          updated_at: "2026-01-01T00:00:00Z"
+        };
+        presets = [...presets.filter((value) => value.id !== preset.id), preset];
+        return envelope({version: 1, revision: presetRevision, preset});
+      }
+      if (route.endsWith("/agent-preset/delete")) {
+        presets = presets.filter((preset) => preset.id !== body.id);
+        presetRevision += 1;
+        return envelope({
+          version: 1,
+          revision: presetRevision,
+          deleted_id: body.id
+        });
+      }
+      if (route.endsWith("/agent-preset/apply")) {
+        return envelope({
+          version: 1,
+          preset_id: body.preset_id,
+          profile_update: {
+            profile: {
+              version: 1,
+              revision: 2,
+              mode: "plan",
+              provider: currentProvider,
+              model: currentModel,
+              approval_posture: "suggest",
+              execution_target: "local",
+              max_steps: 16,
+              prompt_cache_revision: 2
+            },
+            prompt_cache_reset: true,
+            reset_reason: "mode"
+          },
+          restart_required: false
+        });
+      }
       if (route.endsWith("/workspace/resource")) {
         return envelope({
           path: "src/main.go",
@@ -358,6 +452,9 @@ describe("RuntimeClient", () => {
           digest: "a".repeat(64),
           bytes: 13
         });
+      }
+      if (route.endsWith("/workspace/open")) {
+        return envelope({opened: true, path: "src/main.go"});
       }
       if (route.endsWith("/workspace/image")) {
         return envelope({
@@ -466,6 +563,9 @@ describe("RuntimeClient", () => {
     expect(client.getSnapshot().tools).toEqual([]);
     expect(client.getSnapshot().checkpoints).toEqual([]);
 
+    const sessionListsBefore = requests.filter(
+      (request) => request.route.endsWith("/session/list")
+    ).length;
     await client.submitPrompt("say hello");
     const submit = requests.find((request) => request.route.endsWith("/operation/submit"));
     expect(submit?.body).toMatchObject({
@@ -476,6 +576,74 @@ describe("RuntimeClient", () => {
         intent: "answer"
       }
     });
+    expect(requests.filter(
+      (request) => request.route.endsWith("/session/list")
+    )).toHaveLength(sessionListsBefore + 1);
+    client.stop();
+  });
+
+  it("submits steering against the active turn without starting another turn", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.steer("turn-active", "  focus on the failing test  ");
+
+    const submit = requests.find((request) =>
+      request.route.endsWith("/operation/submit")
+    );
+    expect(submit?.body).toMatchObject({
+      kind: "turn.steer",
+      payload: {
+        turn_id: "turn-active",
+        prompt: "focus on the failing test"
+      }
+    });
+    client.stop();
+  });
+
+  it("submits and manages Runtime-owned queued turns", async () => {
+    const client = new RuntimeClient();
+    const socket = await startClient(client);
+
+    await client.enqueue("turn-active", "  follow up  ");
+    expect(requests.find((request) =>
+      request.route.endsWith("/operation/submit") &&
+      request.body.kind === "turn.enqueue"
+    )?.body).toMatchObject({
+      kind: "turn.enqueue",
+      payload: {
+        turn_id: "turn-active",
+        prompt: "follow up",
+        display_prompt: "follow up"
+      }
+    });
+
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "session",
+      sequence: 1,
+      event: runtimeEvent(1, "turn.queued", {
+        queue_id: "queue-1",
+        prompt: "follow up"
+      })
+    });
+    await vi.waitFor(() => {
+      expect(client.getSnapshot().queuedTurns).toHaveLength(1);
+    });
+
+    await client.updateQueuedTurn("queue-1", "revised");
+    await client.promoteQueuedTurn("queue-1", "turn-active");
+    await client.removeQueuedTurn("queue-1");
+    const kinds = requests
+      .filter((request) => request.route.endsWith("/operation/submit"))
+      .map((request) => request.body.kind);
+    expect(kinds).toEqual([
+      "turn.enqueue",
+      "turn.queue.update",
+      "turn.queue.promote",
+      "turn.queue.remove"
+    ]);
     client.stop();
   });
 
@@ -512,12 +680,32 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
+  it("queries trace timing against the hydrated event watermark", async () => {
+    snapshotSequence = 2;
+    snapshotEvents = [
+      runtimeEvent(1, "turn.started"),
+      runtimeEvent(2, "turn.completed")
+    ];
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    expect(requests.find((request) => request.route.endsWith("/trace/query"))?.body)
+      .toEqual({
+        session_id: "session",
+        turn_ids: ["turn"],
+        through_sequence: 2
+      });
+    expect(client.getSnapshot().tracePhase).toBe("ready");
+    client.stop();
+  });
+
   it("restores scoped cursor, selection, and drafts without persisting tokens", async () => {
     const storage = new MemoryBrowserStorage();
     storage.values.set("v1:build:workspace-id", {
       cursor: 41,
       selectedSessionID: "session",
-      drafts: {session: "unfinished prompt"}
+      drafts: {session: "unfinished prompt"},
+      messageFeedback: {"session:output-turn": "negative"}
     });
     const client = new RuntimeClient(storage);
     await startClient(client);
@@ -530,6 +718,9 @@ describe("RuntimeClient", () => {
       cursor: 41
     });
     expect(await client.loadDraft()).toBe("unfinished prompt");
+    expect(client.getSnapshot().messageFeedback).toEqual({
+      "session:output-turn": "negative"
+    });
 
     socket?.emit("message", {
       type: "watermark",
@@ -537,14 +728,38 @@ describe("RuntimeClient", () => {
       sequence: 42
     });
     client.saveDraft("next prompt");
+    client.toggleMessageFeedback("output-turn", "positive");
     await vi.waitFor(() => {
       expect(storage.values.get("v1:build:workspace-id")).toMatchObject({
         cursor: 42,
         selectedSessionID: "session",
-        drafts: {session: "next prompt"}
+        drafts: {session: "next prompt"},
+        messageFeedback: {"session:output-turn": "positive"}
       });
     });
     expect(JSON.stringify(storage.values)).not.toContain("token");
+    client.stop();
+  });
+
+  it("submits context compaction against the active Session's latest turn", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.compactThread();
+
+    const submit = requests.filter(
+      (request) => request.route.endsWith("/operation/submit")
+    ).at(-1);
+    expect(submit?.body).toEqual({
+      session_id: "session",
+      kind: "thread.compact",
+      idempotency_key: "request-id",
+      payload: {
+        thread_id: "thread",
+        turn_id: "turn",
+        item_id: "compact-request-id"
+      }
+    });
     client.stop();
   });
 
@@ -624,6 +839,78 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
+  it("creates, lists, applies, and deletes Runtime-owned Agent presets", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+    expect((await client.listAgentPresets()).presets).toEqual([]);
+
+    const saved = await client.saveAgentPreset({
+      name: "Review",
+      description: "Focused review",
+      profile: {
+        mode: "plan",
+        provider: "fixture",
+        model: "fixture",
+        enabled_tool_ids: [],
+        approval_posture: "suggest",
+        execution_target: "local",
+        max_steps: 16
+      }
+    });
+    expect(saved.preset).toMatchObject({
+      id: "preset-request-id",
+      name: "Review",
+      revision: 1,
+      scope: "workspace"
+    });
+    const saveRequest = requests.find((request) =>
+      request.route.endsWith("/agent-preset/save")
+    );
+    expect(saveRequest?.headers.get("Idempotency-Key"))
+      .toBe("preset-request-id");
+    expect((await client.listAgentPresets()).presets).toHaveLength(1);
+
+    const applied = await client.applyAgentPreset("preset-request-id");
+    expect(applied.profile_update.profile.mode).toBe("plan");
+    expect(requests.find((request) =>
+      request.route.endsWith("/agent-preset/apply")
+    )?.body).toMatchObject({
+      session_id: "session",
+      thread_id: "thread",
+      preset_id: "preset-request-id",
+      expected_profile_revision: 1
+    });
+
+    await client.deleteAgentPreset(saved.preset!);
+    expect((await client.listAgentPresets()).presets).toEqual([]);
+    client.stop();
+  });
+
+  it("routes extension inspection and mutation through the control plane", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    const detail = await client.controlExtension(
+      "plugin",
+      "review-tools",
+      "detail"
+    );
+    expect(detail.detail).toEqual({
+      name: "review-tools",
+      action: "detail"
+    });
+    await client.setExtensionEnabled("skill", "review", false);
+
+    const controls = requests.filter((request) =>
+      request.route.endsWith("/extension/control")
+    );
+    expect(controls.map((request) => request.body)).toMatchObject([
+      {kind: "plugin", name: "review-tools", action: "detail"},
+      {kind: "skill", name: "review", action: "disable"}
+    ]);
+    client.stop();
+  });
+
   it("submits server-issued workspace context and clears it after acceptance", async () => {
     const client = new RuntimeClient();
     await startClient(client);
@@ -647,6 +934,65 @@ describe("RuntimeClient", () => {
       }
     });
     expect(client.getSnapshot().contextResources).toEqual([]);
+    client.stop();
+  });
+
+  it("submits and queues digest-bound attachment context, then clears it", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+    const textAttachment = {
+      kind: "attachment" as const,
+      source: "native_picker" as const,
+      digest: "d".repeat(64),
+      label: "notes.txt",
+      media_type: "text/plain",
+      content: "review the parser",
+      explicit: true as const
+    };
+    client.addAttachmentContext(textAttachment);
+
+    await client.enqueue("turn-active", "use the note");
+
+    const enqueue = requests.find((request) =>
+      request.route.endsWith("/operation/submit") &&
+      request.body.kind === "turn.enqueue"
+    );
+    expect(enqueue?.body).toMatchObject({
+      payload: {
+        prompt: "use the note",
+        context: [textAttachment]
+      }
+    });
+    expect(client.getSnapshot().contextResources).toEqual([]);
+
+    const imageAttachment = {
+      kind: "image" as const,
+      source: "native_picker" as const,
+      digest: "e".repeat(64),
+      label: "pasted.png",
+      media_type: "image/png",
+      content: "iVBORw0KGgo=",
+      explicit: true as const
+    };
+    client.addAttachmentContext(imageAttachment);
+    expect(client.getSnapshot().contextResources).toEqual([imageAttachment]);
+    client.removeAttachmentContext(imageAttachment.digest);
+    expect(client.getSnapshot().contextResources).toEqual([]);
+    client.stop();
+  });
+
+  it("opens a workspace path only through the authenticated Host route", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    expect(client.getSnapshot().canOpenPath).toBe(true);
+    await expect(client.openWorkspacePath("src/main.go")).resolves.toEqual({
+      opened: true,
+      path: "src/main.go"
+    });
+    expect(requests.find(
+      (request) => request.route.endsWith("/workspace/open")
+    )?.body).toEqual({path: "src/main.go"});
     client.stop();
   });
 
@@ -939,6 +1285,30 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
+  it("refreshes authoritative Session activity for a foreign approval", async () => {
+    const client = new RuntimeClient();
+    const socket = await startClient(client);
+    const before = requests.filter(
+      (request) => request.route.endsWith("/session/list")
+    ).length;
+
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "foreign-session",
+      sequence: 20,
+      event: runtimeEvent(20, "approval.required")
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        requests.filter((request) => request.route.endsWith("/session/list"))
+          .length
+      ).toBe(before + 1);
+    });
+    client.stop();
+  });
+
   it("buffers live events before the session snapshot returns", async () => {
     const client = new RuntimeClient();
     await startClient(client);
@@ -1012,6 +1382,64 @@ describe("RuntimeClient", () => {
     second?.emit("open");
 
     expect(JSON.parse(second?.sent[0] ?? "{}")).toMatchObject({cursor: 19});
+    client.stop();
+  });
+
+  it("publishes streaming deltas at most once per animation frame", async () => {
+    let flush: FrameRequestCallback | undefined;
+    vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => {
+      flush = callback;
+      return 1;
+    }));
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const client = new RuntimeClient();
+    const socket = await startClient(client);
+    let notifications = 0;
+    const unsubscribe = client.subscribe(() => {
+      notifications += 1;
+    });
+
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "session",
+      sequence: 1,
+      event: runtimeEvent(1, "output.delta")
+    });
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "session",
+      sequence: 2,
+      event: runtimeEvent(2, "output.delta")
+    });
+
+    expect(notifications).toBe(0);
+    flush?.(performance.now());
+    expect(notifications).toBe(1);
+    expect(client.getSnapshot().events).toHaveLength(2);
+    unsubscribe();
+    client.stop();
+  });
+
+  it("writes a burst of cursor updates as one browser-state checkpoint", async () => {
+    const storage = new MemoryBrowserStorage();
+    const client = new RuntimeClient(storage);
+    const socket = await startClient(client);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    storage.saveCalls = 0;
+
+    for (let sequence = 1; sequence <= 100; sequence += 1) {
+      socket.emit("message", {
+        type: "watermark",
+        protocol_version: 1,
+        sequence
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+
+    expect(storage.saveCalls).toBe(1);
+    expect(storage.values.get("v1:build:workspace-id")?.cursor).toBe(100);
     client.stop();
   });
 
@@ -1116,7 +1544,11 @@ describe("RuntimeClient", () => {
   });
 });
 
-function runtimeEvent(sequence: number, kind: string) {
+function runtimeEvent(
+  sequence: number,
+  kind: string,
+  data: Record<string, unknown> = {}
+) {
   return {
     version: 1,
     id: `event-${sequence}`,
@@ -1127,7 +1559,7 @@ function runtimeEvent(sequence: number, kind: string) {
     item_id: "item",
     sequence,
     created_at: "2026-01-01T00:00:00Z",
-    data: {}
+    data
   };
 }
 
@@ -1166,12 +1598,14 @@ function envelopeProblem(code: string, message: string, retryable: boolean): Res
 
 class MemoryBrowserStorage implements BrowserStorage {
   readonly values = new Map<string, BrowserProjectionState>();
+  saveCalls = 0;
 
   async load(scope: string): Promise<BrowserProjectionState | undefined> {
     return this.values.get(scope);
   }
 
   async save(scope: string, state: BrowserProjectionState): Promise<void> {
+    this.saveCalls += 1;
     this.values.set(scope, structuredClone(state));
   }
 }

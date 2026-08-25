@@ -21,11 +21,47 @@
     },
     {
       "operation_kind": "turn.steer",
-      "disposition": "denied",
-      "web_intent_schema": "",
-      "identity_binding": "none",
-      "admission_policy": "deny",
-      "required_surface": "",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#turn.steer",
+      "identity_binding": "active_session_turn",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "active_composer",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "turn.enqueue",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#turn.enqueue",
+      "identity_binding": "active_session_turn_queue_item",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "active_composer",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "turn.queue.update",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#turn.queue.update",
+      "identity_binding": "session_turn_queue_item",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "turn_queue",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "turn.queue.remove",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#turn.queue.remove",
+      "identity_binding": "session_turn_queue_item",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "turn_queue",
+      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
+    },
+    {
+      "operation_kind": "turn.queue.promote",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#turn.queue.promote",
+      "identity_binding": "active_session_turn_queue_item",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "turn_queue",
       "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
     },
     {
@@ -48,11 +84,11 @@
     },
     {
       "operation_kind": "thread.compact",
-      "disposition": "denied",
-      "web_intent_schema": "",
-      "identity_binding": "none",
-      "admission_policy": "deny",
-      "required_surface": "",
+      "disposition": "exposed",
+      "web_intent_schema": "operation/submit#thread.compact",
+      "identity_binding": "active_session_thread_latest_turn_new_item",
+      "admission_policy": "runtime_session_operation",
+      "required_surface": "composer_command_menu",
       "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
     },
     {

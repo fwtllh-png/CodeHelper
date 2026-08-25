@@ -105,5 +105,6 @@ func OpenDurableRuntime(
 	return Runtime{
 		Recorder: router, RuntimeID: runtimeID,
 		contexts: newTurnContextRegistry(),
+		active:   newActiveRecorderRegistry(),
 	}, router, nil
 }

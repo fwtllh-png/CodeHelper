@@ -48,6 +48,15 @@ func TestBootstrapIsLoopbackFencedAndDoesNotCacheToken(t *testing.T) {
 	if response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("cache control = %q", response.Header().Get("Cache-Control"))
 	}
+	if policy := response.Header().Get("Content-Security-Policy"); !strings.Contains(
+		policy,
+		"img-src 'self' data: blob: https:",
+	) {
+		t.Fatalf("content security policy = %q", policy)
+	}
+	if response.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("referrer policy = %q", response.Header().Get("Referrer-Policy"))
+	}
 
 	rebound := httptest.NewRequest(http.MethodGet, "http://evil.test/api/v1/bootstrap", nil)
 	rebound.Host = "evil.test"
@@ -321,6 +330,49 @@ func TestRequestPanicIsContainedAndRedacted(t *testing.T) {
 	}
 }
 
+func TestTraceQueryRejectsRequestsAboveCapacityBeforeRepositoryAccess(t *testing.T) {
+	const host = "127.0.0.1:43212"
+	server := newTestServerWithOptions(t, webhost.Options{
+		Assets: fstest.MapFS{
+			"index.html": &fstest.MapFile{
+				Data: []byte("<main>CodeHelper</main>"),
+				Mode: fs.FileMode(0o444),
+			},
+		},
+		ExpectedHost: host,
+		Origin:       "http://" + host,
+		Capacity:     webhost.Capacity{MaxTraceTurns: 2},
+	})
+	runtime := app.NewRuntime(app.Options{})
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	identity, err := protocol.NewWorkspaceIdentity(
+		"file:///workspace",
+		"/workspace",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Activate(webhost.Dependencies{
+		Runtime: runtime, WorkspaceRoot: "/workspace",
+		WorkspaceIdentity: identity,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	response := postWeb(
+		t,
+		server,
+		host,
+		bootstrapToken(t, server, host),
+		"trace/query",
+		`{"session_id":"session","turn_ids":["one","two","three"],"through_sequence":1}`,
+	)
+	if response.Code != http.StatusTooManyRequests {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body)
+	}
+}
+
 func TestSystemDiagnosticsReportsAuthoritativeRuntimeHealth(t *testing.T) {
 	const host = "127.0.0.1:43211"
 	server := newTestServer(t, host)
@@ -510,7 +562,23 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := newTestServer(t, host)
+	var opened string
+	server, err := webhost.New(webhost.Options{
+		Assets: fstest.MapFS{
+			"index.html": &fstest.MapFile{
+				Data: []byte("<main>CodeHelper</main>"),
+				Mode: fs.FileMode(0o444),
+			},
+		},
+		ExpectedHost: host,
+		OpenPath: func(_ context.Context, target string) error {
+			opened = target
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := server.Activate(webhost.Dependencies{
 		Runtime: runtime, WorkspaceRoot: root,
 		WorkspaceIdentity: identity, Workspace: query,
@@ -538,12 +606,35 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 		strings.Contains(response.Body.String(), `"digest":"sha256:`) {
 		t.Fatalf("resource status=%d body=%s", response.Code, response.Body.String())
 	}
+	resourceBody := append([]byte(nil), response.Body.Bytes()...)
+	response = postWeb(
+		t,
+		server,
+		host,
+		token,
+		"workspace/open",
+		`{"path":"main.go"}`,
+	)
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK ||
+		!strings.Contains(response.Body.String(), `"opened":true`) ||
+		opened != filepath.Join(canonicalRoot, "main.go") {
+		t.Fatalf(
+			"open status=%d opened=%q body=%s",
+			response.Code,
+			opened,
+			response.Body.String(),
+		)
+	}
 	var resourceEnvelope struct {
 		Result struct {
 			ContentHandle string `json:"content_handle"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &resourceEnvelope); err != nil {
+	if err := json.Unmarshal(resourceBody, &resourceEnvelope); err != nil {
 		t.Fatal(err)
 	}
 	contentRequest := httptest.NewRequest(
@@ -655,11 +746,31 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("escape status=%d body=%s", response.Code, response.Body.String())
 	}
+	response = postWeb(
+		t,
+		server,
+		host,
+		token,
+		"workspace/open",
+		`{"path":"../secret"}`,
+	)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("open escape status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func TestUnaryRejectsDeclaredOversizedBody(t *testing.T) {
 	const host = "127.0.0.1:43210"
-	server := newTestServer(t, host)
+	server := newTestServerWithOptions(t, webhost.Options{
+		Assets: fstest.MapFS{
+			"index.html": &fstest.MapFile{
+				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+			},
+		},
+		ExpectedHost: host,
+		Origin:       "http://" + host,
+		Capacity:     webhost.Capacity{MaxJSONBodyBytes: 2},
+	})
 	runtime := app.NewRuntime(app.Options{})
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	identity, err := protocol.NewWorkspaceIdentity("file:///workspace", "/workspace", "")
@@ -678,7 +789,7 @@ func TestUnaryRejectsDeclaredOversizedBody(t *testing.T) {
 		strings.NewReader(`{}`),
 	)
 	request.Host = host
-	request.ContentLength = (1 << 20) + 1
+	request.ContentLength = 3
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+bootstrapToken(t, server, host))
 	response := httptest.NewRecorder()

@@ -47,6 +47,7 @@ type Event struct {
 	// Usage is cumulative within a sample, so a consumer keeps the last report
 	// per sample rather than adding them up.
 	Sample             uint32                      `json:"sample,omitempty"`
+	SampleID           string                      `json:"sample_id,omitempty"`
 	SampleContext      *protocol.SampleContextData `json:"sample_context,omitempty"`
 	ErrorCode          protocol.ErrorCode          `json:"error_code,omitempty"`
 	Error              string                      `json:"error,omitempty"`
@@ -66,6 +67,7 @@ type Event struct {
 	Completion         *tool.CompletionDeclaration `json:"completion,omitempty"`
 	ProviderRetry      *ProviderRetry              `json:"provider_retry,omitempty"`
 	ModelExecution     *ModelExecution             `json:"model_execution,omitempty"`
+	ReasoningCompleted *ModelReasoning             `json:"reasoning_completed,omitempty"`
 	ToolOutput         *ToolOutput                 `json:"tool_output,omitempty"`
 	CatalogChanged     *CatalogChanged             `json:"catalog_changed,omitempty"`
 	MCPHealthChanged   *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
@@ -84,6 +86,11 @@ type ModelExecution struct {
 	SampleID string `json:"sample_id"`
 	Attempt  uint32 `json:"attempt,omitempty"`
 	Reason   string `json:"reason,omitempty"`
+}
+
+type ModelReasoning struct {
+	SampleID string `json:"sample_id"`
+	Text     string `json:"text"`
 }
 
 type ProviderRetry = providerwire.RetryDecision

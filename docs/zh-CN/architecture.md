@@ -5,13 +5,13 @@
 CodeHelper 保持一个权威执行 Runtime，同时允许多种呈现和集成入口。Host 提交
 Operation 并观察 Event，不复制 Agent 循环，也不直接执行特权工具。
 
-受支持的产品 Host 是本机 Web、CLI 和 TUI。Web 是默认交互入口，只绑定
+受支持的产品 Host 只有本机 Web。它只绑定
 `127.0.0.1`，使用同源 HTTP RPC 与下行 WebSocket；项目不提供 LAN、公网部署、
-Pairing/QR Flow 或通用 REST/SSE Host。MCP Stdio Serving 属于集成机制，不是产品
-HTTP Host。
+Pairing/QR Flow、通用 REST/SSE Host 或 MCP Server 入口。外部 MCP 只作为受治理的
+Tool Source 接入。
 
 ```text
-Web / CLI / TUI
+Web
                  |
            Operation / Event
                  |
@@ -30,7 +30,7 @@ Web / CLI / TUI
 
 | 层 | 路径 | 职责 |
 | --- | --- | --- |
-| 入口 | `cmd/codehelper` | 进程上下文和 CLI 入口 |
+| 入口 | `cmd/codehelper` | 进程上下文和 Web 启动入口 |
 | Host | `internal/host` | 用户/客户端 I/O 与呈现 |
 | Runtime | `internal/runtime` | 协议、应用状态、Agent 循环、装配 |
 | Adapter | `internal/adapter` | 模型、Provider、Tool、MCP、Skill、Plugin、Hook |
@@ -93,7 +93,7 @@ Recovery 成功前不会启动后台 Worker。
 ## Runtime 所有权图
 
 ```text
-Web / CLI / TUI
+Web
         | Operation / Event
         v
 OperationService -> TurnService -> TurnCoordinator -> TurnScope
@@ -126,8 +126,9 @@ eventview + Web Projection -> 仅负责 Host Presentation
 | WorkGraph Kernel/Store | `internal/orchestration/kernel`、`internal/orchestration/store` | Durable Run、Node、Attempt、Lease 与 Effect Transition |
 | Extension Runtime | `internal/runtime/extension`、`internal/runtime/app/extension` | Typed Contributor、Source Plan、Generation、Lifecycle Effect 与 Control Receipt |
 | Observation Plane | `internal/observability/observation`、`internal/observability/router` | Evidence Schema、Privacy Admission、Durable Routing 与 Exporter Isolation |
-| Session/Artifact Service | `internal/runtime/app` | Runtime-owned Port 上的 Host-facing Query 行为 |
-| Go Host Projection | `internal/runtime/eventview` | Event Payload 的唯一 Typed Interpretation |
+| Session/Artifact/Trace Service | `internal/runtime/app` | Runtime-owned Port 上的 Host-facing Query 行为 |
+| Agent Preset Service | `internal/runtime/app`、`internal/persist/agentpreset` | Workspace 范围的版本化 Preset 校验、原子持久化与 Session 应用 |
+| Benchmark Projection | `internal/runtime/eventview` | Go Benchmark 的 Typed Event Interpretation |
 | Web Projection | `web/src` | 浏览器端 Event Projection 与交互状态 |
 
 Web 直接调用 Runtime 的窄化 Session、Operation、History 与 Artifact Service。
@@ -159,11 +160,13 @@ Host 中存在的 Runtime 能力都不完整。
 Event 分类是 Protocol 数据，而不是 Host Policy。`event_traits.json` 是唯一生成源，
 生成 Go Trait Table、Protocol Schema、TypeScript Table 与 Golden；新增 Event 缺少
 Class、Item Owner、Durability、Correlation 或 Terminal Trait 时生成直接失败。
-Go TUI、CLI 与 Bench 消费 `eventview` 的 Typed Semantic Update，不再分类
-`Event.Data`；Machine NDJSON 仍输出原始 Event Envelope。
+Go Benchmark 消费 `eventview` 的 Typed Semantic Update，不再分类 `Event.Data`。
 
 Web Client 使用 Runtime Snapshot 完成 Hydration，再按全局 Cursor 消费 Event。
 Sequence 只要求严格单调；只有 Runtime 明确报告 Retention Gap 时才进入 Desync。
+浏览器 Conversation Projection 对高频 Delta 按动画帧合并发布，并保持未变化业务节点
+的引用稳定。Trajectory Event Ledger 与 Chat 复用该事件窗口；`trace/query` 只补充
+经过 Session/Turn 归属校验和字段白名单投影的时序，不返回任意 Span Attribute。
 
 ### Application Ownership
 
@@ -446,8 +449,8 @@ Registration 都通过 `EffectOwner` 绑定 Extension、Source、Plan Revision�
 Generation、Capability 和 Effect Kind。Disable 会 Drain 所属 Effect；Revoke 或
 Quarantine 会 Fence 旧 Generation。Lifecycle Receipt 持久化且已脱敏。
 
-Plugin/Skill CLI、Web Transport `extension/list`/`extension/control` 与 Web Extensions View
-使用同一 Runtime Control Plane。Mutation 按 Operation ID 幂等，并持久化
+Web Transport `extension/list`/`extension/control` 与 Web Extensions View 使用同一
+Runtime Control Plane。Mutation 按 Operation ID 幂等，并持久化
 Prepare/Commit Receipt；Host 只提交 Operation 与投影 Runtime-owned State。
 
 ### MCP

@@ -5,6 +5,26 @@
   "stream_delay_ms": 40,
   "routes": [
     {
+      "match": ["visual navigation"],
+      "streams": [
+        "tools-read.sse",
+        "tools-bash.sse",
+        "tools-grep.sse",
+        "tools-glob.sse",
+        "tools-complete.sse",
+        "chrome-complete.sse",
+        "chrome-complete.sse",
+        "chrome-complete.sse"
+      ]
+    },
+    {
+      "match": ["visual queue"],
+      "streams": [
+        "long-streaming.sse",
+        "streaming-complete.sse"
+      ]
+    },
+    {
       "match": ["visual long streaming"],
       "streams": ["long-streaming.sse", "streaming-complete.sse"]
     },
@@ -17,12 +37,48 @@
       "streams": ["approval-request.sse", "approval-complete.sse"]
     },
     {
+      "match": ["visual background approval"],
+      "streams": [
+        "background-approval.sse",
+        "background-verify.sse",
+        "approval-complete.sse"
+      ]
+    },
+    {
+      "match": ["visual edit approval"],
+      "streams": [
+        "diff-read.sse",
+        "edit-request.sse",
+        "approval-request.sse",
+        "edit-verify.sse",
+        "edit-complete.sse"
+      ]
+    },
+    {
       "match": ["visual input"],
       "streams": ["input-request.sse", "input-answer.sse", "input-complete.sse"]
     },
     {
       "match": ["visual failure"],
       "streams": ["failure.sse"]
+    },
+    {
+      "match": ["visual tools"],
+      "streams": [
+        "tools-read.sse",
+        "tools-bash.sse",
+        "tools-grep.sse",
+        "tools-glob.sse",
+        "tools-complete.sse"
+      ]
+    },
+    {
+      "match": ["visual chrome"],
+      "streams": ["chrome-summary.sse", "chrome-complete.sse"]
+    },
+    {
+      "match": ["visual rich content"],
+      "streams": ["rich-content-complete.sse"]
     },
     {
       "match": ["visual diff"],

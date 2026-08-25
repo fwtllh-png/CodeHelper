@@ -3,101 +3,6 @@
   "requirement_id": "IMP-006",
   "hotspots": [
     {
-      "id": "tui",
-      "package": "./internal/host/tui",
-      "hotspot_file": "internal/host/tui/app.go",
-      "baseline_lines": 294,
-      "responsibilities": {
-        "model_orchestration": [
-          "Model",
-          "NewModel"
-        ],
-        "runtime_adapter": [
-          "RuntimeHost",
-          "Run",
-          "openRuntimeHost"
-        ],
-        "command_adapter": [
-          "dispatchSlash",
-          "handleJobs",
-          "attachImage"
-        ],
-        "state_projection": [
-          "streamMsg"
-        ],
-        "panels": [
-          "openPanel",
-          "renderPanel",
-          "panelAction"
-        ],
-        "session_state": [
-          "sessionLoad",
-          "sessionSave",
-          "sessionSnapshot"
-        ],
-        "reducer": [
-          "Update",
-          "handleKey",
-          "handleEnter"
-        ],
-        "presentation": [
-          "View",
-          "padBlockHeight"
-        ]
-      },
-      "responsibility_files": {
-        "model_orchestration": "app.go",
-        "runtime_adapter": "runtime.go",
-        "command_adapter": "command_adapter.go",
-        "state_projection": "projection.go",
-        "panels": "panels.go",
-        "session_state": "session_state.go",
-        "reducer": "reducer.go",
-        "presentation": "view.go"
-      },
-      "allowed_internal_imports": [
-        "internal/adapter/mcp",
-        "internal/adapter/plugin",
-        "internal/adapter/skill",
-        "internal/config",
-        "internal/host/review",
-        "internal/host/tui/commands",
-        "internal/observability/trace",
-        "internal/observability/usage",
-        "internal/orchestration/automation",
-        "internal/orchestration/fleet",
-        "internal/orchestration/lane",
-        "internal/orchestration/subagent",
-        "internal/orchestration/task",
-        "internal/orchestration/workflow",
-        "internal/persist/session/ux",
-        "internal/persist/state",
-        "internal/platform/ownerlease",
-        "internal/platform/process",
-        "internal/runtime/app",
-        "internal/runtime/app/wire",
-        "internal/host/tui/facade",
-        "internal/runtime/protocol",
-        "internal/security/constitution",
-        "internal/security/permissions",
-        "internal/security/policy"
-      ],
-      "required_test_assets": [
-        "internal/host/tui/app_test.go",
-        "internal/host/tui/reducer.go",
-        "internal/host/tui/projection.go",
-        "internal/host/tui/command_adapter.go",
-        "internal/host/tui/session_state.go",
-        "internal/host/tui/panels.go",
-        "internal/host/tui/view.go",
-        "internal/host/tui/runtime.go",
-        "internal/host/tui/approval_stream_test.go",
-        "internal/host/tui/visual_snapshot_test.go",
-        "internal/host/tui/testdata/visual/transcript.golden",
-        "internal/host/tui/testdata/visual/overlay.golden"
-      ]
-    },
-    {
       "id": "engine",
       "package": "./internal/runtime/agent/engine",
       "hotspot_file": "internal/runtime/agent/engine/engine.go",
@@ -247,11 +152,6 @@
           "Snapshot",
           "Source",
           "defaultProvenance"
-        ],
-        "reload": [
-          "Manager",
-          "Reload",
-          "ReloadFrom"
         ]
       },
       "responsibility_files": {
@@ -262,8 +162,7 @@
         "environment_load": "environment.go",
         "override_load": "overrides.go",
         "validate": "validate.go",
-        "provenance": "provenance.go",
-        "reload": "reload.go"
+        "provenance": "provenance.go"
       },
       "allowed_internal_imports": [
         "internal/runtime/protocol"
@@ -278,7 +177,6 @@
         "internal/config/overrides.go",
         "internal/config/validate.go",
         "internal/config/provenance.go",
-        "internal/config/reload.go",
         "internal/config/config_trust_test.go",
         "internal/config/route_test.go"
       ]

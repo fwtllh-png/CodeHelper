@@ -5,40 +5,17 @@
 配置从低到高按以下顺序解析：
 
 ```text
-内置默认值 < TOML 文件 < CODEHELPER_* 环境变量 < 命令行参数
+内置默认值 < TOML 文件 < CODEHELPER_* 环境变量 < Web 启动参数
 ```
 
-不要靠猜测排查配置：
+启动时通过 `--config` 指定文件；解析或校验失败会显示在 Web Boot Failure Surface：
 
 ```bash
-codehelper config check --config ./codehelper.toml
-codehelper config show --config ./codehelper.toml
-codehelper config explain execution.verify.mode --config ./codehelper.toml
+codehelper --config ./codehelper.toml --workspace . --open
 ```
-
-`config show` 会输出 Provenance，可确认每个字段最终由哪个来源覆盖。`config explain`
-返回最终值、内置默认值、胜出来源、风险级别和行为影响。
 
 MCP Server 定义使用独立、严格且带版本的 JSON 文件，不属于 Runtime TOML 控制面。
-CLI、TUI 与 Web 都通过 `--mcp-config` 传入。可通过
-`codehelper mcp validate --config ./mcp.json` 校验。
-
-## 配置 Profile
-
-Profile 只控制生成文件中显式写出的默认字段数量，不会形成不同的 Runtime 默认值。
-
-| Profile | 用途 |
-| --- | --- |
-| `minimal` | 首次本地或 Fixture 成功 Turn |
-| `recommended` | 带 Context、Journal 和 Soft Verify 的常规仓库工作 |
-| `advanced` | 审阅限制、Worker、Subagent 与 Context Budget |
-
-可以单独渲染 Profile，也可在 Setup 中选择：
-
-```bash
-codehelper config profile --profile minimal --workspace . --data-dir .codehelper
-codehelper setup --workspace . --profile recommended --interactive
-```
+Web 通过 `--mcp-config` 传入，并在 Settings 中展示加载状态。
 
 ## 完整实用示例
 
@@ -329,15 +306,8 @@ Memory 使用带稳定 ID 和 Generation 的记录存储。`user`、`workspace` 
 - `openai_responses`
 - `anthropic`
 
-不要猜测标识符，直接查询 Catalog：
-
-```bash
-codehelper model list
-codehelper model resolve --provider openai --model gpt-4.1
-codehelper model resolve --provider openai-responses --model gpt-4.1
-```
-
-即使 Model ID 相同，Provider ID 也可能不同。存在歧义时必须显式指定 Provider。
+不要猜测标识符。Web Settings 展示 Runtime 发布的 Provider/Model Catalog；即使
+Model ID 相同，Provider ID 也可能不同，存在歧义时必须在 TOML 中显式指定 Provider。
 
 Web 首屏在创建 Session 前显示当前 Runtime Provider、该 Provider 内可用的 Model、
 对应 Model 支持的 Reasoning 档位和凭据状态。同一 Provider 内标记为 `hot` 的 Model
@@ -358,14 +328,13 @@ Web 首屏在创建 Session 前显示当前 Runtime Provider、该 Provider 内�
 | `file` | `name` 是受保护文件路径 | 使用 `0600` 并交给外部 Secret Manager 管理 |
 | `keyring` | `name` 是系统 Keyring Key | 桌面交互环境优先 |
 
-使用 `codehelper auth` 管理引用。常规配置与诊断输出会对 Secret 做脱敏处理。
-本机 Web 的启动配置页也可以把 API Key 只写入系统 Keychain；浏览器和响应只接收
+本机 Web 的 Settings 可以把 API Key 只写入系统 Keychain；浏览器和响应只接收
 `configured`、`validation` 与引用类型，不会读回密钥值。Web Provider 每次请求解析
 Credential Control 的最新引用，因此页面完成 Keychain 轮换后无需重启。
 
 ## Mode、Posture 与验证
 
-Mode 写入 TOML；Posture 是 Host/命令级决策，通过参数提供。二者互不替代。
+Mode 写入 TOML；Posture 是 Web Host 启动决策，通过参数提供。二者互不替代。
 
 验证模式：
 
@@ -477,6 +446,6 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 - 提交安全示例，不提交个人凭证配置。
 - 共享示例优先使用工作区相对路径。
 - 生产凭证必须位于仓库外。
-- 每次修改配置后运行 `config check`。
-- 参数、环境变量和 TOML 行为不一致时运行 `config show`。
-- `bypass`、Hard Verify、启用 Worker 和自定义 Shell Command 都应经过 Review。
+- 每次修改配置后重启 Web，并检查 Boot/Settings 中的结构化状态。
+- 启动参数、环境变量和 TOML 行为不一致时，以 Runtime 发布的有效配置为准。
+- Hard Verify、启用 Worker 和自定义 Shell Command 都应经过 Review。

@@ -16,7 +16,7 @@ import (
 
 type contract struct {
 	Version          int               `json:"version"`
-	Stylesheet       string            `json:"stylesheet"`
+	Stylesheets      []string          `json:"stylesheets"`
 	LayoutRegions    []string          `json:"layout_regions"`
 	ResponsiveTracks []responsiveTrack `json:"responsive_tracks"`
 	SemanticTokens   []string          `json:"semantic_tokens"`
@@ -118,11 +118,17 @@ func validate(value contract, root string) error {
 	if value.Version != 1 {
 		return fmt.Errorf("version = %d, want 1", value.Version)
 	}
-	if value.Stylesheet != "web/src/ui/styles.css" {
-		return errors.New("stylesheet must be the production Web stylesheet")
+	if !sameSet(value.Stylesheets, []string{
+		"web/src/ui/styles.css",
+		"web/src/ui/SettingsDialog.css",
+		"web/src/ui/WorkspaceContextDialog.css",
+		"web/src/ui/Trajectory.css",
+	}) {
+		return errors.New("stylesheets must cover the production Web styles")
 	}
 	if !sameSet(value.LayoutRegions, []string{
-		"session_rail", "conversation", "composer", "detail",
+		"session_rail", "conversation", "composer", "settings_dialog",
+		"context_dialog", "trajectory_inspector",
 	}) {
 		return errors.New("layout regions drifted")
 	}
@@ -130,8 +136,10 @@ func validate(value contract, root string) error {
 		return err
 	}
 	if !sameSet(value.CanonicalStates, []string{
-		"empty", "streaming", "approval", "input", "failure", "completed",
-		"diff", "settings",
+		"empty", "blank_session", "streaming", "tool_collapsed",
+		"tool_expanded", "approval", "input", "failure", "completed",
+		"diff", "settings", "settings_models", "settings_tools",
+		"settings_agent", "context_browser", "edit_approval", "trajectory",
 	}) {
 		return errors.New("canonical states drifted")
 	}
@@ -156,7 +164,7 @@ func validate(value contract, root string) error {
 	if hasDuplicate(value.SemanticTokens) || hasDuplicate(value.StableGeometry) {
 		return errors.New("tokens and stable geometry selectors must be unique")
 	}
-	if len(value.Behavior) != 5 {
+	if len(value.Behavior) != 6 {
 		return errors.New("behavior matrix is incomplete")
 	}
 	if value.CSSPolicy.SemanticPrefix != "--ch-" ||
@@ -166,24 +174,41 @@ func validate(value contract, root string) error {
 		!value.CSSPolicy.RequireRegisteredZIndex {
 		return errors.New("CSS policy must preserve all static safety gates")
 	}
-	content, err := os.ReadFile(filepath.Join(root, value.Stylesheet))
-	if err != nil {
-		return err
+	var content strings.Builder
+	for _, stylesheet := range value.Stylesheets {
+		value, err := os.ReadFile(filepath.Join(root, stylesheet))
+		if err != nil {
+			return err
+		}
+		content.Write(value)
+		content.WriteByte('\n')
 	}
-	return validateCSS(value, string(content))
+	return validateCSS(value, content.String())
 }
 
 func validateGoldens(value contract, root string) error {
 	const directory = "web/tests/e2e/visual.spec.ts-snapshots"
 	expected := []string{
 		"canonical-approval.png",
+		"canonical-back-to-bottom.png",
+		"canonical-blank-session.png",
 		"canonical-completed.png",
 		"canonical-diff.png",
+		"canonical-edit-approval.png",
+		"canonical-edit-completed.png",
 		"canonical-empty.png",
 		"canonical-failure.png",
 		"canonical-input.png",
 		"canonical-settings.png",
+		"canonical-settings-models.png",
+		"canonical-settings-tools.png",
+		"canonical-settings-agent.png",
+		"canonical-context-browser.png",
 		"canonical-streaming.png",
+		"canonical-tool-collapsed.png",
+		"canonical-tool-expanded.png",
+		"canonical-trajectory.png",
+		"canonical-trajectory-detail.png",
 		"viewport-390x844-dark.png",
 		"viewport-390x844-light.png",
 		"viewport-1024x768-dark.png",

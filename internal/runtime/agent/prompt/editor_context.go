@@ -3,6 +3,7 @@ package prompt
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -117,7 +118,8 @@ func resolveEditorReference(
 	reference protocol.EditorContextReference,
 ) (renderedEditorContext, protocol.EditorContextReceipt, error) {
 	if reference.Kind == protocol.EditorContextTerminal ||
-		reference.Kind == protocol.EditorContextGitDiff {
+		reference.Kind == protocol.EditorContextGitDiff ||
+		reference.Kind == protocol.EditorContextAttachment {
 		content := []byte(reference.Content)
 		originalBytes := len(content)
 		text, truncated := cropEditorText(content, maxEditorContextItemBytes)
@@ -131,6 +133,36 @@ func resolveEditorReference(
 				Digest: reference.Digest, Label: reference.Label,
 				MediaType: reference.MediaType, OriginalBytes: originalBytes,
 				RetainedBytes: len(text), Truncated: truncated,
+			}, nil
+	}
+	if reference.Kind == protocol.EditorContextImage && reference.Path == "" {
+		data, decodeErr := base64.StdEncoding.DecodeString(reference.Content)
+		if decodeErr != nil || len(data) == 0 || len(data) > maxEditorContextImageBytes {
+			return renderedEditorContext{}, protocol.EditorContextReceipt{},
+				fmt.Errorf("inline editor image %q is invalid", reference.Label)
+		}
+		digest := sha256.Sum256(data)
+		if hex.EncodeToString(digest[:]) != reference.Digest ||
+			!validImageBytes(reference.MediaType, data) {
+			return renderedEditorContext{}, protocol.EditorContextReceipt{},
+				fmt.Errorf("inline editor image %q failed validation", reference.Label)
+		}
+		attachment := &provider.Attachment{
+			MediaType: reference.MediaType,
+			Data:      data,
+			Name:      reference.Label,
+		}
+		return renderedEditorContext{
+				Kind: reference.Kind, Source: reference.Source,
+				Digest: reference.Digest, Label: reference.Label,
+				MediaType:         reference.MediaType,
+				Content:           "[image attached as a native model content block]",
+				OriginalByteCount: len(data), attachment: attachment,
+			}, protocol.EditorContextReceipt{
+				Kind: reference.Kind, Source: reference.Source,
+				Digest: reference.Digest, Label: reference.Label,
+				MediaType: reference.MediaType, OriginalBytes: len(data),
+				RetainedBytes: len(data),
 			}, nil
 	}
 	cleanedPath := path.Clean(reference.Path)

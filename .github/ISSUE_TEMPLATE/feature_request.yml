@@ -37,7 +37,6 @@ body:
         - Security or sandbox
         - Persistence or observability
         - Orchestration
-        - CLI or TUI
         - Web
         - Documentation or book
         - Build, test, or release

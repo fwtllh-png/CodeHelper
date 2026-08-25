@@ -23,11 +23,11 @@ Host 提交 Operation
   -> TurnCoordinator 持久化 Reducer Transition
   -> Adapter 执行 Provider 或 Guarded Tool Effect
   -> TerminalPublisher 原子提交终态
-  -> Event Hub 将事实投影给 Web / CLI / TUI
+  -> Event Hub 将事实投影给 Web
 ```
 
-CodeHelper 不是“CLI 调模型再运行命令”的脚本。它是一个本地、持久、受治理的 Agent
-Runtime；Web、CLI、TUI、Worker 和 Subagent 共享同一组执行与安全语义。
+CodeHelper 不是“页面调模型再运行命令”的脚本。它是一个本地、持久、受治理的 Agent
+Runtime；Web、Worker 和 Subagent 共享同一组执行与安全语义。
 
 ### 1.2 五条权威链
 
@@ -72,7 +72,7 @@ Turn Kernel 解决“一个回合如何正确结束”；WorkGraph 解决“多�
 
 | 层 | 路径 | 阅读重点 |
 | --- | --- | --- |
-| 进程入口 | `cmd/codehelper` | Signal、退出码、CLI 委托 |
+| 进程入口 | `cmd/codehelper` | Signal、退出码、Web Host 委托 |
 | Host | `internal/host` | 输入校验、Operation 提交、Event 呈现 |
 | Protocol | `internal/runtime/protocol` | 跨 Host 的 Operation/Event/Receipt Contract |
 | Application | `internal/runtime/app` | Operation、Session、Turn Lease、Terminal、Recovery |
@@ -139,9 +139,8 @@ make web-protocol-check
 
 ```text
 cmd/codehelper/main.go
-  -> host/cli.RunContext
-  -> Cobra command
-  -> runExec / runWeb / runTUI
+  -> host/web.RunContext
+  -> Web 启动参数
   -> wire.NewExec
   -> defaultBuildModules
   -> backgroundModule
@@ -149,15 +148,12 @@ cmd/codehelper/main.go
 
 ### 4.1 Host 入口
 
-- `cmd/codehelper/main.go`：只建立 Process Context 并委托 CLI。
-- `internal/host/cli/run.go`：`RunContext`、机器可读错误与退出码。
-- `internal/host/cli/cobra.go`：`newRoot` 定义实际命令面。
-- `internal/host/cli/exec.go`：最短的真实 Turn Host，可观察 Operation 提交和 Event
-  消费。
-- `internal/host/cli/web.go`：两阶段 Web Boot；先开放 Boot Surface，再构造并激活
+- `cmd/codehelper/main.go`：只建立 Process Context 并委托 Web Host。
+- `internal/host/web/launcher.go`：解析启动参数并执行两阶段 Web Boot；先开放 Boot
+  Surface，再构造并激活
   Runtime。
 
-不要从 CLI 推断业务语义。CLI 只负责参数、I/O 和进程生命周期。
+不要从启动器推断业务语义。它只负责参数、I/O 和进程生命周期。
 
 ### 4.2 `wire.NewExec`
 
@@ -669,7 +665,7 @@ go test -run 'TestChildAgent|TestSchedulerRunsAQueuedTask' ./internal/runtime/ap
 
 读完应能回答：Worker 崩溃后，为什么旧进程不能用过期 Attempt 结算新 Owner 的工作？
 
-## 十二、路线 9：Web、CLI 与 TUI Projection
+## 十二、路线 9：Web Projection
 
 **目标：** 理解 Host 如何呈现 Runtime，而不复制业务状态机。
 
@@ -718,11 +714,10 @@ go test -run 'TestChildAgent|TestSchedulerRunsAQueuedTask' ./internal/runtime/ap
 Sequence 要求严格单调，不要求连续。Browser State、Session List 和 Transcript 都不是
 Runtime Authority。
 
-### 12.3 CLI 与 TUI
+### 12.3 Benchmark Projection
 
-- `internal/runtime/eventview/view.go`：Go Host 对 Event 的唯一 Typed Interpretation；
-- `internal/host/cli/exec.go`：机器/文本输出；
-- `internal/host/tui/reducer.go` 与 `projection.go`：终端 UI Projection。
+`internal/runtime/eventview/view.go` 为 Go Benchmark 提供 Typed Event Interpretation；
+产品交互状态只由 Browser Runtime Projection 呈现。
 
 关键验证：
 

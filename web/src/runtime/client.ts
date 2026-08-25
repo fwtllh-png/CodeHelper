@@ -1,14 +1,21 @@
 import type {
+  AgentPreset,
+  AgentPresetApplyResult,
+  AgentPresetList,
+  AgentPresetMutationResult,
+  AgentPresetProfile,
   AgentList,
   AgentSummary,
   Bootstrap,
   CheckpointList,
+  CheckpointForkResult,
   CredentialStatus,
   EditPlan,
   EditorContextReference,
   EditorRange,
   Envelope,
   EventFrame,
+  ExtensionControlAction,
   ExtensionControlResult,
   ExtensionProjection,
   ModelCatalog,
@@ -18,6 +25,7 @@ import type {
   Problem,
   ProviderCatalog,
   ProviderCatalogEntry,
+  QueuedTurn,
   RuntimeEvent,
   SessionBinding,
   SessionDeleteResult,
@@ -33,7 +41,9 @@ import type {
   SessionSummary,
   TaskList,
   TaskSummary,
+  TraceSnapshot,
   ToolCatalog,
+  TurnQueue,
   UsageQueryResult,
   UsageRollup,
   WorkspaceBrowseResult,
@@ -41,6 +51,7 @@ import type {
   WorkspaceDiagnostics,
   WorkspaceDiff,
   WorkspaceImage,
+  WorkspaceOpenResult,
   WorkspaceResource,
   WorkspaceSearchResult,
   WorkspaceSymbol,
@@ -56,6 +67,13 @@ import {
   type BrowserProjectionState,
   type BrowserStorage
 } from "./storage";
+import {
+  ConversationProjection,
+  emptyConversationSnapshot,
+  type ConversationSnapshot
+} from "../projection/conversation";
+import {projectTurnQueue} from "../projection/turnQueue";
+import {FrameNotifier} from "./notifier";
 
 export type RuntimePhase =
   | "booting"
@@ -68,12 +86,16 @@ export type RuntimePhase =
 export interface RuntimeSnapshot {
   phase: RuntimePhase;
   workspaceRoot: string;
+  canOpenPath: boolean;
   includeArchived: boolean;
   contextResources: readonly EditorContextReference[];
+  messageFeedback: Readonly<Record<string, "positive" | "negative">>;
   sessions: readonly SessionSummary[];
   selectedSessionID: string;
   hydratingSessionID: string;
   events: readonly RuntimeEvent[];
+  queuedTurns: readonly QueuedTurn[];
+  conversation: ConversationSnapshot;
   historyMoreBefore: boolean;
   providers: readonly ProviderCatalogEntry[];
   models: readonly ModelCatalogEntry[];
@@ -84,6 +106,9 @@ export interface RuntimeSnapshot {
   tasks: readonly TaskSummary[];
   agents: readonly AgentSummary[];
   usage?: UsageRollup;
+  trace?: TraceSnapshot;
+  tracePhase: "idle" | "loading" | "ready" | "unavailable";
+  traceProblem?: string;
   extensions: readonly ExtensionProjection[];
   mergePlan?: EditPlan;
   problem?: Problem;
@@ -101,12 +126,16 @@ type Hydration = {
 const emptySnapshot: RuntimeSnapshot = {
   phase: "booting",
   workspaceRoot: "",
+  canOpenPath: false,
   includeArchived: false,
   contextResources: [],
+  messageFeedback: {},
   sessions: [],
   selectedSessionID: "",
   hydratingSessionID: "",
   events: [],
+  queuedTurns: [],
+  conversation: emptyConversationSnapshot(),
   historyMoreBefore: false,
   providers: [],
   models: [],
@@ -115,8 +144,52 @@ const emptySnapshot: RuntimeSnapshot = {
   tasks: [],
   agents: [],
   extensions: [],
+  tracePhase: "idle",
   socketConnected: false
 };
+
+const immediateEventKinds = new Set([
+  "approval.required",
+  "approval.resolved",
+  "input.required",
+  "input.resolved",
+  "operation.rejected",
+  "turn.queued",
+  "turn.queue.updated",
+  "turn.queue.removed",
+  "turn.started",
+  "turn.steered",
+  "turn.completed",
+  "turn.failed",
+  "turn.canceled",
+  "turn.receipt"
+]);
+
+const progressEventKinds = new Set([
+  "plan.delta",
+  "agent.spawned",
+  "agent.status",
+  "agent.message",
+  "agent.integration",
+  "run.started",
+  "run.status",
+  "run.completed",
+  "run.failed",
+  "run.canceled",
+  "node.status",
+  "attempt.status"
+]);
+
+const sessionActivityEventKinds = new Set([
+  "approval.required",
+  "approval.resolved",
+  "input.required",
+  "input.resolved",
+  "turn.started",
+  "turn.completed",
+  "turn.failed",
+  "turn.canceled"
+]);
 
 export class RuntimeClient {
   private token = "";
@@ -131,17 +204,30 @@ export class RuntimeClient {
   private hydration?: Hydration;
   private state: RuntimeSnapshot = emptySnapshot;
   private listeners = new Set<Listener>();
+  private conversationProjection = new ConversationProjection();
+  private pendingSelectedEvents: RuntimeEvent[] = [];
+  private readonly eventNotifier = new FrameNotifier(
+    () => this.flushSelectedEvents()
+  );
   private storageScope = "";
   private stored: BrowserProjectionState = {
     cursor: 0,
     selectedSessionID: "",
-    drafts: {}
+    drafts: {},
+    messageFeedback: {}
   };
   private storageWrite: Promise<void> = Promise.resolve();
+  private storageTimer?: number;
+  private pendingStorage?: {scope: string; value: BrowserProjectionState};
 
   constructor(
     private readonly storage: BrowserStorage = new IndexedDBBrowserStorage()
-  ) {}
+  ) {
+    if (typeof window !== "undefined") {
+      window.addEventListener("pagehide", this.flushBrowserState);
+      document.addEventListener("visibilitychange", this.flushWhenHidden);
+    }
+  }
 
   subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -166,6 +252,7 @@ export class RuntimeClient {
         this.update({
           phase: bootstrap.problem ? "failed" : "booting",
           workspaceRoot: bootstrap.workspace_root ?? "",
+          canOpenPath: Boolean(bootstrap.can_open_path),
           problem: bootstrap.problem
         });
         if (!bootstrap.problem) {
@@ -177,6 +264,7 @@ export class RuntimeClient {
       this.update({
         phase: "reconnecting",
         workspaceRoot: bootstrap.workspace_root ?? "",
+        canOpenPath: Boolean(bootstrap.can_open_path),
         problem: undefined
       });
       this.socket?.close(1000, "client reconnect");
@@ -192,6 +280,8 @@ export class RuntimeClient {
   }
 
   stop(): void {
+    this.eventNotifier.flushNow();
+    this.flushBrowserState();
     this.generation += 1;
     if (this.reconnectTimer !== undefined) {
       window.clearTimeout(this.reconnectTimer);
@@ -283,6 +373,8 @@ export class RuntimeClient {
         selectedSessionID: "",
         hydratingSessionID: "",
         events: [],
+        conversation: this.replaceConversation([]),
+        queuedTurns: [],
         historyMoreBefore: false,
         profile: undefined,
         tools: [],
@@ -291,6 +383,9 @@ export class RuntimeClient {
         tasks: [],
         agents: [],
         usage: undefined,
+        trace: undefined,
+        tracePhase: "idle",
+        traceProblem: undefined,
         mergePlan: undefined,
         contextResources: []
       });
@@ -299,6 +394,8 @@ export class RuntimeClient {
   }
 
   async selectSession(sessionID: string): Promise<void> {
+    this.eventNotifier.cancel();
+    this.pendingSelectedEvents = [];
     const previousSessionID = this.state.selectedSessionID;
     const generation = ++this.selectionGeneration;
     const hydration: Hydration = {generation, sessionID, events: []};
@@ -307,6 +404,8 @@ export class RuntimeClient {
       selectedSessionID: sessionID,
       hydratingSessionID: sessionID,
       events: [],
+      conversation: this.replaceConversation([]),
+      queuedTurns: [],
       historyMoreBefore: false,
       profile: undefined,
       tools: [],
@@ -315,6 +414,9 @@ export class RuntimeClient {
       tasks: [],
       agents: [],
       usage: undefined,
+      trace: undefined,
+      tracePhase: "loading",
+      traceProblem: undefined,
       extensions: [],
       mergePlan: undefined,
       contextResources: [],
@@ -331,6 +433,8 @@ export class RuntimeClient {
       session_id: sessionID
     });
     if (generation !== this.selectionGeneration) return;
+    const snapshotEvents = snapshot.events ?? [];
+    const traceTurnIDs = turnIDs(snapshotEvents);
     const details = await Promise.allSettled([
       this.call<SessionProfileSnapshot>("profile/get", {session_id: sessionID}),
       this.call<ToolCatalog>("tool/catalog", {session_id: sessionID}),
@@ -343,7 +447,20 @@ export class RuntimeClient {
         include_children: true,
         limit: 100
       }),
-      this.call<ExtensionControlResult>("extension/list", {kind: "all"})
+      this.call<ExtensionControlResult>("extension/list", {kind: "all"}),
+      traceTurnIDs.length > 0
+        ? this.call<TraceSnapshot>("trace/query", {
+          session_id: sessionID,
+          turn_ids: traceTurnIDs,
+          through_sequence: snapshot.through_sequence
+        })
+        : Promise.resolve<TraceSnapshot>({
+          version: 1,
+          session_id: sessionID,
+          through_sequence: snapshot.through_sequence,
+          turns: []
+        }),
+      this.call<TurnQueue>("turn/queue", {session_id: sessionID})
     ]);
     if (generation !== this.selectionGeneration || this.hydration !== hydration) return;
     const profile = fulfilled(details[0]);
@@ -354,6 +471,8 @@ export class RuntimeClient {
     const agents = fulfilled(details[5]);
     const usage = fulfilled(details[6]);
     const extensions = fulfilled(details[7]);
+    const trace = fulfilled(details[8]);
+    const queue = fulfilled(details[9]);
     const liveEvents = hydration.events
       .filter(({event, sessionID: owner}) =>
         owner === sessionID && event.sequence > snapshot.through_sequence
@@ -367,15 +486,19 @@ export class RuntimeClient {
     const refreshForForeignEvent = hydration.events.some(
       ({sessionID: owner}) => owner !== sessionID
     );
+    const refreshForDefaultTitle = summary?.title === "New Chat" &&
+      snapshotEvents.some((event) => event.kind === "turn.started");
     this.commitCursor(Math.max(
       snapshot.through_sequence,
       latestBufferedSequence
     ));
     this.hydration = undefined;
+    const events = [...(snapshot.events ?? []), ...liveEvents];
     this.update({
       selectedSessionID: sessionID,
       hydratingSessionID: "",
-      events: [...(snapshot.events ?? []), ...liveEvents],
+      events,
+      conversation: this.replaceConversation(events),
       historyMoreBefore: Boolean(snapshot.history_truncated_before),
       profile,
       tools: catalog?.tools ?? [],
@@ -385,12 +508,18 @@ export class RuntimeClient {
       tasks: tasks?.tasks ?? [],
       agents: agents?.agents ?? [],
       usage: usage?.rollup,
+      trace,
+      tracePhase: trace ? "ready" : "unavailable",
+      traceProblem: details[8]?.status === "rejected"
+        ? errorMessage(details[8].reason)
+        : undefined,
       extensions: extensions?.extensions ?? [],
+      queuedTurns: projectTurnQueue(queue?.items ?? [], liveEvents),
       contextResources: [],
       problem: undefined
     });
     this.persistSelectedSession(sessionID);
-    if (refreshForForeignEvent) {
+    if (refreshForForeignEvent || refreshForDefaultTitle) {
       void this.refreshSessions("", false);
     }
     } catch (error) {
@@ -420,6 +549,7 @@ export class RuntimeClient {
       }
     });
     this.update({contextResources: []});
+    await this.refreshSessions("", false);
     return receipt;
   }
 
@@ -443,12 +573,129 @@ export class RuntimeClient {
     this.persistBrowserState();
   }
 
+  toggleMessageFeedback(
+    messageID: string,
+    rating: "positive" | "negative",
+    sessionID = this.state.selectedSessionID
+  ): void {
+    if (!sessionID || !messageID) return;
+    const key = `${sessionID}:${messageID}`;
+    const messageFeedback = {...(this.stored.messageFeedback ?? {})};
+    if (messageFeedback[key] === rating) {
+      delete messageFeedback[key];
+    } else {
+      messageFeedback[key] = rating;
+    }
+    this.stored = {...this.stored, messageFeedback};
+    this.update({messageFeedback});
+    this.persistBrowserState();
+  }
+
+  async compactThread(): Promise<OperationReceipt> {
+    const session = this.state.sessions.find(
+      (item) => item.session_id === this.state.selectedSessionID
+    );
+    const turnID = session?.latest_turn_id;
+    if (!session || !turnID || this.state.conversation.activeTurnID) {
+      throw new Error("No completed turn is available to compact");
+    }
+    return this.call<OperationReceipt>("operation/submit", {
+      session_id: session.session_id,
+      kind: "thread.compact",
+      idempotency_key: crypto.randomUUID(),
+      payload: {
+        thread_id: session.thread_id,
+        turn_id: turnID,
+        item_id: `compact-${crypto.randomUUID()}`
+      }
+    });
+  }
+
   async cancel(turnID: string): Promise<OperationReceipt> {
     return this.call<OperationReceipt>("operation/submit", {
       session_id: this.requireSession(),
       kind: "turn.cancel",
       idempotency_key: crypto.randomUUID(),
       payload: {turn_id: turnID, reason: "user requested stop"}
+    });
+  }
+
+  async steer(turnID: string, prompt: string): Promise<OperationReceipt> {
+    const normalized = prompt.trim();
+    if (!normalized) throw new Error("Steering prompt is required");
+    return this.call<OperationReceipt>("operation/submit", {
+      session_id: this.requireSession(),
+      kind: "turn.steer",
+      idempotency_key: crypto.randomUUID(),
+      payload: {turn_id: turnID, prompt: normalized}
+    });
+  }
+
+  async enqueue(turnID: string, prompt: string): Promise<OperationReceipt> {
+    const normalized = prompt.trim();
+    if (!normalized) throw new Error("Queued prompt is required");
+    const receipt = await this.call<OperationReceipt>("operation/submit", {
+      session_id: this.requireSession(),
+      kind: "turn.enqueue",
+      idempotency_key: crypto.randomUUID(),
+      payload: {
+        turn_id: turnID,
+        prompt: normalized,
+        display_prompt: normalized,
+        intent: this.state.profile?.profile.mode === "plan" ? "plan" : "answer",
+        context: this.state.contextResources
+      }
+    });
+    this.update({contextResources: []});
+    return receipt;
+  }
+
+  async updateQueuedTurn(queueID: string, prompt: string): Promise<OperationReceipt> {
+    const item = this.requireQueuedTurn(queueID);
+    const normalized = prompt.trim();
+    if (!normalized) throw new Error("Queued prompt is required");
+    return this.call<OperationReceipt>("operation/submit", {
+      session_id: this.requireSession(),
+      kind: "turn.queue.update",
+      idempotency_key: crypto.randomUUID(),
+      payload: {
+        thread_id: item.thread_id,
+        turn_id: item.source_turn_id,
+        queue_id: queueID,
+        prompt: normalized,
+        display_prompt: normalized
+      }
+    });
+  }
+
+  async removeQueuedTurn(queueID: string): Promise<OperationReceipt> {
+    const item = this.requireQueuedTurn(queueID);
+    return this.call<OperationReceipt>("operation/submit", {
+      session_id: this.requireSession(),
+      kind: "turn.queue.remove",
+      idempotency_key: crypto.randomUUID(),
+      payload: {
+        thread_id: item.thread_id,
+        turn_id: item.source_turn_id,
+        queue_id: queueID
+      }
+    });
+  }
+
+  async promoteQueuedTurn(
+    queueID: string,
+    turnID: string
+  ): Promise<OperationReceipt> {
+    const item = this.requireQueuedTurn(queueID);
+    return this.call<OperationReceipt>("operation/submit", {
+      session_id: this.requireSession(),
+      kind: "turn.queue.promote",
+      idempotency_key: crypto.randomUUID(),
+      payload: {
+        thread_id: item.thread_id,
+        turn_id: turnID,
+        queue_id: queueID
+      }
     });
   }
 
@@ -501,7 +748,9 @@ export class RuntimeClient {
     });
   }
 
-  async updateProfile(patch: Record<string, unknown>): Promise<void> {
+  async updateProfile(
+    patch: Record<string, unknown>
+  ): Promise<SessionProfileUpdateResult> {
     const generation = this.selectionGeneration;
     const snapshot = this.state.profile;
     const profile = snapshot?.profile;
@@ -511,20 +760,87 @@ export class RuntimeClient {
     if (!profile || !session) {
       throw new Error("No active session");
     }
-    await this.call<SessionProfileUpdateResult>("profile/update", {
+    const result = await this.call<SessionProfileUpdateResult>("profile/update", {
       session_id: session.session_id,
       thread_id: session.thread_id,
       expected_revision: profile.revision,
       patch
     });
-    const authoritative = await this.call<SessionProfileSnapshot>("profile/get", {
-      session_id: session.session_id
-    });
+    const [authoritative, catalog] = await Promise.all([
+      this.call<SessionProfileSnapshot>("profile/get", {
+        session_id: session.session_id
+      }),
+      this.call<ToolCatalog>("tool/catalog", {
+        session_id: session.session_id
+      })
+    ]);
     if (generation !== this.selectionGeneration ||
         session.session_id !== this.state.selectedSessionID) {
-      return;
+      return result;
     }
-    this.update({profile: authoritative});
+    this.update({profile: authoritative, tools: catalog.tools ?? []});
+    return {...result, profile: authoritative.profile};
+  }
+
+  async listAgentPresets(): Promise<AgentPresetList> {
+    return this.call<AgentPresetList>("agent-preset/list", {
+      session_id: this.requireSession()
+    });
+  }
+
+  async saveAgentPreset(input: {
+    id?: string;
+    expectedRevision?: number;
+    name: string;
+    description?: string;
+    profile: AgentPresetProfile;
+  }): Promise<AgentPresetMutationResult> {
+    const id = input.id || `preset-${crypto.randomUUID()}`;
+    return this.call<AgentPresetMutationResult>("agent-preset/save", {
+      session_id: this.requireSession(),
+      id,
+      expected_revision: input.expectedRevision ?? 0,
+      name: input.name,
+      description: input.description ?? "",
+      profile: input.profile
+    }, {
+      idempotencyKey: id,
+      retryNetwork: true
+    });
+  }
+
+  async deleteAgentPreset(
+    preset: Pick<AgentPreset, "id" | "revision">
+  ): Promise<AgentPresetMutationResult> {
+    return this.call<AgentPresetMutationResult>("agent-preset/delete", {
+      session_id: this.requireSession(),
+      id: preset.id,
+      expected_revision: preset.revision
+    });
+  }
+
+  async applyAgentPreset(presetID: string): Promise<AgentPresetApplyResult> {
+    const session = this.state.sessions.find(
+      (item) => item.session_id === this.state.selectedSessionID
+    );
+    const profile = this.state.profile?.profile;
+    if (!session || !profile) throw new Error("No active session");
+    const result = await this.call<AgentPresetApplyResult>("agent-preset/apply", {
+      session_id: session.session_id,
+      thread_id: session.thread_id,
+      preset_id: presetID,
+      expected_profile_revision: profile.revision
+    });
+    const [authoritative, catalog] = await Promise.all([
+      this.call<SessionProfileSnapshot>("profile/get", {
+        session_id: session.session_id
+      }),
+      this.call<ToolCatalog>("tool/catalog", {
+        session_id: session.session_id
+      })
+    ]);
+    this.update({profile: authoritative, tools: catalog.tools ?? []});
+    return result;
   }
 
   async loadEarlierHistory(limit = 200): Promise<number> {
@@ -539,8 +855,10 @@ export class RuntimeClient {
     if (sessionID !== this.state.selectedSessionID) return 0;
     const known = new Set(this.state.events.map((event) => event.sequence));
     const earlier = page.events.filter((event) => !known.has(event.sequence));
+    const events = [...earlier, ...this.state.events];
     this.update({
-      events: [...earlier, ...this.state.events],
+      events,
+      conversation: this.replaceConversation(events),
       historyMoreBefore: Boolean(page.more_before)
     });
     return earlier.length;
@@ -563,12 +881,13 @@ export class RuntimeClient {
   }
 
   async forkCheckpoint(checkpointID: string): Promise<void> {
-    await this.call("checkpoint/fork", {
+    const result = await this.call<CheckpointForkResult>("checkpoint/fork", {
       session_id: this.requireSession(),
       checkpoint_id: checkpointID,
       title: "Checkpoint Fork"
     });
     await this.refreshSessions();
+    await this.selectSession(result.session_id);
   }
 
   async transitionPlan(transition: "implement" | "autopilot"): Promise<void> {
@@ -586,8 +905,8 @@ export class RuntimeClient {
     kind: "plugin" | "skill",
     name: string,
     enabled: boolean
-  ): Promise<void> {
-    await this.call<ExtensionControlResult>("extension/control", {
+  ): Promise<ExtensionControlResult> {
+    const mutation = await this.call<ExtensionControlResult>("extension/control", {
       version: 1,
       id: `extop-${crypto.randomUUID()}`,
       kind,
@@ -597,6 +916,32 @@ export class RuntimeClient {
     });
     const result = await this.call<ExtensionControlResult>("extension/list", {kind: "all"});
     this.update({extensions: result.extensions ?? []});
+    return {...mutation, extensions: result.extensions ?? mutation.extensions};
+  }
+
+  async controlExtension(
+    kind: "plugin" | "skill",
+    name: string,
+    action: ExtensionControlAction,
+    capability = ""
+  ): Promise<ExtensionControlResult> {
+    const result = await this.call<ExtensionControlResult>("extension/control", {
+      version: 1,
+      id: `extop-${crypto.randomUUID()}`,
+      kind,
+      action,
+      name,
+      capability,
+      created_at: new Date().toISOString()
+    });
+    if (!["detail", "health", "permissions", "receipts"].includes(action)) {
+      const refreshed = await this.call<ExtensionControlResult>(
+        "extension/list",
+        {kind: "all"}
+      );
+      this.update({extensions: refreshed.extensions ?? []});
+    }
+    return result;
   }
 
   async previewMerge(): Promise<void> {
@@ -630,6 +975,10 @@ export class RuntimeClient {
 
   async readWorkspaceResource(path: string): Promise<WorkspaceResource> {
     return this.call<WorkspaceResource>("workspace/resource", {path});
+  }
+
+  async openWorkspacePath(path: string): Promise<WorkspaceOpenResult> {
+    return this.call<WorkspaceOpenResult>("workspace/open", {path});
   }
 
   async readWorkspaceImage(path: string): Promise<WorkspaceImage> {
@@ -712,6 +1061,25 @@ export class RuntimeClient {
           explicit: true
         }
       ]
+    });
+  }
+
+  addAttachmentContext(reference: EditorContextReference): void {
+    if (reference.kind !== "attachment" &&
+        !(reference.kind === "image" && !reference.path)) {
+      throw new Error("Composer attachment context is invalid");
+    }
+    const resources = this.state.contextResources.filter(
+      (value) => value.digest !== reference.digest
+    );
+    this.update({contextResources: [...resources, reference]});
+  }
+
+  removeAttachmentContext(digest: string): void {
+    this.update({
+      contextResources: this.state.contextResources.filter(
+        (value) => value.digest !== digest
+      )
     });
   }
 
@@ -993,11 +1361,15 @@ export class RuntimeClient {
   }
 
   private resetProjection(): void {
+    this.eventNotifier.cancel();
+    this.pendingSelectedEvents = [];
     this.commitCursor(0, true);
     this.selectionGeneration += 1;
     this.hydration = undefined;
     this.update({
       events: [],
+      conversation: this.replaceConversation([]),
+      queuedTurns: [],
       historyMoreBefore: false,
       hydratingSessionID: "",
       profile: undefined,
@@ -1007,6 +1379,9 @@ export class RuntimeClient {
       tasks: [],
       agents: [],
       usage: undefined,
+      trace: undefined,
+      tracePhase: "idle",
+      traceProblem: undefined,
       extensions: [],
       mergePlan: undefined,
       contextResources: []
@@ -1023,16 +1398,54 @@ export class RuntimeClient {
     }
     this.commitCursor(event.sequence);
     if (sessionID !== this.state.selectedSessionID) {
-      if (event.kind === "turn.started" || isTerminal(event.kind)) {
+      if (sessionActivityEventKinds.has(event.kind)) {
         this.scheduleSessionRefresh();
       }
       return;
     }
-    this.update({events: [...this.state.events, event]});
+    this.pendingSelectedEvents.push(event);
+    if (immediateEventKinds.has(event.kind)) {
+      this.eventNotifier.flushNow();
+    } else {
+      this.eventNotifier.schedule();
+    }
+    if (sessionActivityEventKinds.has(event.kind)) {
+      this.scheduleSessionRefresh();
+    }
     if (isTerminal(event.kind)) {
       this.scheduleSessionRefresh();
       void this.refreshUsage(sessionID);
+      void this.refreshTrace(sessionID);
     }
+    if (isTerminal(event.kind) || progressEventKinds.has(event.kind)) {
+      void this.refreshProgress(sessionID);
+    }
+  }
+
+  private flushSelectedEvents(): void {
+    if (this.pendingSelectedEvents.length === 0) return;
+    const pending = this.pendingSelectedEvents;
+    this.pendingSelectedEvents = [];
+    for (const event of pending) this.conversationProjection.apply(event);
+    this.update({
+      events: [...this.state.events, ...pending],
+      conversation: this.conversationProjection.snapshot(),
+      queuedTurns: projectTurnQueue(this.state.queuedTurns, pending)
+    });
+  }
+
+  private replaceConversation(
+    events: readonly RuntimeEvent[]
+  ): ConversationSnapshot {
+    this.conversationProjection = new ConversationProjection();
+    this.conversationProjection.applyAll(events);
+    return this.conversationProjection.snapshot();
+  }
+
+  private requireQueuedTurn(queueID: string): QueuedTurn {
+    const item = this.state.queuedTurns.find((value) => value.queue_id === queueID);
+    if (!item) throw new Error("Queued turn is no longer available");
+    return item;
   }
 
   private async refreshUsage(sessionID: string): Promise<void> {
@@ -1047,6 +1460,67 @@ export class RuntimeClient {
       sessionID === this.state.selectedSessionID
     ) {
       this.update({usage: result.rollup});
+    }
+  }
+
+  private async refreshProgress(sessionID: string): Promise<void> {
+    const generation = this.selectionGeneration;
+    try {
+      const [plan, tasks, agents] = await Promise.all([
+        this.call<SessionPlanSnapshot>("plan/get", {session_id: sessionID}),
+        this.call<TaskList>("task/list", {session_id: sessionID, limit: 20}),
+        this.call<AgentList>("agent/list", {session_id: sessionID, limit: 20})
+      ]);
+      if (
+        generation === this.selectionGeneration &&
+        sessionID === this.state.selectedSessionID
+      ) {
+        this.update({
+          plan: plan.artifact,
+          tasks: tasks.tasks ?? [],
+          agents: agents.agents ?? []
+        });
+      }
+    } catch {
+      // Initial hydration remains the last authoritative read model.
+    }
+  }
+
+  async refreshTrace(sessionID = this.state.selectedSessionID): Promise<void> {
+    if (!sessionID || sessionID !== this.state.selectedSessionID) return;
+    this.eventNotifier.flushNow();
+    const generation = this.selectionGeneration;
+    const events = this.state.events;
+    const ids = turnIDs(events);
+    if (ids.length === 0) {
+      this.update({trace: undefined, tracePhase: "ready", traceProblem: undefined});
+      return;
+    }
+    this.update({tracePhase: "loading", traceProblem: undefined});
+    try {
+      const trace = await this.call<TraceSnapshot>("trace/query", {
+        session_id: sessionID,
+        turn_ids: ids,
+        through_sequence: events.at(-1)?.sequence ?? 0
+      });
+      if (
+        generation !== this.selectionGeneration ||
+        sessionID !== this.state.selectedSessionID ||
+        trace.through_sequence < (this.state.events.at(-1)?.sequence ?? 0)
+      ) {
+        return;
+      }
+      this.update({trace, tracePhase: "ready", traceProblem: undefined});
+    } catch (error) {
+      if (
+        generation === this.selectionGeneration &&
+        sessionID === this.state.selectedSessionID
+      ) {
+        this.update({
+          tracePhase: "unavailable",
+          traceProblem: errorMessage(error)
+        });
+      }
     }
   }
 
@@ -1087,15 +1561,18 @@ export class RuntimeClient {
     if (scope === this.storageScope) return;
     this.storageScope = scope;
     const restored = await this.storage.load(scope).catch(() => undefined);
-    this.stored = restored ?? {
-      cursor: 0,
-      selectedSessionID: "",
-      drafts: {}
+    this.stored = {
+      cursor: Math.max(0, restored?.cursor ?? 0),
+      selectedSessionID: restored?.selectedSessionID ?? "",
+      drafts: {...(restored?.drafts ?? {})},
+      messageFeedback: {...(restored?.messageFeedback ?? {})}
     };
     this.cursor = Math.max(0, this.stored.cursor);
     this.update({
       selectedSessionID: this.stored.selectedSessionID,
       events: [],
+      conversation: this.replaceConversation([]),
+      queuedTurns: [],
       historyMoreBefore: false,
       providers: [],
       models: [],
@@ -1106,9 +1583,13 @@ export class RuntimeClient {
       tasks: [],
       agents: [],
       usage: undefined,
+      trace: undefined,
+      tracePhase: "idle",
+      traceProblem: undefined,
       extensions: [],
       mergePlan: undefined,
-      contextResources: []
+      contextResources: [],
+      messageFeedback: {...(this.stored.messageFeedback ?? {})}
     });
   }
 
@@ -1128,17 +1609,36 @@ export class RuntimeClient {
 
   private persistBrowserState(): void {
     if (!this.storageScope) return;
-    const scope = this.storageScope;
-    const value: BrowserProjectionState = {
-      cursor: this.stored.cursor,
-      selectedSessionID: this.stored.selectedSessionID,
-      drafts: {...this.stored.drafts}
+    this.pendingStorage = {
+      scope: this.storageScope,
+      value: {
+        cursor: this.stored.cursor,
+        selectedSessionID: this.stored.selectedSessionID,
+        drafts: {...this.stored.drafts},
+        messageFeedback: {...(this.stored.messageFeedback ?? {})}
+      }
     };
+    if (this.storageTimer !== undefined) return;
+    this.storageTimer = window.setTimeout(this.flushBrowserState, 100);
+  }
+
+  private readonly flushWhenHidden = (): void => {
+    if (document.visibilityState === "hidden") this.flushBrowserState();
+  };
+
+  private readonly flushBrowserState = (): void => {
+    if (this.storageTimer !== undefined) {
+      window.clearTimeout(this.storageTimer);
+      this.storageTimer = undefined;
+    }
+    const pending = this.pendingStorage;
+    this.pendingStorage = undefined;
+    if (!pending) return;
     this.storageWrite = this.storageWrite
       .catch(() => undefined)
-      .then(() => this.storage.save(scope, value))
+      .then(() => this.storage.save(pending.scope, pending.value))
       .catch(() => undefined);
-  }
+  };
 
   private fail(error: unknown): void {
     const problem =
@@ -1210,6 +1710,14 @@ function protocolProblem(error: unknown): Problem {
 
 function fulfilled<T>(result: PromiseSettledResult<T>): T | undefined {
   return result.status === "fulfilled" ? result.value : undefined;
+}
+
+function turnIDs(events: readonly RuntimeEvent[]): string[] {
+  return [...new Set(events.map((event) => event.turn_id).filter(Boolean))];
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function sha256Hex(value: string): Promise<string> {

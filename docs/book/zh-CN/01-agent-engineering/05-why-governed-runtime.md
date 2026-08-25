@@ -95,11 +95,11 @@ Runtime 的职责是把缺失的身份、权限、状态和证据问题确定性
 
 ## CodeHelper 设计
 
-CodeHelper 在所有 Host 与有副作用实现之间放置一套共享 Runtime：
+CodeHelper 在 Web Host 与有副作用实现之间放置一套共享 Runtime：
 
 ```mermaid
 flowchart TD
-    H[CLI / TUI / Web] --> O[Operation]
+    H[Web] --> O[Operation]
     O --> R[Application Runtime]
     R --> E[Agent Engine]
     E --> M[Provider]
@@ -131,7 +131,7 @@ flowchart TD
 
 | 关注点 | 源码 | 意义 |
 | --- | --- | --- |
-| Operation/Event | `internal/runtime/protocol` | 所有 Host 的共享契约 |
+| Operation/Event | `internal/runtime/protocol` | Web 与后台执行的共享契约 |
 | Lifecycle | `internal/runtime/app` | 排序、取消、Terminal State |
 | Model/Tool Loop | `internal/runtime/agent` | 多步骤推理与行动 |
 | Action Boundary | `internal/adapter/tool/guard` | 单一 Policy 与 Evidence 路径 |
@@ -155,7 +155,7 @@ Cancel、Steer、Approval、Input、Compact、Fork 和 Revert，而不依赖具�
 
 直接函数调用的单进程 Demo 更小，但会让 UI 与实现耦合，使 Restart 语义偶然化，并让
 新功能形成额外权限路径。远端控制面可以统一策略，却把本地源码和执行权移过网络边界。
-CodeHelper 选择本地单 Runtime，并通过协议服务多种 Host。
+CodeHelper 选择本地单 Runtime，并通过协议服务 Web 与后台执行。
 
 治理会增加 Validation、Approval、Journal 和 Verification 成本。收益是失败可观察、
 权限可限制、运行可恢复。
@@ -186,18 +186,12 @@ go test ./internal/adapter/tool/guard \
 ## 动手实验
 
 ```bash
-make build
-./bin/codehelper exec \
-  --provider-fixture ./testdata/providers/openai \
-  --provider openai \
-  --model gpt-fixture \
-  --workspace . \
-  --output-format stream-json \
-  "say hello"
+go test ./internal/runtime/app -run TestRuntimeConcurrentSubmitHasStrictSequenceAndUniqueTerminal
+go test ./internal/host/web -run TestRunContextStartsAndStopsWebHost
 ```
 
-观察输出是带 Operation/Turn Identity 的 Event Stream，而不是原始 Provider Response。
-Fixture Contract 明确要求输入 `say hello`。
+观察测试如何从 Web 启动器进入真实 Runtime，并验证带 Operation/Turn Identity 的
+Event，而不是把原始 Provider Response 当作完成事实。
 
 分别记录一条控制线的实例：
 

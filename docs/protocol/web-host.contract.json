@@ -5,14 +5,55 @@
   "loopback_only": true,
   "same_origin_only": true,
   "capacity_defaults": {
-    "max_json_body_bytes": 1048576,
+    "max_json_body_bytes": 12582912,
     "max_websocket_frame_bytes": 4194304,
     "max_replay_events": 10000,
     "max_connections": 16,
     "max_active_sessions": 32,
-    "max_identity_bytes": 256
+    "max_identity_bytes": 256,
+    "max_trace_turns": 128
   },
   "routes": [
+    {
+      "path": "/api/v1/agent-preset/apply",
+      "method": "POST",
+      "request": "agent_preset_apply",
+      "response": "agent_preset_apply_result",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/agent-preset/delete",
+      "method": "POST",
+      "request": "agent_preset_delete",
+      "response": "agent_preset_mutation",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/agent-preset/list",
+      "method": "POST",
+      "request": "agent_preset_list",
+      "response": "agent_preset_list",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/agent-preset/save",
+      "method": "POST",
+      "request": "agent_preset_save",
+      "response": "agent_preset_mutation",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
     {
       "path": "/api/v1/agent/list",
       "method": "POST",
@@ -384,6 +425,26 @@
       "requires_capability": true
     },
     {
+      "path": "/api/v1/trace/query",
+      "method": "POST",
+      "request": "trace_query",
+      "response": "trace_snapshot",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/turn/queue",
+      "method": "POST",
+      "request": "session_identity",
+      "response": "turn_queue",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
       "path": "/api/v1/turn/recover",
       "method": "POST",
       "request": "turn_recover",
@@ -438,6 +499,16 @@
       "method": "POST",
       "request": "workspace_resource",
       "response": "workspace_image",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/workspace/open",
+      "method": "POST",
+      "request": "workspace_open",
+      "response": "workspace_open_result",
       "mutation": false,
       "idempotency_key": false,
       "requires_runtime": true,

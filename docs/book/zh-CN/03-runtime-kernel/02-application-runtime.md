@@ -171,7 +171,7 @@ Commit 或 Terminal Outcome。
 `persist/state.Store` 之上组合 Session、Thread、Task、Snapshot、Usage、Trace
 Repository，恢复被中断的 Task，并以 `PreparePersistentRuntime` 准备 Persistent
 `app.Runtime`。Composition Owner 只在外围依赖图就绪后调用 `Start`。`EnsureThread`
-预置 Workspace/Session/Thread 行，使 CLI/TUI Host 可以在 Persistent Runtime 上
+预置 Workspace/Session/Thread 行，使 Web Host 可以在 Persistent Runtime 上
 启动 Turn。
 
 ## Event Projection

@@ -95,7 +95,7 @@ Match，不选择“最聪明”或最便宜 Model。Unwired Locked Purpose 会�
 | Capability | `model/capability.go` |
 | Resolver | `model/route.go` |
 | Purpose/RouteSet | `model/purpose.go`、`routeset.go` |
-| Probe Overlay | `runtime/app/wire/model_probe.go` |
+| Probe Overlay | `runtime/app/wire/probe_overlay.go` |
 | Engine Route | `runtime/agent/engine/route_test.go` |
 
 ## 设计取舍与替代方案

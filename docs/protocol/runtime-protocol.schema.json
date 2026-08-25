@@ -3,6 +3,420 @@
   "title": "codehelper runtime protocol",
   "protocol_version": 1,
   "envelope": {
+    "agent_preset_apply": {
+      "type": "object",
+      "properties": {
+        "expected_profile_revision": {
+          "type": "integer"
+        },
+        "preset_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_profile_revision",
+        "preset_id",
+        "session_id",
+        "thread_id"
+      ],
+      "additionalProperties": false
+    },
+    "agent_preset_apply_result": {
+      "type": "object",
+      "properties": {
+        "preset_id": {
+          "type": "string"
+        },
+        "profile_update": {
+          "type": "object",
+          "properties": {
+            "profile": {
+              "type": "object",
+              "properties": {
+                "approval_posture": {
+                  "type": "string"
+                },
+                "enabled_tool_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "execution_target": {
+                  "type": "string"
+                },
+                "max_steps": {
+                  "type": "integer"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "prompt_cache_revision": {
+                  "type": "integer"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "reasoning_effort": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "integer"
+                },
+                "version": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "approval_posture",
+                "execution_target",
+                "max_steps",
+                "mode",
+                "model",
+                "prompt_cache_revision",
+                "provider",
+                "revision",
+                "version"
+              ],
+              "additionalProperties": false
+            },
+            "prompt_cache_reset": {
+              "type": "boolean"
+            },
+            "reset_reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "profile",
+            "prompt_cache_reset"
+          ],
+          "additionalProperties": false
+        },
+        "restart_reason": {
+          "type": "string"
+        },
+        "restart_required": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "preset_id",
+        "profile_update",
+        "restart_required",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "agent_preset_delete": {
+      "type": "object",
+      "properties": {
+        "expected_revision": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "id",
+        "session_id"
+      ],
+      "additionalProperties": false
+    },
+    "agent_preset_list": {
+      "type": "object",
+      "properties": {
+        "presets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "description": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "object",
+                "properties": {
+                  "approval_posture": {
+                    "type": "string"
+                  },
+                  "enabled_tool_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "execution_target": {
+                    "type": "string"
+                  },
+                  "max_steps": {
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "reasoning_effort": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "approval_posture",
+                  "execution_target",
+                  "max_steps",
+                  "mode",
+                  "model",
+                  "provider"
+                ],
+                "additionalProperties": false
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "scope": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "version": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "created_at",
+              "id",
+              "name",
+              "profile",
+              "revision",
+              "scope",
+              "updated_at",
+              "version"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "presets",
+        "revision",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "agent_preset_mutation": {
+      "type": "object",
+      "properties": {
+        "deleted_id": {
+          "type": "string"
+        },
+        "duplicate": {
+          "type": "boolean"
+        },
+        "preset": {
+          "type": "object",
+          "properties": {
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "profile": {
+              "type": "object",
+              "properties": {
+                "approval_posture": {
+                  "type": "string"
+                },
+                "enabled_tool_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "execution_target": {
+                  "type": "string"
+                },
+                "max_steps": {
+                  "type": "integer"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "reasoning_effort": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "approval_posture",
+                "execution_target",
+                "max_steps",
+                "mode",
+                "model",
+                "provider"
+              ],
+              "additionalProperties": false
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "created_at",
+            "id",
+            "name",
+            "profile",
+            "revision",
+            "scope",
+            "updated_at",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "revision",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "agent_preset_save": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "expected_revision": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "profile": {
+          "type": "object",
+          "properties": {
+            "approval_posture": {
+              "type": "string"
+            },
+            "enabled_tool_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "execution_target": {
+              "type": "string"
+            },
+            "max_steps": {
+              "type": "integer"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "reasoning_effort": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "approval_posture",
+            "execution_target",
+            "max_steps",
+            "mode",
+            "model",
+            "provider"
+          ],
+          "additionalProperties": false
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "expected_revision",
+        "id",
+        "name",
+        "profile",
+        "session_id"
+      ],
+      "additionalProperties": false
+    },
     "checkpoint_fork": {
       "type": "object",
       "properties": {
@@ -425,6 +839,7 @@
             "turn.started",
             "output.delta",
             "reasoning.delta",
+            "reasoning.completed",
             "search.result",
             "citation",
             "usage",
@@ -443,6 +858,9 @@
             "turn.canceled",
             "operation.rejected",
             "turn.steered",
+            "turn.queued",
+            "turn.queue.updated",
+            "turn.queue.removed",
             "approval.required",
             "approval.resolved",
             "input.required",
@@ -1121,6 +1539,10 @@
             "turn.start",
             "turn.cancel",
             "turn.steer",
+            "turn.enqueue",
+            "turn.queue.update",
+            "turn.queue.remove",
+            "turn.queue.promote",
             "approval.decision",
             "input.reply",
             "thread.compact",
@@ -2535,6 +2957,380 @@
       ],
       "additionalProperties": false
     },
+    "turn.enqueue": {
+      "type": "object",
+      "properties": {
+        "context": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "diagnostics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "range": {
+                      "type": "object",
+                      "properties": {
+                        "end": {
+                          "type": "object",
+                          "properties": {
+                            "character": {
+                              "type": "integer"
+                            },
+                            "line": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "character",
+                            "line"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "start": {
+                          "type": "object",
+                          "properties": {
+                            "character": {
+                              "type": "integer"
+                            },
+                            "line": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "character",
+                            "line"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "end",
+                        "start"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "severity": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "range",
+                    "severity"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "digest": {
+                "type": "string"
+              },
+              "document_version": {
+                "type": "integer"
+              },
+              "explicit": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "file",
+                  "selection",
+                  "symbol",
+                  "diagnostics",
+                  "image",
+                  "attachment",
+                  "terminal",
+                  "git_diff"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "omitted_diagnostics": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              },
+              "range": {
+                "type": "object",
+                "properties": {
+                  "end": {
+                    "type": "object",
+                    "properties": {
+                      "character": {
+                        "type": "integer"
+                      },
+                      "line": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "character",
+                      "line"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "start": {
+                    "type": "object",
+                    "properties": {
+                      "character": {
+                        "type": "integer"
+                      },
+                      "line": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "character",
+                      "line"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "end",
+                  "start"
+                ],
+                "additionalProperties": false
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "composer",
+                  "selection_command",
+                  "code_action",
+                  "native_picker"
+                ]
+              },
+              "symbol": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "selection_range": {
+                    "type": "object",
+                    "properties": {
+                      "end": {
+                        "type": "object",
+                        "properties": {
+                          "character": {
+                            "type": "integer"
+                          },
+                          "line": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "character",
+                          "line"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "start": {
+                        "type": "object",
+                        "properties": {
+                          "character": {
+                            "type": "integer"
+                          },
+                          "line": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "character",
+                          "line"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "end",
+                      "start"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "uri": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "digest",
+              "document_version",
+              "explicit",
+              "kind",
+              "path",
+              "uri"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "display_prompt": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "queue_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        },
+        "workspace_identity": {
+          "type": "object",
+          "properties": {
+            "editor_uri": {
+              "type": "string"
+            },
+            "remote_name": {
+              "type": "string"
+            },
+            "root_id": {
+              "type": "string"
+            },
+            "runtime_path": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "editor_uri",
+            "root_id",
+            "runtime_path",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "item_id",
+        "prompt",
+        "queue_id",
+        "thread_id",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
+    "turn.queue.promote": {
+      "type": "object",
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "queue_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "queue_id",
+        "thread_id",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
+    "turn.queue.remove": {
+      "type": "object",
+      "properties": {
+        "item_id": {
+          "type": "string"
+        },
+        "queue_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "queue_id",
+        "thread_id",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
+    "turn.queue.update": {
+      "type": "object",
+      "properties": {
+        "display_prompt": {
+          "type": "string"
+        },
+        "item_id": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "queue_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string"
+        },
+        "turn_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "prompt",
+        "queue_id",
+        "thread_id",
+        "turn_id"
+      ],
+      "additionalProperties": false
+    },
     "turn.revert": {
       "type": "object",
       "properties": {
@@ -2655,6 +3451,7 @@
                   "symbol",
                   "diagnostics",
                   "image",
+                  "attachment",
                   "terminal",
                   "git_diff"
                 ]
@@ -2834,6 +3631,9 @@
         "prompt": {
           "type": "string"
         },
+        "queue_id": {
+          "type": "string"
+        },
         "recovery": {
           "type": "object",
           "properties": {
@@ -2899,6 +3699,9 @@
           "type": "string"
         },
         "prompt": {
+          "type": "string"
+        },
+        "queue_id": {
           "type": "string"
         },
         "thread_id": {
@@ -4493,9 +5296,28 @@
       },
       "additionalProperties": false
     },
+    "reasoning.completed": {
+      "type": "object",
+      "properties": {
+        "sample_id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sample_id",
+        "text"
+      ],
+      "additionalProperties": false
+    },
     "reasoning.delta": {
       "type": "object",
       "properties": {
+        "sample_id": {
+          "type": "string"
+        },
         "text": {
           "type": "string"
         }
@@ -5435,6 +6257,9 @@
         "tool": {
           "type": "string"
         },
+        "truncated": {
+          "type": "boolean"
+        },
         "workspace_write_scope": {
           "type": "string"
         }
@@ -5795,6 +6620,324 @@
       "required": [
         "code",
         "message"
+      ],
+      "additionalProperties": false
+    },
+    "turn.queue.removed": {
+      "type": "object",
+      "properties": {
+        "queue_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "queue_id",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "turn.queue.updated": {
+      "type": "object",
+      "properties": {
+        "display_prompt": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "queue_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt",
+        "queue_id"
+      ],
+      "additionalProperties": false
+    },
+    "turn.queued": {
+      "type": "object",
+      "properties": {
+        "context": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "diagnostics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "range": {
+                      "type": "object",
+                      "properties": {
+                        "end": {
+                          "type": "object",
+                          "properties": {
+                            "character": {
+                              "type": "integer"
+                            },
+                            "line": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "character",
+                            "line"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "start": {
+                          "type": "object",
+                          "properties": {
+                            "character": {
+                              "type": "integer"
+                            },
+                            "line": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "character",
+                            "line"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "end",
+                        "start"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "severity": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "range",
+                    "severity"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "digest": {
+                "type": "string"
+              },
+              "document_version": {
+                "type": "integer"
+              },
+              "explicit": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "file",
+                  "selection",
+                  "symbol",
+                  "diagnostics",
+                  "image",
+                  "attachment",
+                  "terminal",
+                  "git_diff"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "omitted_diagnostics": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              },
+              "range": {
+                "type": "object",
+                "properties": {
+                  "end": {
+                    "type": "object",
+                    "properties": {
+                      "character": {
+                        "type": "integer"
+                      },
+                      "line": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "character",
+                      "line"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "start": {
+                    "type": "object",
+                    "properties": {
+                      "character": {
+                        "type": "integer"
+                      },
+                      "line": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "character",
+                      "line"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "end",
+                  "start"
+                ],
+                "additionalProperties": false
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "composer",
+                  "selection_command",
+                  "code_action",
+                  "native_picker"
+                ]
+              },
+              "symbol": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "selection_range": {
+                    "type": "object",
+                    "properties": {
+                      "end": {
+                        "type": "object",
+                        "properties": {
+                          "character": {
+                            "type": "integer"
+                          },
+                          "line": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "character",
+                          "line"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "start": {
+                        "type": "object",
+                        "properties": {
+                          "character": {
+                            "type": "integer"
+                          },
+                          "line": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "character",
+                          "line"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "end",
+                      "start"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "uri": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "digest",
+              "document_version",
+              "explicit",
+              "kind",
+              "path",
+              "uri"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "display_prompt": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "queue_id": {
+          "type": "string"
+        },
+        "workspace_identity": {
+          "type": "object",
+          "properties": {
+            "editor_uri": {
+              "type": "string"
+            },
+            "remote_name": {
+              "type": "string"
+            },
+            "root_id": {
+              "type": "string"
+            },
+            "runtime_path": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "editor_uri",
+            "root_id",
+            "runtime_path",
+            "version"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "prompt",
+        "queue_id"
       ],
       "additionalProperties": false
     },
@@ -6205,6 +7348,7 @@
                   "symbol",
                   "diagnostics",
                   "image",
+                  "attachment",
                   "terminal",
                   "git_diff"
                 ]
@@ -6988,6 +8132,7 @@
                   "symbol",
                   "diagnostics",
                   "image",
+                  "attachment",
                   "terminal",
                   "git_diff"
                 ]
@@ -7175,6 +8320,9 @@
         "provider": {
           "type": "string"
         },
+        "queue_id": {
+          "type": "string"
+        },
         "sandbox": {
           "type": "string"
         },
@@ -7195,6 +8343,9 @@
       "type": "object",
       "properties": {
         "prompt": {
+          "type": "string"
+        },
+        "queue_id": {
           "type": "string"
         }
       },
@@ -7712,6 +8863,13 @@
       "correlation": "plan",
       "terminal": false
     },
+    "reasoning.completed": {
+      "class": "stream",
+      "item_owner": "turn",
+      "durability": "retained",
+      "correlation": "turn",
+      "terminal": false
+    },
     "reasoning.delta": {
       "class": "stream",
       "item_owner": "turn",
@@ -7837,6 +8995,27 @@
       "durability": "atomic",
       "correlation": "turn",
       "terminal": true
+    },
+    "turn.queue.removed": {
+      "class": "interaction",
+      "item_owner": "operation",
+      "durability": "retained",
+      "correlation": "queue_item",
+      "terminal": false
+    },
+    "turn.queue.updated": {
+      "class": "interaction",
+      "item_owner": "operation",
+      "durability": "retained",
+      "correlation": "queue_item",
+      "terminal": false
+    },
+    "turn.queued": {
+      "class": "interaction",
+      "item_owner": "operation",
+      "durability": "retained",
+      "correlation": "queue_item",
+      "terminal": false
     },
     "turn.receipt": {
       "class": "evidence",

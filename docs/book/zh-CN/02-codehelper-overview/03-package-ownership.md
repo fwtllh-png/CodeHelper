@@ -11,7 +11,7 @@ code_paths:
   - internal
   - web/src
 test_paths:
-  - internal/host/cli/architecture_test.go
+  - internal/host/web/architecture_test.go
   - internal/runtime/app/wire/sandbox_architecture_test.go
 source_of_truth:
   - AGENTS.md
@@ -38,7 +38,7 @@ State，或让 Restart Behavior 依赖 UI Process。
 | Concern | Owner | 不得变成 |
 | --- | --- | --- |
 | Process Entry | `cmd/codehelper` | Business Logic Container |
-| CLI/TUI/API | `internal/host` | Provider/Tool Executor |
+| Web Host/API | `internal/host` | Provider/Tool Executor |
 | Protocol/Lifecycle | `internal/runtime` | Vendor Transport |
 | Integration | `internal/adapter` | Policy Authority |
 | Policy/Isolation | `internal/security` | UI Preference |
@@ -160,7 +160,7 @@ Cross-cutting 不等于 Ownerless。先选定一个 Invariant Owner，再围绕�
 ```bash
 rg 'type Engine interface|type Operation struct|type Descriptor struct' internal
 rg 'internal/adapter/(provider|tool)|internal/security/sandbox' internal/host
-go test ./internal/host/cli -run TestCLIDoesNotDependOnExecutionImplementations
+go test ./internal/host/web -run TestWebHostDoesNotDependOnExecutionImplementations
 go test ./internal/runtime/app/wire -run TestOnlyWireConstructsPlatformBackend
 ```
 

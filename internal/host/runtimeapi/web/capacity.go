@@ -1,12 +1,13 @@
 package web
 
 const (
-	defaultMaxJSONBodyBytes       int64 = 1 << 20
+	defaultMaxJSONBodyBytes       int64 = 12 << 20
 	defaultMaxWebSocketFrameBytes int64 = 4 << 20
 	defaultMaxReplayEvents              = 10_000
 	defaultMaxConnections               = 16
 	defaultMaxActiveSessions            = 32
 	defaultMaxIdentityBytes             = 256
+	defaultMaxTraceTurns                = 128
 )
 
 // Capacity centralizes the externally observable Web Host limits.
@@ -17,6 +18,7 @@ type Capacity struct {
 	MaxConnections         int   `json:"max_connections"`
 	MaxActiveSessions      int   `json:"max_active_sessions"`
 	MaxIdentityBytes       int   `json:"max_identity_bytes"`
+	MaxTraceTurns          int   `json:"max_trace_turns"`
 }
 
 func defaultCapacity() Capacity { return Capacity{}.normalized() }
@@ -42,6 +44,9 @@ func (c Capacity) normalized() Capacity {
 	}
 	if c.MaxIdentityBytes <= 0 {
 		c.MaxIdentityBytes = defaultMaxIdentityBytes
+	}
+	if c.MaxTraceTurns <= 0 {
+		c.MaxTraceTurns = defaultMaxTraceTurns
 	}
 	return c
 }

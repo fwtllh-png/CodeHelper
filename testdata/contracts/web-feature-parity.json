@@ -15,26 +15,23 @@
         "internal/host/runtimeapi/acp/server.go"
       ],
       "drop_rationale": "legacy host-specific surface",
-      "replacement": "Web primary entry or retained CLI surface"
+      "replacement": "Web primary entry"
     },
     {
       "id": "automation-management",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.automation-management"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/automation_cmd_test.go#TestAutomationCLIListRunPause",
-        "internal/host/cli/web_worker_coexist_test.go#TestWebWorkerAndAutomationShareDurableStateWithoutOwnerConflict"
-      ],
-      "secondary_surface": "automation-management"
+      "drop_rationale": "standalone automation management is outside the Web-only product surface",
+      "replacement": "Web primary entry"
     },
     {
       "id": "binary-update",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "vscode_command.codehelper-checkbinaryupdates",
         "vscode_configuration.codehelper-binarypath",
@@ -46,24 +43,20 @@
       "legacy_evidence": [
         "extensions/vscode/package.json"
       ],
-      "secondary_surface": "codehelper update check",
-      "required_qualifications": [
-        "internal/host/cli/ops_test.go#TestUpdateCheckFixture"
-      ]
+      "drop_rationale": "standalone binary update commands are outside the Web-only product surface",
+      "replacement": "external package distribution"
     },
     {
       "id": "boot-repair",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.boot-repair"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/command_tree_test.go#TestCobraCommandTreeExposesNewSurfaces"
-      ],
-      "secondary_surface": "boot-repair"
+      "drop_rationale": "standalone repair commands are outside the Web-only product surface",
+      "replacement": "Web boot diagnostics"
     },
     {
       "id": "checkpoint",
@@ -95,18 +88,34 @@
     },
     {
       "id": "cli-host",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.cli-host"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/command_tree_test.go#TestCobraCommandTreeExposesNewSurfaces",
-        "internal/host/cli/quickstart_test.go#TestQuickstartCompletesGovernedFirstTurn"
+      "drop_rationale": "the product exposes a single Web host",
+      "replacement": "Web primary entry"
+    },
+    {
+      "id": "conversation-navigation",
+      "disposition": "required",
+      "legacy_inventory_ids": [],
+      "runtime_owner": "internal/runtime/app",
+      "web_api": [
+        "session/history",
+        "events WebSocket"
       ],
-      "secondary_surface": "cli-host"
+      "web_surface": [
+        "Conversation header navigation and search"
+      ],
+      "required_qualifications": [
+        "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
+        "web/src/ui/conversationNavigation.test.ts#indexes turns, questions, tools, and structured file references",
+        "web/src/ui/App.test.tsx#searches stable conversation identities and navigates between questions",
+        "web/tests/e2e/visual.spec.ts#navigates long conversations by stable semantic anchors"
+      ]
     },
     {
       "id": "credential",
@@ -364,7 +373,9 @@
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
         "testdata/contracts/host-journey-contract.json",
         "web/src/ui/App.test.tsx#reconciles streamed output with the authoritative terminal text",
-        "web/src/ui/App.test.tsx#does not duplicate a complete tool result after streamed chunks"
+        "web/src/ui/App.test.tsx#does not duplicate a complete tool result after streamed chunks",
+        "web/src/projection/conversation.test.ts#replaces transient reasoning with one durable block per model sample",
+        "web/tests/e2e/web.spec.ts#restores the selected Session and transcript after a browser reload"
       ]
     },
     {
@@ -436,22 +447,19 @@
         "extensions/vscode/package.json"
       ],
       "drop_rationale": "legacy host-specific surface",
-      "replacement": "Web primary entry or retained CLI surface"
+      "replacement": "Web primary entry"
     },
     {
       "id": "mcp-management",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.mcp-management"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/workflow_fleet_mcp_cli_test.go#TestMCPManageAndAuthSlots",
-        "internal/host/tui/mcp_health_test.go#TestMCPHealthEventUpdatesPanel"
-      ],
-      "secondary_surface": "mcp-management"
+      "drop_rationale": "standalone MCP management is outside the Web-only product surface",
+      "replacement": "Web extension status and startup configuration"
     },
     {
       "id": "plan-recovery",
@@ -500,13 +508,13 @@
         "model/list"
       ],
       "web_surface": [
-        "Session details / Profile"
+        "Settings / Models"
       ],
       "required_qualifications": [
         "internal/runtime/app/session_profile_test.go#TestSessionProfileUpdateAppliesRevisionAndCacheReset",
         "web/src/runtime/client.test.ts#refreshes authoritative capabilities after changing the model",
-        "web/src/ui/App.test.tsx#changes provider and model as one valid catalog route",
-        "web/tests/e2e/web.spec.ts#loads the Runtime provider and model catalogs into profile controls"
+        "web/src/ui/App.test.tsx#renders lifecycle, workspace, profile, and governed tool controls",
+        "web/tests/e2e/web.spec.ts#shows model routing and capabilities in Settings"
       ]
     },
     {
@@ -520,7 +528,7 @@
       ],
       "secondary_surface": "make package",
       "required_qualifications": [
-        "internal/host/cli/run_test.go#TestRunVersionJSON",
+        "internal/host/web/launcher_test.go#TestRunContextExposesOnlyWebStartupFlags",
         "scripts/package-release.sh"
       ]
     },
@@ -602,9 +610,11 @@
       "required_qualifications": [
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
         "internal/runtime/app/session_lifecycle_test.go#TestSessionControlCreatesActivatesAndSubmitsWithStableIdentity",
+        "internal/runtime/app/session_lifecycle_test.go#TestActivateSessionBackfillsLegacyDefaultTitle",
         "web/src/runtime/client.test.ts#changes operation ownership immediately while a Session hydrates",
         "web/src/runtime/client.test.ts#retries session creation with one stable idempotency key",
         "web/src/ui/App.test.tsx#disables Session-bound controls while the selected Session hydrates",
+        "web/tests/e2e/web.spec.ts#groups Sessions by Workspace and reveals row actions on demand",
         "web/tests/e2e/web.spec.ts#browses workspace resources and restores an archived Session"
       ]
     },
@@ -632,19 +642,38 @@
       ]
     },
     {
+      "id": "trajectory",
+      "disposition": "required",
+      "legacy_inventory_ids": [],
+      "runtime_owner": "internal/runtime/app/runtime_observability.go",
+      "web_api": [
+        "trace/query",
+        "session/history",
+        "events WebSocket"
+      ],
+      "web_surface": [
+        "Conversation / Trajectory timeline, ledger, and record inspector"
+      ],
+      "required_qualifications": [
+        "internal/observability/trace/query_service_test.go#TestProjectTraceTurnUsesPublicKindsAndAllowlistedIdentity",
+        "internal/observability/trace/rollup_test.go#TestQueryTurnInSessionRejectsForeignTurn",
+        "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
+        "web/src/projection/trajectory.test.ts#coalesces streaming records and links trace spans to tool calls",
+        "web/src/ui/App.test.tsx#opens the three-lane trajectory and inspects a tool from chat",
+        "web/tests/e2e/web.spec.ts#opens the execution trajectory and inspects its event ledger"
+      ]
+    },
+    {
       "id": "tui-host",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.tui-host"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/tui/host_journey_test.go#TestHostJourneyProjectsPrimaryLifecycleFromRuntimeEvents",
-        "internal/host/tui/host_journey_test.go#TestHostJourneyCancelIsTerminalFailureAndRecoveryKeepsComposer"
-      ],
-      "secondary_surface": "tui-host"
+      "drop_rationale": "the product exposes a single Web host",
+      "replacement": "Web primary entry"
     },
     {
       "id": "usage-receipt",
@@ -840,7 +869,7 @@
         "internal/host/runtimeapi/web/contract_internal_test.go#TestWebDependenciesExposeNarrowQueryPorts",
         "internal/host/runtimeapi/web/server_test.go#TestStaticAssetsRejectTraversalAndSupportETag",
         "internal/host/runtimeapi/web/capacity_integration_test.go#TestWebSocketSlowReaderReleasesConnectionSlotAfterWriteTimeout",
-        "internal/host/cli/web_readiness_test.go#TestProbeWebReadinessRequiresTrustedReadyEndpoint",
+        "internal/host/web/launcher_test.go#TestProbeWebReadinessRequiresTrustedReadyEndpoint",
         "internal/platform/ownerlease/lease_test.go#TestPathCanonicalizesDataDirectoryAliases",
         "scripts/webprotocolgen/main_test.go#TestGenerateProducesDeterministicGuardedRoutes",
         "scripts/webexperiencecheck/main_test.go#TestRepositoryWebExperienceContract",
@@ -862,19 +891,15 @@
     },
     {
       "id": "worker-execution",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.worker-execution"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/worker_cmd_test.go#TestWorkerRunReportsWhatItClaimsAndStopsCleanly",
-        "internal/host/cli/worker_cmd_test.go#TestWorkerEnqueueCreatesExecutableWorkThatListShows",
-        "internal/host/cli/web_worker_coexist_test.go#TestWebWorkerAndAutomationShareDurableStateWithoutOwnerConflict"
-      ],
-      "secondary_surface": "worker-execution"
+      "drop_rationale": "standalone worker commands are outside the Web-only product surface",
+      "replacement": "Runtime-owned background services reached through Web"
     },
     {
       "id": "workspace-binding",
@@ -920,6 +945,7 @@
         "workspace/browse",
         "workspace/search",
         "workspace/resource",
+        "workspace/open",
         "workspace/image",
         "workspace/symbols",
         "workspace/diagnostics",
@@ -943,9 +969,12 @@
         "web/src/runtime/client.test.ts#submits only a persisted diagnostic receipt context",
         "web/src/runtime/client.test.ts#submits only the server-issued Git diff as inline context",
         "web/src/runtime/client.test.ts#binds terminal context to the projected tool call and output digest",
+        "web/src/runtime/client.test.ts#opens a workspace path only through the authenticated Host route",
         "web/src/ui/App.test.tsx#selects server-issued symbol and diagnostic contexts",
         "web/src/ui/App.test.tsx#previews and selects a validated workspace image",
         "web/src/ui/App.test.tsx#adds only a completed tool result to prompt context",
+        "web/src/ui/App.test.tsx#renders Bash output and grouped Grep results as dedicated cards",
+        "web/tests/e2e/visual.spec.ts#captures Think and specialized Read, Bash, Grep, and Glob cards",
         "web/tests/e2e/web.spec.ts#browses workspace resources and restores an archived Session"
       ]
     }

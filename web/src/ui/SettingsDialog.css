@@ -1,0 +1,942 @@
+.settingsOverlay {
+  position: fixed;
+  z-index: calc(var(--ch-layer-popover) + 10);
+  inset: 0;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  background: var(--ch-modal-mask);
+  backdrop-filter: blur(3px);
+}
+
+.settingsDialog {
+  display: grid;
+  width: min(960px, calc(100vw - 48px));
+  height: min(720px, calc(100vh - 48px));
+  grid-template-columns: 190px minmax(0, 1fr);
+  overflow: hidden;
+  color: var(--ch-text);
+  background: var(--ch-panel-raised);
+  border: 1px solid var(--ch-border-strong);
+  border-radius: var(--ch-radius-modal);
+  box-shadow: var(--ch-modal-shadow);
+}
+
+.settingsNav {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px 12px;
+  background: var(--ch-panel-subtle);
+  border-right: 1px solid var(--ch-border);
+}
+
+.settingsNav h2 {
+  margin: 0;
+  padding: 0 12px;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 24px;
+}
+
+.settingsNav > div {
+  display: grid;
+  gap: 4px;
+}
+
+.settingsNav button {
+  display: flex;
+  width: 100%;
+  height: 40px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 12px;
+  color: var(--ch-text-secondary);
+  text-align: left;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.settingsNav button:hover,
+.settingsNav button[aria-current="page"] {
+  color: var(--ch-text);
+  background: var(--ch-panel);
+}
+
+.settingsMain {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.settingsHeader {
+  display: flex;
+  height: 58px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 16px;
+}
+
+.settingsHeaderAction,
+.settingsClose {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--ch-text-secondary);
+  background: transparent;
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.settingsHeaderAction {
+  padding: 0 10px;
+}
+
+.settingsClose {
+  width: 30px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 50%;
+}
+
+.settingsHeaderAction:hover,
+.settingsClose:hover {
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
+}
+
+.settingsContent {
+  min-height: 0;
+  flex: 1;
+  padding: 0 24px 28px;
+  overflow-y: auto;
+}
+
+.settingsApplyBar {
+  display: flex;
+  min-height: 54px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--ch-border);
+  background: var(--ch-panel-raised);
+}
+
+.settingsApplyBar > span {
+  min-width: 0;
+  flex: 1;
+  color: var(--ch-text-muted);
+  font-size: 12px;
+}
+
+.settingsApplyBar[data-dirty] > span {
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+  font-weight: 600;
+}
+
+.settingsApplyBar > small,
+.settingsInlineResult {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ch-accent-strong);
+  font-size: 11px;
+}
+
+.settingsApplyBar > small[data-tone="warning"] {
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+}
+
+.settingsInlineResult[data-tone="warning"] {
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+}
+
+.settingsApplyBar > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settingsApplyBar button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 11px;
+  border: 1px solid var(--ch-border);
+  border-radius: 7px;
+  background: var(--ch-panel);
+  color: var(--ch-text-secondary);
+  font-size: 12px;
+}
+
+.settingsApplyBar .settingsApply {
+  border-color: color-mix(in srgb, var(--ch-accent) 45%, var(--ch-border));
+  background: var(--ch-accent-soft);
+  color: var(--ch-accent-strong);
+}
+
+.settingsApplyBar button:disabled,
+.settingsButtonRow button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.settingsError {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  color: var(--ch-danger);
+  background: var(--ch-danger-soft);
+  border: 1px solid color-mix(in srgb, var(--ch-danger) 32%, var(--ch-border));
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.settingsSection {
+  width: 100%;
+  max-width: 720px;
+}
+
+.settingsSection h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 26px;
+}
+
+.settingsIntro {
+  margin: 4px 0 22px;
+  color: var(--ch-text-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.settingsRows {
+  display: grid;
+}
+
+.settingsRow {
+  display: flex;
+  min-height: 74px;
+  align-items: center;
+  gap: 24px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.settingsRow > span:first-child {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.settingsRow strong,
+.settingsBlockTitle {
+  color: var(--ch-text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 21px;
+}
+
+.settingsRow small,
+.settingsBlock p,
+.settingsSummary {
+  margin: 0;
+  color: var(--ch-text-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.settingsSelectWrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.settingsSelect,
+.settingsNumber {
+  height: 36px;
+  padding: 0 34px 0 12px;
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  appearance: none;
+}
+
+.settingsSelect {
+  min-width: 150px;
+}
+
+.settingsSelectWrap > svg {
+  position: absolute;
+  right: 10px;
+  color: var(--ch-text-muted);
+  pointer-events: none;
+}
+
+.settingsNumber {
+  width: 96px;
+  padding-right: 8px;
+}
+
+.settingsPreferenceControl {
+  display: inline-flex;
+  min-width: 116px;
+  height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--ch-text-secondary);
+  font-size: 12px;
+}
+
+.settingsPreferenceControl input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--ch-accent);
+}
+
+.settingsPreferenceControl input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.settingsBlock {
+  display: grid;
+  gap: 10px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.settingsBlockTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.settingsBlockTitle > small,
+.settingsBlockTitle > .settingsHealth {
+  margin-left: auto;
+}
+
+.themeChoices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.themeChoices button {
+  display: grid;
+  min-height: 88px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--ch-text-secondary);
+  background: transparent;
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+}
+
+.themeChoices button:hover,
+.themeChoices button[aria-checked="true"] {
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
+  border-color: var(--ch-border-strong);
+}
+
+.themeChoices button[aria-checked="true"] {
+  box-shadow: inset 0 0 0 1px var(--ch-text-secondary);
+}
+
+.settingsStatus,
+.settingsHealth {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--ch-text-muted);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.settingsStatus > span,
+.settingsHealth > span {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  background: var(--ch-warning);
+  border-radius: 50%;
+}
+
+.settingsStatus[data-ready] > span,
+.settingsHealth[data-health="valid"] > span,
+.settingsHealth[data-health="active"] > span,
+.settingsHealth[data-health="ready"] > span,
+.settingsHealth[data-health="healthy"] > span {
+  background: var(--ch-business);
+}
+
+.settingsHealth[data-health="invalid"] > span,
+.settingsHealth[data-health="failed"] > span,
+.settingsHealth[data-health="missing"] > span {
+  background: var(--ch-danger);
+}
+
+.settingsCode {
+  max-height: 280px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: var(--ch-text-secondary);
+  background: var(--ch-code);
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: pre-wrap;
+}
+
+.settingsFacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.settingsFacts > div {
+  display: grid;
+  gap: 2px;
+}
+
+.settingsFacts dt,
+.settingsFacts dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.settingsFacts dt {
+  color: var(--ch-text-muted);
+}
+
+.settingsFacts dd {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.modelCapabilityPanel [data-restart],
+.settingsRouteList b[data-restart] {
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+}
+
+.settingsRouteList {
+  display: grid;
+}
+
+.settingsRouteList > div {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--ch-border);
+}
+
+.settingsRouteList > div > span {
+  display: grid;
+  min-width: 0;
+}
+
+.settingsRouteList strong,
+.settingsRouteList small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settingsRouteList strong {
+  font-size: 12px;
+}
+
+.settingsRouteList small,
+.settingsRouteList b {
+  color: var(--ch-text-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.settingsRouteList > div > small {
+  grid-column: 1 / -1;
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+}
+
+.capabilityTags,
+.settingsTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.capabilityTags span,
+.settingsTags small {
+  padding: 2px 6px;
+  color: var(--ch-text-secondary);
+  background: var(--ch-panel-subtle);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.credentialPanel {
+  gap: 8px;
+}
+
+.credentialInput {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.credentialInput input,
+.credentialInput button,
+.settingsButtonRow button {
+  min-height: 34px;
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+}
+
+.credentialInput input {
+  min-width: 0;
+  padding: 0 10px;
+  background: var(--ch-panel);
+}
+
+.credentialInput button,
+.settingsButtonRow button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 11px;
+  color: var(--ch-text-secondary);
+  background: var(--ch-panel-subtle);
+  font-size: 12px;
+}
+
+.credentialInput button:hover:not(:disabled),
+.settingsButtonRow button:hover:not(:disabled) {
+  color: var(--ch-text);
+  background: var(--ch-panel);
+}
+
+.settingsButtonRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settingsSearch {
+  position: relative;
+  display: flex;
+  height: 36px;
+  align-items: center;
+  color: var(--ch-text-muted);
+}
+
+.settingsSearch > svg {
+  position: absolute;
+  left: 11px;
+  pointer-events: none;
+}
+
+.settingsSearch input {
+  width: 100%;
+  height: 100%;
+  padding: 0 12px 0 34px;
+  background: var(--ch-panel);
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  outline: 0;
+}
+
+.settingsSearch:focus-within {
+  color: var(--ch-text);
+}
+
+.settingsSearch input:focus {
+  border-color: var(--ch-focus);
+}
+
+.settingsCatalogHeading {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 16px 0 8px;
+  font-size: 13px;
+}
+
+.settingsCatalogHeading span {
+  color: var(--ch-text-muted);
+  font-size: 11px;
+}
+
+.settingsCatalog {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.settingsCatalogRow {
+  display: grid;
+  min-width: 0;
+  min-height: 62px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  background: var(--ch-panel);
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+}
+
+.settingsCatalogRow > svg {
+  color: var(--ch-text-muted);
+}
+
+.settingsCatalogRow > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.settingsCatalogRow strong,
+.settingsCatalogRow small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settingsCatalogRow strong {
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.settingsCatalogRow small {
+  color: var(--ch-text-muted);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.settingsCatalogRow > input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ch-accent);
+}
+
+.settingsToggle {
+  display: inline-grid;
+}
+
+.settingsToggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ch-accent);
+}
+
+.settingsToolRow,
+.settingsExtension {
+  align-items: start;
+}
+
+.settingsCatalogDetails,
+.settingsExtensionFacts,
+.settingsExtensionActions,
+.settingsExtensionDetail {
+  grid-column: 1 / -1;
+}
+
+.settingsCatalogDetails summary {
+  color: var(--ch-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.settingsCatalogDetails dl {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+}
+
+.settingsCatalogDetails dl > div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.settingsCatalogDetails dt,
+.settingsCatalogDetails dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ch-text-muted);
+  font-size: 10px;
+}
+
+.settingsCatalogDetails dd {
+  color: var(--ch-text-secondary);
+}
+
+.settingsExtensionGrid {
+  margin-top: 8px;
+}
+
+.settingsExtensionFacts {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--ch-text-muted);
+  font-size: 10px;
+}
+
+.settingsExtensionDetail {
+  max-height: 180px;
+}
+
+.settingsDanger {
+  color: color-mix(in srgb, var(--ch-danger) 72%, var(--ch-text)) !important;
+}
+
+.settingsReference {
+  overflow-wrap: anywhere;
+  font-family: var(--ch-font-mono);
+}
+
+.presetWorkbench {
+  gap: 12px;
+}
+
+.presetFields {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(150px, 1fr);
+  gap: 8px;
+}
+
+.presetFields label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: var(--ch-text-muted);
+  font-size: 10px;
+}
+
+.presetFields label:last-child {
+  grid-column: 1 / -1;
+}
+
+.presetFields input,
+.presetFields select {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  outline: none;
+  background: var(--ch-panel);
+  color: var(--ch-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.presetFields input:focus,
+.presetFields select:focus {
+  border-color: var(--ch-focus);
+}
+
+.presetScope {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--ch-text-muted);
+  font-size: 11px;
+}
+
+.presetScope strong {
+  color: var(--ch-text);
+  font-size: 11px;
+}
+
+.presetScope small {
+  margin-left: auto;
+}
+
+.settingsEmpty {
+  color: var(--ch-text-muted);
+  font-size: 13px;
+}
+
+.settingsSummary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+}
+
+.settingsActivity {
+  display: grid;
+}
+
+.settingsActivity > div {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--ch-border);
+}
+
+.settingsActivity > div > span {
+  display: grid;
+  min-width: 0;
+}
+
+.settingsActivity strong,
+.settingsActivity small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settingsActivity strong {
+  font-size: 12px;
+}
+
+.settingsActivity b,
+.settingsActivity small {
+  color: var(--ch-text-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.settingsActivity > div > small {
+  grid-column: 1 / -1;
+}
+
+.checkpointList {
+  display: grid;
+}
+
+.checkpointList > div {
+  display: grid;
+  min-height: 38px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid var(--ch-border);
+}
+
+.checkpointList > div > span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checkpointList button {
+  height: 26px;
+  padding: 0 7px;
+  color: var(--ch-text-secondary);
+  background: transparent;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.checkpointList button:hover:not(:disabled) {
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
+}
+
+@media (max-width: 760px) {
+  .settingsOverlay {
+    padding: 8px;
+  }
+
+  .settingsDialog {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    grid-template-columns: 54px minmax(0, 1fr);
+    border-radius: var(--ch-radius-panel);
+  }
+
+  .settingsNav {
+    padding: 16px 6px;
+  }
+
+  .settingsNav h2,
+  .settingsNav button span {
+    display: none;
+  }
+
+  .settingsNav button {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .settingsContent {
+    padding: 0 14px 18px;
+  }
+
+  .settingsApplyBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settingsApplyBar > div {
+    justify-content: flex-end;
+  }
+
+  .settingsApplyBar button {
+    flex: 1 1 auto;
+  }
+
+  .settingsRow {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .settingsSelectWrap,
+  .settingsSelect {
+    width: 100%;
+  }
+
+  .themeChoices,
+  .settingsCatalog,
+  .presetFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .presetFields label:last-child {
+    grid-column: auto;
+  }
+}

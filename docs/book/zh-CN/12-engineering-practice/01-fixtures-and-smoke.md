@@ -10,10 +10,10 @@ code_paths:
   - testdata/providers
   - internal/adapter/provider/fixture
 test_paths:
-  - internal/host/cli/run_test.go
+  - internal/host/web/launcher_test.go
   - internal/adapter/provider/fault_injection_test.go
 source_of_truth:
-  - scripts/live-model-smoke.sh
+  - internal/adapter/provider/httpclient/deepseek_live_test.go
   - testdata/README.md
 status: draft
 last_verified: null
@@ -73,8 +73,8 @@ Both Pass 仍不证明所有 Model、Region、Rate Limit、Long Stream 或 Futur
 ## 验证
 
 ```bash
-go test ./internal/adapter/provider/... ./internal/host/cli
-make live-model-smoke  # 可选，需要凭证
+go test ./internal/adapter/provider/... ./internal/host/web
+make provider-deepseek-live-control  # 可选，需要凭证
 ```
 
 ## 复习问题

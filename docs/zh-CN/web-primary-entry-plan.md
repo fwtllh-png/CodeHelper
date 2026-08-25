@@ -1,11 +1,11 @@
 # Web 主入口架构
 
-> 状态：已交付。本文描述当前 Web Host 契约。VS Code/ACP 已退出产品架构，不再保留
-> 迁移计划或兼容叙事。
+> 状态：已交付。本文描述当前 Web Host 契约。CLI、TUI、VS Code/ACP 已退出产品架构，
+> 不再保留迁移计划或兼容叙事。
 
 ## 产品边界
 
-`codehelper web` 是默认交互入口。它在一个 Go 进程内构造持久化 Runtime，提供：
+`codehelper` 直接启动唯一的交互入口。它在一个 Go 进程内构造持久化 Runtime，提供：
 
 - 编译进 Binary 的 React 静态资源；
 - 严格类型化的同源 HTTP RPC；
@@ -13,8 +13,8 @@
 - Runtime 启动失败时仍可访问的 Boot Surface。
 
 Web 只绑定 `127.0.0.1`。当前不支持 LAN、公网部署、反向代理、多用户认证或通用
-REST/SSE Host。CLI 和 TUI 仍使用同一 Runtime 语义；Worker/Automation 使用独立的
-Durable Lease。
+REST/SSE Host。Worker/Automation 作为 Runtime 后台能力使用独立 Durable Lease，
+不构成额外产品入口。
 
 ## 组件边界
 
@@ -144,7 +144,7 @@ Transcript 使用有界 Projection 和分页历史。高频 Delta 在提交 Reac
 | Operation Exposure | `internal/host/runtimeapi/web/web-operation-exposure.json` |
 | Feature Parity | `testdata/contracts/web-feature-parity.json` |
 | Host Journey | `testdata/contracts/host-journey-contract.json` |
-| 体验约束 | `testdata/contracts/experience-contract.json` |
+| 体验约束 | `testdata/contracts/web-experience-contract.json` |
 | Runtime Client | `web/src/runtime/client.ts` |
 | Web Server | `internal/host/runtimeapi/web/server.go` |
 

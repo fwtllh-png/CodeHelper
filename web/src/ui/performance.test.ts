@@ -16,7 +16,9 @@ describe("Web projection performance gate", () => {
 
     expect(duration).toBeLessThan(projectionBudgetMS);
     expect(transcript).toHaveLength(1);
-    expect(transcript[0]?.text).toHaveLength(160_000);
+    const output = transcript[0];
+    expect(output?.kind).toBe("assistant");
+    expect(output?.kind === "assistant" ? output.text : "").toHaveLength(160_000);
   });
 
   it("projects the maximum retained transcript within budget", () => {
@@ -40,7 +42,7 @@ describe("Web projection performance gate", () => {
     const duration = performance.now() - started;
 
     expect(duration).toBeLessThan(projectionBudgetMS);
-    expect(transcript).toHaveLength(1_500);
+    expect(transcript).toHaveLength(1_000);
   });
 });
 

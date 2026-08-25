@@ -12,6 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 // TestRollupSummarizesEachPhaseWithinItsScope is the read side of T4: a scope
@@ -277,6 +278,27 @@ func TestQueryTurnInThreadSeparatesForeignFromUntraced(t *testing.T) {
 	}
 	if len(untraced) != 0 {
 		t.Fatalf("untraced spans = %+v", untraced)
+	}
+}
+
+func TestQueryTurnInSessionRejectsForeignTurn(t *testing.T) {
+	fixture := newFixture(t)
+	fixture.writeTurn(t, "turn-1", phase{trace.NameTurn, time.Second, trace.StatusOK})
+
+	spans, err := fixture.repository.QueryTurnInSession(
+		t.Context(),
+		"session-1",
+		protocol.TurnID("turn-1"),
+	)
+	if err != nil || len(spans) != 1 {
+		t.Fatalf("spans=%+v error=%v", spans, err)
+	}
+	if _, err := fixture.repository.QueryTurnInSession(
+		t.Context(),
+		"session-2",
+		protocol.TurnID("turn-1"),
+	); !errors.Is(err, trace.ErrNotFound) {
+		t.Fatalf("foreign turn error = %v, want ErrNotFound", err)
 	}
 }
 

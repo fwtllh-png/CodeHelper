@@ -1,6 +1,7 @@
 # Web 体验对齐 DeepSeek Harness 实施方案
 
-> 状态：约束性实施方案。后续 Web 体验改造必须以本文为验收基线。
+> 状态：核心实现与自动化门禁已完成。双实例真实验收已覆盖 Read Analysis、
+> Tool Chain 和 Long Trajectory；其余真实 Prompt 场景仍按本文作为发布前验收项。
 >
 > 参考仓库：`/Users/bytedance/flow/deepseek-harness`
 >
@@ -153,7 +154,7 @@ System、User、Context、Assistant、Tool、Usage 和时间边界。Stats 是�
 
 | 动画 | 参考持续时间 | 用途 |
 | --- | ---: | --- |
-| Sidebar 和 Details 列宽过渡 | 300ms | 表达面板展开和收起 |
+| Sidebar 列宽过渡 | 300ms | 表达面板展开和收起 |
 | Sidebar 内容交叉淡入淡出 | 150ms | 避免列宽变化时文字重排 |
 | Disclosure 图标切换 | 100ms | 图标与 Chevron 切换 |
 | Running 文本 Shimmer | 1800ms | 表达 Agent 仍在生成 |
@@ -186,12 +187,26 @@ AppFrame
 │           ├── Approval 或 Input Takeover
 │           ├── Composer
 │           └── Stats
-└── Details
-    ├── Selected Tool
-    ├── Changes / Checkpoints
-    ├── Tasks / Agents
-    └── Usage / Diagnostics / Extensions
+├── Settings Dialog
+│   ├── General / Models
+│   ├── Tools / Extensions
+│   └── Agent Preset / Recovery
+└── Context Dialog
+    ├── Files / Symbols
+    ├── Changes
+    └── Diagnostics
 ```
+
+### Sidebar 与会话管理
+
+- 展开态依次呈现 Brand、整行 New Session、Workspace 工具栏、Workspace/Session Tree
+  和底部连接状态；
+- Search 与 Session 行动作按需展开，默认列表只保留标题、状态点和相对时间；
+- Session 按 Workspace 缩进分组，Workspace 行默认显示目录图标，Hover 时原位切换
+  Chevron；
+- 首个用户 Prompt 被接受后，Runtime 生成并持久化短标题；已有默认标题在激活时回填，
+  显式重命名不被后续 Prompt 覆盖；
+- 成功与空闲状态不显示文字标签，运行、等待和失败状态通过颜色与可访问文本表达。
 
 ### 空状态
 
@@ -209,7 +224,8 @@ AppFrame
 - User Bubble 最大宽度为内容列的约 70% 至 82%；
 - Assistant 内容不放进装饰性 Card；
 - Tool、Reasoning、Context、Compaction 和 Retry 使用同一 24px Disclosure Rhythm；
-- 完成状态不再作为大型绿色 Card 插入正文，只在 Turn 尾部显示紧凑状态和 Receipt；
+- 成功完成不插入独立 `Completed` 或 Receipt 行，只通过最终回答、Session 时间和底部
+  Stats 表达；失败与取消仍保留可恢复提示；
 - 最终 Assistant 输出是视觉主角，Tool 原文不能把它推离当前视口。
 
 ### Composer
@@ -220,7 +236,8 @@ AppFrame
 - 右侧放置 Model、Reasoning、Context Meter、Send/Stop；
 - 控件空间不足时整组换行，不允许文本、图标或按钮重叠；
 - Approval 和 Input 使用原位 Takeover，保持 Shell 和主动作位置稳定；
-- Status/Stats 与 Composer 共用宽度轴，过长时省略并通过 Tooltip 显示全文。
+- Status/Stats 与 Composer 共用宽度轴；Stats 只做整行末尾省略，不逐项压缩，并通过
+  Tooltip 显示完整 Token 明细。
 
 ### Tool 和 Reasoning
 
@@ -258,7 +275,17 @@ Tool Variant 至少覆盖：
 原调用通过 Handle、Call ID 或相邻运行事实关联；无法可靠关联时保持独立折叠行，不猜测。
 
 Reasoning 默认折叠。运行中摘要显示最新非空行并跟随行尾；结束后恢复第一条稳定摘要。
-完整 Reasoning 只在用户主动展开后进入普通文档流。
+完整 Reasoning 只在用户主动展开后进入普通文档流。每次模型 Sample 完成后必须生成
+可持久化的 `reasoning.completed` 事实；瞬时 Delta 只负责流式体验，重载和切换 Session
+时由完成事实恢复多个独立 Think 段。
+
+Read、Shell 与 Search 不能回退为通用 Input/Output JSON：
+
+- Read 展开后使用带原始行号、语言标签、头尾折叠和复制动作的文件面板；
+- 文件摘要和 Search 结果路径通过受 Workspace 约束的 Host RPC 打开本机编辑器；
+- Shell 展开后使用命令、工作目录、运行状态、退出码和输出组成的 Terminal 面板；
+- Grep 按文件分组展示行号与匹配文本，Glob/File List 使用平铺路径列表；
+- 所有卡片默认折叠，长内容在卡片内部滚动，不改变 Transcript 宽度。
 
 ### 运行状态和统计
 
@@ -711,11 +738,11 @@ web/src/
 
 - 实现卡皮巴拉 Mark、Wordmark、Favicon 和 App Icon 资产生成；
 - 实现可收起 Sidebar Rail 和宽度偏好；
-- 实现 Center、Details 的列宽让步算法；
+- 保持 Sidebar + Center 两列主布局，Context 和 Settings 通过模态层渐进披露；
 - 统一 Empty 和 Active Composer；
 - 将高频 Profile 控件移动到 Composer；
-- 保留 Details 中的低频管理和诊断功能；
-- 把 Settings 改为同参考实现一致的分区浮层；
+- 将文件、Diff 和诊断迁移到独立 Context Dialog；
+- 把 Settings 改为同参考实现一致的分区模态框，并承载模型、工具、扩展和 Agent 配置；
 - 补齐窄屏、宽屏、Zoom 和恢复测试。
 
 ### Runtime Feedback
@@ -1154,3 +1181,32 @@ make verify
 - 新 UI 没有复制业务 Authority；
 - 文档、体验契约、Feature Parity 和 Golden 已同步；
 - `make verify` 通过，或环境限制被明确记录且没有隐藏失败。
+
+## 实施记录
+
+2026-08-24 在分支 `feat/deepseek-harness-web-parity` 完成核心实现：
+
+- Conversation Projection、帧级流式发布、Cursor Write-behind 和单滚动轴；
+- Harness 风格 Shell、Composer、渐进披露、Stats、品牌资产和响应式状态；
+- 最终回答尾部的复制与本地持久化赞踩、`+` 命令菜单和真实 `thread.compact`；
+- 基于 `usage.context` 的 Context Meter 与 System、Tool、Message、Provider 分类明细；
+- GFM 标题、列表、引用、代码和可横向滚动表格，以及按当前值收缩的 Profile 下拉框；
+- 移除混合多种职责的全局右侧栏，将 Context 与 Settings 拆成独立模态工作台；
+- 审批卡直接展示 Runtime Edit Plan，完成后的写入工具行保留文件级 Diff 摘要；
+- Trajectory Ledger 增加类型图标和 Turn 标识，Inspector 改为可调宽多标签详情；
+- Chat/Trajectory 双视图、三泳道 Timeline、虚拟化 Ledger、Inspector 和双向定位；
+- 受 Session/Turn 归属与 Watermark 约束的脱敏 `trace/query`；
+- Trajectory 独立 JS/CSS Chunk、首屏 gzip/brotli 预算和 100 分机器化复刻契约。
+
+自动化验证通过：
+
+- `make web-e2e`：27 个 Playwright 场景；
+- `make web-performance`、`make web-experience-check`、`make web-parity-check`；
+- `make web-assets-check`、`make web-supply-chain-check`、`make docs-check`；
+- `make verify`，包括 99 项架构 Ratchet、Hermetic 全仓测试和 `go test -race`。
+
+真实双实例证据保存在 `.tmp/web-parity/20260824-read-analysis/`。冻结 Harness
+提交、CodeHelper、浏览器、Viewport、Theme、Reasoning 和工作区保持一致；该样本覆盖
+Read Analysis、20 次只读 Tool 调用和 Long Trajectory。Write Change、Multi-turn、
+Mid-stream Control 与 Failure/Recovery 尚未执行双实例真实 Prompt，因此在这些证据
+补齐前不宣称满足本节的完整完成定义。

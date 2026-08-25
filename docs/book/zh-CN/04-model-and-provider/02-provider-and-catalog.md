@@ -63,7 +63,7 @@ Route Evidence 同时记录 Selection 与 Actual Route，避免后续 Cost/Debug
 | Model ID | Provider 内 Stable Key | User Config/Route Lookup |
 | Canonical ID | Cross-entry Model Identity | 不改变 Route 的比较 |
 | Wire ID | Remote Request Exact Value | Reproducibility/Diagnostics |
-| Provenance | Bundled/Config/CLI/Fixture | Trust/Drift Explanation |
+| Provenance | Bundled/Config/Startup Override/Fixture | Trust/Drift Explanation |
 | Metadata Provenance | Limit/Capability/Pricing 来源 | 不把 Guess 当 Fact |
 
 Pricing 具有独立 `Known` Bit：Unknown Pricing 不等于 Zero Cost；Currency/Rate 只有在来源
@@ -109,8 +109,7 @@ Local Catalog 增加维护成本，但提供稳定 Identity、Validation、Prici
 
 ```bash
 go test ./internal/adapter/model
-make build
-./bin/codehelper model list
+go test ./internal/runtime/app/wire -run 'Test.*Route'
 ```
 
 ## 动手实验

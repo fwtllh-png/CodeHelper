@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_chrome_complete","function":{"name":"turn_complete","arguments":"{\"status\":\"complete\",\"summary\":\"## Core modules\\n\\nThe final answer keeps **structure**, `inline code`, and readable spacing.\\n\\n| Package | Responsibility | Scale |\\n| --- | --- | ---: |\\n| `runtime/` | Agent execution and durable events | 14.4K lines |\\n| `web/` | Browser projection and interaction | 6.2K lines |\\n| `security/` | Policy, approval, and sandboxing | 3.1K lines |\\n\\n> Runtime events remain the source of truth.\",\"pending_actions\":[]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":32750,"completion_tokens":73,"prompt_cache_hit_tokens":12000}}
+
+data: [DONE]

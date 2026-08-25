@@ -29,7 +29,7 @@ func TestResolveModelMetadataConfigAndOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	if descriptor.Limits.ContextTokens != 65536 ||
-		descriptor.MetadataProvenance.Limits != model.ProvenanceCLI ||
+		descriptor.MetadataProvenance.Limits != model.ProvenanceStartup ||
 		descriptor.MetadataProvenance.Capabilities != model.ProvenanceConfig ||
 		descriptor.MetadataProvenance.Pricing != model.ProvenanceConfig ||
 		!descriptor.Pricing.Known {

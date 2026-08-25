@@ -17,7 +17,7 @@ import (
 )
 
 // ErrDenied is returned (via errors.Is) when RoundTrip targets a host the Gate
-// has not granted. The string is stable for CLI / probe callers.
+// has not granted. The string is stable for host and probe callers.
 var ErrDenied = errors.New("egress denied")
 
 type DeniedError struct {

@@ -26,6 +26,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
+	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
@@ -48,6 +49,7 @@ type Options struct {
 	Token        string
 	Build        string
 	Capacity     Capacity
+	OpenPath     func(context.Context, string) error
 }
 
 type TaskQuery interface {
@@ -108,6 +110,7 @@ type Server struct {
 	build        string
 	index        []byte
 	capacity     Capacity
+	openPath     func(context.Context, string) error
 	handler      http.Handler
 
 	mu           sync.RWMutex
@@ -134,6 +137,7 @@ type bootstrapResponse struct {
 	Draining        bool                        `json:"draining"`
 	WorkspaceRoot   string                      `json:"workspace_root,omitempty"`
 	Workspace       *protocol.WorkspaceIdentity `json:"workspace,omitempty"`
+	CanOpenPath     bool                        `json:"can_open_path"`
 	Problem         *protocol.Problem           `json:"problem,omitempty"`
 }
 
@@ -173,7 +177,10 @@ func New(options Options) (*Server, error) {
 	server := &Server{
 		assets: options.Assets, expectedHost: options.ExpectedHost,
 		origin: options.Origin, token: token, build: options.Build, index: index,
-		capacity: options.Capacity.normalized(),
+		capacity: options.Capacity.normalized(), openPath: options.OpenPath,
+	}
+	if server.openPath == nil {
+		server.openPath = nativeTextPathOpener()
 	}
 	server.handler = server.routes()
 	return server, nil
@@ -263,6 +270,7 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		Ready:           s.ready.Load(),
 		Draining:        s.draining.Load(),
 		WorkspaceRoot:   dependencies.WorkspaceRoot,
+		CanOpenPath:     s.openPath != nil,
 		Problem:         problem,
 	}
 	if dependencies.WorkspaceIdentity.Version != 0 {
@@ -376,6 +384,14 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.profile(r, dependencies)
 	case "profile/update":
 		result, err = s.updateProfile(r, dependencies)
+	case "agent-preset/list":
+		result, err = s.agentPresetList(r, dependencies)
+	case "agent-preset/save":
+		result, err = s.agentPresetSave(r, dependencies)
+	case "agent-preset/delete":
+		result, err = s.agentPresetDelete(r, dependencies)
+	case "agent-preset/apply":
+		result, err = s.agentPresetApply(r, dependencies)
 	case "provider/list":
 		if err = s.decodeRequest(r, &struct{}{}); err == nil {
 			result = dependencies.ProviderCatalog
@@ -396,6 +412,8 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.checkpointFork(r, dependencies)
 	case "turn/recover":
 		result, err = s.turnRecover(r, dependencies)
+	case "turn/queue":
+		result, err = s.turnQueue(r, dependencies)
 	case "plan/get":
 		result, err = s.planGet(r, dependencies)
 	case "plan/transition":
@@ -404,6 +422,8 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.taskList(r, dependencies)
 	case "agent/list":
 		result, err = s.agentList(r, dependencies)
+	case "trace/query":
+		result, err = s.traceQuery(r, dependencies)
 	case "usage/query":
 		result, err = s.usageQuery(r, dependencies)
 	case "extension/list":
@@ -416,6 +436,8 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.workspaceSearch(r, dependencies)
 	case "workspace/resource":
 		result, err = s.workspaceResource(r, dependencies)
+	case "workspace/open":
+		result, err = s.workspaceOpen(r, dependencies)
 	case "workspace/image":
 		result, err = s.workspaceImage(r, dependencies)
 	case "workspace/symbols":
@@ -471,10 +493,12 @@ func (s *Server) describe(dependencies Dependencies) map[string]any {
 		"protocol_version": webProtocol,
 		"workspace_root":   dependencies.WorkspaceRoot,
 		"workspace":        dependencies.WorkspaceIdentity,
+		"can_open_path":    s.openPath != nil,
 		"profile":          dependencies.DefaultProfile,
 		"features": []string{
-			"sessions", "events", "profiles", "tools", "mcp_health",
+			"sessions", "events", "profiles", "agent_presets", "tools", "mcp_health",
 			"workspace", "credentials", "diagnostics", "session_export",
+			"trajectory", "trace_query",
 		},
 	}
 }
@@ -899,6 +923,50 @@ func (s *Server) updateProfile(
 	)
 }
 
+func (s *Server) agentPresetList(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request protocol.AgentPresetListRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.AgentPresetService.List(r.Context(), request)
+}
+
+func (s *Server) agentPresetSave(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request protocol.AgentPresetSaveRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.AgentPresetService.Save(r.Context(), request)
+}
+
+func (s *Server) agentPresetDelete(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request protocol.AgentPresetDeleteRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.AgentPresetService.Delete(r.Context(), request)
+}
+
+func (s *Server) agentPresetApply(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request protocol.AgentPresetApplyRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.AgentPresetService.Apply(r.Context(), request)
+}
+
 func (s *Server) toolCatalog(
 	r *http.Request,
 	dependencies Dependencies,
@@ -1033,6 +1101,22 @@ func (s *Server) turnRecover(
 				Recovery:      &prepared.Recovery,
 			},
 		},
+	)
+}
+
+func (s *Server) turnQueue(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.TurnQueueService.List(
+		r.Context(),
+		request.SessionID,
 	)
 }
 
@@ -1255,6 +1339,33 @@ func (s *Server) usageQuery(
 	}, nil
 }
 
+func (s *Server) traceQuery(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request tracestate.TraceQuery
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	if len(request.TurnIDs) > s.capacity.MaxTraceTurns {
+		return nil, protocol.NewProblem(
+			protocol.CodeResourceExhausted,
+			"trace query exceeds the Web API turn limit",
+			false,
+			nil,
+		)
+	}
+	if dependencies.Runtime.TraceQuery == nil {
+		return nil, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"trace query is unavailable",
+			false,
+			nil,
+		)
+	}
+	return dependencies.Runtime.TraceQuery.Query(r.Context(), request)
+}
+
 func boundedLimit(value, fallback int) (int, error) {
 	if value == 0 {
 		return fallback, nil
@@ -1399,6 +1510,42 @@ func (s *Server) workspaceResource(
 		URI:             resourceURI,
 		DocumentVersion: 1,
 		ContentHandle:   contentHandle,
+	}, nil
+}
+
+func (s *Server) workspaceOpen(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	if dependencies.Workspace == nil {
+		return nil, unavailable("workspace query is unavailable")
+	}
+	if s.openPath == nil {
+		return nil, unavailable("local file opening is unavailable")
+	}
+	var request struct {
+		Path string `json:"path"`
+	}
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	target, err := dependencies.Workspace.ResolveFile(request.Path)
+	if err != nil {
+		return nil, workspaceQueryError(err)
+	}
+	if err := s.openPath(r.Context(), target); err != nil {
+		return nil, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"local editor could not open the workspace file",
+			true,
+			err,
+		)
+	}
+	return map[string]any{
+		"opened": true,
+		"path": path.Clean(
+			strings.ReplaceAll(strings.TrimSpace(request.Path), "\\", "/"),
+		),
 	}, nil
 }
 
@@ -1773,13 +1920,24 @@ func validateWebEditorContext(
 	dependencies Dependencies,
 	payload protocol.OperationPayload,
 ) error {
-	start, ok := payload.(*protocol.StartTurnPayload)
-	if !ok || len(start.Context) == 0 {
+	var (
+		threadID   protocol.ThreadID
+		references []protocol.EditorContextReference
+	)
+	switch value := payload.(type) {
+	case *protocol.StartTurnPayload:
+		threadID, references = value.ThreadID, value.Context
+	case *protocol.EnqueueTurnPayload:
+		threadID, references = value.ThreadID, value.Context
+	default:
+		return nil
+	}
+	if len(references) == 0 {
 		return nil
 	}
 	terminalReferences := make([]protocol.EditorContextReference, 0)
 	diagnosticReferences := make([]protocol.EditorContextReference, 0)
-	for _, reference := range start.Context {
+	for _, reference := range references {
 		switch reference.Kind {
 		case protocol.EditorContextFile,
 			protocol.EditorContextSelection,
@@ -1823,6 +1981,30 @@ func validateWebEditorContext(
 				diagnosticReferences = append(diagnosticReferences, reference)
 			}
 		case protocol.EditorContextImage:
+			if reference.Path == "" {
+				data, err := base64.StdEncoding.DecodeString(reference.Content)
+				if err != nil || len(data) == 0 || len(data) > 5<<20 {
+					return protocol.NewProblem(
+						protocol.CodeInvalidArgument,
+						"inline image attachment is invalid",
+						false,
+						err,
+					)
+				}
+				digest := sha256.Sum256(data)
+				detected := http.DetectContentType(data)
+				if reference.Digest != hex.EncodeToString(digest[:]) ||
+					reference.MediaType != detected ||
+					!supportedImageMediaType(detected) {
+					return protocol.NewProblem(
+						protocol.CodeConflict,
+						"inline image attachment failed content validation",
+						false,
+						nil,
+					)
+				}
+				continue
+			}
 			if dependencies.Workspace == nil {
 				return unavailable("workspace query is unavailable")
 			}
@@ -1850,8 +2032,18 @@ func validateWebEditorContext(
 					nil,
 				)
 			}
+		case protocol.EditorContextAttachment:
+			digest := sha256.Sum256([]byte(reference.Content))
+			if reference.Digest != hex.EncodeToString(digest[:]) {
+				return protocol.NewProblem(
+					protocol.CodeConflict,
+					"text attachment digest does not match content",
+					false,
+					nil,
+				)
+			}
 		case protocol.EditorContextGitDiff:
-			diff := dependencies.Runtime.FormatTurnDiff(start.ThreadID)
+			diff := dependencies.Runtime.FormatTurnDiff(threadID)
 			digest := sha256.Sum256([]byte(diff))
 			if reference.Content != diff ||
 				reference.Digest != hex.EncodeToString(digest[:]) {
@@ -1871,7 +2063,7 @@ func validateWebEditorContext(
 	if err := validateWebTerminalContexts(
 		ctx,
 		dependencies.Runtime,
-		start.ThreadID,
+		threadID,
 		terminalReferences,
 	); err != nil {
 		return err
@@ -1879,7 +2071,7 @@ func validateWebEditorContext(
 	return validateWebDiagnosticContexts(
 		ctx,
 		dependencies,
-		start.ThreadID,
+		threadID,
 		diagnosticReferences,
 	)
 }
@@ -2454,7 +2646,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set(
 			"Content-Security-Policy",
 			"default-src 'self'; script-src 'self'; style-src 'self'; "+
-				"img-src 'self' data: blob:; connect-src 'self' "+
+				"img-src 'self' data: blob: https:; connect-src 'self' "+
 				strings.Replace(s.origin, "http://", "ws://", 1)+"; "+
 				"object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "+
 				"form-action 'none'",
@@ -2549,19 +2741,23 @@ func decodeStrict(data []byte, target any) error {
 }
 
 var webOperationExposure = map[protocol.OperationKind]bool{
-	protocol.OperationStartTurn:        true,
-	protocol.OperationCancelTurn:       true,
-	protocol.OperationSteerTurn:        false,
-	protocol.OperationApprovalDecision: true,
-	protocol.OperationInputReply:       true,
-	protocol.OperationCompactThread:    false,
-	protocol.OperationForkThread:       false,
-	protocol.OperationRevertTurn:       false,
-	protocol.OperationSubmitRun:        false,
-	protocol.OperationCancelRun:        false,
-	protocol.OperationResumeRun:        false,
-	protocol.OperationRetryNode:        false,
-	protocol.OperationSkipNode:         false,
+	protocol.OperationStartTurn:         true,
+	protocol.OperationCancelTurn:        true,
+	protocol.OperationSteerTurn:         true,
+	protocol.OperationEnqueueTurn:       true,
+	protocol.OperationUpdateQueuedTurn:  true,
+	protocol.OperationRemoveQueuedTurn:  true,
+	protocol.OperationPromoteQueuedTurn: true,
+	protocol.OperationApprovalDecision:  true,
+	protocol.OperationInputReply:        true,
+	protocol.OperationCompactThread:     true,
+	protocol.OperationForkThread:        false,
+	protocol.OperationRevertTurn:        false,
+	protocol.OperationSubmitRun:         false,
+	protocol.OperationCancelRun:         false,
+	protocol.OperationResumeRun:         false,
+	protocol.OperationRetryNode:         false,
+	protocol.OperationSkipNode:          false,
 }
 
 func webOperationExposed(kind protocol.OperationKind) bool {

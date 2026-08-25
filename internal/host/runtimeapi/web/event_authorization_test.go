@@ -2,6 +2,9 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"os"
 	"os/exec"
@@ -137,6 +140,70 @@ func TestValidateWebImageContextRequiresCurrentSignedMetadata(t *testing.T) {
 	}
 	if err := validateWebEditorContext(t.Context(), dependencies, payload); err == nil {
 		t.Fatal("stale image context was accepted")
+	}
+}
+
+func TestValidateWebInlineAttachmentsRechecksContent(t *testing.T) {
+	text := []byte("review the parser\n")
+	textDigest := sha256.Sum256(text)
+	textReference := protocol.EditorContextReference{
+		Kind: protocol.EditorContextAttachment, Source: protocol.EditorContextSourceNativePicker,
+		Digest: hex.EncodeToString(textDigest[:]), Label: "notes.txt",
+		MediaType: "text/plain", Content: string(text), Explicit: true,
+	}
+	if err := validateWebEditorContext(
+		t.Context(),
+		Dependencies{},
+		&protocol.StartTurnPayload{
+			ThreadID: "thread",
+			Context:  []protocol.EditorContextReference{textReference},
+		},
+	); err != nil {
+		t.Fatalf("valid text attachment rejected: %v", err)
+	}
+	forgedText := textReference
+	forgedText.Content = "forged"
+	if err := validateWebEditorContext(
+		t.Context(),
+		Dependencies{},
+		&protocol.StartTurnPayload{
+			ThreadID: "thread",
+			Context:  []protocol.EditorContextReference{forgedText},
+		},
+	); err == nil {
+		t.Fatal("text attachment with a stale digest was accepted")
+	}
+
+	image := []byte("\x89PNG\r\n\x1a\nfixture")
+	imageDigest := sha256.Sum256(image)
+	imageReference := protocol.EditorContextReference{
+		Kind: protocol.EditorContextImage, Source: protocol.EditorContextSourceNativePicker,
+		Digest: hex.EncodeToString(imageDigest[:]), Label: "pasted.png",
+		MediaType: "image/png",
+		Content:   base64.StdEncoding.EncodeToString(image),
+		Explicit:  true,
+	}
+	if err := validateWebEditorContext(
+		t.Context(),
+		Dependencies{},
+		&protocol.EnqueueTurnPayload{
+			ThreadID: "thread",
+			Context:  []protocol.EditorContextReference{imageReference},
+		},
+	); err != nil {
+		t.Fatalf("valid queued image attachment rejected: %v", err)
+	}
+	forgedImage := imageReference
+	forgedImage.MediaType = "image/jpeg"
+	if err := validateWebEditorContext(
+		t.Context(),
+		Dependencies{},
+		&protocol.EnqueueTurnPayload{
+			ThreadID: "thread",
+			Context:  []protocol.EditorContextReference{forgedImage},
+		},
+	); err == nil {
+		t.Fatal("image attachment with forged media type was accepted")
 	}
 }
 

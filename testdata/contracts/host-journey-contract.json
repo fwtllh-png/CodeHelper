@@ -43,23 +43,11 @@
     }
   ],
   "hosts": {
-    "cli": {
-      "transport": "runtime event stream",
-      "evidence": [
-        "internal/host/cli/quickstart_test.go"
-      ]
-    },
-    "tui": {
-      "transport": "RuntimeHost projection",
-      "evidence": [
-        "internal/host/tui/host_journey_test.go",
-        "internal/host/tui/visual_snapshot_test.go"
-      ]
-    },
     "web": {
       "transport": "localhost HTTP and WebSocket",
       "evidence": [
         "internal/host/runtimeapi/web/server_test.go",
+        "internal/host/web/launcher_test.go",
         "web/src/runtime/client.test.ts"
       ]
     }

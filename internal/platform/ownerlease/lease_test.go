@@ -15,7 +15,7 @@ func TestAcquireRejectsConcurrentOwnerAndAllowsTakeoverAfterClose(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	_, err = Acquire(path, Metadata{OwnerKind: "tui"})
+	_, err = Acquire(path, Metadata{OwnerKind: "web"})
 	var held *HeldError
 	if !errors.As(err, &held) {
 		t.Fatalf("second Acquire error = %v, want HeldError", err)
@@ -27,7 +27,7 @@ func TestAcquireRejectsConcurrentOwnerAndAllowsTakeoverAfterClose(t *testing.T) 
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
 	}
-	next, err := Acquire(path, Metadata{OwnerKind: "tui"})
+	next, err := Acquire(path, Metadata{OwnerKind: "web"})
 	if err != nil {
 		t.Fatalf("takeover after close: %v", err)
 	}

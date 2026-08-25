@@ -1,0 +1,481 @@
+.contextDialogOverlay {
+  position: fixed;
+  z-index: calc(var(--ch-layer-popover) + 9);
+  inset: 0;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  background: var(--ch-modal-mask);
+  backdrop-filter: blur(3px);
+}
+
+.contextDialog {
+  display: flex;
+  width: min(900px, calc(100vw - 48px));
+  height: min(680px, calc(100vh - 48px));
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--ch-text);
+  background: var(--ch-panel-raised);
+  border: 1px solid var(--ch-border-strong);
+  border-radius: var(--ch-radius-modal);
+  box-shadow: var(--ch-modal-shadow);
+}
+
+.contextDialogHeader {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px 8px 20px;
+}
+
+.contextDialogHeader > div {
+  min-width: 0;
+}
+
+.contextDialogHeader h2,
+.contextDialogHeader p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextDialogHeader h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.contextDialogHeader p {
+  margin: 1px 0 0;
+  color: var(--ch-text-muted);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.contextDialogHeader > button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0;
+  place-items: center;
+  color: var(--ch-text-muted);
+  background: transparent;
+  border-radius: 50%;
+}
+
+.contextDialogHeader > button:hover {
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
+}
+
+.contextDialogTabs {
+  display: flex;
+  height: 38px;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.contextDialogTabs button {
+  position: relative;
+  display: inline-flex;
+  height: 38px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  color: var(--ch-text-muted);
+  background: transparent;
+  font-size: 12px;
+}
+
+.contextDialogTabs button:hover,
+.contextDialogTabs button[aria-current="page"] {
+  color: var(--ch-text);
+}
+
+.contextDialogTabs button[aria-current="page"]::after {
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 2px;
+  content: "";
+  background: var(--ch-business);
+}
+
+.contextDialogTabs small {
+  color: var(--ch-text-caption);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.contextDialogBody {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.contextDialogError {
+  padding: 8px 16px;
+  color: var(--ch-danger);
+  background: var(--ch-danger-soft);
+  border-bottom: 1px solid color-mix(in srgb, var(--ch-danger) 32%, var(--ch-border));
+  font-size: 12px;
+}
+
+.contextFileLayout {
+  display: grid;
+  height: 100%;
+  grid-template-columns: minmax(260px, 36%) minmax(0, 1fr);
+}
+
+.contextBrowser {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: var(--ch-panel-subtle);
+  border-right: 1px solid var(--ch-border);
+}
+
+.contextBrowser form {
+  position: relative;
+  display: flex;
+  height: 34px;
+  align-items: center;
+  color: var(--ch-text-muted);
+}
+
+.contextBrowser form > svg {
+  position: absolute;
+  left: 10px;
+  pointer-events: none;
+}
+
+.contextBrowser input {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0 10px 0 32px;
+  background: var(--ch-panel);
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  outline: 0;
+  font-size: 12px;
+}
+
+.contextBrowser input:focus {
+  border-color: var(--ch-focus);
+}
+
+.contextPath {
+  display: flex;
+  min-width: 0;
+  height: 28px;
+  align-items: center;
+  gap: 7px;
+  color: var(--ch-text-muted);
+  font-size: 11px;
+}
+
+.contextPath span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextResults {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.contextResults button {
+  display: grid;
+  width: 100%;
+  min-height: 34px;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 7px;
+  padding: 5px 8px;
+  color: var(--ch-text-secondary);
+  text-align: left;
+  background: transparent;
+  border-radius: 6px;
+}
+
+.contextResults button:hover,
+.contextResults button:focus-visible {
+  color: var(--ch-text);
+  background: var(--ch-panel);
+}
+
+.contextResults button > svg {
+  grid-row: 1 / 3;
+  color: var(--ch-text-muted);
+}
+
+.contextResults button span,
+.contextResults button small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextResults button span {
+  font-size: 12px;
+}
+
+.contextResults button small {
+  color: var(--ch-text-muted);
+  font-size: 10px;
+}
+
+.contextPreview {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--ch-panel);
+}
+
+.contextPreview > header {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.contextPreview > header > strong {
+  min-width: 0;
+  margin-right: auto;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextPreview > header > div,
+.contextActionBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.contextPreview > header button,
+.contextActionBar button,
+.mergeActions button {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 8px;
+  color: var(--ch-text-secondary);
+  background: var(--ch-panel-subtle);
+  border: 1px solid var(--ch-border);
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+.contextPreview > header button:hover:not(:disabled),
+.contextActionBar button:hover:not(:disabled),
+.mergeActions button:hover:not(:disabled) {
+  color: var(--ch-text);
+  border-color: var(--ch-border-strong);
+}
+
+.contextPreview > textarea {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  padding: 14px 16px;
+  resize: none;
+  color: var(--ch-text-secondary);
+  background: var(--ch-code);
+  border: 0;
+  outline: 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: pre;
+}
+
+.contextPreview > img {
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  padding: 16px;
+  object-fit: contain;
+}
+
+.contextPreviewEmpty {
+  display: grid;
+  min-height: 220px;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
+  padding: 24px;
+  color: var(--ch-text-muted);
+  text-align: center;
+}
+
+.contextPreviewEmpty strong {
+  color: var(--ch-text-secondary);
+  font-size: 13px;
+}
+
+.contextPreviewEmpty span {
+  max-width: 360px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.contextSingleView {
+  height: 100%;
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+
+.contextActionBar {
+  min-height: 44px;
+  margin-bottom: 12px;
+}
+
+.contextActionBar > span {
+  display: grid;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.contextActionBar strong {
+  font-size: 13px;
+}
+
+.contextActionBar small {
+  color: var(--ch-text-muted);
+  font-size: 10px;
+}
+
+.contextDiff {
+  display: grid;
+  margin: 0;
+  padding: 12px 0;
+  overflow: auto;
+  color: var(--ch-text-secondary);
+  background: var(--ch-code);
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 19px;
+  white-space: pre;
+}
+
+.contextDiff > span {
+  min-width: max-content;
+  padding: 0 14px;
+}
+
+.contextDiff > span[data-line="added"] {
+  color: var(--ch-business);
+  background: color-mix(in srgb, var(--ch-business) 7%, transparent);
+}
+
+.contextDiff > span[data-line="removed"] {
+  color: var(--ch-danger);
+  background: color-mix(in srgb, var(--ch-danger) 7%, transparent);
+}
+
+.contextDiff > span[data-line="hunk"] {
+  color: var(--ch-reasoning);
+}
+
+.mergeActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.diagnosticResults {
+  display: grid;
+  gap: 6px;
+}
+
+.diagnosticResults button {
+  display: grid;
+  min-height: 52px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  color: var(--ch-text-secondary);
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+}
+
+.diagnosticResults button:hover {
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
+}
+
+.diagnosticResults button > span {
+  display: grid;
+  min-width: 0;
+}
+
+.diagnosticResults strong,
+.diagnosticResults small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diagnosticResults strong {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.diagnosticResults small {
+  color: var(--ch-text-muted);
+  font-size: 10px;
+}
+
+@media (max-width: 720px) {
+  .contextDialogOverlay {
+    padding: 8px;
+  }
+
+  .contextDialog {
+    width: calc(100vw - 16px);
+    height: calc(100vh - 16px);
+    border-radius: var(--ch-radius-panel);
+  }
+
+  .contextFileLayout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(200px, 42%) minmax(0, 1fr);
+  }
+
+  .contextBrowser {
+    border-right: 0;
+    border-bottom: 1px solid var(--ch-border);
+  }
+
+  .contextDialogTabs {
+    overflow-x: auto;
+  }
+}

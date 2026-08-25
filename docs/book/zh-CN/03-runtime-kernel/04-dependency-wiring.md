@@ -194,10 +194,10 @@ Configuration 表达 Intent，不能制造 Environment Capability。
 | Agent Engine/Runtime/Background | `modules_runtime.go` |
 | 资源生命周期 | `assembly/resources.go` |
 | Route/Budget | `route.go`、`routeset.go` |
-| Provider | `model.go`、`model_catalog.go`、`model_probe.go` |
+| Provider | `model.go`、`model_catalog.go`、`probe_overlay.go` |
 | Durable Runtime Assembly | `internal/runtime/app/wire/persistent_runtime.go` |
 | Chat Merge 构造 | `chatworktree.go`、`chatmerge/service.go` |
-| Sandbox Fact | `sandbox_info.go` |
+| Sandbox Fact | `internal/security/sandbox/backend.go` |
 | MCP/Extension | `mcp.go`、`extensions.go` |
 | Child/Background | `childruntime.go`、`background_executors.go` |
 | Runtime Facade 构造与启动 | `internal/runtime/app/runtime_start.go` |
@@ -234,14 +234,14 @@ Wiring。
 
 ```bash
 go test ./internal/runtime/app/wire
-go test ./internal/host/cli -run TestCLIDoesNotDependOnExecutionImplementations
+go test ./internal/host/web -run TestWebHostDoesNotDependOnExecutionImplementations
 ```
 
 ## 动手实验
 
-从 CLI `exec` 只追踪 Constructor，直到 `wire.NewExec`。在 `defaultBuildModules`
-中识别 Module 序列，记录 Route、Guard、Sandbox、Journal、Prompt Context 在哪里
-接入；这条路径不应出现 Business Turn Step。
+从 `internal/host/web/launcher.go` 只追踪 Constructor，直到 `wire.NewExec`。在
+`defaultBuildModules` 中识别 Module 序列，记录 Route、Guard、Sandbox、Journal、
+Prompt Context 在哪里接入；这条路径不应出现 Business Turn Step。
 
 ## 复习问题
 

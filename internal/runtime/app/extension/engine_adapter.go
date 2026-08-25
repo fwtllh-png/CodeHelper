@@ -29,9 +29,11 @@ var ErrOperationUnsupported = protocol.NewProblem(
 type NoopEngine struct{}
 
 func (NoopEngine) StartTurn(
-	_ context.Context, _ *protocol.StartTurnPayload, sink EngineSink,
+	_ context.Context, payload *protocol.StartTurnPayload, sink EngineSink,
 ) error {
-	if err := sink.Emit(&protocol.TurnStartedData{Provider: "local", Model: "noop"}); err != nil {
+	if err := sink.Emit(&protocol.TurnStartedData{
+		Provider: "local", Model: "noop", QueueID: payload.QueueID,
+	}); err != nil {
 		return err
 	}
 	return sink.Emit(&protocol.TurnCompletedData{})
@@ -322,6 +324,7 @@ func (a *EngineAdapter) StartTurn(
 			}
 			return sink.Emit(&protocol.TurnStartedData{
 				Provider: event.Provider, Model: event.Model,
+				QueueID: payload.QueueID,
 				Orchestration: protocol.CloneOrchestrationCorrelation(
 					payload.Orchestration,
 				),
@@ -507,6 +510,7 @@ func (a *EngineAdapter) StartTurn(
 					Changes:   changes, Recovery: recovery, Completion: completion,
 					WorkspaceWriteScope: workspaceWriteScope,
 					ObservedChanges:     observedChanges,
+					Truncated:           event.Result.Truncated,
 				}); err != nil {
 					return err
 				}
@@ -658,7 +662,10 @@ func (a *EngineAdapter) SteerTurn(
 	if err := control.Steer(payload.Prompt); err != nil {
 		return err
 	}
-	return sink.Emit(&protocol.TurnSteeredData{Prompt: payload.Prompt})
+	return sink.Emit(&protocol.TurnSteeredData{
+		Prompt:  payload.Prompt,
+		QueueID: payload.QueueID,
+	})
 }
 
 func (a *EngineAdapter) DecideApproval(
@@ -892,6 +899,12 @@ func CostMicrounits(costUSD float64) uint64 {
 	return uint64(math.Round(costUSD * 1e6))
 }
 func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
+	if event.ReasoningCompleted != nil {
+		return sink.Emit(&protocol.ReasoningCompletedData{
+			Text:     event.ReasoningCompleted.Text,
+			SampleID: event.ReasoningCompleted.SampleID,
+		})
+	}
 	if event.Plan != nil {
 		return sink.Emit(&protocol.PlanDeltaData{
 			Text: event.Plan.Delta, Body: event.Plan.Body, Done: event.Plan.Done,
@@ -927,7 +940,10 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 			return sink.Emit((*protocol.OutputDeltaData)(&protocol.TextDeltaData{Text: event.Block.Text}))
 		case provider.ContentReasoning:
 			if event.Block.Text != "" {
-				return sink.Emit((*protocol.ReasoningDeltaData)(&protocol.TextDeltaData{Text: event.Block.Text}))
+				return sink.Emit(&protocol.ReasoningDeltaData{
+					Text:     event.Block.Text,
+					SampleID: event.SampleID,
+				})
 			}
 			return nil
 		}

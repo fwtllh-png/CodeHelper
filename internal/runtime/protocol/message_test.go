@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -25,7 +26,25 @@ func TestNativeBinaryAndInlineContextValidation(t *testing.T) {
 		Digest: hex.EncodeToString(terminalDigest[:]), Label: "Terminal output",
 		MediaType: "text/plain", Content: terminalText, Explicit: true,
 	}
-	for _, reference := range []EditorContextReference{image, terminal} {
+	attachmentText := "review this note"
+	attachmentDigest := sha256.Sum256([]byte(attachmentText))
+	attachment := EditorContextReference{
+		Kind: EditorContextAttachment, Source: EditorContextSourceNativePicker,
+		Digest: hex.EncodeToString(attachmentDigest[:]), Label: "notes.txt",
+		MediaType: "text/plain", Content: attachmentText, Explicit: true,
+	}
+	inlineImageBytes := []byte("\x89PNG\r\n\x1a\nfixture")
+	inlineImageDigest := sha256.Sum256(inlineImageBytes)
+	inlineImage := EditorContextReference{
+		Kind: EditorContextImage, Source: EditorContextSourceNativePicker,
+		Digest: hex.EncodeToString(inlineImageDigest[:]), Label: "pasted.png",
+		MediaType: "image/png",
+		Content:   base64.StdEncoding.EncodeToString(inlineImageBytes),
+		Explicit:  true,
+	}
+	for _, reference := range []EditorContextReference{
+		image, terminal, attachment, inlineImage,
+	} {
 		if _, err := NewOperation(&StartTurnPayload{
 			ThreadID: "thread", TurnID: "turn", ItemID: "item",
 			Prompt: "inspect", Context: []EditorContextReference{reference},
@@ -39,6 +58,38 @@ func TestNativeBinaryAndInlineContextValidation(t *testing.T) {
 		Prompt: "inspect", Context: []EditorContextReference{terminal},
 	}); err == nil {
 		t.Fatal("inline context with a stale digest was accepted")
+	}
+}
+
+func TestInlineAttachmentTotalIsBounded(t *testing.T) {
+	imageBytes := make([]byte, maxInlineImageAttachmentBytes)
+	copy(imageBytes, []byte("\x89PNG\r\n\x1a\n"))
+	imageDigest := sha256.Sum256(imageBytes)
+	image := EditorContextReference{
+		Kind: EditorContextImage, Source: EditorContextSourceNativePicker,
+		Digest: hex.EncodeToString(imageDigest[:]), Label: "large.png",
+		MediaType: "image/png",
+		Content:   base64.StdEncoding.EncodeToString(imageBytes),
+		Explicit:  true,
+	}
+	if _, err := NewOperation(&StartTurnPayload{
+		ThreadID: "thread", TurnID: "turn", ItemID: "item",
+		Prompt: "inspect", Context: []EditorContextReference{image},
+	}); err != nil {
+		t.Fatalf("attachment at total limit rejected: %v", err)
+	}
+
+	textDigest := sha256.Sum256([]byte("x"))
+	text := EditorContextReference{
+		Kind: EditorContextAttachment, Source: EditorContextSourceNativePicker,
+		Digest: hex.EncodeToString(textDigest[:]), Label: "note.txt",
+		MediaType: "text/plain", Content: "x", Explicit: true,
+	}
+	if _, err := NewOperation(&EnqueueTurnPayload{
+		ThreadID: "thread", TurnID: "turn", ItemID: "item", QueueID: "queue",
+		Prompt: "inspect", Context: []EditorContextReference{image, text},
+	}); err == nil || !strings.Contains(err.Error(), "5 MiB total limit") {
+		t.Fatalf("oversized attachment total error = %v", err)
 	}
 }
 

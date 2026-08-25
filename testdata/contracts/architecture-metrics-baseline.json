@@ -11,9 +11,6 @@
         "production_lines": 1869,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "internal_fanout": "Delegate workspace and session seed creation to the authoritative persist/session repository."
       }
     },
     {
@@ -36,9 +33,6 @@
         "production_lines": 1084,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "internal_fanout": "Delegate workspace and session seed creation to the authoritative persist/session repository."
       }
     },
     {
@@ -102,9 +96,12 @@
       "path": "internal/runtime/app/eventhub",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 812,
+        "production_lines": 814,
         "options_fields": 0,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Map retained reasoning completion events into the terminal event codec."
       }
     },
     {
@@ -204,9 +201,6 @@
         "production_lines": 954,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Allow a validated act-route replacement while preserving explicit purpose slots."
       }
     },
     {
@@ -350,14 +344,9 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 77,
-        "production_lines": 9616,
-        "options_fields": 84,
+        "production_lines": 9115,
+        "options_fields": 74,
         "mutex_fields": 7
-      },
-      "relaxations": {
-        "internal_fanout": "Wire Credential Control into per-request Provider credential resolution.",
-        "production_lines": "Publish selectable same-provider model routes and live Web credentials.",
-        "options_fields": "Carry selectable routes and model capabilities through the composition root."
       }
     },
     {
@@ -413,9 +402,6 @@
         "production_lines": 220,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "internal_fanout": "Reuse the shared durable atomic-file replacement primitive."
       }
     },
     {
@@ -427,9 +413,6 @@
         "production_lines": 204,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "internal_fanout": "Reuse the shared durable atomic-file replacement primitive."
       }
     },
     {
@@ -536,10 +519,13 @@
       "kind": "package",
       "path": "internal/runtime/app/persistence",
       "limits": {
-        "internal_fanout": 11,
+        "internal_fanout": 12,
         "production_lines": 725,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "Construct the Agent Preset repository inside the durable persistence assembly boundary."
       }
     },
     {
@@ -579,12 +565,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 22,
-        "production_lines": 7738,
+        "production_lines": 7756,
         "options_fields": 6,
         "mutex_fields": 4
       },
       "relaxations": {
-        "production_lines": "Resolve a Session-selected model route only between turns."
+        "production_lines": "Publish sample-bound reasoning completion facts for stable Web transcript reconstruction."
       }
     },
     {
@@ -604,13 +590,13 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 20,
-        "production_lines": 5826,
-        "options_fields": 22,
+        "production_lines": 6728,
+        "options_fields": 23,
         "mutex_fields": 10
       },
       "relaxations": {
-        "production_lines": "Keep guarded session discard and interaction cleanup in the authoritative runtime lifecycle.",
-        "options_fields": "Carry the model capability map used to validate Session-level route selection."
+        "production_lines": "Add Runtime-owned Agent Preset validation, persistence control, and Session application.",
+        "options_fields": "Inject the Agent Preset store through an explicit Runtime option."
       }
     },
     {
@@ -634,25 +620,17 @@
       }
     },
     {
-      "id": "tui_package",
-      "kind": "package",
-      "path": "internal/host/tui",
-      "limits": {
-        "internal_fanout": 23,
-        "production_lines": 7549,
-        "options_fields": 28,
-        "mutex_fields": 2
-      }
-    },
-    {
       "id": "protocol_package",
       "kind": "package",
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6398,
+        "production_lines": 6992,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Define typed, versioned Agent Preset profiles and mutation contracts."
       }
     },
     {
@@ -660,11 +638,11 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2153,
+        "lines": 2202,
         "max_function_lines": 119
       },
       "relaxations": {
-        "lines": "Keep guarded session lifecycle and resolve capabilities for the selected Session model."
+        "lines": "Expose the narrow Agent Preset store interface and service facade from Runtime."
       }
     },
     {
@@ -674,9 +652,6 @@
       "limits": {
         "lines": 385,
         "max_function_lines": 50
-      },
-      "relaxations": {
-        "lines": "Accept Credential Control at the composition boundary for Web live rotation."
       }
     },
     {
@@ -686,9 +661,6 @@
       "limits": {
         "lines": 95,
         "max_function_lines": 15
-      },
-      "relaxations": {
-        "lines": "Carry model capability choices from Provider assembly to Runtime assembly."
       }
     },
     {
@@ -734,10 +706,6 @@
       "limits": {
         "lines": 425,
         "max_function_lines": 330
-      },
-      "relaxations": {
-        "lines": "Wire same-provider model selection into Engine and Session profile construction.",
-        "max_function_lines": "Assemble model profile capabilities beside the authoritative Engine options."
       }
     },
     {
@@ -745,12 +713,12 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime_start.go",
       "limits": {
-        "lines": 152,
-        "max_function_lines": 70
+        "lines": 156,
+        "max_function_lines": 71
       },
       "relaxations": {
-        "lines": "Install the selectable model capability map in the Runtime.",
-        "max_function_lines": "Install the selectable model capability map with the existing Runtime construction."
+        "lines": "Install the injected Agent Preset store during Runtime construction.",
+        "max_function_lines": "Install the injected Agent Preset store during Runtime construction."
       }
     },
     {
@@ -760,9 +728,6 @@
       "limits": {
         "lines": 106,
         "max_function_lines": 0
-      },
-      "relaxations": {
-        "lines": "Carry the selectable model route map out of Provider assembly."
       }
     },
     {
@@ -772,9 +737,6 @@
       "limits": {
         "lines": 189,
         "max_function_lines": 53
-      },
-      "relaxations": {
-        "lines": "Pass Credential Control to the Provider client resolver."
       }
     },
     {
@@ -883,9 +845,6 @@
       "limits": {
         "lines": 423,
         "max_function_lines": 128
-      },
-      "relaxations": {
-        "lines": "Apply the selected ReadyRoute atomically with the Session Profile."
       }
     },
     {
@@ -969,9 +928,6 @@
         "production_lines": 267,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "internal_fanout": "Reuse the shared durable atomic-file replacement primitive."
       }
     },
     {
@@ -1012,13 +968,16 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 20,
+        "event_switch_sites": 21,
         "runtime_package_dirs": 20,
         "runtime_one_file_packages": 7,
         "runtime_agent_package_dirs": 6,
         "runtime_agent_unexpected_packages": 0,
         "runtime_app_package_dirs": 4,
         "runtime_app_unexpected_packages": 0
+      },
+      "relaxations": {
+        "event_switch_sites": "Project retained Queue transition events into one Runtime-owned pending Queue."
       }
     },
     {
@@ -1038,9 +997,12 @@
       "path": "internal/runtime/agent/prompt",
       "limits": {
         "internal_fanout": 8,
-        "production_lines": 2470,
+        "production_lines": 2502,
         "options_fields": 22,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Resolve verified inline text and native image attachments into model context."
       }
     },
     {
@@ -1065,7 +1027,6 @@
     }
   ],
   "retirements": {
-    "observability_semantic_package": "Removed the unreferenced semantic projection subsystem.",
-    "observability_supportbundle_package": "Removed the support-bundle package because no production entry point consumed it."
+    "tui_package": "The TUI host was removed in favor of the single Web product entry."
   }
 }

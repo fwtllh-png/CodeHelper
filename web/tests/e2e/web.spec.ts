@@ -1,4 +1,4 @@
-import {expect, test} from "@playwright/test";
+import {expect, test, type Page} from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import {
   execFileSync,
@@ -44,7 +44,6 @@ test.beforeEach(async () => {
   server = spawn(
     path.join(repositoryRoot, "bin/codehelper"),
     [
-      "web",
       "--workspace", workspaceDir,
       "--data-dir", dataDir,
       "--provider-fixture", path.join(repositoryRoot, "testdata/providers/openai"),
@@ -81,7 +80,10 @@ test("boots the real Runtime with an accessible empty state", async ({page}) => 
   await expect(page.getByText("Connected", {exact: true})).toBeVisible();
   await expect(page.locator('button[aria-label="New chat"]')).toBeVisible();
   await expect(page.getByRole("button", {name: "Settings"})).toBeVisible();
-  await expect(page.getByRole("textbox", {name: "Search sessions"})).toBeVisible();
+  const searchSessions = page.getByRole("button", {name: "Search sessions"});
+  await expect(searchSessions).toBeVisible();
+  await searchSessions.click();
+  await expect(page.getByRole("textbox", {name: "Search sessions"})).toBeFocused();
   await expect(page.getByRole("heading", {name: "Start a new session"})).toBeVisible();
   await expect(page.getByText("Not required", {exact: true})).toBeVisible();
   await expect(page.getByRole("button", {name: "Create session"})).toBeVisible();
@@ -89,9 +91,6 @@ test("boots the real Runtime with an accessible empty state", async ({page}) => 
   await expect(page.getByLabel("Session details")).toHaveCount(0);
   await expect(page.getByRole("button", {name: /detail panel/i})).toHaveCount(0);
 
-  await page.locator('button[aria-label="New chat"]').focus();
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("textbox", {name: "Search sessions"})).toBeFocused();
 });
 
 test("passes the WCAG A and AA accessibility scan", async ({page}) => {
@@ -111,18 +110,157 @@ test("passes the WCAG A and AA accessibility scan", async ({page}) => {
   }
 });
 
+test("groups Sessions by Workspace and reveals row actions on demand", async ({page}) => {
+  await page.goto(baseURL);
+  await page.locator('button[aria-label="New chat"]').click();
+
+  const workspace = page.locator(".workspaceRow");
+  await expect(workspace).toContainText(path.basename(workspaceDir));
+  await expect(workspace).toHaveAttribute("aria-expanded", "true");
+  const session = page.locator(".sessionRow[data-active]");
+  await expect(session).toContainText("New Chat");
+
+  await session.hover();
+  await session.getByRole("button", {name: /Session actions for/}).click();
+  await expect(session.getByRole("menuitem", {name: "Rename"})).toBeVisible();
+  await expect(session.getByRole("menuitem", {name: "Pin"})).toBeVisible();
+  await expect(session.getByRole("menuitem", {name: "Archive"})).toBeVisible();
+  await expect(session.getByRole("menuitem", {name: "Delete"})).toBeVisible();
+
+  await workspace.click();
+  await expect(workspace).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".sessionRow")).toHaveCount(0);
+  await workspace.click();
+  await expect(page.locator(".sessionRow")).toHaveCount(1);
+});
+
 test("creates a Session and completes a fixture-backed Turn", async ({page}) => {
   await page.goto(baseURL);
   await page.getByRole("button", {name: "Create session"}).click();
 
   const composer = page.getByPlaceholder("Ask CodeHelper");
   await expect(composer).toBeEnabled();
-  await expect(page.getByLabel("Session details")).toBeVisible();
+  await expect(page.getByLabel("Session details")).toHaveCount(0);
   await composer.fill("say hello");
   await page.getByRole("button", {name: "Send"}).click();
 
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".reasoningDisclosure")).toContainText(
+    "I should answer briefly."
+  );
   await expect(page.getByText("Working", {exact: true})).toHaveCount(0);
+  await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
+});
+
+test("submits local attachments as verified Runtime context", async ({page}) => {
+  await page.goto(baseURL);
+  await page.getByRole("button", {name: "Create session"}).click();
+
+  const picker = page.locator('input[type="file"][aria-label="Attach files"]');
+  await expect(page.locator(
+    '.composerControls button[aria-label="Attach files"]'
+  )).toBeEnabled();
+  await picker.setInputFiles(path.join(workspaceDir, "README.md"));
+  await expect(page.getByLabel("Composer attachments")).toContainText(
+    "Text"
+  );
+  await expect(page.getByLabel("Composer attachments")).toContainText(
+    "picker"
+  );
+
+  const operation = page.waitForRequest((request) =>
+    request.url().endsWith("/api/v1/operation/submit") &&
+    request.postDataJSON()?.kind === "turn.start"
+  );
+  await page.getByPlaceholder("Ask CodeHelper").fill("review the attachment");
+  await page.getByRole("button", {name: "Send"}).click();
+  const payload = await operation;
+  expect(payload.postDataJSON()).toMatchObject({
+    payload: {
+      prompt: "review the attachment",
+      context: [{
+        kind: "attachment",
+        source: "native_picker",
+        label: "README.md",
+        media_type: "text/plain",
+        explicit: true
+      }]
+    }
+  });
+  await expect(page.getByLabel("Composer attachments")).toHaveCount(0);
+});
+
+test("searches and invokes slash commands entirely from the keyboard", async ({page}) => {
+  await page.goto(baseURL);
+  await page.getByRole("button", {name: "Create session"}).click();
+
+  const composer = page.getByPlaceholder("Ask CodeHelper");
+  await composer.fill("/cont");
+  const search = page.getByRole("searchbox", {name: "Search commands"});
+  await expect(search).toBeFocused();
+  await expect(search).toHaveValue("cont");
+  await expect(page.getByRole("menuitem", {name: /\/context/})).toBeVisible();
+  await expect(page.getByRole("menuitem", {name: /\/compact/})).toHaveCount(0);
+  const accessibility = await new AxeBuilder({page})
+    .include(".commandMenu")
+    .withTags(["wcag2a", "wcag2aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+  await search.press("Enter");
+
+  await expect(page.getByRole("dialog", {name: "Add context"})).toBeVisible();
+  await page.getByRole("button", {name: "Close context browser"}).click();
+  await page.getByRole("button", {name: "Commands"}).click();
+  await expect(page.getByText("Recent", {exact: true})).toBeVisible();
+  await expect(page.getByRole("menuitem").first()).toContainText("/context");
+});
+
+test("keeps a long mobile draft scrollable above a resized visual viewport", async ({page}) => {
+  await page.setViewportSize({width: 390, height: 844});
+  await page.goto(baseURL);
+  await page.getByRole("button", {name: "Create session"}).click();
+
+  const composer = page.getByPlaceholder("Ask CodeHelper");
+  await composer.fill(Array.from({length: 120}, (_, index) => `line ${index}`).join("\n"));
+  await composer.focus();
+  await page.setViewportSize({width: 390, height: 420});
+
+  const geometry = await composer.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      bottom: box.bottom,
+      viewportHeight: window.visualViewport?.height ?? window.innerHeight,
+      pageOverflow: document.documentElement.scrollWidth - window.innerWidth
+    };
+  });
+  expect(geometry.clientHeight).toBeLessThanOrEqual(336);
+  expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight + 1);
+  expect(geometry.pageOverflow).toBeLessThanOrEqual(0);
+});
+
+test("opens the execution trajectory and inspects its event ledger", async ({page}) => {
+  await page.goto(baseURL);
+  await page.getByRole("button", {name: "Create session"}).click();
+  await page.getByPlaceholder("Ask CodeHelper").fill("say hello");
+  await page.getByRole("button", {name: "Send"}).click();
+  await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".reasoningDisclosure")).toContainText(
+    "I should answer briefly."
+  );
+
+  await page.getByRole("button", {name: "Trajectory"}).click();
+  const trajectory = page.getByLabel("Execution trajectory");
+  await expect(trajectory).toBeVisible();
+  await expect(trajectory.locator(".timelineLabels")).toHaveText("InputModelTools");
+  await expect(trajectory.locator(".ledgerRow")).not.toHaveCount(0);
+
+  await trajectory.locator(".ledgerRow").first().click();
+  await expect(page.getByRole("complementary", {name: "Record inspector"}))
+    .toBeVisible();
+  await expect(page.getByRole("button", {name: "Previous record"})).toBeDisabled();
 });
 
 test("deletes the final Session after explicit confirmation", async ({page}) => {
@@ -131,9 +269,10 @@ test("deletes the final Session after explicit confirmation", async ({page}) => 
   await expect(page.locator(".sessionRow")).toHaveCount(1);
   page.once("dialog", (dialog) => dialog.accept());
 
-  await page.locator(".detailPanel").getByRole("button", {
-    name: "Delete session"
-  }).click();
+  const session = page.locator(".sessionRow").first();
+  await session.hover();
+  await session.getByRole("button", {name: /Session actions for/}).click();
+  await session.getByRole("menuitem", {name: "Delete"}).click();
 
   await expect(page.locator(".sessionRow")).toHaveCount(0);
   await expect(page.getByRole("heading", {name: "Start a new session"})).toBeVisible();
@@ -153,38 +292,99 @@ test("restores the selected Session and transcript after a browser reload", asyn
   await composer.fill("say hello");
   await page.getByRole("button", {name: "Send"}).click();
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".reasoningDisclosure")).toContainText(
+    "I should answer briefly."
+  );
+  await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
 
   await page.reload();
 
   await expect(page.getByText("Connected", {exact: true})).toBeVisible();
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
+  await expect(page.locator(".reasoningDisclosure")).toContainText(
+    "I should answer briefly."
+  );
+  await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
 });
 
-test("shows the fixed provider and single-model route as read-only", async ({page}) => {
+test("shows model routing and capabilities in Settings", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
+  await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Models"}).click();
 
-  const provider = page.getByLabel("Provider");
-  const model = page.getByLabel("Model");
-  await expect(provider).toHaveText("fixture");
+  const provider = page.getByLabel("Provider", {exact: true});
+  const model = page.getByLabel("Settings model");
+  await expect(provider).toHaveValue("fixture");
   await expect(model).toHaveText("fixture-model");
-  await expect(provider).toHaveJSProperty("tagName", "OUTPUT");
-  await expect(model).toHaveJSProperty("tagName", "OUTPUT");
+  await expect(page.getByText("Context window")).toBeVisible();
+  await expect(page.getByText("Prompt cache", {exact: true})).toBeVisible();
+});
+
+test("persists and applies a workspace Agent preset", async ({page}) => {
+  await page.goto(baseURL);
+  await page.locator('button[aria-label="New chat"]').click();
+  await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+  await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Agent preset"}).click();
+
+  await page.getByLabel("Agent mode").selectOption("plan");
+  await page.getByLabel("Maximum steps").fill("16");
+  await page.getByLabel("Agent preset name").fill("Focused review");
+  await page.getByLabel("Agent preset description").fill("Plan with bounded steps");
+  await page.getByRole("button", {name: "Save new"}).click();
+  const presetStatus = page.locator(".presetWorkbench").getByRole("status");
+  await expect(presetStatus).toContainText("Preset created");
+  const accessibility = await new AxeBuilder({page})
+    .include(".settingsDialog")
+    .withTags(["wcag2a", "wcag2aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await page.getByRole("button", {name: "Discard"}).click();
+  await page.getByRole("button", {name: "Apply to session"}).click();
+  await expect(presetStatus).toContainText("Preset applied");
+  await expect(page.getByLabel("Agent mode")).toHaveValue("plan");
+  await expect(page.getByLabel("Maximum steps")).toHaveValue("16");
+
+  await page.getByRole("button", {name: "Close settings"}).click();
+  await page.reload();
+  await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Agent preset"}).click();
+  await expect(page.getByLabel("Saved agent preset")).toContainText("Focused review");
+
+  await page.setViewportSize({width: 390, height: 844});
+  const mobileGeometry = await page.locator(".settingsDialog").evaluate((dialog) => {
+    const box = dialog.getBoundingClientRect();
+    const buttons = Array.from(dialog.querySelectorAll<HTMLElement>("button"))
+      .filter((button) => button.offsetParent !== null)
+      .map((button) => button.getBoundingClientRect());
+    return {
+      overflow: dialog.scrollWidth - dialog.clientWidth,
+      insideViewport: box.left >= 0 && box.right <= window.innerWidth,
+      buttonsInside: buttons.every(
+        (button) => button.left >= box.left && button.right <= box.right
+      )
+    };
+  });
+  expect(mobileGeometry.overflow).toBeLessThanOrEqual(0);
+  expect(mobileGeometry.insideViewport).toBe(true);
+  expect(mobileGeometry.buttonsInside).toBe(true);
 });
 
 test("browses workspace resources and restores an archived Session", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+  await openContextDetails(page);
 
-  await page.getByRole("button", {name: "Browse workspace"}).click();
-  const fileEntry = page.locator(".workspaceEntries .resourceMatch").filter({
+  const fileEntry = page.locator(".contextResults button").filter({
     has: page.getByText("README.md", {exact: true})
   });
   await expect(fileEntry).toBeVisible();
   await fileEntry.click();
-  await expect(page.locator(".resourceViewer")).toBeVisible();
+  await expect(page.locator(".contextPreview")).toBeVisible();
   const resourceContent = page.getByLabel("Workspace resource content");
   await resourceContent.focus();
   await resourceContent.evaluate((element: HTMLTextAreaElement) => {
@@ -192,7 +392,7 @@ test("browses workspace resources and restores an archived Session", async ({pag
     element.dispatchEvent(new Event("select", {bubbles: true}));
     document.dispatchEvent(new Event("selectionchange", {bubbles: true}));
   });
-  await page.getByRole("button", {name: "Add selection to prompt context"}).click();
+  await page.getByRole("button", {name: "Add selection"}).click();
   await expect(page.getByLabel("Prompt context", {exact: true})).toContainText(
     /:1:1-1:6/
   );
@@ -200,9 +400,7 @@ test("browses workspace resources and restores an archived Session", async ({pag
     page.waitForEvent("download"),
     page.getByRole("button", {name: "Download resource"}).click()
   ]);
-  expect(download.suggestedFilename()).toBe(
-    await fileEntry.locator("strong").textContent()
-  );
+  expect(download.suggestedFilename()).toBe("README.md");
 
   const symbolSearch = page.getByLabel("Search workspace symbols");
   await symbolSearch.fill("helloFixture");
@@ -212,25 +410,31 @@ test("browses workspace resources and restores an archived Session", async ({pag
   await symbol.click();
   await expect(page.getByLabel("Prompt context", {exact: true})).toContainText("main.go");
 
-  const imageEntry = page.locator(".workspaceEntries .resourceMatch").filter({
+  const imageEntry = page.locator(".contextResults button").filter({
     has: page.getByText("diagram.png", {exact: true})
   });
   await imageEntry.click();
   await expect(page.getByRole("img", {name: "diagram.png"})).toBeVisible();
-  await page.getByRole("button", {name: "Add image to prompt context"}).click();
+  await page.getByRole("button", {name: "Add image"}).click();
   await expect(page.getByLabel("Prompt context", {exact: true})).toContainText(
     "diagram.png"
   );
 
-  const lifecycle = page.locator(".detailSection").filter({
-    has: page.getByRole("heading", {name: "Lifecycle"})
-  });
+  await page.getByRole("button", {name: "Close context browser"}).click();
+  let activeSession = page.locator(".sessionRow[data-active]");
+  await activeSession.hover();
+  await activeSession.getByRole("button", {name: /Session actions for/}).click();
   page.once("dialog", (dialog) => dialog.accept("Archive Target"));
-  await lifecycle.getByRole("button", {name: "Rename session"}).click();
-  await expect(page.getByRole("heading", {name: "Archive Target", level: 1})).toBeVisible();
+  await activeSession.getByRole("menuitem", {name: "Rename"}).click();
+  await expect(page.locator(".sessionRow").filter({
+    hasText: "Archive Target"
+  })).toBeVisible();
 
+  activeSession = page.locator(".sessionRow[data-active]");
+  await activeSession.hover();
+  await activeSession.getByRole("button", {name: /Session actions for/}).click();
   page.once("dialog", (dialog) => dialog.accept());
-  await lifecycle.getByRole("button", {name: "Archive session"}).click();
+  await activeSession.getByRole("menuitem", {name: "Archive"}).click();
   await expect(page.getByRole("heading", {name: "Archive Target", level: 1})).toHaveCount(0);
 
   await page.getByRole("button", {name: "Show archived sessions"}).click();
@@ -238,8 +442,9 @@ test("browses workspace resources and restores an archived Session", async ({pag
     has: page.getByText("Archive Target", {exact: true})
   });
   await archived.locator(".sessionSelect").click();
-  await expect(lifecycle.getByRole("button", {name: "Restore session"})).toBeVisible();
-  await lifecycle.getByRole("button", {name: "Restore session"}).click();
+  await archived.hover();
+  await archived.getByRole("button", {name: /Session actions for/}).click();
+  await archived.getByRole("menuitem", {name: "Restore"}).click();
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
 });
 
@@ -311,6 +516,11 @@ test("keeps primary UI inside supported viewports with reduced motion", async ({
     (element) => element.getAnimations()[0]?.effect?.getTiming().iterations ?? 0
   )).toBeLessThanOrEqual(1);
 });
+
+async function openContextDetails(page: Page): Promise<void> {
+  await page.getByRole("button", {name: "Commands"}).click();
+  await page.getByRole("menuitem", {name: /context/}).click();
+}
 
 function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {
   return new Promise((resolve, reject) => {

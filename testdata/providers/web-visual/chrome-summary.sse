@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"content":"Preparing the structured summary."},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":32500,"completion_tokens":8,"prompt_cache_hit_tokens":12000}}
+
+data: [DONE]

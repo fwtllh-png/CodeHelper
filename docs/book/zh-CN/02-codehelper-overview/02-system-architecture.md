@@ -20,7 +20,7 @@ code_paths:
   - internal/platform
   - web
 test_paths:
-  - internal/host/cli/architecture_test.go
+  - internal/host/web/architecture_test.go
   - internal/runtime/protocol/schema_test.go
   - internal/host/runtimeapi/web/server_test.go
 source_of_truth:
@@ -34,8 +34,8 @@ last_verified: null
 
 ## 学习目标
 
-理解主要分层、依赖方向、Runtime Protocol，以及 CodeHelper 为什么让多种 Host 共享
-同一个执行核心。
+理解主要分层、依赖方向、Runtime Protocol，以及 CodeHelper 如何让 Web 与后台工作
+共享同一个执行核心。
 
 ## 前置知识
 
@@ -43,9 +43,9 @@ last_verified: null
 
 ## 问题背景
 
-Coding Agent 会逐渐拥有 CLI、TUI、编辑器、HTTP Client、后台 Worker 和 Child Agent。
-如果每个入口分别构造 Provider、执行 Tool 或保存 State，安全、取消、恢复和证据语义
-必然分叉。因此架构需要定义权限与依赖方向，而不只是列出目录。
+Coding Agent 会逐渐拥有 Web、后台 Worker 和 Child Agent。若这些入口分别构造
+Provider、执行 Tool 或保存 State，安全、取消、恢复和证据语义必然分叉。因此架构
+需要定义权限与依赖方向，而不只是列出目录。
 
 ## 同一系统的三个视图
 
@@ -75,9 +75,7 @@ Control Path，以及通过 Event/Receipt 的 Evidence Path；只实现 Executor
 ```mermaid
 flowchart TB
     subgraph Hosts
-      CLI
-      TUI
-      VSC[Web]
+      UI[Web]
       API[Web Transport]
     end
     P[Runtime Protocol]
@@ -100,7 +98,7 @@ flowchart TB
 图中的箭头不是“上层可任意调用所有下层”。Host 可以使用 Protocol 和 Application
 Facade，但不能直接依赖 Tool、Provider、Agent Engine 或 Sandbox 实现。
 
-受支持的产品 Host 是 CLI、TUI 和 Web。Web Host 在单一 `codehelper web` 进程中通过
+受支持的产品 Host 只有 Web。Web Host 在单一 `codehelper` 进程中通过
 loopback HTTP/WebSocket 连接 Embedded UI 与共享 Runtime；Provider HTTP、MCP HTTP/SSE
 与本地 Fixture Listener 是集成 Transport，不是产品 Host。远程绑定、Pairing/QR 和
 公网 REST/SSE 不属于受支持的产品面。
@@ -109,7 +107,7 @@ loopback HTTP/WebSocket 连接 Embedded UI 与共享 Runtime；Provider HTTP、M
 
 | 层 | 路径 | 职责 |
 | --- | --- | --- |
-| Entry | `cmd/codehelper` | Process Startup 与 CLI Root |
+| Entry | `cmd/codehelper` | Process Startup 与 Web Host |
 | Host | `internal/host` | Presentation 与 Transport Adapter |
 | Runtime | `internal/runtime` | Protocol、Lifecycle、Agent Loop、Wiring |
 | Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Plugin、Hook |
@@ -136,10 +134,10 @@ Dev Container 和 Codespaces 不属于该产品面。
 6. UI State 是 Projection，不是 Runtime Truth。
 7. 持久副作用在 Owner Boundary 内使用 Transaction 或 Journal。
 
-`internal/host/cli/architecture_test.go` 会解析 Import；CLI 直接依赖执行实现时测试失败。
+`internal/host/web/architecture_test.go` 会解析 Import；Web Host 直接依赖执行实现时测试失败。
 架构边界因此是可验证属性。
 
-`testdata/contracts/hotspot-baseline.json` 冻结 TUI、Engine、Config、Protocol 的职责和文件体积
+`testdata/contracts/hotspot-baseline.json` 冻结 Engine、Config、Protocol 的职责和文件体积
 边界。Characterization、Golden、Schema Drift 和 Race Test 在职责演进时保护行为。
 
 ## Runtime Protocol
@@ -244,7 +242,7 @@ Protocol 会增加版本管理成本；显式契约仍优于终端、插件和 E
 ## 测试与验证
 
 ```bash
-go test ./internal/host/cli -run TestCLIDoesNotDependOnExecutionImplementations
+go test ./internal/host/web -run TestWebHostDoesNotDependOnExecutionImplementations
 go test ./internal/runtime/protocol -run TestTheCommittedSchemaMatchesThisBuild
 go test ./internal/runtime/app -run TestRuntimeUnsupportedOperationIsExplicitlyRejected
 ```

@@ -14,6 +14,7 @@ type SessionService struct {
 	*Runtime
 	mutationMu sync.Mutex
 }
+type AgentPresetService struct{ *Runtime }
 type ArtifactService = artifact.Service
 
 // EventService owns in-memory event projections and observer delivery. The
@@ -52,7 +53,9 @@ func installRuntimeServices(runtime *Runtime, operationBuffer int) {
 		runtime: runtime,
 		active:  NewActiveTurnRegistry(),
 	}
+	runtime.TurnQueueService = newTurnQueueService(runtime)
 	runtime.SessionService = &SessionService{Runtime: runtime}
+	runtime.AgentPresetService = &AgentPresetService{Runtime: runtime}
 	runtime.OperationService = &OperationService{
 		Runtime:      runtime,
 		operations:   make(chan acceptedOperation, operationBuffer),
@@ -63,6 +66,7 @@ func installRuntimeServices(runtime *Runtime, operationBuffer int) {
 	runtime.RecoveryService = &RecoveryService{Runtime: runtime}
 	runtime.HistoryService = sessionhistory.NewService(runtime)
 	runtime.ArtifactService = artifact.NewArtifactService(runtime)
+	runtime.TraceQuery = runtime.opts.Observability.TraceQuery
 }
 
 // OperationService owns operation admission, idempotency, queueing, and

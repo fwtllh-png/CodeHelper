@@ -26,8 +26,6 @@ body:
     attributes:
       label: Surface / 入口
       options:
-        - CLI
-        - TUI
         - Web
         - Worker or orchestration
         - Documentation or book

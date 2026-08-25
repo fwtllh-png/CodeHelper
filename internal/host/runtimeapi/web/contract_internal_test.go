@@ -72,6 +72,10 @@ func TestUnaryRouteRegistryMatchesDispatcher(t *testing.T) {
 	for path, request := range map[string]string{
 		"task/list":                "task_query",
 		"agent/list":               "agent_query",
+		"agent-preset/list":        "agent_preset_list",
+		"agent-preset/save":        "agent_preset_save",
+		"agent-preset/delete":      "agent_preset_delete",
+		"agent-preset/apply":       "agent_preset_apply",
 		"usage/query":              "usage_query",
 		"extension/list":           "extension_query",
 		"credential/status":        "empty",

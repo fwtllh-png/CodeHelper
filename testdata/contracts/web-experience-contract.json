@@ -1,20 +1,26 @@
 {
   "version": 1,
-  "stylesheet": "web/src/ui/styles.css",
+  "stylesheets": [
+    "web/src/ui/styles.css",
+    "web/src/ui/SettingsDialog.css",
+    "web/src/ui/WorkspaceContextDialog.css",
+    "web/src/ui/Trajectory.css"
+  ],
   "layout_regions": [
     "session_rail",
     "conversation",
     "composer",
-    "detail"
+    "settings_dialog",
+    "context_dialog",
+    "trajectory_inspector"
   ],
   "responsive_tracks": [
     {
       "mode": "compact",
       "min_width": 320,
       "max_width": 720,
-      "tracks": "76px minmax(0, 1fr)",
+      "tracks": "56px minmax(0, 1fr)",
       "yield_order": [
-        "detail",
         "session_metadata",
         "session_search"
       ]
@@ -22,17 +28,15 @@
     {
       "mode": "regular",
       "min_width": 721,
-      "max_width": 1050,
-      "tracks": "264px minmax(0, 1fr)",
-      "yield_order": [
-        "detail"
-      ]
+      "max_width": 1240,
+      "tracks": "280px minmax(0, 1fr)",
+      "yield_order": []
     },
     {
       "mode": "wide",
-      "min_width": 1051,
+      "min_width": 1241,
       "max_width": 3840,
-      "tracks": "264px minmax(0, 1fr) 292px",
+      "tracks": "280px minmax(0, 1fr)",
       "yield_order": []
     }
   ],
@@ -41,38 +45,77 @@
     "--ch-panel",
     "--ch-panel-subtle",
     "--ch-panel-raised",
+    "--ch-sidebar",
     "--ch-border",
     "--ch-border-strong",
     "--ch-text",
+    "--ch-text-secondary",
     "--ch-text-muted",
+    "--ch-text-caption",
     "--ch-accent",
     "--ch-accent-hover",
     "--ch-accent-soft",
+    "--ch-business",
+    "--ch-business-soft",
+    "--ch-reasoning",
+    "--ch-tool",
     "--ch-on-accent",
     "--ch-danger",
     "--ch-danger-soft",
     "--ch-warning",
+    "--ch-success",
     "--ch-focus",
     "--ch-code",
     "--ch-shadow",
+    "--ch-modal-mask",
+    "--ch-modal-shadow",
+    "--ch-composer-shadow",
+    "--ch-rail-width",
+    "--ch-rail-collapsed-width",
+    "--ch-chat-width",
+    "--ch-composer-width",
+    "--ch-header-height",
     "--ch-radius",
+    "--ch-radius-panel",
+    "--ch-radius-modal",
+    "--ch-radius-conversation",
     "--ch-motion-none",
     "--ch-motion-spin",
+    "--ch-motion-panel",
+    "--ch-motion-disclosure",
+    "--ch-motion-shimmer",
+    "--ch-motion-tool",
+    "--ch-motion-pending",
+    "--ch-ease-in-out",
     "--ch-layer-behind",
     "--ch-layer-content",
     "--ch-layer-composer",
     "--ch-layer-overlay",
-    "--ch-layer-popover"
+    "--ch-layer-popover",
+    "--ch-layer-timeline-range",
+    "--ch-layer-timeline-span",
+    "--ch-layer-timeline-control",
+    "--ch-trajectory-row-height",
+    "--ch-trajectory-span-min"
   ],
   "canonical_states": [
     "empty",
+    "blank_session",
     "streaming",
+    "tool_collapsed",
+    "tool_expanded",
     "approval",
     "input",
     "failure",
     "completed",
     "diff",
-    "settings"
+    "settings",
+    "settings_models",
+    "settings_tools",
+    "settings_agent",
+    "context_browser",
+    "edit_approval",
+    "trajectory"
   ],
   "motion": [
     {
@@ -81,6 +124,27 @@
       "full": "infinite_rotation",
       "reduced": "single_frame",
       "still": "static_icon"
+    },
+    {
+      "id": "working_text",
+      "selector": ".turnStatus",
+      "full": "text_shimmer_1800ms",
+      "reduced": "single_frame",
+      "still": "static_text"
+    },
+    {
+      "id": "tool_running",
+      "selector": ".toolDisclosure[data-running]",
+      "full": "tool_sweep_2600ms",
+      "reduced": "single_frame",
+      "still": "status_text"
+    },
+    {
+      "id": "pending_interaction",
+      "selector": ".approvalDot",
+      "full": "pending_pulse_1000ms",
+      "reduced": "single_frame",
+      "still": "status_text"
     }
   ],
   "focus_order": [
@@ -91,7 +155,7 @@
     "transcript",
     "current_interaction",
     "composer",
-    "detail"
+    "modal_dialog"
   ],
   "keyboard_commands": [
     {
@@ -117,15 +181,20 @@
     ".composer",
     ".composerMeta",
     ".pendingComposer",
-    ".detailPanel",
-    ".iconButton"
+    ".settingsDialog",
+    ".contextDialog",
+    ".iconButton",
+    ".trajectoryTimeline",
+    ".ledgerRow",
+    ".recordInspector"
   ],
   "behavior": {
     "transcript_auto_follow": "only_when_near_bottom",
     "history_prepend_anchor": "preserve_visible_turn",
     "approval_takeover": "replace_composer_without_resizing_shell",
     "input_takeover": "replace_composer_without_resizing_shell",
-    "detail_open": "preserve_composer_and_primary_action"
+    "context_open": "modal_without_resizing_shell",
+    "trajectory_inspector": "view_local_resizable_panel"
   },
   "viewports": [
     "390x844",
@@ -145,13 +214,25 @@
   "golden_directory": "web/tests/e2e/visual.spec.ts-snapshots",
   "goldens": [
     "canonical-approval.png",
+    "canonical-back-to-bottom.png",
+    "canonical-blank-session.png",
     "canonical-completed.png",
     "canonical-diff.png",
+    "canonical-edit-approval.png",
+    "canonical-edit-completed.png",
     "canonical-empty.png",
     "canonical-failure.png",
     "canonical-input.png",
     "canonical-settings.png",
+    "canonical-settings-models.png",
+    "canonical-settings-tools.png",
+    "canonical-settings-agent.png",
+    "canonical-context-browser.png",
     "canonical-streaming.png",
+    "canonical-tool-collapsed.png",
+    "canonical-tool-expanded.png",
+    "canonical-trajectory.png",
+    "canonical-trajectory-detail.png",
     "viewport-390x844-dark.png",
     "viewport-390x844-light.png",
     "viewport-1024x768-dark.png",

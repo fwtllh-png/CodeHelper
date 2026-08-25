@@ -39,8 +39,7 @@ const (
 	providerDir  = "provider"
 )
 
-// DefaultPosture matches the CLI default so a task without an explicit posture
-// measures the behaviour users actually get.
+// DefaultPosture keeps benchmark tasks deterministic when no posture is set.
 const DefaultPosture = "auto"
 
 // Terminal outcomes a task may require.

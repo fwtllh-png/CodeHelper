@@ -11,19 +11,23 @@ import (
 type OperationKind string
 
 const (
-	OperationStartTurn        OperationKind = "turn.start"
-	OperationCancelTurn       OperationKind = "turn.cancel"
-	OperationSteerTurn        OperationKind = "turn.steer"
-	OperationApprovalDecision OperationKind = "approval.decision"
-	OperationInputReply       OperationKind = "input.reply"
-	OperationCompactThread    OperationKind = "thread.compact"
-	OperationForkThread       OperationKind = "thread.fork"
-	OperationRevertTurn       OperationKind = "turn.revert"
-	OperationSubmitRun        OperationKind = "run.submit"
-	OperationCancelRun        OperationKind = "run.cancel"
-	OperationResumeRun        OperationKind = "run.resume"
-	OperationRetryNode        OperationKind = "node.retry"
-	OperationSkipNode         OperationKind = "node.skip"
+	OperationStartTurn         OperationKind = "turn.start"
+	OperationCancelTurn        OperationKind = "turn.cancel"
+	OperationSteerTurn         OperationKind = "turn.steer"
+	OperationEnqueueTurn       OperationKind = "turn.enqueue"
+	OperationUpdateQueuedTurn  OperationKind = "turn.queue.update"
+	OperationRemoveQueuedTurn  OperationKind = "turn.queue.remove"
+	OperationPromoteQueuedTurn OperationKind = "turn.queue.promote"
+	OperationApprovalDecision  OperationKind = "approval.decision"
+	OperationInputReply        OperationKind = "input.reply"
+	OperationCompactThread     OperationKind = "thread.compact"
+	OperationForkThread        OperationKind = "thread.fork"
+	OperationRevertTurn        OperationKind = "turn.revert"
+	OperationSubmitRun         OperationKind = "run.submit"
+	OperationCancelRun         OperationKind = "run.cancel"
+	OperationResumeRun         OperationKind = "run.resume"
+	OperationRetryNode         OperationKind = "node.retry"
+	OperationSkipNode          OperationKind = "node.skip"
 )
 
 func IsWorkGraphOperation(kind OperationKind) bool {
@@ -118,6 +122,7 @@ type StartTurnPayload struct {
 	WorkspaceIdentity *WorkspaceIdentity        `json:"workspace_identity,omitempty"`
 	Context           []EditorContextReference  `json:"context,omitempty"`
 	Recovery          *TurnRecoveryContext      `json:"recovery,omitempty"`
+	QueueID           string                    `json:"queue_id,omitempty"`
 	// Idle marks extension/automation-initiated work. Plan mode rejects it (W6 / C4).
 	Idle bool `json:"idle,omitempty"`
 }
@@ -153,15 +158,7 @@ func (p *StartTurnPayload) validate() error {
 			return err
 		}
 	}
-	if len(p.Context) > 8 {
-		return errors.New("start turn accepts at most 8 editor context references")
-	}
-	for _, reference := range p.Context {
-		if err := reference.validate(); err != nil {
-			return err
-		}
-	}
-	return nil
+	return validateEditorContextReferences(p.Context, "start turn")
 }
 
 type CancelTurnPayload struct {
@@ -206,6 +203,7 @@ type SteerTurnPayload struct {
 	TurnID   TurnID   `json:"turn_id"`
 	ItemID   ItemID   `json:"item_id"`
 	Prompt   string   `json:"prompt"`
+	QueueID  string   `json:"queue_id,omitempty"`
 }
 
 func (*SteerTurnPayload) operationKind() OperationKind { return OperationSteerTurn }
@@ -220,6 +218,119 @@ func (p *SteerTurnPayload) validate() error {
 	}
 	if p.Prompt == "" {
 		return errors.New("steering prompt is required")
+	}
+	return nil
+}
+
+type EnqueueTurnPayload struct {
+	ThreadID          ThreadID                 `json:"thread_id"`
+	TurnID            TurnID                   `json:"turn_id"`
+	ItemID            ItemID                   `json:"item_id"`
+	QueueID           string                   `json:"queue_id"`
+	Prompt            string                   `json:"prompt"`
+	DisplayPrompt     string                   `json:"display_prompt,omitempty"`
+	Intent            TurnIntent               `json:"intent,omitempty"`
+	WorkspaceIdentity *WorkspaceIdentity       `json:"workspace_identity,omitempty"`
+	Context           []EditorContextReference `json:"context,omitempty"`
+}
+
+func (*EnqueueTurnPayload) operationKind() OperationKind { return OperationEnqueueTurn }
+
+func (p *EnqueueTurnPayload) references() (*ThreadID, *TurnID, *ItemID) {
+	return &p.ThreadID, &p.TurnID, &p.ItemID
+}
+
+func (p *EnqueueTurnPayload) validate() error {
+	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(p.QueueID) == "" || strings.TrimSpace(p.Prompt) == "" {
+		return errors.New("enqueue turn queue_id and prompt are required")
+	}
+	if !NormalizeTurnIntent(p.Intent).Valid() {
+		return fmt.Errorf("enqueue turn intent %q is invalid", p.Intent)
+	}
+	if p.WorkspaceIdentity != nil {
+		if err := p.WorkspaceIdentity.Validate(); err != nil {
+			return err
+		}
+	}
+	return validateEditorContextReferences(p.Context, "enqueue turn")
+}
+
+type UpdateQueuedTurnPayload struct {
+	ThreadID      ThreadID `json:"thread_id"`
+	TurnID        TurnID   `json:"turn_id"`
+	ItemID        ItemID   `json:"item_id"`
+	QueueID       string   `json:"queue_id"`
+	Prompt        string   `json:"prompt"`
+	DisplayPrompt string   `json:"display_prompt,omitempty"`
+}
+
+func (*UpdateQueuedTurnPayload) operationKind() OperationKind {
+	return OperationUpdateQueuedTurn
+}
+
+func (p *UpdateQueuedTurnPayload) references() (*ThreadID, *TurnID, *ItemID) {
+	return &p.ThreadID, &p.TurnID, &p.ItemID
+}
+
+func (p *UpdateQueuedTurnPayload) validate() error {
+	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(p.QueueID) == "" || strings.TrimSpace(p.Prompt) == "" {
+		return errors.New("queued turn update queue_id and prompt are required")
+	}
+	return nil
+}
+
+type RemoveQueuedTurnPayload struct {
+	ThreadID ThreadID `json:"thread_id"`
+	TurnID   TurnID   `json:"turn_id"`
+	ItemID   ItemID   `json:"item_id"`
+	QueueID  string   `json:"queue_id"`
+}
+
+func (*RemoveQueuedTurnPayload) operationKind() OperationKind {
+	return OperationRemoveQueuedTurn
+}
+
+func (p *RemoveQueuedTurnPayload) references() (*ThreadID, *TurnID, *ItemID) {
+	return &p.ThreadID, &p.TurnID, &p.ItemID
+}
+
+func (p *RemoveQueuedTurnPayload) validate() error {
+	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(p.QueueID) == "" {
+		return errors.New("queued turn removal queue_id is required")
+	}
+	return nil
+}
+
+type PromoteQueuedTurnPayload struct {
+	ThreadID ThreadID `json:"thread_id"`
+	TurnID   TurnID   `json:"turn_id"`
+	ItemID   ItemID   `json:"item_id"`
+	QueueID  string   `json:"queue_id"`
+}
+
+func (*PromoteQueuedTurnPayload) operationKind() OperationKind {
+	return OperationPromoteQueuedTurn
+}
+
+func (p *PromoteQueuedTurnPayload) references() (*ThreadID, *TurnID, *ItemID) {
+	return &p.ThreadID, &p.TurnID, &p.ItemID
+}
+
+func (p *PromoteQueuedTurnPayload) validate() error {
+	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
+		return err
+	}
+	if strings.TrimSpace(p.QueueID) == "" {
+		return errors.New("queued turn promotion queue_id is required")
 	}
 	return nil
 }

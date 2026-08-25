@@ -43,9 +43,13 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - `never`：首次检查仓库和不可信 Workspace 最安全。
 - `suggest`：日常交互开发推荐。
 - `auto`：适合已知 Policy 和确定性 Fixture；被拒绝的操作可能不弹审批。
-- `bypass`：只用于有独立备份的隔离可信 Workspace。
 
-`bypass` 仍受硬约束和 Sandbox Availability 限制。
+Web 不接受 `bypass`；该内部 Posture 仅用于受控测试与隔离执行，并仍受硬约束和
+Sandbox Availability 限制。
+
+Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示；跨域图片只有在
+用户点击加载后才会请求，并且只允许 HTTPS、使用 `no-referrer`，避免模型输出静默
+泄露页面来源或触发明文媒体请求。
 
 ## Workspace 与文件安全
 

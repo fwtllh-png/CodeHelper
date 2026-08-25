@@ -121,6 +121,8 @@ func Project(event protocol.Event) (Update, error) {
 		return TextUpdate{Base: base, Channel: "output", Text: data.Text}, nil
 	case *protocol.ReasoningDeltaData:
 		return TextUpdate{Base: base, Channel: "reasoning", Text: data.Text}, nil
+	case *protocol.ReasoningCompletedData:
+		return TextUpdate{Base: base, Channel: "reasoning", Text: data.Text}, nil
 	case *protocol.ToolStartData:
 		return ToolUpdate{Base: base, CallID: data.CallID, Tool: data.Tool, Arguments: data.Arguments}, nil
 	case *protocol.ToolOutputData:

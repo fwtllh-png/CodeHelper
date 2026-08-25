@@ -35,16 +35,6 @@ type JobInfo struct {
 	Cursor       uint64    `json:"cursor"`
 }
 
-// JobCenter is the TUI/tools façade over SessionManager (+ stale journal).
-type JobCenter interface {
-	List() []JobInfo
-	Info(id string) (JobInfo, bool)
-	Poll(ctx context.Context, id string, wait bool) (JobInfo, error)
-	Stdin(id, data string) error
-	Cancel(id string) error
-	CancelAll() error
-}
-
 type journalEntry struct {
 	ID           string    `json:"id"`
 	Command      string    `json:"command"`
@@ -387,6 +377,3 @@ func (s *Session) jobInfo() JobInfo {
 		Cursor: s.baseCursor + uint64(len(s.output)),
 	}
 }
-
-// Ensure SessionManager implements JobCenter.
-var _ JobCenter = (*SessionManager)(nil)

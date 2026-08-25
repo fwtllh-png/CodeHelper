@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -54,7 +53,7 @@ native_search = true
 	cliBuffer := 40
 	cliLevel := "error"
 	cliSteps := 9
-	cliStateDir := "/cli/state"
+	startupStateDir := "/startup/state"
 	snapshot, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
@@ -68,7 +67,7 @@ native_search = true
 		}),
 		Overrides: Overrides{
 			OperationBuffer: &cliBuffer,
-			StateDataDir:    &cliStateDir,
+			StateDataDir:    &startupStateDir,
 			LogLevel:        &cliLevel,
 			MaxSteps:        &cliSteps,
 		},
@@ -85,7 +84,7 @@ native_search = true
 	if snapshot.Config.Telemetry.LogLevel != "error" {
 		t.Fatalf("log level = %q, want error", snapshot.Config.Telemetry.LogLevel)
 	}
-	if snapshot.Config.State.DataDir != "/cli/state" ||
+	if snapshot.Config.State.DataDir != "/startup/state" ||
 		snapshot.Config.State.BusyTimeout.String() != "9s" ||
 		snapshot.Config.State.EventRetention != 5000 {
 		t.Fatalf("unexpected state config: %+v", snapshot.Config.State)
@@ -98,17 +97,17 @@ native_search = true
 		snapshot.Config.Execution.MaxSteps != 9 ||
 		snapshot.Provenance[fieldProvider] != SourceEnv ||
 		snapshot.Provenance[fieldModel] != SourceFile ||
-		snapshot.Provenance[fieldMaxSteps] != SourceCLI {
+		snapshot.Provenance[fieldMaxSteps] != SourceStartup {
 		t.Fatalf("execution precedence = %+v provenance=%+v", snapshot.Config.Execution, snapshot.Provenance)
 	}
 	wantSources := map[string]Source{
-		fieldOperationBuffer:  SourceCLI,
+		fieldOperationBuffer:  SourceStartup,
 		fieldEventHistory:     SourceEnv,
 		fieldSubscriberBuffer: SourceFile,
-		fieldStateDataDir:     SourceCLI,
+		fieldStateDataDir:     SourceStartup,
 		fieldStateBusyTimeout: SourceEnv,
 		fieldStateRetention:   SourceFile,
-		fieldLogLevel:         SourceCLI,
+		fieldLogLevel:         SourceStartup,
 		fieldCredentialKind:   SourceFile,
 		fieldCredentialName:   SourceEnv,
 	}
@@ -228,8 +227,8 @@ func TestSubagentResidentAndTotalOverridesWin(t *testing.T) {
 		got.MaxTotal != total {
 		t.Fatalf("subagent overrides = %+v", got)
 	}
-	if snapshot.Provenance[fieldSubagentMaxResident] != SourceCLI ||
-		snapshot.Provenance[fieldSubagentMaxTotal] != SourceCLI {
+	if snapshot.Provenance[fieldSubagentMaxResident] != SourceStartup ||
+		snapshot.Provenance[fieldSubagentMaxTotal] != SourceStartup {
 		t.Fatalf("subagent override provenance = %+v", snapshot.Provenance)
 	}
 }
@@ -252,7 +251,7 @@ budget_usd = 3.5
 		!fromFile.Config.Execution.NativeSearch ||
 		fromFile.Config.Execution.BudgetTokens != 700 ||
 		fromFile.Config.Execution.BudgetUSD != 3.5 {
-		t.Fatalf("absent CLI flags did not preserve file values: %+v", fromFile.Config.Execution)
+		t.Fatalf("absent startup flags did not preserve file values: %+v", fromFile.Config.Execution)
 	}
 
 	disabled := false
@@ -281,8 +280,8 @@ budget_usd = 3.5
 		t.Fatalf("explicit false/zero overrides were lost: %+v", overridden.Config.Execution)
 	}
 	for _, field := range []string{fieldTools, fieldNativeSearch, fieldBudgetTokens, fieldBudgetUSD} {
-		if overridden.Provenance[field] != SourceCLI {
-			t.Fatalf("provenance[%q] = %q, want CLI", field, overridden.Provenance[field])
+		if overridden.Provenance[field] != SourceStartup {
+			t.Fatalf("provenance[%q] = %q, want startup", field, overridden.Provenance[field])
 		}
 	}
 }
@@ -353,75 +352,6 @@ func TestLoadAcceptsReferenceKindsAndRejectsUnknownKind(t *testing.T) {
 	var fieldErr *FieldError
 	if !errors.As(err, &fieldErr) || fieldErr.Field != fieldCredentialKind {
 		t.Fatalf("Load(inline) error = %v, want credential kind FieldError", err)
-	}
-}
-
-func TestManagerReloadKeepsLastValidSnapshot(t *testing.T) {
-	path := writeConfig(t, "[runtime]\noperation_buffer = 10\n")
-	manager, err := NewManager(LoadOptions{Path: path, LookupEnv: envLookup(nil)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("[runtime]\noperation_buffer = 20\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	reloaded, err := manager.Reload()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reloaded.Config.Runtime.OperationBuffer != 20 {
-		t.Fatalf("reloaded operation buffer = %d", reloaded.Config.Runtime.OperationBuffer)
-	}
-
-	if err := os.WriteFile(path, []byte("[runtime]\noperation_buffer = 0\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := manager.Reload(); err == nil {
-		t.Fatal("Reload() error = nil, want validation error")
-	}
-	if got := manager.Current().Config.Runtime.OperationBuffer; got != 20 {
-		t.Fatalf("current operation buffer = %d, want last valid value 20", got)
-	}
-}
-
-func TestCurrentReturnsIndependentProvenance(t *testing.T) {
-	manager, err := NewManager(LoadOptions{LookupEnv: envLookup(nil)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	first := manager.Current()
-	first.Provenance[fieldLogLevel] = SourceCLI
-	if got := manager.Current().Provenance[fieldLogLevel]; got != SourceDefault {
-		t.Fatalf("manager provenance mutated through snapshot: %q", got)
-	}
-}
-
-func TestCloneSnapshotCopiesNestedRuntimeMapsAndSlices(t *testing.T) {
-	original := Snapshot{
-		Config: Config{
-			Route: Route{Slots: map[string]RouteSlot{
-				"plan": {Provider: "fixture", Model: "planner"},
-			}},
-			Diagnostics: Diagnostics{Commands: map[string]DiagnosticCommand{
-				".go": {Name: "go", Args: []string{"test", "{path}"}},
-			}},
-		},
-		Provenance: map[string]Source{fieldProvider: SourceFile},
-	}
-	cloned := CloneSnapshot(original)
-	cloned.Config.Route.Slots["plan"] = RouteSlot{
-		Provider: "other",
-		Model:    "other",
-	}
-	command := cloned.Config.Diagnostics.Commands[".go"]
-	command.Args[0] = "vet"
-	cloned.Config.Diagnostics.Commands[".go"] = command
-	cloned.Provenance[fieldProvider] = SourceCLI
-
-	if original.Config.Route.Slots["plan"].Provider != "fixture" ||
-		original.Config.Diagnostics.Commands[".go"].Args[0] != "test" ||
-		original.Provenance[fieldProvider] != SourceFile {
-		t.Fatalf("original snapshot mutated through clone: %+v", original)
 	}
 }
 
@@ -502,61 +432,6 @@ response_header_timeout = "5s"
 	}
 }
 
-func TestManagerReloadEventKeepsLastValidSnapshot(t *testing.T) {
-	manager, err := NewManager(LoadOptions{LookupEnv: envLookup(nil)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	valid := writeConfig(t, "[runtime]\noperation_buffer = 20\n")
-	event := manager.ReloadFrom(LoadOptions{Path: valid, LookupEnv: envLookup(nil)})
-	if event.Type != "config.reload.succeeded" || event.Problem != nil {
-		t.Fatalf("successful reload event = %+v", event)
-	}
-
-	invalid := writeConfig(t, "[runtime]\noperation_buffer = 0\n")
-	event = manager.ReloadFrom(LoadOptions{Path: invalid, LookupEnv: envLookup(nil)})
-	if event.Type != "config.reload.failed" || event.Problem == nil {
-		t.Fatalf("failed reload event = %+v", event)
-	}
-	if event.Current.Config.Runtime.OperationBuffer != 20 ||
-		manager.Current().Config.Runtime.OperationBuffer != 20 {
-		t.Fatalf("failed reload replaced last valid snapshot: %+v", event.Current)
-	}
-}
-
-func TestManagerConcurrentReloadAndRead(t *testing.T) {
-	manager, err := NewManager(LoadOptions{LookupEnv: envLookup(nil)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	paths := []string{
-		writeConfig(t, "[runtime]\noperation_buffer = 10\n"),
-		writeConfig(t, "[runtime]\noperation_buffer = 20\n"),
-	}
-	var group sync.WaitGroup
-	for worker := range 20 {
-		group.Add(1)
-		go func(worker int) {
-			defer group.Done()
-			for index := range 100 {
-				event := manager.ReloadFrom(LoadOptions{
-					Path: paths[(worker+index)%len(paths)], LookupEnv: envLookup(nil),
-				})
-				if event.Problem != nil {
-					t.Errorf("ReloadFrom() problem = %v", event.Problem)
-					return
-				}
-				value := manager.Current().Config.Runtime.OperationBuffer
-				if value != 10 && value != 20 {
-					t.Errorf("current operation buffer = %d", value)
-					return
-				}
-			}
-		}(worker)
-	}
-	group.Wait()
-}
-
 func TestVisionConfigFileAndValidation(t *testing.T) {
 	path := writeConfig(t, `
 [vision]
@@ -622,7 +497,7 @@ command = "make verify"
 	// clear it in the same load.
 	mode, repair, command := "hard", 0, ""
 	timeout := 90 * time.Second
-	fromCLI, err := Load(LoadOptions{
+	fromStartup, err := Load(LoadOptions{
 		Path:      path,
 		LookupEnv: envLookup(map[string]string{"CODEHELPER_VERIFY_SCOPE": "diagnostics"}),
 		Overrides: Overrides{
@@ -633,14 +508,14 @@ command = "make verify"
 	if err != nil {
 		t.Fatal(err)
 	}
-	verify = fromCLI.Config.Execution.Verify
+	verify = fromStartup.Config.Execution.Verify
 	if verify.Mode != "hard" || verify.Scope != "diagnostics" || verify.MaxRepairSteps != 0 ||
 		verify.Timeout != 90*time.Second {
-		t.Fatalf("verify from env/cli = %+v", verify)
+		t.Fatalf("verify from env/startup = %+v", verify)
 	}
-	if fromCLI.Provenance[fieldVerifyScope] != SourceEnv ||
-		fromCLI.Provenance[fieldVerifyMode] != SourceCLI {
-		t.Fatalf("provenance = %+v", fromCLI.Provenance)
+	if fromStartup.Provenance[fieldVerifyScope] != SourceEnv ||
+		fromStartup.Provenance[fieldVerifyMode] != SourceStartup {
+		t.Fatalf("provenance = %+v", fromStartup.Provenance)
 	}
 }
 
@@ -735,7 +610,7 @@ max_files = 100
 	}
 	if loaded.Provenance[fieldIndexEnabled] != SourceFile ||
 		loaded.Provenance[fieldIndexMaxBytes] != SourceEnv ||
-		loaded.Provenance[fieldIndexMaxFiles] != SourceCLI {
+		loaded.Provenance[fieldIndexMaxFiles] != SourceStartup {
 		t.Fatalf("provenance = %+v", loaded.Provenance)
 	}
 
@@ -806,7 +681,7 @@ max_bytes = 2048
 	}
 	if loaded.Provenance[fieldRepoMapMaxDirectories] != SourceFile ||
 		loaded.Provenance[fieldRepoMapMaxBytes] != SourceEnv ||
-		loaded.Provenance[fieldWorkingSetMaxEntries] != SourceCLI {
+		loaded.Provenance[fieldWorkingSetMaxEntries] != SourceStartup {
 		t.Fatalf("provenance = %+v", loaded.Provenance)
 	}
 
@@ -878,7 +753,7 @@ enabled = false
 		t.Fatal("the file did not turn the coding method off")
 	}
 	if loaded.Provenance[fieldEvidenceMaxBytes] != SourceEnv ||
-		loaded.Provenance[fieldEvidenceMaxEntries] != SourceCLI ||
+		loaded.Provenance[fieldEvidenceMaxEntries] != SourceStartup ||
 		loaded.Provenance[fieldCodingPolicyEnabled] != SourceFile {
 		t.Fatalf("provenance = %+v", loaded.Provenance)
 	}
@@ -929,7 +804,7 @@ scope = "body_after_prefix"
 		t.Fatalf("compact = %+v", got)
 	}
 	if snapshot.Provenance[fieldCompactAutoTokens] != SourceEnv ||
-		snapshot.Provenance[fieldCompactScope] != SourceCLI {
+		snapshot.Provenance[fieldCompactScope] != SourceStartup {
 		t.Fatalf("provenance = %+v", snapshot.Provenance)
 	}
 }
@@ -1047,19 +922,19 @@ max_cost_usd = 2.5
 
 	parallel := 1
 	disabled := false
-	fromCLI, err := Load(LoadOptions{
+	fromStartup, err := Load(LoadOptions{
 		Path:      path,
 		Overrides: Overrides{WorkerEnabled: &disabled, WorkerMaxParallel: &parallel},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker = fromCLI.Config.Execution.Worker
+	worker = fromStartup.Config.Execution.Worker
 	if worker.Enabled || worker.MaxParallel != 1 || worker.MaxAttempts != 3 {
-		t.Fatalf("worker from cli = %+v", worker)
+		t.Fatalf("worker from startup = %+v", worker)
 	}
-	if fromCLI.Provenance[fieldWorkerMaxParallel] != SourceCLI {
-		t.Fatalf("provenance = %+v", fromCLI.Provenance)
+	if fromStartup.Provenance[fieldWorkerMaxParallel] != SourceStartup {
+		t.Fatalf("provenance = %+v", fromStartup.Provenance)
 	}
 }
 

@@ -1,2 +1,2 @@
-// Package config loads, validates, and reloads CodeHelper configuration.
+// Package config loads and validates CodeHelper configuration.
 package config

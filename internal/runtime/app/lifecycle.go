@@ -53,11 +53,12 @@ func eventItemOwner(turnID protocol.TurnID, localID string) EventItemOwner {
 // RecoveryState is explicit input to Runtime's state machine. It contains only
 // state required to continue allocating events and reject unsafe replays.
 type RecoveryState struct {
-	LastSequence      protocol.Cursor
-	Terminals         map[protocol.TurnID]protocol.EventKind
-	PendingApprovals  map[string]PendingApproval
-	PendingInputs     map[string]PendingInput
-	PendingOperations map[protocol.OperationID]PendingOperation
+	LastSequence       protocol.Cursor
+	Terminals          map[protocol.TurnID]protocol.EventKind
+	PendingApprovals   map[string]PendingApproval
+	PendingInputs      map[string]PendingInput
+	PendingQueuedTurns map[string]protocol.QueuedTurn
+	PendingOperations  map[protocol.OperationID]PendingOperation
 	// ToolItems remaps Turn-owned call IDs to ItemIDs so post-recovery
 	// tool.result events keep a stable item identity (F5).
 	ToolItems map[EventItemOwner]protocol.ItemID

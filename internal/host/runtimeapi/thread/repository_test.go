@@ -298,3 +298,52 @@ func TestRecoverRequeuesCommittedStartForActiveTurnWithoutTerminal(t *testing.T)
 		t.Fatalf("pending operations = %+v, want interrupted start", recovery.PendingOperations)
 	}
 }
+
+func TestRecoverRebuildsPendingTurnQueueFromRetainedEvents(t *testing.T) {
+	store, err := state.Open(t.Context(), state.Options{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close(t.Context()) })
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, statement := range []string{
+		`INSERT INTO workspaces(id, root_path, created_at, updated_at)
+		 VALUES ('workspace', '/workspace', ?, ?)`,
+		`INSERT INTO sessions(id, workspace_id, status, created_at, updated_at)
+		 VALUES ('session', 'workspace', 'open', ?, ?)`,
+		`INSERT INTO threads(id, session_id, title, status, created_at, updated_at)
+		 VALUES ('thread', 'session', 'chat', 'open', ?, ?)`,
+	} {
+		if _, err := store.SQLite().DB().ExecContext(
+			t.Context(), statement, now, now,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events := []protocol.EventData{
+		&protocol.TurnQueuedData{QueueID: "queue-1", Prompt: "before"},
+		&protocol.QueuedTurnUpdatedData{QueueID: "queue-1", Prompt: "after"},
+	}
+	for index, data := range events {
+		event, err := protocol.NewEvent(protocol.EventMeta{
+			Sequence:    protocol.Cursor(index + 1),
+			OperationID: "operation",
+			ThreadID:    "thread", TurnID: "turn", ItemID: "item",
+		}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Append(t.Context(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recovery, err := NewLifecycle(store).Recover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, ok := recovery.PendingQueuedTurns["queue-1"]
+	if !ok || item.Prompt != "after" || item.AddedSequence != 1 {
+		t.Fatalf("pending queue = %+v", recovery.PendingQueuedTurns)
+	}
+}

@@ -24,6 +24,7 @@ func TestRepositoryWebExperienceContract(t *testing.T) {
 func TestValidateCSSRejectsUnsafeLiteralsAndMotion(t *testing.T) {
 	value := contract{
 		CSSPolicy:      cssPolicy{MaxCardRadiusPX: 8},
+		Stylesheets:    []string{"web/src/ui/styles.css", "web/src/ui/Trajectory.css"},
 		SemanticTokens: []string{"--ch-text", "--ch-layer-overlay"},
 		StableGeometry: []string{".stable"},
 		Motion: []motionRule{{

@@ -14,7 +14,7 @@ func TestResolverCreatesReadyRouteWithMetadata(t *testing.T) {
 	route, err := resolver.Resolve(RouteRequest{
 		ProviderID: "openai",
 		ModelID:    "gpt-4.1",
-		Provenance: ProvenanceCLI,
+		Provenance: ProvenanceStartup,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -29,7 +29,7 @@ func TestResolverCreatesReadyRouteWithMetadata(t *testing.T) {
 	if model.WireID != "gpt-4.1" || !model.Capabilities.NativeSearch {
 		t.Fatalf("unexpected model metadata: %+v", model)
 	}
-	if model.Pricing.Provenance != ProvenanceBundled || route.Provenance() != ProvenanceCLI {
+	if model.Pricing.Provenance != ProvenanceBundled || route.Provenance() != ProvenanceStartup {
 		t.Fatalf("unexpected provenance: model=%q route=%q", model.Pricing.Provenance, route.Provenance())
 	}
 }

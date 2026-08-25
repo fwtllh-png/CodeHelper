@@ -1,21 +1,24 @@
 import {
   AlertTriangle,
+  ArrowDown,
   Archive,
   Braces,
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleStop,
   Download,
   FileCode2,
-  FolderTree,
+  FolderOpen,
   GitFork,
-  GitCompareArrows,
   LoaderCircle,
+  ListPlus,
   KeyRound,
-  Moon,
-  PanelRightClose,
-  PanelRightOpen,
+  MoreHorizontal,
+  Paperclip,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Pin,
   PinOff,
@@ -26,60 +29,164 @@ import {
   Search,
   Send,
   Settings2,
-  Sun,
-  TerminalSquare,
   TextSelect,
   Trash2,
+  Zap,
   Wrench,
   X
 } from "lucide-react";
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode
+} from "react";
 import type {
   CredentialStatus,
-  EditorRange,
   RuntimeEvent,
-  SessionSummary,
-  WorkspaceDiagnosticContext,
-  WorkspaceEntry,
-  WorkspaceDiff,
-  WorkspaceImage,
-  WorkspaceResource,
-  WorkspaceSearchMatch,
-  WorkspaceSymbol
+  SessionCheckpoint,
+  SessionSummary
 } from "../protocol";
-import {isTerminal, RuntimeClient, type RuntimeSnapshot} from "../runtime/client";
+import {
+  projectEditPlan,
+  projectConversation,
+  type ConversationNode
+} from "../projection/conversation";
+import {RuntimeClient, type RuntimeSnapshot} from "../runtime/client";
+import {CapybaraMark} from "./brand/CapybaraMark";
+import {CodeHelperWordmark} from "./brand/CodeHelperWordmark";
+import {
+  compactSelectWidth,
+  ContextMeter,
+  MessageActions,
+  type ContextAttribution,
+  type MessageChrome,
+  type MessageFeedbackRating
+} from "./ConversationChrome";
+import type {ComposerCommand} from "./ComposerCommandMenu";
+import {experience} from "./experience";
+import type {ThemeMode} from "./SettingsDialog";
+import type {BackgroundActivityTarget} from "./backgroundActivity";
+import {
+  EditPlanPreview,
+  ReasoningDisclosure,
+  ToolDisclosure
+} from "./TranscriptCards";
+import {
+  maxComposerAttachmentBytes,
+  maxComposerAttachments,
+  composerAttachmentAccept
+} from "./attachmentLimits";
+import type {
+  ComposerAttachment,
+  ComposerAttachmentSource
+} from "./attachmentPipeline";
+import {
+  adjacentQuestion,
+  projectConversationNavigation,
+  questionPosition,
+  transcriptPageForEntry,
+  type ConversationNavigationItem
+} from "./conversationNavigation";
+
+export {selectionRange} from "./WorkspaceContextDialog";
 
 interface Props {
   client: RuntimeClient;
 }
 
-type TranscriptEntry =
-  | {id: string; type: "user" | "assistant" | "reasoning"; text: string}
-  | {
-      id: string;
-      type: "tool";
-      title: string;
-      text: string;
-      failed: boolean;
-      callID: string;
-      contextText?: string;
-    }
-  | {
-      id: string;
-      type: "status";
-      title: string;
-      text: string;
-      failed: boolean;
-      turnID?: string;
-    };
-
 const transcriptPageSize = 200;
+const transcriptPageOverlap = 32;
+const transcriptPageStep = transcriptPageSize - transcriptPageOverlap;
+const compactCountFormat = new Intl.NumberFormat("en", {
+  notation: "compact",
+  maximumFractionDigits: 1
+});
+const Trajectory = lazy(async () => ({
+  default: (await import("./Trajectory")).Trajectory
+}));
+const SettingsDialog = lazy(async () => ({
+  default: (await import("./SettingsDialog")).SettingsDialog
+}));
+const WorkspaceContextDialog = lazy(async () => ({
+  default: (await import("./WorkspaceContextDialog")).WorkspaceContextDialog
+}));
+const ComposerAttachments = lazy(async () => ({
+  default: (await import("./ComposerAttachments")).ComposerAttachments
+}));
+const ComposerCommandMenu = lazy(async () => ({
+  default: (await import("./ComposerCommandMenu")).ComposerCommandMenu
+}));
+const ProducedFiles = lazy(async () => ({
+  default: (await import("./ProducedFiles")).ProducedFiles
+}));
+const SessionProgress = lazy(async () => ({
+  default: (await import("./SessionProgress")).SessionProgress
+}));
+const TurnQueue = lazy(async () => ({
+  default: (await import("./TurnQueue")).TurnQueue
+}));
+const BackgroundActivityMonitor = lazy(async () => ({
+  default: (await import("./BackgroundActivityMonitor")).BackgroundActivityMonitor
+}));
+const ConversationNavigator = lazy(async () => ({
+  default: (await import("./ConversationNavigator")).ConversationNavigator
+}));
+const MarkdownMessage = lazy(async () => ({
+  default: (await import("./MarkdownMessage")).MarkdownMessage
+}));
 
-function initialDetailOpen(): boolean {
-  return typeof window.matchMedia !== "function" ||
-    window.matchMedia("(min-width: 1051px)").matches;
+interface TranscriptReadingPosition {
+  readonly entryID: string;
+  readonly top: number;
+  readonly scrollTop: number;
+  readonly page: number;
+  readonly atBottom: boolean;
+}
+
+interface TranscriptNavigationTarget {
+  readonly entryID: string;
+  readonly path?: string;
+}
+
+function initialRailCollapsed(): boolean {
+  return readPreference("ch.sidebar.collapsed") === "true";
+}
+
+function initialSessionIsolation(): "shared" | "worktree" {
+  return readPreference("ch.session.isolation") === "worktree"
+    ? "worktree"
+    : "shared";
+}
+
+function storedPanelWidth(key: string, fallback: number): number {
+  const stored = readPreference(key);
+  if (stored === null) return fallback;
+  const value = Number(stored);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function readPreference(key: string): string | null {
+  try {
+    return window.localStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writePreference(key: string, value: string): void {
+  try {
+    window.localStorage?.setItem(key, value);
+  } catch {
+    // Browser preferences are optional and never affect Runtime state.
+  }
 }
 
 export function App({client}: Props) {
@@ -89,57 +196,136 @@ export function App({client}: Props) {
     client.getSnapshot
   );
   const [query, setQuery] = useState("");
+  const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
   const [draft, setDraft] = useState("");
   const [draftOwner, setDraftOwner] = useState("");
-  const [detailOpen, setDetailOpen] = useState(initialDetailOpen);
+  const [contextOpen, setContextOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(initialRailCollapsed);
+  const [railWidth, setRailWidth] = useState(
+    () => storedPanelWidth(
+      "ch.sidebar.width",
+      experience.layout.sidebarDefault
+    )
+  );
+  const [activeView, setActiveView] = useState<"chat" | "trajectory">("chat");
+  const [inspectCallID, setInspectCallID] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
+  const [activityTarget, setActivityTarget] =
+    useState<BackgroundActivityTarget>();
   const [submitting, setSubmitting] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [composerAttachments, setComposerAttachments] =
+    useState<ComposerAttachment[]>([]);
+  const [draggingAttachment, setDraggingAttachment] = useState(false);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [commandMenuSource, setCommandMenuSource] =
+    useState<"button" | "slash">("button");
   const [sessionAction, setSessionAction] = useState<{
     sessionID: string;
     pending: boolean;
     error: string;
   }>();
-  const [workspaceQuery, setWorkspaceQuery] = useState("");
-  const [workspaceMatches, setWorkspaceMatches] = useState<readonly WorkspaceSearchMatch[]>([]);
-  const [workspacePath, setWorkspacePath] = useState(".");
-  const [workspaceEntries, setWorkspaceEntries] = useState<readonly WorkspaceEntry[]>([]);
-  const [workspaceResource, setWorkspaceResource] = useState<WorkspaceResource>();
-  const [workspaceSelection, setWorkspaceSelection] = useState<EditorRange>();
-  const [workspaceImage, setWorkspaceImage] = useState<WorkspaceImage>();
-  const [workspaceImageURL, setWorkspaceImageURL] = useState("");
-  const [workspaceSymbolQuery, setWorkspaceSymbolQuery] = useState("");
-  const [workspaceSymbols, setWorkspaceSymbols] = useState<readonly WorkspaceSymbol[]>([]);
-  const [workspaceDiagnostics, setWorkspaceDiagnostics] =
-    useState<readonly WorkspaceDiagnosticContext[]>([]);
-  const [workspaceDiff, setWorkspaceDiff] = useState<WorkspaceDiff>();
-  const [newIsolation, setNewIsolation] = useState<"shared" | "worktree">("shared");
+  const [newIsolation, setNewIsolation] =
+    useState<"shared" | "worktree">(initialSessionIsolation);
   const [credentialStatus, setCredentialStatus] = useState<CredentialStatus>();
-  const [diagnostics, setDiagnostics] = useState("");
   const [transcriptPage, setTranscriptPage] = useState(0);
+  const [conversationNavigatorOpen, setConversationNavigatorOpen] =
+    useState(false);
+  const [readerEntryID, setReaderEntryID] = useState("");
+  const [navigationHighlightID, setNavigationHighlightID] = useState("");
+  const [navigationTarget, setNavigationTarget] =
+    useState<TranscriptNavigationTarget>();
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const transcriptContentRef = useRef<HTMLDivElement>(null);
+  const readingPositionsRef =
+    useRef(new Map<string, TranscriptReadingPosition>());
+  const pendingReadingRestoreRef = useRef<TranscriptReadingPosition>();
+  const readerFrameRef = useRef<number>();
+  const navigationReaderLockRef = useRef("");
+  const navigationReaderLockTimerRef = useRef<number>();
+  const navigationHighlightTimerRef = useRef<number>();
+  const atBottomRef = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const composingRef = useRef(false);
+  const attachmentGenerationRef = useRef(0);
+  const removedAttachmentIDs = useRef(new Set<string>());
+  const attachmentsRef = useRef(composerAttachments);
   const selectedSessionRef = useRef(snapshot.selectedSessionID);
   const draftRef = useRef(draft);
   selectedSessionRef.current = snapshot.selectedSessionID;
   draftRef.current = draft;
+  attachmentsRef.current = composerAttachments;
   const selected = snapshot.sessions.find(
     (item) => item.session_id === snapshot.selectedSessionID
   );
-  const entries = useMemo(() => projectTranscript(snapshot.events), [snapshot.events]);
-  const transcriptEnd = Math.max(0, entries.length - transcriptPage * transcriptPageSize);
+  const workspaceLabel = selected?.workspace_label ||
+    snapshot.sessions[0]?.workspace_label ||
+    snapshot.workspaceRoot.split(/[\\/]/).filter(Boolean).at(-1) ||
+    "Workspace";
+  const projectedEntries = useMemo(
+    () => snapshot.conversation.order.flatMap((id) => {
+      const node = snapshot.conversation.nodes.get(id);
+      return node ? [node] : [];
+    }),
+    [snapshot.conversation]
+  );
+  const entries = useMemo(
+    () => projectedEntries.filter((entry) => entry.kind !== "receipt"),
+    [projectedEntries]
+  );
+  const transcriptEnd = Math.max(
+    0,
+    entries.length - transcriptPage * transcriptPageStep
+  );
   const transcriptStart = Math.max(0, transcriptEnd - transcriptPageSize);
   const visibleEntries = entries.slice(transcriptStart, transcriptEnd);
-  const pendingApproval = latestPending(snapshot.events, "approval");
-  const pendingInput = latestPending(snapshot.events, "input");
+  const conversationNavigation = useMemo(
+    () => projectConversationNavigation(entries),
+    [entries]
+  );
+  const readerEntryIndex = useMemo(
+    () => entries.findIndex((entry) => entry.id === readerEntryID),
+    [entries, readerEntryID]
+  );
+  const currentQuestion = useMemo(
+    () => questionPosition(
+      conversationNavigation,
+      readerEntryID,
+      readerEntryIndex < 0 ? undefined : readerEntryIndex
+    ),
+    [conversationNavigation, readerEntryID, readerEntryIndex]
+  );
+  const previousQuestion = useMemo(
+    () => adjacentQuestion(
+      conversationNavigation,
+      readerEntryID,
+      -1,
+      readerEntryIndex < 0 ? undefined : readerEntryIndex
+    ),
+    [conversationNavigation, readerEntryID, readerEntryIndex]
+  );
+  const nextQuestion = useMemo(
+    () => adjacentQuestion(
+      conversationNavigation,
+      readerEntryID,
+      1,
+      readerEntryIndex < 0 ? undefined : readerEntryIndex
+    ),
+    [conversationNavigation, readerEntryID, readerEntryIndex]
+  );
+  const pendingApproval = snapshot.conversation.pendingApproval;
+  const pendingInput = snapshot.conversation.pendingInput;
   const pendingApprovalKey = pendingRequestKey(snapshot.selectedSessionID, pendingApproval);
   const pendingInputKey = pendingRequestKey(snapshot.selectedSessionID, pendingInput);
-  const activeTurn = latestActiveTurn(snapshot.events);
+  const activeTurn = snapshot.conversation.activeTurnID;
   const selectedProvider = snapshot.profile?.profile.provider ?? "";
   const selectedModel = snapshot.profile?.profile.model ?? "";
-  const selectedProviderEntry = snapshot.providers.find(
-    (provider) => provider.id === selectedProvider
-  );
   const selectedModelEntry = snapshot.models.find(
     (model) =>
       model.provider === selectedProvider &&
@@ -158,18 +344,326 @@ export function App({client}: Props) {
     "",
     ...(selectedModelEntry?.capabilities.reasoning_efforts ?? [])
   ];
+  const latestReceipt = [...projectedEntries].reverse().find(
+    (entry): entry is Extract<ConversationNode, {kind: "receipt"}> =>
+      entry.kind === "receipt"
+  );
+  const turnChrome = useMemo(
+    () => projectMessageChrome(snapshot.events),
+    [snapshot.events]
+  );
+  const contextAttribution = useMemo(
+    () => latestContextAttribution(snapshot.events),
+    [snapshot.events]
+  );
+  const blankSession = Boolean(
+    selected && entries.length === 0 && !snapshot.hydratingSessionID
+  );
+  const reportLocalError = useCallback((error: unknown) => {
+    setLocalError(error instanceof Error ? error.message : String(error));
+  }, []);
+  const captureReadingPosition = useCallback((includeNavigationLock = false) => {
+    if (activeView !== "chat" || !snapshot.selectedSessionID) return undefined;
+    if (navigationReaderLockRef.current && !includeNavigationLock) {
+      setReaderEntryID(navigationReaderLockRef.current);
+      return undefined;
+    }
+    const node = transcriptRef.current;
+    if (!node) return undefined;
+    const position = readTranscriptPosition(
+      node,
+      transcriptPage,
+      atBottomRef.current
+    );
+    if (!position) return undefined;
+    readingPositionsRef.current.set(snapshot.selectedSessionID, position);
+    setReaderEntryID(transcriptFocusEntryID(node) ?? position.entryID);
+    return position;
+  }, [activeView, snapshot.selectedSessionID, transcriptPage]);
+  const scheduleReadingPositionCapture = useCallback(() => {
+    if (readerFrameRef.current !== undefined) return;
+    readerFrameRef.current = window.requestAnimationFrame(() => {
+      readerFrameRef.current = undefined;
+      captureReadingPosition();
+    });
+  }, [captureReadingPosition]);
+  const switchConversationView = useCallback(
+    (view: "chat" | "trajectory") => {
+      if (view === activeView) return;
+      if (activeView === "chat") captureReadingPosition(true);
+      if (view === "chat") {
+        pendingReadingRestoreRef.current = readingPositionsRef.current.get(
+          snapshot.selectedSessionID
+        );
+      }
+      setActiveView(view);
+      if (view === "trajectory") {
+        requestAnimationFrame(() => {
+          if (transcriptRef.current) transcriptRef.current.scrollTop = 0;
+        });
+      }
+    },
+    [
+      activeView,
+      captureReadingPosition,
+      snapshot.selectedSessionID
+    ]
+  );
+  const jumpToNavigationItem = useCallback(
+    (item: ConversationNavigationItem) => {
+      const page = transcriptPageForEntry(
+        entries,
+        item.entryID,
+        transcriptPageSize,
+        transcriptPageStep
+      );
+      if (page === undefined) return;
+      setNavigationTarget({
+        entryID: item.entryID,
+        path: item.path
+      });
+      setConversationNavigatorOpen(false);
+      setTranscriptPage(page);
+      setActiveView("chat");
+      setNavigationHighlightID(item.entryID);
+      setReaderEntryID(item.entryID);
+      navigationReaderLockRef.current = item.entryID;
+      atBottomRef.current = false;
+      setAtBottom(false);
+    },
+    [entries]
+  );
+  const jumpToQuestion = useCallback(
+    (item?: ConversationNavigationItem) => {
+      if (item) jumpToNavigationItem(item);
+    },
+    [jumpToNavigationItem]
+  );
+  const openChatFromTrajectory = useCallback(
+    (turnID: string, callID?: string) => {
+      const item = conversationNavigation.find(
+        (candidate) =>
+          candidate.kind === "tool" &&
+          candidate.turnID === turnID &&
+          candidate.callID === callID
+      ) ?? conversationNavigation.find(
+        (candidate) =>
+          candidate.kind === "question" && candidate.turnID === turnID
+      ) ?? conversationNavigation.find(
+        (candidate) => candidate.turnID === turnID
+      );
+      if (item) jumpToNavigationItem(item);
+    },
+    [conversationNavigation, jumpToNavigationItem]
+  );
+  const openBackgroundActivity = useCallback(
+    (target: BackgroundActivityTarget) => {
+      window.focus();
+      setActivityTarget(target);
+      setTranscriptPage(0);
+      setActiveView("chat");
+      setConversationNavigatorOpen(false);
+      void client.selectSession(target.sessionID).catch((error) => {
+        setActivityTarget(undefined);
+        reportLocalError(error);
+      });
+    },
+    [client, reportLocalError]
+  );
+  const closeContext = useCallback(() => setContextOpen(false), []);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const inspectTool = useCallback((callID: string) => {
+    setInspectCallID(callID);
+    switchConversationView("trajectory");
+    void client.refreshTrace();
+  }, [client, switchConversationView]);
+  const attachmentBusy = composerAttachments.some(
+    (attachment) => attachment.status === "processing"
+  );
+  const attachmentFailed = composerAttachments.some(
+    (attachment) => attachment.status === "error"
+  );
+  const visibleContextResources = snapshot.contextResources.filter(
+    (resource) =>
+      resource.kind !== "attachment" &&
+      !(resource.kind === "image" && !resource.path)
+  );
+
+  const attachFiles = (
+    values: FileList | readonly File[],
+    source: ComposerAttachmentSource
+  ) => {
+    const files = Array.from(values);
+    if (
+      files.length === 0 ||
+      !snapshot.selectedSessionID ||
+      snapshot.hydratingSessionID ||
+      submitting
+    ) {
+      return;
+    }
+    setLocalError("");
+    const processing = composerAttachments.filter(
+      (attachment) => attachment.status === "processing"
+    ).length;
+    const available = Math.max(
+      0,
+      maxComposerAttachments - snapshot.contextResources.length - processing
+    );
+    const countAccepted = files.slice(0, available);
+    let reservedBytes = composerAttachments
+      .filter((attachment) => attachment.status !== "error")
+      .reduce((total, attachment) => total + attachment.bytes, 0);
+    const accepted = countAccepted.filter((file) => {
+      if (reservedBytes + file.size > maxComposerAttachmentBytes) return false;
+      reservedBytes += file.size;
+      return true;
+    });
+    if (countAccepted.length < files.length) {
+      setLocalError(`A prompt accepts at most ${maxComposerAttachments} context items`);
+    } else if (accepted.length < countAccepted.length) {
+      setLocalError("Attachments exceed the 5 MiB total prompt limit");
+    }
+    const generation = attachmentGenerationRef.current;
+    const sessionID = snapshot.selectedSessionID;
+    const pending = accepted.map((file) => ({
+      file,
+      attachment: {
+        id: crypto.randomUUID(),
+        name: file.name || "Pasted image",
+        mediaType: file.type || "application/octet-stream",
+        bytes: file.size,
+        source,
+        status: "processing" as const
+      }
+    }));
+    setComposerAttachments((current) => [
+      ...current,
+      ...pending.map(({attachment}) => attachment)
+    ]);
+    const pipeline = import("./attachmentPipeline");
+    for (const {file, attachment} of pending) {
+      void pipeline.then(({prepareComposerAttachment}) =>
+        prepareComposerAttachment(file)
+      ).then((context) => {
+        if (
+          generation !== attachmentGenerationRef.current ||
+          sessionID !== selectedSessionRef.current ||
+          removedAttachmentIDs.current.has(attachment.id)
+        ) {
+          return;
+        }
+        if (client.getSnapshot().contextResources.some(
+          (resource) => resource.digest === context.digest
+        )) {
+          throw new Error(`${context.label || attachment.name} is already attached`);
+        }
+        client.addAttachmentContext(context);
+        setComposerAttachments((current) => current.map((value) =>
+          value.id === attachment.id
+            ? {
+                ...value,
+                name: context.label || value.name,
+                mediaType: context.media_type || value.mediaType,
+                digest: context.digest,
+                status: "ready",
+                error: undefined
+              }
+            : value
+        ));
+      }).catch((error) => {
+        if (generation !== attachmentGenerationRef.current) return;
+        setComposerAttachments((current) => current.map((value) =>
+          value.id === attachment.id
+            ? {
+                ...value,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error)
+              }
+            : value
+        ));
+      });
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    removedAttachmentIDs.current.add(id);
+    const attachment = attachmentsRef.current.find((value) => value.id === id);
+    if (attachment?.digest) client.removeAttachmentContext(attachment.digest);
+    setComposerAttachments((current) => current.filter((value) => value.id !== id));
+  };
 
   useEffect(() => {
-    setWorkspaceSelection(undefined);
-  }, [workspaceResource?.digest]);
+    writePreference("ch.sidebar.collapsed", String(railCollapsed));
+  }, [railCollapsed]);
 
   useEffect(() => {
-    setTranscriptPage(0);
+    writePreference("ch.sidebar.width", String(railWidth));
+  }, [railWidth]);
+
+  useEffect(() => {
+    writePreference("ch.session.isolation", newIsolation);
+  }, [newIsolation]);
+
+  useEffect(() => {
+    if (
+      !activityTarget ||
+      snapshot.selectedSessionID !== activityTarget.sessionID ||
+      snapshot.hydratingSessionID
+    ) {
+      return;
+    }
+    setActiveView("chat");
+    const frame = window.requestAnimationFrame(() => {
+      const pending = activityTarget.status === "awaiting_approval" ||
+        activityTarget.status === "awaiting_input"
+        ? document.querySelector<HTMLElement>(".pendingComposer")
+        : undefined;
+      const anchors = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-turn-id]")
+      ).filter((node) => node.dataset.turnId === activityTarget.turnID);
+      const target = pending ?? anchors.at(-1)?.firstElementChild ??
+        transcriptRef.current;
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView?.({block: "center"});
+      }
+      if (pending) {
+        const focusTarget = activityTarget.status === "awaiting_approval"
+          ? pending.querySelector<HTMLElement>(".approvalBody")
+          : pending.querySelector<HTMLElement>(
+            "textarea:not(:disabled), button:not(:disabled)"
+          );
+        focusTarget?.focus();
+      }
+      setActivityTarget(undefined);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    activityTarget,
+    snapshot.conversation.revision,
+    snapshot.hydratingSessionID,
+    snapshot.selectedSessionID
+  ]);
+
+  useLayoutEffect(() => {
+    const saved = readingPositionsRef.current.get(snapshot.selectedSessionID);
+    pendingReadingRestoreRef.current = saved;
+    setTranscriptPage(saved?.page ?? 0);
+    setActiveView("chat");
+    setInspectCallID("");
+    setConversationNavigatorOpen(false);
+    setReaderEntryID(saved?.entryID ?? "");
+    setContextOpen(false);
+    attachmentGenerationRef.current += 1;
+    removedAttachmentIDs.current.clear();
+    setComposerAttachments([]);
+    setDraggingAttachment(false);
+    setCommandMenuOpen(false);
+    setCommandQuery("");
+    setCommandMenuSource("button");
+    atBottomRef.current = saved?.atBottom ?? true;
+    setAtBottom(saved?.atBottom ?? true);
   }, [snapshot.selectedSessionID]);
-
-  useEffect(() => () => {
-    if (workspaceImageURL) URL.revokeObjectURL(workspaceImageURL);
-  }, [workspaceImageURL]);
 
   useEffect(() => {
     void client.start();
@@ -201,27 +695,197 @@ export function App({client}: Props) {
     return () => window.clearTimeout(timeout);
   }, [client, draft, draftOwner]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = transcriptRef.current;
-    if (!node) return;
-    const nearBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 120;
-    if (nearBottom && transcriptPage === 0) {
-      requestAnimationFrame(() => node.scrollTo({top: node.scrollHeight}));
+    if (!node || activeView !== "chat") return;
+    const navigation = navigationTarget;
+    if (navigation) {
+      const anchor = transcriptAnchor(node, navigation.entryID);
+      if (!anchor) return;
+      setNavigationTarget(undefined);
+      const target = navigation.path
+        ? fileTarget(anchor, navigation.path) ?? anchorContent(anchor)
+        : anchorContent(anchor);
+      centerTranscriptTarget(node, target);
+      atBottomRef.current = false;
+      setAtBottom(false);
+      setReaderEntryID(navigation.entryID);
+      setNavigationHighlightID(navigation.entryID);
+      if (navigationReaderLockTimerRef.current !== undefined) {
+        window.clearTimeout(navigationReaderLockTimerRef.current);
+      }
+      navigationReaderLockTimerRef.current = window.setTimeout(() => {
+        navigationReaderLockRef.current = "";
+      }, 250);
+      if (navigationHighlightTimerRef.current !== undefined) {
+        window.clearTimeout(navigationHighlightTimerRef.current);
+      }
+      navigationHighlightTimerRef.current = window.setTimeout(
+        () => setNavigationHighlightID(""),
+        1_400
+      );
+      return;
     }
-  }, [entries.length, transcriptPage]);
+    const saved = pendingReadingRestoreRef.current;
+    if (saved && saved.page === transcriptPage) {
+      pendingReadingRestoreRef.current = undefined;
+      restoreTranscriptPosition(node, saved);
+      atBottomRef.current = saved.atBottom;
+      setAtBottom(saved.atBottom);
+      setReaderEntryID(saved.entryID);
+      return;
+    }
+    if (atBottomRef.current && transcriptPage === 0) {
+      node.scrollTop = node.scrollHeight;
+    }
+  }, [
+    activeView,
+    navigationTarget,
+    snapshot.conversation.revision,
+    transcriptPage
+  ]);
 
-  const submit = async () => {
+  useEffect(() => {
+    const content = transcriptContentRef.current;
+    if (
+      !content ||
+      activeView !== "chat" ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      const node = transcriptRef.current;
+      if (!node) return;
+      if (atBottomRef.current && transcriptPage === 0) {
+        node.scrollTop = node.scrollHeight;
+        return;
+      }
+      const saved = readingPositionsRef.current.get(snapshot.selectedSessionID);
+      if (saved?.page === transcriptPage) {
+        restoreTranscriptPosition(node, saved);
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [activeView, snapshot.selectedSessionID, transcriptPage]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const editable = isEditableElement(event.target);
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLocaleLowerCase() === "f" &&
+        !editable &&
+        !settingsOpen &&
+        !contextOpen &&
+        !commandMenuOpen &&
+        selected &&
+        entries.length > 0
+      ) {
+        event.preventDefault();
+        setConversationNavigatorOpen(true);
+        return;
+      }
+      if (editable || !event.altKey || event.metaKey || event.ctrlKey) return;
+      if (event.key === "ArrowUp" && previousQuestion) {
+        event.preventDefault();
+        jumpToQuestion(previousQuestion);
+      } else if (event.key === "ArrowDown" && nextQuestion) {
+        event.preventDefault();
+        jumpToQuestion(nextQuestion);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [
+    commandMenuOpen,
+    contextOpen,
+    entries.length,
+    jumpToQuestion,
+    nextQuestion,
+    previousQuestion,
+    selected,
+    settingsOpen
+  ]);
+
+  useEffect(() => () => {
+    if (readerFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(readerFrameRef.current);
+    }
+    if (navigationHighlightTimerRef.current !== undefined) {
+      window.clearTimeout(navigationHighlightTimerRef.current);
+    }
+    if (navigationReaderLockTimerRef.current !== undefined) {
+      window.clearTimeout(navigationReaderLockTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "0";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 336)}px`;
+  }, [draft]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const keepComposerVisible = () => {
+      if (document.activeElement !== textareaRef.current) return;
+      requestAnimationFrame(() => textareaRef.current?.scrollIntoView({
+        block: "nearest"
+      }));
+    };
+    viewport.addEventListener("resize", keepComposerVisible);
+    viewport.addEventListener("scroll", keepComposerVisible);
+    return () => {
+      viewport.removeEventListener("resize", keepComposerVisible);
+      viewport.removeEventListener("scroll", keepComposerVisible);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeView !== "trajectory" || !activeTurn) return;
+    const interval = window.setInterval(() => {
+      void client.refreshTrace();
+    }, 1_000);
+    return () => window.clearInterval(interval);
+  }, [activeTurn, activeView, client]);
+
+  useEffect(() => {
+    const media = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: dark)")
+      : undefined;
+    const apply = () => applyThemeMode(themeMode, media?.matches ?? false);
+    apply();
+    if (themeMode !== "system" || !media) return;
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [themeMode]);
+
+  const submit = async (activeAction: "queue" | "steer" = "queue") => {
     const prompt = draft.trim();
-    if (!prompt || submitting) return;
+    if (!prompt || submitting || attachmentBusy || attachmentFailed) return;
     const submittedSessionID = snapshot.selectedSessionID;
+    const submittedTurnID = activeTurn;
     setSubmitting(true);
     setLocalError("");
     try {
-      await client.submitPrompt(prompt);
-      if (selectedSessionRef.current === submittedSessionID &&
-          draftRef.current.trim() === prompt) {
-        setDraft("");
-        client.saveDraft("", submittedSessionID);
+      if (submittedTurnID && activeAction === "steer") {
+        await client.steer(submittedTurnID, prompt);
+      } else if (submittedTurnID) {
+        await client.enqueue(submittedTurnID, prompt);
+      } else {
+        await client.submitPrompt(prompt);
+      }
+      if (selectedSessionRef.current === submittedSessionID) {
+        setComposerAttachments([]);
+        removedAttachmentIDs.current.clear();
+        if (draftRef.current.trim() === prompt) {
+          setDraft("");
+          client.saveDraft("", submittedSessionID);
+        }
       }
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : String(error));
@@ -260,21 +924,85 @@ export function App({client}: Props) {
     }
   };
 
-  const downloadWorkspaceResource = async (
-    resource: Pick<WorkspaceResource | WorkspaceImage, "content_handle" | "path">
-  ) => {
-    try {
-      const blob = await client.downloadWorkspaceContent(resource.content_handle);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = resource.path.split("/").at(-1) || "download";
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      reportLocalError(error);
+  const composerCommands: ComposerCommand[] = [
+    {
+      id: "attach",
+      label: "attach",
+      description: "Attach local text files or images",
+      argumentHint: "file",
+      icon: Paperclip,
+      run: () => attachmentInputRef.current?.click()
+    },
+    {
+      id: "context",
+      label: "context",
+      description: "Browse files, symbols, diagnostics, and diffs",
+      argumentHint: "file, symbol, or diff",
+      icon: FileCode2,
+      run: () => setContextOpen(true)
+    },
+    {
+      id: "compact",
+      label: "compact",
+      description: "Compact older conversation history",
+      icon: Braces,
+      disabled: Boolean(activeTurn) || !selected?.latest_turn_id,
+      run: async () => {
+        try {
+          await client.compactThread();
+        } catch (error) {
+          reportLocalError(error);
+        }
+      }
+    },
+    {
+      id: "export",
+      label: "export",
+      description: "Download this Session log as JSON",
+      icon: Download,
+      run: exportSession
+    },
+    {
+      id: "plan",
+      label: "plan",
+      description: "Analyze and propose a plan before implementation",
+      icon: TextSelect,
+      active: snapshot.profile?.profile.mode === "plan",
+      disabled: !profileMutable(snapshot, "mode"),
+      run: () => client.updateProfile({mode: "plan"}).catch(reportLocalError)
+    },
+    {
+      id: "act",
+      label: "act",
+      description: "Execute the requested coding task",
+      icon: Wrench,
+      active: snapshot.profile?.profile.mode === "act",
+      disabled: !profileMutable(snapshot, "mode"),
+      run: () => client.updateProfile({mode: "act"}).catch(reportLocalError)
+    },
+    {
+      id: "suggest",
+      label: "suggest",
+      description: "Ask before consequential tool actions",
+      icon: AlertTriangle,
+      active: snapshot.profile?.profile.approval_posture === "suggest",
+      disabled: !profileMutable(snapshot, "approval_posture"),
+      run: () => client.updateProfile({
+        approval_posture: "suggest"
+      }).catch(reportLocalError)
+    },
+    {
+      id: "auto",
+      label: "auto",
+      description: "Approve actions allowed by the current policy",
+      icon: Check,
+      active: snapshot.profile?.profile.approval_posture === "auto",
+      disabled: !profileMutable(snapshot, "approval_posture"),
+      run: () => client.updateProfile({
+        approval_posture: "auto"
+      }).catch(reportLocalError)
     }
-  };
+  ];
 
   const runSessionAction = async (
     session: SessionSummary,
@@ -311,26 +1039,6 @@ export function App({client}: Props) {
     ));
   };
 
-  const openWorkspacePath = async (path: string) => {
-    try {
-      if (isWorkspaceImagePath(path)) {
-        const image = await client.readWorkspaceImage(path);
-        const blob = await client.downloadWorkspaceContent(image.content_handle);
-        setWorkspaceResource(undefined);
-        setWorkspaceSelection(undefined);
-        setWorkspaceImage(image);
-        setWorkspaceImageURL(URL.createObjectURL(blob));
-        return;
-      }
-      const resource = await client.readWorkspaceResource(path);
-      setWorkspaceImage(undefined);
-      setWorkspaceImageURL("");
-      setWorkspaceResource(resource);
-    } catch (error) {
-      reportLocalError(error);
-    }
-  };
-
   if (snapshot.phase === "booting") {
     return <BootState title="Starting CodeHelper" detail={snapshot.workspaceRoot} />;
   }
@@ -347,12 +1055,51 @@ export function App({client}: Props) {
   return (
     <div
       className="app"
-      data-detail-open={selected && detailOpen ? true : undefined}
+      data-rail-collapsed={railCollapsed || undefined}
+      style={{
+        "--ch-rail-width": `${railWidth}px`
+      } as React.CSSProperties}
     >
+      <Suspense fallback={null}>
+        <BackgroundActivityMonitor
+          sessions={snapshot.sessions}
+          selectedSessionID={snapshot.selectedSessionID}
+          onOpen={openBackgroundActivity}
+        />
+      </Suspense>
       <aside className="sessionRail" aria-label="Sessions">
-        {selected && (
-          <div className="newSessionRow">
+        <div className="brandRow">
+          <button
+            className="railToggle"
+            aria-label={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={railCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() => setRailCollapsed((value) => !value)}
+          >
+            <span className="railLogo"><CapybaraMark /></span>
+            <span className="railToggleIcon">
+              {railCollapsed
+                ? <PanelLeftOpen size={17} />
+                : <PanelLeftClose size={17} />}
+            </span>
+          </button>
+          <span className="brandName">CodeHelper</span>
+        </div>
+        <div className="newSessionRow">
+          <button
+            className="newSessionButton"
+            aria-label="New chat"
+            disabled={creatingSession}
+            onClick={() => void createSession()}
+          >
+            {creatingSession
+              ? <LoaderCircle className="spin" size={16} />
+              : <Plus size={16} />}
             <span>New session</span>
+          </button>
+        </div>
+        <div className="sessionSectionHeader">
+          <span className="sessionSectionTitle">Workspace</span>
+          <div className="sessionSectionActions">
             <select
               className="newSessionIsolation"
               aria-label="New session isolation"
@@ -364,89 +1111,115 @@ export function App({client}: Props) {
               <option value="shared">Shared</option>
               <option value="worktree">Worktree</option>
             </select>
+            <IconButton
+              label="Search sessions"
+              icon={<Search size={15} />}
+              onClick={() => setSessionSearchOpen((value) => !value)}
+            />
+            <IconButton
+              label={snapshot.includeArchived
+                ? "Hide archived sessions"
+                : "Show archived sessions"}
+              icon={<Archive size={15} />}
+              onClick={() => void client.setArchivedVisible(
+                !snapshot.includeArchived
+              ).catch(reportLocalError)}
+            />
           </div>
-        )}
-        <div className="brandRow">
-          <div className="brandMark" aria-hidden="true"><TerminalSquare size={17} /></div>
-          <strong>CodeHelper</strong>
-          <IconButton
-            label="New chat"
-            icon={<Plus size={17} />}
-            disabled={creatingSession}
-            onClick={() => void createSession()}
-          />
         </div>
-        <label className="searchBox">
-          <Search size={15} aria-hidden="true" />
-          <span className="srOnly">Search sessions</span>
-          <input
-            value={query}
-            placeholder="Search"
-            onChange={(event) => {
-              const value = event.target.value;
-              setQuery(value);
-              void client.refreshSessions(value);
-            }}
-          />
-          {query && (
+        {(sessionSearchOpen || query) && (
+          <label className="searchBox">
+            <Search size={14} aria-hidden="true" />
+            <span className="srOnly">Search sessions</span>
+            <input
+              autoFocus
+              value={query}
+              placeholder="Search sessions"
+              onChange={(event) => {
+                const value = event.target.value;
+                setQuery(value);
+                void client.refreshSessions(value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                setQuery("");
+                setSessionSearchOpen(false);
+                void client.refreshSessions();
+              }}
+            />
             <button
               className="clearSearch"
-              aria-label="Clear search"
+              aria-label="Close session search"
               onClick={() => {
                 setQuery("");
+                setSessionSearchOpen(false);
                 void client.refreshSessions();
               }}
             >
               <X size={14} />
             </button>
+          </label>
+        )}
+        <div className="sessionList" role="tree" aria-label="Workspace sessions">
+          {!query && (
+            <button
+              className="workspaceRow"
+              role="treeitem"
+              aria-expanded={workspaceExpanded}
+              onClick={() => setWorkspaceExpanded((value) => !value)}
+            >
+              <DisclosureLeading
+                open={workspaceExpanded}
+                icon={<FolderOpen size={16} />}
+              />
+              <span>{workspaceLabel}</span>
+            </button>
           )}
-        </label>
-        <div className="sessionList">
-          {snapshot.sessions.map((session) => (
-            <SessionRow
-              key={session.session_id}
-              session={session}
-              active={session.session_id === snapshot.selectedSessionID}
-              onClick={() => void client.selectSession(session.session_id)}
-              onRename={() => {
-                const title = window.prompt("Rename session", session.title)?.trim();
-                if (title && title !== session.title) {
-                  void runSessionAction(session, () => client.updateSession(
-                    session.session_id, session.revision, {title}
-                  ));
-                }
-              }}
-              onPin={() => void runSessionAction(session, () => client.updateSession(
-                session.session_id, session.revision, {pinned: !session.pinned}
+          {(query || workspaceExpanded) && (
+            <div className="sessionGroup" role="group">
+              {snapshot.sessions.map((session) => (
+                <SessionRow
+                  key={session.session_id}
+                  session={session}
+                  active={session.session_id === snapshot.selectedSessionID}
+                  onClick={() => {
+                    captureReadingPosition(true);
+                    void client.selectSession(session.session_id);
+                  }}
+                  onRename={() => {
+                    const title = window.prompt("Rename session", session.title)?.trim();
+                    if (title && title !== session.title) {
+                      void runSessionAction(session, () => client.updateSession(
+                        session.session_id, session.revision, {title}
+                      ));
+                    }
+                  }}
+                  onPin={() => void runSessionAction(session, () => client.updateSession(
+                    session.session_id, session.revision, {pinned: !session.pinned}
+                  ))}
+                  onArchive={() => {
+                    if (session.archived || window.confirm(`Archive "${session.title}"?`)) {
+                      void runSessionAction(session, () => client.updateSession(
+                        session.session_id, session.revision, {archived: !session.archived}
+                      ));
+                    }
+                  }}
+                  onDelete={() => deleteSession(session)}
+                  actionPending={
+                    sessionAction?.sessionID === session.session_id &&
+                    sessionAction.pending
+                  }
+                  actionError={
+                    sessionAction?.sessionID === session.session_id
+                      ? sessionAction.error
+                      : ""
+                  }
+                />
               ))}
-              onArchive={() => {
-                if (session.archived || window.confirm(`Archive "${session.title}"?`)) {
-                  void runSessionAction(session, () => client.updateSession(
-                    session.session_id, session.revision, {archived: !session.archived}
-                  ));
-                }
-              }}
-              onDelete={() => deleteSession(session)}
-              actionPending={
-                sessionAction?.sessionID === session.session_id &&
-                sessionAction.pending
-              }
-              actionError={
-                sessionAction?.sessionID === session.session_id
-                  ? sessionAction.error
-                  : ""
-              }
-            />
-          ))}
+            </div>
+          )}
         </div>
         <div className="railFooter">
-          <IconButton
-            label={snapshot.includeArchived ? "Hide archived sessions" : "Show archived sessions"}
-            icon={<Archive size={16} />}
-            onClick={() => void client.setArchivedVisible(
-              !snapshot.includeArchived
-            ).catch(reportLocalError)}
-          />
           <span className="connectionState" data-online={snapshot.socketConnected || undefined}>
             <span className="statusDot" />
             {snapshot.socketConnected ? "Connected" : snapshot.phase}
@@ -457,13 +1230,52 @@ export function App({client}: Props) {
             onClick={() => setSettingsOpen((value) => !value)}
           />
         </div>
+        {!railCollapsed && (
+          <ResizeHandle
+            label="Resize sidebar"
+            value={railWidth}
+            minimum={experience.layout.sidebarMinimum}
+            maximum={experience.layout.sidebarMaximum}
+            onDelta={(delta) => setRailWidth((width) =>
+              clamp(
+                width + delta,
+                experience.layout.sidebarMinimum,
+                experience.layout.sidebarMaximum
+              )
+            )}
+          />
+        )}
       </aside>
 
-      <main className="conversation">
-        <header className="conversationHeader">
-          <div>
-            <h1>{selected?.title ?? "New Chat"}</h1>
-            <p>{snapshot.workspaceRoot}</p>
+      <main className="conversation" data-empty={blankSession || undefined}>
+        <header
+          className="conversationHeader"
+          data-hidden={blankSession || undefined}
+        >
+          <div className="conversationIdentity">
+            <div>
+              <h1>{selected?.title ?? "New Chat"}</h1>
+              <p>{selected?.workspace_label || snapshot.workspaceRoot}</p>
+            </div>
+            {selected && entries.length > 0 && (
+              <nav className="viewTabs" aria-label="Conversation views">
+                <button
+                  aria-current={activeView === "chat" ? "page" : undefined}
+                  onClick={() => switchConversationView("chat")}
+                >
+                  Chat
+                </button>
+                <button
+                  aria-current={activeView === "trajectory" ? "page" : undefined}
+                  onClick={() => {
+                    switchConversationView("trajectory");
+                    void client.refreshTrace();
+                  }}
+                >
+                  Trajectory
+                </button>
+              </nav>
+            )}
           </div>
           <div className="headerActions">
             {snapshot.hydratingSessionID ? (
@@ -471,6 +1283,38 @@ export function App({client}: Props) {
             ) : activeTurn ? (
               <span className="workingLabel">Working</span>
             ) : null}
+            {selected && currentQuestion.total > 0 && (
+              <div
+                className="conversationNavigationControls"
+                aria-label="Question navigation"
+              >
+                <IconButton
+                  label="Previous user question"
+                  disabled={!previousQuestion}
+                  icon={<ChevronUp size={16} />}
+                  onClick={() => jumpToQuestion(previousQuestion)}
+                />
+                <button
+                  type="button"
+                  className="conversationNavigationPosition"
+                  aria-label="Search conversation"
+                  title="Search conversation"
+                  data-current-entry={readerEntryID || undefined}
+                  onClick={() => setConversationNavigatorOpen(true)}
+                >
+                  <Search size={14} />
+                  <span>
+                    {currentQuestion.index + 1}/{currentQuestion.total}
+                  </span>
+                </button>
+                <IconButton
+                  label="Next user question"
+                  disabled={!nextQuestion}
+                  icon={<ChevronDown size={16} />}
+                  onClick={() => jumpToQuestion(nextQuestion)}
+                />
+              </div>
+            )}
             {selected && (
               <>
                 <IconButton
@@ -479,764 +1323,648 @@ export function App({client}: Props) {
                   icon={<Download size={17} />}
                   onClick={() => void exportSession()}
                 />
-                <IconButton
-                  label={detailOpen ? "Close detail panel" : "Open detail panel"}
-                  icon={detailOpen
-                    ? <PanelRightClose size={17} />
-                    : <PanelRightOpen size={17} />}
-                  onClick={() => setDetailOpen((value) => !value)}
-                />
               </>
             )}
           </div>
         </header>
 
-        <div className="transcript" ref={transcriptRef} aria-live="polite">
-          {snapshot.problem && (
-            <div className="inlineProblem">
-              <AlertTriangle size={17} />
-              <span>{snapshot.problem.message}</span>
-              <IconButton
-                label="Reconnect"
-                icon={<RefreshCw size={15} />}
-                onClick={() => void client.start()}
+        <div
+          className="conversationScrollport"
+          ref={transcriptRef}
+          data-conversation-scroll
+          data-view={activeView}
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            const next = node.scrollHeight - node.scrollTop - node.clientHeight <=
+              experience.scrolling.followThreshold;
+            atBottomRef.current = next;
+            setAtBottom(next);
+            scheduleReadingPositionCapture();
+          }}
+        >
+          {activeView === "trajectory" && selected ? (
+            <Suspense fallback={<div className="trajectoryLoading">Loading trajectory...</div>}>
+              <Trajectory
+                events={snapshot.events}
+                trace={snapshot.trace}
+                tracePhase={snapshot.tracePhase}
+                traceProblem={snapshot.traceProblem}
+                hasEarlier={snapshot.historyMoreBefore}
+                inspectCallID={inspectCallID}
+                onInspectConsumed={() => setInspectCallID("")}
+                onLoadEarlier={() => client.loadEarlierHistory()}
+                onRetryTrace={() => client.refreshTrace()}
+                onOpenChat={openChatFromTrajectory}
               />
-            </div>
-          )}
-          {(transcriptStart > 0 || snapshot.historyMoreBefore || transcriptPage > 0) && (
-            <div className="transcriptPagination" aria-label="Transcript pagination">
-              {(transcriptStart > 0 || snapshot.historyMoreBefore) && (
-                <button
-                  onClick={() => {
-                    if (transcriptStart > 0) {
-                      setTranscriptPage((page) => page + 1);
-                      return;
-                    }
-                    void client.loadEarlierHistory().then((loaded) => {
-                      if (loaded > 0) setTranscriptPage((page) => page + 1);
-                    }).catch(reportLocalError);
-                  }}
-                >
-                  Earlier messages
-                </button>
-              )}
-              {transcriptPage > 0 && (
-                <button onClick={() => setTranscriptPage((page) => page - 1)}>
-                  Newer messages
-                </button>
-              )}
-            </div>
-          )}
-          {!selected ? (
-            <StartupSetup
-              snapshot={snapshot}
-              isolation={newIsolation}
-              creating={creatingSession}
-              error={localError}
-              credentialStatus={credentialStatus}
-              onIsolationChange={setNewIsolation}
-              onCredentialStatus={setCredentialStatus}
-              onCreate={(patch) => void createSession(patch)}
-              client={client}
-            />
-          ) : entries.length === 0 ? (
-            <div className="emptyConversation">
-              <div className="emptyMark"><TerminalSquare size={22} /></div>
-              <h2>{selected.title}</h2>
-              <p>{snapshot.workspaceRoot}</p>
-            </div>
-          ) : (
-            visibleEntries.map((entry) => (
-              <TranscriptItem
-                key={entry.id}
-                entry={entry}
+            </Suspense>
+          ) : <div className="transcript" ref={transcriptContentRef} aria-live="polite">
+            {snapshot.problem && (
+              <div className="inlineProblem">
+                <AlertTriangle size={17} />
+                <span>{snapshot.problem.message}</span>
+                <IconButton
+                  label="Reconnect"
+                  icon={<RefreshCw size={15} />}
+                  onClick={() => void client.start()}
+                />
+              </div>
+            )}
+            {(transcriptStart > 0 || snapshot.historyMoreBefore || transcriptPage > 0) && (
+              <div className="transcriptPagination" aria-label="Transcript pagination">
+                {(transcriptStart > 0 || snapshot.historyMoreBefore) && (
+                  <button
+                    onClick={() => {
+                      const anchor = captureReadingPosition(true);
+                      pendingReadingRestoreRef.current = anchor;
+                      if (transcriptStart > 0) {
+                        setTranscriptPage((page) => page + 1);
+                        return;
+                      }
+                      void client.loadEarlierHistory().then((loaded) => {
+                        if (loaded > 0) setTranscriptPage((page) => page + 1);
+                      }).catch(reportLocalError);
+                    }}
+                  >
+                    Earlier messages
+                  </button>
+                )}
+                {transcriptPage > 0 && (
+                  <button onClick={() => setTranscriptPage((page) => page - 1)}>
+                    Newer messages
+                  </button>
+                )}
+              </div>
+            )}
+            {!selected ? (
+              <StartupSetup
+                snapshot={snapshot}
+                isolation={newIsolation}
+                creating={creatingSession}
+                error={localError}
+                credentialStatus={credentialStatus}
+                onIsolationChange={setNewIsolation}
+                onCredentialStatus={setCredentialStatus}
+                onCreate={(patch) => void createSession(patch)}
                 client={client}
-                onError={reportLocalError}
               />
-            ))
-          )}
-        </div>
-
-        {selected && <div className="composerSeat">
-          {localError && <div className="composerError">{localError}</div>}
-          {snapshot.contextResources.length > 0 && (
-            <div className="contextTray" aria-label="Prompt context">
-              {snapshot.contextResources.map((resource) => (
-                <span
-                  className="contextItem"
-                  key={`${resource.kind}:${resource.path ?? ""}:${resource.label ?? ""}:${resource.symbol?.name ?? ""}:${resource.digest}`}
+            ) : entries.length === 0 ? (
+              <div className="emptyConversation">
+                <CodeHelperWordmark hero />
+                <p>{snapshot.workspaceRoot}</p>
+              </div>
+            ) : (
+              visibleEntries.map((entry) => (
+                <div
+                  className="transcriptEntryAnchor"
+                  data-entry-id={entry.id}
+                  data-entry-kind={entry.kind}
+                  data-turn-id={entry.turnID || undefined}
+                  data-navigation-current={
+                    navigationHighlightID === entry.id || undefined
+                  }
+                  key={entry.id}
                 >
-                  <FileCode2 size={13} />
-                  <span>{contextResourceLabel(resource)}</span>
-                  <IconButton
-                    label={`Remove ${contextResourceLabel(resource)} from prompt context`}
-                    icon={<X size={12} />}
-                    onClick={() => client.removeContext(
-                      resource.kind,
-                      resource.path,
-                      resource.label,
-                      resource.symbol?.name
+                  <TranscriptItem
+                    entry={entry}
+                    client={client}
+                    onError={reportLocalError}
+                    onInspect={inspectTool}
+                    canOpenPath={snapshot.canOpenPath}
+                    checkpoint={checkpointForTurn(
+                      snapshot.checkpoints,
+                      entry.turnID
+                    )}
+                    chrome={turnChrome.get(entry.turnID)}
+                    feedback={snapshot.messageFeedback[
+                      `${snapshot.selectedSessionID}:${entry.id}`
+                    ]}
+                    onFeedback={(rating) => client.toggleMessageFeedback(
+                      entry.id,
+                      rating
                     )}
                   />
-                </span>
-              ))}
-            </div>
-          )}
-          {pendingApproval ? (
-            <ApprovalComposer
-              key={pendingApprovalKey}
-              event={pendingApproval}
-              client={client}
-              activeTurn={activeTurn}
-            />
-          ) : pendingInput ? (
-            <InputComposer
-              key={pendingInputKey}
-              event={pendingInput}
-              client={client}
-              activeTurn={activeTurn}
-            />
-          ) : (
-            <div className="composer">
-              <textarea
-                value={draft}
-                rows={1}
-                placeholder="Ask CodeHelper"
-                disabled={Boolean(snapshot.hydratingSessionID) || submitting}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void submit();
-                  }
+                </div>
+              ))
+            )}
+            {activeTurn && <TurnStatus events={snapshot.events} turnID={activeTurn} />}
+          </div>}
+
+          {activeView === "chat" && selected && !atBottom && entries.length > 0 && (
+            <div className="backToBottom">
+              <IconButton
+                label="Back to bottom"
+                icon={<ArrowDown size={17} />}
+                onClick={() => {
+                  const node = transcriptRef.current;
+                  if (!node) return;
+                  node.scrollTo({top: node.scrollHeight, behavior: "smooth"});
+                  atBottomRef.current = true;
+                  setAtBottom(true);
+                  readingPositionsRef.current.delete(snapshot.selectedSessionID);
+                  setReaderEntryID(
+                    conversationNavigation
+                      .filter((item) => item.kind === "question")
+                      .at(-1)?.entryID ?? ""
+                  );
                 }}
               />
-              {activeTurn ? (
-                <IconButton
-                  label="Stop turn"
-                  danger
-                  icon={<CircleStop size={19} />}
-                  onClick={() => void client.cancel(activeTurn)}
-                />
-              ) : (
-                <IconButton
-                  label="Send"
-                  primary
-                  disabled={
-                    Boolean(snapshot.hydratingSessionID) ||
-                    !draft.trim() ||
-                    submitting
-                  }
-                  icon={submitting ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}
-                  onClick={() => void submit()}
-                />
-              )}
             </div>
           )}
-          <div className="composerMeta">
-            <span>{snapshot.profile?.profile.mode ?? "act"}</span>
-            <span>{snapshot.profile?.profile.model ?? selected.model ?? ""}</span>
-          </div>
-        </div>}
-      </main>
 
-      {selected && detailOpen && (
-        <aside className="detailPanel" aria-label="Session details">
-          <div className="detailHeader">
-            <h2>Session</h2>
-            <IconButton
-              label="Close detail panel"
-              icon={<X size={16} />}
-              onClick={() => setDetailOpen(false)}
-            />
-          </div>
-          {selected && (
-            <section className="detailSection">
-              <h3>Lifecycle</h3>
-              <div className="lifecycleActions">
-                <IconButton
-                  label="Rename session"
-                  icon={<Pencil size={15} />}
-                  disabled={sessionAction?.pending}
-                  onClick={() => {
-                    const title = window.prompt("Rename session", selected.title)?.trim();
-                    if (title && title !== selected.title) {
-                      void runSessionAction(selected, () => client.updateSession(
-                        selected.session_id, selected.revision, {title}
-                      ));
-                    }
-                  }}
-                />
-                <IconButton
-                  label={selected.pinned ? "Unpin session" : "Pin session"}
-                  icon={selected.pinned ? <PinOff size={15} /> : <Pin size={15} />}
-                  disabled={sessionAction?.pending}
-                  onClick={() => void runSessionAction(selected, () => client.updateSession(
-                    selected.session_id, selected.revision, {pinned: !selected.pinned}
-                  ))}
-                />
-                <IconButton
-                  label={selected.archived ? "Restore session" : "Archive session"}
-                  icon={<Archive size={15} />}
-                  disabled={sessionAction?.pending}
-                  onClick={() => {
-                    if (selected.archived || window.confirm(`Archive "${selected.title}"?`)) {
-                      void runSessionAction(selected, () => client.updateSession(
-                        selected.session_id, selected.revision,
-                        {archived: !selected.archived}
-                      ));
-                    }
-                  }}
-                />
-                <IconButton
-                  label="Delete session"
-                  danger
-                  icon={<Trash2 size={15} />}
-                  disabled={sessionAction?.pending}
-                  onClick={() => deleteSession(selected)}
-                />
-              </div>
-            </section>
-          )}
-          <section className="detailSection">
-            <h3>Changes</h3>
-            <Metric
-              icon={<GitCompareArrows size={16} />}
-              label="Changed files"
-              value={String(selected?.changed_files ?? 0)}
-            />
-            <Metric
-              icon={<Check size={16} />}
-              label="Checkpoints"
-              value={String(selected?.checkpoint_count ?? 0)}
-            />
-            <button
-              className="settingsCommand"
-              disabled={!selected}
-              onClick={() => void client.workspaceDiff().then(
-                setWorkspaceDiff,
-                reportLocalError
-              )}
-            >
-              <GitCompareArrows size={14} /> Refresh diff
-            </button>
-            {workspaceDiff?.diff ? (
-              <>
-                <div className="artifactActions">
-                  <button onClick={() => client.addGitDiffContext(workspaceDiff)}>
-                    <Plus size={14} /> Add diff
-                  </button>
-                </div>
-                <pre className="mergePreview">{workspaceDiff.diff}</pre>
-              </>
-            ) : workspaceDiff ? (
-              <p className="artifactSummary">No workspace changes</p>
-            ) : null}
-            {selected?.isolation === "worktree" && (
-              <div className="artifactActions">
-                <button onClick={() => void client.previewMerge().catch(reportLocalError)}>
-                  <GitCompareArrows size={14} /> Preview
-                </button>
-                <button
-                  disabled={!snapshot.mergePlan}
-                  onClick={() => void client.applyMerge().catch(reportLocalError)}
-                >
-                  <Check size={14} /> Apply
-                </button>
-              </div>
-            )}
-            {snapshot.mergePlan && (
-              <pre className="mergePreview">{snapshot.mergePlan.diff}</pre>
-            )}
-          </section>
-          <section className="detailSection">
-            <h3>Activity</h3>
-            <div className="activityMetrics">
-              <Metric
-                icon={<TerminalSquare size={16} />}
-                label="Tasks"
-                value={String(snapshot.tasks.length)}
-              />
-              <Metric
-                icon={<GitFork size={16} />}
-                label="Agents"
-                value={String(snapshot.agents.length)}
-              />
-              <Metric
-                icon={<FileCode2 size={16} />}
-                label="Tokens"
-                value={String(snapshot.usage?.total_tokens ?? selected?.total_tokens ?? 0)}
-              />
-            </div>
-            {snapshot.tasks.length > 0 && (
-              <div className="activityList" aria-label="Tasks">
-                {snapshot.tasks.map((task) => (
-                  <div className="activityLine" key={task.id}>
-                    <span>
-                      <strong>{task.kind}</strong>
-                      <small>{task.id}</small>
-                    </span>
-                    <span>{task.state}</span>
-                    {(task.failure_reason || task.reason) && (
-                      <small>{task.failure_reason || task.reason}</small>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            {snapshot.agents.length > 0 && (
-              <div className="activityList" aria-label="Agents">
-                {snapshot.agents.map((agent) => (
-                  <div className="activityLine" key={agent.id}>
-                    <span>
-                      <strong>{agent.role}</strong>
-                      <small>{agent.id}</small>
-                    </span>
-                    <span>{agent.status}</span>
-                    {agent.last_message && <small>{agent.last_message}</small>}
-                  </div>
-                ))}
-              </div>
-            )}
-            {snapshot.usage && (
-              <dl className="usageFacts" aria-label="Usage">
-                <div><dt>Turns</dt><dd>{snapshot.usage.turns}</dd></div>
-                <div><dt>Calls</dt><dd>{snapshot.usage.calls}</dd></div>
-                <div>
-                  <dt>Cost</dt>
-                  <dd>
-                    {snapshot.usage.cost_known
-                      ? `${snapshot.usage.cost_microunits} µ`
-                      : "Unpriced"}
-                  </dd>
-                </div>
-              </dl>
-            )}
-          </section>
-          <section className="detailSection workspaceExplorer">
-            <div className="sectionTitleRow">
-              <h3>Workspace</h3>
-              <IconButton
-                label="Refresh diagnostics"
-                disabled={!selected}
-                icon={<AlertTriangle size={14} />}
-                onClick={() => void client.workspaceDiagnostics().then(
-                  (result) => setWorkspaceDiagnostics(result.diagnostics),
-                  reportLocalError
-                )}
-              />
-              <IconButton
-                label="Browse workspace"
-                icon={<FolderTree size={14} />}
-                onClick={() => void client.browseWorkspace(workspacePath).then(
-                  (result) => {
-                    setWorkspacePath(result.path);
-                    setWorkspaceEntries(result.entries);
-                  },
-                  reportLocalError
-                )}
-              />
-            </div>
-            <form
-              className="workspaceSearch"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!workspaceQuery.trim()) return;
-                void client.searchWorkspace(workspaceQuery).then(
-                  (result) => setWorkspaceMatches(result.matches),
-                  reportLocalError
-                );
-              }}
-            >
-              <FolderTree size={15} aria-hidden="true" />
-              <input
-                aria-label="Search workspace"
-                placeholder="Search files"
-                value={workspaceQuery}
-                onChange={(event) => setWorkspaceQuery(event.target.value)}
-              />
-            </form>
-            <form
-              className="workspaceSearch"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!workspaceSymbolQuery.trim()) return;
-                void client.searchWorkspaceSymbols(workspaceSymbolQuery).then(
-                  (result) => setWorkspaceSymbols(result.symbols),
-                  reportLocalError
-                );
-              }}
-            >
-              <Search size={15} aria-hidden="true" />
-              <input
-                aria-label="Search workspace symbols"
-                placeholder="Search symbols"
-                value={workspaceSymbolQuery}
-                onChange={(event) => setWorkspaceSymbolQuery(event.target.value)}
-              />
-            </form>
-            {workspaceEntries.length > 0 && (
-              <div className="workspaceEntries">
-                {workspacePath !== "." && (
-                  <button
-                    className="resourceMatch"
-                    onClick={() => {
-                      const parent = workspacePath.split("/").slice(0, -1).join("/") || ".";
-                      void client.browseWorkspace(parent).then((result) => {
-                        setWorkspacePath(result.path);
-                        setWorkspaceEntries(result.entries);
-                      }, reportLocalError);
-                    }}
+          {selected && <div className="composerSeat" data-composer-seat>
+            {localError && <div className="composerError">{localError}</div>}
+            {visibleContextResources.length > 0 && (
+              <div className="contextTray" aria-label="Prompt context">
+                {visibleContextResources.map((resource) => (
+                  <span
+                    className="contextItem"
+                    key={`${resource.kind}:${resource.path ?? ""}:${resource.label ?? ""}:${resource.symbol?.name ?? ""}:${resource.digest}`}
                   >
-                    <strong>..</strong>
-                  </button>
+                    <FileCode2 size={13} />
+                    <span>{contextResourceLabel(resource)}</span>
+                    <IconButton
+                      label={`Remove ${contextResourceLabel(resource)} from prompt context`}
+                      icon={<X size={12} />}
+                      onClick={() => client.removeContext(
+                        resource.kind,
+                        resource.path,
+                        resource.label,
+                        resource.symbol?.name
+                      )}
+                    />
+                  </span>
+                ))}
+              </div>
+            )}
+            {(snapshot.plan || snapshot.tasks.length > 0 ||
+              snapshot.agents.length > 0) && (
+              <Suspense fallback={null}>
+                <SessionProgress
+                  plan={snapshot.plan}
+                  tasks={snapshot.tasks}
+                  agents={snapshot.agents}
+                  onOpenTrajectory={() => {
+                    switchConversationView("trajectory");
+                    void client.refreshTrace();
+                  }}
+                />
+              </Suspense>
+            )}
+            {snapshot.queuedTurns.length > 0 && (
+              <Suspense fallback={null}>
+                <TurnQueue
+                  items={snapshot.queuedTurns}
+                  activeTurnID={activeTurn}
+                  onUpdate={(queueID, prompt) =>
+                    client.updateQueuedTurn(queueID, prompt).then(() => undefined)}
+                  onRemove={(queueID) =>
+                    client.removeQueuedTurn(queueID).then(() => undefined)}
+                  onPromote={(queueID, turnID) =>
+                    client.promoteQueuedTurn(queueID, turnID).then(() => undefined)}
+                  onError={reportLocalError}
+                />
+              </Suspense>
+            )}
+            {pendingApproval ? (
+              <ApprovalComposer
+                key={pendingApprovalKey}
+                event={pendingApproval}
+                client={client}
+                activeTurn={activeTurn}
+              />
+            ) : pendingInput ? (
+              <InputComposer
+                key={pendingInputKey}
+                event={pendingInput}
+                client={client}
+                activeTurn={activeTurn}
+              />
+            ) : (
+              <div
+                className="composer"
+                data-dragging={draggingAttachment || undefined}
+                onDragEnter={(event) => {
+                  if (!event.dataTransfer.types.includes("Files")) return;
+                  event.preventDefault();
+                  setDraggingAttachment(true);
+                }}
+                onDragOver={(event) => {
+                  if (!event.dataTransfer.types.includes("Files")) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                }}
+                onDragLeave={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                  setDraggingAttachment(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDraggingAttachment(false);
+                  attachFiles(event.dataTransfer.files, "drop");
+                }}
+              >
+                <input
+                  ref={attachmentInputRef}
+                  className="srOnly"
+                  type="file"
+                  multiple
+                  accept={composerAttachmentAccept}
+                  aria-label="Attach files"
+                  disabled={Boolean(snapshot.hydratingSessionID) || submitting}
+                  onChange={(event) => {
+                    if (event.target.files) {
+                      attachFiles(event.target.files, "picker");
+                    }
+                    event.target.value = "";
+                  }}
+                />
+                {composerAttachments.length > 0 && (
+                  <Suspense fallback={null}>
+                    <ComposerAttachments
+                      attachments={composerAttachments}
+                      onRemove={removeAttachment}
+                    />
+                  </Suspense>
                 )}
-                {workspaceEntries.map((entry) => (
-                  <button
-                    className="resourceMatch"
-                    key={entry.path}
-                    onClick={() => {
-                      if (entry.kind === "directory") {
-                        void client.browseWorkspace(entry.path).then((result) => {
-                          setWorkspacePath(result.path);
-                          setWorkspaceEntries(result.entries);
-                        }, reportLocalError);
-                      } else {
-                        void openWorkspacePath(entry.path);
+                <div className="composerInputRow">
+                  <textarea
+                    ref={textareaRef}
+                    value={draft}
+                    rows={1}
+                    placeholder="Ask CodeHelper"
+                    enterKeyHint="send"
+                    disabled={Boolean(snapshot.hydratingSessionID) || submitting}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setDraft(value);
+                      const slashQuery = composerSlashQuery(value);
+                      if (slashQuery !== undefined) {
+                        setCommandMenuSource("slash");
+                        setCommandQuery(slashQuery);
+                        setCommandMenuOpen(true);
+                      } else if (commandMenuSource === "slash") {
+                        setCommandMenuOpen(false);
+                        setCommandQuery("");
                       }
                     }}
-                  >
-                    <strong>{entry.path}</strong>
-                    <span>{entry.kind}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {workspaceMatches.map((match) => (
-              <button
-                className="resourceMatch"
-                key={`${match.path}:${match.line}:${match.column}`}
-                onClick={() => void openWorkspacePath(match.path)}
-              >
-                <strong>{match.path}:{match.line}</strong>
-                <span>{match.preview}</span>
-              </button>
-            ))}
-            {workspaceSymbols.map((symbol) => (
-              <button
-                className="resourceMatch"
-                key={`${symbol.path}:${symbol.line}:${symbol.name}`}
-                onClick={() => client.addSymbolContext(symbol)}
-              >
-                <strong>{symbol.name}</strong>
-                <span>{symbol.kind} · {symbol.path}:{symbol.line}</span>
-              </button>
-            ))}
-            {workspaceDiagnostics.map((diagnostic) => (
-              <button
-                className="resourceMatch"
-                key={`${diagnostic.call_id}:${diagnostic.context.path}`}
-                onClick={() => client.addDiagnosticsContext(diagnostic)}
-              >
-                <strong>{diagnostic.context.path}</strong>
-                <span>
-                  {diagnostic.status} · {diagnostic.context.diagnostics?.length ?? 0} diagnostics
-                </span>
-              </button>
-            ))}
-            {workspaceResource && (
-              <div className="resourceViewer">
-                <div className="resourceHeader">
-                  <strong>{workspaceResource.path}</strong>
-                  <IconButton
-                    label="Add file to prompt context"
-                    disabled={snapshot.contextResources.some((resource) =>
-                      resource.path === workspaceResource.path &&
-                      resource.kind === "file"
-                    )}
-                    icon={<Plus size={14} />}
-                    onClick={() => client.addWorkspaceContext(workspaceResource)}
-                  />
-                  <IconButton
-                    label="Add selection to prompt context"
-                    disabled={!workspaceSelection}
-                    icon={<TextSelect size={14} />}
-                    onClick={() => {
-                      if (workspaceSelection) {
-                        client.addWorkspaceContext(
-                          workspaceResource,
-                          workspaceSelection
+                    onCompositionStart={() => {
+                      composingRef.current = true;
+                    }}
+                    onCompositionEnd={() => {
+                      composingRef.current = false;
+                    }}
+                    onPaste={(event) => {
+                      const files = Array.from(event.clipboardData.files);
+                      if (files.length === 0) return;
+                      event.preventDefault();
+                      attachFiles(files, "paste");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing || composingRef.current) return;
+                      if (
+                        commandMenuOpen &&
+                        commandMenuSource === "slash" &&
+                        composerSlashQuery(draft) !== undefined
+                      ) {
+                        if (event.key === "Enter") event.preventDefault();
+                        return;
+                      }
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void submit(
+                          activeTurn && (event.metaKey || event.ctrlKey)
+                            ? "steer"
+                            : "queue"
                         );
                       }
                     }}
                   />
-                  <IconButton
-                    label="Download resource"
-                    icon={<Download size={14} />}
-                    onClick={() => void downloadWorkspaceResource(workspaceResource)}
-                  />
-                </div>
-                <textarea
-                  className="resourceContent"
-                  aria-label="Workspace resource content"
-                  readOnly
-                  spellCheck={false}
-                  value={workspaceResource.content}
-                  onSelect={(event) => setWorkspaceSelection(selectionRange(
-                    event.currentTarget.value,
-                    event.currentTarget.selectionStart,
-                    event.currentTarget.selectionEnd
-                  ))}
-                />
-              </div>
-            )}
-            {workspaceImage && workspaceImageURL && (
-              <div className="resourceViewer">
-                <div className="resourceHeader">
-                  <strong>{workspaceImage.path}</strong>
-                  <IconButton
-                    label="Add image to prompt context"
-                    disabled={snapshot.contextResources.some((resource) =>
-                      resource.path === workspaceImage.path &&
-                      resource.kind === "image"
+                  <ContextMeter
+                    attribution={contextAttribution}
+                    fallbackUsed={numberValue(
+                      isObject(latestReceipt?.data.context_budget)
+                        ? latestReceipt.data.context_budget.active_tokens
+                        : 0
                     )}
-                    icon={<Plus size={14} />}
-                    onClick={() => client.addImageContext(workspaceImage)}
+                    capacity={numberValue(
+                      isObject(latestReceipt?.data.context_budget)
+                        ? latestReceipt.data.context_budget.max_context_tokens
+                        : 0
+                    ) || selectedModelEntry?.capabilities.context_window}
                   />
-                  <IconButton
-                    label="Download image"
-                    icon={<Download size={14} />}
-                    onClick={() => void downloadWorkspaceResource(workspaceImage)}
-                  />
+                  <div className="composerActions">
+                    {activeTurn && (
+                      <IconButton
+                        label="Stop turn"
+                        danger
+                        icon={<CircleStop size={19} />}
+                        onClick={() => void client.cancel(activeTurn)}
+                      />
+                    )}
+                    {(!activeTurn || Boolean(draft.trim())) && (
+                      <>
+                        {activeTurn &&
+                          snapshot.contextResources.length === 0 &&
+                          composerAttachments.length === 0 && (
+                          <IconButton
+                            label="Steer current turn"
+                            disabled={submitting}
+                            icon={<Zap size={18} />}
+                            onClick={() => void submit("steer")}
+                          />
+                        )}
+                        <IconButton
+                          label={activeTurn ? "Queue next" : "Send"}
+                          primary
+                          disabled={
+                            Boolean(snapshot.hydratingSessionID) ||
+                            !draft.trim() ||
+                            submitting ||
+                            attachmentBusy ||
+                            attachmentFailed
+                          }
+                          icon={submitting
+                            ? <LoaderCircle className="spin" size={19} />
+                            : activeTurn
+                              ? <ListPlus size={19} />
+                              : <Send size={19} />}
+                          onClick={() => void submit("queue")}
+                        />
+                      </>
+                    )}
+                  </div>
                 </div>
-                <img
-                  className="workspaceImagePreview"
-                  src={workspaceImageURL}
-                  alt={workspaceImage.label}
-                />
+                <div className="composerControls">
+                  <div>
+                    <IconButton
+                      label="Attach files"
+                      icon={<Paperclip size={15} />}
+                      disabled={
+                        Boolean(snapshot.hydratingSessionID) ||
+                        submitting ||
+                        snapshot.contextResources.length >= maxComposerAttachments
+                      }
+                      onClick={() => attachmentInputRef.current?.click()}
+                    />
+                    <Suspense fallback={null}>
+                      <ComposerCommandMenu
+                        commands={composerCommands}
+                        disabled={Boolean(snapshot.hydratingSessionID) || submitting}
+                        open={commandMenuOpen}
+                        query={commandQuery}
+                        onOpenChange={(open) => {
+                          setCommandMenuOpen(open);
+                          if (open) {
+                            setCommandMenuSource("button");
+                            setCommandQuery("");
+                          } else if (commandMenuSource === "slash") {
+                            setDraft("");
+                            setCommandQuery("");
+                            setCommandMenuSource("button");
+                          }
+                        }}
+                        onQueryChange={setCommandQuery}
+                        onSelect={() => {
+                          setCommandQuery("");
+                          if (commandMenuSource === "slash") {
+                            setDraft("");
+                            requestAnimationFrame(() => textareaRef.current?.focus());
+                          }
+                          setCommandMenuSource("button");
+                        }}
+                        onRequestComposerFocus={
+                          commandMenuSource === "slash"
+                            ? () => textareaRef.current?.focus()
+                            : undefined
+                        }
+                      />
+                    </Suspense>
+                    <CompactSelect
+                      label="Mode"
+                      value={snapshot.profile?.profile.mode ?? "act"}
+                      values={["plan", "act", "operate"]}
+                      disabled={!profileMutable(snapshot, "mode")}
+                      onChange={(value) => void client.updateProfile({mode: value})
+                        .catch(reportLocalError)}
+                    />
+                    <CompactSelect
+                      label="Approval"
+                      value={snapshot.profile?.profile.approval_posture ?? "suggest"}
+                      values={["suggest", "auto", "never"]}
+                      disabled={!profileMutable(snapshot, "approval_posture")}
+                      onChange={(value) => void client.updateProfile({
+                        approval_posture: value
+                      }).catch(reportLocalError)}
+                    />
+                  </div>
+                  <div>
+                    {modelOptions.filter((option) => !option.disabled).length > 1 ? (
+                      <CompactCatalogSelect
+                        label="Model"
+                        value={selectedModel}
+                        options={modelOptions}
+                        disabled={!profileMutable(snapshot, "model")}
+                        onChange={(model) => {
+                          const target = snapshot.models.find(
+                            (entry) =>
+                              entry.provider === selectedProvider &&
+                              entry.id === model
+                          );
+                          void client.updateProfile({
+                            model,
+                            reasoning_effort:
+                              target?.capabilities.default_reasoning_effort ?? ""
+                          }).catch(reportLocalError);
+                        }}
+                      />
+                    ) : (
+                      <output
+                        className="composerValue"
+                        aria-label="Model"
+                        title={selectedModel}
+                      >
+                        {selectedModelEntry?.capabilities.display_name || selectedModel}
+                      </output>
+                    )}
+                    {reasoningValues.length > 1 && (
+                      <CompactSelect
+                        label="Reasoning"
+                        value={snapshot.profile?.profile.reasoning_effort ?? ""}
+                        values={reasoningValues}
+                        onChange={(value) => void client.updateProfile({
+                          reasoning_effort: value
+                        }).catch(reportLocalError)}
+                      />
+                    )}
+                  </div>
+                </div>
               </div>
             )}
-          </section>
-          <section className="detailSection">
-            <h3>Profile</h3>
-            <ReadOnlyField
-              label="Provider"
-              value={selectedProviderEntry?.display_name || selectedProvider}
-              detail="Runtime provider"
+            <ComposerStats
+              receipt={latestReceipt?.data}
+              usage={snapshot.usage}
+              toolCalls={entries.filter((entry) => entry.kind === "tool").length}
             />
-            {profileMutable(snapshot, "model") &&
-            modelOptions.filter((option) => !option.disabled).length > 1 ? (
-              <CatalogSelectField
-                label="Model"
-                value={selectedModel}
-                options={modelOptions}
-                onChange={(model) => {
-                  const target = snapshot.models.find(
-                    (entry) =>
-                      entry.provider === selectedProvider &&
-                      entry.id === model
-                  );
-                  void client.updateProfile({
-                    model,
-                    reasoning_effort:
-                      target?.capabilities.default_reasoning_effort ?? ""
-                  }).catch(reportLocalError);
-                }}
-              />
-            ) : (
-              <ReadOnlyField
-                label="Model"
-                value={selectedModelEntry?.capabilities.display_name || selectedModel}
-                detail={modelOptions.length > 1
-                  ? "Restart Runtime to change"
-                  : "Only model available"}
-              />
-            )}
-            {profileMutable(snapshot, "reasoning_effort") &&
-            reasoningValues.length > 1 ? (
-              <SelectField
-                label="Reasoning"
-                value={snapshot.profile?.profile.reasoning_effort ?? ""}
-                values={reasoningValues}
-                onChange={(value) => void client.updateProfile({
-                  reasoning_effort: value
-                }).catch(reportLocalError)}
-              />
-            ) : (
-              <ReadOnlyField
-                label="Reasoning"
-                value={snapshot.profile?.profile.reasoning_effort || "Default"}
-                detail={selectedModelEntry?.capabilities.reasoning
-                  ? "Runtime default"
-                  : "Not supported"}
-              />
-            )}
-            <SelectField
-              label="Mode"
-              value={snapshot.profile?.profile.mode ?? "act"}
-              values={["plan", "act", "operate"]}
-              disabled={!profileMutable(snapshot, "mode")}
-              onChange={(value) => void client.updateProfile({mode: value}).catch(reportLocalError)}
-            />
-            <SelectField
-              label="Approval"
-              value={snapshot.profile?.profile.approval_posture ?? "suggest"}
-              values={["suggest", "auto", "never"]}
-              disabled={!profileMutable(snapshot, "approval_posture")}
-              onChange={(value) => void client.updateProfile({
-                approval_posture: value
-              }).catch(reportLocalError)}
-            />
-            <SelectField
-              label="Execution"
-              value={snapshot.profile?.profile.execution_target ?? "local"}
-              values={["local", "sandbox"]}
-              disabled={!profileMutable(snapshot, "execution_target")}
-              onChange={(value) => void client.updateProfile({
-                execution_target: value
-              }).catch(reportLocalError)}
-            />
-            <NumberField
-              label="Max steps"
-              value={snapshot.profile?.profile.max_steps ?? 0}
-              disabled={!profileMutable(snapshot, "max_steps")}
-              onCommit={(value) => client.updateProfile({max_steps: value})}
-            />
-          </section>
-          {snapshot.plan && (
-            <section className="detailSection">
-              <h3>Plan</h3>
-              <p className="artifactSummary">{snapshot.plan.body}</p>
-              <div className="artifactActions">
-                <button
-                  disabled={!snapshot.plan.can_implement}
-                  onClick={() => void client.transitionPlan("implement").catch(reportLocalError)}
-                >
-                  <Play size={14} /> Implement
-                </button>
-                <button
-                  disabled={!snapshot.plan.can_autopilot}
-                  onClick={() => void client.transitionPlan("autopilot").catch(reportLocalError)}
-                >
-                  <LoaderCircle size={14} /> Autopilot
-                </button>
-              </div>
-            </section>
-          )}
-          {snapshot.checkpoints.length > 0 && (
-            <section className="detailSection">
-              <h3>Checkpoints</h3>
-              {snapshot.checkpoints.map((checkpoint) => (
-                <div className="checkpointLine" key={checkpoint.id}>
-                  <span title={checkpoint.summary}>{checkpoint.summary}</span>
-                  <IconButton
-                    label="Restore checkpoint"
-                    disabled={!checkpoint.can_restore}
-                    icon={<RotateCcw size={14} />}
-                    onClick={() => void client.restoreCheckpoint(checkpoint.id).catch(reportLocalError)}
-                  />
-                  <IconButton
-                    label="Fork checkpoint"
-                    disabled={!checkpoint.can_fork}
-                    icon={<GitFork size={14} />}
-                    onClick={() => void client.forkCheckpoint(checkpoint.id).catch(reportLocalError)}
-                  />
-                </div>
-              ))}
-            </section>
-          )}
-          {snapshot.extensions.length > 0 && (
-            <section className="detailSection">
-              <h3>Extensions</h3>
-              {snapshot.extensions.map((extension) => (
-                <label className="extensionLine" key={`${extension.kind}:${extension.name}`}>
-                  <span>
-                    <strong>{extension.name}</strong>
-                    <small>{extension.kind} / {extension.health}</small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={extension.enabled}
-                    onChange={(event) => void client.setExtensionEnabled(
-                      extension.kind,
-                      extension.name,
-                      event.target.checked
-                    ).catch(reportLocalError)}
-                  />
-                </label>
-              ))}
-            </section>
-          )}
-          <section className="detailSection toolList">
-            <h3>Tools</h3>
-            {snapshot.tools.slice(0, 20).map((tool) => (
-              <label className="toolLine" key={tool.id}>
-                <Wrench size={14} />
-                <span>{tool.name}</span>
-                <small>{tool.availability === "available"
-                  ? tool.risk_level
-                  : (tool.unavailable_reason ?? tool.availability)}
-                </small>
-                <input
-                  type="checkbox"
-                  checked={tool.enabled}
-                  disabled={tool.availability !== "available" ||
-                    !profileMutable(snapshot, "enabled_tool_ids")}
-                  onChange={(event) => void client.setToolEnabled(
-                    tool.id,
-                    event.target.checked
-                  ).catch(reportLocalError)}
-                />
-              </label>
-            ))}
-          </section>
-        </aside>
-      )}
-
-      {settingsOpen && (
-        <div className="settingsPopover" role="dialog" aria-label="Settings">
-          <div className="popoverHeader">
-            <strong>Settings</strong>
-            <IconButton label="Close settings" icon={<X size={15} />} onClick={() => setSettingsOpen(false)} />
-          </div>
-          <div className="themeActions">
-            <button onClick={() => setTheme("light")}><Sun size={15} /> Light</button>
-            <button onClick={() => setTheme("dark")}><Moon size={15} /> Dark</button>
-          </div>
-          <CredentialSettings
-            status={credentialStatus}
-            onLoad={() => void client.credentialStatus().then(
-              setCredentialStatus,
-              reportLocalError
-            )}
-            onSet={(secret) => client.setKeyringCredential(secret)
-              .then(setCredentialStatus)
-              .catch(reportLocalError)}
-            onClear={() => client.clearKeyringCredential()
-              .then(setCredentialStatus)
-              .catch(reportLocalError)}
-            onValidate={() => client.validateCredential()
-              .then(setCredentialStatus)
-              .catch(reportLocalError)}
-          />
-          <button
-            className="settingsCommand"
-            onClick={() => void client.diagnostics().then(
-              (value) => setDiagnostics(JSON.stringify(value, null, 2)),
-              reportLocalError
-            )}
-          >
-            <TerminalSquare size={15} /> Runtime diagnostics
-          </button>
-          {diagnostics && <pre className="diagnosticsOutput">{diagnostics}</pre>}
+          </div>}
         </div>
+      </main>
+
+      {conversationNavigatorOpen && (
+        <Suspense fallback={null}>
+          <ConversationNavigator
+            items={conversationNavigation}
+            currentEntryID={readerEntryID}
+            hasEarlier={snapshot.historyMoreBefore}
+            onClose={() => setConversationNavigatorOpen(false)}
+            onSelect={jumpToNavigationItem}
+            onLoadEarlier={async () => {
+              pendingReadingRestoreRef.current = captureReadingPosition(true);
+              return client.loadEarlierHistory();
+            }}
+          />
+        </Suspense>
+      )}
+      {contextOpen && (
+        <Suspense fallback={null}>
+          <WorkspaceContextDialog
+            snapshot={snapshot}
+            client={client}
+            onClose={closeContext}
+            onError={reportLocalError}
+          />
+        </Suspense>
+      )}
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsDialog
+            snapshot={snapshot}
+            client={client}
+            newIsolation={newIsolation}
+            theme={themeMode}
+            onIsolationChange={setNewIsolation}
+            onThemeChange={setThemeMode}
+            onClose={closeSettings}
+            onError={reportLocalError}
+          />
+        </Suspense>
       )}
     </div>
   );
 
-  function reportLocalError(error: unknown) {
-    setLocalError(error instanceof Error ? error.message : String(error));
+}
+
+function readTranscriptPosition(
+  scrollport: HTMLElement,
+  page: number,
+  atBottom: boolean
+): TranscriptReadingPosition | undefined {
+  const anchors = Array.from(
+    scrollport.querySelectorAll<HTMLElement>("[data-entry-id]")
+  );
+  if (anchors.length === 0) return undefined;
+  const viewport = scrollport.getBoundingClientRect();
+  const composer = scrollport.querySelector<HTMLElement>("[data-composer-seat]");
+  const visibleBottom = composer?.getBoundingClientRect().top ?? viewport.bottom;
+  const visible = anchors.filter((anchor) => {
+    const box = anchorContent(anchor).getBoundingClientRect();
+    return box.bottom > viewport.top && box.top < visibleBottom;
+  });
+  const anchor = (atBottom ? visible.at(-1) : visible[0]) ??
+    (atBottom ? anchors.at(-1) : anchors[0]);
+  const entryID = anchor?.dataset.entryId;
+  if (!anchor || !entryID) return undefined;
+  return {
+    entryID,
+    top: anchorContent(anchor).getBoundingClientRect().top - viewport.top,
+    scrollTop: scrollport.scrollTop,
+    page,
+    atBottom
+  };
+}
+
+function transcriptAnchor(
+  scrollport: HTMLElement,
+  entryID: string
+): HTMLElement | undefined {
+  return Array.from(
+    scrollport.querySelectorAll<HTMLElement>("[data-entry-id]")
+  ).find((node) => node.dataset.entryId === entryID);
+}
+
+function transcriptFocusEntryID(scrollport: HTMLElement): string | undefined {
+  const viewport = scrollport.getBoundingClientRect();
+  const composer = scrollport.querySelector<HTMLElement>("[data-composer-seat]");
+  const visibleBottom = composer?.getBoundingClientRect().top ?? viewport.bottom;
+  const focusLine = viewport.top + (visibleBottom - viewport.top) * 0.42;
+  let nearest: {id: string; distance: number} | undefined;
+  for (const anchor of scrollport.querySelectorAll<HTMLElement>(
+    "[data-entry-id]"
+  )) {
+    const id = anchor.dataset.entryId;
+    if (!id) continue;
+    const box = anchorContent(anchor).getBoundingClientRect();
+    if (box.bottom <= viewport.top || box.top >= visibleBottom) continue;
+    const center = box.top + Math.min(box.height, visibleBottom - box.top) / 2;
+    const distance = Math.abs(center - focusLine);
+    if (!nearest || distance < nearest.distance) nearest = {id, distance};
   }
+  return nearest?.id;
+}
+
+function anchorContent(anchor: HTMLElement): HTMLElement {
+  return anchor.firstElementChild instanceof HTMLElement
+    ? anchor.firstElementChild
+    : anchor;
+}
+
+function fileTarget(
+  anchor: HTMLElement,
+  path: string
+): HTMLElement | undefined {
+  return Array.from(
+    anchor.querySelectorAll<HTMLElement>("[data-file-path]")
+  ).find((node) => node.dataset.filePath === path);
+}
+
+function centerTranscriptTarget(
+  scrollport: HTMLElement,
+  target: HTMLElement
+): void {
+  const viewport = scrollport.getBoundingClientRect();
+  const composer = scrollport.querySelector<HTMLElement>("[data-composer-seat]");
+  const visibleBottom = composer?.getBoundingClientRect().top ?? viewport.bottom;
+  const targetBox = target.getBoundingClientRect();
+  const visibleHeight = Math.max(1, visibleBottom - viewport.top);
+  const desiredTop = viewport.top +
+    Math.max(16, (visibleHeight - Math.min(targetBox.height, visibleHeight)) / 2);
+  const behavior = scrollport.style.scrollBehavior;
+  scrollport.style.scrollBehavior = "auto";
+  scrollport.scrollTop += targetBox.top - desiredTop;
+  scrollport.style.scrollBehavior = behavior;
+}
+
+function restoreTranscriptPosition(
+  scrollport: HTMLElement,
+  position: TranscriptReadingPosition
+): void {
+  if (position.atBottom) {
+    scrollport.scrollTop = scrollport.scrollHeight;
+    return;
+  }
+  scrollport.scrollTop = position.scrollTop;
+  const anchor = transcriptAnchor(scrollport, position.entryID);
+  if (!anchor) return;
+  const top = anchorContent(anchor).getBoundingClientRect().top -
+    scrollport.getBoundingClientRect().top;
+  scrollport.scrollTop += top - position.top;
+}
+
+function isEditableElement(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement;
 }
 
 function SessionRow({
@@ -1260,45 +1988,102 @@ function SessionRow({
   actionPending: boolean;
   actionError: string;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const showStatus = session.status !== "idle";
+  const statusTone = session.status === "failed" || session.status === "interrupted"
+    ? "error"
+    : session.status === "awaiting_approval" || session.status === "awaiting_input"
+      ? "warning"
+      : session.status === "completed"
+        ? "complete"
+        : "active";
+  const statusLabel = session.status === "awaiting_approval"
+    ? "Approval required"
+    : session.status === "awaiting_input"
+      ? "Input required"
+      : session.status === "interrupted"
+        ? "Interrupted"
+        : session.status === "failed"
+          ? "Failed"
+          : session.status === "completed"
+            ? "Completed"
+            : "Running";
+  const StatusIcon = session.status === "running"
+    ? LoaderCircle
+    : session.status === "completed"
+      ? Check
+      : session.status === "interrupted"
+        ? CircleStop
+        : AlertTriangle;
+  const run = (action: () => void) => {
+    setMenuOpen(false);
+    action();
+  };
   return (
     <div
       className="sessionRow"
       data-active={active || undefined}
+      data-menu-open={menuOpen || undefined}
+      data-error={Boolean(actionError) || undefined}
       aria-busy={actionPending || undefined}
+      role="treeitem"
+      aria-selected={active}
+      onMouseLeave={() => setMenuOpen(false)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") setMenuOpen(false);
+      }}
     >
       <button className="sessionSelect" onClick={onClick}>
-        <span className="sessionTitle">{session.title}</span>
-        <span className="sessionMeta">
-          <span>{session.status.replaceAll("_", " ")}</span>
-          <span>{relativeTime(session.updated_at)}</span>
+        <span className="sessionStatusSlot">
+          {showStatus && (
+            <span
+              className="sessionStatusMark"
+              data-tone={statusTone}
+              title={statusLabel}
+              role="img"
+              aria-label={statusLabel}
+            >
+              <StatusIcon
+                className={session.status === "running" ? "spin" : undefined}
+                size={12}
+              />
+            </span>
+          )}
         </span>
+        <span className="sessionTitle">{session.title}</span>
+        <span className="sessionAge">{relativeTime(session.updated_at)}</span>
       </button>
       <div className="sessionActions">
         <IconButton
-          label="Rename session"
-          icon={<Pencil size={13} />}
+          label={`Session actions for ${session.title}`}
+          icon={actionPending
+            ? <LoaderCircle className="spin" size={14} />
+            : <MoreHorizontal size={15} />}
           disabled={actionPending}
-          onClick={onRename}
+          onClick={() => setMenuOpen((value) => !value)}
         />
-        <IconButton
-          label={session.pinned ? "Unpin session" : "Pin session"}
-          icon={session.pinned ? <PinOff size={13} /> : <Pin size={13} />}
-          disabled={actionPending}
-          onClick={onPin}
-        />
-        <IconButton
-          label={session.archived ? "Restore session" : "Archive session"}
-          icon={<Archive size={13} />}
-          disabled={actionPending}
-          onClick={onArchive}
-        />
-        <IconButton
-          label="Delete session"
-          danger
-          disabled={actionPending}
-          icon={actionPending ? <LoaderCircle className="spin" size={13} /> : <Trash2 size={13} />}
-          onClick={onDelete}
-        />
+        {menuOpen && (
+          <div className="sessionMenu" role="menu">
+            <button role="menuitem" onClick={() => run(onRename)}>
+              <Pencil size={14} /> Rename
+            </button>
+            <button role="menuitem" onClick={() => run(onPin)}>
+              {session.pinned ? <PinOff size={14} /> : <Pin size={14} />}
+              {session.pinned ? "Unpin" : "Pin"}
+            </button>
+            <button role="menuitem" onClick={() => run(onArchive)}>
+              <Archive size={14} />
+              {session.archived ? "Restore" : "Archive"}
+            </button>
+            <button
+              className="dangerMenuItem"
+              role="menuitem"
+              onClick={() => run(onDelete)}
+            >
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+        )}
       </div>
       {actionError && (
         <span className="sessionActionError" role="alert">
@@ -1316,95 +2101,252 @@ function sessionIsBusy(session: SessionSummary): boolean {
     session.status === "awaiting_input";
 }
 
-function TranscriptItem({
+function DisclosureLeading({
+  open,
+  icon
+}: {
+  open: boolean;
+  icon: ReactNode;
+}) {
+  return (
+    <span className="disclosureLeading" aria-hidden="true">
+      <span className="disclosureIcon">{icon}</span>
+      <span className="disclosureChevron">
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </span>
+    </span>
+  );
+}
+
+const TranscriptItem = memo(function TranscriptItem({
   entry,
   client,
-  onError
+  onError,
+  onInspect,
+  canOpenPath,
+  checkpoint,
+  chrome,
+  feedback,
+  onFeedback
 }: {
-  entry: TranscriptEntry;
+  entry: ConversationNode;
   client: RuntimeClient;
   onError: (error: unknown) => void;
+  onInspect: (callID: string) => void;
+  canOpenPath: boolean;
+  checkpoint?: SessionCheckpoint;
+  chrome?: MessageChrome;
+  feedback?: MessageFeedbackRating;
+  onFeedback: (rating: MessageFeedbackRating) => void;
 }) {
-  const [open, setOpen] = useState(entry.type !== "reasoning");
-  if (entry.type === "user") {
-    return <div className="userMessage">{entry.text}</div>;
-  }
-  if (entry.type === "assistant") {
+  const [open, setOpen] = useState(false);
+  const [guidanceOpen, setGuidanceOpen] = useState(false);
+  const [guidance, setGuidance] = useState("");
+  const [recoveryPending, setRecoveryPending] = useState("");
+  if (entry.kind === "user") {
     return (
-      <article className="assistantMessage">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            a: ({href, children, ...properties}) => (
-              <a
-                {...properties}
-                href={href}
-                rel={isExternalURL(href) ? "noopener noreferrer" : undefined}
-                target={isExternalURL(href) ? "_blank" : undefined}
-              >
-                {children}
-              </a>
-            ),
-            img: ({alt}) => <span>{alt ?? "Image"}</span>
-          }}
-        >
-          {entry.text}
-        </ReactMarkdown>
+      <div
+        className="userMessage"
+        data-steering={entry.steering || undefined}
+      >
+        {entry.steering && <small>Steered</small>}
+        {entry.text}
+      </div>
+    );
+  }
+  if (entry.kind === "assistant") {
+    return (
+      <article
+        className="assistantMessage"
+        data-superseded={entry.superseded || undefined}
+        data-time-hover-root
+      >
+        <Suspense fallback={
+          <div className="assistantMarkdownFallback">{entry.text}</div>
+        }>
+          <MarkdownMessage
+            text={entry.text}
+            settled={Boolean(chrome)}
+            canOpenPath={canOpenPath}
+            onOpenFile={(path) => void client.openWorkspacePath(path).catch(onError)}
+          />
+        </Suspense>
+        {chrome && !entry.superseded && (
+          <MessageActions
+            text={entry.text}
+            chrome={chrome}
+            feedback={feedback}
+            onFeedback={onFeedback}
+          />
+        )}
       </article>
     );
   }
-  if (entry.type === "status") {
+  if (entry.kind === "status") {
     return (
       <div className="terminalState" data-failed={entry.failed || undefined}>
         {entry.failed ? <AlertTriangle size={16} /> : <Check size={16} />}
         <div><strong>{entry.title}</strong><span>{entry.text}</span></div>
-        {entry.failed && entry.turnID && (
-          <div className="artifactActions">
-            <button onClick={() => void client.recoverTurn(
-              entry.turnID ?? "",
-              "retry"
-            ).catch(onError)}>
-              <RotateCcw size={13} /> Retry
-            </button>
-            <button onClick={() => {
-              const guidance = window.prompt("Continue with guidance", "") ?? "";
-              void client.recoverTurn(
-                entry.turnID ?? "",
-                "continue",
-                guidance
-              ).catch(onError);
-            }}>
-              <Play size={13} /> Continue
-            </button>
+        {entry.recoverable && entry.turnID && entry.recovery && (
+          <div className="turnRecovery">
+            <div className="turnRecoveryStatus">
+              <span data-state={entry.recovery.sideEffects}>
+                Side effects: {entry.recovery.sideEffects.replaceAll("_", " ")}
+              </span>
+              {entry.recovery.action && <small>{entry.recovery.action}</small>}
+            </div>
+            <div className="artifactActions">
+              {entry.recovery.canRetry && (
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => {
+                    setRecoveryPending("retry");
+                    void client.recoverTurn(entry.turnID, "retry")
+                      .catch(onError)
+                      .finally(() => setRecoveryPending(""));
+                  }}
+                >
+                  <RotateCcw size={13} /> Retry
+                </button>
+              )}
+              {entry.recovery.canContinue && (
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => setGuidanceOpen((value) => !value)}
+                >
+                  <Play size={13} /> Continue
+                </button>
+              )}
+              {checkpoint?.can_restore && (
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => {
+                    setRecoveryPending("restore");
+                    void client.restoreCheckpoint(checkpoint.id)
+                      .catch(onError)
+                      .finally(() => setRecoveryPending(""));
+                  }}
+                >
+                  <RefreshCw size={13} /> Restore
+                </button>
+              )}
+              {checkpoint?.can_fork && (
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => {
+                    setRecoveryPending("fork");
+                    void client.forkCheckpoint(checkpoint.id)
+                      .catch(onError)
+                      .finally(() => setRecoveryPending(""));
+                  }}
+                >
+                  <GitFork size={13} /> Fork
+                </button>
+              )}
+            </div>
+            {guidanceOpen && (
+              <div className="turnRecoveryGuidance">
+                <textarea
+                  aria-label="Continue guidance"
+                  value={guidance}
+                  autoFocus
+                  onChange={(event) => setGuidance(event.target.value)}
+                  placeholder="Additional guidance"
+                />
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => {
+                    setRecoveryPending("continue");
+                    void client.recoverTurn(
+                      entry.turnID,
+                      "continue",
+                      guidance
+                    ).catch(onError).finally(() => {
+                      setRecoveryPending("");
+                      setGuidanceOpen(false);
+                    });
+                  }}
+                >
+                  <Play size={13} /> Continue
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
     );
   }
+  if (entry.kind === "receipt") {
+    return null;
+  }
+  if (entry.kind === "deliverables") {
+    return (
+      <Suspense fallback={null}>
+        <ProducedFiles
+          entry={entry}
+          client={client}
+          canOpenPath={canOpenPath}
+          onInspect={onInspect}
+          onError={onError}
+        />
+      </Suspense>
+    );
+  }
+  if (entry.kind === "context") {
+    return (
+      <div className="disclosure contextDisclosure">
+        <button onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+          <DisclosureLeading open={open} icon={<FileCode2 size={14} />} />
+          <span className="disclosureTitle">{entry.title}</span>
+          <span className="disclosureSeparator" aria-hidden="true" />
+          <small>{entry.summary}</small>
+        </button>
+        {open && <pre>{pretty(entry.data)}</pre>}
+      </div>
+    );
+  }
+  if (entry.kind === "reasoning") {
+    return <ReasoningDisclosure entry={entry} />;
+  }
+  return <ToolDisclosure
+    entry={entry}
+    onInspect={onInspect}
+    onAddContext={(callID, text) => {
+      void client.addTerminalContext(callID, text).catch(onError);
+    }}
+    {...(canOpenPath ? {
+      onOpenFile: (path: string) => {
+        void client.openWorkspacePath(path).catch(onError);
+      }
+    } : {})}
+  />;
+});
+
+function TurnStatus({
+  events,
+  turnID
+}: {
+  events: readonly RuntimeEvent[];
+  turnID: string;
+}) {
+  const startedAt = useMemo(() => {
+    const value = events.find(
+      (event) => event.turn_id === turnID && event.kind === "turn.started"
+    )?.created_at;
+    const parsed = value ? Date.parse(value) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : Date.now();
+  }, [events, turnID]);
+  const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
+  useEffect(() => {
+    const tick = () => setElapsed(Math.max(0, Date.now() - startedAt));
+    tick();
+    const interval = window.setInterval(tick, 1_000);
+    return () => window.clearInterval(interval);
+  }, [startedAt]);
   return (
-    <div className="disclosure" data-failed={entry.type === "tool" && entry.failed || undefined}>
-      <button onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-        {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-        {entry.type === "tool" ? <TerminalSquare size={15} /> : <FileCode2 size={15} />}
-        <span>{entry.type === "tool" ? entry.title : "Reasoning"}</span>
-      </button>
-      {open && (
-        <>
-          <pre>{entry.text}</pre>
-          {entry.type === "tool" && entry.contextText && (
-            <div className="artifactActions">
-              <button
-                onClick={() => void client.addTerminalContext(
-                  entry.callID,
-                  entry.contextText ?? ""
-                ).catch(onError)}
-              >
-                <Plus size={13} /> Add tool output to prompt context
-              </button>
-            </div>
-          )}
-        </>
-      )}
+    <div className="turnStatus" role="status" aria-live="polite">
+      <span>Deep diving...</span>
+      {elapsed >= 15_000 && <small>{formatDuration(elapsed)}</small>}
     </div>
   );
 }
@@ -1428,6 +2370,7 @@ function ApprovalComposer({
   const planID = typeof data.edit_plan === "object" && data.edit_plan
     ? String((data.edit_plan as Record<string, unknown>).id ?? "")
     : "";
+  const editPlan = projectEditPlan(data.edit_plan);
   const scopes = Array.isArray(data.allowed_scopes)
     ? data.allowed_scopes.map(String)
     : [];
@@ -1452,82 +2395,110 @@ function ApprovalComposer({
     }
   };
   return (
-    <div className="pendingComposer">
-      <div className="pendingText">
-        <div className="pendingHeading">
-          <strong>{String(data.tool ?? "Action")} requires approval</strong>
-          <span>{String(data.effect ?? data.risk ?? "Review the requested effect.")}</span>
+    <div className="pendingComposer approvalComposer" data-approval-key={requestID}>
+      <div className="approvalStrip">
+        <span className="approvalDot" />
+        <strong>Waiting for approval</strong>
+        <IconButton
+          label="Stop turn"
+          danger
+          disabled={submitting}
+          icon={<CircleStop size={16} />}
+          onClick={() => void client.cancel(activeTurn || event.turn_id)}
+        />
+      </div>
+      <div
+        className="approvalBody"
+        tabIndex={0}
+        role="group"
+        aria-label="Approval details"
+      >
+        <div className="approvalHeadline">
+          {editPlan
+            ? `Review ${editPlan.files.length} file ${
+              editPlan.files.length === 1 ? "change" : "changes"
+            }`
+            : `${String(data.tool ?? "Action")} requires approval`}
         </div>
+        <div className="approvalReason">
+          {String(data.effect ?? data.risk ?? "Review the requested effect.")}
+        </div>
+        {approvalCommand(data.arguments) && (
+          <code className="approvalCommand">{approvalCommand(data.arguments)}</code>
+        )}
+        {editPlan && (
+          <EditPlanPreview files={editPlan.files} diff={editPlan.diff} />
+        )}
         <div className="pendingMeta">
           {planID && <span>Plan {planID.slice(0, 12)}</span>}
+          {Array.isArray(data.resources) && (
+            <span>{data.resources.length} protected resources</span>
+          )}
           {typeof data.expires_at === "string" && (
             <span>Expires {new Date(data.expires_at).toLocaleString()}</span>
           )}
         </div>
         {error && <span className="composerError">{error}</span>}
+        {(scopes.length > 0 || replacementAllowed) && (
+          <details className="approvalOptions">
+            <summary>Approval options <ChevronDown size={13} /></summary>
+            {scopes.length > 0 && (
+              <label>
+                <span>Scope</span>
+                <select
+                  aria-label="Approval scope"
+                  value={scope}
+                  disabled={submitting}
+                  onChange={(event) => setScope(event.target.value)}
+                >
+                  <option value="">Once</option>
+                  {scopes.map((value) => (
+                    <option value={value} key={value}>{value}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {replacementAllowed && (
+              <button
+                type="button"
+                onClick={() => setReplacementOpen((value) => !value)}
+              >
+                <Braces size={14} />
+                {replacementOpen ? "Hide replacement arguments" : "Edit arguments"}
+              </button>
+            )}
+            {replacementAllowed && replacementOpen && (
+              <label className="replacementEditor">
+                <span>Replacement arguments (JSON)</span>
+                <textarea
+                  aria-label="Replacement arguments"
+                  placeholder={'{"argument": "value"}'}
+                  value={replacement}
+                  aria-invalid={!replacementValid}
+                  disabled={submitting}
+                  onChange={(event) => setReplacement(event.target.value)}
+                />
+                {!replacementValid && (
+                  <span className="composerError">Enter a JSON object.</span>
+                )}
+              </label>
+            )}
+          </details>
+        )}
       </div>
-      <div className="pendingActions">
-        <IconButton
-          label="Stop turn"
-          danger
-          disabled={submitting}
-          icon={<CircleStop size={17} />}
-          onClick={() => void client.cancel(activeTurn || event.turn_id)}
-        />
-        <button disabled={submitting} onClick={() => void decide("cancel")}>
-          Cancel
-        </button>
-        <button disabled={submitting} onClick={() => void decide("deny")}>
+      <div className="pendingActions approvalActions">
+        <button type="button" disabled={submitting} onClick={() => void decide("deny")}>
           Deny
         </button>
-        {scopes.length > 0 && (
-          <select
-            aria-label="Approval scope"
-            value={scope}
-            disabled={submitting}
-            onChange={(event) => setScope(event.target.value)}
-          >
-            <option value="">Once</option>
-            {scopes.map((value) => (
-              <option value={value} key={value}>{value}</option>
-            ))}
-          </select>
-        )}
-        {replacementAllowed && (
-          <IconButton
-            label={replacementOpen
-              ? "Hide replacement arguments"
-              : "Edit replacement arguments"}
-            icon={<Braces size={15} />}
-            expanded={replacementOpen}
-            disabled={submitting}
-            onClick={() => setReplacementOpen((value) => !value)}
-          />
-        )}
         <button
+          type="button"
           className="primaryText"
           disabled={submitting || !replacementValid}
           onClick={() => void decide("approve")}
         >
-          Approve
+          Approve once
         </button>
       </div>
-      {replacementAllowed && replacementOpen && (
-        <label className="replacementEditor">
-          <span>Replacement arguments (JSON)</span>
-          <textarea
-            aria-label="Replacement arguments"
-            placeholder={'{"argument": "value"}'}
-            value={replacement}
-            aria-invalid={!replacementValid}
-            disabled={submitting}
-            onChange={(event) => setReplacement(event.target.value)}
-          />
-          {!replacementValid && (
-            <span className="composerError">Enter a JSON object.</span>
-          )}
-        </label>
-      )}
     </div>
   );
 }
@@ -1734,7 +2705,7 @@ function StartupSetup({
   return (
     <section className="startupSetup" aria-labelledby="startup-title">
       <div className="startupHeading">
-        <div className="emptyMark"><TerminalSquare size={22} /></div>
+        <div className="emptyMark"><CapybaraMark size="hero" /></div>
         <div>
           <h2 id="startup-title">Start a new session</h2>
           <p>Confirm the model route and credential before you begin.</p>
@@ -1880,62 +2851,160 @@ function apiKeyError(value: string): string {
   return "";
 }
 
-function CredentialSettings({
-  status,
-  onLoad,
-  onSet,
-  onClear,
-  onValidate
+function CompactSelect({
+  label,
+  value,
+  values,
+  disabled,
+  onChange
 }: {
-  status?: CredentialStatus;
-  onLoad: () => void;
-  onSet: (secret: string) => Promise<unknown>;
-  onClear: () => Promise<unknown>;
-  onValidate: () => Promise<unknown>;
+  label: string;
+  value: string;
+  values: string[];
+  disabled?: boolean;
+  onChange: (value: string) => void;
 }) {
-  const [secret, setSecret] = useState("");
-  useEffect(() => onLoad(), []);
-  const keyring = status?.reference.kind === "keyring";
   return (
-    <section className="credentialSettings">
-      <div className="credentialHeading">
-        <KeyRound size={15} />
-        <strong>Credential</strong>
-        <span>{status?.configured ? "Configured" : "Missing"}</span>
-      </div>
-      <small>{status?.reference.kind || "none"} · {status?.validation ?? "not_validated"}</small>
-      {status?.validation_detail && <small>{status.validation_detail}</small>}
-      {status?.restart_required && <small>Restart required</small>}
-      <input
-        type="password"
-        autoComplete="off"
-        aria-label="Provider credential"
-        placeholder="API key"
-        value={secret}
-        onChange={(event) => setSecret(event.target.value)}
-      />
-      <div className="credentialActions">
-        <button
-          disabled={!secret.trim()}
-          onClick={() => void onSet(secret).then(() => setSecret(""))}
-        >
-          Set key
-        </button>
-        <button disabled={!status?.configured} onClick={() => void onValidate()}>
-          Validate
-        </button>
-        {keyring && (
-          <button disabled={!status?.configured} onClick={() => void onClear()}>
-            Clear
-          </button>
-        )}
-      </div>
-    </section>
+    <label className="compactSelect" title={`${label}: ${value || "Default"}`}>
+      <span className="srOnly">{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        style={compactSelectWidth(value || "Default")}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {values.map((item) => (
+          <option value={item} key={item}>{item || "Default"}</option>
+        ))}
+      </select>
+      <ChevronDown size={13} aria-hidden="true" />
+    </label>
   );
 }
 
-function Metric({icon, label, value}: {icon: React.ReactNode; label: string; value: string}) {
-  return <div className="metric">{icon}<span>{label}</span><strong>{value}</strong></div>;
+function CompactCatalogSelect({
+  label,
+  value,
+  options,
+  disabled,
+  onChange
+}: {
+  label: string;
+  value: string;
+  options: CatalogOption[];
+  disabled?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="compactSelect" title={`${label}: ${value}`}>
+      <span className="srOnly">{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        style={compactSelectWidth(
+          options.find((option) => option.value === value)?.label ?? value
+        )}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option
+            value={option.value}
+            key={option.value}
+            disabled={option.disabled}
+          >
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown size={13} aria-hidden="true" />
+    </label>
+  );
+}
+
+function ComposerStats({
+  receipt,
+  usage,
+  toolCalls
+}: {
+  receipt?: Readonly<Record<string, unknown>>;
+  usage?: RuntimeSnapshot["usage"];
+  toolCalls: number;
+}) {
+  if (!receipt && (!usage || usage.turns === 0)) {
+    return <div className="composerMeta" />;
+  }
+  const latency = isObject(receipt?.latency) ? receipt.latency : undefined;
+  const input = numberValue(receipt?.input_tokens);
+  const output = numberValue(receipt?.output_tokens);
+  const reasoning = numberValue(receipt?.reasoning_tokens);
+  const cached = numberValue(receipt?.cached_tokens);
+  const totalTokens = input + output + reasoning || usage?.total_tokens || 0;
+  const cacheShare = input > 0 && cached > 0
+    ? `${Math.round(cached / input * 100)}% cache`
+    : "";
+  const turns = numberValue(usage?.turns) || (receipt ? 1 : 0);
+  const cost = receipt?.cost_known === false || usage?.cost_known === false
+    ? "Unpriced"
+    : `${numberValue(receipt?.cost_microunits ?? usage?.cost_microunits)} µ`;
+  const detailedValues = [
+    `${turns} ${turns === 1 ? "turn" : "turns"}`,
+    `${toolCalls} ${toolCalls === 1 ? "tool" : "tools"}`,
+    numberValue(latency?.total_ms) > 0
+      ? `${formatDuration(numberValue(latency?.total_ms))} total`
+      : "",
+    numberValue(latency?.provider_ms) > 0
+      ? `${formatDuration(numberValue(latency?.provider_ms))} model`
+      : "",
+    numberValue(latency?.tool_ms) > 0
+      ? `${formatDuration(numberValue(latency?.tool_ms))} tools`
+      : "",
+    latency?.first_token_ms !== undefined
+      ? `${formatDuration(numberValue(latency.first_token_ms))} TTFT`
+      : "",
+    input > 0 ? `${input.toLocaleString()} in` : "",
+    output > 0 ? `${output.toLocaleString()} out` : "",
+    reasoning > 0 ? `${reasoning.toLocaleString()} reasoning` : "",
+    cached > 0 ? `${cached.toLocaleString()} cached` : "",
+    totalTokens > 0 ? `${totalTokens.toLocaleString()} tokens` : "",
+    cacheShare,
+    cost
+  ].filter(Boolean);
+  const summary = [
+    [
+      `${turns} ${turns === 1 ? "turn" : "turns"}`,
+      `${toolCalls} ${toolCalls === 1 ? "tool" : "tools"}`
+    ].join(" · "),
+    [
+      numberValue(latency?.total_ms) > 0
+        ? `${formatDuration(numberValue(latency?.total_ms))} total`
+        : "",
+      numberValue(latency?.provider_ms) > 0
+        ? `${formatDuration(numberValue(latency?.provider_ms))} model`
+        : "",
+      numberValue(latency?.tool_ms) > 0
+        ? `${formatDuration(numberValue(latency?.tool_ms))} tools`
+        : ""
+    ].filter(Boolean).join(" · "),
+    latency?.first_token_ms !== undefined
+      ? `${formatDuration(numberValue(latency.first_token_ms))} TTFT`
+      : "",
+    [
+      totalTokens > 0 ? `${formatCompactCount(totalTokens)} tokens` : "",
+      cacheShare
+    ].filter(Boolean).join(" · "),
+    cost
+  ].filter(Boolean).join(" | ");
+  return (
+    <div
+      className="composerMeta"
+      aria-label={`Run statistics: ${summary}`}
+      title={detailedValues.join(" · ")}
+    >
+      <span>{summary}</span>
+    </div>
+  );
 }
 
 function SelectField({
@@ -2029,31 +3098,6 @@ function CatalogSelectField({
   );
 }
 
-function NumberField({
-  label,
-  value,
-  disabled,
-  onCommit
-}: {
-  label: string;
-  value: number;
-  disabled?: boolean;
-  onCommit: (value: number) => Promise<unknown>;
-}) {
-  return (
-    <label className="selectField">
-      <span>{label}</span>
-      <input
-        type="number"
-        min={1}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => void onCommit(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
 function profileMutable(snapshot: RuntimeSnapshot, field: string): boolean {
   return snapshot.profile?.capabilities.mutable_fields.includes(field) ?? false;
 }
@@ -2095,33 +3139,6 @@ function contextResourceLabel(
     `${resource.range.end.character + 1}`;
 }
 
-function isWorkspaceImagePath(path: string): boolean {
-  return /\.(?:png|jpe?g|gif|webp)$/i.test(path);
-}
-
-export function selectionRange(
-  content: string,
-  startOffset: number,
-  endOffset: number
-): EditorRange | undefined {
-  const start = Math.max(0, Math.min(startOffset, content.length));
-  const end = Math.max(start, Math.min(endOffset, content.length));
-  if (start === end) return undefined;
-  return {
-    start: positionAt(content, start),
-    end: positionAt(content, end)
-  };
-}
-
-function positionAt(content: string, offset: number) {
-  const prefix = content.slice(0, offset);
-  const lastNewline = prefix.lastIndexOf("\n");
-  return {
-    line: prefix.split("\n").length - 1,
-    character: lastNewline < 0 ? prefix.length : prefix.length - lastNewline - 1
-  };
-}
-
 function parseJSONObject(value: string): Record<string, unknown> | undefined {
   if (!value.trim()) return undefined;
   try {
@@ -2133,6 +3150,81 @@ function parseJSONObject(value: string): Record<string, unknown> | undefined {
     return undefined;
   }
   return undefined;
+}
+
+function approvalCommand(value: unknown): string {
+  const data = typeof value === "string"
+    ? parseJSONObject(value)
+    : isObject(value) ? value : undefined;
+  const command = data?.command ?? data?.cmd;
+  return typeof command === "string" ? command : "";
+}
+
+function ResizeHandle({
+  label,
+  edge = "end",
+  value,
+  minimum,
+  maximum,
+  onDelta
+}: {
+  label: string;
+  edge?: "start" | "end";
+  value: number;
+  minimum: number;
+  maximum: number;
+  onDelta: (delta: number) => void;
+}) {
+  const lastX = useRef(0);
+  const pendingDelta = useRef(0);
+  const frame = useRef<number>();
+  const flush = () => {
+    frame.current = undefined;
+    if (pendingDelta.current === 0) return;
+    const delta = pendingDelta.current;
+    pendingDelta.current = 0;
+    onDelta(delta);
+  };
+  return (
+    <div
+      className="resizeHandle"
+      data-edge={edge}
+      role="separator"
+      aria-label={label}
+      aria-orientation="vertical"
+      aria-valuemin={minimum}
+      aria-valuemax={maximum}
+      aria-valuenow={value}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") onDelta(-16);
+        if (event.key === "ArrowRight") onDelta(16);
+      }}
+      onPointerDown={(event) => {
+        lastX.current = event.clientX;
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        pendingDelta.current += event.clientX - lastX.current;
+        lastX.current = event.clientX;
+        if (frame.current === undefined) {
+          frame.current = requestAnimationFrame(flush);
+        }
+      }}
+      onPointerUp={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        if (frame.current !== undefined) cancelAnimationFrame(frame.current);
+        flush();
+      }}
+    />
+  );
+}
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
 }
 
 function IconButton({
@@ -2171,183 +3263,152 @@ function IconButton({
 function BootState({title, detail, failed}: {title: string; detail?: string; failed?: boolean}) {
   return (
     <main className="bootState" data-failed={failed || undefined}>
-      <div className="bootMark">{failed ? <AlertTriangle size={22} /> : <LoaderCircle className="spin" size={22} />}</div>
+      <div className="bootBrand">
+        <CapybaraMark size="hero" />
+        <span className="bootSignal">
+          {failed
+            ? <AlertTriangle size={14} />
+            : <LoaderCircle className="spin" size={14} />}
+        </span>
+      </div>
       <h1>{title}</h1>
       {detail && <p>{detail}</p>}
     </main>
   );
 }
 
-export function projectTranscript(events: readonly RuntimeEvent[]): TranscriptEntry[] {
-  const entries: TranscriptEntry[] = [];
-  const output = new Map<string, TranscriptEntry & {type: "assistant"}>();
-  const reasoning = new Map<string, TranscriptEntry & {type: "reasoning"}>();
-  const tools = new Map<string, TranscriptEntry & {type: "tool"}>();
+export function projectTranscript(events: readonly RuntimeEvent[]): ConversationNode[] {
+  const projection = projectConversation(events);
+  return projection.order.flatMap((id) => {
+    const node = projection.nodes.get(id);
+    return node ? [node] : [];
+  });
+}
+
+export function projectMessageChrome(
+  events: readonly RuntimeEvent[]
+): Map<string, MessageChrome> {
+  const startedAt = new Map<string, number>();
+  const receipts = new Map<string, Readonly<Record<string, unknown>>>();
+  const completed = new Map<string, RuntimeEvent>();
   for (const event of events) {
-    const data = event.data;
-    switch (event.kind) {
-      case "turn.started":
-        entries.push({
-          id: event.id,
-          type: "user",
-          text: String(data.display_prompt ?? data.prompt ?? "")
-        });
-        break;
-      case "output.delta": {
-        let entry = output.get(event.turn_id);
-        if (!entry) {
-          entry = {id: `output-${event.turn_id}`, type: "assistant", text: ""};
-          output.set(event.turn_id, entry);
-          entries.push(entry);
-        }
-        entry.text += String(data.text ?? "");
-        break;
-      }
-      case "reasoning.delta": {
-        let entry = reasoning.get(event.turn_id);
-        if (!entry) {
-          entry = {id: `reasoning-${event.turn_id}`, type: "reasoning", text: ""};
-          reasoning.set(event.turn_id, entry);
-          entries.push(entry);
-        }
-        entry.text += String(data.text ?? "");
-        break;
-      }
-      case "tool.start": {
-        if (data.tool === "turn_complete" || data.tool === "request_user_input") {
-          break;
-        }
-        const callID = String(data.call_id ?? event.id);
-        const entry: TranscriptEntry & {type: "tool"} = {
-          id: `tool-${callID}`,
-          type: "tool",
-          title: String(data.tool ?? "Tool"),
-          text: pretty(data.arguments),
-          failed: false,
-          callID
-        };
-        tools.set(callID, entry);
-        entries.push(entry);
-        break;
-      }
-      case "tool.output": {
-        const callID = String(data.call_id ?? "");
-        const entry = tools.get(callID);
-        if (entry) entry.text += String(data.chunk ?? "");
-        break;
-      }
-      case "tool.result": {
-        const callID = String(data.call_id ?? "");
-        const entry = tools.get(callID);
-        if (entry) {
-          const finalOutput = String(data.output ?? "");
-          if (finalOutput) entry.text = finalOutput;
-          if (finalOutput) entry.contextText = finalOutput;
-          entry.failed = Boolean(data.is_error);
-        }
-        break;
-      }
-      case "turn.completed": {
-        const text = String(data.text ?? data.summary ?? "");
-        const streamed = output.get(event.turn_id);
-        if (streamed && text) {
-          streamed.text = text;
-        } else if (!streamed) {
-          if (text) {
-            entries.push({id: event.id, type: "assistant", text});
-          }
-        }
-        entries.push({
-          id: `${event.id}-status`,
-          type: "status",
-          title: "Completed",
-          text: String(data.outcome ?? "Turn completed"),
-          failed: false
-        });
-        break;
-      }
-      case "turn.verification":
-        entries.push({
-          id: event.id,
-          type: "status",
-          title: "Verification",
-          text: String(data.verdict ?? data.status ?? pretty(data)),
-          failed: data.verdict === "failed" || data.status === "failed"
-        });
-        break;
-      case "turn.receipt":
-        entries.push({
-          id: event.id,
-          type: "status",
-          title: "Receipt",
-          text: String(data.outcome ?? data.status ?? "Execution receipt recorded"),
-          failed: false
-        });
-        break;
-      case "operation.rejected":
-        entries.push({
-          id: event.id,
-          type: "status",
-          title: "Rejected",
-          text: String(data.message ?? data.code ?? "Operation rejected"),
-          failed: true
-        });
-        break;
-      case "turn.failed":
-        entries.push({
-          id: event.id,
-          type: "status",
-          title: "Failed",
-          text: String(data.message ?? data.code ?? "Turn failed"),
-          failed: true,
-          turnID: event.turn_id
-        });
-        break;
-      case "turn.canceled":
-        entries.push({
-          id: event.id,
-          type: "status",
-          title: "Canceled",
-          text: String(data.reason ?? "Canceled"),
-          failed: true,
-          turnID: event.turn_id
-        });
-        break;
+    if (event.kind === "turn.started") {
+      const timestamp = Date.parse(event.created_at);
+      if (Number.isFinite(timestamp)) startedAt.set(event.turn_id, timestamp);
+    } else if (event.kind === "turn.receipt") {
+      receipts.set(event.turn_id, event.data);
+    } else if (event.kind === "turn.completed") {
+      completed.set(event.turn_id, event);
     }
   }
-  return entries;
+  const result = new Map<string, MessageChrome>();
+  for (const [turnID, event] of completed) {
+    const receipt = receipts.get(turnID);
+    const latency = isObject(receipt?.latency) ? receipt.latency : undefined;
+    const completedAt = Date.parse(event.created_at);
+    const started = startedAt.get(turnID);
+    const recordedTotal = optionalNumber(latency?.total_ms);
+    const totalMS = recordedTotal ?? (
+      started !== undefined && Number.isFinite(completedAt)
+        ? Math.max(0, completedAt - started)
+        : undefined
+    );
+    const firstTokenMS = optionalNumber(latency?.first_token_ms);
+    const providerMS = optionalNumber(latency?.provider_ms);
+    const outputTokens = optionalNumber(receipt?.output_tokens);
+    const decodeMS = providerMS !== undefined && firstTokenMS !== undefined
+      ? providerMS - firstTokenMS
+      : undefined;
+    const tokensPerSecond = decodeMS !== undefined && decodeMS > 0 &&
+      outputTokens !== undefined && outputTokens > 0
+      ? outputTokens / (decodeMS / 1_000)
+      : undefined;
+    result.set(turnID, {
+      completedAt: event.created_at,
+      ...(totalMS === undefined ? {} : {totalMS}),
+      ...(firstTokenMS === undefined ? {} : {firstTokenMS}),
+      ...(tokensPerSecond === undefined ? {} : {tokensPerSecond})
+    });
+  }
+  return result;
+}
+
+export function latestContextAttribution(
+  events: readonly RuntimeEvent[]
+): ContextAttribution | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.kind !== "usage" || !isObject(event.data.context)) continue;
+    const context = event.data.context;
+    return {
+      estimatedTokens: numberValue(context.estimated_tokens),
+      stableTokens:
+        numberValue(context.stable_tokens) +
+        numberValue(context.dynamic_tokens) +
+        numberValue(context.continuation_tokens),
+      toolTokens:
+        numberValue(context.tool_definition_tokens) +
+        numberValue(context.history_tool_tokens),
+      messageTokens:
+        numberValue(context.history_user_tokens) +
+        numberValue(context.history_assistant_tokens) +
+        numberValue(context.history_other_tokens),
+      framingTokens: numberValue(context.provider_framing_tokens)
+    };
+  }
+  return undefined;
 }
 
 function pendingRequestKey(sessionID: string, event?: RuntimeEvent): string {
   return `${sessionID}:${String(event?.data.request_id ?? "")}`;
 }
 
-function latestActiveTurn(events: readonly RuntimeEvent[]): string {
-  const active = new Set<string>();
-  for (const event of events) {
-    if (event.kind === "turn.started") active.add(event.turn_id);
-    if (isTerminal(event.kind)) active.delete(event.turn_id);
-  }
-  return [...active].at(-1) ?? "";
+function checkpointForTurn(
+  checkpoints: readonly SessionCheckpoint[],
+  turnID: string
+): SessionCheckpoint | undefined {
+  return checkpoints
+    .filter((checkpoint) => checkpoint.turn_id === turnID)
+    .reduce<SessionCheckpoint | undefined>(
+      (latest, checkpoint) =>
+        !latest || checkpoint.cursor > latest.cursor ? checkpoint : latest,
+      undefined
+    );
 }
 
-function latestPending(events: readonly RuntimeEvent[], kind: "approval" | "input"): RuntimeEvent | undefined {
-  const pending = new Map<string, RuntimeEvent>();
-  for (const event of events) {
-    if (event.kind === `${kind}.required`) {
-      pending.set(String(event.data.request_id ?? ""), event);
-    }
-    if (event.kind === `${kind}.resolved`) {
-      pending.delete(String(event.data.request_id ?? ""));
-    }
-  }
-  return [...pending.values()].at(-1);
+function composerSlashQuery(value: string): string | undefined {
+  const match = /^\/([^\s]*)$/.exec(value);
+  return match?.[1];
 }
 
 function pretty(value: unknown): string {
   if (value === undefined || value === null) return "";
   if (typeof value === "string") return value;
   return JSON.stringify(value, null, 2);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function formatDuration(milliseconds: number): string {
+  return milliseconds < 1_000
+    ? `${Math.round(milliseconds)} ms`
+    : `${(milliseconds / 1_000).toFixed(milliseconds < 10_000 ? 2 : 1)} s`;
+}
+
+function formatCompactCount(value: number): string {
+  return compactCountFormat.format(value);
 }
 
 function relativeTime(value: string): string {
@@ -2358,18 +3419,21 @@ function relativeTime(value: string): string {
   return `${Math.floor(delta / 86_400_000)}d`;
 }
 
-function setTheme(theme: "light" | "dark") {
-  localStorage.setItem("ch.theme", theme);
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
+function readThemeMode(): ThemeMode {
+  const value = readPreference("ch.theme");
+  return value === "light" || value === "dark" ? value : "system";
+}
+
+function applyThemeMode(theme: ThemeMode, systemDark: boolean) {
+  writePreference("ch.theme", theme);
+  const resolved = theme === "system"
+    ? systemDark ? "dark" : "light"
+    : theme;
+  document.documentElement.dataset.theme = resolved;
+  document.documentElement.style.colorScheme = resolved;
 }
 
 function safeFilename(value: string): string {
   const safe = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return safe || "codehelper-session";
-}
-
-function isExternalURL(value: string | undefined): boolean {
-  return value?.startsWith("https://") === true ||
-    value?.startsWith("http://") === true;
 }

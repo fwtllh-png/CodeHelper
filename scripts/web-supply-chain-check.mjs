@@ -40,6 +40,14 @@ const css = assets.filter(({path}) => path.endsWith(".css"));
 const javascriptBuffers = javascript.map(({path}) =>
   readFileSync(join(root, "web/dist", path))
 );
+const index = readFileSync(join(root, "web/dist/index.html"), "utf8");
+const initialPaths = new Set(
+  [...index.matchAll(/(?:src|href)="\/([^"]+\.(?:js|css))"/g)]
+    .map((match) => match[1])
+);
+const initialBuffers = assets
+  .filter(({path}) => initialPaths.has(path))
+  .map(({path}) => readFileSync(join(root, "web/dist", path)));
 const measurements = {
   total_raw_bytes: assets.reduce((total, asset) => total + asset.bytes, 0),
   javascript_raw_bytes: javascript.reduce(
@@ -54,7 +62,15 @@ const measurements = {
     (total, value) => total + brotliCompressSync(value).length,
     0
   ),
-  css_raw_bytes: css.reduce((total, asset) => total + asset.bytes, 0)
+  css_raw_bytes: css.reduce((total, asset) => total + asset.bytes, 0),
+  initial_gzip_bytes: initialBuffers.reduce(
+    (total, value) => total + gzipSync(value, {level: 9}).length,
+    0
+  ),
+  initial_brotli_bytes: initialBuffers.reduce(
+    (total, value) => total + brotliCompressSync(value).length,
+    0
+  )
 };
 
 for (const [name, maximum] of Object.entries(policy.bundle_budgets ?? {})) {

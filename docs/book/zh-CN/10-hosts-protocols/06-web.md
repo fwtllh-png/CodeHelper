@@ -41,12 +41,20 @@ WebSocket Cursor、重连和有限本地 Projection；React 通过
 ## 用户工作流
 
 - Session Rail 支持创建、选择和搜索持久化 Session。
-- Transcript 展示用户输入、Markdown 输出、Reasoning、Tool 和 Terminal State。
+- Transcript 展示用户输入、GFM/数学/图片 Markdown 输出、Reasoning、Tool 和
+  Terminal State；宽表格与长代码块在自身区域滚动，文件引用通过 Runtime 打开。
+- Conversation Navigator 从现有 Event Projection 派生 Turn、问题、Tool 和文件
+  索引；结果以稳定 Entry/Turn/Call/Path Identity 定位，并在分页、Tool 展开、
+  Session 切换和 Chat/Trajectory 往返时保留语义阅读锚点。
 - Composer 支持提交、停止、Approval Decision 与 Input Reply。
 - Detail 展示 Profile、Changes、Checkpoint、Plan、Task、Agent、Usage 和 Extension。
 - Workspace 面板提供受边界限制的搜索与文本资源查看。
 - Session Export 下载带 SHA-256 完整性字段的 JSON。
-- Settings 提供主题、Credential 状态与 Keyring 操作、Runtime Diagnostics。
+- Settings 提供主题、Credential 状态与 Keyring 操作、Runtime Diagnostics，以及默认
+  关闭的浏览器桌面通知授权。
+- Session Rail、页面标题和桌面通知共同投影 Runtime `SessionSummary`。后台 Session
+  的运行、待审批、待输入、失败和完成不会因前台 Session 切换而丢失；通知内容不包含
+  Prompt 或 Tool Output，点击后定位到对应 Session 和最新 Turn。
 
 所有 consequential action 仍经过 Runtime Policy、Approval、Journal 与 Sandbox。UI
 按钮只发出 Intent，不直接执行工具或修改工作区。
@@ -54,8 +62,9 @@ WebSocket Cursor、重连和有限本地 Projection；React 通过
 ## 安全与可访问性
 
 生产资源嵌入 Go Binary，构建不包含 Source Map。页面使用严格 CSP、同源连接和
-Capability Token。Markdown 不启用原始 HTML。文件资源由服务端重新校验，Secret
-不进入日志、浏览器持久化或 API 响应。
+Capability Token。Markdown 不启用原始 HTML，危险 URL 不进入 DOM；跨域图片仅允许
+HTTPS，并且必须由用户显式加载，同时使用 `no-referrer`。文件资源由服务端重新校验，
+Secret 不进入日志、浏览器持久化或 API 响应。
 
 控件使用稳定 Accessible Name 和键盘路径；状态同时使用文字、图标与颜色。Light、
 Dark、窄屏和 `prefers-reduced-motion` 共享 `--ch-*` Token。
@@ -67,11 +76,11 @@ npm --prefix web run check
 npm --prefix web test
 npm --prefix web run build
 go test ./internal/host/runtimeapi/web
-make experience-baseline
+make web-experience-check
 ```
 
 真实浏览器回归至少覆盖创建 Session、提交 Turn、流式输出、完成状态、Approval/Input、
-窄屏布局、主题、Workspace Resource 和重连。
+长会话搜索与锚点恢复、窄屏布局、主题、Workspace Resource 和重连。
 
 ## 复习问题
 

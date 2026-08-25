@@ -23,7 +23,7 @@ type ReadinessCheck struct {
 	Action string          `json:"action,omitempty"`
 }
 
-// Readiness is the single readiness conclusion projected by CLI and hosts.
+// Readiness is the single readiness conclusion projected by hosts.
 type Readiness struct {
 	Status ReadinessStatus  `json:"status"`
 	Checks []ReadinessCheck `json:"checks"`

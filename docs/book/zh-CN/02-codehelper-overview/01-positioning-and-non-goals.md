@@ -12,7 +12,7 @@ code_paths:
   - internal/host
   - internal/runtime
 test_paths:
-  - internal/host/cli/run_test.go
+  - internal/host/web/launcher_test.go
   - internal/runtime/app/application_e2e_test.go
 source_of_truth:
   - README.md
@@ -33,8 +33,7 @@ last_verified: null
 
 CodeHelper 同时是：
 
-1. 被 Terminal、Editor、API、Worker、Orchestration 共享的**本地受治理 Coding Agent
-   Runtime**；
+1. 被 Web、Worker 与 Orchestration 共享的**本地受治理 Coding Agent Runtime**；
 2. 所有结论都连接同一套 Source、Test、Fixture、Failure Mode 的**可执行 Agent 工程
    知识书籍**。
 
@@ -55,8 +54,8 @@ engineering objective
   -> verification / receipt / usage / trace
 ```
 
-项目负责这条路径在所有 Host 上的一致性，但不负责保证任意 Model Output 或外部 Service
-永远正确。
+项目负责这条路径在 Web 与后台执行中的一致性，但不负责保证任意 Model Output 或外部
+Service 永远正确。
 
 ## 3. 主要用户
 
@@ -74,10 +73,9 @@ engineering objective
 
 Source 与 Execution 留在 Workspace；Network Access 显式，Listening Service 默认本地。
 
-### 一个 Runtime，多种 Host
+### 一个 Runtime，一个产品 Host
 
-CLI、TUI、Web、Worker、Child Agent 共享 Operation/Event。
-只有 Host-side Execution 的功能在架构上不完整。
+Web、Worker、Child Agent 共享 Operation/Event；Web 是唯一产品 Host。
 
 ### Evidence 优先
 
@@ -97,7 +95,7 @@ Unknown Capability、Strong Sandbox 不可用、Stale Catalog、Missing Authorit
 
 ```mermaid
 flowchart TB
-    H[CLI / TUI / Web] --> R[Local Runtime]
+    H[Web] --> R[Local Runtime]
     R --> C[Context / Repository Understanding]
     R --> M[Model / Provider Routing]
     R --> T[Governed Tools]
@@ -161,19 +159,16 @@ Ownership 模糊时不应开始实现。
 
 ```bash
 make build
-./bin/codehelper version
-./bin/codehelper doctor
-tmp="$(mktemp -d)"
-./bin/codehelper exec \
+./bin/codehelper --version
+./bin/codehelper \
   --provider-fixture ./testdata/providers/openai \
   --provider openai --model gpt-fixture \
-  --workspace . --data-dir "$tmp/state" \
-  --output-format stream-json "say hello"
-rm -rf "$tmp"
+  --workspace . --data-dir "$(mktemp -d)/state" \
+  --no-open
 ```
 
-将输出分类为 Capability、Environment Fact、Runtime Event、Evidence、Terminal Result。
-这些都不能证明任意生成程序正确。
+打开输出的本机 URL，创建 Session 并完成一个 Turn；区分 Runtime Event、Evidence 与
+Terminal Result。这些都不能证明任意生成程序正确。
 
 ## 11. 复习问题
 

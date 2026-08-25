@@ -12,7 +12,7 @@
 4. 自动诊断和相关测试；
 5. 验证失败后的修复或回滚；
 6. 解释上下文、动作、成本和结果的 Durable Receipt；
-7. 终端、编辑器和自动化 Host 中一致的语义。
+7. Web 与后台自动化中一致的语义。
 
 ## 近期：稳定初始发布
 
@@ -20,7 +20,7 @@
 
 - 保持中文文档与代码事实一致；
 - 提供不嵌入 Secret 的常见 Provider 可执行示例；
-- 持续维护 CLI/Config/Link 漂移检查；
+- 持续维护 Web 启动参数、Config 与 Link 漂移检查；
 - 明确平台支持范围和失败模式。
 
 ### 正确性
@@ -32,7 +32,7 @@
 
 ### 发布准备
 
-- 建立可重复的 CLI 与 Web Release Pipeline；
+- 建立可重复的 Web Release Pipeline；
 - 发布 Checksum、SBOM、Provenance、Compatibility 与 Rollback 指南；
 - 验证支持 Target 的 Clean Install；
 - 从持续维护的产品测试与发布工作流建立真实模型、真实 Web、Chaos、耐久和
@@ -70,12 +70,6 @@
 - Credential Rotation 与 Revocation Workflow。
 
 ## 中期：Host 体验
-
-### TUI
-
-- 更清晰的 Approval、Verify、Cost 和 Background Work Panel；
-- 更好的 Session Navigation 与 Recovery Feedback；
-- Accessibility 与 Keyboard Discoverability。
 
 ### Web
 

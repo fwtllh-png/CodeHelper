@@ -1024,6 +1024,17 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		); finishErr != nil {
 			return result, errors.Join(err, finishErr)
 		}
+		reasoning := providerassembly.BlocksReasoning(blocks)
+		if strings.TrimSpace(reasoning) != "" {
+			if sendErr := send(Streaming, Event{
+				ReasoningCompleted: &ModelReasoning{
+					SampleID: sampleID,
+					Text:     reasoning,
+				},
+			}); sendErr != nil {
+				return result, errors.Join(err, sendErr)
+			}
+		}
 		if err != nil {
 			return result, err
 		}
@@ -1034,7 +1045,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		result.Usage.Add(usage)
 		sampled.Add(usage)
-		result.Reasoning += providerassembly.BlocksReasoning(blocks)
+		result.Reasoning += reasoning
 		for _, block := range blocks {
 			if block.Type == provider.ContentSearch && block.Search != nil {
 				result.Searches = append(result.Searches, *block.Search)

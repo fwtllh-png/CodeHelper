@@ -2,6 +2,7 @@ export interface BrowserProjectionState {
   cursor: number;
   selectedSessionID: string;
   drafts: Record<string, string>;
+  messageFeedback?: Record<string, "positive" | "negative">;
 }
 
 export interface BrowserStorage {

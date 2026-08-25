@@ -208,8 +208,8 @@ Overflow、Late、Duplicate、Kind Mismatch 都返回结构化错误。
 
 ## 设计取舍与替代方案
 
-只输出文本无法表达 Approval、Tool、Usage 和 Recovery；把可变状态放在 UI 会让另一个
-Host 失去权威事实。CodeHelper 选择更丰富的 Event Model，以获得跨 Host Replay。
+只输出文本无法表达 Approval、Tool、Usage 和 Recovery；把可变状态放在 UI 会让
+Runtime 失去权威事实。CodeHelper 选择更丰富的 Event Model，以支持可靠重连与 Replay。
 
 ## 失败模式与安全边界
 
@@ -238,19 +238,13 @@ go test ./internal/runtime/agent/turnkernel \
 ## 动手实验
 
 ```bash
-make build
-./bin/codehelper exec \
-  --provider-fixture ./testdata/providers/openai \
-  --provider openai \
-  --model gpt-fixture \
-  --workspace . \
-  --output-format stream-json \
-  "say hello"
+go test ./internal/host/web -run TestRunContextStartsAndStopsWebHost
+go test ./internal/host/runtimeapi/web -run TestWebHostMeetsTheRuntimeContract
 ```
 
-识别 Identity、`turn.started`、Output、Receipt 与 Terminal Event。随后运行
-`TestEngineExecutesToolAndFeedsResultOnce`，在不依赖平台 File Write 的情况下检查
-Tool Branch。修改 Prompt 前先阅读 `testdata/providers/openai/fixture.json`。
+在 Fixture-backed Web 中识别 Identity、`turn.started`、Output、Receipt 与 Terminal
+Event。随后运行 `TestEngineExecutesToolAndFeedsResultOnce`，在不依赖平台 File Write
+的情况下检查 Tool Branch。
 
 ## 复习问题
 

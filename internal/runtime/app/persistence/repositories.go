@@ -3,14 +3,18 @@ package persistence
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
 	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/agentpreset"
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	snapshotstate "github.com/fwtllh-png/CodeHelper/internal/persist/snapshot"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
@@ -40,6 +44,23 @@ func NewPersistentRepositories(store *state.Store) (PersistentRepositories, erro
 		Usage:     usagestate.NewSQLiteRepository(store.SQLite()),
 		Trace:     tracestate.NewSQLiteRepository(store.SQLite()),
 	}, nil
+}
+
+func OpenAgentPresetStore(
+	store *state.Store,
+	workspaceRoot string,
+) (*agentpreset.Store, error) {
+	if store == nil {
+		return nil, errors.New("persistent state store is required")
+	}
+	digest := sha256.Sum256([]byte(filepath.Clean(workspaceRoot)))
+	workspaceID := hex.EncodeToString(digest[:8])
+	return agentpreset.Open(filepath.Join(
+		store.Root(),
+		"agent-presets",
+		workspaceID,
+		agentpreset.FileName,
+	))
 }
 
 // EnsureThread creates workspace/session/thread seed rows when missing.

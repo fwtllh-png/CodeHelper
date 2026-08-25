@@ -441,7 +441,16 @@ func TestEngineContinuesRepeatedReasoningLimitsAtSameEffort(t *testing.T) {
 	engine.options.Route = reasoningRoute(t)
 	engine.options.Routes, _ = model.NewRouteSet(engine.options.Route, nil, false)
 
-	result, err := engine.Run(t.Context(), "review", nil)
+	var completedReasoning []ModelReasoning
+	result, err := engine.Run(t.Context(), "review", func(event Event) error {
+		if event.ReasoningCompleted != nil {
+			completedReasoning = append(
+				completedReasoning,
+				*event.ReasoningCompleted,
+			)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,6 +458,12 @@ func TestEngineContinuesRepeatedReasoningLimitsAtSameEffort(t *testing.T) {
 		result.Reasoning != "completed analysis with more detail and final checks" ||
 		len(runtime.requests) != 4 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
+	}
+	if len(completedReasoning) != 1 ||
+		completedReasoning[0].Text !=
+			"completed analysis with more detail and final checks" ||
+		completedReasoning[0].SampleID == "" {
+		t.Fatalf("completed reasoning = %+v", completedReasoning)
 	}
 	if len(runtime.requests[0].Tools) == 0 {
 		t.Fatal("normal reasoning sample did not receive tools")

@@ -14,7 +14,7 @@ code_paths:
   - internal/runtime/app/wire
 test_paths:
   - internal/host/runtimeapi/runtimecontract
-  - internal/host/cli/architecture_test.go
+  - internal/host/web/architecture_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/protocol/message.go

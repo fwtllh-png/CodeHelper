@@ -11,7 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 )
 
-func TestJobCenterListInfoCancelAndStale(t *testing.T) {
+func TestJobListingInfoCancelAndStale(t *testing.T) {
 	root := t.TempDir()
 	journal := filepath.Join(root, "jobs-journal.jsonl")
 	manager := process.NewSessionManager(4096)

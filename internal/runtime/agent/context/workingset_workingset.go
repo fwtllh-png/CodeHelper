@@ -20,7 +20,7 @@ import (
 type WorkingSetSource string
 
 const (
-	// SourcePinned is a path the user named (CLI --file, editor attachment).
+	// SourcePinned is a path the user named through a host attachment.
 	SourcePinned WorkingSetSource = "pinned"
 	// SourcePlan is a path the plan called critical.
 	SourcePlan WorkingSetSource = "plan"

@@ -61,14 +61,13 @@ scan_binary() {
 
 scan_runtime() {
 	binary=$1
-	for command in help version 'version --json' 'config show'; do
-		set -- $command
-		if ! output=$("$binary" "$@" 2>&1); then
-			echo "brand check runtime command failed: $command" >&2
+	for option in --help --version; do
+		if ! output=$("$binary" "$option" 2>&1); then
+			echo "brand check runtime command failed: $option" >&2
 			exit 1
 		fi
 		if printf '%s' "$output" | contains_forbidden; then
-			echo "forbidden legacy brand found in runtime output: $command" >&2
+			echo "forbidden legacy brand found in runtime output: $option" >&2
 			exit 1
 		fi
 	done

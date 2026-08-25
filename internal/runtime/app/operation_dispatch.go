@@ -76,6 +76,14 @@ func (d operationDispatcher) Dispatch(accepted acceptedOperation) OperationOutco
 		return CancelTurnHandler{d.runtime}.Handle(operation, payload)
 	case *protocol.SteerTurnPayload:
 		return SteerTurnHandler{d.runtime}.Handle(operation, payload)
+	case *protocol.EnqueueTurnPayload:
+		return EnqueueTurnHandler{d.runtime}.Handle(operation, payload)
+	case *protocol.UpdateQueuedTurnPayload:
+		return UpdateQueuedTurnHandler{d.runtime}.Handle(operation, payload)
+	case *protocol.RemoveQueuedTurnPayload:
+		return RemoveQueuedTurnHandler{d.runtime}.Handle(operation, payload)
+	case *protocol.PromoteQueuedTurnPayload:
+		return PromoteQueuedTurnHandler{d.runtime}.Handle(operation, payload)
 	case *protocol.ApprovalDecisionPayload:
 		return ApprovalHandler{d.runtime}.Handle(operation, payload)
 	case *protocol.InputReplyPayload:

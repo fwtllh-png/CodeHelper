@@ -101,7 +101,7 @@ func (r ReadyRoute) WithCapabilities(caps Capabilities) ReadyRoute {
 	return out
 }
 
-// ParseCapability maps a CLI / SQLite capability name onto the closed set.
+// ParseCapability maps a startup or SQLite capability name onto the closed set.
 func ParseCapability(raw string) (Capability, error) {
 	capability := Capability(raw)
 	switch capability {
