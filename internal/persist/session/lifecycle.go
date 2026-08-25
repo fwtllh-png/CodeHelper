@@ -65,6 +65,11 @@ func (r *Repository) CreateLifecycle(
 	if err := seed.Validate(); err != nil {
 		return protocol.SessionSummary{}, err
 	}
+	workspaceRoot, err := NormalizeWorkspaceRoot(seed.WorkspaceRoot)
+	if err != nil {
+		return protocol.SessionSummary{}, fmt.Errorf("resolve session workspace: %w", err)
+	}
+	seed.WorkspaceRoot = workspaceRoot
 	now := time.Now().UTC()
 	persistedIsolation := seed.Isolation
 	if persistedIsolation == "shared" {
@@ -156,6 +161,13 @@ func (r *Repository) ListLifecycle(
 	sqlLimit := limit
 	if filter.Status != "" {
 		sqlLimit = 1000
+	}
+	if filter.WorkspaceRoot != "" {
+		workspaceRoot, err := NormalizeWorkspaceRoot(filter.WorkspaceRoot)
+		if err != nil {
+			return protocol.SessionList{}, fmt.Errorf("resolve session workspace: %w", err)
+		}
+		filter.WorkspaceRoot = workspaceRoot
 	}
 	query := `
 		SELECT s.id

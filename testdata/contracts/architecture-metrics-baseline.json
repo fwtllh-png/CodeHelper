@@ -344,7 +344,7 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 77,
-        "production_lines": 9115,
+        "production_lines": 9114,
         "options_fields": 74,
         "mutex_fields": 7
       }

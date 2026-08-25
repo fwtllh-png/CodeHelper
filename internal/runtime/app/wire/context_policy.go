@@ -77,6 +77,13 @@ func validateRouteReasoning(
 	return nil
 }
 
+func effectiveReasoningEffort(route model.ReadyRoute, configured string) string {
+	if configured != "" {
+		return configured
+	}
+	return route.Model().Capabilities.DefaultReasoningEffort
+}
+
 func buildContextRuntime(
 	store *state.Store,
 	sessionID string,

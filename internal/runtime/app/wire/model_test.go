@@ -49,6 +49,20 @@ func TestResolveModelMetadataRejectsUnknownFacts(t *testing.T) {
 	}
 }
 
+func TestResolveModelMetadataAllowsExplicitUnknownPricing(t *testing.T) {
+	descriptor, err := resolveModelMetadata("custom", ModelMetadataOptions{
+		ContextTokens: 128_000, ContextSet: true,
+		MaxOutputTokens: 8_192, OutputSet: true,
+		Capabilities: "streaming,tool_calls", CapabilitiesSet: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descriptor.Pricing.Known {
+		t.Fatalf("custom pricing = %+v, want explicit unknown pricing", descriptor.Pricing)
+	}
+}
+
 func TestEndpointOverrideUsesCatalogAdapterWithoutNameInference(t *testing.T) {
 	deepSeek, err := resolveExecRoute(execRouteOptions{
 		ProviderID: "deepseek", ModelID: "deepseek-chat",
@@ -71,6 +85,25 @@ func TestEndpointOverrideUsesCatalogAdapterWithoutNameInference(t *testing.T) {
 	}
 	if lookalike.Adapter() != model.AdapterOpenAICompatible {
 		t.Fatalf("unknown provider adapter = %q, want openai_compatible", lookalike.Adapter())
+	}
+	futureModel, err := resolveModelMetadata("gpt-future", ModelMetadataOptions{
+		ContextTokens: 128_000, ContextSet: true,
+		MaxOutputTokens: 8_192, OutputSet: true,
+		Capabilities: "streaming,tool_calls", CapabilitiesSet: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	future, err := resolveExecRoute(execRouteOptions{
+		ProviderID: "openai", ModelID: "gpt-future",
+		BaseURL:  "https://api.openai.com/v1",
+		Protocol: model.ProtocolOpenAIChat, Model: futureModel,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if future.Model().ID != "gpt-future" || future.Adapter() != model.AdapterOpenAI {
+		t.Fatalf("future provider model route = %+v", future)
 	}
 }
 

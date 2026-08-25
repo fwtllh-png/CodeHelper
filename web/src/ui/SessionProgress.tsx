@@ -4,7 +4,9 @@ import {
   ChevronDown,
   Circle,
   ListChecks,
-  Target
+  Play,
+  Target,
+  Zap
 } from "lucide-react";
 import {useMemo, useState} from "react";
 
@@ -18,12 +20,16 @@ export function SessionProgress({
   plan,
   tasks,
   agents,
-  onOpenTrajectory
+  onOpenTrajectory,
+  onPlanTransition,
+  planBusy = false
 }: {
   plan?: SessionPlanArtifact;
   tasks: readonly TaskSummary[];
   agents: readonly AgentSummary[];
   onOpenTrajectory: () => void;
+  onPlanTransition?: (transition: "implement" | "autopilot") => void;
+  planBusy?: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   const orderedTasks = useMemo(() => [...tasks].sort((left, right) =>
@@ -51,8 +57,49 @@ export function SessionProgress({
         <div className="sessionProgressBody">
           {plan && (
             <div className="progressSection">
-              <div className="progressLabel"><Target size={13} /> Goal</div>
-              <p>{plan.body}</p>
+              <div className="progressLabel">
+                <Target size={13} /> Plan
+                {plan.document?.revision &&
+                  <small>Revision {plan.document.revision}</small>}
+              </div>
+              {plan.document && (
+                <>
+                  {plan.document.objective && <p>{plan.document.objective}</p>}
+                  <ol className="progressTasks">
+                    {plan.document.steps.map((step) => (
+                      <li key={step.id} data-state={step.status}>
+                        {step.status === "done"
+                          ? <CheckCircle2 size={14} />
+                          : <Circle size={14} />}
+                        <span>
+                          <strong>{step.title}</strong>
+                          {step.expected_evidence &&
+                            <small>{step.expected_evidence}</small>}
+                        </span>
+                        <b>{step.status.replaceAll("_", " ")}</b>
+                      </li>
+                    ))}
+                  </ol>
+                </>
+              )}
+              {onPlanTransition && (
+                <div className="artifactActions">
+                  <button
+                    type="button"
+                    disabled={planBusy || !plan.can_implement}
+                    onClick={() => onPlanTransition("implement")}
+                  >
+                    <Play size={13} /> Implement
+                  </button>
+                  <button
+                    type="button"
+                    disabled={planBusy || !plan.can_autopilot}
+                    onClick={() => onPlanTransition("autopilot")}
+                  >
+                    <Zap size={13} /> Autopilot
+                  </button>
+                </div>
+              )}
             </div>
           )}
           {tasks.length > 0 && (

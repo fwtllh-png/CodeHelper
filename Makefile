@@ -2,6 +2,10 @@ GO ?= go
 NPM ?= npm
 BINARY := bin/codehelper
 MODULE := github.com/fwtllh-png/CodeHelper
+START_WORKSPACE ?= $(CURDIR)
+PREFIX ?= $(HOME)/.local
+BINDIR ?= $(PREFIX)/bin
+INSTALL_BINARY := $(BINDIR)/codehelper
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || printf unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -10,8 +14,9 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.Date=$(BUILD_DATE)
 
-.PHONY: fmt verify test test-hermetic test-platform-capability reliability-gate test-integration \
+.PHONY: start install uninstall fmt verify test test-hermetic test-platform-capability reliability-gate test-integration \
 	test-release release-baseline-check integration-gate release-gate race build cross-build smoke \
+	agent-preflight agent-ratchet-test ratchet-fast \
 	docs-check book-check web-experience-check \
 	host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
@@ -29,7 +34,7 @@ LDFLAGS := -s -w \
 	canary canary-nightly \
 		canary-adversarial canary-adversarial-quick \
 	web-host-smoke protocol-contract protocol-schema \
-	web-install web-check web-test web-build web-brand-assets web-assets-check web-e2e web-parity-check web-parity-report \
+	web-install web-check web-test web-compile web-measure web-build web-brand-assets web-assets-check web-e2e web-parity-check web-parity-report \
 		web-harness-parity-check \
 		web-release-drill web-streaming-soak web-performance web-supply-chain-check web-vulnerability-check \
 	deepseek-init deepseek-web \
@@ -86,6 +91,13 @@ WEB_STREAMING_SOAK_ALLOW_SHORT ?= 0
 ARCHITECTURE_METRICS_BASELINE := testdata/contracts/architecture-metrics-baseline.json
 RELIABILITY_MATRIX := testdata/contracts/reliability-matrix.json
 ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
+AGENT_PREFLIGHT_DIR ?= .tmp/agent-preflight
+AGENT_PREFLIGHT_SNAPSHOT ?= $(AGENT_PREFLIGHT_DIR)/baseline.json
+AGENT_PREFLIGHT_ARCHITECTURE ?= $(AGENT_PREFLIGHT_DIR)/architecture.json
+AGENT_PREFLIGHT_WEB ?= $(AGENT_PREFLIGHT_DIR)/web.json
+AGENT_CURRENT_ARCHITECTURE ?= $(AGENT_PREFLIGHT_DIR)/current-architecture.json
+AGENT_CURRENT_WEB ?= $(AGENT_PREFLIGHT_DIR)/current-web.json
+WEB_MEASUREMENT_REPORT ?= .tmp/web-supply-chain-report.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
 	if git cat-file -e '$(ARCHITECTURE_BASE_REF):$(ARCHITECTURE_METRICS_BASELINE)' 2>/dev/null; then \
@@ -116,6 +128,52 @@ endif
 
 fmt:
 	$(GO) fmt ./...
+
+agent-ratchet-test:
+	node --test scripts/agent-ratchet.test.mjs
+
+agent-preflight:
+	@mkdir -p '$(AGENT_PREFLIGHT_DIR)'
+	@rm -f '$(AGENT_PREFLIGHT_ARCHITECTURE)' '$(AGENT_PREFLIGHT_WEB)'
+	@$(GO) run ./scripts/architecturemetrics -root . \
+		-baseline '$(ARCHITECTURE_METRICS_BASELINE)' \
+		-report '$(AGENT_PREFLIGHT_ARCHITECTURE)' \
+		>'$(AGENT_PREFLIGHT_DIR)/architecture.log' 2>&1 || \
+		test -s '$(AGENT_PREFLIGHT_ARCHITECTURE)'
+	@$(MAKE) --no-print-directory web-measure \
+		WEB_MEASUREMENT_REPORT='$(AGENT_PREFLIGHT_WEB)' \
+		>'$(AGENT_PREFLIGHT_DIR)/web.log' 2>&1 || { \
+			cat '$(AGENT_PREFLIGHT_DIR)/web.log'; exit 1; \
+		}
+	@node scripts/agent-ratchet.mjs snapshot \
+		--architecture-report '$(AGENT_PREFLIGHT_ARCHITECTURE)' \
+		--web-report '$(AGENT_PREFLIGHT_WEB)' \
+		--architecture-policy '$(ARCHITECTURE_METRICS_BASELINE)' \
+		--web-policy testdata/contracts/web-supply-chain-policy.json \
+		--output '$(AGENT_PREFLIGHT_SNAPSHOT)'
+
+ratchet-fast:
+	@test -s '$(AGENT_PREFLIGHT_SNAPSHOT)' || { \
+		printf '%s\n' 'agent preflight is missing; run make agent-preflight first'; \
+		exit 1; \
+	}
+	@rm -f '$(AGENT_CURRENT_ARCHITECTURE)' '$(AGENT_CURRENT_WEB)'
+	@$(GO) run ./scripts/architecturemetrics -root . \
+		-baseline '$(ARCHITECTURE_METRICS_BASELINE)' \
+		-report '$(AGENT_CURRENT_ARCHITECTURE)' \
+		>'$(AGENT_PREFLIGHT_DIR)/current-architecture.log' 2>&1 || \
+		test -s '$(AGENT_CURRENT_ARCHITECTURE)'
+	@$(MAKE) --no-print-directory web-measure \
+		WEB_MEASUREMENT_REPORT='$(AGENT_CURRENT_WEB)' \
+		>'$(AGENT_PREFLIGHT_DIR)/current-web.log' 2>&1 || { \
+			cat '$(AGENT_PREFLIGHT_DIR)/current-web.log'; exit 1; \
+		}
+	@node scripts/agent-ratchet.mjs check \
+		--snapshot '$(AGENT_PREFLIGHT_SNAPSHOT)' \
+		--architecture-report '$(AGENT_CURRENT_ARCHITECTURE)' \
+		--web-report '$(AGENT_CURRENT_WEB)' \
+		--architecture-policy '$(ARCHITECTURE_METRICS_BASELINE)' \
+		--web-policy testdata/contracts/web-supply-chain-policy.json
 
 verify: architecture-ratchet docs-check book-check brand-check web-protocol-check web-parity-check \
 	web-check web-test web-assets-check web-supply-chain-check \
@@ -243,6 +301,33 @@ build:
 	@mkdir -p bin
 	$(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/codehelper
 
+start:
+	$(MAKE) web-install
+	$(MAKE) web-build
+	$(MAKE) build
+	./$(BINARY) --workspace '$(START_WORKSPACE)' --enable-tools --posture suggest --open
+
+install:
+	$(MAKE) web-install
+	$(MAKE) web-build
+	$(MAKE) build
+	@mkdir -p '$(BINDIR)'
+	@tmp="$$(mktemp '$(BINDIR)/.codehelper.XXXXXX')"; \
+		trap 'rm -f "$$tmp"' EXIT HUP INT TERM; \
+		cp '$(BINARY)' "$$tmp"; \
+		chmod 0755 "$$tmp"; \
+		mv -f "$$tmp" '$(INSTALL_BINARY)'
+	@printf 'Installed CodeHelper: %s\n' '$(INSTALL_BINARY)'
+	@if command -v codehelper >/dev/null 2>&1; then \
+		printf 'Run from any workspace: codehelper\n'; \
+	else \
+		printf 'Add this directory to PATH: export PATH="%s:$$PATH"\n' '$(BINDIR)'; \
+	fi
+
+uninstall:
+	@rm -f '$(INSTALL_BINARY)'
+	@printf 'Removed CodeHelper: %s\n' '$(INSTALL_BINARY)'
+
 web-install:
 	$(NPM) --prefix web ci
 
@@ -256,7 +341,6 @@ web-performance:
 	$(NPM) --prefix web test -- --run src/ui/performance.test.ts
 
 web-supply-chain-check: web-build
-	node scripts/web-supply-chain-check.mjs .
 
 web-vulnerability-check:
 	@mkdir -p .tmp
@@ -265,9 +349,16 @@ web-vulnerability-check:
 		exit 1; \
 	}
 
-web-build:
+web-compile:
 	$(NPM) --prefix web run build
 	$(GO) run ./scripts/webassetmanifest -dist web/dist -output web/dist/asset-manifest.json
+
+web-measure: web-compile
+	node scripts/web-supply-chain-check.mjs . --measure-only \
+		--report '$(WEB_MEASUREMENT_REPORT)'
+
+web-build: web-compile
+	node scripts/web-supply-chain-check.mjs .
 
 web-brand-assets:
 	$(NPM) --prefix web run brand-assets

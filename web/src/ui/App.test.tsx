@@ -177,7 +177,7 @@ describe("projectTranscript", () => {
     render(<App client={client} />);
     expect(screen.getByRole("button", {name: "New chat"}).textContent)
       .toContain("New session");
-    expect(screen.getByRole("treeitem", {name: "workspace"})).toBeTruthy();
+    expect(screen.getByRole("treeitem", {name: /^workspace/})).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Search sessions"}));
     expect(screen.getByRole("textbox", {name: "Search sessions"})).toBeTruthy();
     await openContextDetails();
@@ -189,21 +189,160 @@ describe("projectTranscript", () => {
     fireEvent.click(screen.getByRole("button", {name: "Settings"}));
     expect(await screen.findByRole("dialog", {name: "Settings"})).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Models"}));
+    expect((screen.getByLabelText("Settings model") as HTMLSelectElement).value)
+      .toBe("fixture");
     fireEvent.change(screen.getByLabelText("Settings model"), {
       target: {value: "reasoner"}
     });
+    expect((screen.getByLabelText("Settings model") as HTMLSelectElement).value)
+      .toBe("reasoner");
+    fireEvent.click(screen.getByRole("button", {name: "New model"}));
+    expect((screen.getByLabelText("Settings model") as HTMLInputElement).value)
+      .toBe("");
+    expect(document.activeElement).toBe(screen.getByLabelText("Settings model"));
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Model ID is required"
+    );
+    fireEvent.change(screen.getByLabelText("Settings model"), {
+      target: {value: "invalid model"}
+    });
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Model ID cannot contain whitespace"
+    );
+    expect((screen.getByRole(
+      "button",
+      {name: "Apply changes"}
+    ) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Settings model"), {
+      target: {value: "model-released-today"}
+    });
+    expect(screen.getByRole("button", {name: "Existing models"})).toBeTruthy();
+    expect(screen.getByText(/Unverified metadata/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Test model"}));
+    expect(await screen.findByText(
+      "Connection succeeded and the provider listed this model"
+    )).toBeTruthy();
     expect(client.updateProfile).not.toHaveBeenCalled();
     expect(screen.getByText("Unsaved changes")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Apply changes"}));
     await waitFor(() => {
       expect(client.updateProfile).toHaveBeenCalledWith({
-        model: "reasoner"
+        model: "model-released-today"
       });
     });
+    expect(screen.getByText(
+      "Applied: Model fixture → model-released-today · Prompt cache reset"
+    )).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Connection"}));
+    expect(screen.getByRole("button", {name: "Test connection"})).toBeTruthy();
+    expect(await screen.findByText("https://models.example.com/v1")).toBeTruthy();
+    expect(screen.getByText("openai_chat")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Tools"}));
     expect(screen.getByText("read_file")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Agent preset"}));
     expect(screen.getByLabelText("Agent mode")).toBeTruthy();
+  });
+
+  it("adds a Workspace through the managed selector", async () => {
+    const client = mockClient(snapshot());
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Add workspace"}));
+    expect(screen.getByRole("dialog", {name: "Workspaces"})).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Local folder path"), {
+      target: {value: "/workspace/secondary"}
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Open workspace"}));
+
+    await waitFor(() => {
+      expect(client.addWorkspace).toHaveBeenCalledWith("/workspace/secondary");
+    });
+  });
+
+  it("switches Session models from the composer and opens new model settings", async () => {
+    const client = mockClient(snapshot());
+    render(<App client={client} />);
+
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: {value: "reasoner"}
+    });
+    await waitFor(() => {
+      expect(client.updateProfile).toHaveBeenCalledWith({
+        model: "reasoner",
+        reasoning_effort: ""
+      });
+    });
+
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: {value: "__configure__"}
+    });
+    expect(await screen.findByRole("dialog", {name: "Settings"})).toBeTruthy();
+    expect(screen.getByRole("heading", {name: "Models"})).toBeTruthy();
+  });
+
+  it("blocks duplicate composer profile updates while one is pending", async () => {
+    const value = snapshot();
+    const client = mockClient(value);
+    let finish!: () => void;
+    vi.mocked(client.updateProfile).mockImplementation(() => new Promise((resolve) => {
+      finish = () => resolve({
+        profile: {...value.profile!.profile, model: "reasoner", revision: 2},
+        prompt_cache_reset: true,
+        reset_reason: "model"
+      });
+    }));
+    render(<App client={client} />);
+
+    fireEvent.change(screen.getByLabelText("Model"), {
+      target: {value: "reasoner"}
+    });
+    expect(await screen.findByText("Updating model")).toBeTruthy();
+    expect((screen.getByLabelText("Model") as HTMLSelectElement).disabled).toBe(true);
+    finish();
+    await waitFor(() => {
+      expect(screen.queryByText("Updating model")).toBeNull();
+    });
+  });
+
+  it("changes the advertised reasoning effort from the composer menu", async () => {
+    const value = snapshot();
+    value.models[0]!.capabilities = {
+      ...value.models[0]!.capabilities,
+      reasoning: true,
+      reasoning_efforts: ["off", "low", "high", "max"],
+      default_reasoning_effort: "high"
+    };
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    const trigger = screen.getByRole("button", {name: "Reasoning"});
+    expect(trigger.textContent).toContain("High");
+    fireEvent.click(trigger);
+
+    expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent))
+      .toEqual(["Off", "Low", "High", "Max"]);
+    expect(screen.queryByRole("menuitemradio", {name: "Medium"})).toBeNull();
+    expect(screen.getByRole("menuitemradio", {name: "High"}).getAttribute("aria-checked"))
+      .toBe("true");
+
+    fireEvent.click(screen.getByRole("menuitemradio", {name: "Low"}));
+    await waitFor(() => {
+      expect(client.updateProfile).toHaveBeenCalledWith({reasoning_effort: "low"});
+    });
+  });
+
+  it("keeps every reasoning level advertised by other models", () => {
+    const value = snapshot();
+    value.models[0]!.capabilities = {
+      ...value.models[0]!.capabilities,
+      reasoning: true,
+      reasoning_efforts: ["minimal", "low", "medium", "high", "xhigh", "max"]
+    };
+    render(<App client={mockClient(value)} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Reasoning"}));
+    expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent))
+      .toEqual(["Default", "Minimal", "Low", "Medium", "High", "XHigh", "Max"]);
   });
 
   it("projects background activity and opens privacy-safe browser notifications", async () => {
@@ -390,7 +529,7 @@ describe("projectTranscript", () => {
     expect(stats.getAttribute("title")).toContain("115,465 in");
   });
 
-  it("replaces the composer with a clear create-session action", async () => {
+  it("creates a new session without replaying first-run setup", async () => {
     const value = snapshot();
     value.sessions = [];
     value.selectedSessionID = "";
@@ -401,64 +540,82 @@ describe("projectTranscript", () => {
     expect(screen.queryByPlaceholderText("Create a chat to begin")).toBeNull();
     expect(screen.queryByPlaceholderText("Ask CodeHelper")).toBeNull();
     expect(screen.getByRole("heading", {name: "Start a new session"})).toBeTruthy();
-    expect(screen.queryByLabelText("Session details")).toBeNull();
-    expect(screen.queryByRole("button", {name: /detail panel/i})).toBeNull();
-
-    fireEvent.change(screen.getByLabelText("Session workspace isolation"), {
-      target: {value: "worktree"}
-    });
-    fireEvent.change(screen.getByLabelText("Model"), {
-      target: {value: "reasoner"}
-    });
-    fireEvent.change(screen.getByLabelText("Reasoning"), {
-      target: {value: "high"}
-    });
     fireEvent.click(screen.getByRole("button", {name: "Create session"}));
 
     await waitFor(() => {
-      expect(client.createSession).toHaveBeenCalledWith("worktree", {
-        model: "reasoner",
-        reasoning_effort: "high"
-      });
+      expect(client.createSession).toHaveBeenCalledWith("shared", undefined);
     });
   });
 
-  it("validates and stores a startup API key without echoing it", async () => {
+  it("guides Workspace selection before creating a session", () => {
     const value = snapshot();
     value.sessions = [];
     value.selectedSessionID = "";
+    value.selectedWorkspaceID = "";
+    value.workspaceRoot = "";
     value.profile = undefined;
     const client = mockClient(value);
-    vi.mocked(client.credentialStatus).mockResolvedValue({
-      reference: {kind: "keyring", name: "deepseek/default"},
-      configured: false,
-      validation: "not_validated"
-    });
-    vi.mocked(client.setKeyringCredential).mockResolvedValue({
-      reference: {kind: "keyring", name: "deepseek/default"},
-      configured: true,
-      validation: "valid"
-    });
     render(<App client={client} />);
 
-    const key = await screen.findByLabelText("API key");
+    expect(screen.getByRole("heading", {name: "Choose a workspace"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Choose workspace"}));
+    expect(screen.getByRole("dialog", {name: "Workspaces"})).toBeTruthy();
+    expect(client.createSession).not.toHaveBeenCalled();
+  });
+
+  it("requires provider, model, and API key during first-run setup", async () => {
+    const value = snapshot();
+    value.phase = "setup";
+    value.sessions = [];
+    value.selectedSessionID = "";
+    value.profile = undefined;
+    value.setupCatalog = {
+      version: 1,
+      providers: [{
+        id: "deepseek",
+        display_name: "DeepSeek",
+        protocol: "openai_chat",
+        requires_api_key: true
+      }, {
+        id: "openai-compatible",
+        display_name: "OpenAI-compatible",
+        protocol: "openai_chat",
+        requires_api_key: false,
+        custom: true
+      }]
+    };
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    expect(screen.getByRole("button", {name: "Start CodeHelper"}))
+      .toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Provider"), {
+      target: {value: "deepseek"}
+    });
+    fireEvent.change(screen.getByLabelText("Model ID"), {
+      target: {value: "deepseek-reasoner"}
+    });
+    const key = screen.getByLabelText("API key");
     fireEvent.change(key, {
       target: {value: "DEEPSEEK_API_KEY=secret"}
     });
     expect(screen.getByText(
       "Enter the API key value, not an environment assignment."
     )).toBeTruthy();
-    expect(screen.getByRole("button", {name: "Save key"}))
+    expect(screen.getByRole("button", {name: "Start CodeHelper"}))
       .toHaveProperty("disabled", true);
 
     fireEvent.change(key, {target: {value: "sk-live"}});
-    fireEvent.click(screen.getByRole("button", {name: "Save key"}));
+    fireEvent.click(screen.getByRole("button", {name: "Start CodeHelper"}));
 
     await waitFor(() => {
-      expect(client.setKeyringCredential).toHaveBeenCalledWith("sk-live");
+      expect(client.completeSetup).toHaveBeenCalledWith({
+        provider: "deepseek",
+        model: "deepseek-reasoner",
+        api_key: "sk-live"
+      });
     });
     expect(screen.queryByDisplayValue("sk-live")).toBeNull();
-    expect(await screen.findByText("Validated")).toBeTruthy();
   });
 
   it("requests explicit discard when deleting an active session", () => {
@@ -526,7 +683,17 @@ describe("projectTranscript", () => {
       turn_id: "turn",
       cursor: 4,
       status: "ready",
-      body: "Implement the verified change",
+      body: `{"version":1,"revision":1,"steps":[{"id":"implement",` +
+        `"title":"Implement the verified change","status":"pending"}]}`,
+      document: {
+        version: 1,
+        revision: 1,
+        steps: [{
+          id: "implement",
+          title: "Implement the verified change",
+          status: "pending"
+        }]
+      },
       profile_revision: 1,
       can_implement: true,
       can_autopilot: false,
@@ -564,8 +731,7 @@ describe("projectTranscript", () => {
     );
     expect(screen.getAllByText("tests failed").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("reviewing diff").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText("Implement the verified change").length)
-      .toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Implement the verified change")).toBeTruthy();
     expect(screen.getByText("Before implementation")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", {name: "Implement"}));
@@ -965,7 +1131,7 @@ describe("projectTranscript", () => {
 
     fireEvent.click(screen.getByRole("button", {name: "Settings"}));
     await screen.findByRole("dialog", {name: "Settings"});
-    fireEvent.click(screen.getByRole("button", {name: "Models"}));
+    fireEvent.click(screen.getByRole("button", {name: "Connection"}));
     await screen.findByText("valid");
     expect(screen.getByText("Runtime restart required")).toBeTruthy();
     expect(screen.getByText("Reference: codehelper")).toBeTruthy();
@@ -976,7 +1142,7 @@ describe("projectTranscript", () => {
     await waitFor(() => {
       expect(client.setKeyringCredential).toHaveBeenCalledWith("fixture-credential");
     });
-    const validate = screen.getByRole("button", {name: "Validate"});
+    const validate = screen.getByRole("button", {name: "Test connection"});
     await waitFor(() => expect(validate).toHaveProperty("disabled", false));
     fireEvent.click(validate);
     await waitFor(() => expect(client.validateCredential).toHaveBeenCalledOnce());
@@ -1903,6 +2069,14 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
         }
       }
     ],
+		workspaces: [{
+			id: "workspace-id",
+			root: "/workspace",
+			label: "workspace",
+			ready: true,
+			session_count: 1
+		}],
+		selectedWorkspaceID: "workspace-id",
     profile: {
       profile: {
         version: 1,
@@ -1923,7 +2097,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
           "approval_posture", "execution_target", "max_steps",
           "enabled_tool_ids"
         ],
-        model_capabilities: {}
+        model_capabilities: modelCapabilities("Fixture")
       }
     },
     tools: [{
@@ -1968,8 +2142,16 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
     start: vi.fn(async () => {}),
     stop: vi.fn(),
     refreshSessions: vi.fn(async () => {}),
+		refreshWorkspaces: vi.fn(async () => ({
+			version: 1,
+			default_workspace_id: "workspace-id",
+			workspaces: value.workspaces
+		})),
+		addWorkspace: vi.fn(async () => {}),
+		selectWorkspace: vi.fn(async () => {}),
     setArchivedVisible: vi.fn(async () => {}),
     createSession: vi.fn(async () => {}),
+		completeSetup: vi.fn(async () => {}),
     selectSession: vi.fn(async () => {}),
     updateSession: vi.fn(async () => {}),
     deleteSession: vi.fn(async () => {}),
@@ -2032,8 +2214,20 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
       configured: false,
       validation: "not_validated"
     })),
+    connectionStatus: vi.fn(async () => ({
+      provider: "fixture",
+      endpoint: "https://models.example.com/v1",
+      protocol: "openai_chat"
+    })),
     setKeyringCredential: vi.fn(async () => ({})),
     validateCredential: vi.fn(async () => ({})),
+    testModel: vi.fn(async (model: string) => ({
+      provider: "fixture",
+      model,
+      status: "available" as const,
+      detail: "Connection succeeded and the provider listed this model",
+      tested_at: "2026-01-01T00:00:00Z"
+    })),
     clearKeyringCredential: vi.fn(async () => ({})),
     browseWorkspace: vi.fn(async () => ({
       path: ".",

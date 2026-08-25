@@ -83,6 +83,7 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		{name: "plan read", mode: ModePlan, permission: PermissionSuggest, tool: "file_read"},
 		{name: "plan write denied", mode: ModePlan, permission: PermissionBypass, tool: "file_write", wantCode: "mode_denied"},
 		{name: "plan request_user_input", mode: ModePlan, permission: PermissionSuggest, tool: "request_user_input"},
+		{name: "plan session state allowed", mode: ModePlan, permission: PermissionSuggest, tool: "submit_plan"},
 		{name: "act auto write", mode: ModeAct, permission: PermissionAuto, tool: "file_write"},
 		{name: "act auto read-only shell", mode: ModeAct, permission: PermissionAuto, tool: "shell_read"},
 		{name: "act auto sandboxed process", mode: ModeAct, permission: PermissionAuto, tool: "exec_command"},
@@ -417,6 +418,7 @@ func invocation(toolName, callID, arguments string) Invocation {
 		"shell_read": CapabilityRead, "exec_command": CapabilityProcess,
 		"request_user_input": CapabilityRead,
 		"update_plan":        CapabilityWrite,
+		"submit_plan":        CapabilityWrite,
 	}[toolName]
 	var resources []tool.Resource
 	var value struct {
@@ -427,6 +429,11 @@ func invocation(toolName, callID, arguments string) Invocation {
 	if value.Path != "" {
 		resources = append(resources, tool.Resource{
 			Kind: "file", Path: value.Path, Access: tool.AccessWrite,
+		})
+	}
+	if toolName == "update_plan" || toolName == "submit_plan" {
+		resources = append(resources, tool.Resource{
+			Kind: "plan", ID: "session", Access: tool.AccessWrite,
 		})
 	}
 	if value.CWD != "" {
@@ -440,12 +447,14 @@ func invocation(toolName, callID, arguments string) Invocation {
 		Access: map[string]tool.AccessMode{
 			"file_read": tool.AccessRead, "file_write": tool.AccessWrite,
 			"file_edit": tool.AccessWrite, "shell_read": tool.AccessRead,
-			"exec_command": tool.AccessRead,
+			"exec_command": tool.AccessRead, "update_plan": tool.AccessWrite,
+			"submit_plan": tool.AccessWrite,
 		}[toolName],
 		Sandbox: map[string]tool.SandboxRequirement{
 			"file_read": tool.SandboxNone, "file_write": tool.SandboxNone,
 			"file_edit": tool.SandboxNone, "shell_read": tool.SandboxStrong,
-			"exec_command": tool.SandboxStrong,
+			"exec_command": tool.SandboxStrong, "update_plan": tool.SandboxNone,
+			"submit_plan": tool.SandboxNone,
 		}[toolName],
 		Journaled: toolName == "file_write" || toolName == "file_edit",
 		Validated: true,

@@ -510,129 +510,54 @@ func TestCheckpointRestoreJoinsPublicationAndRollbackFailures(t *testing.T) {
 	}
 }
 
-func TestPlanTransitionUsesANewGuardedTurnProfile(t *testing.T) {
+func TestPlanExecutionDoesNotMutateProfile(t *testing.T) {
 	profile := runtimeTestProfile()
 	profile.Mode = "plan"
+	profile.ApprovalPosture = "suggest"
 	profiles := &memoryProfileStore{profile: profile}
-	artifacts := &memoryArtifactStore{
-		plan: protocol.SessionPlanArtifact{
-			Version:         protocol.CheckpointProtocolVersion,
-			ID:              "plan-1",
-			SessionID:       "session-profile",
-			ThreadID:        "thread-profile",
-			TurnID:          "turn-plan",
-			Cursor:          7,
-			Status:          protocol.PlanArtifactReady,
-			Body:            "1. Update parser",
-			ProfileRevision: profile.Revision,
-			CanImplement:    true,
-			CanAutopilot:    true,
-			CreatedAt:       time.Now().UTC(),
-		},
-	}
-	lifecycle := artifactLifecycle()
+	artifacts := &memoryArtifactStore{plan: protocol.SessionPlanArtifact{
+		Version: protocol.CheckpointProtocolVersion,
+		ID:      "plan-scoped", SessionID: "session-profile",
+		ThreadID: "thread-profile", TurnID: "turn-plan", Cursor: 7,
+		Status: protocol.PlanArtifactReady,
+		Body: `{"version":1,"revision":1,"steps":[` +
+			`{"id":"implement","title":"Update parser","status":"pending"}]}`,
+		ProfileRevision: profile.Revision,
+		CanImplement:    true, CanAutopilot: true,
+		CreatedAt: time.Now().UTC(),
+	}}
 	runtime := NewRuntime(Options{
-		Engine:              &profileTestEngine{},
-		SessionProfiles:     profiles,
+		Engine: &profileTestEngine{}, SessionProfiles: profiles,
 		DefaultProfile:      profile,
 		ProfileCapabilities: runtimeTestCapabilities(profile),
-		SessionLifecycle:    lifecycle,
-		SessionArtifacts:    artifacts,
+		SessionLifecycle:    artifactLifecycle(), SessionArtifacts: artifacts,
 	})
 	t.Cleanup(func() { closeRuntime(t, runtime) })
-	prepared, err := runtime.PreparePlanTransition(
+	prepared, err := runtime.PreparePlanExecution(
 		t.Context(),
 		"session-profile",
-		"plan-1",
+		"plan-scoped",
 		protocol.PlanTransitionAutopilot,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prepared.ProfileUpdate.Profile.Mode != "act" ||
-		prepared.ProfileUpdate.Profile.ApprovalPosture != "auto" ||
-		!strings.Contains(prepared.Prompt, artifacts.plan.Body) ||
-		prepared.Intent != protocol.TurnIntentWorkspaceChange ||
-		prepared.IdempotencyKey != "plan:plan-1:autopilot" {
-		t.Fatalf("Plan transition = %+v", prepared)
+	if !strings.Contains(prepared.Prompt, artifacts.plan.Body) {
+		t.Fatalf("execution prompt = %q", prepared.Prompt)
 	}
-	if _, err := runtime.PreparePlanTransition(
+	if profiles.profile.Mode != "plan" ||
+		profiles.profile.ApprovalPosture != "suggest" ||
+		profiles.profile.Revision != profile.Revision {
+		t.Fatalf("persistent profile mutated = %+v", profiles.profile)
+	}
+	artifacts.plan.Body = "1. Update parser"
+	if _, err := runtime.PreparePlanExecution(
 		t.Context(),
 		"session-profile",
-		"plan-1",
-		protocol.PlanTransitionImplement,
-	); protocol.CodeOf(err) != protocol.CodeConflict {
-		t.Fatalf("stale Plan transition error = %v", err)
-	}
-}
-
-func TestPlanTransitionToRequiresMatchingProfileAndForkLineage(t *testing.T) {
-	profile := runtimeTestProfile()
-	profile.Mode = "plan"
-	profiles := &memoryProfileStore{profile: profile}
-	artifacts := &memoryArtifactStore{
-		plan: protocol.SessionPlanArtifact{
-			Version:         protocol.CheckpointProtocolVersion,
-			ID:              "plan-1",
-			SessionID:       "session-profile",
-			ThreadID:        "thread-profile",
-			TurnID:          "turn-plan",
-			Cursor:          7,
-			Status:          protocol.PlanArtifactReady,
-			Body:            "1. Update parser",
-			ProfileRevision: profile.Revision,
-			CanImplement:    true,
-			CanAutopilot:    true,
-			CreatedAt:       time.Now().UTC(),
-		},
-	}
-	lifecycle := artifactLifecycle()
-	lifecycle.summary.ThreadID = "thread-plan-fork"
-	lifecycle.summary.ParentThreadID = "thread-profile"
-	runtime := NewRuntime(Options{
-		Engine:              &profileTestEngine{},
-		SessionProfiles:     profiles,
-		DefaultProfile:      profile,
-		ProfileCapabilities: runtimeTestCapabilities(profile),
-		SessionLifecycle:    lifecycle,
-		SessionArtifacts:    artifacts,
-	})
-	t.Cleanup(func() { closeRuntime(t, runtime) })
-	destination, err := runtime.PreparePlanTransitionTo(
-		t.Context(),
-		"session-profile",
-		"session-profile",
-		"plan-1",
-		protocol.PlanTransitionImplement,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if destination.Intent != protocol.TurnIntentWorkspaceChange ||
-		!strings.Contains(destination.Prompt, artifacts.plan.Body) ||
-		destination.IdempotencyKey !=
-			"plan:plan-1:implement:session-profile" {
-		t.Fatalf("Plan destination = %+v", destination)
-	}
-	if _, err := runtime.PreparePlanTransitionTo(
-		t.Context(),
-		"session-profile",
-		"session-profile",
-		"plan-1",
-		protocol.PlanTransitionImplement,
-	); protocol.CodeOf(err) != protocol.CodeConflict {
-		t.Fatalf("stale source Profile error = %v", err)
-	}
-	artifacts.plan.ProfileRevision = profiles.profile.Revision
-	lifecycle.summary.ParentThreadID = "thread-unrelated"
-	if _, err := runtime.PreparePlanTransitionTo(
-		t.Context(),
-		"session-profile",
-		"session-profile",
-		"plan-1",
+		"plan-scoped",
 		protocol.PlanTransitionImplement,
 	); protocol.CodeOf(err) != protocol.CodeInvalidArgument {
-		t.Fatalf("unrelated Fork lineage error = %v", err)
+		t.Fatalf("Markdown Plan execution error = %v", err)
 	}
 }
 

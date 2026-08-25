@@ -809,10 +809,10 @@ func sessionDerivedID(prefix, key, namespace string) string {
 }
 
 func sameWorkspaceRoot(left, right string) bool {
-	left, leftErr := filepath.Abs(strings.TrimSpace(left))
-	right, rightErr := filepath.Abs(strings.TrimSpace(right))
-	if leftErr != nil || rightErr != nil {
-		return false
-	}
-	return filepath.Clean(left) == filepath.Clean(right)
+	leftAbsolute, leftErr := filepath.Abs(strings.TrimSpace(left))
+	rightAbsolute, rightErr := filepath.Abs(strings.TrimSpace(right))
+	leftPhysical, leftPhysicalErr := filepath.EvalSymlinks(leftAbsolute)
+	rightPhysical, rightPhysicalErr := filepath.EvalSymlinks(rightAbsolute)
+	return leftErr == nil && rightErr == nil && (filepath.Clean(leftAbsolute) == filepath.Clean(rightAbsolute) ||
+		leftPhysicalErr == nil && rightPhysicalErr == nil && filepath.Clean(leftPhysical) == filepath.Clean(rightPhysical))
 }

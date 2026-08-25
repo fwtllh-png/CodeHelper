@@ -9,5 +9,4 @@ type ContextCheckpointEngine = artifact.ContextCheckpointEngine
 type ContextRebaseStore = artifact.ContextRebaseStore
 type CurrentContextStore = artifact.CurrentContextStore
 type ContextMaintenanceEngine = artifact.ContextMaintenanceEngine
-type PlanTransitionPreparation = artifact.PlanTransitionPreparation
 type TurnRecoveryPreparation = artifact.TurnRecoveryPreparation

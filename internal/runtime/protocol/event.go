@@ -1405,7 +1405,6 @@ func (d *AgentMessageData) validate() error {
 }
 
 type PlanDeltaData struct {
-	Text            string `json:"text,omitempty"`
 	Body            string `json:"body,omitempty"`
 	Done            bool   `json:"done,omitempty"`
 	ArtifactID      string `json:"artifact_id,omitempty"`
@@ -1418,10 +1417,8 @@ type PlanDeltaData struct {
 func (*PlanDeltaData) eventKind() EventKind { return EventPlanDelta }
 
 func (d *PlanDeltaData) validate() error {
-	if d.Text == "" && d.Body == "" && !d.Done {
-		return errors.New("plan delta text, body, or done is required")
-	}
-	if len(d.Body) > 64<<10 || strings.ContainsRune(d.Body, '\x00') {
+	if !d.Done || len(d.Body) > 64<<10 ||
+		strings.ContainsRune(d.Body, '\x00') {
 		return errors.New("plan delta body is invalid")
 	}
 	if d.ArtifactID != "" {

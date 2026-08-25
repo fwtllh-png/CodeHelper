@@ -2,7 +2,10 @@
 package web
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -13,9 +16,9 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
@@ -99,6 +102,9 @@ func RunContext(
 		_, _ = fmt.Fprintf(stderr, "codehelper: unexpected arguments: %v\n", flags.Args())
 		return 2
 	}
+	if options.configPath == "" && !webFlagProvided(args, "enable-tools") {
+		options.enableTools = true
+	}
 	if *showVersion {
 		info := buildinfo.Current()
 		_, _ = fmt.Fprintf(
@@ -151,24 +157,82 @@ func runWeb(
 	var workspaceRoot, dataDir string
 	var workspaceIdentity protocol.WorkspaceIdentity
 	if configErr == nil {
-		workspaceRoot, configErr = filepath.Abs(loaded.Config.Execution.Workspace)
-	}
-	if configErr == nil {
-		dataDir = loaded.Config.State.DataDir
-		workspaceURL := (&url.URL{Scheme: "file", Path: workspaceRoot}).String()
-		workspaceIdentity, configErr = protocol.NewWorkspaceIdentity(
-			workspaceURL,
-			workspaceRoot,
-			"",
+		workspaceRoot, workspaceIdentity, configErr = normalizeWorkspaceRoot(
+			loaded.Config.Execution.Workspace,
 		)
+		dataDir = loaded.Config.State.DataDir
 		options.workspace = workspaceRoot
+	}
+	selection := webSetupSelection{}
+	routeReference := credential.Reference{}
+	setupRequired := false
+	if configErr == nil {
+		providerConfigured := loaded.Config.Execution.Provider != ""
+		modelConfigured := loaded.Config.Execution.Model != ""
+		switch {
+		case providerConfigured != modelConfigured:
+			configErr = errors.New("provider and model must be configured together")
+		case !providerConfigured:
+			var found bool
+			selection, found, configErr = loadWebSetupSelection(
+				dataDir, workspaceIdentity.RootID,
+			)
+			if configErr == nil && found {
+				_, reference, resolveErr := resolveWebSetup(webhost.SetupRequest{
+					Provider: selection.Provider, Model: selection.Model,
+					BaseURL: selection.BaseURL, Protocol: selection.Protocol,
+					APIKey: "persisted",
+				})
+				if resolveErr != nil {
+					configErr = resolveErr
+				} else {
+					routeReference = reference
+					loaded, configErr = loadWebSetupConfig(options, selection, reference)
+				}
+			} else if configErr == nil {
+				setupRequired = true
+			}
+		default:
+			selection = webSetupSelection{
+				Version:  webSetupVersion,
+				Provider: loaded.Config.Execution.Provider,
+				Model:    loaded.Config.Execution.Model,
+				Protocol: loaded.Config.Execution.Protocol,
+			}
+			if options.providerFixture != "" {
+				break
+			}
+			if loaded.Config.Credential.Empty() {
+				if provider, exists := model.DefaultCatalog().Provider(selection.Provider); exists {
+					selection.Protocol = string(provider.Protocol)
+					routeReference = credential.Reference{
+						Kind: provider.Credential.Kind,
+						Name: provider.Credential.Name,
+					}
+					loaded, configErr = loadWebSetupConfig(
+						options,
+						selection,
+						routeReference,
+					)
+				}
+			} else {
+				routeReference = credential.Reference{
+					Kind: loaded.Config.Credential.Kind,
+					Name: loaded.Config.Credential.Name,
+				}
+			}
+		}
+	}
+	var workspaceManager *workspaceRuntimeManager
+	if configErr == nil {
+		workspaceManager, configErr = newWorkspaceRuntimeManager(dataDir, workspaceRoot)
 	}
 
 	var lease *ownerlease.Lease
 	if configErr == nil {
 		info := buildinfo.Current()
 		lease, err = ownerlease.Acquire(
-			ownerlease.Path(dataDir, workspaceIdentity.RootID),
+			ownerlease.Path(dataDir, webSupervisorScope),
 			ownerlease.Metadata{
 				OwnerKind: "web",
 				Build:     info.Version + "+" + info.Commit,
@@ -177,13 +241,46 @@ func runWeb(
 		if err != nil {
 			var held *ownerlease.HeldError
 			if errors.As(err, &held) && held.Metadata.PublicURL != "" {
-				if probeErr := probeWebReadiness(ctx, held.Metadata.PublicURL); probeErr == nil {
+				if status, probeErr := probeWebStatus(
+					ctx,
+					held.Metadata.PublicURL,
+				); probeErr == nil {
+					targetURL := held.Metadata.PublicURL
+					if held.Metadata.CapabilityToken != "" {
+						workspaceID, registerErr := registerWorkspaceWithOwner(
+							ctx,
+							held.Metadata.PublicURL,
+							held.Metadata.CapabilityToken,
+							workspaceRoot,
+						)
+						if registerErr != nil {
+							_, _ = fmt.Fprintf(
+								stderr,
+								"codehelper: register Workspace: %v\n",
+								registerErr,
+							)
+							return 1
+						}
+						if workspaceID != "" {
+							targetURL += "?workspace=" + url.QueryEscape(workspaceID)
+						}
+					}
+					readyLabel := "Runtime Ready"
+					if status == "setup_required" {
+						readyLabel = "Setup Ready"
+					}
 					_, _ = fmt.Fprintf(
-						stderr,
-						"codehelper: %v; open %s\n",
-						err,
-						held.Metadata.PublicURL,
+						stdout,
+						"CodeHelper %s: %s\n",
+						readyLabel,
+						targetURL,
 					)
+					if options.open && !options.noOpen {
+						if openErr := openWebBrowser(targetURL); openErr != nil {
+							_, _ = fmt.Fprintf(stderr, "codehelper: open browser: %v\n", openErr)
+						}
+					}
+					return 0
 				} else {
 					_, _ = fmt.Fprintf(
 						stderr,
@@ -211,10 +308,40 @@ func runWeb(
 	address := listener.Addr().(*net.TCPAddr)
 	hostPort := net.JoinHostPort(options.host, strconv.Itoa(address.Port))
 	publicURL := "http://" + hostPort + "/"
+	workspaceURL := publicURL + "?workspace=" +
+		url.QueryEscape(workspaceIdentity.RootID)
 	info := buildinfo.Current()
+	var setupRequests chan webSetupAttempt
+	var setupOptions *webhost.SetupOptions
+	if setupRequired {
+		setupRequests = make(chan webSetupAttempt)
+		setupOptions = &webhost.SetupOptions{
+			WorkspaceRoot: workspaceRoot, WorkspaceIdentity: workspaceIdentity,
+			Catalog: webSetupCatalog(),
+			Apply: func(requestContext context.Context, request webhost.SetupRequest) error {
+				attempt := webSetupAttempt{request: request, result: make(chan error, 1)}
+				select {
+				case setupRequests <- attempt:
+				case <-requestContext.Done():
+					return requestContext.Err()
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				select {
+				case err := <-attempt.result:
+					return err
+				case <-requestContext.Done():
+					return requestContext.Err()
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			},
+		}
+	}
 	server, err := webhost.New(webhost.Options{
 		Assets: bundle, ExpectedHost: hostPort, Origin: "http://" + hostPort,
-		Build: info.Version + "+" + info.Commit,
+		Build: info.Version + "+" + info.Commit, Setup: setupOptions,
+		Workspaces: workspaceManager,
 	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "codehelper: server: %v\n", err)
@@ -239,9 +366,10 @@ func runWeb(
 	_, _ = fmt.Fprintf(stdout, "CodeHelper Web Listening: %s\n", publicURL)
 	if lease != nil {
 		metadata := ownerlease.Metadata{
-			OwnerKind: "web",
-			Build:     buildinfo.Version + "+" + buildinfo.Commit,
-			PublicURL: publicURL,
+			OwnerKind:       "web",
+			Build:           buildinfo.Version + "+" + buildinfo.Commit,
+			PublicURL:       publicURL,
+			CapabilityToken: server.CapabilityToken(),
 		}
 		if err := lease.Update(metadata); err != nil {
 			server.FailBoot(err)
@@ -251,7 +379,7 @@ func runWeb(
 	}
 
 	if options.open && !options.noOpen {
-		if err := openWebBrowser(publicURL); err != nil {
+		if err := openWebBrowser(workspaceURL); err != nil {
 			_, _ = fmt.Fprintf(stderr, "codehelper: open browser: %v\n", err)
 		}
 	}
@@ -275,120 +403,94 @@ func runWeb(
 		_, _ = fmt.Fprintf(stderr, "codehelper: repositories: %v\n", err)
 		return waitForWebShutdown(ctx, httpServer, serveErr, server, nil, store, stderr, 1)
 	}
-	credentialControl, effectiveCredential, err := credential.OpenControl(
-		ctx,
-		dataDir,
-		workspaceIdentity.RootID,
-		loaded.Config.Execution.Provider,
-		credential.Reference{
-			Kind: loaded.Config.Credential.Kind,
-			Name: loaded.Config.Credential.Name,
-		},
-	)
-	if err != nil {
+	workspaceManager.Bind(server, options, store, repositories, stderr)
+	var active *preparedWebRuntime
+	activate := func(
+		candidate config.Snapshot,
+		candidateSelection webSetupSelection,
+		reference credential.Reference,
+		secret string,
+		persist bool,
+	) error {
+		prepared, prepareErr := prepareWebRuntime(
+			ctx, options, candidate, candidateSelection, workspaceRoot,
+			workspaceIdentity, store, repositories, stderr, secret,
+		)
+		if prepareErr == nil && persist {
+			prepareErr = saveWebSetupSelection(
+				dataDir, workspaceIdentity.RootID, candidateSelection,
+			)
+		}
+		if prepareErr == nil {
+			workspaceManager.SetRoute(candidateSelection, reference)
+			prepareErr = workspaceManager.Persist()
+		}
+		if prepareErr == nil {
+			prepareErr = server.Activate(prepared.dependenciesWithDiagnostics(stderr))
+		}
+		if prepareErr != nil {
+			if prepared != nil {
+				prepared.close()
+			}
+			return prepareErr
+		}
+		active = prepared
+		workspaceManager.RegisterInitial(workspaceIdentity, prepared)
+		loaded = candidate
+		selection = candidateSelection
+		routeReference = reference
+		return nil
+	}
+
+	if setupRequired {
+		_, _ = fmt.Fprintf(stdout, "CodeHelper Setup Ready: %s\n", publicURL)
+		for active == nil {
+			select {
+			case attempt := <-setupRequests:
+				candidateSelection, reference, setupErr := resolveWebSetup(attempt.request)
+				var candidate config.Snapshot
+				if setupErr == nil {
+					candidate, setupErr = loadWebSetupConfig(
+						options, candidateSelection, reference,
+					)
+				}
+				if setupErr == nil {
+					setupErr = activate(
+						candidate, candidateSelection, reference,
+						attempt.request.APIKey, true,
+					)
+				}
+				attempt.result <- setupErr
+			case serveFailure := <-serveErr:
+				if serveFailure != nil {
+					_, _ = fmt.Fprintf(stderr, "codehelper: serve: %v\n", serveFailure)
+				}
+				return shutdownBootServer(
+					httpServer, serveErr, nil, store, stderr, 1,
+				)
+			case <-ctx.Done():
+				return shutdownBootServer(
+					httpServer, serveErr, nil, store, stderr, 0,
+				)
+			}
+		}
+	} else if err := activate(
+		loaded, selection, routeReference, "", false,
+	); err != nil {
 		server.FailBoot(err)
-		_, _ = fmt.Fprintf(stderr, "codehelper: credential recovery: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "codehelper: Runtime: %v\n", err)
 		return waitForWebShutdown(
 			ctx, httpServer, serveErr, server, nil, store, stderr, 1,
 		)
 	}
-	runtimeOverrides := webConfigOverrides(options)
-	runtimeOverrides.CredentialKind = &effectiveCredential.Kind
-	runtimeOverrides.CredentialName = &effectiveCredential.Name
-	extensionOptions := wire.ExtensionOptions{DataDir: dataDir}
-	application, err := wire.NewExec(ctx, wire.ExecOptions{
-		ConfigPath:        options.configPath,
-		ConfigOverrides:   runtimeOverrides,
-		BaseURL:           "",
-		APIKeyEnv:         options.apiKeyEnv,
-		FixturePath:       options.providerFixture,
-		Permission:        options.posture,
-		MCPConfigPath:     options.mcpConfig,
-		PersistentStore:   store,
-		CredentialControl: credentialControl,
-		WorkspaceIdentity: workspaceIdentity,
-		RuntimeRole:       wire.RuntimeRoleInteractive,
-		Extensions:        extensionOptions,
-	})
-	if err != nil {
-		server.FailBoot(err)
-		_, _ = fmt.Fprintf(stderr, "codehelper: Runtime: %v\n", err)
-		return waitForWebShutdown(ctx, httpServer, serveErr, server, nil, store, stderr, 1)
-	}
-	extensionPaths, err := wire.ResolveExtensionPaths(extensionOptions, workspaceRoot)
-	if err != nil {
-		server.FailBoot(err)
-		_, _ = fmt.Fprintf(stderr, "codehelper: extension paths: %v\n", err)
-		return waitForWebShutdown(
-			ctx, httpServer, serveErr, server, application, store, stderr, 1,
-		)
-	}
-	extensionControl, err := wire.OpenExtensionControlPlane(extensionPaths, workspaceRoot)
-	if err != nil {
-		server.FailBoot(err)
-		_, _ = fmt.Fprintf(stderr, "codehelper: extension control: %v\n", err)
-		return waitForWebShutdown(
-			ctx, httpServer, serveErr, server, application, store, stderr, 1,
-		)
-	}
-	defer extensionControl.Close()
-	credentials := credential.New(
-		effectiveCredential,
-		credential.WithControl(credentialControl),
-		credential.WithLiveReload(),
-		credential.WithProbe(func(
-			ctx context.Context,
-			reference credential.Reference,
-		) error {
-			_, err := wire.ListLiveModels(
-				ctx,
-				application.ProviderID(),
-				model.CredentialRef{
-					Kind: reference.Kind,
-					Name: reference.Name,
-				},
-			)
-			return err
-		}),
-	)
-	if err := server.Activate(webhost.Dependencies{
-		Runtime:           application.Runtime,
-		WorkspaceRoot:     workspaceRoot,
-		WorkspaceIdentity: workspaceIdentity,
-		DefaultProfile:    application.DefaultProfile(),
-		ProviderCatalog:   application.ProviderCatalog(),
-		ModelCatalog:      application.ModelCatalog(),
-		MCPHealth:         application.MCPHealth,
-		Diagnostics:       stderr,
-		Tasks:             repositories.Tasks,
-		Usage:             repositories.Usage,
-		Agents:            application.Subagents(),
-		Extensions:        extensionControl.Plane,
-		SessionWorkspaces: application.SessionWorkspaces(),
-		Workspace:         application.WorkspaceQuery(),
-		RepositoryIndex:   application.RepositoryIndex(),
-		Credentials:       credentials,
-	}); err != nil {
-		server.FailBoot(err)
-		_, _ = fmt.Fprintf(stderr, "codehelper: activation: %v\n", err)
-		return waitForWebShutdown(
-			ctx,
-			httpServer,
-			serveErr,
-			server,
-			application,
-			store,
-			stderr,
-			1,
-		)
-	}
+	workspaceManager.ActivateRegistered(ctx)
 	_, _ = fmt.Fprintf(stdout, "CodeHelper Runtime Ready: %s\n", publicURL)
 	return waitForWebShutdown(
 		ctx,
 		httpServer,
 		serveErr,
 		server,
-		application,
+		workspaceManager,
 		store,
 		stderr,
 		0,
@@ -396,13 +498,18 @@ func runWeb(
 }
 
 func probeWebReadiness(ctx context.Context, rawURL string) error {
+	_, err := probeWebStatus(ctx, rawURL)
+	return err
+}
+
+func probeWebStatus(ctx context.Context, rawURL string) (string, error) {
 	target, err := url.Parse(rawURL)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if target.Scheme != "http" || target.Hostname() != "127.0.0.1" ||
 		target.User != nil {
-		return errors.New("owner URL is not a trusted loopback HTTP endpoint")
+		return "", errors.New("owner URL is not a trusted loopback HTTP endpoint")
 	}
 	target.Path = "/healthz"
 	target.RawPath = ""
@@ -417,7 +524,7 @@ func probeWebReadiness(ctx context.Context, rawURL string) error {
 		nil,
 	)
 	if err != nil {
-		return err
+		return "", err
 	}
 	client := &http.Client{
 		Transport: &http.Transport{Proxy: nil},
@@ -427,7 +534,7 @@ func probeWebReadiness(ctx context.Context, rawURL string) error {
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer response.Body.Close()
 	var readiness struct {
@@ -435,19 +542,90 @@ func probeWebReadiness(ctx context.Context, rawURL string) error {
 		Status  string `json:"status"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 4<<10)).Decode(&readiness); err != nil {
-		return err
+		return "", err
 	}
 	if response.StatusCode != http.StatusOK ||
 		readiness.Version != 1 ||
-		readiness.Status != "ready" {
-		return fmt.Errorf(
+		(readiness.Status != "ready" && readiness.Status != "setup_required") {
+		return "", fmt.Errorf(
 			"owner endpoint is not ready (HTTP %d, protocol %d, status %q)",
 			response.StatusCode,
 			readiness.Version,
 			readiness.Status,
 		)
 	}
-	return nil
+	return readiness.Status, nil
+}
+
+func registerWorkspaceWithOwner(
+	ctx context.Context,
+	rawURL string,
+	token string,
+	workspaceRoot string,
+) (string, error) {
+	if strings.TrimSpace(token) == "" {
+		return "", errors.New("owner capability token is required")
+	}
+	requestContext, cancel := context.WithTimeout(ctx, 35*time.Second)
+	defer cancel()
+	target, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	if target.Scheme != "http" || target.Hostname() != "127.0.0.1" ||
+		target.User != nil {
+		return "", errors.New("owner URL is not a trusted loopback HTTP endpoint")
+	}
+	target.Path = "/api/v1/workspace/add"
+	target.RawPath = ""
+	target.RawQuery = ""
+	target.Fragment = ""
+	body, err := json.Marshal(webhost.WorkspaceAddRequest{Path: workspaceRoot})
+	if err != nil {
+		return "", err
+	}
+	request, err := http.NewRequestWithContext(
+		requestContext,
+		http.MethodPost,
+		target.String(),
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-CodeHelper-Request-ID", "workspace-register")
+	digest := sha256.Sum256([]byte(workspaceRoot))
+	request.Header.Set(
+		"Idempotency-Key",
+		"workspace-register-"+hex.EncodeToString(digest[:]),
+	)
+	client := &http.Client{
+		Transport: &http.Transport{Proxy: nil},
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return errors.New("owner Workspace registration redirects are forbidden")
+		},
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	var envelope struct {
+		Result  webhost.WorkspaceAddResult `json:"result"`
+		Problem *protocol.Problem          `json:"problem,omitempty"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&envelope); err != nil {
+		return "", err
+	}
+	if response.StatusCode != http.StatusOK {
+		if envelope.Problem != nil {
+			return "", errors.New(envelope.Problem.Message)
+		}
+		return "", fmt.Errorf("Workspace registration failed (HTTP %d)", response.StatusCode)
+	}
+	return envelope.Result.Workspace.ID, nil
 }
 
 func loadWebConfig(options webCommandOptions) (config.Snapshot, error) {
@@ -455,6 +633,188 @@ func loadWebConfig(options webCommandOptions) (config.Snapshot, error) {
 		Path:      options.configPath,
 		Overrides: webConfigOverrides(options),
 	})
+}
+
+type preparedWebRuntime struct {
+	application  *wire.Session
+	extensions   *wire.ExtensionControlHandle
+	dependencies webhost.Dependencies
+}
+
+func prepareWebRuntime(
+	ctx context.Context,
+	options webCommandOptions,
+	loaded config.Snapshot,
+	selection webSetupSelection,
+	workspaceRoot string,
+	workspaceIdentity protocol.WorkspaceIdentity,
+	store *state.Store,
+	repositories apppersistence.PersistentRepositories,
+	stderr io.Writer,
+	secret string,
+) (*preparedWebRuntime, error) {
+	credentialControl, effectiveCredential, err := credential.OpenControl(
+		ctx,
+		loaded.Config.State.DataDir,
+		webSupervisorScope,
+		selection.Provider,
+		credential.Reference{
+			Kind: loaded.Config.Credential.Kind,
+			Name: loaded.Config.Credential.Name,
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("credential recovery: %w", err)
+	}
+	if secret != "" {
+		setupCredentials := credential.New(
+			effectiveCredential,
+			credential.WithControl(credentialControl),
+			credential.WithLiveReload(),
+		)
+		status, setErr := setupCredentials.SetKeyring(ctx, secret)
+		if setErr != nil {
+			return nil, fmt.Errorf("store setup credential: %w", setErr)
+		}
+		effectiveCredential = status.Reference
+	}
+
+	runtimeOverrides := webConfigOverrides(options)
+	runtimeOverrides.Provider = &loaded.Config.Execution.Provider
+	runtimeOverrides.Model = &loaded.Config.Execution.Model
+	runtimeOverrides.Protocol = &loaded.Config.Execution.Protocol
+	runtimeOverrides.CredentialKind = &effectiveCredential.Kind
+	runtimeOverrides.CredentialName = &effectiveCredential.Name
+	extensionOptions := wire.ExtensionOptions{DataDir: loaded.Config.State.DataDir}
+	application, err := wire.NewExec(ctx, wire.ExecOptions{
+		ConfigPath:        options.configPath,
+		ConfigOverrides:   runtimeOverrides,
+		BaseURL:           selection.BaseURL,
+		APIKeyEnv:         options.apiKeyEnv,
+		FixturePath:       options.providerFixture,
+		Permission:        options.posture,
+		MCPConfigPath:     options.mcpConfig,
+		PersistentStore:   store,
+		CredentialControl: credentialControl,
+		WorkspaceIdentity: workspaceIdentity,
+		RuntimeRole:       wire.RuntimeRoleInteractive,
+		Extensions:        extensionOptions,
+		ModelMetadata:     setupModelMetadata(selection),
+	})
+	if err != nil {
+		return nil, err
+	}
+	extensionPaths, err := wire.ResolveExtensionPaths(extensionOptions, workspaceRoot)
+	if err != nil {
+		closeWebRuntime(application)
+		return nil, fmt.Errorf("extension paths: %w", err)
+	}
+	extensions, err := wire.OpenExtensionControlPlane(extensionPaths, workspaceRoot)
+	if err != nil {
+		closeWebRuntime(application)
+		return nil, fmt.Errorf("extension control: %w", err)
+	}
+	credentialOptions := []credential.Option{
+		credential.WithControl(credentialControl),
+		credential.WithLiveReload(),
+	}
+	credentialOptions = append(credentialOptions, credential.WithProbe(func(
+		ctx context.Context,
+		reference credential.Reference,
+	) error {
+		if strings.TrimSpace(options.providerFixture) != "" {
+			return nil
+		}
+		available, probeErr := wire.ProbeLiveModel(
+			ctx, application.ProviderID(), selection.BaseURL,
+			model.CredentialRef{Kind: reference.Kind, Name: reference.Name},
+			selection.Model,
+		)
+		if probeErr != nil {
+			return probeErr
+		}
+		if !available {
+			return errors.New("configured model is not listed by provider")
+		}
+		return nil
+	}))
+	credentials := credential.New(effectiveCredential, credentialOptions...)
+	modelProbe := func(ctx context.Context, modelID string) (bool, error) {
+		if strings.TrimSpace(options.providerFixture) != "" {
+			return true, nil
+		}
+		status, statusErr := credentials.Status(ctx)
+		if statusErr != nil {
+			return false, statusErr
+		}
+		return wire.ProbeLiveModel(
+			ctx,
+			application.ProviderID(),
+			selection.BaseURL,
+			model.CredentialRef{
+				Kind: status.Reference.Kind,
+				Name: status.Reference.Name,
+			},
+			modelID,
+		)
+	}
+	connection := webhost.WorkspaceConnection{
+		Provider: application.ProviderID(),
+		Endpoint: selection.BaseURL,
+		Protocol: selection.Protocol,
+	}
+	if provider, ok := model.DefaultCatalog().Provider(application.ProviderID()); ok {
+		if connection.Endpoint == "" {
+			connection.Endpoint = provider.Endpoint
+		}
+		if connection.Protocol == "" {
+			connection.Protocol = string(provider.Protocol)
+		}
+	}
+	return &preparedWebRuntime{
+		application: application, extensions: extensions,
+		dependencies: webhost.Dependencies{
+			Runtime: application.Runtime, WorkspaceRoot: workspaceRoot,
+			WorkspaceIdentity: workspaceIdentity,
+			DefaultProfile:    application.DefaultProfile(),
+			ProviderCatalog:   application.ProviderCatalog(),
+			ModelCatalog:      application.ModelCatalog(), Connection: connection,
+			MCPHealth:         application.MCPHealth,
+			Diagnostics: stderr, Tasks: repositories.Tasks, Usage: repositories.Usage,
+			Agents: application.Subagents(), Extensions: extensions.Plane,
+			SessionWorkspaces: application.SessionWorkspaces(),
+			Workspace:         application.WorkspaceQuery(),
+			RepositoryIndex:   application.RepositoryIndex(), Credentials: credentials,
+			ModelProbe: modelProbe,
+		},
+	}, nil
+}
+
+func (p *preparedWebRuntime) dependenciesWithDiagnostics(
+	diagnostics io.Writer,
+) webhost.Dependencies {
+	result := p.dependencies
+	result.Diagnostics = diagnostics
+	return result
+}
+
+func (p *preparedWebRuntime) close() {
+	if p == nil {
+		return
+	}
+	if p.extensions != nil {
+		_ = p.extensions.Close()
+	}
+	closeWebRuntime(p.application)
+}
+
+func closeWebRuntime(application *wire.Session) {
+	if application == nil {
+		return
+	}
+	closeContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = application.Close(closeContext)
 }
 
 func webConfigOverrides(options webCommandOptions) config.Overrides {
@@ -482,7 +842,9 @@ func waitForWebShutdown(
 	httpServer *http.Server,
 	serveErr <-chan error,
 	server *webhost.Server,
-	application *wire.Session,
+	runtimeResource interface {
+		Close(context.Context) error
+	},
 	store *state.Store,
 	stderr io.Writer,
 	code int,
@@ -496,13 +858,15 @@ func waitForWebShutdown(
 	case <-ctx.Done():
 	}
 	server.Drain()
-	return shutdownBootServer(httpServer, serveErr, application, store, stderr, code)
+	return shutdownBootServer(httpServer, serveErr, runtimeResource, store, stderr, code)
 }
 
 func shutdownBootServer(
 	httpServer *http.Server,
 	serveErr <-chan error,
-	application *wire.Session,
+	runtimeResource interface {
+		Close(context.Context) error
+	},
 	store *state.Store,
 	stderr io.Writer,
 	code int,
@@ -521,12 +885,12 @@ func shutdownBootServer(
 		}
 	default:
 	}
-	if application != nil {
+	if runtimeResource != nil {
 		runtimeContext, cancelRuntime := context.WithTimeout(
 			context.Background(),
 			10*time.Second,
 		)
-		if err := application.Close(runtimeContext); err != nil {
+		if err := runtimeResource.Close(runtimeContext); err != nil {
 			_, _ = fmt.Fprintf(stderr, "codehelper: Runtime close: %v\n", err)
 			code = 1
 		}
@@ -571,6 +935,16 @@ func terminalWriter(writer io.Writer) bool {
 func oneOf(value string, allowed ...string) bool {
 	for _, candidate := range allowed {
 		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func webFlagProvided(args []string, name string) bool {
+	prefix := "--" + name
+	for _, arg := range args {
+		if arg == prefix || strings.HasPrefix(arg, prefix+"=") {
 			return true
 		}
 	}

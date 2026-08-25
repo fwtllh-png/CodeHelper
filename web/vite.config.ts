@@ -14,7 +14,8 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: false,
-    assetsDir: "assets"
+    assetsDir: "assets",
+    minify: "terser"
   },
   server: {
     host: "127.0.0.1",

@@ -1,13 +1,21 @@
 # Web 使用指南
 
-CodeHelper 只提供本机 Web 产品入口。二进制直接启动 Web，不再包含子命令树：
+从源码安装一次：
 
 ```bash
-codehelper --workspace . --config ./codehelper.toml --enable-tools
+make install
 ```
 
-服务只监听 `127.0.0.1`。默认选择可用端口；增加 `--open` 可自动打开浏览器，
-`--no-open` 可明确禁止自动打开。
+之后在任意项目目录直接启动：
+
+```bash
+cd /path/to/project
+codehelper
+```
+
+当前目录自动成为 Workspace，并自动打开浏览器。服务只监听 `127.0.0.1`，默认选择
+可用端口。若 Web Supervisor 已运行，再次从其他目录执行 `codehelper` 会把当前目录
+注册到已有进程，并直接打开对应 Workspace。`make start` 仅作为源码开发入口保留。
 
 ## 启动参数
 
@@ -36,7 +44,7 @@ Web Host；会话、审批、输入、工具执行和持久化仍由 Runtime 负
 
 页面启动后可完成：
 
-- 创建、搜索、切换、重命名、置顶、归档和删除 Session；
+- 添加和切换 Workspace，并创建、搜索、切换、重命名、置顶、归档和删除 Session；
 - 提交 Prompt，查看流式 Text、Reasoning 和 Tool Activity；
 - 处理 Approval 与结构化 Input；
 - 检查 Diff、Plan、Checkpoint、Usage、Diagnostics、Task、Agent 和 Receipt；
@@ -49,8 +57,24 @@ Session 侧栏按 Workspace 分组，并将搜索、归档与行级操作渐进�
 `turn.start` 被接受后，从用户可见 Prompt 生成单行、UTF-8 安全的短标题；已有
 `New Chat` 会话在首次激活时按同一规则回填。显式重命名的标题不会被后续 Prompt 覆盖。
 
+侧栏的文件夹加号打开 Workspace 管理界面。输入本机目录后，Supervisor 会规范化物理
+路径、持久化 Registry，并为该目录构造独立 Runtime。HTTP RPC 和内容下载通过
+`X-CodeHelper-Workspace-ID` 路由，WebSocket 在鉴权帧中携带 `workspace_id`；未知
+Workspace、跨 Workspace Session 和内容句柄均拒绝访问。浏览器为每个 Workspace
+分别保存事件 Cursor、选中 Session、草稿和反馈，后台 Workspace 的 Session 摘要以
+低频轮询更新，当前 Workspace 使用实时事件流。裸 Supervisor URL 不隐式选择默认
+Workspace；用户必须先选择一个 Ready Workspace，页面和 Host 才允许创建 Session。
+从项目目录执行 `codehelper` 时，启动器会把该目录作为显式 Workspace 参数打开。
+
 Composer 下方的 Stats 使用一条可整体省略的摘要展示 Turn、Tool、总耗时、模型耗时、
 Tool 耗时、TTFT、Token、Cache 和 Cost；完整明细保留在 Tooltip 中，不逐项压缩。
+
+Plan 模式只允许 Workspace Read 与有界的 Session Plan 状态更新。Agent 调研完成后通过
+`submit_plan` 提交带步骤、依赖、预期证据和受影响文件的结构化 JSON 计划。Plan
+Artifact 不接受 Markdown 或 XML 标签输出。计划显示在 Composer 上方，可选择
+`Implement` 或 `Autopilot`。两种动作都复用持久化的 `turn.start` Acceptance；
+Autopilot 的 `auto` Posture 只对该执行 Turn 生效，不修改 Session 默认值。提交计划时
+会记录受影响文件摘要，执行前若文件已变化，Runtime 拒绝旧 Revision 并要求重新规划。
 
 模型推理在 Chat 中显示为可折叠的 `Think` 行。运行时摘要跟随最新内容，每次模型
 Sample 完成后持久化完整推理，因此重载页面或切换 Session 后仍可恢复多个独立 Think
@@ -71,9 +95,10 @@ Entry、Turn、Call 和 Path Identity 定位。Chat 与 Trajectory 往返、切�
 
 ## Session 与恢复
 
-Browser State 是可丢弃 Projection，不是事实来源。页面先建立 WebSocket，再获取带
-`through_sequence` 的 Session Snapshot，并合并水位之后的 Live Event。刷新或重连
-不会重新提交 Prompt。
+Browser State 是可丢弃 Projection，不是事实来源。页面先为当前 Workspace 建立
+WebSocket，再获取带 `through_sequence` 的 Session Snapshot，并合并水位之后的 Live
+Event。每个 Workspace 使用独立 Cursor；刷新、重连或切换 Workspace 不会重新提交
+Prompt。
 
 删除 Session 时会要求显式确认。对于已失去执行者的未完成 Turn 或隔离 Worktree，
 确认删除表示同时丢弃其未完成状态和隔离改动；仍有内存执行者或恢复中 Operation 的
@@ -81,30 +106,32 @@ Session 会拒绝删除，必须先停止执行。
 
 ## 配置与凭证
 
-Runtime 配置使用 TOML。Credential 必须是环境变量、受保护文件或 OS Keyring 引用，
-不能把 Secret 值写入配置：
+首次进入且尚未完成 Runtime Setup 时，Web 不提供默认 Provider 或 Model。用户必须
+选择 OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible 服务，并输入准确的
+Model ID；Model 不使用内置下拉枚举。自定义服务同时填写 Base URL 与
+`openai_chat` / `openai_responses` 协议。Credential Value 只发送到本机 Loopback
+Runtime，由 Credential Control 写入操作系统 Keyring 加密保存；浏览器不持久化原始
+值，也不要求用户创建或编辑配置文件。
 
-```toml
-[credential]
-kind = "env"
-name = "OPENAI_API_KEY"
+Web Settings 将 Workspace Connection 与 Session 配置分开：Connection 展示固定的
+Provider、Endpoint、Protocol 和 Keyring Credential；Models、Reasoning、Mode、
+Approval、执行目标和 Tool allowlist 属于当前 Session。Session 配置先进入 Draft，
+点击 Apply 后才通过 Runtime `profile/update` 原子生效，并显示具体变更摘要。
 
-[execution]
-provider = "openai"
-model = "gpt-4.1"
-workspace = "."
-tools = true
-```
+每个 Session 独立持久化准确的 Model ID；Composer 可快速切换当前 Workspace
+其他 Session 已使用的模型，Settings 也可输入新的 Model ID。同一 Workspace 中的模型
+切换复用既有 Provider Connection、Endpoint 和 Keyring Credential，不扩大 Egress
+范围，也不影响其他 Session。模型变化会重置该 Session 的 Prompt Cache，Active Turn
+期间拒绝修改。未进入内置目录的模型只展示 Connection Baseline，并标记为未验证；
+`Test connection` 检查 Endpoint、Credential 和启动模型，`Test model` 检查 Provider
+模型目录是否包含当前填写的准确 Model ID。
 
-Web Settings 将 Provider、Model、Reasoning、Mode、Approval、执行目标和 Tool
-allowlist 暂存为一个 Draft，只有点击 Apply 后才通过 Runtime `profile/update`
-原子生效。界面会明确显示未保存修改、Prompt Cache Reset、需要重启的模型或凭证变更
-以及 Apply 结果。
+Composer 内的 Reasoning 菜单直接采用当前模型目录声明的档位。DeepSeek 显示
+Off、Low、High、Max，默认 High；其他模型保留各自完整档位，不做跨档位折算。
 
-Credential 支持创建或轮换、在线校验和二次确认删除。Credential Value 只发送到本机
-Loopback Runtime，并由 Credential Control 写入系统 Keyring；浏览器不持久化原始值。
-Settings 还可查看 Tool 的 Policy、Constitution 和 Sandbox 信息，以及 Skill/Plugin
-的来源、健康、信任、权限和 Runtime Control 操作结果。
+Credential 支持创建或轮换、在线校验和二次确认删除。Settings 还可查看 Tool 的
+Policy、Constitution 和 Sandbox 信息，以及 Skill/Plugin 的来源、健康、信任、权限
+和 Runtime Control 操作结果。
 
 Agent Preset 保存经过 Runtime 校验的 Session Profile，不包含 Credential。Preset
 按 Workspace 隔离并持久化，可创建、更新、复制、删除、载入 Draft，或直接应用到当前
@@ -114,17 +141,6 @@ General Settings 中可选择启用桌面通知。通知默认关闭，并且必
 只报告后台 Session 等待审批、等待输入、失败、中断或完成，不包含 Prompt、Tool 名称
 或 Tool Output。点击通知会切换到对应 Session，并定位最新 Turn 或待处理控件。
 页面标题和 Session Rail 始终直接投影 Runtime Session 状态，不依赖通知权限。
-
-## 本机 DeepSeek
-
-仓库所有者可使用：
-
-```bash
-make deepseek-web
-```
-
-该命令构建 Binary、安装本机配置、加载安全凭证并启动 Web。详细约束见
-[本机 DeepSeek 一键配置与运行](./deepseek-local.md)。
 
 ## 验证
 

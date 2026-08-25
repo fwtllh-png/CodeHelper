@@ -126,6 +126,27 @@ func TestResponsesPrepareMapsReasoningOffToNone(t *testing.T) {
 	}
 }
 
+func TestResponsesPreparePreservesNativeReasoningEfforts(t *testing.T) {
+	for _, effort := range []string{"low", "high", "max"} {
+		t.Run(effort, func(t *testing.T) {
+			request := testRequest(t, model.ProtocolOpenAIResponses)
+			request.ReasoningEffort = effort
+			call, err := NewAdapter().Prepare(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body map[string]any
+			if err := json.Unmarshal(call.Body, &body); err != nil {
+				t.Fatal(err)
+			}
+			reasoning, _ := body["reasoning"].(map[string]any)
+			if reasoning["effort"] != effort {
+				t.Fatalf("reasoning = %#v, want effort %q", body["reasoning"], effort)
+			}
+		})
+	}
+}
+
 func TestResponsesPrepareScopesDeepSeekReplayRules(t *testing.T) {
 	request := testRequest(t, model.ProtocolOpenAIResponses)
 	request.ReasoningEffort = "max"

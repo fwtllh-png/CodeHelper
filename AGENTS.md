@@ -16,6 +16,7 @@ Web and shared by workers and orchestration.
 3. the nearest package tests
 4. `Makefile`
 5. `git status --short`
+6. `make agent-preflight`
 
 ## Hard Rules
 
@@ -55,6 +56,7 @@ Web client                 web
 ## Standard Validation
 
 ```bash
+make ratchet-fast
 go test ./path/to/package
 make docs-check
 make book-check

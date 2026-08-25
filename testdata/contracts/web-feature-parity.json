@@ -483,7 +483,7 @@
       ],
       "required_qualifications": [
         "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
-        "internal/runtime/app/session_artifacts_test.go#TestPlanTransitionUsesANewGuardedTurnProfile",
+        "internal/runtime/app/session_artifacts_test.go#TestPlanExecutionDoesNotMutateProfile",
         "internal/runtime/app/session_artifacts_test.go#TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations",
         "web/src/ui/App.test.tsx#renders detailed activity artifacts and extension controls"
       ]

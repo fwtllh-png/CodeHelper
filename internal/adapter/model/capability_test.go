@@ -108,19 +108,67 @@ func TestIncrementalResponsesIsAdvertisedOnlyByBundledResponsesRoute(t *testing.
 
 func TestBundledReasoningEffortsAreExplicitAndIsolated(t *testing.T) {
 	catalog := DefaultCatalog()
-	deepseek, ok := catalog.Provider("deepseek-v4-flash")
-	if !ok {
-		t.Fatal("deepseek-v4-flash provider is missing")
+	for _, entry := range []struct {
+		provider string
+		model    string
+	}{
+		{provider: "deepseek", model: "deepseek-reasoner"},
+		{provider: "deepseek-v4-flash", model: "deepseek-v4-flash"},
+	} {
+		deepseek, ok := catalog.Provider(entry.provider)
+		if !ok {
+			t.Fatalf("%s provider is missing", entry.provider)
+		}
+		capabilities := deepseek.Models[entry.model].Capabilities
+		levels := capabilities.ReasoningEffortLevels()
+		if len(levels) != 4 || levels[0] != "off" ||
+			levels[1] != "low" || levels[2] != "high" || levels[3] != "max" {
+			t.Fatalf("%s reasoning efforts = %v", entry.model, levels)
+		}
+		if capabilities.DefaultReasoningEffort != "high" {
+			t.Fatalf(
+				"%s default reasoning effort = %q",
+				entry.model,
+				capabilities.DefaultReasoningEffort,
+			)
+		}
 	}
+	deepseek, _ := catalog.Provider("deepseek-v4-flash")
 	levels := deepseek.Models["deepseek-v4-flash"].
 		Capabilities.ReasoningEffortLevels()
-	if len(levels) != 5 || levels[0] != "off" || levels[4] != "max" {
-		t.Fatalf("reasoning efforts = %v", levels)
-	}
-	levels[4] = "mutated"
+	levels[3] = "mutated"
 	again, _ := catalog.Provider("deepseek-v4-flash")
 	if got := again.Models["deepseek-v4-flash"].
-		Capabilities.ReasoningEffortLevels()[4]; got != "max" {
+		Capabilities.ReasoningEffortLevels()[3]; got != "max" {
 		t.Fatalf("catalog reasoning efforts mutated to %q", got)
+	}
+}
+
+func TestReadyRouteWithModelIDPreservesConnection(t *testing.T) {
+	resolver, err := NewResolver(DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(RouteRequest{
+		ProviderID: "deepseek",
+		ModelID:    "deepseek-chat",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := route.WithModelID("deepseek-next")
+	if updated.ProviderID() != route.ProviderID() ||
+		updated.Endpoint() != route.Endpoint() ||
+		updated.Credential() != route.Credential() {
+		t.Fatalf("connection changed: %+v", updated)
+	}
+	if updated.Model().ID != "deepseek-next" ||
+		updated.Model().WireID != "deepseek-next" {
+		t.Fatalf("model identity = %+v", updated.Model())
+	}
+	if updated.Model().Provenance != ProvenanceStartup ||
+		updated.Model().MetadataProvenance.Pricing != ProvenanceStartup ||
+		updated.Model().Pricing.Known {
+		t.Fatalf("derived model provenance = %+v", updated.Model())
 	}
 }

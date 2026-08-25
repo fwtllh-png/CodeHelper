@@ -347,3 +347,64 @@ func TestRecoverRebuildsPendingTurnQueueFromRetainedEvents(t *testing.T) {
 		t.Fatalf("pending queue = %+v", recovery.PendingQueuedTurns)
 	}
 }
+
+func TestWorkspaceLifecycleRecoversOnlyBoundOperations(t *testing.T) {
+	store, err := state.Open(t.Context(), state.Options{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.CloseAll(t.Context()) })
+	rootA := filepath.Join(t.TempDir(), "workspace-a")
+	rootB := filepath.Join(t.TempDir(), "workspace-b")
+	repository := sessionstate.NewSQLiteRepository(store.SQLite())
+	for _, value := range []struct {
+		root      string
+		sessionID string
+	}{
+		{rootA, "session-a"},
+		{rootB, "session-b"},
+	} {
+		if err := repository.EnsureSeed(
+			t.Context(),
+			value.sessionID,
+			value.root,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, value := range []struct {
+		operationID string
+		sessionID   string
+	}{
+		{"operation-a", "session-a"},
+		{"operation-b", "session-b"},
+	} {
+		if _, err := store.SQLite().DB().ExecContext(
+			t.Context(),
+			`INSERT INTO operations(
+				id, session_id, kind, status, request_json, created_at, updated_at
+			) VALUES (?, ?, ?, ?, '{}', ?, ?)`,
+			value.operationID,
+			value.sessionID,
+			protocol.OperationStartTurn,
+			OperationAccepted,
+			now,
+			now,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recovery, err := NewWorkspaceLifecycle(store, rootA).Recover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recovery.PendingOperations) != 1 ||
+		recovery.PendingOperations["operation-a"].SessionID != "session-a" {
+		t.Fatalf("Workspace A pending operations = %+v", recovery.PendingOperations)
+	}
+	if _, exists := recovery.PendingOperations["operation-b"]; exists {
+		t.Fatal("Workspace A recovered Workspace B operation")
+	}
+}

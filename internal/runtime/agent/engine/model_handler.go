@@ -348,7 +348,7 @@ func (e *Engine) modelStep(
 					return send(Streaming, Event{
 						Text: projected.Text, Block: projected.Block,
 						Search: projected.Search, Citation: projected.Citation,
-						Plan: projected.Plan, Sample: call.index, SampleID: sampleID,
+						Sample: call.index, SampleID: sampleID,
 					})
 				},
 			},

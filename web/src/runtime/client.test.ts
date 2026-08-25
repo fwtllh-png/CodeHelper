@@ -80,6 +80,9 @@ describe("RuntimeClient", () => {
   let moreBefore = false;
   let presets: AgentPreset[] = [];
   let presetRevision = 0;
+  let setupRequired = false;
+  let multipleWorkspaces = false;
+  let emptyPrimaryWorkspace = false;
 
   beforeEach(() => {
     requests.length = 0;
@@ -99,6 +102,10 @@ describe("RuntimeClient", () => {
     moreBefore = false;
     presets = [];
     presetRevision = 0;
+    setupRequired = false;
+    multipleWorkspaces = false;
+    emptyPrimaryWorkspace = false;
+    window.history.replaceState(null, "", "/?workspace=workspace-id");
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("crypto", {
       randomUUID: () => "request-id",
@@ -109,6 +116,42 @@ describe("RuntimeClient", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const route = String(input);
       if (route.endsWith("/bootstrap")) {
+        if (setupRequired) {
+          return response({
+            protocol_version: 1,
+            server_build: "build",
+            token: bootstrapToken,
+            ready: false,
+            draining: false,
+            setup_required: true,
+            workspace_root: "/workspace",
+            setup_catalog: {
+              version: 1,
+              providers: [{
+                id: "deepseek",
+                display_name: "DeepSeek",
+                protocol: "openai_chat",
+                requires_api_key: true
+              }]
+            }
+          });
+        }
+        const workspaces = [{
+          id: "workspace-id",
+          root: "/workspace",
+          label: "workspace",
+          ready: true,
+          session_count: emptyPrimaryWorkspace ? 0 : 1
+        }];
+        if (multipleWorkspaces) {
+          workspaces.push({
+            id: "workspace-b-id",
+            root: "/workspace-b",
+            label: "workspace-b",
+            ready: true,
+            session_count: 1
+          });
+        }
         return response({
           protocol_version: 1,
           server_build: "build",
@@ -122,6 +165,11 @@ describe("RuntimeClient", () => {
             root_id: "workspace-id",
             editor_uri: "file:///workspace",
             runtime_path: "/workspace"
+          },
+          workspace_catalog: {
+            version: 1,
+            default_workspace_id: "workspace-id",
+            workspaces
           }
         });
       }
@@ -138,6 +186,10 @@ describe("RuntimeClient", () => {
       }
       const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
       requests.push({route, body, headers: new Headers(init?.headers)});
+      if (route.endsWith("/setup/apply")) {
+        setupRequired = false;
+        return envelope({ready: true});
+      }
       if (route.endsWith("/provider/list")) {
         return envelope({
           version: 1,
@@ -205,18 +257,24 @@ describe("RuntimeClient", () => {
         });
       }
       if (route.endsWith("/session/list")) {
+        const workspaceID = new Headers(init?.headers)
+          .get("X-CodeHelper-Workspace-ID");
+        const secondary = workspaceID === "workspace-b-id";
+        if (!secondary && emptyPrimaryWorkspace && !createdSession) {
+          return envelope({version: 1, sessions: []});
+        }
         const sessions = [{
           version: 1,
           revision: 1,
-          session_id: "session",
-          thread_id: "thread",
-          title: "Chat",
+          session_id: secondary ? "session-b" : "session",
+          thread_id: secondary ? "thread-b" : "thread",
+          title: secondary ? "Chat B" : "Chat",
           status: "idle",
           pinned: false,
           archived: false,
           isolation: "shared",
-          workspace_root: "/workspace",
-          workspace_label: "workspace",
+          workspace_root: secondary ? "/workspace-b" : "/workspace",
+          workspace_label: secondary ? "workspace-b" : "workspace",
           latest_turn_id: "turn",
           latest_sequence: 0,
           pending_approvals: 0,
@@ -244,9 +302,11 @@ describe("RuntimeClient", () => {
       }
       if (route.endsWith("/session/activate")) {
         return envelope({
-          session_id: "session",
-          thread_id: "thread",
-          workspace_root: "/workspace",
+          session_id: body.session_id,
+          thread_id: body.session_id === "session-b" ? "thread-b" : "thread",
+          workspace_root: body.session_id === "session-b"
+            ? "/workspace-b"
+            : "/workspace",
           provider: "fixture",
           model: "fixture",
           isolation: "shared"
@@ -256,8 +316,8 @@ describe("RuntimeClient", () => {
         await snapshotGate;
         return envelope({
           version: 1,
-          session_id: "session",
-          thread_id: "thread",
+          session_id: body.session_id,
+          thread_id: body.session_id === "session-b" ? "thread-b" : "thread",
           session_revision: 1,
           through_sequence: snapshotSequence,
           events: snapshotEvents,
@@ -547,6 +607,46 @@ describe("RuntimeClient", () => {
     vi.unstubAllGlobals();
   });
 
+    it("waits in setup state and activates only after explicit selection", async () => {
+      setupRequired = true;
+      const client = new RuntimeClient();
+      await client.start();
+
+      expect(client.getSnapshot().phase).toBe("setup");
+      expect(client.getSnapshot().setupCatalog?.providers[0]?.id).toBe("deepseek");
+      expect(FakeWebSocket.instances).toHaveLength(0);
+
+      const completed = client.completeSetup({
+        provider: "deepseek",
+        model: "deepseek-chat",
+        api_key: "sk-test"
+      });
+      await vi.waitFor(() => {
+        expect(FakeWebSocket.instances).toHaveLength(1);
+      });
+      const socket = FakeWebSocket.instances[0]!;
+      socket.emit("open");
+      socket.emit("message", {
+        type: "hello",
+        protocol_version: 1,
+        sequence: 0
+      });
+      await completed;
+
+      const setup = requests.find((request) => request.route.endsWith("/setup/apply"));
+      expect(setup?.body).toEqual({
+        provider: "deepseek",
+        model: "deepseek-chat",
+        api_key: "sk-test"
+      });
+      expect(setup?.headers.get("Idempotency-Key")).toBe("request-id");
+      expect(client.getSnapshot().phase).toBe("ready");
+      expect(requests.some((request) =>
+        request.route.endsWith("/session/create")
+      )).toBe(false);
+      client.stop();
+    });
+
   it("normalizes empty collections and submits act prompts as answers", async () => {
     const client = new RuntimeClient();
     await startClient(client);
@@ -715,6 +815,7 @@ describe("RuntimeClient", () => {
     expect(JSON.parse(socket?.sent[0] ?? "{}")).toEqual({
       type: "authenticate",
       token: "token",
+      workspace_id: "workspace-id",
       cursor: 41
     });
     expect(await client.loadDraft()).toBe("unfinished prompt");
@@ -738,6 +839,117 @@ describe("RuntimeClient", () => {
       });
     });
     expect(JSON.stringify(storage.values)).not.toContain("token");
+    client.stop();
+  });
+
+  it("keeps event cursors and selected sessions isolated by Workspace", async () => {
+    multipleWorkspaces = true;
+    const storage = new MemoryBrowserStorage();
+    storage.values.set("v1:build:workspace-id", {
+      cursor: 41,
+      selectedSessionID: "session",
+      drafts: {session: "workspace A"}
+    });
+    storage.values.set("v1:build:workspace-b-id", {
+      cursor: 7,
+      selectedSessionID: "session-b",
+      drafts: {"session-b": "workspace B"}
+    });
+    const client = new RuntimeClient(storage);
+    const first = await startClient(client);
+
+    expect(JSON.parse(first.sent[0] ?? "{}")).toMatchObject({
+      workspace_id: "workspace-id",
+      cursor: 41
+    });
+    expect(await client.loadDraft()).toBe("workspace A");
+    const switching = client.selectWorkspace("workspace-b-id");
+    await vi.waitFor(() => {
+      expect(FakeWebSocket.instances).toHaveLength(2);
+    });
+    const second = FakeWebSocket.instances[1]!;
+    second.emit("open");
+    expect(JSON.parse(second.sent[0] ?? "{}")).toMatchObject({
+      workspace_id: "workspace-b-id",
+      cursor: 7
+    });
+    second.emit("message", {
+      type: "hello",
+      protocol_version: 1,
+      sequence: 7
+    });
+    await switching;
+
+    expect(client.getSnapshot()).toMatchObject({
+      selectedWorkspaceID: "workspace-b-id",
+      workspaceRoot: "/workspace-b",
+      selectedSessionID: "session-b"
+    });
+    expect(await client.loadDraft()).toBe("workspace B");
+    const listedWorkspaceIDs = requests
+      .filter((request) => request.route.endsWith("/session/list"))
+      .map((request) => request.headers.get("X-CodeHelper-Workspace-ID"));
+    expect(listedWorkspaceIDs).toContain("workspace-id");
+    expect(listedWorkspaceIDs).toContain("workspace-b-id");
+    client.stop();
+  });
+
+  it("does not fall back to another Workspace Session when the selected one is empty", async () => {
+    multipleWorkspaces = true;
+    emptyPrimaryWorkspace = true;
+    const client = new RuntimeClient();
+    await startClient(client);
+    expect(client.getSnapshot()).toMatchObject({
+      selectedWorkspaceID: "workspace-id",
+      selectedSessionID: ""
+    });
+
+    const selectSecondary = client.selectWorkspace("workspace-b-id");
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+    const secondary = FakeWebSocket.instances[1]!;
+    secondary.emit("open");
+    secondary.emit("message", {
+      type: "hello",
+      protocol_version: 1,
+      sequence: 0
+    });
+    await selectSecondary;
+    expect(client.getSnapshot().selectedSessionID).toBe("session-b");
+
+    const selectPrimary = client.selectWorkspace("workspace-id");
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(3));
+    const primary = FakeWebSocket.instances[2]!;
+    primary.emit("open");
+    primary.emit("message", {
+      type: "hello",
+      protocol_version: 1,
+      sequence: 0
+    });
+    await selectPrimary;
+    expect(client.getSnapshot()).toMatchObject({
+      selectedWorkspaceID: "workspace-id",
+      selectedSessionID: ""
+    });
+    client.stop();
+  });
+
+  it("requires an explicit ready Workspace before creating a Session", async () => {
+    window.history.replaceState(null, "", "/");
+    const client = new RuntimeClient();
+    await client.start();
+
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    expect(client.getSnapshot()).toMatchObject({
+      phase: "ready",
+      selectedWorkspaceID: "",
+      selectedSessionID: ""
+    });
+    await expect(client.createSession()).rejects.toThrow(
+      "Select a ready workspace"
+    );
+    expect(requests.some(
+      (request) => request.route.endsWith("/session/create")
+    )).toBe(false);
     client.stop();
   });
 

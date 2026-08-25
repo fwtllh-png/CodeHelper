@@ -20,6 +20,7 @@ import type {
   ExtensionProjection,
   ModelCatalog,
   ModelCatalogEntry,
+  ModelTestResult,
   OperationReceipt,
   PresentationSnapshot,
   Problem,
@@ -39,6 +40,9 @@ import type {
   SessionProfileSnapshot,
   SessionProfileUpdateResult,
   SessionSummary,
+  SetupCatalog,
+  SetupRequest,
+  SetupResult,
   TaskList,
   TaskSummary,
   TraceSnapshot,
@@ -47,6 +51,10 @@ import type {
   UsageQueryResult,
   UsageRollup,
   WorkspaceBrowseResult,
+  WorkspaceAddResult,
+  WorkspaceCatalog,
+  WorkspaceConnection,
+  WorkspaceDescriptor,
   WorkspaceDiagnosticContext,
   WorkspaceDiagnostics,
   WorkspaceDiff,
@@ -75,8 +83,20 @@ import {
 import {projectTurnQueue} from "../projection/turnQueue";
 import {FrameNotifier} from "./notifier";
 
+function hydratePlanArtifact(
+  artifact: SessionPlanArtifact | undefined
+): SessionPlanArtifact | undefined {
+  if (!artifact || artifact.document) return artifact;
+  const document = JSON.parse(artifact.body) as SessionPlanArtifact["document"];
+  if (document?.version !== 1 || !Array.isArray(document.steps)) {
+    throw new Error("Plan Artifact must contain a structured Plan Document");
+  }
+  return {...artifact, document};
+}
+
 export type RuntimePhase =
   | "booting"
+  | "setup"
   | "ready"
   | "reconnecting"
   | "desynchronized"
@@ -99,6 +119,9 @@ export interface RuntimeSnapshot {
   historyMoreBefore: boolean;
   providers: readonly ProviderCatalogEntry[];
   models: readonly ModelCatalogEntry[];
+  setupCatalog?: SetupCatalog;
+  workspaces: readonly WorkspaceDescriptor[];
+  selectedWorkspaceID: string;
   profile?: SessionProfileSnapshot;
   tools: Readonly<ToolCatalog["tools"]>;
   checkpoints: Readonly<CheckpointList["checkpoints"]>;
@@ -139,6 +162,8 @@ const emptySnapshot: RuntimeSnapshot = {
   historyMoreBefore: false,
   providers: [],
   models: [],
+  workspaces: [],
+  selectedWorkspaceID: "",
   tools: [],
   checkpoints: [],
   tasks: [],
@@ -248,6 +273,35 @@ export class RuntimeClient {
         this.update({phase: "draining", problem: bootstrap.problem});
         return;
       }
+      const workspaceCatalog = workspaceCatalogFromBootstrap(bootstrap);
+      const requestedWorkspaceID = typeof window === "undefined"
+        ? ""
+        : new URL(window.location.href).searchParams.get("workspace") ?? "";
+      const candidates = requestedWorkspaceID
+        ? [requestedWorkspaceID]
+        : [this.state.selectedWorkspaceID];
+      const selectedWorkspaceID = candidates.find((id) =>
+        workspaceCatalog.workspaces.some(
+        (workspace) => workspace.id === id && workspace.ready
+      )) ?? "";
+      const selectedWorkspace = workspaceCatalog.workspaces.find(
+        (workspace) => workspace.id === selectedWorkspaceID
+      );
+      if (bootstrap.setup_required) {
+        if (!bootstrap.setup_catalog) {
+          throw new Error("Runtime setup catalog is unavailable");
+        }
+        this.update({
+          phase: "setup",
+          workspaceRoot: bootstrap.workspace_root ?? "",
+          canOpenPath: Boolean(bootstrap.can_open_path),
+          setupCatalog: bootstrap.setup_catalog,
+          workspaces: workspaceCatalog.workspaces,
+          selectedWorkspaceID,
+          problem: undefined
+        });
+        return;
+      }
       if (!bootstrap.ready) {
         this.update({
           phase: bootstrap.problem ? "failed" : "booting",
@@ -260,12 +314,35 @@ export class RuntimeClient {
         }
         return;
       }
-      await this.restoreBrowserState(bootstrap);
+      if (!selectedWorkspace) {
+        this.socket?.close(1000, "workspace selection required");
+        this.socket = undefined;
+        this.update({
+          phase: "ready",
+          workspaceRoot: "",
+          canOpenPath: Boolean(bootstrap.can_open_path),
+          workspaces: workspaceCatalog.workspaces,
+          selectedWorkspaceID: "",
+          sessions: [],
+          selectedSessionID: "",
+          profile: undefined,
+          providers: [],
+          models: [],
+          socketConnected: false,
+          problem: undefined,
+          setupCatalog: undefined
+        });
+        return;
+      }
+      await this.restoreBrowserState(bootstrap, selectedWorkspaceID);
       this.update({
         phase: "reconnecting",
-        workspaceRoot: bootstrap.workspace_root ?? "",
+        workspaceRoot: selectedWorkspace?.root ?? bootstrap.workspace_root ?? "",
         canOpenPath: Boolean(bootstrap.can_open_path),
-        problem: undefined
+        workspaces: workspaceCatalog.workspaces,
+        selectedWorkspaceID,
+        problem: undefined,
+        setupCatalog: undefined
       });
       this.socket?.close(1000, "client reconnect");
       await this.connect();
@@ -300,19 +377,34 @@ export class RuntimeClient {
     includeArchived = this.state.includeArchived
   ): Promise<void> {
     const generation = ++this.sessionListGeneration;
-    const list = await this.call<SessionList>("session/list", {
-      query,
-      include_archived: includeArchived,
-      limit: 200
-    });
+    const workspaces = this.state.workspaces.filter((workspace) => workspace.ready);
+    const lists = await Promise.allSettled(workspaces.map((workspace) =>
+      this.call<SessionList>("session/list", {
+        query,
+        include_archived: includeArchived,
+        limit: 200
+      }, {workspaceID: workspace.id})
+    ));
     if (generation !== this.sessionListGeneration) return;
+    const sessions = lists.flatMap((list, index) => {
+      if (list.status === "fulfilled") return list.value.sessions;
+      const root = workspaces[index]?.root;
+      return this.state.sessions.filter((session) => session.workspace_root === root);
+    });
     const selected = this.state.selectedSessionID || this.stored.selectedSessionID;
+    const selectedRoot = this.state.workspaces.find(
+      (workspace) => workspace.id === this.state.selectedWorkspaceID
+    )?.root;
+    const preferred = sessions.filter(
+      (session) => session.workspace_root === selectedRoot
+    );
+    const candidates = selectedRoot ? preferred : sessions;
     const nextSelected =
-      selected && list.sessions.some((item) => item.session_id === selected)
+      selected && candidates.some((item) => item.session_id === selected)
         ? selected
-        : (list.sessions[0]?.session_id ?? "");
+        : (candidates[0]?.session_id ?? "");
     this.update({
-      sessions: list.sessions,
+      sessions,
       selectedSessionID: nextSelected,
       includeArchived
     });
@@ -325,10 +417,102 @@ export class RuntimeClient {
     await this.refreshSessions("", true, includeArchived);
   }
 
+  async refreshWorkspaces(): Promise<WorkspaceCatalog> {
+    const catalog = await this.call<WorkspaceCatalog>("workspace/list", {});
+    this.update({workspaces: catalog.workspaces ?? []});
+    return catalog;
+  }
+
+  async addWorkspace(path: string): Promise<void> {
+    const result = await this.call<WorkspaceAddResult>(
+      "workspace/add",
+      {path: path.trim()},
+      {idempotencyKey: crypto.randomUUID(), retryNetwork: true}
+    );
+    await this.refreshWorkspaces();
+    if (!result.workspace.ready) {
+      throw new Error(
+        result.workspace.problem || "Workspace was registered but is not ready"
+      );
+    }
+    await this.selectWorkspace(result.workspace.id);
+  }
+
+  async selectWorkspace(workspaceID: string): Promise<void> {
+    await this.switchWorkspace(workspaceID, true);
+  }
+
+  private async switchWorkspace(
+    workspaceID: string,
+    hydrate: boolean
+  ): Promise<void> {
+    const workspace = this.state.workspaces.find(
+      (entry) => entry.id === workspaceID
+    );
+    if (!workspace) throw new Error("Workspace is not registered");
+    if (!workspace.ready) {
+      throw new Error(workspace.problem || "Workspace Runtime is not ready");
+    }
+    if (workspaceID === this.state.selectedWorkspaceID) {
+      if (hydrate) await this.refreshSessions();
+      return;
+    }
+    this.eventNotifier.cancel();
+    this.pendingSelectedEvents = [];
+    this.hydration = undefined;
+    this.selectionGeneration += 1;
+    this.generation += 1;
+    this.socket?.close(1000, "workspace changed");
+    this.socket = undefined;
+    this.flushBrowserState();
+    await this.storageWrite;
+    await this.restoreBrowserState({
+      protocol_version: this.protocolVersion,
+      server_build: this.serverBuild,
+      token: this.token,
+      ready: true,
+      draining: false
+    }, workspaceID);
+    this.update({
+      phase: "reconnecting",
+      selectedWorkspaceID: workspaceID,
+      workspaceRoot: workspace.root,
+      hydratingSessionID: "",
+      events: [],
+      conversation: this.replaceConversation([]),
+      queuedTurns: [],
+      profile: undefined,
+      tools: [],
+      checkpoints: [],
+      plan: undefined,
+      tasks: [],
+      agents: [],
+      usage: undefined,
+      trace: undefined,
+      tracePhase: "idle",
+      extensions: [],
+      contextResources: []
+    });
+    if (typeof window !== "undefined") {
+      const target = new URL(window.location.href);
+      target.searchParams.set("workspace", workspaceID);
+      window.history.replaceState(null, "", target);
+    }
+    await this.connect();
+    await this.refreshModelCatalog();
+    await this.refreshSessions("", hydrate);
+  }
+
   async createSession(
     isolation: "shared" | "worktree" = "shared",
     profilePatch?: Record<string, unknown>
   ): Promise<void> {
+    const workspace = this.state.workspaces.find(
+      (value) => value.id === this.state.selectedWorkspaceID && value.ready
+    );
+    if (!workspace) {
+      throw new Error("Select a ready workspace before creating a session");
+    }
     const idempotencyKey = crypto.randomUUID();
     const sessionID = `session_web_${idempotencyKey}`;
     const binding = await this.call<SessionBinding>(
@@ -341,6 +525,16 @@ export class RuntimeClient {
     if (profilePatch && Object.keys(profilePatch).length > 0) {
       await this.updateProfile(profilePatch);
     }
+  }
+
+  async completeSetup(request: SetupRequest): Promise<void> {
+    const result = await this.call<SetupResult>(
+      "setup/apply",
+      request,
+      {idempotencyKey: crypto.randomUUID(), retryNetwork: true}
+    );
+    if (!result.ready) throw new Error("Runtime setup did not become ready");
+    await this.start();
   }
 
   async updateSession(
@@ -394,6 +588,15 @@ export class RuntimeClient {
   }
 
   async selectSession(sessionID: string): Promise<void> {
+    const owner = this.state.sessions.find((item) => item.session_id === sessionID);
+    const ownerWorkspace = owner
+      ? this.state.workspaces.find(
+        (workspace) => workspace.root === owner.workspace_root
+      )
+      : undefined;
+    if (ownerWorkspace && ownerWorkspace.id !== this.state.selectedWorkspaceID) {
+      await this.switchWorkspace(ownerWorkspace.id, false);
+    }
     this.eventNotifier.cancel();
     this.pendingSelectedEvents = [];
     const previousSessionID = this.state.selectedSessionID;
@@ -503,7 +706,7 @@ export class RuntimeClient {
       profile,
       tools: catalog?.tools ?? [],
       checkpoints: checkpoints?.checkpoints ?? [],
-      plan: plan?.artifact,
+      plan: hydratePlanArtifact(plan?.artifact),
       mergePlan: undefined,
       tasks: tasks?.tasks ?? [],
       agents: agents?.agents ?? [],
@@ -779,6 +982,7 @@ export class RuntimeClient {
       return result;
     }
     this.update({profile: authoritative, tools: catalog.tools ?? []});
+    await this.refreshModelCatalog();
     return {...result, profile: authoritative.profile};
   }
 
@@ -1006,7 +1210,10 @@ export class RuntimeClient {
     if (!handle) throw new Error("Content handle is required");
     const response = await fetch(`/api/v1/content/${encodeURIComponent(handle)}`, {
       method: "GET",
-      headers: {"Authorization": `Bearer ${this.token}`},
+      headers: {
+        "Authorization": `Bearer ${this.token}`,
+        "X-CodeHelper-Workspace-ID": this.state.selectedWorkspaceID
+      },
       credentials: "same-origin"
     });
     if (!response.ok) {
@@ -1195,6 +1402,10 @@ export class RuntimeClient {
     return this.call<CredentialStatus>("credential/status", {});
   }
 
+  async connectionStatus(): Promise<WorkspaceConnection> {
+    return this.call<WorkspaceConnection>("connection/status", {});
+  }
+
   async setKeyringCredential(secret: string): Promise<CredentialStatus> {
     return this.call<CredentialStatus>("credential/set-keyring", {secret});
   }
@@ -1205,6 +1416,10 @@ export class RuntimeClient {
 
   async validateCredential(): Promise<CredentialStatus> {
     return this.call<CredentialStatus>("credential/validate", {});
+  }
+
+  async testModel(model: string): Promise<ModelTestResult> {
+    return this.call<ModelTestResult>("model/test", {model});
   }
 
   private async fetchBootstrap(): Promise<Bootstrap> {
@@ -1221,13 +1436,21 @@ export class RuntimeClient {
   private async call<T>(
     route: WebRPCRoute,
     body: unknown,
-    options: {idempotencyKey?: string; retryNetwork?: boolean} = {}
+    options: {
+      idempotencyKey?: string;
+      retryNetwork?: boolean;
+      workspaceID?: string;
+    } = {}
   ): Promise<T> {
     const headers: Record<string, string> = {
       "Authorization": `Bearer ${this.token}`,
       "Content-Type": "application/json",
       "X-CodeHelper-Request-ID": crypto.randomUUID()
     };
+    const workspaceID = options.workspaceID ?? this.state.selectedWorkspaceID;
+    if (workspaceID) {
+      headers["X-CodeHelper-Workspace-ID"] = workspaceID;
+    }
     if (options.idempotencyKey) {
       headers["Idempotency-Key"] = options.idempotencyKey;
     }
@@ -1275,6 +1498,7 @@ export class RuntimeClient {
         socket.send(JSON.stringify({
           type: "authenticate",
           token: this.token,
+          workspace_id: this.state.selectedWorkspaceID,
           cursor: this.cursor
         }));
       });
@@ -1476,7 +1700,7 @@ export class RuntimeClient {
         sessionID === this.state.selectedSessionID
       ) {
         this.update({
-          plan: plan.artifact,
+          plan: hydratePlanArtifact(plan.artifact),
           tasks: tasks.tasks ?? [],
           agents: agents.agents ?? []
         });
@@ -1551,12 +1775,19 @@ export class RuntimeClient {
     });
   }
 
-  private async restoreBrowserState(bootstrap: Bootstrap): Promise<void> {
-    const rootID = bootstrap.workspace?.root_id ?? bootstrap.workspace_root ?? "";
+  private protocolVersion: number = webProtocolVersion;
+  private serverBuild = "";
+
+  private async restoreBrowserState(
+    bootstrap: Bootstrap,
+    workspaceID = bootstrap.workspace?.root_id ?? bootstrap.workspace_root ?? ""
+  ): Promise<void> {
+    this.protocolVersion = bootstrap.protocol_version;
+    this.serverBuild = bootstrap.server_build || "unknown";
     const scope = [
       `v${bootstrap.protocol_version}`,
-      bootstrap.server_build || "unknown",
-      rootID
+      this.serverBuild,
+      workspaceID
     ].join(":");
     if (scope === this.storageScope) return;
     this.storageScope = scope;
@@ -1576,6 +1807,7 @@ export class RuntimeClient {
       historyMoreBefore: false,
       providers: [],
       models: [],
+      setupCatalog: undefined,
       profile: undefined,
       tools: [],
       checkpoints: [],
@@ -1718,6 +1950,28 @@ function turnIDs(events: readonly RuntimeEvent[]): string[] {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function workspaceCatalogFromBootstrap(bootstrap: Bootstrap): WorkspaceCatalog {
+  if (bootstrap.workspace_catalog?.version) {
+    return bootstrap.workspace_catalog;
+  }
+  const workspace = bootstrap.workspace;
+  if (!workspace || !bootstrap.workspace_root) {
+    return {version: 1, default_workspace_id: "", workspaces: []};
+  }
+  return {
+    version: 1,
+    default_workspace_id: workspace.root_id,
+    workspaces: [{
+      id: workspace.root_id,
+      root: bootstrap.workspace_root,
+      label: bootstrap.workspace_root.split(/[\\/]/).filter(Boolean).at(-1) ||
+        bootstrap.workspace_root,
+      ready: bootstrap.ready,
+      session_count: 0
+    }]
+  };
 }
 
 async function sha256Hex(value: string): Promise<string> {

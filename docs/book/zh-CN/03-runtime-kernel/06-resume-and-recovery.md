@@ -151,6 +151,10 @@ Session/Thread/Checkpoint Lineage 的新 Active Thread；该关系状态可跨�
 Structured Plan Artifact 复用相同 Ownership Discipline。在 Current Session、New
 Session 或 Checkpoint Fork 中实施 Plan，都会在 Runtime 校验 Plan Identity、Source
 Profile Revision、Target Profile Equivalence 与 Lineage 后创建新 Turn。
+结构化 Plan 在 Artifact Body 内携带 Revision、Supersedes Identity、步骤依赖和
+Workspace 文件摘要。实施动作本身是 Durable `turn.start` Acceptance；Runtime 在
+Dispatch 时重新核对文件摘要，并仅为该 Turn 应用 Act/Autopilot Policy，不持久修改
+Session 的默认审批姿态。
 
 ## Crash Window Matrix
 

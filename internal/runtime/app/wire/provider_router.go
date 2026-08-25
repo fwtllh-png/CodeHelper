@@ -6,8 +6,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/anthropic"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/deepseek"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
+	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/modelcatalog"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
-	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 )
 

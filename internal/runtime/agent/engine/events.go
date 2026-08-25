@@ -4,7 +4,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
@@ -17,7 +16,6 @@ import (
 )
 
 type State string
-type ProposedPlanUpdate = providerassembly.ProposedPlanUpdate
 
 type Event struct {
 	State    State  `json:"state"`
@@ -62,7 +60,6 @@ type Event struct {
 	Input              *interact.Request           `json:"input,omitempty"`
 	Diagnostics        []diagnostics.Receipt       `json:"diagnostics,omitempty"`
 	FileChanges        []tool.WorkspaceChange      `json:"file_changes,omitempty"`
-	Plan               *ProposedPlanUpdate         `json:"plan,omitempty"`
 	Verification       *VerificationReceipt        `json:"verification,omitempty"`
 	Completion         *tool.CompletionDeclaration `json:"completion,omitempty"`
 	ProviderRetry      *ProviderRetry              `json:"provider_retry,omitempty"`

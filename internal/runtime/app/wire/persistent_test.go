@@ -495,6 +495,134 @@ func (*persistentTestEngine) RevertTurn(
 	return app.ErrOperationUnsupported
 }
 
+func TestPersistentWorkspaceRuntimesShareStoreWithoutCrossingEvents(
+	t *testing.T,
+) {
+	store, err := state.Open(t.Context(), state.Options{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	repositories, err := apppersistence.NewPersistentRepositories(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	for _, fixture := range []struct {
+		root      string
+		sessionID string
+		threadID  protocol.ThreadID
+	}{
+		{rootA, "session-a", "thread-a"},
+		{rootB, "session-b", "thread-b"},
+	} {
+		if err := repositories.Sessions.EnsureSeed(
+			t.Context(),
+			fixture.sessionID,
+			fixture.root,
+		); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repositories.Threads.Create(
+			t.Context(),
+			threadstate.Thread{
+				ID: fixture.threadID, SessionID: fixture.sessionID,
+				Status: threadstate.ThreadOpen,
+			},
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtimeA, err := newPersistentRuntime(
+		t.Context(),
+		PersistentRuntimeOptions{
+			Store: store, WorkspaceRoot: rootA, Engine: app.NoopEngine{},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closePersistentRuntime(t, runtimeA) })
+	runtimeB, err := newPersistentRuntime(
+		t.Context(),
+		PersistentRuntimeOptions{
+			Store: store, WorkspaceRoot: rootB, Engine: app.NoopEngine{},
+		},
+	)
+	if err != nil {
+		closePersistentRuntime(t, runtimeA)
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closePersistentRuntime(t, runtimeB) })
+	eventsA, err := runtimeA.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventsB, err := runtimeB.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := func(
+		threadID protocol.ThreadID,
+		turnID protocol.TurnID,
+	) protocol.Operation {
+		value, err := protocol.NewOperation(&protocol.StartTurnPayload{
+			ThreadID: threadID, TurnID: turnID,
+			ItemID: protocol.ItemID("item-" + turnID), Prompt: "run",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	operationA := operation("thread-a", "turn-a")
+	operationB := operation("thread-b", "turn-b")
+	var submit sync.WaitGroup
+	submit.Go(func() {
+		if err := runtimeA.Submit(t.Context(), operationA); err != nil {
+			t.Errorf("submit Workspace A: %v", err)
+		}
+	})
+	submit.Go(func() {
+		if err := runtimeB.Submit(t.Context(), operationB); err != nil {
+			t.Errorf("submit Workspace B: %v", err)
+		}
+	})
+	submit.Wait()
+	assertWorkspaceTerminal := func(
+		events <-chan protocol.Event,
+		threadID protocol.ThreadID,
+	) {
+		t.Helper()
+		for {
+			event := waitForEvent(t, events)
+			if event.ThreadID != threadID {
+				t.Fatalf("Workspace %s received event %+v", threadID, event)
+			}
+			if protocol.IsTerminalEvent(event.Kind) {
+				return
+			}
+		}
+	}
+	assertWorkspaceTerminal(eventsA, "thread-a")
+	assertWorkspaceTerminal(eventsB, "thread-b")
+
+	closePersistentRuntime(t, runtimeA)
+	cursor := runtimeB.Snapshot(t.Context()).LastSequence
+	continued, err := runtimeB.Events(t.Context(), cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtimeB.Submit(
+		t.Context(),
+		operation("thread-b", "turn-b-next"),
+	); err != nil {
+		t.Fatalf("Workspace B stopped with Workspace A: %v", err)
+	}
+	assertWorkspaceTerminal(continued, "thread-b")
+}
+
 func TestPersistentRuntimeRestartIsIdempotentAndKeepsOneTerminal(t *testing.T) {
 	root := t.TempDir()
 	store := seedPersistentState(t, root)

@@ -37,7 +37,8 @@
 }
 
 .contextDialogHeader h2,
-.contextDialogHeader p {
+.contextDialogHeader p,
+.contextPath span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -185,12 +186,6 @@
   font-size: 11px;
 }
 
-.contextPath span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .contextResults {
   min-height: 0;
   flex: 1;
@@ -223,7 +218,8 @@
 }
 
 .contextResults button span,
-.contextResults button small {
+.contextResults button small,
+.contextPreview > header > strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -234,7 +230,8 @@
   font-size: 12px;
 }
 
-.contextResults button small {
+.contextResults button small,
+.contextActionBar small {
   color: var(--ch-text-muted);
   font-size: 10px;
 }
@@ -257,12 +254,8 @@
 }
 
 .contextPreview > header > strong {
-  min-width: 0;
   margin-right: auto;
-  overflow: hidden;
   font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .contextPreview > header > div,
@@ -361,11 +354,6 @@
 
 .contextActionBar strong {
   font-size: 13px;
-}
-
-.contextActionBar small {
-  color: var(--ch-text-muted);
-  font-size: 10px;
 }
 
 .contextDiff {

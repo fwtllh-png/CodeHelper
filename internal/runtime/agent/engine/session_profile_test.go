@@ -181,6 +181,23 @@ func TestSessionProfileSelectsAvailableModelBetweenTurns(t *testing.T) {
 	}
 }
 
+func TestSessionProfileResolvesNewModelOnExistingConnection(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	base := engine.options.Routes.Act()
+	profile := protocol.SessionProfile{
+		Version: protocol.SessionProfileVersion, Revision: 2,
+		Mode: "act", Provider: base.ProviderID(), Model: "model-released-today",
+		ApprovalPosture: "suggest", ExecutionTarget: "local",
+		MaxSteps: 8, PromptCacheRevision: 2,
+	}
+	if err := engine.ApplySessionProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if got := engine.options.Route.Model().ID; got != profile.Model {
+		t.Fatalf("active model = %q, want %q", got, profile.Model)
+	}
+}
+
 func TestSessionProfileToolAllowlistRejectsUnadvertisedExecution(t *testing.T) {
 	executor := &profileToolExecutor{}
 	registry := tool.NewRegistry(nil, nil)

@@ -3,9 +3,11 @@ package interact
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -87,7 +89,7 @@ func Register(registry *tool.Registry, options Options) error {
 		rlm: options.RLM, governor: governor, vision: options.Vision, onPlan: options.OnPlan,
 	}
 	for _, name := range []string{
-		"request_user_input", "update_plan", "project_map",
+		"request_user_input", "update_plan", "submit_plan", "project_map",
 		"code_execution", "image_analyze",
 	} {
 		if err := registry.Register(&executor{tools: tools, name: name}, nil); err != nil {
@@ -124,9 +126,14 @@ func (e *executor) Descriptor() tool.Descriptor {
 				"additionalProperties": false,
 			},
 		}
-	case "update_plan":
+	case "update_plan", "submit_plan":
+		description := "Replace the structured working plan projected through ContextLedger."
+		if e.name == "submit_plan" {
+			description = "Submit a structured, user-reviewable implementation plan. " +
+				"Use this in plan mode after resolving discoverable facts."
+		}
 		return tool.Descriptor{
-			Name: e.name, Description: "Replace the structured working plan projected through ContextLedger.",
+			Name: e.name, Description: description,
 			Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
@@ -136,16 +143,25 @@ func (e *executor) Descriptor() tool.Descriptor {
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"title": map[string]any{"type": "string"},
+					"version": map[string]any{"type": "integer", "enum": []any{float64(1)}},
+					"title":   map[string]any{"type": "string"},
 					"steps": map[string]any{
 						"type": "array",
 						"items": map[string]any{
 							"type": "object",
 							"properties": map[string]any{
+								"id":    map[string]any{"type": "string"},
 								"title": map[string]any{"type": "string", "minLength": float64(1)},
 								"status": map[string]any{
 									"type": "string",
 									"enum": []string{StepPending, StepInProgress, StepDone},
+								},
+								"dependencies": map[string]any{
+									"type": "array", "items": map[string]any{"type": "string"},
+								},
+								"expected_evidence": map[string]any{"type": "string"},
+								"affected_files": map[string]any{
+									"type": "array", "items": map[string]any{"type": "string"},
 								},
 							},
 							"required":             []string{"title"},
@@ -252,7 +268,9 @@ func (e *executor) Execute(ctx context.Context, raw json.RawMessage) (tool.Resul
 	case "request_user_input":
 		return e.tools.requestInput(ctx, raw)
 	case "update_plan":
-		return e.tools.updatePlan(raw)
+		return e.tools.updatePlan(raw, false)
+	case "submit_plan":
+		return e.tools.updatePlan(raw, true)
 	case "project_map":
 		return e.tools.projectMap(ctx, raw)
 	case "code_execution":
@@ -319,7 +337,27 @@ func normalizeInputOptions(values []string) ([]string, error) {
 	return out, nil
 }
 
-func (t *Tools) updatePlan(raw json.RawMessage) (tool.Result, error) {
+func (t *Tools) updatePlan(raw json.RawMessage, submitted bool) (tool.Result, error) {
+	if submitted {
+		plan, err := ParseSubmittedPlan(raw)
+		if err != nil {
+			return tool.Result{}, err
+		}
+		plan.FileBaseline, err = t.capturePlanBaseline(plan)
+		if err != nil {
+			return tool.Result{}, err
+		}
+		contextPlan := plan.ContextPlan()
+		if err := t.applyPlan(contextPlan); err != nil {
+			return tool.Result{}, err
+		}
+		content, err := json.Marshal(plan)
+		return tool.Result{
+			Content: string(content), Metadata: map[string]any{
+				"steps": len(plan.Steps), "submitted_plan": true,
+			},
+		}, err
+	}
 	var plan Plan
 	if err := json.Unmarshal(raw, &plan); err != nil {
 		return tool.Result{}, err
@@ -336,22 +374,78 @@ func (t *Tools) updatePlan(raw json.RawMessage) (tool.Result, error) {
 			plan.Steps[index].Status = StepPending
 		}
 	}
+	if err := t.applyPlan(plan); err != nil {
+		return tool.Result{}, err
+	}
+	content, err := json.Marshal(plan)
+	return tool.Result{
+		Content: string(content), Metadata: map[string]any{"steps": len(plan.Steps)},
+	}, err
+}
+
+func (t *Tools) applyPlan(plan Plan) error {
 	t.planMu.Lock()
 	t.plan = plan
 	t.planMu.Unlock()
 	if t.onPlan != nil {
 		if err := t.onPlan(plan); err != nil {
-			return tool.Result{}, err
+			return err
 		}
 	}
-	content, err := json.Marshal(plan)
+	return nil
+}
+
+func (t *Tools) capturePlanBaseline(plan SubmittedPlan) ([]PlanFileBaseline, error) {
+	workspace, err := sandbox.NewWorkspace(t.workspace)
 	if err != nil {
-		return tool.Result{}, err
+		return nil, err
 	}
-	return tool.Result{
-		Content:  string(content),
-		Metadata: map[string]any{"steps": len(plan.Steps)},
-	}, nil
+	paths := append([]string(nil), plan.CriticalFiles...)
+	for _, step := range plan.Steps {
+		paths = append(paths, step.AffectedFiles...)
+	}
+	seen := make(map[string]struct{}, len(paths))
+	baseline := make([]PlanFileBaseline, 0, len(paths))
+	for _, name := range paths {
+		name = filepath.ToSlash(strings.TrimPrefix(strings.TrimSpace(name), "./"))
+		if name == "" {
+			continue
+		}
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		if len(seen) >= 128 {
+			return nil, errors.New("plan file baseline accepts at most 128 paths")
+		}
+		seen[name] = struct{}{}
+		file, err := workspace.OpenFile(name)
+		if errors.Is(err, os.ErrNotExist) {
+			baseline = append(baseline, PlanFileBaseline{
+				Path: name, Missing: true,
+			})
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("capture plan baseline %q: %w", name, err)
+		}
+		digest := sha256.New()
+		_, copyErr := io.Copy(digest, file)
+		closeErr := file.Close()
+		if copyErr != nil || closeErr != nil {
+			return nil, fmt.Errorf(
+				"capture plan baseline %q: %w",
+				name,
+				errors.Join(copyErr, closeErr),
+			)
+		}
+		baseline = append(baseline, PlanFileBaseline{
+			Path: name, Digest: hex.EncodeToString(digest.Sum(nil)),
+		})
+	}
+	sort.Slice(baseline, func(i, j int) bool {
+		return baseline[i].Path < baseline[j].Path
+	})
+	return baseline, nil
 }
 
 func (t *Tools) projectMap(ctx context.Context, raw json.RawMessage) (tool.Result, error) {

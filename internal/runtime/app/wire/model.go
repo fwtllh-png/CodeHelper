@@ -88,9 +88,8 @@ func resolveModelMetadata(modelID string, options ModelMetadataOptions) (*model.
 	}
 	if descriptor.Limits.ContextTokens == 0 ||
 		descriptor.Limits.MaxOutputTokens == 0 ||
-		descriptor.MetadataProvenance.Capabilities == "" ||
-		!descriptor.Pricing.Known {
-		return nil, errors.New("custom endpoint requires explicit limits, capabilities, and known pricing metadata")
+		descriptor.MetadataProvenance.Capabilities == "" {
+		return nil, errors.New("custom endpoint requires explicit limits and capabilities")
 	}
 	if descriptor.Limits.MaxOutputTokens > descriptor.Limits.ContextTokens {
 		return nil, errors.New("model output limit exceeds context limit")

@@ -32,11 +32,12 @@ func TestWebHostMeetsTheRuntimeContract(t *testing.T) {
 }
 
 type webContractHost struct {
-	origin    string
-	token     string
-	client    *http.Client
-	sessionID string
-	threadID  protocol.ThreadID
+	origin      string
+	token       string
+	client      *http.Client
+	sessionID   string
+	threadID    protocol.ThreadID
+	workspaceID string
 }
 
 func newWebContractHost(t *testing.T, setup contract.Setup) contract.Host {
@@ -143,7 +144,8 @@ func newWebContractHost(t *testing.T, setup contract.Setup) contract.Host {
 	})
 	host := &webContractHost{
 		origin: "http://" + hostPort, token: "contract-token",
-		client: &http.Client{Timeout: 20 * time.Second},
+		client:      &http.Client{Timeout: 20 * time.Second},
+		workspaceID: identity.RootID,
 	}
 	var binding app.SessionBinding
 	if err := host.call(
@@ -542,6 +544,7 @@ func (h *webContractHost) call(
 	httpRequest.Header.Set("Authorization", "Bearer "+h.token)
 	httpRequest.Header.Set("Content-Type", "application/json")
 	httpRequest.Header.Set("X-CodeHelper-Request-ID", "contract")
+	httpRequest.Header.Set("X-CodeHelper-Workspace-ID", h.workspaceID)
 	if idempotencyKey != "" {
 		httpRequest.Header.Set("Idempotency-Key", idempotencyKey)
 	}

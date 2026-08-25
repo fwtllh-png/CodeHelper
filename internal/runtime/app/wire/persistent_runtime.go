@@ -10,9 +10,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -38,7 +36,7 @@ func PreparePersistentRuntime(
 	ctx context.Context,
 	options PersistentRuntimeOptions,
 ) (*app.Runtime, error) {
-	repositories, err := apppersistence.NewPersistentRepositories(options.Store)
+	repositories, err := apppersistence.NewPersistentRepositories(options.Store, options.WorkspaceRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -55,9 +53,11 @@ func PreparePersistentRuntime(
 	); recoverErr != nil {
 		return nil, fmt.Errorf("recover interrupted tasks: %w", recoverErr)
 	}
-	terminalStore := turnstate.NewSQLiteRepository(options.Store.SQLite())
+	terminalStore := state.NewWorkspaceTerminalStore(options.Store.SQLite(), options.WorkspaceRoot)
 	contextRebases := apppersistence.NewContextRebaseRepository(options.Store)
-	orchestration, err := orchestrationstore.Open(ctx, options.Store.SQLite())
+	orchestration, err := state.OpenWorkspaceOrchestrationStore(
+		ctx, options.Store.SQLite(), options.WorkspaceRoot,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("open work graph orchestration: %w", err)
 	}
@@ -67,14 +67,13 @@ func PreparePersistentRuntime(
 		options.Observability.Runtime,
 	)
 	runtimeOptions := app.Options{
-		Engine:           options.Engine,
-		WorkspaceRoot:    options.WorkspaceRoot,
-		EventStore:       options.Store,
-		ContentStore:     options.Store.Content(),
-		Lifecycle:        repositories.Lifecycle,
-		OperationBuffer:  options.OperationBuffer,
-		SubscriberBuffer: options.SubscriberBuffer,
-
+		Engine:              options.Engine,
+		WorkspaceRoot:       options.WorkspaceRoot,
+		EventStore:          state.NewWorkspaceEventStore(options.Store, options.WorkspaceRoot),
+		ContentStore:        state.NewSharedContentStore(options.Store.Content()),
+		Lifecycle:           repositories.Lifecycle,
+		OperationBuffer:     options.OperationBuffer,
+		SubscriberBuffer:    options.SubscriberBuffer,
 		TerminalStore:       terminalStore,
 		ContextRebaseStore:  contextRebases,
 		AgentPresets:        presets,

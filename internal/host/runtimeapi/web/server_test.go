@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,9 +20,12 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
+	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
 	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -64,6 +68,87 @@ func TestBootstrapIsLoopbackFencedAndDoesNotCacheToken(t *testing.T) {
 	server.Handler().ServeHTTP(rejected, rebound)
 	if rejected.Code != http.StatusForbidden {
 		t.Fatalf("rebound status = %d", rejected.Code)
+	}
+}
+
+func TestSetupIsCapabilityFencedBeforeRuntimeActivation(t *testing.T) {
+	identity, err := protocol.NewWorkspaceIdentity(
+		"file:///workspace",
+		"/workspace",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var applied webhost.SetupRequest
+	server, err := webhost.New(webhost.Options{
+		Assets: fstest.MapFS{
+			"index.html": {Data: []byte("<main>CodeHelper</main>")},
+		},
+		ExpectedHost: "127.0.0.1:43210",
+		Origin:       "http://127.0.0.1:43210",
+		Token:        "setup-token",
+		Setup: &webhost.SetupOptions{
+			WorkspaceRoot:     "/workspace",
+			WorkspaceIdentity: identity,
+			Catalog: webhost.SetupCatalog{
+				Version: webhost.SetupCatalogVersion,
+				Providers: []webhost.SetupProvider{{
+					ID: "deepseek", DisplayName: "DeepSeek",
+					Protocol: "openai_chat", RequiresAPIKey: true,
+				}},
+			},
+			Apply: func(_ context.Context, request webhost.SetupRequest) error {
+				applied = request
+				return nil
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	health := httptest.NewRecorder()
+	server.Handler().ServeHTTP(health, httptest.NewRequest(
+		http.MethodGet,
+		"http://127.0.0.1:43210/healthz",
+		nil,
+	))
+	if health.Code != http.StatusOK ||
+		!strings.Contains(health.Body.String(), `"status":"setup_required"`) {
+		t.Fatalf("health = %d %s", health.Code, health.Body.String())
+	}
+
+	unauthorized := httptest.NewRecorder()
+	server.Handler().ServeHTTP(unauthorized, httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1:43210/api/v1/setup/apply",
+		strings.NewReader(`{"provider":"deepseek","model":"deepseek-chat"}`),
+	))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized setup status = %d", unauthorized.Code)
+	}
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"http://127.0.0.1:43210/api/v1/setup/apply",
+		strings.NewReader(
+			`{"provider":"deepseek","model":"deepseek-chat","api_key":"secret-value"}`,
+		),
+	)
+	request.Header.Set("Authorization", "Bearer setup-token")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "setup-once")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("setup status = %d body=%s", response.Code, response.Body.String())
+	}
+	if applied.APIKey != "secret-value" || applied.Provider != "deepseek" {
+		t.Fatalf("applied setup = %+v", applied)
+	}
+	if strings.Contains(response.Body.String(), "secret-value") {
+		t.Fatal("setup response echoed the API key")
 	}
 }
 
@@ -429,6 +514,328 @@ func TestSystemDiagnosticsReportsAuthoritativeRuntimeHealth(t *testing.T) {
 		health.Trace.RawAuthority {
 		t.Fatalf("runtime health = %+v", health)
 	}
+}
+
+func TestRoutesSessionsAndEventsByWorkspace(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := listener.Addr().String()
+	server := newTestServer(t, host)
+	store, err := state.Open(t.Context(), state.Options{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+	repositories, err := apppersistence.NewPersistentRepositories(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootA := t.TempDir()
+	rootB := t.TempDir()
+	rootA, err = filepath.EvalSymlinks(rootA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootB, err = filepath.EvalSymlinks(rootB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(rootA, "README.md"),
+		[]byte("Workspace A"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(rootB, "README.md"),
+		[]byte("Workspace B"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, root := range []string{rootA, rootB} {
+		if err := exec.Command("git", "-C", root, "init", "-q").Run(); err != nil {
+			t.Fatal(err)
+		}
+		if err := exec.Command("git", "-C", root, "add", "README.md").Run(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	queryA, err := workspacequery.New(rootA, webTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queryB, err := workspacequery.New(rootB, webTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventStoreA := app.NewMemoryEventStore(16)
+	eventStoreB := app.NewMemoryEventStore(16)
+	runtimeA := app.NewRuntime(app.Options{
+		WorkspaceRoot: rootA, SessionLifecycle: repositories.Sessions,
+		DefaultProfile: protocol.SessionProfile{Provider: "fixture", Model: "fixture"},
+		EventStore:     eventStoreA,
+	})
+	runtimeB := app.NewRuntime(app.Options{
+		WorkspaceRoot: rootB, SessionLifecycle: repositories.Sessions,
+		DefaultProfile: protocol.SessionProfile{Provider: "fixture", Model: "fixture"},
+		EventStore:     eventStoreB,
+	})
+	t.Cleanup(func() {
+		_ = runtimeA.Close(context.Background())
+		_ = runtimeB.Close(context.Background())
+	})
+	identityA, err := protocol.NewWorkspaceIdentity(
+		(&url.URL{Scheme: "file", Path: rootA}).String(),
+		rootA,
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityB, err := protocol.NewWorkspaceIdentity(
+		(&url.URL{Scheme: "file", Path: rootB}).String(),
+		rootB,
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Activate(webhost.Dependencies{
+		Runtime: runtimeA, WorkspaceRoot: rootA, WorkspaceIdentity: identityA,
+		Workspace: queryA,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.AddWorkspace(webhost.Dependencies{
+		Runtime: runtimeB, WorkspaceRoot: rootB, WorkspaceIdentity: identityB,
+		Workspace: queryB,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []struct {
+		root      string
+		sessionID string
+		threadID  protocol.ThreadID
+	}{
+		{rootA, "session-a", "thread-a"},
+		{rootB, "session-b", "thread-b"},
+	} {
+		if err := repositories.Sessions.EnsureSeed(
+			t.Context(),
+			value.sessionID,
+			value.root,
+		); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repositories.Threads.Create(
+			t.Context(),
+			threadstate.Thread{
+				ID: value.threadID, SessionID: value.sessionID,
+				Title: value.sessionID, Status: threadstate.ThreadOpen,
+			},
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, fixture := range []struct {
+		store    *app.MemoryEventStore
+		threadID protocol.ThreadID
+		turnID   protocol.TurnID
+		text     string
+	}{
+		{eventStoreA, "thread-a", "turn-a", "event-a"},
+		{eventStoreB, "thread-b", "turn-b", "event-b"},
+	} {
+		event, err := protocol.NewEvent(protocol.EventMeta{
+			Sequence: 1, OperationID: "operation-" + protocol.OperationID(fixture.turnID),
+			ThreadID: fixture.threadID, TurnID: fixture.turnID,
+			ItemID: "item-" + protocol.ItemID(fixture.turnID),
+		}, &protocol.TurnCompletedData{Text: fixture.text})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := fixture.store.Append(t.Context(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	httpServer := &http.Server{Handler: server.Handler()}
+	go func() { _ = httpServer.Serve(listener) }()
+	t.Cleanup(func() { _ = httpServer.Shutdown(context.Background()) })
+	token := fetchBootstrapToken(t, "http://"+host)
+
+	assertWorkspaceSessions := func(
+		workspaceID string,
+		wantSession string,
+		unwantedSession string,
+	) {
+		t.Helper()
+		response := postWebWorkspace(
+			t,
+			server,
+			host,
+			token,
+			workspaceID,
+			"session/list",
+			`{"limit":10}`,
+		)
+		if response.Code != http.StatusOK ||
+			!strings.Contains(response.Body.String(), wantSession) ||
+			strings.Contains(response.Body.String(), unwantedSession) {
+			t.Fatalf(
+				"Workspace %s sessions status=%d body=%s",
+				workspaceID,
+				response.Code,
+				response.Body.String(),
+			)
+		}
+	}
+	assertWorkspaceSessions(identityA.RootID, "session-a", "session-b")
+	assertWorkspaceSessions(identityB.RootID, "session-b", "session-a")
+	unscopedCreate := postWeb(
+		t,
+		server,
+		host,
+		token,
+		"session/create",
+		`{"session_id":"unscoped","title":"Unscoped"}`,
+	)
+	if unscopedCreate.Code != http.StatusBadRequest ||
+		!strings.Contains(unscopedCreate.Body.String(), "select a ready workspace") {
+		t.Fatalf(
+			"unscoped session create status=%d body=%s",
+			unscopedCreate.Code,
+			unscopedCreate.Body,
+		)
+	}
+	unknown := postWebWorkspace(
+		t,
+		server,
+		host,
+		token,
+		"unknown-workspace",
+		"session/list",
+		`{"limit":10}`,
+	)
+	if unknown.Code != http.StatusNotFound {
+		t.Fatalf("unknown Workspace status=%d body=%s", unknown.Code, unknown.Body)
+	}
+	resource := postWebWorkspace(
+		t,
+		server,
+		host,
+		token,
+		identityA.RootID,
+		"workspace/resource",
+		`{"path":"README.md"}`,
+	)
+	if resource.Code != http.StatusOK {
+		t.Fatalf("Workspace resource status=%d body=%s", resource.Code, resource.Body)
+	}
+	var resourceEnvelope struct {
+		Result struct {
+			ContentHandle string `json:"content_handle"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(resource.Body.Bytes(), &resourceEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	ownContentRequest := httptest.NewRequest(
+		http.MethodGet,
+		"http://"+host+"/api/v1/content/"+resourceEnvelope.Result.ContentHandle,
+		nil,
+	)
+	ownContentRequest.Host = host
+	ownContentRequest.Header.Set("Authorization", "Bearer "+token)
+	ownContentRequest.Header.Set(
+		"X-CodeHelper-Workspace-ID",
+		identityA.RootID,
+	)
+	ownContentResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(ownContentResponse, ownContentRequest)
+	if ownContentResponse.Code != http.StatusOK ||
+		ownContentResponse.Body.String() != "Workspace A" {
+		t.Fatalf(
+			"Workspace content status=%d body=%s",
+			ownContentResponse.Code,
+			ownContentResponse.Body,
+		)
+	}
+	contentRequest := httptest.NewRequest(
+		http.MethodGet,
+		"http://"+host+"/api/v1/content/"+resourceEnvelope.Result.ContentHandle,
+		nil,
+	)
+	contentRequest.Host = host
+	contentRequest.Header.Set("Authorization", "Bearer "+token)
+	contentRequest.Header.Set(
+		"X-CodeHelper-Workspace-ID",
+		identityB.RootID,
+	)
+	contentResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(contentResponse, contentRequest)
+	if contentResponse.Code != http.StatusForbidden {
+		t.Fatalf(
+			"cross-Workspace content status=%d body=%s",
+			contentResponse.Code,
+			contentResponse.Body,
+		)
+	}
+	foreignTrace := postWebWorkspace(
+		t,
+		server,
+		host,
+		token,
+		identityB.RootID,
+		"trace/query",
+		`{"session_id":"session-a","turn_ids":["turn-a"],"through_sequence":0}`,
+	)
+	if foreignTrace.Code != http.StatusConflict {
+		t.Fatalf(
+			"cross-Workspace trace status=%d body=%s",
+			foreignTrace.Code,
+			foreignTrace.Body,
+		)
+	}
+
+	assertWorkspaceEvent := func(workspaceID, wantText string) {
+		t.Helper()
+		connection, _, err := websocket.Dial(
+			t.Context(),
+			"ws://"+host+"/api/v1/events",
+			nil,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer connection.CloseNow()
+		if err := wsjson.Write(t.Context(), connection, map[string]any{
+			"type": "authenticate", "token": token,
+			"workspace_id": workspaceID, "cursor": 0,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var hello map[string]any
+		if err := wsjson.Read(t.Context(), connection, &hello); err != nil {
+			t.Fatal(err)
+		}
+		var frame struct {
+			Event protocol.Event `json:"event"`
+		}
+		if err := wsjson.Read(t.Context(), connection, &frame); err != nil {
+			t.Fatal(err)
+		}
+		completed, ok := frame.Event.Data.(*protocol.TurnCompletedData)
+		if !ok || completed.Text != wantText {
+			t.Fatalf("Workspace %s event = %+v", workspaceID, frame.Event)
+		}
+	}
+	assertWorkspaceEvent(identityA.RootID, "event-a")
+	assertWorkspaceEvent(identityB.RootID, "event-b")
 }
 
 func TestWebSocketDownlinkConcurrencyAndShutdown(t *testing.T) {
@@ -866,6 +1273,14 @@ func postWeb(
 	server *webhost.Server,
 	host, token, route, body string,
 ) *httptest.ResponseRecorder {
+	return postWebWorkspace(t, server, host, token, "", route, body)
+}
+
+func postWebWorkspace(
+	t *testing.T,
+	server *webhost.Server,
+	host, token, workspaceID, route, body string,
+) *httptest.ResponseRecorder {
 	t.Helper()
 	request := httptest.NewRequest(
 		http.MethodPost,
@@ -875,6 +1290,9 @@ func postWeb(
 	request.Host = host
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+token)
+	if workspaceID != "" {
+		request.Header.Set("X-CodeHelper-Workspace-ID", workspaceID)
+	}
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	return response

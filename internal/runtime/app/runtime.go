@@ -978,8 +978,8 @@ func (r *Runtime) capabilitiesForProfile(
 		capabilities.ModelCapabilities = modelCapabilities
 		return capabilities, nil
 	}
-	if profile.Provider == r.defaultProfile.Provider &&
-		profile.Model == r.defaultProfile.Model {
+	if profile.Provider == r.defaultProfile.Provider {
+		capabilities.ModelCapabilities.DisplayName, capabilities.ModelCapabilities.SelectionMode = profile.Model, "hot"
 		return capabilities, nil
 	}
 	return protocol.SessionProfileCapabilities{}, runtimeProblem(
@@ -1443,7 +1443,7 @@ func (r StartTurnHandler) Handle(operation protocol.Operation, payload *protocol
 
 func (s *TurnService) Start(operation protocol.Operation, payload *protocol.StartTurnPayload) OperationOutcome {
 	r := s.runtime
-	if err := (StartTurnHandler{Runtime: r}).validateStart(payload); err != nil {
+	if err := errors.Join(r.ArtifactService.PrepareStartPayload(r.ctx, r.workspaceRoot, payload), (StartTurnHandler{Runtime: r}).validateStart(payload)); err != nil {
 		return finishOutcome(err)
 	}
 	r.EventService.mu.Lock()

@@ -11,7 +11,6 @@ const (
 	StepDone       = "done"
 )
 
-// PlanStep is one step of a model-authored plan and its reported progress.
 type PlanStep struct {
 	Title  string `json:"title"`
 	Status string `json:"status,omitempty"`

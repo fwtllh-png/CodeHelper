@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -241,6 +242,13 @@ func verifyReplay(
 func (r *Repository) QueryAggregates(ctx context.Context, filter Query) ([]Aggregate, error) {
 	if r.db == nil {
 		return nil, errors.New("usage repository database is required")
+	}
+	if filter.WorkspaceRoot != "" {
+		workspaceRoot, err := sessionstate.NormalizeWorkspaceRoot(filter.WorkspaceRoot)
+		if err != nil {
+			return nil, fmt.Errorf("resolve usage Workspace: %w", err)
+		}
+		filter.WorkspaceRoot = workspaceRoot
 	}
 	// Each row is already one provider call's total, so the sum across rows is
 	// the sum across calls. Cost only sums the priced calls; the unpriced count

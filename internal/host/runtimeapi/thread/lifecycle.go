@@ -7,17 +7,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/usage"
+	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type Lifecycle struct {
-	state *state.Store
-	db    *sql.DB
+	state         *state.Store
+	db            *sql.DB
+	workspaceRoot string
 }
 
 func NewLifecycle(store *state.Store) *Lifecycle {
@@ -27,11 +30,27 @@ func NewLifecycle(store *state.Store) *Lifecycle {
 	return &Lifecycle{state: store, db: store.SQLite().DB()}
 }
 
+// NewWorkspaceLifecycle binds durable recovery to one Workspace while sharing
+// the process-wide SQLite store and event sequence.
+func NewWorkspaceLifecycle(
+	store *state.Store,
+	workspaceRoot string,
+) *Lifecycle {
+	lifecycle := NewLifecycle(store)
+	if strings.TrimSpace(workspaceRoot) != "" {
+		if normalized, err := sessionstate.NormalizeWorkspaceRoot(workspaceRoot); err == nil {
+			workspaceRoot = normalized
+		}
+	}
+	lifecycle.workspaceRoot = workspaceRoot
+	return lifecycle
+}
+
 func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 	if l.state == nil || l.db == nil {
 		return app.RecoveryState{}, errors.New("thread lifecycle state store is required")
 	}
-	events, err := l.state.Replay(ctx, 0)
+	events, err := l.recoveryEvents(ctx)
 	if err != nil {
 		return app.RecoveryState{}, fmt.Errorf("replay lifecycle events: %w", err)
 	}
@@ -126,10 +145,22 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 		}
 	}
 
-	rows, err := l.db.QueryContext(ctx, `
-		SELECT id, session_id, COALESCE(idempotency_key, ''), request_json
-		FROM operations WHERE status = ?`, OperationAccepted,
-	)
+	pendingQuery := `
+		SELECT operation.id, operation.session_id,
+			COALESCE(operation.idempotency_key, ''), operation.request_json
+		FROM operations AS operation`
+	pendingArguments := []any{OperationAccepted}
+	if l.workspaceRoot != "" {
+		pendingQuery += `
+		JOIN sessions AS session ON session.id = operation.session_id
+		JOIN workspaces AS workspace ON workspace.id = session.workspace_id`
+	}
+	pendingQuery += ` WHERE operation.status = ?`
+	if l.workspaceRoot != "" {
+		pendingQuery += ` AND workspace.root_path = ?`
+		pendingArguments = append(pendingArguments, l.workspaceRoot)
+	}
+	rows, err := l.db.QueryContext(ctx, pendingQuery, pendingArguments...)
 	if err != nil {
 		return app.RecoveryState{}, fmt.Errorf("read pending accepted operations: %w", err)
 	}
@@ -154,19 +185,31 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 	if err := rows.Close(); err != nil {
 		return app.RecoveryState{}, err
 	}
-	rows, err = l.db.QueryContext(ctx, `
+	interruptedQuery := `
 		SELECT operation.id, operation.session_id,
 			COALESCE(operation.idempotency_key, ''), operation.request_json
 		FROM turns AS turn
 		JOIN operations AS operation ON operation.id = turn.operation_id
+		JOIN sessions AS session ON session.id = operation.session_id
+		JOIN workspaces AS workspace ON workspace.id = session.workspace_id
 		LEFT JOIN turn_terminal_envelopes AS terminal ON terminal.turn_id = turn.id
 		WHERE turn.status = 'active'
 			AND operation.kind = ?
 			AND operation.status = ?
-			AND terminal.turn_id IS NULL
-		ORDER BY turn.created_at, turn.id`,
+			AND terminal.turn_id IS NULL`
+	interruptedArguments := []any{
 		protocol.OperationStartTurn,
 		OperationCommitted,
+	}
+	if l.workspaceRoot != "" {
+		interruptedQuery += ` AND workspace.root_path = ?`
+		interruptedArguments = append(interruptedArguments, l.workspaceRoot)
+	}
+	interruptedQuery += ` ORDER BY turn.created_at, turn.id`
+	rows, err = l.db.QueryContext(
+		ctx,
+		interruptedQuery,
+		interruptedArguments...,
 	)
 	if err != nil {
 		return app.RecoveryState{}, fmt.Errorf(
@@ -195,6 +238,15 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 	return recovery, nil
 }
 
+func (l *Lifecycle) recoveryEvents(
+	ctx context.Context,
+) ([]protocol.Event, error) {
+	if l.workspaceRoot == "" {
+		return l.state.Replay(ctx, 0)
+	}
+	return l.state.ReplayWorkspace(ctx, 0, l.workspaceRoot)
+}
+
 func (l *Lifecycle) Accept(
 	ctx context.Context,
 	operation protocol.Operation,
@@ -208,13 +260,21 @@ func (l *Lifecycle) Accept(
 	err := withTx(ctx, l.db, func(tx *sql.Tx) error {
 		threadID, turnID, itemID := protocol.OperationReferences(operation)
 		var sessionID, sessionStatus, threadStatus string
-		if err := tx.QueryRowContext(
-			ctx, `
+		query := `
 				SELECT t.session_id, s.status, t.status
 				FROM threads t
 				JOIN sessions s ON s.id = t.session_id
-				WHERE t.id = ?`,
-			threadID,
+				JOIN workspaces w ON w.id = s.workspace_id
+				WHERE t.id = ?`
+		arguments := []any{threadID}
+		if l.workspaceRoot != "" {
+			query += ` AND w.root_path = ?`
+			arguments = append(arguments, l.workspaceRoot)
+		}
+		if err := tx.QueryRowContext(
+			ctx,
+			query,
+			arguments...,
 		).Scan(&sessionID, &sessionStatus, &threadStatus); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return ErrNotFound

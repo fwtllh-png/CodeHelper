@@ -6,6 +6,7 @@ import {SessionProgress} from "./SessionProgress";
 describe("SessionProgress", () => {
   it("renders goal, ordered tasks, subagents, and trajectory navigation", () => {
     const onOpenTrajectory = vi.fn();
+    const onPlanTransition = vi.fn();
     render(
       <SessionProgress
         plan={{
@@ -16,7 +17,20 @@ describe("SessionProgress", () => {
           turn_id: "turn",
           cursor: 1,
           status: "ready",
-          body: "Ship the parser fix",
+          body: `{"version":1,"revision":2,"objective":"Ship the parser fix",` +
+            `"steps":[{"id":"implement","title":"Implement parser",` +
+            `"status":"pending","expected_evidence":"Focused tests pass"}]}`,
+          document: {
+            version: 1,
+            revision: 2,
+            objective: "Ship the parser fix",
+            steps: [{
+              id: "implement",
+              title: "Implement parser",
+              status: "pending",
+              expected_evidence: "Focused tests pass"
+            }]
+          },
           profile_revision: 1,
           can_implement: true,
           can_autopilot: false,
@@ -34,14 +48,21 @@ describe("SessionProgress", () => {
             last_message: "Checking the diff"
           }
         ]}
+        onPlanTransition={onPlanTransition}
         onOpenTrajectory={onOpenTrajectory}
       />
     );
 
-    expect(screen.getAllByText("Ship the parser fix")).toHaveLength(2);
+    expect(screen.getByText("Ship the parser fix")).toBeTruthy();
+    expect(screen.getByText("Revision 2")).toBeTruthy();
+    expect(screen.getByText("Focused tests pass")).toBeTruthy();
     expect(screen.getByText("1 done")).toBeTruthy();
     expect(screen.getByText("Checking the diff")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Open trajectory"}));
     expect(onOpenTrajectory).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", {name: "Implement"}));
+    expect(onPlanTransition).toHaveBeenCalledWith("implement");
+    expect(screen.getByRole("button", {name: "Autopilot"}).hasAttribute("disabled"))
+      .toBe(true);
   });
 });

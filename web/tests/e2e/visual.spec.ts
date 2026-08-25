@@ -3,11 +3,12 @@ import AxeBuilder from "@axe-core/playwright";
 import {
   execFileSync,
   spawn,
-  type ChildProcessWithoutNullStreams
+  type ChildProcessByStdio
 } from "node:child_process";
 import {mkdtemp, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
+import type {Readable} from "node:stream";
 import {fileURLToPath} from "node:url";
 
 const repositoryRoot = path.resolve(
@@ -15,7 +16,7 @@ const repositoryRoot = path.resolve(
   "../../.."
 );
 
-let server: ChildProcessWithoutNullStreams;
+let server: ChildProcessByStdio<null, Readable, Readable>;
 let dataDir: string;
 let workspaceDir: string;
 let baseURL: string;
@@ -103,6 +104,11 @@ test("captures empty and settings states", async ({page}) => {
 test("captures populated model, tool, and agent settings", async ({page}) => {
   await createSession(page);
   await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Connection"}).click();
+  await expect(page.getByRole("button", {name: "Test connection"})).toBeVisible();
+  await expect(page.getByText("Runtime-managed")).toBeVisible();
+  await expect(page).toHaveScreenshot("canonical-settings-connection.png");
+
   await page.getByRole("button", {name: "Models"}).click();
   await expect(page.getByText("Context window")).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-settings-models.png");
@@ -791,7 +797,9 @@ async function transcriptAnchorTop(
   });
 }
 
-function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {
+function runtimeURL(
+  child: ChildProcessByStdio<null, Readable, Readable>
+): Promise<string> {
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
@@ -810,7 +818,10 @@ function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {
     const onStdout = (chunk: Buffer) => {
       stdout += chunk.toString();
       const match = stdout.match(/CodeHelper Runtime Ready: (http:\/\/[^\s]+)/);
-      if (match) finish(undefined, match[1]);
+      if (match) void workspaceURL(match[1]).then(
+        (url) => finish(undefined, url),
+        (error: Error) => finish(error)
+      );
     };
     const onStderr = (chunk: Buffer) => {
       stderr += chunk.toString();
@@ -827,4 +838,17 @@ function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {
     child.once("exit", onExit);
     child.once("error", onError);
   });
+}
+
+async function workspaceURL(origin: string): Promise<string> {
+  const bootstrap = await fetch(new URL("/api/v1/bootstrap", origin));
+  const value = await bootstrap.json() as {
+    workspace_catalog: {default_workspace_id: string};
+  };
+  const target = new URL(origin);
+  target.searchParams.set(
+    "workspace",
+    value.workspace_catalog.default_workspace_id
+  );
+  return target.toString();
 }

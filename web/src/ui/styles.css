@@ -81,22 +81,14 @@
   --ch-text-secondary: #cfd3d6;
   --ch-text-muted: #adb2b8;
   --ch-text-caption: #81858c;
-  --ch-accent: #8fb4ff;
-  --ch-accent-hover: #7aa5ff;
   --ch-accent-soft: #34415b;
   --ch-business: #679efe;
   --ch-business-soft: #2c2c2e;
   --ch-reasoning: #b794f4;
   --ch-tool: #f6c45f;
-  --ch-context-stable: #aeb6c2;
-  --ch-context-tools: #a78bfa;
-  --ch-context-messages: #5b8ff9;
-  --ch-context-framing: #e9a23b;
   --ch-on-accent: #0f1115;
   --ch-danger: #f25a5a;
   --ch-danger-soft: #2c1c1d;
-  --ch-warning: #f59e0b;
-  --ch-success: #8fb4ff;
   --ch-focus: #679efe;
   --ch-code: #1b1b1c;
   --ch-shadow: 0 4px 12px rgb(0 0 0 / 18%), 0 2px 8px rgb(0 0 0 / 24%);
@@ -184,9 +176,6 @@ textarea:disabled {
 .sessionRail {
   position: relative;
   min-width: 0;
-}
-
-.sessionRail {
   display: flex;
   flex-direction: column;
   background: var(--ch-sidebar);
@@ -379,6 +368,14 @@ textarea:disabled {
   border-radius: 4px;
 }
 
+.archiveFilter {
+  width: auto;
+  height: 28px;
+  gap: 6px;
+  margin: 0 12px 6px;
+  font-size: 11px;
+}
+
 .sessionList {
   flex: 1;
   min-height: 0;
@@ -400,9 +397,21 @@ textarea:disabled {
   line-height: 20px;
 }
 
-.workspaceRow:hover {
+.workspaceRow:hover,
+.workspaceRow[data-active],
+.archiveFilter[aria-pressed="true"] {
   color: var(--ch-text);
   background: var(--ch-panel-subtle);
+}
+
+.workspaceRow[data-error] {
+  color: var(--ch-danger);
+}
+
+.workspaceRow > small {
+  margin-left: auto;
+  color: var(--ch-text-muted);
+  font-size: 10px;
 }
 
 .workspaceRow .disclosureLeading {
@@ -428,21 +437,22 @@ textarea:disabled {
   margin-top: 2px;
 }
 
-.sessionRow {
-  position: relative;
+.sessionRow,
+.sessionSelect {
   display: flex;
-  width: 100%;
   height: 32px;
   align-items: center;
   background: transparent;
+}
+
+.sessionRow {
+  position: relative;
+  width: 100%;
   border-radius: var(--ch-radius);
   animation: session-row-in var(--ch-motion-disclosure) var(--ch-ease-in-out);
 }
 
-.sessionRow:hover {
-  background: var(--ch-panel-subtle);
-}
-
+.sessionRow:hover,
 .sessionRow[data-active] {
   background: var(--ch-panel-subtle);
 }
@@ -453,31 +463,28 @@ textarea:disabled {
 }
 
 .sessionSelect {
-  display: flex;
   flex: 1;
   min-width: 0;
-  height: 32px;
-  align-items: center;
   padding: 0 8px;
   text-align: left;
-  background: transparent;
+}
+
+.sessionStatusSlot,
+.sessionStatusMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sessionStatusSlot {
-  display: inline-flex;
   width: 16px;
   height: 20px;
   flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
 }
 
 .sessionStatusMark {
-  display: inline-flex;
   width: 14px;
   height: 14px;
-  align-items: center;
-  justify-content: center;
   color: var(--ch-business);
 }
 
@@ -555,7 +562,9 @@ textarea:disabled {
   outline: 0;
 }
 
-.sessionMenu .dangerMenuItem {
+.sessionMenu .dangerMenuItem,
+.sessionActionError,
+.toolIOCard pre[data-error] {
   color: var(--ch-danger);
 }
 
@@ -568,7 +577,6 @@ textarea:disabled {
   min-width: 0;
   align-items: flex-start;
   gap: 6px;
-  color: var(--ch-danger);
   font-size: 11px;
   line-height: 15px;
 }
@@ -608,6 +616,10 @@ textarea:disabled {
   gap: 8px;
   padding: 6px 10px 6px 15px;
   border-top: 1px solid var(--ch-border);
+}
+
+.mobileWorkspaceAction {
+  display: none;
 }
 
 .railFooter .connectionState {
@@ -814,13 +826,17 @@ textarea:disabled {
   font-weight: 650;
 }
 
+.conversationScrollport,
+.transcript {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
 .conversationScrollport {
   position: relative;
-  display: flex;
   min-width: 0;
-  min-height: 0;
   flex: 1;
-  flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
@@ -828,11 +844,8 @@ textarea:disabled {
 }
 
 .transcript {
-  display: flex;
-  flex-direction: column;
   gap: 16px;
   width: min(var(--ch-chat-width), calc(100% - 40px));
-  min-height: 0;
   flex: 1 0 auto;
   margin: 0 auto;
   padding: 20px 0 72px;
@@ -844,6 +857,8 @@ textarea:disabled {
 
 .transcriptEntryAnchor[data-navigation-current] > * {
   animation: transcript-target 1.4s var(--ch-ease-in-out);
+  outline: 2px solid transparent;
+  outline-offset: 5px;
 }
 
 @keyframes transcript-target {
@@ -858,12 +873,8 @@ textarea:disabled {
   }
 }
 
-.transcriptEntryAnchor[data-navigation-current] > * {
-  outline: 2px solid transparent;
-  outline-offset: 5px;
-}
-
-.conversation[data-empty] .conversationScrollport {
+.conversation[data-empty] .conversationScrollport,
+.transcriptPagination {
   justify-content: center;
 }
 
@@ -876,7 +887,6 @@ textarea:disabled {
 .transcriptPagination {
   display: flex;
   min-height: 32px;
-  justify-content: center;
   gap: 8px;
   margin-bottom: 0;
 }
@@ -933,6 +943,54 @@ textarea:disabled {
   font-size: 12px;
 }
 
+.setupPage {
+  display: grid;
+  min-height: 100vh;
+  align-items: start;
+  justify-items: center;
+  padding: clamp(72px, 11vh, 132px) 48px 48px;
+  overflow-y: auto;
+  background: var(--ch-canvas);
+}
+
+.workspaceDialog {
+  height: auto;
+}
+
+.workspaceChoices {
+  padding: 0 20px;
+}
+
+.workspaceChoices > button {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.workspaceChoices > button[data-active] {
+  color: var(--ch-text);
+  background: var(--ch-business-soft);
+}
+
+.workspaceChoices > button > span {
+  display: grid;
+}
+
+.workspaceAdd {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  padding: 14px 20px 20px;
+  border-top: 1px solid var(--ch-border);
+}
+
+.workspaceDialogError {
+  margin: 0 20px 20px;
+}
+
+.setupPage .startupSetup {
+  width: min(960px, 100%);
+  min-height: 0;
+  padding: 0;
+}
+
 .startupSetup {
   display: grid;
   width: min(680px, 100%);
@@ -949,6 +1007,7 @@ textarea:disabled {
   padding-bottom: 18px;
 }
 
+.startupHeading h1,
 .startupHeading h2 {
   margin: 0;
   font-size: 20px;
@@ -997,8 +1056,12 @@ textarea:disabled {
 
 .startupFields {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
+}
+
+.startupFields[data-custom] {
+  grid-template-columns: minmax(0, 1.6fr) minmax(160px, 0.8fr) minmax(0, 1fr);
 }
 
 .startupFields .selectField {
@@ -1015,7 +1078,7 @@ textarea:disabled {
 }
 
 .startupFields .selectField select,
-.startupFields .readOnlyField output {
+.startupFields .selectField input {
   width: 100%;
   max-width: none;
   height: 36px;
@@ -1027,31 +1090,22 @@ textarea:disabled {
   line-height: 34px;
 }
 
-.startupFields .readOnlyField output {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.startupFields .readOnlyField small {
-  color: var(--ch-text-muted);
-  font-size: 10px;
-}
-
 .startupCredential {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 8px;
+  position: relative;
+  display: block;
 }
 
 .startupCredential > svg {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: var(--ch-layer-content);
   color: var(--ch-text-muted);
+  pointer-events: none;
 }
 
 .startupCredential input,
 .startupCredential button,
-.startupFooter select,
 .startupCreate {
   min-height: 36px;
   border: 1px solid var(--ch-border);
@@ -1059,8 +1113,9 @@ textarea:disabled {
 }
 
 .startupCredential input {
+  width: 100%;
   min-width: 0;
-  padding: 0 9px;
+  padding: 0 9px 0 40px;
   background: var(--ch-panel);
 }
 
@@ -1077,24 +1132,24 @@ textarea:disabled {
 
 .startupFooter {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 14px;
   padding-top: 16px;
   border-top: 1px solid var(--ch-border);
 }
 
-.startupFooter label {
-  display: grid;
-  gap: 5px;
+.startupFooter > small {
+  min-width: 0;
+  overflow: hidden;
   color: var(--ch-text-muted);
   font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.startupFooter select {
-  min-width: 130px;
-  padding: 0 9px;
-  background: var(--ch-panel);
+.emptySessionSetup .startupFooter {
+  justify-content: flex-end;
 }
 
 .startupCreate {
@@ -1773,10 +1828,6 @@ textarea:disabled {
   border: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.toolIOCard pre[data-error] {
-  color: var(--ch-danger);
 }
 
 .toolActions {
@@ -2582,6 +2633,73 @@ textarea:disabled {
   outline: 0;
 }
 
+.reasoningMenuRoot {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.reasoningMenuTrigger {
+  display: inline-flex;
+  min-width: 0;
+  height: 24px;
+  align-items: center;
+  gap: 3px;
+  padding: 0 4px 0 5px;
+  color: var(--ch-text-muted);
+  background: transparent;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.reasoningMenuTrigger:hover,
+.reasoningMenuTrigger:focus-visible,
+.reasoningMenuTrigger[aria-expanded="true"] {
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
+}
+
+.reasoningMenu {
+  position: absolute;
+  z-index: var(--ch-layer-popover);
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  width: 176px;
+  padding: 6px;
+  color: var(--ch-text);
+  background: var(--ch-panel-raised);
+  border: 1px solid var(--ch-border-strong);
+  border-radius: 8px;
+  box-shadow: var(--ch-shadow);
+}
+
+.reasoningMenu button {
+  display: flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  color: var(--ch-text-secondary);
+  text-align: left;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.reasoningMenu button:hover,
+.reasoningMenu button:focus-visible {
+  color: var(--ch-text);
+  background: var(--ch-panel-subtle);
+  outline: 0;
+}
+
+.reasoningMenu button[data-selected] {
+  color: var(--ch-text);
+}
+
 .composerValue {
   max-width: 142px;
   padding: 0 5px;
@@ -2945,39 +3063,6 @@ textarea:disabled {
   padding: 14px 16px;
 }
 
-.pendingText {
-  display: grid;
-  min-width: 0;
-  gap: 5px;
-}
-
-.pendingHeading {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.pendingHeading strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  overflow-wrap: anywhere;
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.pendingHeading strong::before {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  content: "";
-  background: var(--ch-warning);
-  border-radius: 50%;
-  animation: pending-pulse var(--ch-motion-pending) var(--ch-ease-in-out) infinite;
-}
-
-.pendingHeading span,
 .pendingMeta {
   color: var(--ch-text-muted);
   font-size: 11px;
@@ -2988,10 +3073,6 @@ textarea:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-}
-
-.pendingText span {
-  overflow-wrap: anywhere;
 }
 
 .pendingActions {
@@ -3109,21 +3190,6 @@ textarea:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.readOnlyField output {
-  max-width: 130px;
-  margin-left: auto;
-  overflow: hidden;
-  color: var(--ch-text);
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.readOnlyField small {
-  color: var(--ch-text-muted);
-  font-size: 9px;
 }
 
 .artifactActions {
@@ -3311,6 +3377,18 @@ textarea:disabled {
     --ch-header-height: 56px;
   }
 
+  .setupPage {
+    padding: 24px 18px;
+  }
+
+  .workspaceAdd {
+    grid-template-columns: 1fr;
+  }
+
+  .workspaceAdd button {
+    justify-content: center;
+  }
+
   .app {
     grid-template-columns: var(--ch-rail-collapsed-width) minmax(0, 1fr);
   }
@@ -3358,8 +3436,13 @@ textarea:disabled {
   }
 
   .railFooter {
+    flex-direction: column;
     justify-content: center;
     padding: 6px 0;
+  }
+
+  .mobileWorkspaceAction {
+    display: contents;
   }
 
   .conversationHeader {
@@ -3432,12 +3515,8 @@ textarea:disabled {
     grid-template-columns: 1fr;
   }
 
-  .startupCredential {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .startupCredential button {
-    grid-column: 2;
+  .startupFields[data-custom] {
+    grid-template-columns: 1fr;
   }
 
   .startupFooter {
@@ -3445,7 +3524,10 @@ textarea:disabled {
     flex-direction: column;
   }
 
-  .startupFooter select,
+  .startupFooter > small {
+    max-width: 100%;
+  }
+
   .startupCreate {
     width: 100%;
   }

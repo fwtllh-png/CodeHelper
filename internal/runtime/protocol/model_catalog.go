@@ -24,6 +24,7 @@ type ProviderCatalog struct {
 type ModelCatalogEntry struct {
 	Provider     string            `json:"provider"`
 	ID           string            `json:"id"`
+	Source       string            `json:"source,omitempty"`
 	Selected     bool              `json:"selected"`
 	Capabilities ModelCapabilities `json:"capabilities"`
 }
@@ -72,11 +73,10 @@ func (c ModelCatalog) Validate() error {
 			!validProfileIdentifier(model.ID) {
 			return fmt.Errorf("model catalog entry %d has invalid identity", index)
 		}
-		key := model.Provider + "\x00" + model.ID
-		if _, duplicate := seen[key]; duplicate {
+		if _, duplicate := seen[model.Provider+"\x00"+model.ID]; duplicate {
 			return fmt.Errorf("model catalog entry %q is duplicated", model.ID)
 		}
-		seen[key] = struct{}{}
+		seen[model.Provider+"\x00"+model.ID] = struct{}{}
 		profile := SessionProfile{
 			Version: SessionProfileVersion, Revision: 1,
 			Mode: "act", Provider: model.Provider, Model: model.ID,

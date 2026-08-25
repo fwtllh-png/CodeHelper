@@ -31,14 +31,21 @@ type PersistentRepositories struct {
 	Trace     *tracestate.Repository
 }
 
-func NewPersistentRepositories(store *state.Store) (PersistentRepositories, error) {
+func NewPersistentRepositories(
+	store *state.Store,
+	workspaceRoot ...string,
+) (PersistentRepositories, error) {
 	if store == nil {
 		return PersistentRepositories{}, errors.New("persistent state store is required")
+	}
+	lifecycle := threadstate.NewLifecycle(store)
+	if len(workspaceRoot) != 0 {
+		lifecycle = threadstate.NewWorkspaceLifecycle(store, workspaceRoot[0])
 	}
 	return PersistentRepositories{
 		Sessions:  sessionstate.NewSQLiteRepository(store.SQLite()),
 		Threads:   threadstate.NewSQLiteRepository(store.SQLite()),
-		Lifecycle: threadstate.NewLifecycle(store),
+		Lifecycle: lifecycle,
 		Tasks:     taskstate.NewSQLiteRepository(store.SQLite()),
 		Snapshots: snapshotstate.NewSQLiteRepository(store.SQLite(), store.Content()),
 		Usage:     usagestate.NewSQLiteRepository(store.SQLite()),

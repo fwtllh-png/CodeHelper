@@ -1,7 +1,6 @@
 package wire
 
 import (
-	"slices"
 	"sort"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
@@ -63,7 +62,7 @@ func runtimeModelCatalog(
 				selectedSeen = true
 			}
 			modelEntries = append(modelEntries, protocol.ModelCatalogEntry{
-				Provider: catalogProvider.ID, ID: id,
+				Provider: catalogProvider.ID, ID: id, Source: "catalog",
 				Selected: selected, Capabilities: capabilities,
 			})
 		}
@@ -78,6 +77,7 @@ func runtimeModelCatalog(
 		selectedCapabilities.SelectionMode = "fixed"
 		modelEntries = append(modelEntries, protocol.ModelCatalogEntry{
 			Provider: selectedProvider, ID: selectedModel,
+			Source:   "connection_baseline",
 			Selected: true, Capabilities: selectedCapabilities,
 		})
 	}
@@ -111,11 +111,7 @@ func catalogModelCapabilities(descriptor model.Model) protocol.ModelCapabilities
 		SelectionMode:     "restart_required",
 	}
 	if result.Reasoning {
-		if slices.Contains(result.ReasoningEfforts, "low") {
-			result.DefaultReasoningEffort = "low"
-		} else if len(result.ReasoningEfforts) != 0 {
-			result.DefaultReasoningEffort = result.ReasoningEfforts[0]
-		}
+		result.DefaultReasoningEffort = capabilities.DefaultReasoningEffort
 	}
 	return result
 }
@@ -170,9 +166,7 @@ func runtimeProfileModels(
 		reasoningMutable = reasoningMutable || entry.Capabilities.Reasoning
 	}
 	mutable := make([]string, 0, 2)
-	if len(profiles) > 1 {
-		mutable = append(mutable, "model")
-	}
+	mutable = append(mutable, "model")
 	if reasoningMutable {
 		mutable = append(mutable, "reasoning_effort")
 	}

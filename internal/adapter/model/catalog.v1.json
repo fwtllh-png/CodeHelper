@@ -239,7 +239,8 @@
           "capabilities": {
             "streaming": true,
             "reasoning": true,
-            "reasoning_efforts": ["off", "low", "medium", "high", "max"],
+            "reasoning_efforts": ["off", "low", "high", "max"],
+            "default_reasoning_effort": "high",
             "tool_calls": true,
             "native_search": false,
             "vision": false,
@@ -286,7 +287,8 @@
           "capabilities": {
             "streaming": true,
             "reasoning": true,
-            "reasoning_efforts": ["off", "low", "medium", "high", "max"],
+            "reasoning_efforts": ["off", "low", "high", "max"],
+            "default_reasoning_effort": "high",
             "tool_calls": true,
             "native_search": false,
             "vision": false,

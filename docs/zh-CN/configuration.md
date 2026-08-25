@@ -181,9 +181,11 @@ model = "gpt-4.1-mini"
 search_backend = "duckduckgo"
 ```
 
-`reasoning_effort` 为空时从 Medium 开始，复杂架构或 Debug 使用 High；Repair
-失败后按模型支持的档位提升一级。显式 Effort 始终固定，且必须由所有已配置 Route
-广告；不支持的值会在 Provider I/O 前失败。Reasoning Effort 不再改变输出容量。
+模型目录声明了默认 Reasoning Effort 时，空的 `reasoning_effort` 使用该默认值；
+DeepSeek 的默认值为 High，可选档位为 Off、Low、High、Max。未声明模型默认值时，
+空值继续从 Medium 开始自适应，复杂架构或 Debug 使用 High，Repair 失败后按模型支持
+的档位提升一级。显式 Effort 始终固定，且必须由所有已配置 Route 广告；不支持的值会
+在 Provider I/O 前失败。Reasoning Effort 不再改变输出容量。
 
 `max_output_tokens = 0` 会根据当前 Model Catalog 能力和输入投影后剩余的 Context
 空间，为每次请求动态计算上限，默认不超过 16384。正值表示 Operator 显式上限，
@@ -309,9 +311,10 @@ Memory 使用带稳定 ID 和 Generation 的记录存储。`user`、`workspace` 
 不要猜测标识符。Web Settings 展示 Runtime 发布的 Provider/Model Catalog；即使
 Model ID 相同，Provider ID 也可能不同，存在歧义时必须在 TOML 中显式指定 Provider。
 
-Web 首屏在创建 Session 前显示当前 Runtime Provider、该 Provider 内可用的 Model、
-对应 Model 支持的 Reasoning 档位和凭据状态。同一 Provider 内标记为 `hot` 的 Model
-可作为 Session Profile 在 Turn 之间切换；运行中的 Turn 继续使用启动时冻结的 Route。
+Web Settings 的 Connection 页展示 Workspace Runtime 固定的 Provider、Endpoint、
+Protocol 和凭据状态；Models 页展示当前 Session 的 Model、能力来源与 Reasoning 档位。
+Composer 可直接切换历史 Model。同一 Provider 内标记为 `hot` 的 Model 可作为 Session
+Profile 在 Turn 之间切换；运行中的 Turn 继续使用启动时冻结的 Route。
 跨 Provider 切换仍属于 Runtime 启动配置，必须修改 `[execution]` 后重启，界面以只读值
 呈现该边界，不显示不可操作的 Provider 下拉框。
 

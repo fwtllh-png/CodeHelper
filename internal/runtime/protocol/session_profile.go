@@ -84,7 +84,7 @@ func (p SessionProfile) Validate() error {
 	default:
 		return errors.New("session profile mode must be plan, act, or operate")
 	}
-	if !validProfileIdentifier(p.Provider) || !validProfileIdentifier(p.Model) {
+	if !validProfileIdentifier(p.Provider) || !validProfileIdentifier(p.Model) || strings.ContainsAny(p.Model, "\t ") {
 		return errors.New("session profile provider and model are invalid")
 	}
 	switch p.ReasoningEffort {

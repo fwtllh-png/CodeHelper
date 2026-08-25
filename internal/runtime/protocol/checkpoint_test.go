@@ -33,7 +33,9 @@ func TestCheckpointAndPlanArtifactValidation(t *testing.T) {
 		Version: CheckpointProtocolVersion,
 		ID:      "plan-1", SessionID: "session-1",
 		ThreadID: "thread-1", TurnID: "turn-1", Cursor: 3,
-		Status: PlanArtifactReady, Body: "1. Update parser",
+		Status: PlanArtifactReady,
+		Body: `{"version":1,"revision":1,"steps":[` +
+			`{"id":"implement","title":"Update parser","status":"pending"}]}`,
 		ProfileRevision: 2, CanImplement: true, CanAutopilot: true,
 		CreatedAt: time.Now().UTC(),
 	}

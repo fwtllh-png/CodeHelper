@@ -123,8 +123,8 @@ type StartTurnPayload struct {
 	Context           []EditorContextReference  `json:"context,omitempty"`
 	Recovery          *TurnRecoveryContext      `json:"recovery,omitempty"`
 	QueueID           string                    `json:"queue_id,omitempty"`
-	// Idle marks extension/automation-initiated work. Plan mode rejects it (W6 / C4).
-	Idle bool `json:"idle,omitempty"`
+	Idle              bool                      `json:"idle,omitempty"` // Plan mode rejects automatic idle work.
+	PlanExecution     *PlanTransitionRequest    `json:"plan_execution,omitempty"`
 }
 
 func (*StartTurnPayload) operationKind() OperationKind { return OperationStartTurn }
@@ -137,7 +137,7 @@ func (p *StartTurnPayload) validate() error {
 	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
 		return err
 	}
-	if p.Prompt == "" {
+	if p.Prompt == "" && p.PlanExecution == nil {
 		return errors.New("start turn prompt is required")
 	}
 	if !NormalizeTurnIntent(p.Intent).Valid() {

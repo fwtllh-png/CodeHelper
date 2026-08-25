@@ -26,6 +26,9 @@ type HostContract struct {
 }
 
 var unaryRouteContracts = []RouteContract{
+	setupRPC("setup/apply", "setup_request", "setup_result", true, true),
+	setupRPC("workspace/list", "empty", "workspace_catalog", false, false),
+	setupRPC("workspace/add", "workspace_add", "workspace_add_result", true, true),
 	rpc("system/describe", "empty", "system_description", false, false),
 	rpc("system/readiness", "empty", "runtime_readiness", false, false),
 	rpc("system/diagnostics", "empty", "system_diagnostics", false, false),
@@ -47,7 +50,9 @@ var unaryRouteContracts = []RouteContract{
 	rpc("agent-preset/delete", "agent_preset_delete", "agent_preset_mutation", true, true),
 	rpc("agent-preset/apply", "agent_preset_apply", "agent_preset_apply_result", true, true),
 	rpc("provider/list", "empty", "provider_catalog", false, false),
+	rpc("connection/status", "empty", "workspace_connection", false, false),
 	rpc("model/list", "empty", "model_catalog", false, false),
+	rpc("model/test", "model_test", "model_test_result", false, false),
 	rpc("tool/catalog", "session_identity", "tool_catalog", false, false),
 	rpc("checkpoint/list", "checkpoint_query", "checkpoint_list", false, false),
 	rpc("checkpoint/get", "checkpoint_identity", "checkpoint", false, false),
@@ -78,10 +83,10 @@ var unaryRouteContracts = []RouteContract{
 	rpc("mcp/health", "empty", "mcp_health_list", false, false),
 }
 
-var unaryRouteSet = func() map[string]struct{} {
-	result := make(map[string]struct{}, len(unaryRouteContracts))
+var unaryRouteSet = func() map[string]RouteContract {
+	result := make(map[string]RouteContract, len(unaryRouteContracts))
 	for _, route := range unaryRouteContracts {
-		result[route.Path] = struct{}{}
+		result[route.Path] = route
 	}
 	return result
 }()
@@ -94,9 +99,17 @@ func rpc(path, request, response string, mutation, idempotency bool) RouteContra
 	}
 }
 
-func registeredUnaryRoute(path string) bool {
-	_, ok := unaryRouteSet[path]
-	return ok
+func setupRPC(path, request, response string, mutation, idempotency bool) RouteContract {
+	return RouteContract{
+		Path: path, Method: "POST", Request: request, Response: response,
+		Mutation: mutation, IdempotencyKey: idempotency,
+		RequiresRuntime: false, RequiresCapability: true,
+	}
+}
+
+func unaryRouteContract(path string) (RouteContract, bool) {
+	contract, ok := unaryRouteSet[path]
+	return contract, ok
 }
 
 // Contract returns a detached and deterministically ordered transport contract.

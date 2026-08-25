@@ -15,6 +15,8 @@
 3. 修改实现前先读最近的 Package Test。
 4. 从 `Makefile` 查找标准验证命令。
 5. 检查 `git status`，不能覆盖无关用户改动。
+6. 执行 `make agent-preflight`，记录任务开始时的 Architecture 与 Web
+   Bundle 事实。
 
 ## 所有权地图
 
@@ -76,18 +78,26 @@
 - 只为不明显约束添加注释；
 - 中文文档与代码事实同步更新；
 - 使用仓库命令重新生成 Artifact。
+- 每完成一个可独立验证的实现切片后执行 `make ratchet-fast`，再运行更昂贵的
+  Race、Playwright 或全仓测试。
 
 ### 验证
 
 先运行最窄测试，再按影响面扩大：
 
 ```bash
+make ratchet-fast
 go test ./path/to/package
 make docs-check
 cd web && npm run check && npm test -- relevant-area
 ```
 
 结束前运行 `git diff --check`。
+
+`agent-preflight` 是本地开发事实快照，不替代最终严格门禁。若任务开始时已有指标
+超限，`ratchet-fast` 会将其标记为 `pre-existing` 并允许当前任务继续；该指标继续
+恶化会立即失败。任务开始时未超限的指标仍按正式上限判断。最终仍必须执行适合影响面
+的严格 `make verify` 或发布门禁。
 
 ## 契约变更
 

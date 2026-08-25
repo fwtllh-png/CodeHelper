@@ -60,31 +60,26 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 ```bash
 git clone https://github.com/fwtllh-png/CodeHelper.git
 cd CodeHelper
-
-make build
-./bin/codehelper --version
+make install
+cd /path/to/your/project
+codehelper
 ```
 
-启动本机 Web 工作区：
+`make install` 默认把完整的自包含二进制安装到 `~/.local/bin/codehelper`。安装后可在
+任意目录运行 `codehelper`，当前目录自动成为 Workspace 并打开本机页面。已有 Web
+Supervisor 运行时，新目录会注册为另一个独立 Workspace Runtime，并在同一侧栏中展示，
+无需再启动一个 Web 服务。首次进入时不会预选 Provider 或 Model，用户必须在页面中选择 OpenAI、Anthropic、DeepSeek 或自定义
+OpenAI-Compatible 服务，并填写 Model ID。API Key 由操作系统 Keyring 加密保存，
+非敏感选择由 Runtime 管理；无需创建或编辑配置文件。每个 Session 可独立保存和
+切换 Model ID，也可直接输入尚未进入内置目录的新模型。
 
-```bash
-./bin/codehelper \
-  --workspace . \
-  --config ./codehelper.toml \
-  --enable-tools
-```
+源码开发时仍可使用 `make start`。自定义安装位置使用
+`make install PREFIX=/usr/local`，卸载使用 `make uninstall`。
+无配置运行 `codehelper` 时默认启用受 Guard 管理的内置工具，并使用 `suggest`
+审批姿态。
 
 Web 只监听 `127.0.0.1`，默认选择可用端口。终端会分别输出页面开始监听和
-Runtime 完成恢复的 URL。`--open` 会自动打开系统浏览器。
-
-仓库所有者使用 DeepSeek 时，可以一条命令完成编译、配置并启动 Web：
-
-```bash
-make deepseek-web
-```
-
-密钥来源、生成文件、Agent 执行方式和校验说明见
-[本机 DeepSeek 一键配置与运行](./docs/zh-CN/deepseek-local.md)。
+Runtime 完成恢复的 URL。
 
 安装、初始配置、凭证、持久化和 Web 使用方式见
 [快速开始](./docs/zh-CN/getting-started.md)。

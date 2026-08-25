@@ -2,8 +2,9 @@
 
 ## 架构目标
 
-CodeHelper 保持一个权威执行 Runtime，同时允许多种呈现和集成入口。Host 提交
-Operation 并观察 Event，不复制 Agent 循环，也不直接执行特权工具。
+CodeHelper 保持一个本机 Web Supervisor，并为每个已注册 Workspace 构造一个权威执行
+Runtime。Host 按 Workspace 路由 Operation 并观察 Event，不复制 Agent 循环，也不
+直接执行特权工具。
 
 受支持的产品 Host 只有本机 Web。它只绑定
 `127.0.0.1`，使用同源 HTTP RPC 与下行 WebSocket；项目不提供 LAN、公网部署、
@@ -13,17 +14,17 @@ Tool Source 接入。
 ```text
 Web
                  |
-           Operation / Event
+          Web Supervisor
+         /       |        \
+ Runtime A   Runtime B   Runtime C
+     |           |           |
+ Operation / Event + Agent Engine
+     |           |           |
+ Context + Provider + Guarded Tool
                  |
-        Runtime Application State
-                 |
-             Agent Engine
-        /          |           \
-   Context      Provider     Guarded Tool
-                               |
        Policy -> Approval -> Journal -> Sandbox
                  |
-       Persistence + Observability
+       Shared Persistence + Observability
 ```
 
 ## 包分层
@@ -84,6 +85,20 @@ State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh
 的 Terminal Outbox/Pending Turn Recovery、启动 MCP Prewarm、协调 Automation，最后
 启动 Worker Scheduler。任一步失败都会终止构造并由 ResourceStack 回滚；Runtime
 Recovery 成功前不会启动后台 Worker。
+
+当 Web 启动时没有显式或已保存的 Provider/Model，Host 先进入受限 Setup 状态，不构造
+默认 Runtime。该状态只暴露受同源 Capability Token 保护的 `setup/apply`；用户提交的
+API Key 写入操作系统 Keyring，Provider、Model、Endpoint 与协议写入 Runtime 管理的
+非敏感 Setup Record。只有这些事实持久化成功后，Host 才调用 `wire.NewExec` 并
+`Activate` 完整 Web Runtime。
+
+Web 进程持有一个全局 Owner Lease 和持久化 Workspace Registry。首次启动创建
+Supervisor；其他目录再次执行 `codehelper` 时，通过 Lease 中仅对当前用户可读的
+Capability Token 调用已有 Host 的 `workspace/add`，不会启动第二套控制面。每个
+Workspace 单独拥有 `wire.Session`、Sandbox、Tool Registry、Repository Index、
+Extension 生命周期和后台 Scheduler。共享 SQLite 中的 Session、Event Recovery、
+Terminal Outbox 与 WorkGraph Outbox 按规范化 Workspace Root 过滤；关闭一个 Runtime
+不能关闭 Supervisor 持有的共享 Store。
 
 构造与关闭共享 `wire.ResourceStack`。Session 只注册一次资源关闭函数；部分构造
 失败回滚与正常关闭都按注册逆序关闭同一 Stack。每项资源最多关闭一次，单项关闭失败
@@ -162,11 +177,19 @@ Event 分类是 Protocol 数据，而不是 Host Policy。`event_traits.json` �
 Class、Item Owner、Durability、Correlation 或 Terminal Trait 时生成直接失败。
 Go Benchmark 消费 `eventview` 的 Typed Semantic Update，不再分类 `Event.Data`。
 
-Web Client 使用 Runtime Snapshot 完成 Hydration，再按全局 Cursor 消费 Event。
-Sequence 只要求严格单调；只有 Runtime 明确报告 Retention Gap 时才进入 Desync。
+Web Client 使用 Runtime Snapshot 完成 Hydration，再按当前 Workspace 的 Cursor 消费
+Event。持久层 Sequence 在 Supervisor 内全局严格单调，浏览器则按 Workspace 分别保存
+Cursor；只有对应 Runtime 明确报告 Retention Gap 时才进入 Desync。
 浏览器 Conversation Projection 对高频 Delta 按动画帧合并发布，并保持未变化业务节点
 的引用稳定。Trajectory Event Ledger 与 Chat 复用该事件窗口；`trace/query` 只补充
 经过 Session/Turn 归属校验和字段白名单投影的时序，不返回任意 Span Attribute。
+
+Workspace Runtime 固定 Provider Connection、Endpoint、Credential Reference 与 Egress
+边界，Session Profile 则独立持久化 Model ID。Engine 只允许在同一 Provider
+Connection 内从当前 Ready Route 派生新的 Model Route，并在 Turn 开始时冻结到
+`TurnSpec`；它不能借模型切换改变 Endpoint 或 Credential。Web Model Catalog 将内置
+目录与当前 Workspace 已持久化 Session Profile 中的模型合并，因此用户输入的新 Model
+ID 在刷新、重启和其他 Session 中仍可选择。Active Turn 期间拒绝 Profile 修改。
 
 ### Application Ownership
 
@@ -317,6 +340,14 @@ Evidence；不匹配的验证声明会失效为 stale。持久化 Restore/Fork E
 Workspace 对账同时重写 History 中已压缩的 Truth Capsule，不能让旧
 `verified/current` 声明继续进入下一次采样。Fork 血缘、子 Thread Context 基线与当前
 Active Session Thread 属于关系型 Lifecycle State，而不是 Host-local State。
+
+Plan Mode 的 Workspace 只读性由 Policy Effect 强制：普通 Write/Process/Network
+继续拒绝，只有 Resource 为 Session Plan 的低风险状态更新可通过。`submit_plan`
+生成版本化 JSON Artifact，并在 Artifact Body 内记录 Revision、Supersedes Identity、
+步骤依赖、验证证据与文件摘要。批准操作作为已持久化的 `turn.start` Payload 接受，
+Runtime 在 Dispatch 时重新校验 Session/Thread/Profile 和文件摘要，再将执行 Prompt
+及 Turn-scoped Act/Autopilot Policy 注入 Engine。Host 不先修改 Profile，因此不存在
+“Profile 已切换但 Turn 未接受”的两阶段窗口；重启恢复仍重放同一 Accepted Operation。
 
 Terminal Envelope 不再重复写入完整 Session Snapshot，而是引用 CAS 中的 Context
 Manifest。CAS 先按 Digest 幂等 Stage，SQLite 再提交 Manifest 可达性和 Terminal

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -219,7 +220,7 @@ func TestPlanStepsAcceptBothShapes(t *testing.T) {
 		{Title: "odd", Status: interact.StepPending},
 	}
 	for index, step := range want {
-		if plan.Steps[index] != step {
+		if !reflect.DeepEqual(plan.Steps[index], step) {
 			t.Fatalf("step %d = %+v, want %+v", index, plan.Steps[index], step)
 		}
 	}
@@ -229,6 +230,34 @@ func TestPlanStepsAcceptBothShapes(t *testing.T) {
 	}
 	if !strings.Contains(rendered, "2. typed step [in_progress]") {
 		t.Fatalf("status missing: %s", rendered)
+	}
+}
+
+func TestSubmitPlanNormalizesStructuredSteps(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result := execute(t, registry, "submit_plan", map[string]any{
+		"version": 1,
+		"title":   "Parser change",
+		"steps": []any{
+			map[string]any{
+				"id": "inspect", "title": "Inspect parser",
+				"expected_evidence": "Relevant tests identified",
+			},
+			map[string]any{
+				"id": "implement", "title": "Implement parser",
+				"dependencies":   []any{"inspect"},
+				"affected_files": []any{"parser.go"},
+			},
+		},
+	})
+	if result.IsError || result.Metadata["submitted_plan"] != true ||
+		!strings.Contains(result.Content, `"id":"implement"`) {
+		t.Fatalf("result = %+v", result)
 	}
 }
 

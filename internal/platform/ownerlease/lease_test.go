@@ -5,14 +5,25 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestAcquireRejectsConcurrentOwnerAndAllowsTakeoverAfterClose(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "owner.lock")
-	first, err := Acquire(path, Metadata{OwnerKind: "web", PublicURL: "http://127.0.0.1:1/"})
+	first, err := Acquire(path, Metadata{
+		OwnerKind: "web", PublicURL: "http://127.0.0.1:1/",
+		CapabilityToken: "private-token",
+	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("owner lease permissions = %o", info.Mode().Perm())
 	}
 
 	_, err = Acquire(path, Metadata{OwnerKind: "web"})
@@ -22,6 +33,12 @@ func TestAcquireRejectsConcurrentOwnerAndAllowsTakeoverAfterClose(t *testing.T) 
 	}
 	if held.Metadata.PublicURL != "http://127.0.0.1:1/" {
 		t.Fatalf("held metadata = %#v", held.Metadata)
+	}
+	if held.Metadata.CapabilityToken != "private-token" {
+		t.Fatalf("held capability token was not recovered")
+	}
+	if strings.Contains(held.Error(), "private-token") {
+		t.Fatal("held owner error exposed the capability token")
 	}
 
 	if err := first.Close(); err != nil {

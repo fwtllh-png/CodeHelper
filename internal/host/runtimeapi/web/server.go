@@ -50,6 +50,8 @@ type Options struct {
 	Build        string
 	Capacity     Capacity
 	OpenPath     func(context.Context, string) error
+	Setup        *SetupOptions
+	Workspaces   WorkspaceController
 }
 
 type TaskQuery interface {
@@ -81,6 +83,7 @@ type Dependencies struct {
 	DefaultProfile    protocol.SessionProfile
 	ProviderCatalog   protocol.ProviderCatalog
 	ModelCatalog      protocol.ModelCatalog
+	Connection        WorkspaceConnection
 	MCPHealth         func() []mcp.HealthSnapshot
 	Diagnostics       io.Writer
 	Tasks             TaskQuery
@@ -90,6 +93,7 @@ type Dependencies struct {
 	Workspace         *workspacequery.Service
 	RepositoryIndex   RepositorySymbolQuery
 	Credentials       *credential.Service
+	ModelProbe        func(context.Context, string) (bool, error)
 	Extensions        interface {
 		Submit(
 			context.Context,
@@ -113,13 +117,18 @@ type Server struct {
 	openPath     func(context.Context, string) error
 	handler      http.Handler
 
-	mu           sync.RWMutex
-	sessionMu    sync.Mutex
-	dependencies Dependencies
-	bootProblem  *protocol.Problem
-	ready        atomic.Bool
-	draining     atomic.Bool
-	connections  atomic.Int32
+	mu                 sync.RWMutex
+	sessionMu          sync.Mutex
+	setupMu            sync.Mutex
+	dependencies       Dependencies
+	setup              *SetupOptions
+	workspaceControl   WorkspaceController
+	workspaces         map[string]Dependencies
+	defaultWorkspaceID string
+	bootProblem        *protocol.Problem
+	ready              atomic.Bool
+	draining           atomic.Bool
+	connections        atomic.Int32
 }
 
 type responseEnvelope struct {
@@ -130,21 +139,25 @@ type responseEnvelope struct {
 }
 
 type bootstrapResponse struct {
-	ProtocolVersion int                         `json:"protocol_version"`
-	ServerBuild     string                      `json:"server_build"`
-	Token           string                      `json:"token"`
-	Ready           bool                        `json:"ready"`
-	Draining        bool                        `json:"draining"`
-	WorkspaceRoot   string                      `json:"workspace_root,omitempty"`
-	Workspace       *protocol.WorkspaceIdentity `json:"workspace,omitempty"`
-	CanOpenPath     bool                        `json:"can_open_path"`
-	Problem         *protocol.Problem           `json:"problem,omitempty"`
+	ProtocolVersion  int                         `json:"protocol_version"`
+	ServerBuild      string                      `json:"server_build"`
+	Token            string                      `json:"token"`
+	Ready            bool                        `json:"ready"`
+	Draining         bool                        `json:"draining"`
+	WorkspaceRoot    string                      `json:"workspace_root,omitempty"`
+	Workspace        *protocol.WorkspaceIdentity `json:"workspace,omitempty"`
+	CanOpenPath      bool                        `json:"can_open_path"`
+	SetupRequired    bool                        `json:"setup_required,omitempty"`
+	SetupCatalog     *SetupCatalog               `json:"setup_catalog,omitempty"`
+	WorkspaceCatalog WorkspaceCatalog            `json:"workspace_catalog"`
+	Problem          *protocol.Problem           `json:"problem,omitempty"`
 }
 
 type authFrame struct {
-	Type   string          `json:"type"`
-	Token  string          `json:"token"`
-	Cursor protocol.Cursor `json:"cursor"`
+	Type        string          `json:"type"`
+	Token       string          `json:"token"`
+	WorkspaceID string          `json:"workspace_id,omitempty"`
+	Cursor      protocol.Cursor `json:"cursor"`
 }
 
 type eventFrame struct {
@@ -178,6 +191,13 @@ func New(options Options) (*Server, error) {
 		assets: options.Assets, expectedHost: options.ExpectedHost,
 		origin: options.Origin, token: token, build: options.Build, index: index,
 		capacity: options.Capacity.normalized(), openPath: options.OpenPath,
+		setup: options.Setup, workspaceControl: options.Workspaces,
+		workspaces: make(map[string]Dependencies),
+	}
+	if server.setup != nil {
+		if err := server.setup.validate(); err != nil {
+			return nil, fmt.Errorf("web setup: %w", err)
+		}
 	}
 	if server.openPath == nil {
 		server.openPath = nativeTextPathOpener()
@@ -188,7 +208,30 @@ func New(options Options) (*Server, error) {
 
 func (s *Server) Handler() http.Handler { return s.handler }
 
+func (s *Server) CapabilityToken() string { return s.token }
+
+func (s *Server) DefaultWorkspaceID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.defaultWorkspaceID
+}
+
 func (s *Server) Activate(dependencies Dependencies) error {
+	if err := s.activateWorkspace(dependencies, true); err != nil {
+		return err
+	}
+	s.ready.Store(true)
+	return nil
+}
+
+func (s *Server) AddWorkspace(dependencies Dependencies) error {
+	return s.activateWorkspace(dependencies, false)
+}
+
+func (s *Server) activateWorkspace(
+	dependencies Dependencies,
+	makeDefault bool,
+) error {
 	if dependencies.Runtime == nil {
 		return errors.New("web Runtime is required")
 	}
@@ -199,10 +242,14 @@ func (s *Server) Activate(dependencies Dependencies) error {
 		return fmt.Errorf("web workspace identity: %w", err)
 	}
 	s.mu.Lock()
-	s.dependencies = dependencies
+	workspaceID := dependencies.WorkspaceIdentity.RootID
+	s.workspaces[workspaceID] = dependencies
+	if makeDefault || s.defaultWorkspaceID == "" {
+		s.defaultWorkspaceID = workspaceID
+		s.dependencies = dependencies
+	}
 	s.bootProblem = nil
 	s.mu.Unlock()
-	s.ready.Store(true)
 	return nil
 }
 
@@ -243,11 +290,14 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	if s.draining.Load() {
 		status, state = http.StatusServiceUnavailable, "draining"
 	} else if !s.ready.Load() {
-		status = http.StatusServiceUnavailable
 		_, problem := s.snapshot()
 		if problem != nil {
+			status = http.StatusServiceUnavailable
 			state = "boot_failed"
+		} else if s.setup != nil {
+			state = "setup_required"
 		} else {
+			status = http.StatusServiceUnavailable
 			state = "initializing"
 		}
 	}
@@ -273,9 +323,24 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 		CanOpenPath:     s.openPath != nil,
 		Problem:         problem,
 	}
+	if s.workspaceControl != nil {
+		if catalog, err := s.workspaceControl.List(r.Context()); err == nil {
+			result.WorkspaceCatalog = catalog
+		}
+	}
+	if result.WorkspaceCatalog.Version == 0 {
+		result.WorkspaceCatalog = s.workspaceCatalog()
+	}
 	if dependencies.WorkspaceIdentity.Version != 0 {
 		identity := dependencies.WorkspaceIdentity
 		result.Workspace = &identity
+	} else if !result.Ready && s.setup != nil {
+		identity := s.setup.WorkspaceIdentity
+		catalog := s.setup.Catalog
+		result.WorkspaceRoot = s.setup.WorkspaceRoot
+		result.Workspace = &identity
+		result.SetupRequired = true
+		result.SetupCatalog = &catalog
 	}
 	writeJSON(w, http.StatusOK, result)
 }
@@ -325,7 +390,18 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	if !s.ready.Load() || s.draining.Load() {
+	route := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	contract, registered := unaryRouteContract(route)
+	if !registered {
+		writeProblem(w, r, http.StatusNotFound, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			"unknown Web API endpoint",
+			false,
+			nil,
+		))
+		return
+	}
+	if s.draining.Load() || (contract.RequiresRuntime && !s.ready.Load()) {
 		writeProblem(w, r, http.StatusServiceUnavailable, protocol.NewProblem(
 			protocol.CodeUnavailable,
 			"Runtime is not ready",
@@ -335,19 +411,38 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dependencies, _ := s.snapshot()
-	route := strings.TrimPrefix(r.URL.Path, "/api/v1/")
-	if !registeredUnaryRoute(route) {
-		writeProblem(w, r, http.StatusNotFound, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			"unknown Web API endpoint",
-			false,
-			nil,
-		))
-		return
+	if contract.RequiresRuntime {
+		workspaceID := strings.TrimSpace(r.Header.Get(workspaceHeader))
+		if route == "session/create" && workspaceID == "" {
+			writeProblem(w, r, http.StatusBadRequest, protocol.NewProblem(
+				protocol.CodeInvalidArgument,
+				"select a ready workspace before creating a session",
+				false,
+				nil,
+			))
+			return
+		}
+		var found bool
+		dependencies, _, found = s.workspaceSnapshot(workspaceID)
+		if !found {
+			writeProblem(w, r, http.StatusNotFound, protocol.NewProblem(
+				protocol.CodeInvalidArgument,
+				"workspace is not registered with this Web Host",
+				false,
+				nil,
+			))
+			return
+		}
 	}
 	var result any
 	var err error
 	switch route {
+	case "setup/apply":
+		result, err = s.setupApply(r)
+	case "workspace/list":
+		result, err = s.workspaceList(r)
+	case "workspace/add":
+		result, err = s.workspaceAdd(r)
 	case "system/describe":
 		if err = s.decodeRequest(r, &struct{}{}); err == nil {
 			result = s.describe(dependencies)
@@ -398,8 +493,16 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		}
 	case "model/list":
 		if err = s.decodeRequest(r, &struct{}{}); err == nil {
-			result = dependencies.ModelCatalog
+			result, err = sessionModelCatalog(
+				r.Context(),
+				dependencies,
+				s.capacity.MaxActiveSessions,
+			)
 		}
+	case "model/test":
+		result, err = s.modelTest(r, dependencies)
+	case "connection/status":
+		result, err = s.connectionStatus(r, dependencies)
 	case "tool/catalog":
 		result, err = s.toolCatalog(r, dependencies)
 	case "checkpoint/list":
@@ -1146,38 +1249,50 @@ func (s *Server) planTransition(
 	if err := s.decodeRequest(r, &request); err != nil {
 		return nil, err
 	}
-	var prepared app.PlanTransitionPreparation
-	var err error
+	var artifact protocol.SessionPlanArtifact
 	if request.SourceSessionID == "" {
-		prepared, err = dependencies.Runtime.PreparePlanTransition(
+		prepared, err := dependencies.Runtime.PreparePlanExecution(
 			r.Context(),
 			request.SessionID,
 			request.PlanID,
 			request.Transition,
 		)
+		if err != nil {
+			return nil, err
+		}
+		artifact = prepared.Artifact
 	} else {
-		prepared, err = dependencies.Runtime.PreparePlanTransitionTo(
+		prepared, err := dependencies.Runtime.PreparePlanExecutionTo(
 			r.Context(),
 			request.SourceSessionID,
 			request.SessionID,
 			request.PlanID,
 			request.Transition,
 		)
+		if err != nil {
+			return nil, err
+		}
+		artifact = prepared.Artifact
 	}
-	if err != nil {
-		return nil, err
+	idempotencyKey := fmt.Sprintf("plan:%s:execute", request.PlanID)
+	sourceSessionID, destination := request.SourceSessionID, protocol.PlanDestinationNewSession
+	if sourceSessionID == "" {
+		sourceSessionID, destination = request.SessionID, protocol.PlanDestinationCurrentSession
 	}
 	receipt, err := dependencies.Runtime.SubmitForSession(
 		r.Context(),
 		app.SubmitSessionOperation{
 			SessionID:         request.SessionID,
 			Kind:              protocol.OperationStartTurn,
-			IdempotencyKey:    prepared.IdempotencyKey,
+			IdempotencyKey:    idempotencyKey,
 			WorkspaceIdentity: &dependencies.WorkspaceIdentity,
 			Payload: &protocol.StartTurnPayload{
-				Prompt:        prepared.Prompt,
-				DisplayPrompt: prepared.Prompt,
-				Intent:        prepared.Intent,
+				PlanExecution: &protocol.PlanTransitionRequest{
+					Version:   protocol.WorkflowIntentVersion,
+					SessionID: sourceSessionID, PlanID: request.PlanID,
+					Transition: request.Transition, Destination: destination,
+					IdempotencyKey: idempotencyKey,
+				},
 			},
 		},
 	)
@@ -1185,9 +1300,8 @@ func (s *Server) planTransition(
 		return nil, err
 	}
 	return map[string]any{
-		"artifact":       prepared.Artifact,
-		"profile_update": prepared.ProfileUpdate,
-		"operation":      receipt,
+		"artifact":  artifact,
+		"operation": receipt,
 	}, nil
 }
 
@@ -1354,6 +1468,12 @@ func (s *Server) traceQuery(
 			false,
 			nil,
 		)
+	}
+	if _, err := dependencies.Runtime.SessionStatus(
+		r.Context(),
+		request.SessionID,
+	); err != nil {
+		return nil, err
 	}
 	if dependencies.Runtime.TraceQuery == nil {
 		return nil, protocol.NewProblem(
@@ -2389,7 +2509,14 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		_ = connection.Close(websocket.StatusPolicyViolation, "authentication failed")
 		return
 	}
-	dependencies, _ := s.snapshot()
+	dependencies, _, found := s.workspaceSnapshot(auth.WorkspaceID)
+	if !found {
+		_ = connection.Close(
+			websocket.StatusPolicyViolation,
+			"workspace is not registered",
+		)
+		return
+	}
 	events, err := dependencies.Runtime.EventsLimited(
 		r.Context(),
 		auth.Cursor,

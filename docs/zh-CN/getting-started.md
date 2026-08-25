@@ -10,66 +10,64 @@
 | Node.js + npm | 仅重新构建 Web 前端时需要 |
 | macOS/Linux | 推荐；Windows 的沙箱能力边界不同 |
 
-## 2. 构建
+## 2. 安装并启动
 
 ```bash
 git clone https://github.com/fwtllh-png/CodeHelper.git
 cd CodeHelper
-make web-install
-make web-build
-make build
-./bin/codehelper --version
+make install
+cd /path/to/your/project
+codehelper
 ```
 
-二进制包含 Web 静态资源，启动后不需要独立前端服务。
+`make install` 会依次安装 Web 依赖、构建静态资源和 Go 二进制，再原子安装到
+`~/.local/bin/codehelper`。二进制包含 Web 静态资源，运行期间不依赖源码目录或独立
+前端服务。安装后在任意项目目录执行 `codehelper`，当前目录即为 Workspace；无配置
+启动默认启用受 Guard 管理的内置工具，并使用 `suggest` 审批姿态。
 
-## 3. 配置
+同一用户只运行一个本机 Web Supervisor。之后在另一个项目目录再次执行
+`codehelper`，命令会把该目录注册为新的 Workspace、打开带 Workspace 定位参数的已有
+页面并正常退出。每个 Workspace 拥有独立 Runtime、Sandbox、Tool Registry、索引、
+后台调度器和事件投影；页面侧栏会同时展示所有已注册 Workspace 及其 Session。
 
-从安全示例开始：
+如果 `~/.local/bin` 不在 `PATH`，安装命令会输出需要加入 Shell 配置的路径。也可指定
+标准安装前缀：
 
 ```bash
-cp docs/examples/codehelper.toml ./codehelper.toml
+make install PREFIX=/usr/local
 ```
 
-配置 Credential Reference，不要写入 Secret：
+源码开发和调试仍可使用 `make start START_WORKSPACE=/path/to/project`；卸载使用
+`make uninstall`，并可通过相同的 `PREFIX` 指定安装位置。
 
-```toml
-[credential]
-kind = "env"
-name = "OPENAI_API_KEY"
+## 3. 首次引导
 
-[execution]
-provider = "openai"
-model = "gpt-4.1"
-workspace = "."
-tools = true
-```
+首次进入且尚未完成 Runtime Setup 时，页面会要求：
 
-随后在启动进程的环境中提供凭证：
+1. 显式选择 OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible Provider；
+2. 输入准确的 Model ID；自定义服务还需填写 Base URL 和协议；
+3. 填写所需的 API Key 并启动 Runtime。
+
+没有默认 Provider 或 Model，也不通过内置枚举限制 Model ID。API Key 由操作系统
+Keyring 加密保存，不写入仓库、浏览器存储或 Setup Record；非敏感选择由 Runtime
+管理。Setup 完成后，页面依次引导选择 Workspace、创建 Session，再进入 Composer，
+不会代替用户自动创建 Session。其余配置使用安全默认值。每个 Session 可从 Composer
+快速切换历史 Model，也可在 Settings 中独立选择当前
+Workspace 已使用的 Model ID，或输入新的准确 Model ID；选择持久化到该 Session，
+不会改变其他 Session。Web 只监听 `127.0.0.1`，默认选择空闲端口。
+
+## 4. 直接运行二进制
+
+已有安装产物时直接进入目标项目：
 
 ```bash
-export OPENAI_API_KEY='...'
+cd /path/to/project
+codehelper
 ```
 
-也可以先启动 Web，再在 Settings 中把 Credential 写入系统 Keyring。浏览器不会持久化
-原始凭证值。
-
-## 4. 启动 Web
-
-```bash
-./bin/codehelper \
-  --config ./codehelper.toml \
-  --workspace . \
-  --enable-tools \
-  --posture suggest \
-  --open
-```
-
-Web 只监听 `127.0.0.1`，默认选择空闲端口。终端先输出 Listening URL，完成持久化
-恢复后再输出 Runtime Ready URL。
-
-支持的启动参数见[Web 使用指南](./usage.md)。运行 `./bin/codehelper --help` 可查看
-当前 Binary 的参数事实。
+不传 `--workspace` 时使用当前目录；不传 `--config`、`--provider` 或 `--model` 时，
+Web 进入首次引导，不会选择默认路由。支持的启动参数见[Web 使用指南](./usage.md)；
+`codehelper --help` 是当前 Binary 的参数事实。
 
 ## 5. 使用 Fixture
 
@@ -87,30 +85,20 @@ Web 只监听 `127.0.0.1`，默认选择空闲端口。终端先输出 Listening
 Fixture 使用确定性的已记录响应，但仍经过真实 Session、Operation、Event、Guard 和
 Persistence 路径。
 
-## 6. 本机 DeepSeek
-
-仓库所有者可执行：
-
-```bash
-make deepseek-web
-```
-
-该 Target 会构建 Binary、安装本机配置并启动 Web。具体凭证边界见
-[本机 DeepSeek 一键配置与运行](./deepseek-local.md)。
-
-## 7. 首次检查
+## 6. 首次检查
 
 进入 Web 后确认：
 
 1. Settings 中 Runtime 状态为 Ready；
-2. Provider、Model 与 Credential 状态符合配置；
+2. Model 与 Credential 状态符合引导阶段的选择；
 3. 创建 Session 后 Composer 可用；
 4. `suggest` Posture 下修改型 Tool 会进入 Approval；
-5. 完成 Turn 后可查看 Receipt、Usage 与 Trajectory。
+5. 通过侧栏 Workspace 按钮可添加目录，并在不同 Workspace 的 Session 间切换；
+6. 完成 Turn 后可查看 Receipt、Usage 与 Trajectory。
 
 Runtime 无法启动时，页面保留 Boot Failure Surface，并展示结构化修复信息。
 
-## 8. 开发验证
+## 7. 开发验证
 
 ```bash
 make web-check

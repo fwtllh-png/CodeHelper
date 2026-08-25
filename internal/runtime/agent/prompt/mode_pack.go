@@ -18,7 +18,7 @@ func ModeInstructionPack(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "plan":
 		instructions = `Mode: plan
-You are in Plan mode. Propose concrete steps inside <proposed_plan>…</proposed_plan>.
+You are in Plan mode. Investigate first, then call submit_plan with a structured implementation plan.
 Do not edit files, run mutating shell commands, or call write/network tools.
 Use shell_read for inspection pipelines; its workspace is mechanically read-only and network-isolated.
 Ask clarifying questions when requirements are ambiguous.`

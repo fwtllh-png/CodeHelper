@@ -17,12 +17,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-type PlanTransitionPreparation struct {
-	Artifact       protocol.SessionPlanArtifact
-	ProfileUpdate  protocol.SessionProfileUpdateResult
-	Prompt         string
-	Intent         protocol.TurnIntent
-	IdempotencyKey string
+type PlanExecutionPreparation struct {
+	Artifact protocol.SessionPlanArtifact
+	Prompt   string
 }
 
 type TurnRecoveryPreparation struct {
@@ -841,6 +838,13 @@ func (r *Service) SessionPlan(
 			Version: protocol.CheckpointProtocolVersion,
 		}, nil
 	}
+	if err := validateStructuredPlan(artifact.Body, true); err != nil {
+		return protocol.SessionPlanSnapshot{}, runtimeProblem(
+			protocol.CodeInvalidArgument,
+			"Plan Artifact is not a structured Plan Document",
+			err,
+		)
+	}
 	profile, err := r.SessionProfile(ctx, sessionID)
 	if err != nil {
 		return protocol.SessionPlanSnapshot{}, err
@@ -855,96 +859,98 @@ func (r *Service) SessionPlan(
 	}, nil
 }
 
-func (r *Service) PreparePlanTransition(
+func (r *Service) PreparePlanExecution(
 	ctx context.Context,
 	sessionID, planID string,
 	transition protocol.PlanTransition,
-) (PlanTransitionPreparation, error) {
-	if r.ArtifactStore() == nil {
-		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeUnavailable, "Session Plan Artifacts are unavailable", nil)
-	}
+) (PlanExecutionPreparation, error) {
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
-		return PlanTransitionPreparation{}, err
+		return PlanExecutionPreparation{}, err
 	}
 	if err := ensureSessionQuiescent(current, "implement Plan"); err != nil {
-		return PlanTransitionPreparation{}, err
+		return PlanExecutionPreparation{}, err
 	}
 	artifact, err := r.ArtifactStore().GetPlan(ctx, planID)
 	if err != nil {
-		return PlanTransitionPreparation{}, err
+		return PlanExecutionPreparation{}, err
 	}
-	if artifact.SessionID != sessionID ||
-		artifact.ThreadID != current.ThreadID {
-		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeInvalidArgument, "Plan Artifact does not belong to the active Session Thread", nil)
+	if err := validateStructuredPlan(artifact.Body, true); err != nil {
+		return PlanExecutionPreparation{}, runtimeProblem(
+			protocol.CodeInvalidArgument,
+			"Plan Artifact is not a structured Plan Document",
+			err,
+		)
+	}
+	if artifact.SessionID != sessionID || artifact.ThreadID != current.ThreadID {
+		return PlanExecutionPreparation{}, runtimeProblem(
+			protocol.CodeInvalidArgument,
+			"Plan Artifact does not belong to the active Session Thread",
+			nil,
+		)
 	}
 	profile, err := r.SessionProfile(ctx, sessionID)
 	if err != nil {
-		return PlanTransitionPreparation{}, err
+		return PlanExecutionPreparation{}, err
 	}
 	if profile.Profile.Revision != artifact.ProfileRevision {
-		return PlanTransitionPreparation{}, retryableProblem(
+		return PlanExecutionPreparation{}, retryableProblem(
 			protocol.CodeConflict,
 			"Plan Artifact Profile Revision is stale",
 		)
 	}
-	mode := "act"
-	patch := protocol.SessionProfilePatch{Mode: &mode}
 	switch transition {
 	case protocol.PlanTransitionImplement:
 		if !artifact.CanImplement {
-			return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeConflict, "Plan Artifact cannot start implementation", nil)
+			return PlanExecutionPreparation{}, runtimeProblem(
+				protocol.CodeConflict,
+				"Plan Artifact cannot start implementation",
+				nil,
+			)
 		}
 	case protocol.PlanTransitionAutopilot:
 		if !artifact.CanAutopilot {
-			return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeConflict, "Plan Artifact cannot start Autopilot", nil)
+			return PlanExecutionPreparation{}, runtimeProblem(
+				protocol.CodeConflict,
+				"Plan Artifact cannot start Autopilot",
+				nil,
+			)
 		}
-		posture := "auto"
-		patch.ApprovalPosture = &posture
 	default:
-		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeInvalidArgument, "Plan transition is invalid", nil)
-	}
-	updated, err := r.UpdateSessionProfile(
-		ctx,
-		sessionID,
-		current.ThreadID,
-		profile.Profile.Revision,
-		patch,
-	)
-	if err != nil {
-		return PlanTransitionPreparation{}, err
+		return PlanExecutionPreparation{}, runtimeProblem(
+			protocol.CodeInvalidArgument,
+			"Plan transition is invalid",
+			nil,
+		)
 	}
 	prompt := "Implement the approved structured Plan below. " +
 		"Do not repeat completed external side effects; inspect current " +
 		"workspace state before each consequential action.\n\n" +
 		artifact.Body
-	return PlanTransitionPreparation{
-		Artifact:      artifact,
-		ProfileUpdate: updated,
-		Prompt:        prompt,
-		Intent:        protocol.TurnIntentWorkspaceChange,
-		IdempotencyKey: fmt.Sprintf(
-			"plan:%s:%s",
-			artifact.ID,
-			transition,
-		),
+	return PlanExecutionPreparation{
+		Artifact: artifact,
+		Prompt:   prompt,
 	}, nil
 }
 
-func (r *Service) PreparePlanTransitionTo(
+func (r *Service) PreparePlanExecutionTo(
 	ctx context.Context,
 	sourceSessionID, targetSessionID, planID string,
 	transition protocol.PlanTransition,
-) (PlanTransitionPreparation, error) {
-	if r.ArtifactStore() == nil {
-		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeUnavailable, "Session Plan Artifacts are unavailable", nil)
-	}
+) (PlanExecutionPreparation, error) {
 	artifact, err := r.ArtifactStore().GetPlan(ctx, planID)
 	if err != nil {
-		return PlanTransitionPreparation{}, err
+		return PlanExecutionPreparation{}, err
+	}
+	if err := validateStructuredPlan(artifact.Body, true); err != nil {
+		return PlanExecutionPreparation{}, runtimeProblem(
+			protocol.CodeInvalidArgument,
+			"Plan Artifact is not a structured Plan Document",
+			err,
+		)
 	}
 	if artifact.SessionID != sourceSessionID {
-		return PlanTransitionPreparation{}, resourceProblem(
+		return PlanExecutionPreparation{}, resourceProblem(
 			protocol.CodeInvalidArgument,
 			"Plan Artifact does not belong to the source Session",
 			false,
@@ -954,26 +960,26 @@ func (r *Service) PreparePlanTransitionTo(
 	}
 	sourceProfile, err := r.SessionProfile(ctx, sourceSessionID)
 	if err != nil {
-		return PlanTransitionPreparation{}, err
+		return PlanExecutionPreparation{}, err
 	}
 	if sourceProfile.Profile.Revision != artifact.ProfileRevision {
-		return PlanTransitionPreparation{}, revisionProblem(
+		return PlanExecutionPreparation{}, revisionProblem(
 			"Plan Artifact Profile Revision is stale",
 			planID,
 			artifact.ProfileRevision,
 			sourceProfile.Profile.Revision,
 		)
 	}
-	current, err := r.SessionStatus(ctx, targetSessionID)
+	target, err := r.SessionStatus(ctx, targetSessionID)
 	if err != nil {
-		return PlanTransitionPreparation{}, err
+		return PlanExecutionPreparation{}, err
 	}
-	if err := ensureSessionQuiescent(current, "implement Plan"); err != nil {
-		return PlanTransitionPreparation{}, err
+	if err := ensureSessionQuiescent(target, "implement Plan"); err != nil {
+		return PlanExecutionPreparation{}, err
 	}
 	if sourceSessionID == targetSessionID &&
-		current.ParentThreadID != artifact.ThreadID {
-		return PlanTransitionPreparation{}, resourceProblem(
+		target.ParentThreadID != artifact.ThreadID {
+		return PlanExecutionPreparation{}, resourceProblem(
 			protocol.CodeInvalidArgument,
 			"Plan Artifact does not belong to the parent Fork Thread",
 			false,
@@ -981,12 +987,12 @@ func (r *Service) PreparePlanTransitionTo(
 			planID,
 		)
 	}
-	profile, err := r.SessionProfile(ctx, targetSessionID)
+	targetProfile, err := r.SessionProfile(ctx, targetSessionID)
 	if err != nil {
-		return PlanTransitionPreparation{}, err
+		return PlanExecutionPreparation{}, err
 	}
-	if !samePlanTargetProfile(sourceProfile.Profile, profile.Profile) {
-		return PlanTransitionPreparation{}, resourceProblem(
+	if !samePlanTargetProfile(sourceProfile.Profile, targetProfile.Profile) {
+		return PlanExecutionPreparation{}, resourceProblem(
 			protocol.CodeConflict,
 			"target Session Profile does not match the Plan source Profile",
 			false,
@@ -994,49 +1000,39 @@ func (r *Service) PreparePlanTransitionTo(
 			targetSessionID,
 		)
 	}
-	mode := "act"
-	patch := protocol.SessionProfilePatch{Mode: &mode}
 	switch transition {
 	case protocol.PlanTransitionImplement:
 		if !artifact.CanImplement {
-			return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeConflict, "Plan Artifact cannot start implementation", nil)
+			return PlanExecutionPreparation{}, runtimeProblem(
+				protocol.CodeConflict,
+				"Plan Artifact cannot start implementation",
+				nil,
+			)
 		}
 	case protocol.PlanTransitionAutopilot:
 		if !artifact.CanAutopilot {
-			return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeConflict, "Plan Artifact cannot start Autopilot", nil)
+			return PlanExecutionPreparation{}, runtimeProblem(
+				protocol.CodeConflict,
+				"Plan Artifact cannot start Autopilot",
+				nil,
+			)
 		}
-		posture := "auto"
-		patch.ApprovalPosture = &posture
 	default:
-		return PlanTransitionPreparation{}, runtimeProblem(protocol.CodeInvalidArgument, "Plan transition is invalid", nil)
+		return PlanExecutionPreparation{}, runtimeProblem(
+			protocol.CodeInvalidArgument,
+			"Plan transition is invalid",
+			nil,
+		)
 	}
-	updated, err := r.UpdateSessionProfile(
-		ctx,
-		targetSessionID,
-		current.ThreadID,
-		profile.Profile.Revision,
-		patch,
-	)
-	if err != nil {
-		return PlanTransitionPreparation{}, err
-	}
-	prompt := "Implement the approved structured Plan below. " +
-		"Do not repeat completed external side effects; inspect current " +
-		"workspace state before each consequential action.\n\n" +
-		artifact.Body
-	return PlanTransitionPreparation{
-		Artifact:      artifact,
-		ProfileUpdate: updated,
-		Prompt:        prompt,
-		Intent:        protocol.TurnIntentWorkspaceChange,
-		IdempotencyKey: fmt.Sprintf(
-			"plan:%s:%s:%s",
-			artifact.ID,
-			transition,
-			targetSessionID,
-		),
+	return PlanExecutionPreparation{
+		Artifact: artifact,
+		Prompt: "Implement the approved structured Plan below. " +
+			"Do not repeat completed external side effects; inspect current " +
+			"workspace state before each consequential action.\n\n" +
+			artifact.Body,
 	}, nil
 }
+
 func samePlanTargetProfile(
 	source, target protocol.SessionProfile,
 ) bool {
@@ -1146,6 +1142,13 @@ func (r *Service) DecoratePlanArtifact(
 		strings.TrimSpace(data.Body) == "" {
 		return nil
 	}
+	if err := validateStructuredPlan(data.Body, false); err != nil {
+		return runtimeProblem(
+			protocol.CodeInvalidArgument,
+			"Plan output must come from submit_plan",
+			err,
+		)
+	}
 	sessionID, err := r.SessionForThread(ctx, threadID)
 	if err != nil {
 		return err
@@ -1154,12 +1157,33 @@ func (r *Service) DecoratePlanArtifact(
 	if err != nil {
 		return err
 	}
+	latest, found, err := r.ArtifactStore().LatestPlan(ctx, sessionID, threadID)
+	if err != nil {
+		return err
+	}
+	source := []byte(data.Body)
+	var document map[string]any
+	if json.Unmarshal(source, &document) == nil && document["steps"] != nil {
+		revision := uint64(1)
+		if found {
+			revision = planDocumentRevision(json.RawMessage(latest.Body)) + 1
+			document["supersedes_id"] = latest.ID
+		}
+		document["revision"] = revision
+		source, err = json.Marshal(document)
+		if err != nil {
+			return err
+		}
+		data.Body = string(source)
+	}
+	digest := sha256.Sum256(source)
+	sourceDigest := hex.EncodeToString(digest[:])
 	data.ArtifactID = stableArtifactID(
 		"plan",
 		sessionID,
 		string(threadID),
 		string(turnID),
-		data.Body,
+		sourceDigest,
 	)
 	data.ProfileRevision = profile.Revision
 	data.Status = string(protocol.PlanArtifactReady)
@@ -1223,6 +1247,16 @@ func (r *Service) PersistSessionArtifact(
 			"Interrupted by the user; safe paired history was retained",
 		)
 	}
+}
+
+func planDocumentRevision(document json.RawMessage) uint64 {
+	var lineage struct {
+		Revision uint64 `json:"revision"`
+	}
+	if json.Unmarshal(document, &lineage) != nil || lineage.Revision == 0 {
+		return 1
+	}
+	return lineage.Revision
 }
 func (r *Service) PersistTerminalArtifactForTurn(
 	ctx context.Context,

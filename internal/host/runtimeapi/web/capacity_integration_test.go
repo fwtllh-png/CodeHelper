@@ -375,6 +375,15 @@ func createWebSession(
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Idempotency-Key", idempotencyKey)
+	identity, err := protocol.NewWorkspaceIdentity(
+		"file:///workspace",
+		"/workspace",
+		"",
+	)
+	if err != nil {
+		return app.SessionBinding{}, nil, 0, err
+	}
+	request.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return app.SessionBinding{}, nil, 0, err

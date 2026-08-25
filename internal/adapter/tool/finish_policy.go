@@ -24,6 +24,7 @@ func FinishOnlyAllowed(name string, descriptor Descriptor) bool {
 	switch name {
 	case "turn_complete",
 		"update_plan",
+		"submit_plan",
 		"request_user_input",
 		"wait_agent",
 		"list_agents",

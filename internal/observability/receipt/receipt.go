@@ -211,9 +211,6 @@ func (r *Recorder) Observe(event agentengine.Event) {
 			}
 		}
 	}
-	if event.Plan != nil && event.Plan.Body != "" {
-		r.plan = event.Plan.Body
-	}
 	if event.Turn > r.turn {
 		r.turn = event.Turn
 	}
@@ -290,7 +287,7 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 	}
 	kind := "business"
 	switch event.ToolCall.Name {
-	case "turn_complete", "update_plan", "request_user_input":
+	case "turn_complete", "update_plan", "submit_plan", "request_user_input":
 		kind = "control"
 	case "quality_test", "quality_diagnostics", "quality_review", "quality_verify":
 		kind = "verification"
@@ -304,6 +301,9 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 		r.toolsFailed = appendUniqueString(r.toolsFailed, event.ToolCall.Name)
 	} else {
 		r.toolsSucceeded = appendUniqueString(r.toolsSucceeded, event.ToolCall.Name)
+		if event.ToolCall.Name == "submit_plan" {
+			r.plan = event.Result.Content
+		}
 	}
 	if event.Result.Execution != nil {
 		for _, attempt := range event.Result.Execution.Attempts {

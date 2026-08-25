@@ -16,7 +16,6 @@ type RouteRequest struct {
 	// with vision" is exactly the complexity router D2 declines to build.
 	Require []Capability
 }
-
 type ReadyRoute struct {
 	providerID, endpoint string
 	adapter              AdapterID
@@ -26,7 +25,6 @@ type ReadyRoute struct {
 	provenance           Provenance
 	ready                bool
 }
-
 type RouteDescriptor struct {
 	ProviderID string        `json:"provider_id"`
 	Adapter    AdapterID     `json:"adapter"`
@@ -37,10 +35,7 @@ type RouteDescriptor struct {
 	Provenance Provenance    `json:"provenance"`
 }
 
-// RouteKey returns the collision-free identity used by selectable route maps.
-func RouteKey(providerID, modelID string) string {
-	return providerID + "\x00" + modelID
-}
+func RouteKey(providerID, modelID string) string { return providerID + "\x00" + modelID }
 
 func (r ReadyRoute) ProviderID() string        { return r.providerID }
 func (r ReadyRoute) Adapter() AdapterID        { return r.adapter }
@@ -48,13 +43,18 @@ func (r ReadyRoute) Endpoint() string          { return r.endpoint }
 func (r ReadyRoute) Protocol() WireProtocol    { return r.protocol }
 func (r ReadyRoute) Credential() CredentialRef { return r.credential }
 
-// WithCredential returns the resolved route with an explicit non-secret
-// credential reference selected by workspace configuration.
+// WithCredential selects an explicit non-secret workspace credential reference.
 func (r ReadyRoute) WithCredential(reference CredentialRef) ReadyRoute {
 	r.credential = reference
 	return r
 }
 
+func (r ReadyRoute) WithModelID(id string) ReadyRoute {
+	r.model.ID, r.model.CanonicalID, r.model.WireID = id, id, id
+	r.model.Pricing = Pricing{}
+	r.model.Provenance, r.model.MetadataProvenance.CanonicalID, r.model.MetadataProvenance.WireID, r.model.MetadataProvenance.Pricing = ProvenanceStartup, ProvenanceStartup, ProvenanceStartup, ProvenanceStartup
+	return r
+}
 func (r ReadyRoute) Model() Model           { return r.model }
 func (r ReadyRoute) Provenance() Provenance { return r.provenance }
 

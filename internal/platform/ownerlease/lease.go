@@ -15,12 +15,13 @@ import (
 const metadataOffset = 1
 
 type Metadata struct {
-	Version   int       `json:"version"`
-	PID       int       `json:"pid"`
-	StartedAt time.Time `json:"started_at"`
-	Build     string    `json:"build"`
-	OwnerKind string    `json:"owner_kind"`
-	PublicURL string    `json:"public_url,omitempty"`
+	Version         int       `json:"version"`
+	PID             int       `json:"pid"`
+	StartedAt       time.Time `json:"started_at"`
+	Build           string    `json:"build"`
+	OwnerKind       string    `json:"owner_kind"`
+	PublicURL       string    `json:"public_url,omitempty"`
+	CapabilityToken string    `json:"capability_token,omitempty"`
 }
 
 type HeldError struct {

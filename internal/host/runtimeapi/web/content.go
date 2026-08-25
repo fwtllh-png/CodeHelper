@@ -122,7 +122,16 @@ func (s *Server) content(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	dependencies, _ := s.snapshot()
+	dependencies, _, found := s.workspaceSnapshot(r.Header.Get(workspaceHeader))
+	if !found {
+		writeProblem(w, r, http.StatusNotFound, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			"workspace is not registered with this Web Host",
+			false,
+			nil,
+		))
+		return
+	}
 	if dependencies.Workspace == nil ||
 		handle.WorkspaceRootID != dependencies.WorkspaceIdentity.RootID {
 		writeProblem(w, r, http.StatusForbidden, protocol.NewProblem(

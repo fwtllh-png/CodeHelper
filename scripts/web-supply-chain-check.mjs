@@ -5,10 +5,14 @@ import {dirname, join, resolve} from "node:path";
 import {brotliCompressSync, gzipSync} from "node:zlib";
 
 const root = resolve(process.argv[2] ?? ".");
+const options = parseOptions(process.argv.slice(3));
 const policyPath = join(root, "testdata/contracts/web-supply-chain-policy.json");
 const lockPath = join(root, "web/package-lock.json");
 const manifestPath = join(root, "web/dist/asset-manifest.json");
-const reportPath = join(root, ".tmp/web-supply-chain-report.json");
+const reportPath = resolve(
+  options.report ?? join(root, ".tmp/web-supply-chain-report.json")
+);
+const measureOnly = options["measure-only"] === true;
 
 const policy = readJSON(policyPath);
 const lock = readJSON(lockPath);
@@ -28,9 +32,10 @@ const dependencies = Object.entries(lock.packages ?? {})
 const rejected = dependencies.filter(
   ({license}) => !license || !allowed.has(license)
 );
-if (rejected.length > 0) {
-  fail(`disallowed or missing dependency licenses: ${JSON.stringify(rejected)}`);
-}
+const problems = [];
+if (rejected.length > 0) problems.push(
+  `disallowed or missing dependency licenses: ${JSON.stringify(rejected)}`
+);
 
 const assets = (manifest.files ?? []).filter(
   ({path}) => !path.endsWith(".gz") && !path.endsWith(".br")
@@ -77,10 +82,11 @@ for (const [name, maximum] of Object.entries(policy.bundle_budgets ?? {})) {
   const actual = measurements[name];
   if (!Number.isSafeInteger(maximum) || maximum <= 0 ||
       !Number.isSafeInteger(actual)) {
-    fail(`invalid bundle budget ${name}`);
+    problems.push(`invalid bundle budget ${name}`);
+    continue;
   }
   if (actual > maximum) {
-    fail(`bundle budget ${name} exceeded: ${actual} > ${maximum}`);
+    problems.push(`bundle budget ${name} exceeded: ${actual} > ${maximum}`);
   }
 }
 
@@ -90,12 +96,14 @@ const report = {
   allowed_licenses: [...new Set(dependencies.map(({license}) => license))].sort(),
   bundle: measurements,
   budgets: policy.bundle_budgets,
-  status: "passed"
+  problems,
+  status: problems.length === 0 ? "passed" : "failed"
 };
 mkdirSync(dirname(reportPath), {recursive: true});
 writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+if (problems.length > 0 && !measureOnly) fail(problems.join("\n"));
 process.stdout.write(
-  `Web supply chain passed: ${dependencies.length} dependencies, ` +
+  `Web supply chain ${report.status}: ${dependencies.length} dependencies, ` +
   `${measurements.total_raw_bytes} raw bytes\n`
 );
 
@@ -106,4 +114,22 @@ function readJSON(path) {
 function fail(message) {
   process.stderr.write(`${message}\n`);
   process.exit(1);
+}
+
+function parseOptions(args) {
+  const result = {};
+  for (let index = 0; index < args.length; index += 1) {
+    const name = args[index];
+    if (name === "--measure-only") {
+      result["measure-only"] = true;
+      continue;
+    }
+    if (name === "--report" && args[index + 1]) {
+      result.report = args[index + 1];
+      index += 1;
+      continue;
+    }
+    fail(`unknown option ${name}`);
+  }
+  return result;
 }

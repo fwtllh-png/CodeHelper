@@ -345,8 +345,13 @@ func (r *Repository) GetInWorkspace(
 	if workspaceRoot == "" {
 		return r.Get(ctx, id)
 	}
+	normalized, err := sessionstate.NormalizeWorkspaceRoot(workspaceRoot)
+	if err != nil {
+		return Thread{}, fmt.Errorf("resolve thread Workspace: %w", err)
+	}
+	workspaceRoot = normalized
 	var found int
-	err := r.db.QueryRowContext(ctx, `
+	err = r.db.QueryRowContext(ctx, `
 		SELECT 1
 		FROM threads t
 		JOIN sessions s ON s.id = t.session_id
@@ -376,6 +381,13 @@ func (r *Repository) List(
 	}
 	if limit <= 0 || limit > 1000 {
 		return nil, errors.New("thread list limit must be between 1 and 1000")
+	}
+	if filter.WorkspaceRoot != "" {
+		workspaceRoot, err := sessionstate.NormalizeWorkspaceRoot(filter.WorkspaceRoot)
+		if err != nil {
+			return nil, fmt.Errorf("resolve thread Workspace: %w", err)
+		}
+		filter.WorkspaceRoot = workspaceRoot
 	}
 	query := `
 		SELECT t.id

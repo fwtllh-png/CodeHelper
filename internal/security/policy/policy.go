@@ -320,10 +320,10 @@ func (r *Runtime) evaluate(invocation Invocation) Decision {
 			userAllow = true
 		}
 	}
-	if err := modeDecision(r.Mode, invocation.Capability); err != nil {
+	effect := NormalizeEffect(invocation)
+	if err := modeDecision(r.Mode, invocation.Capability, effect.Kind); err != nil {
 		return decisionFromError(err)
 	}
-	effect := NormalizeEffect(invocation)
 	permissionAction, err := permissionDecision(r.Permission, invocation.Capability, effect.Risk)
 	if err != nil {
 		return decisionFromError(err)
@@ -364,11 +364,14 @@ func decisionFromError(err error) Decision {
 	return deny("policy_denied", err.Error())
 }
 
-func modeDecision(mode Mode, capability tool.Capability) error {
+func modeDecision(mode Mode, capability tool.Capability, effect EffectKind) error {
 	switch mode {
 	case ModePlan:
-		if capability != tool.CapabilityRead {
-			return decisionError("mode_denied", "plan mode is read-only")
+		if capability != tool.CapabilityRead && effect != EffectSessionMutation {
+			return decisionError(
+				"mode_denied",
+				"plan mode only allows reads and bounded session state updates",
+			)
 		}
 	case ModeAct, ModeOperate:
 	default:
@@ -464,7 +467,11 @@ func Validate(runtime *Runtime) error {
 		return errors.New("runtime is required")
 	}
 	runtime = runtime.CloneSampling()
-	if err := modeDecision(runtime.Mode, tool.CapabilityRead); err != nil {
+	if err := modeDecision(
+		runtime.Mode,
+		tool.CapabilityRead,
+		EffectWorkspaceRead,
+	); err != nil {
 		return fmt.Errorf("mode: %w", err)
 	}
 	if _, err := permissionDecision(runtime.Permission, tool.CapabilityRead, RiskLow); err != nil {

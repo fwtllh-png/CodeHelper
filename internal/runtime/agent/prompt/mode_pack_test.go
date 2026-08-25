@@ -12,7 +12,7 @@ func TestModeInstructionPackDiffersByMode(t *testing.T) {
 	if plan == act || plan == operate || act == operate {
 		t.Fatalf("packs must differ")
 	}
-	if !strings.Contains(plan, "Plan mode") || !strings.Contains(plan, "<proposed_plan>") {
+	if !strings.Contains(plan, "Plan mode") || !strings.Contains(plan, "submit_plan") {
 		t.Fatalf("plan pack incomplete: %q", plan)
 	}
 	if !strings.Contains(operate, "Operate mode") ||

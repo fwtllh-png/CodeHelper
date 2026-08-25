@@ -66,6 +66,7 @@ func TestRuntimeSelectableRoutesKeepsCustomRouteFixed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	selected = selected.WithModelID("future-model")
 	selectable, err := runtimeSelectableRoutes(selected, false)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +80,8 @@ func TestRuntimeSelectableRoutesKeepsCustomRouteFixed(t *testing.T) {
 		if !entry.Selected {
 			continue
 		}
-		if entry.Capabilities.SelectionMode != "fixed" {
+		if entry.Capabilities.SelectionMode != "fixed" ||
+			entry.Source != "connection_baseline" {
 			t.Fatalf("selected fixed model = %+v", entry)
 		}
 	}

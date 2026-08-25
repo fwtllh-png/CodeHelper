@@ -10,6 +10,7 @@ import {
   CircleStop,
   Download,
   FileCode2,
+  FolderPlus,
   FolderOpen,
   GitFork,
   LoaderCircle,
@@ -49,10 +50,11 @@ import {
   type ReactNode
 } from "react";
 import type {
-  CredentialStatus,
   RuntimeEvent,
   SessionCheckpoint,
-  SessionSummary
+  SessionSummary,
+  SetupCatalog,
+  SetupRequest
 } from "../protocol";
 import {
   projectEditPlan,
@@ -72,7 +74,8 @@ import {
 } from "./ConversationChrome";
 import type {ComposerCommand} from "./ComposerCommandMenu";
 import {experience} from "./experience";
-import type {ThemeMode} from "./SettingsDialog";
+import {ReasoningMenu} from "./ReasoningMenu";
+import type {SettingsSection, ThemeMode} from "./SettingsDialog";
 import type {BackgroundActivityTarget} from "./backgroundActivity";
 import {
   EditPlanPreview,
@@ -197,7 +200,9 @@ export function App({client}: Props) {
   );
   const [query, setQuery] = useState("");
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
-  const [workspaceExpanded, setWorkspaceExpanded] = useState(true);
+  const [collapsedWorkspaceIDs, setCollapsedWorkspaceIDs] =
+    useState<ReadonlySet<string>>(() => new Set());
+  const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftOwner, setDraftOwner] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -211,6 +216,9 @@ export function App({client}: Props) {
   const [activeView, setActiveView] = useState<"chat" | "trajectory">("chat");
   const [inspectCallID, setInspectCallID] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] =
+    useState<SettingsSection>("general");
+  const [profilePending, setProfilePending] = useState("");
   const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
   const [activityTarget, setActivityTarget] =
     useState<BackgroundActivityTarget>();
@@ -231,7 +239,6 @@ export function App({client}: Props) {
   }>();
   const [newIsolation, setNewIsolation] =
     useState<"shared" | "worktree">(initialSessionIsolation);
-  const [credentialStatus, setCredentialStatus] = useState<CredentialStatus>();
   const [transcriptPage, setTranscriptPage] = useState(0);
   const [conversationNavigatorOpen, setConversationNavigatorOpen] =
     useState(false);
@@ -264,10 +271,10 @@ export function App({client}: Props) {
   const selected = snapshot.sessions.find(
     (item) => item.session_id === snapshot.selectedSessionID
   );
-  const workspaceLabel = selected?.workspace_label ||
-    snapshot.sessions[0]?.workspace_label ||
-    snapshot.workspaceRoot.split(/[\\/]/).filter(Boolean).at(-1) ||
-    "Workspace";
+  const selectedWorkspace = snapshot.workspaces.find(
+    (workspace) =>
+      workspace.id === snapshot.selectedWorkspaceID && workspace.ready
+  );
   const projectedEntries = useMemo(
     () => snapshot.conversation.order.flatMap((id) => {
       const node = snapshot.conversation.nodes.get(id);
@@ -335,15 +342,14 @@ export function App({client}: Props) {
     .filter((model) => model.provider === selectedProvider)
     .map((model) => ({
       value: model.id,
-      label: model.capabilities.display_name || model.id,
-      disabled: model.capabilities.availability !== "available",
-      reason: model.capabilities.unavailable_reason,
-      detail: modelCapabilityLabel(model.capabilities)
+      label: model.id,
+      disabled: model.capabilities.availability !== "available"
     }));
-  const reasoningValues = [
-    "",
-    ...(selectedModelEntry?.capabilities.reasoning_efforts ?? [])
-  ];
+  const advertisedReasoningValues =
+    selectedModelEntry?.capabilities.reasoning_efforts ?? [];
+  const reasoningValues = selectedModelEntry?.capabilities.default_reasoning_effort
+    ? advertisedReasoningValues
+    : ["", ...advertisedReasoningValues];
   const latestReceipt = [...projectedEntries].reverse().find(
     (entry): entry is Extract<ConversationNode, {kind: "receipt"}> =>
       entry.kind === "receipt"
@@ -362,6 +368,21 @@ export function App({client}: Props) {
   const reportLocalError = useCallback((error: unknown) => {
     setLocalError(error instanceof Error ? error.message : String(error));
   }, []);
+  const updateComposerProfile = useCallback(async (
+    patch: Record<string, unknown>,
+    label: string
+  ) => {
+    if (profilePending) return;
+    setProfilePending(label);
+    setLocalError("");
+    try {
+      await client.updateProfile(patch);
+    } catch (error) {
+      reportLocalError(error);
+    } finally {
+      setProfilePending("");
+    }
+  }, [client, profilePending, reportLocalError]);
   const captureReadingPosition = useCallback((includeNavigationLock = false) => {
     if (activeView !== "chat" || !snapshot.selectedSessionID) return undefined;
     if (navigationReaderLockRef.current && !includeNavigationLock) {
@@ -671,6 +692,23 @@ export function App({client}: Props) {
   }, [client]);
 
   useEffect(() => {
+    if (snapshot.phase !== "ready") return;
+    let refreshing = false;
+    const refresh = () => {
+      if (refreshing || document.visibilityState === "hidden") return;
+      refreshing = true;
+      void client.refreshWorkspaces()
+        .then(() => client.refreshSessions("", false))
+        .catch(() => undefined)
+        .finally(() => {
+          refreshing = false;
+        });
+    };
+    const interval = window.setInterval(refresh, 3_000);
+    return () => window.clearInterval(interval);
+  }, [client, snapshot.phase]);
+
+  useEffect(() => {
     const sessionID = snapshot.selectedSessionID;
     let current = true;
     setDraftOwner("");
@@ -896,6 +934,10 @@ export function App({client}: Props) {
 
   const createSession = async (profilePatch?: Record<string, unknown>) => {
     if (creatingSession) return;
+    if (!selectedWorkspace) {
+      setWorkspaceDialogOpen(true);
+      return;
+    }
     setCreatingSession(true);
     setLocalError("");
     try {
@@ -968,8 +1010,8 @@ export function App({client}: Props) {
       description: "Analyze and propose a plan before implementation",
       icon: TextSelect,
       active: snapshot.profile?.profile.mode === "plan",
-      disabled: !profileMutable(snapshot, "mode"),
-      run: () => client.updateProfile({mode: "plan"}).catch(reportLocalError)
+      disabled: !profileMutable(snapshot, "mode") || Boolean(profilePending),
+      run: () => updateComposerProfile({mode: "plan"}, "Updating mode")
     },
     {
       id: "act",
@@ -977,8 +1019,8 @@ export function App({client}: Props) {
       description: "Execute the requested coding task",
       icon: Wrench,
       active: snapshot.profile?.profile.mode === "act",
-      disabled: !profileMutable(snapshot, "mode"),
-      run: () => client.updateProfile({mode: "act"}).catch(reportLocalError)
+      disabled: !profileMutable(snapshot, "mode") || Boolean(profilePending),
+      run: () => updateComposerProfile({mode: "act"}, "Updating mode")
     },
     {
       id: "suggest",
@@ -986,10 +1028,11 @@ export function App({client}: Props) {
       description: "Ask before consequential tool actions",
       icon: AlertTriangle,
       active: snapshot.profile?.profile.approval_posture === "suggest",
-      disabled: !profileMutable(snapshot, "approval_posture"),
-      run: () => client.updateProfile({
+      disabled: !profileMutable(snapshot, "approval_posture") ||
+        Boolean(profilePending),
+      run: () => updateComposerProfile({
         approval_posture: "suggest"
-      }).catch(reportLocalError)
+      }, "Updating approval")
     },
     {
       id: "auto",
@@ -997,10 +1040,11 @@ export function App({client}: Props) {
       description: "Approve actions allowed by the current policy",
       icon: Check,
       active: snapshot.profile?.profile.approval_posture === "auto",
-      disabled: !profileMutable(snapshot, "approval_posture"),
-      run: () => client.updateProfile({
+      disabled: !profileMutable(snapshot, "approval_posture") ||
+        Boolean(profilePending),
+      run: () => updateComposerProfile({
         approval_posture: "auto"
-      }).catch(reportLocalError)
+      }, "Updating approval")
     }
   ];
 
@@ -1039,6 +1083,15 @@ export function App({client}: Props) {
     ));
   };
 
+  if (snapshot.phase === "setup" && snapshot.setupCatalog) {
+    return (
+      <FirstRunSetup
+        catalog={snapshot.setupCatalog}
+        workspaceRoot={snapshot.workspaceRoot}
+        client={client}
+      />
+    );
+  }
   if (snapshot.phase === "booting") {
     return <BootState title="Starting CodeHelper" detail={snapshot.workspaceRoot} />;
   }
@@ -1087,18 +1140,22 @@ export function App({client}: Props) {
         <div className="newSessionRow">
           <button
             className="newSessionButton"
-            aria-label="New chat"
+            aria-label={selectedWorkspace ? "New chat" : "Select workspace"}
             disabled={creatingSession}
-            onClick={() => void createSession()}
+            onClick={() => selectedWorkspace
+              ? void createSession()
+              : setWorkspaceDialogOpen(true)}
           >
             {creatingSession
               ? <LoaderCircle className="spin" size={16} />
-              : <Plus size={16} />}
-            <span>New session</span>
+              : selectedWorkspace
+                ? <Plus size={16} />
+                : <FolderOpen size={16} />}
+            <span>{selectedWorkspace ? "New session" : "Select workspace"}</span>
           </button>
         </div>
         <div className="sessionSectionHeader">
-          <span className="sessionSectionTitle">Workspace</span>
+            <span className="sessionSectionTitle">Workspaces</span>
           <div className="sessionSectionActions">
             <select
               className="newSessionIsolation"
@@ -1117,13 +1174,9 @@ export function App({client}: Props) {
               onClick={() => setSessionSearchOpen((value) => !value)}
             />
             <IconButton
-              label={snapshot.includeArchived
-                ? "Hide archived sessions"
-                : "Show archived sessions"}
-              icon={<Archive size={15} />}
-              onClick={() => void client.setArchivedVisible(
-                !snapshot.includeArchived
-              ).catch(reportLocalError)}
+                label="Add workspace"
+                icon={<FolderPlus size={15} />}
+                onClick={() => setWorkspaceDialogOpen(true)}
             />
           </div>
         </div>
@@ -1160,74 +1213,139 @@ export function App({client}: Props) {
             </button>
           </label>
         )}
-        <div className="sessionList" role="tree" aria-label="Workspace sessions">
-          {!query && (
+          {(sessionSearchOpen || query) && (
             <button
-              className="workspaceRow"
-              role="treeitem"
-              aria-expanded={workspaceExpanded}
-              onClick={() => setWorkspaceExpanded((value) => !value)}
+              className="workspaceRow archiveFilter"
+              aria-pressed={snapshot.includeArchived}
+              onClick={() => void client.setArchivedVisible(
+                !snapshot.includeArchived
+              ).catch(reportLocalError)}
             >
-              <DisclosureLeading
-                open={workspaceExpanded}
-                icon={<FolderOpen size={16} />}
-              />
-              <span>{workspaceLabel}</span>
+              <Archive size={13} />
+              {snapshot.includeArchived ? "Hide archived" : "Show archived"}
             </button>
           )}
-          {(query || workspaceExpanded) && (
-            <div className="sessionGroup" role="group">
-              {snapshot.sessions.map((session) => (
-                <SessionRow
-                  key={session.session_id}
-                  session={session}
-                  active={session.session_id === snapshot.selectedSessionID}
-                  onClick={() => {
-                    captureReadingPosition(true);
-                    void client.selectSession(session.session_id);
-                  }}
-                  onRename={() => {
-                    const title = window.prompt("Rename session", session.title)?.trim();
-                    if (title && title !== session.title) {
-                      void runSessionAction(session, () => client.updateSession(
-                        session.session_id, session.revision, {title}
-                      ));
+        <div className="sessionList" role="tree" aria-label="Workspace sessions">
+            {snapshot.workspaces.map((workspace) => {
+              const expanded = Boolean(query) ||
+                !collapsedWorkspaceIDs.has(workspace.id);
+              const workspaceSessions = snapshot.sessions.filter(
+                (session) => session.workspace_root === workspace.root
+              );
+              return (
+                <div className="workspaceGroup" key={workspace.id}>
+                  <button
+                    className="workspaceRow"
+                    data-active={
+                      workspace.id === snapshot.selectedWorkspaceID || undefined
                     }
-                  }}
-                  onPin={() => void runSessionAction(session, () => client.updateSession(
-                    session.session_id, session.revision, {pinned: !session.pinned}
-                  ))}
-                  onArchive={() => {
-                    if (session.archived || window.confirm(`Archive "${session.title}"?`)) {
-                      void runSessionAction(session, () => client.updateSession(
-                        session.session_id, session.revision, {archived: !session.archived}
-                      ));
-                    }
-                  }}
-                  onDelete={() => deleteSession(session)}
-                  actionPending={
-                    sessionAction?.sessionID === session.session_id &&
-                    sessionAction.pending
-                  }
-                  actionError={
-                    sessionAction?.sessionID === session.session_id
-                      ? sessionAction.error
-                      : ""
-                  }
-                />
-              ))}
-            </div>
-          )}
+                    data-error={Boolean(workspace.problem) || undefined}
+                    role="treeitem"
+                    aria-expanded={expanded}
+                    onClick={() => {
+                      if (workspace.id !== snapshot.selectedWorkspaceID) {
+                        setCollapsedWorkspaceIDs((current) => {
+                          const next = new Set(current);
+                          next.delete(workspace.id);
+                          return next;
+                        });
+                        void client.selectWorkspace(workspace.id).catch(reportLocalError);
+                        return;
+                      }
+                      setCollapsedWorkspaceIDs((current) => {
+                        const next = new Set(current);
+                        if (next.has(workspace.id)) next.delete(workspace.id);
+                        else next.add(workspace.id);
+                        return next;
+                      });
+                    }}
+                  >
+                    <DisclosureLeading
+                      open={expanded}
+                      icon={<FolderOpen size={16} />}
+                    />
+                    <span className="sessionTitle">{workspace.label}</span>
+                    <small>{workspace.problem ? "!" : workspaceSessions.length}</small>
+                  </button>
+                  {expanded && (
+                    <div className="sessionGroup" role="group">
+                      {workspaceSessions.map((session) => (
+                        <SessionRow
+                          key={session.session_id}
+                          session={session}
+                          active={session.session_id === snapshot.selectedSessionID}
+                          onClick={() => {
+                            captureReadingPosition(true);
+                            void client.selectSession(session.session_id);
+                          }}
+                          onRename={() => {
+                            const title = window.prompt(
+                              "Rename session",
+                              session.title
+                            )?.trim();
+                            if (title && title !== session.title) {
+                              void runSessionAction(session, () => client.updateSession(
+                                session.session_id, session.revision, {title}
+                              ));
+                            }
+                          }}
+                          onPin={() => void runSessionAction(
+                            session,
+                            () => client.updateSession(
+                              session.session_id,
+                              session.revision,
+                              {pinned: !session.pinned}
+                            )
+                          )}
+                          onArchive={() => {
+                            if (
+                              session.archived ||
+                              window.confirm(`Archive "${session.title}"?`)
+                            ) {
+                              void runSessionAction(session, () => client.updateSession(
+                                session.session_id,
+                                session.revision,
+                                {archived: !session.archived}
+                              ));
+                            }
+                          }}
+                          onDelete={() => deleteSession(session)}
+                          actionPending={
+                            sessionAction?.sessionID === session.session_id &&
+                            sessionAction.pending
+                          }
+                          actionError={
+                            sessionAction?.sessionID === session.session_id
+                              ? sessionAction.error
+                              : ""
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
         </div>
         <div className="railFooter">
           <span className="connectionState" data-online={snapshot.socketConnected || undefined}>
             <span className="statusDot" />
             {snapshot.socketConnected ? "Connected" : snapshot.phase}
           </span>
+          <span className="mobileWorkspaceAction">
+            <IconButton
+              label="Manage workspaces"
+              icon={<FolderOpen size={16} />}
+              onClick={() => setWorkspaceDialogOpen(true)}
+            />
+          </span>
           <IconButton
             label="Settings"
             icon={<Settings2 size={16} />}
-            onClick={() => setSettingsOpen((value) => !value)}
+            onClick={() => {
+              setSettingsSection("general");
+              setSettingsOpen((value) => !value);
+            }}
           />
         </div>
         {!railCollapsed && (
@@ -1280,6 +1398,8 @@ export function App({client}: Props) {
           <div className="headerActions">
             {snapshot.hydratingSessionID ? (
               <span className="workingLabel">Loading</span>
+            ) : profilePending ? (
+              <span className="workingLabel">{profilePending}</span>
             ) : activeTurn ? (
               <span className="workingLabel">Working</span>
             ) : null}
@@ -1396,16 +1516,12 @@ export function App({client}: Props) {
               </div>
             )}
             {!selected ? (
-              <StartupSetup
-                snapshot={snapshot}
-                isolation={newIsolation}
+              <EmptySessionSetup
                 creating={creatingSession}
                 error={localError}
-                credentialStatus={credentialStatus}
-                onIsolationChange={setNewIsolation}
-                onCredentialStatus={setCredentialStatus}
-                onCreate={(patch) => void createSession(patch)}
-                client={client}
+                workspaceReady={Boolean(selectedWorkspace)}
+                onCreate={() => void createSession()}
+                onChooseWorkspace={() => setWorkspaceDialogOpen(true)}
               />
             ) : entries.length === 0 ? (
               <div className="emptyConversation">
@@ -1503,6 +1619,10 @@ export function App({client}: Props) {
                   plan={snapshot.plan}
                   tasks={snapshot.tasks}
                   agents={snapshot.agents}
+                  planBusy={Boolean(activeTurn)}
+                  onPlanTransition={(transition) => {
+                    void client.transitionPlan(transition).catch(reportLocalError);
+                  }}
                   onOpenTrajectory={() => {
                     switchConversationView("trajectory");
                     void client.refreshTrace();
@@ -1743,57 +1863,65 @@ export function App({client}: Props) {
                       label="Mode"
                       value={snapshot.profile?.profile.mode ?? "act"}
                       values={["plan", "act", "operate"]}
-                      disabled={!profileMutable(snapshot, "mode")}
-                      onChange={(value) => void client.updateProfile({mode: value})
-                        .catch(reportLocalError)}
+                      disabled={!profileMutable(snapshot, "mode") ||
+                        Boolean(profilePending)}
+                      onChange={(value) => void updateComposerProfile(
+                        {mode: value},
+                        "Updating mode"
+                      )}
                     />
                     <CompactSelect
                       label="Approval"
                       value={snapshot.profile?.profile.approval_posture ?? "suggest"}
                       values={["suggest", "auto", "never"]}
-                      disabled={!profileMutable(snapshot, "approval_posture")}
-                      onChange={(value) => void client.updateProfile({
-                        approval_posture: value
-                      }).catch(reportLocalError)}
+                      disabled={!profileMutable(snapshot, "approval_posture") ||
+                        Boolean(profilePending)}
+                      onChange={(value) => void updateComposerProfile(
+                        {approval_posture: value},
+                        "Updating approval"
+                      )}
                     />
                   </div>
                   <div>
-                    {modelOptions.filter((option) => !option.disabled).length > 1 ? (
-                      <CompactCatalogSelect
-                        label="Model"
-                        value={selectedModel}
-                        options={modelOptions}
-                        disabled={!profileMutable(snapshot, "model")}
-                        onChange={(model) => {
-                          const target = snapshot.models.find(
-                            (entry) =>
-                              entry.provider === selectedProvider &&
-                              entry.id === model
-                          );
-                          void client.updateProfile({
-                            model,
-                            reasoning_effort:
-                              target?.capabilities.default_reasoning_effort ?? ""
-                          }).catch(reportLocalError);
-                        }}
-                      />
-                    ) : (
-                      <output
-                        className="composerValue"
-                        aria-label="Model"
-                        title={selectedModel}
-                      >
-                        {selectedModelEntry?.capabilities.display_name || selectedModel}
-                      </output>
-                    )}
-                    {reasoningValues.length > 1 && (
-                      <CompactSelect
-                        label="Reasoning"
+                    <CompactCatalogSelect
+                      label="Model"
+                      value={selectedModel}
+                      options={[
+                        ...modelOptions,
+                        {value: "__configure__", label: "New model..."}
+                      ]}
+                      disabled={!profileMutable(snapshot, "model") ||
+                        Boolean(profilePending)}
+                      onChange={(model) => {
+                        if (model === "__configure__") {
+                          setSettingsSection("models");
+                          setSettingsOpen(true);
+                          return;
+                        }
+                        const target = snapshot.models.find(
+                          (entry) =>
+                            entry.provider === selectedProvider &&
+                            entry.id === model
+                        );
+                        void updateComposerProfile({
+                          model,
+                          reasoning_effort:
+                            target?.capabilities.default_reasoning_effort ?? ""
+                        }, "Updating model");
+                      }}
+                    />
+                    {advertisedReasoningValues.length > 0 && (
+                      <ReasoningMenu
                         value={snapshot.profile?.profile.reasoning_effort ?? ""}
+                        defaultValue={
+                          selectedModelEntry?.capabilities.default_reasoning_effort
+                        }
                         values={reasoningValues}
-                        onChange={(value) => void client.updateProfile({
+                        disabled={!profileMutable(snapshot, "reasoning_effort") ||
+                          Boolean(profilePending)}
+                        onChange={(value) => void updateComposerProfile({
                           reasoning_effort: value
-                        }).catch(reportLocalError)}
+                        }, "Updating reasoning")}
                       />
                     )}
                   </div>
@@ -1834,6 +1962,14 @@ export function App({client}: Props) {
           />
         </Suspense>
       )}
+      {workspaceDialogOpen && (
+        <WorkspaceDialog
+          snapshot={snapshot}
+          client={client}
+          onClose={() => setWorkspaceDialogOpen(false)}
+          onError={reportLocalError}
+        />
+      )}
       {settingsOpen && (
         <Suspense fallback={null}>
           <SettingsDialog
@@ -1841,6 +1977,7 @@ export function App({client}: Props) {
             client={client}
             newIsolation={newIsolation}
             theme={themeMode}
+            initialSection={settingsSection}
             onIsolationChange={setNewIsolation}
             onThemeChange={setThemeMode}
             onClose={closeSettings}
@@ -2577,261 +2714,352 @@ function InputComposer({
   );
 }
 
-function StartupSetup({
+function WorkspaceDialog({
   snapshot,
-  isolation,
-  creating,
-  error,
-  credentialStatus,
-  onIsolationChange,
-  onCredentialStatus,
-  onCreate,
-  client
+  client,
+  onClose,
+  onError
 }: {
   snapshot: RuntimeSnapshot;
-  isolation: "shared" | "worktree";
-  creating: boolean;
-  error: string;
-  credentialStatus?: CredentialStatus;
-  onIsolationChange: (value: "shared" | "worktree") => void;
-  onCredentialStatus: (status: CredentialStatus) => void;
-  onCreate: (profile: Record<string, unknown>) => void;
+  client: RuntimeClient;
+  onClose: () => void;
+  onError: (error: unknown) => void;
+}) {
+  const [path, setPath] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const add = async () => {
+    const value = path.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await client.addWorkspace(value);
+      onClose();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      onError(reason);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div
+      className="contextDialogOverlay"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="contextDialog workspaceDialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="workspace-dialog-title"
+      >
+        <header className="contextDialogHeader">
+          <div>
+            <h2 id="workspace-dialog-title">Workspaces</h2>
+          </div>
+          <IconButton
+            label="Close workspace selector"
+            icon={<X size={17} />}
+            onClick={onClose}
+          />
+        </header>
+        <div className="contextResults workspaceChoices">
+          {snapshot.workspaces.map((workspace) => (
+            <button
+              type="button"
+              key={workspace.id}
+              data-active={
+                workspace.id === snapshot.selectedWorkspaceID || undefined
+              }
+              disabled={!workspace.ready}
+              onClick={() => void client.selectWorkspace(workspace.id)
+                .then(onClose)
+                .catch((reason) => {
+                  setError(reason instanceof Error ? reason.message : String(reason));
+                  onError(reason);
+                })}
+            >
+              <FolderOpen size={16} />
+              <span>
+                <strong>{workspace.label}</strong>
+                <small>{workspace.root}</small>
+              </span>
+              <small>{workspace.ready
+                ? `${workspace.session_count} sessions`
+                : workspace.problem || "Starting"}</small>
+            </button>
+          ))}
+        </div>
+        <form
+          className="startupFields workspaceAdd"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void add();
+          }}
+        >
+          <label className="selectField">
+            <span>Local folder path</span>
+            <input
+              value={path}
+              autoFocus
+              placeholder="/path/to/project"
+              disabled={busy}
+              onChange={(event) => setPath(event.target.value)}
+            />
+          </label>
+          <button
+            className="startupCreate"
+            type="submit"
+            disabled={!path.trim() || busy}
+          >
+            {busy
+              ? <LoaderCircle className="spin" size={16} />
+              : <FolderPlus size={16} />}
+            <span>{busy ? "Opening..." : "Open workspace"}</span>
+          </button>
+        </form>
+        {error && (
+          <p className="startupError workspaceDialogError" role="alert">
+            {error}
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function FirstRunSetup({
+  catalog,
+  workspaceRoot,
+  client
+}: {
+  catalog: SetupCatalog;
+  workspaceRoot: string;
   client: RuntimeClient;
 }) {
-  const provider = snapshot.providers.find((entry) => entry.selected) ??
-    snapshot.providers.find((entry) => entry.availability === "available");
-  const models = useMemo(
-    () => snapshot.models.filter(
-      (entry) =>
-        entry.provider === provider?.id &&
-        entry.capabilities.availability === "available"
-    ),
-    [provider?.id, snapshot.models]
+  const [providerID, setProviderID] = useState("");
+  const [modelID, setModelID] = useState("");
+  const [apiKey, setAPIKey] = useState("");
+  const [baseURL, setBaseURL] = useState("");
+  const [protocol, setProtocol] = useState("openai_chat");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const provider = catalog.providers.find((entry) => entry.id === providerID);
+  const custom = Boolean(provider?.custom);
+  const keyError = apiKeyError(apiKey);
+  const ready = Boolean(
+    provider &&
+    modelID.trim() &&
+    (!provider.requires_api_key || apiKey) &&
+    (!custom || baseURL.trim()) &&
+    !keyError
   );
-  const defaultModel = models.find((entry) => entry.selected) ?? models[0];
-  const [modelID, setModelID] = useState(defaultModel?.id ?? "");
-  const [reasoning, setReasoning] = useState("");
-  const [secret, setSecret] = useState("");
-  const [credentialBusy, setCredentialBusy] = useState(false);
-  const [credentialError, setCredentialError] = useState("");
 
-  useEffect(() => {
-    setModelID((current) =>
-      models.some((entry) => entry.id === current)
-        ? current
-        : (defaultModel?.id ?? "")
-    );
-  }, [defaultModel?.id, models]);
-
-  useEffect(() => {
-    setReasoning("");
-  }, [modelID]);
-
-  useEffect(() => {
-    let active = true;
-    void client.credentialStatus().then(
-      (status) => {
-        if (active) onCredentialStatus(status);
-      },
-      (loadError) => {
-        if (active) {
-          setCredentialError(
-            loadError instanceof Error ? loadError.message : String(loadError)
-          );
-        }
-      }
-    );
-    return () => {
-      active = false;
+  const submit = async () => {
+    if (!ready || submitting) return;
+    const request: SetupRequest = {
+      provider: providerID,
+      model: modelID.trim(),
+      api_key: apiKey,
+      ...(custom ? {base_url: baseURL.trim(), protocol} : {})
     };
-  }, [client, onCredentialStatus]);
-
-  const model = models.find((entry) => entry.id === modelID) ?? defaultModel;
-  const reasoningOptions = model?.capabilities.reasoning_efforts ?? [];
-  const keyError = apiKeyError(secret);
-  const credentialRequired = Boolean(credentialStatus?.reference.kind);
-  const credentialState = credentialStatus === undefined
-    ? "Checking"
-    : credentialStatus.configured
-      ? credentialStatus.validation === "valid" ? "Validated" : "Configured"
-      : credentialRequired ? "Missing" : "Not required";
-
-  const saveCredential = async () => {
-    if (!secret || keyError || credentialBusy) return;
-    setCredentialBusy(true);
-    setCredentialError("");
+    setSubmitting(true);
+    setError("");
     try {
-      const status = await client.setKeyringCredential(secret);
-      onCredentialStatus(status);
-      setSecret("");
-    } catch (saveError) {
-      setCredentialError(
-        saveError instanceof Error ? saveError.message : String(saveError)
-      );
-    } finally {
-      setCredentialBusy(false);
+      await client.completeSetup(request);
+      setAPIKey("");
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
+      setSubmitting(false);
     }
-  };
-
-  const validateCredential = async () => {
-    if (credentialBusy) return;
-    setCredentialBusy(true);
-    setCredentialError("");
-    try {
-      onCredentialStatus(await client.validateCredential());
-    } catch (validationError) {
-      setCredentialError(
-        validationError instanceof Error
-          ? validationError.message
-          : String(validationError)
-      );
-    } finally {
-      setCredentialBusy(false);
-    }
-  };
-
-  const create = () => {
-    if (!provider || !model) return;
-    const profile: Record<string, unknown> = {};
-    if (models.length > 1 && model.id !== defaultModel?.id) {
-      profile.model = model.id;
-      profile.reasoning_effort = reasoning;
-    } else if (reasoning) {
-      profile.reasoning_effort = reasoning;
-    }
-    onCreate(profile);
   };
 
   return (
-    <section className="startupSetup" aria-labelledby="startup-title">
-      <div className="startupHeading">
-        <div className="emptyMark"><CapybaraMark size="hero" /></div>
-        <div>
-          <h2 id="startup-title">Start a new session</h2>
-          <p>Confirm the model route and credential before you begin.</p>
+    <main className="setupPage">
+      <form
+        className="startupSetup"
+        aria-labelledby="startup-title"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <div className="startupHeading">
+          <div className="emptyMark"><CapybaraMark size="hero" /></div>
+          <div>
+            <h1 id="startup-title">Set up CodeHelper</h1>
+            <p>Connect a model provider for this workspace.</p>
+          </div>
         </div>
-      </div>
 
-      <div className="startupSection">
-        <div className="startupSectionHeading">
-          <span>1</span>
-          <strong>Model</strong>
+        <div className="startupSection">
+          <div className="startupSectionHeading">
+            <span>1</span>
+            <strong>Provider</strong>
+          </div>
+          <div className="startupFields">
+            <label className="selectField">
+              <span>Provider</span>
+              <select
+                aria-label="Provider"
+                value={providerID}
+                autoFocus
+                disabled={submitting}
+                onChange={(event) => {
+                  const next = catalog.providers.find(
+                    (entry) => entry.id === event.target.value
+                  );
+                  setProviderID(event.target.value);
+                  setModelID("");
+                  setBaseURL("");
+                  setProtocol(next?.protocol || "openai_chat");
+                  setError("");
+                }}
+              >
+                <option value="" disabled>Select provider</option>
+                {catalog.providers.map((entry) => (
+                  <option value={entry.id} key={entry.id}>
+                    {entry.display_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
-        <div className="startupFields">
-          <ReadOnlyField
-            label="Provider"
-            value={provider?.display_name || "Unavailable"}
-            detail="Runtime provider"
-          />
-          {models.length > 1 ? (
-            <CatalogSelectField
-              label="Model"
-              value={modelID}
-              options={models.map((entry) => ({
-                value: entry.id,
-                label: entry.capabilities.display_name || entry.id,
-                detail: modelCapabilityLabel(entry.capabilities)
-              }))}
-              onChange={setModelID}
-            />
-          ) : (
-            <ReadOnlyField
-              label="Model"
-              value={model?.capabilities.display_name || model?.id || "Unavailable"}
-              detail={models.length === 1
-                ? "Only model available"
-                : "No routable model"}
-            />
-          )}
-          {reasoningOptions.length > 0 ? (
-            <SelectField
-              label="Reasoning"
-              value={reasoning}
-              values={["", ...reasoningOptions]}
-              onChange={setReasoning}
-            />
-          ) : (
-            <ReadOnlyField
-              label="Reasoning"
-              value="Not supported"
-            />
-          )}
-        </div>
-      </div>
 
-      <div className="startupSection">
-        <div className="startupSectionHeading">
-          <span>2</span>
-          <strong>API credential</strong>
-          <small data-ready={credentialStatus?.configured || !credentialRequired}>
-            {credentialState}
-          </small>
-        </div>
-        {credentialRequired ? (
-          <>
+        {provider && (
+          <div className="startupSection">
+            <div className="startupSectionHeading">
+              <span>2</span>
+              <strong>Model</strong>
+            </div>
+            <div className="startupFields" data-custom={custom || undefined}>
+              {custom && (
+                <label className="selectField">
+                  <span>Base URL</span>
+                  <input
+                    aria-label="Base URL"
+                    value={baseURL}
+                    placeholder="https://api.example.com/v1"
+                    disabled={submitting}
+                    onChange={(event) => setBaseURL(event.target.value)}
+                  />
+                </label>
+              )}
+              {custom && (
+                <label className="selectField">
+                  <span>Protocol</span>
+                  <select
+                    aria-label="Protocol"
+                    value={protocol}
+                    disabled={submitting}
+                    onChange={(event) => setProtocol(event.target.value)}
+                  >
+                    <option value="openai_chat">Chat Completions</option>
+                    <option value="openai_responses">Responses</option>
+                  </select>
+                </label>
+              )}
+              <label className="selectField">
+                <span>Model ID</span>
+                <input
+                  aria-label="Model ID"
+                  value={modelID}
+                  placeholder="Enter the exact model ID"
+                  disabled={submitting}
+                  onChange={(event) => setModelID(event.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+        )}
+
+        {provider && (
+          <div className="startupSection">
+            <div className="startupSectionHeading">
+              <span>3</span>
+              <strong>API key</strong>
+              {!provider.requires_api_key && <small data-ready>Optional</small>}
+            </div>
             <div className="startupCredential">
               <KeyRound size={16} aria-hidden="true" />
               <input
                 type="password"
                 autoComplete="off"
                 aria-label="API key"
-                autoFocus={!credentialStatus?.configured}
-                placeholder={credentialStatus?.configured
-                  ? "Enter a new API key"
-                  : "Enter API key"}
-                value={secret}
-                disabled={credentialBusy}
-                onChange={(event) => setSecret(event.target.value)}
+                value={apiKey}
+                placeholder={provider.requires_api_key
+                  ? "Enter API key"
+                  : "Optional API key"}
+                disabled={submitting}
+                onChange={(event) => setAPIKey(event.target.value)}
               />
-              <button
-                disabled={!secret || Boolean(keyError) || credentialBusy}
-                onClick={() => void saveCredential()}
-              >
-                {credentialBusy ? "Saving..." : "Save key"}
-              </button>
-              <button
-                disabled={!credentialStatus?.configured || credentialBusy}
-                onClick={() => void validateCredential()}
-              >
-                Validate
-              </button>
             </div>
+            <p className="startupNote">
+              Encrypted and stored by the operating system Keyring. Never written
+              to this project, a config file, or browser storage.
+            </p>
             {keyError && <p className="startupError">{keyError}</p>}
-            {credentialError && <p className="startupError">{credentialError}</p>}
-            {credentialStatus?.validation_detail && (
-              <p className="startupError">
-                {credentialStatus.validation_detail}
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="startupNote">This provider does not require an API key.</p>
+          </div>
         )}
-      </div>
 
+        <div className="startupFooter">
+          <small title={workspaceRoot}>{workspaceRoot}</small>
+          <button className="startupCreate" disabled={!ready || submitting}>
+            {submitting
+              ? <LoaderCircle className="spin" size={17} />
+              : <Plus size={17} />}
+            <span>{submitting ? "Starting..." : "Start CodeHelper"}</span>
+          </button>
+        </div>
+        {error && <p className="startupError" role="alert">{error}</p>}
+      </form>
+    </main>
+  );
+}
+
+function EmptySessionSetup({
+  creating,
+  error,
+  workspaceReady,
+  onCreate,
+  onChooseWorkspace
+}: {
+  creating: boolean;
+  error: string;
+  workspaceReady: boolean;
+  onCreate: () => void;
+  onChooseWorkspace: () => void;
+}) {
+  return (
+    <section className="startupSetup emptySessionSetup" aria-labelledby="startup-title">
+      <div className="startupHeading">
+        <div className="emptyMark"><CapybaraMark size="hero" /></div>
+        <div>
+          <h2 id="startup-title">
+            {workspaceReady ? "Start a new session" : "Choose a workspace"}
+          </h2>
+        </div>
+      </div>
       <div className="startupFooter">
-        <label>
-          <span>Session workspace</span>
-          <select
-            aria-label="Session workspace isolation"
-            value={isolation}
-            onChange={(event) => onIsolationChange(
-              event.target.value as "shared" | "worktree"
-            )}
-          >
-            <option value="shared">Shared</option>
-            <option value="worktree">Worktree</option>
-          </select>
-        </label>
         <button
           className="startupCreate"
-          disabled={!provider || !model || creating}
-          onClick={create}
+          disabled={creating}
+          onClick={workspaceReady ? onCreate : onChooseWorkspace}
         >
           {creating
             ? <LoaderCircle className="spin" size={17} />
-            : <Plus size={17} />}
-          <span>{creating ? "Creating..." : "Create session"}</span>
+            : workspaceReady
+              ? <Plus size={17} />
+              : <FolderOpen size={17} />}
+          <span>{creating
+            ? "Creating..."
+            : workspaceReady
+              ? "Create session"
+              : "Choose workspace"}</span>
         </button>
       </div>
       {error && <p className="startupError">{error}</p>}
@@ -3007,109 +3235,14 @@ function ComposerStats({
   );
 }
 
-function SelectField({
-  label,
-  value,
-  values,
-  disabled,
-  onChange
-}: {
-  label: string;
-  value: string;
-  values: string[];
-  disabled?: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="selectField">
-      <span>{label}</span>
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {values.map((item) => <option value={item} key={item}>{item || "Default"}</option>)}
-      </select>
-    </label>
-  );
-}
-
-function ReadOnlyField({
-  label,
-  value,
-  detail
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-}) {
-  return (
-    <div className="selectField readOnlyField">
-      <span>{label}</span>
-      <output aria-label={label}>{value}</output>
-      {detail && <small>{detail}</small>}
-    </div>
-  );
-}
-
 interface CatalogOption {
   value: string;
   label: string;
   disabled?: boolean;
-  reason?: string;
-  detail?: string;
-}
-
-function CatalogSelectField({
-  label,
-  value,
-  options,
-  disabled,
-  onChange
-}: {
-  label: string;
-  value: string;
-  options: CatalogOption[];
-  disabled?: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="selectField">
-      <span>{label}</span>
-      <select
-        value={value}
-        disabled={disabled || options.length === 0}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map((option) => (
-          <option
-            value={option.value}
-            key={option.value}
-            disabled={option.disabled}
-            title={option.reason}
-          >
-            {option.label}
-            {option.detail ? ` - ${option.detail}` : ""}
-            {option.reason ? ` (${option.reason})` : ""}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
 }
 
 function profileMutable(snapshot: RuntimeSnapshot, field: string): boolean {
   return snapshot.profile?.capabilities.mutable_fields.includes(field) ?? false;
-}
-
-function modelCapabilityLabel(
-  capabilities: RuntimeSnapshot["models"][number]["capabilities"]
-): string {
-  const values = [];
-  if (capabilities.reasoning) values.push("Reasoning");
-  if (capabilities.tool_calls) values.push("Tools");
-  if (capabilities.image_input || capabilities.vision) values.push("Vision");
-  return values.join(", ");
 }
 
 function contextResourceLabel(

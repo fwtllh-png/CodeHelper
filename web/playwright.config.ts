@@ -21,7 +21,9 @@ export default defineConfig({
   outputDir: "../.tmp/playwright-results",
   use: {
     browserName: "chromium",
-    reducedMotion: "reduce",
+    contextOptions: {
+      reducedMotion: "reduce"
+    },
     trace: "retain-on-failure",
     screenshot: "only-on-failure"
   }

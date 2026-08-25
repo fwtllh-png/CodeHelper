@@ -63,7 +63,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	)
 	workspaceTurnGate, approvalPosture := engineSecurityPolicy(state)
 	route := state.provider.route
-	reasoningEffort := execution.ReasoningEffort
+	reasoningEffort := effectiveReasoningEffort(route, execution.ReasoningEffort)
 	if err := validateRouteReasoning(route, reasoningEffort); err != nil {
 		return err
 	}

@@ -555,6 +555,28 @@ func TestSessionProfileReturnsCapabilitiesForSelectedModel(t *testing.T) {
 	}
 }
 
+func TestSessionProfileReturnsCapabilitiesForRememberedCustomModel(t *testing.T) {
+	defaults := runtimeTestProfile()
+	selected := defaults
+	selected.Model = "model-entered-by-user"
+	capabilities := runtimeTestCapabilities(defaults)
+	capabilities.MutableFields = append(capabilities.MutableFields, "model")
+	runtime := NewRuntime(Options{
+		Engine: &profileTestEngine{}, SessionProfiles: &memoryProfileStore{profile: selected},
+		DefaultProfile: defaults, ProfileCapabilities: capabilities,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	snapshot, err := runtime.SessionProfile(t.Context(), "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Capabilities.ModelCapabilities.DisplayName != selected.Model ||
+		snapshot.Capabilities.ModelCapabilities.SelectionMode != "hot" {
+		t.Fatalf("custom model capabilities = %+v", snapshot.Capabilities)
+	}
+}
+
 func runtimeTestProfile() protocol.SessionProfile {
 	return protocol.SessionProfile{
 		Version:             protocol.SessionProfileVersion,

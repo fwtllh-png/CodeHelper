@@ -44,7 +44,7 @@
           "id": "explicit_no_session_action",
           "points": 4,
           "evidence": [
-            "web/src/ui/App.test.tsx#replaces the composer with a clear create-session action"
+            "web/src/ui/App.test.tsx#creates a new session without replaying first-run setup"
           ]
         },
         {

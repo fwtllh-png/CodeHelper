@@ -3,11 +3,12 @@ import AxeBuilder from "@axe-core/playwright";
 import {
   execFileSync,
   spawn,
-  type ChildProcessWithoutNullStreams
+  type ChildProcessByStdio
 } from "node:child_process";
 import {mkdtemp, rm, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
+import type {Readable} from "node:stream";
 import {fileURLToPath} from "node:url";
 
 const repositoryRoot = path.resolve(
@@ -15,7 +16,7 @@ const repositoryRoot = path.resolve(
   "../../.."
 );
 
-let server: ChildProcessWithoutNullStreams;
+let server: ChildProcessByStdio<null, Readable, Readable>;
 let dataDir: string;
 let workspaceDir: string;
 let baseURL: string;
@@ -49,6 +50,7 @@ test.beforeEach(async () => {
       "--provider-fixture", path.join(repositoryRoot, "testdata/providers/openai"),
       "--provider", "openai",
       "--model", "fixture-model",
+      "--enable-tools=false",
       "--port", "0",
       "--no-open"
     ],
@@ -85,12 +87,123 @@ test("boots the real Runtime with an accessible empty state", async ({page}) => 
   await searchSessions.click();
   await expect(page.getByRole("textbox", {name: "Search sessions"})).toBeFocused();
   await expect(page.getByRole("heading", {name: "Start a new session"})).toBeVisible();
-  await expect(page.getByText("Not required", {exact: true})).toBeVisible();
   await expect(page.getByRole("button", {name: "Create session"})).toBeVisible();
   await expect(page.getByPlaceholder("Ask CodeHelper")).toHaveCount(0);
   await expect(page.getByLabel("Session details")).toHaveCount(0);
   await expect(page.getByRole("button", {name: /detail panel/i})).toHaveCount(0);
 
+});
+
+test("requires Workspace selection on the bare Supervisor URL", async ({page}) => {
+  await page.goto(new URL("/", baseURL).toString());
+
+  await expect(page.getByRole("heading", {name: "Choose a workspace"}))
+    .toBeVisible();
+  await expect(page.getByRole("button", {name: "Select workspace"}))
+    .toBeVisible();
+  await expect(page.locator('button[aria-label="New chat"]')).toHaveCount(0);
+  await page.getByRole("button", {name: "Choose workspace"}).click();
+  await expect(page.getByRole("dialog", {name: "Workspaces"})).toBeVisible();
+});
+
+test("changes reasoning effort from an upward composer menu", async ({page}) => {
+  await page.goto(baseURL);
+  await page.getByRole("button", {name: "Create session"}).click();
+
+  const trigger = page.getByRole("button", {name: "Reasoning"});
+  await expect(trigger).toContainText("Default");
+  await trigger.click();
+
+  const menu = page.getByRole("menu", {name: "Reasoning modes"});
+  await expect(menu).toBeVisible();
+  expect(await menu.getByRole("menuitemradio").allTextContents()).toEqual([
+    "Default",
+    "Low",
+    "Medium",
+    "High",
+    "XHigh"
+  ]);
+  const desktopBounds = await menu.boundingBox();
+  expect(desktopBounds).not.toBeNull();
+  expect(desktopBounds!.y).toBeGreaterThanOrEqual(0);
+
+  await menu.getByRole("menuitemradio", {name: "High", exact: true}).click();
+  await expect(trigger).toContainText("High");
+
+  await page.setViewportSize({width: 390, height: 844});
+  await trigger.click();
+  const mobileBounds = await menu.boundingBox();
+  expect(mobileBounds).not.toBeNull();
+  expect(mobileBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(mobileBounds!.x + mobileBounds!.width).toBeLessThanOrEqual(390);
+  expect(mobileBounds!.y).toBeGreaterThanOrEqual(0);
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth
+  )).toBe(true);
+  const accessibility = await new AxeBuilder({page})
+    .include(".reasoningMenuRoot")
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+});
+
+test("requires explicit provider and model selection during setup", async ({page}) => {
+  await page.route("**/api/v1/bootstrap", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        protocol_version: 1,
+        server_build: "setup-test",
+        token: "setup-token",
+        ready: false,
+        draining: false,
+        setup_required: true,
+        workspace_root: workspaceDir,
+        setup_catalog: {
+          version: 1,
+          providers: [{
+            id: "deepseek",
+            display_name: "DeepSeek",
+            protocol: "openai_chat",
+            requires_api_key: true
+          }, {
+            id: "openai-compatible",
+            display_name: "OpenAI-compatible",
+            protocol: "openai_chat",
+            requires_api_key: false,
+            custom: true
+          }]
+        }
+      })
+    });
+  });
+  await page.goto(baseURL);
+
+  await expect(page.getByRole("heading", {name: "Set up CodeHelper"})).toBeVisible();
+  await expect(page.getByLabel("Provider")).toHaveValue("");
+  await expect(page.getByRole("button", {name: "Start CodeHelper"})).toBeDisabled();
+
+  await page.getByLabel("Provider").selectOption("deepseek");
+  await expect(page.getByLabel("Model ID")).toHaveValue("");
+  await page.getByLabel("Model ID").fill("deepseek-reasoner");
+  await page.getByLabel("API key").fill("sk-test");
+  await expect(page.getByText(/operating system Keyring/)).toBeVisible();
+  await expect(page.getByRole("button", {name: "Start CodeHelper"})).toBeEnabled();
+
+  const accessibility = await new AxeBuilder({page})
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await page.getByLabel("Provider").selectOption("openai-compatible");
+  await expect(page.getByLabel("Base URL")).toBeVisible();
+  await expect(page.getByLabel("Protocol")).toHaveValue("openai_chat");
+  await expect(page.getByLabel("Model ID")).toHaveValue("");
+  await page.setViewportSize({width: 390, height: 844});
+  await expect.poll(() => page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth
+  )).toBeLessThanOrEqual(0);
+  await expect(page.getByRole("button", {name: "Start CodeHelper"})).toBeVisible();
 });
 
 test("passes the WCAG A and AA accessibility scan", async ({page}) => {
@@ -132,6 +245,52 @@ test("groups Sessions by Workspace and reveals row actions on demand", async ({p
   await expect(page.locator(".sessionRow")).toHaveCount(0);
   await workspace.click();
   await expect(page.locator(".sessionRow")).toHaveCount(1);
+});
+
+test("adds a second Workspace and keeps its Sessions isolated", async ({page}) => {
+  const secondary = await mkdtemp(
+    path.join(tmpdir(), "codehelper-web-workspace-secondary-")
+  );
+  try {
+    await writeFile(
+      path.join(secondary, "README.md"),
+      "# Secondary workspace\n"
+    );
+    execFileSync("git", ["init", "-q"], {cwd: secondary});
+    execFileSync("git", ["add", "README.md"], {cwd: secondary});
+    await page.goto(baseURL);
+
+    await page.getByRole("button", {name: "Add workspace"}).click();
+    await expect(page.getByRole("dialog", {name: "Workspaces"})).toBeVisible();
+    await page.getByLabel("Local folder path").fill(secondary);
+    await page.getByRole("button", {name: "Open workspace"}).click();
+
+    const primaryGroup = page.locator(".workspaceGroup").filter({
+      hasText: path.basename(workspaceDir)
+    });
+    const secondaryGroup = page.locator(".workspaceGroup").filter({
+      hasText: path.basename(secondary)
+    });
+    await expect(page.locator(".workspaceGroup")).toHaveCount(2);
+    await expect(secondaryGroup.locator(".workspaceRow"))
+      .toHaveAttribute("data-active", "true");
+    await page.getByRole("button", {name: "Create session"}).click();
+    await expect(secondaryGroup.locator(".sessionRow")).toHaveCount(1);
+
+    await primaryGroup.locator(".workspaceRow").click();
+    await expect(primaryGroup.locator(".workspaceRow"))
+      .toHaveAttribute("data-active", "true");
+    await page.getByRole("button", {name: "Create session"}).click();
+    await expect(primaryGroup.locator(".sessionRow")).toHaveCount(1);
+    await expect(secondaryGroup.locator(".sessionRow")).toHaveCount(1);
+
+    await page.setViewportSize({width: 390, height: 844});
+    await expect.poll(() => page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth
+    )).toBeLessThanOrEqual(0);
+  } finally {
+    await rm(secondary, {recursive: true, force: true});
+  }
 });
 
 test("creates a Session and completes a fixture-backed Turn", async ({page}) => {
@@ -312,14 +471,43 @@ test("shows model routing and capabilities in Settings", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
   await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Connection"}).click();
+  await expect(page.getByText("fixture", {exact: true})).toBeVisible();
+  await expect(page.getByRole("button", {name: "Test connection"})).toBeVisible();
   await page.getByRole("button", {name: "Models"}).click();
 
-  const provider = page.getByLabel("Provider", {exact: true});
   const model = page.getByLabel("Settings model");
-  await expect(provider).toHaveValue("fixture");
-  await expect(model).toHaveText("fixture-model");
+  await expect(model).toHaveValue("fixture-model");
+  await page.getByRole("button", {name: "New model"}).click();
+  await expect(page.getByRole("button", {name: "Existing models"})).toBeVisible();
+  await expect(model).toBeFocused();
+  await expect(model).toHaveValue("");
+  await expect(page.getByRole("alert")).toHaveText("Model ID is required");
+  await expect(page.getByRole("button", {name: "Apply changes"})).toBeDisabled();
+  await model.fill("fixture-model-next");
+  await page.getByRole("button", {name: "Test model"}).click();
+  await expect(page.getByText(
+    "Connection succeeded and the provider listed this model"
+  )).toBeVisible();
+  await page.setViewportSize({width: 390, height: 844});
+  await expect.poll(() => page.locator(".settingsDialog").evaluate((dialog) =>
+    dialog.scrollWidth <= dialog.clientWidth
+  )).toBe(true);
+  await page.getByRole("button", {name: "Apply changes"}).click();
+  await expect(model).toHaveValue("fixture-model-next");
+  await page.reload();
+  await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Models"}).click();
+  await expect(page.getByLabel("Settings model")).toHaveValue(
+    "fixture-model-next"
+  );
+  await expect(page.locator(
+    'select[aria-label="Settings model"] option[value="fixture-model-next"]'
+  )).toHaveCount(1);
   await expect(page.getByText("Context window")).toBeVisible();
   await expect(page.getByText("Prompt cache", {exact: true})).toBeVisible();
+  await page.getByRole("button", {name: "Close settings"}).click();
+  await expect(page.getByLabel("Model")).toHaveValue("fixture-model-next");
 });
 
 test("persists and applies a workspace Agent preset", async ({page}) => {
@@ -355,22 +543,18 @@ test("persists and applies a workspace Agent preset", async ({page}) => {
   await expect(page.getByLabel("Saved agent preset")).toContainText("Focused review");
 
   await page.setViewportSize({width: 390, height: 844});
-  const mobileGeometry = await page.locator(".settingsDialog").evaluate((dialog) => {
+  await expect.poll(() => page.locator(".settingsDialog").evaluate((dialog) => {
     const box = dialog.getBoundingClientRect();
     const buttons = Array.from(dialog.querySelectorAll<HTMLElement>("button"))
       .filter((button) => button.offsetParent !== null)
       .map((button) => button.getBoundingClientRect());
-    return {
-      overflow: dialog.scrollWidth - dialog.clientWidth,
-      insideViewport: box.left >= 0 && box.right <= window.innerWidth,
-      buttonsInside: buttons.every(
+    return dialog.scrollWidth <= dialog.clientWidth &&
+      box.left >= 0 &&
+      box.right <= window.innerWidth &&
+      buttons.every(
         (button) => button.left >= box.left && button.right <= box.right
-      )
-    };
-  });
-  expect(mobileGeometry.overflow).toBeLessThanOrEqual(0);
-  expect(mobileGeometry.insideViewport).toBe(true);
-  expect(mobileGeometry.buttonsInside).toBe(true);
+      );
+  })).toBe(true);
 });
 
 test("browses workspace resources and restores an archived Session", async ({page}) => {
@@ -437,7 +621,8 @@ test("browses workspace resources and restores an archived Session", async ({pag
   await activeSession.getByRole("menuitem", {name: "Archive"}).click();
   await expect(page.getByRole("heading", {name: "Archive Target", level: 1})).toHaveCount(0);
 
-  await page.getByRole("button", {name: "Show archived sessions"}).click();
+  await page.getByRole("button", {name: "Search sessions"}).click();
+  await page.getByRole("button", {name: "Show archived"}).click();
   const archived = page.locator(".sessionRow").filter({
     has: page.getByText("Archive Target", {exact: true})
   });
@@ -522,7 +707,9 @@ async function openContextDetails(page: Page): Promise<void> {
   await page.getByRole("menuitem", {name: /context/}).click();
 }
 
-function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {
+function runtimeURL(
+  child: ChildProcessByStdio<null, Readable, Readable>
+): Promise<string> {
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
@@ -541,7 +728,10 @@ function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {
     const onStdout = (chunk: Buffer) => {
       stdout += chunk.toString();
       const match = stdout.match(/CodeHelper Runtime Ready: (http:\/\/[^\s]+)/);
-      if (match) finish(undefined, match[1]);
+      if (match) void workspaceURL(match[1]).then(
+        (url) => finish(undefined, url),
+        (error: Error) => finish(error)
+      );
     };
     const onStderr = (chunk: Buffer) => {
       stderr += chunk.toString();
@@ -558,4 +748,17 @@ function runtimeURL(child: ChildProcessWithoutNullStreams): Promise<string> {
     child.once("exit", onExit);
     child.once("error", onError);
   });
+}
+
+async function workspaceURL(origin: string): Promise<string> {
+  const bootstrap = await fetch(new URL("/api/v1/bootstrap", origin));
+  const value = await bootstrap.json() as {
+    workspace_catalog: {default_workspace_id: string};
+  };
+  const target = new URL(origin);
+  target.searchParams.set(
+    "workspace",
+    value.workspace_catalog.default_workspace_id
+  );
+  return target.toString();
 }

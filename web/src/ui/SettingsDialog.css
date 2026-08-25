@@ -188,7 +188,8 @@
 .settingsApplyBar button:disabled,
 .settingsButtonRow button:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  color: var(--ch-text-muted);
+  opacity: 1;
 }
 
 .settingsError {
@@ -438,50 +439,7 @@
   font-weight: 600;
 }
 
-.modelCapabilityPanel [data-restart],
-.settingsRouteList b[data-restart] {
-  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
-}
-
-.settingsRouteList {
-  display: grid;
-}
-
-.settingsRouteList > div {
-  display: grid;
-  min-height: 42px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 2px 10px;
-  padding: 6px 0;
-  border-top: 1px solid var(--ch-border);
-}
-
-.settingsRouteList > div > span {
-  display: grid;
-  min-width: 0;
-}
-
-.settingsRouteList strong,
-.settingsRouteList small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settingsRouteList strong {
-  font-size: 12px;
-}
-
-.settingsRouteList small,
-.settingsRouteList b {
-  color: var(--ch-text-muted);
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.settingsRouteList > div > small {
-  grid-column: 1 / -1;
+.modelCapabilityPanel [data-restart] {
   color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
 }
 

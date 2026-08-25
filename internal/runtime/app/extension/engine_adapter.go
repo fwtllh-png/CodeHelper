@@ -514,6 +514,17 @@ func (a *EngineAdapter) StartTurn(
 				}); err != nil {
 					return err
 				}
+				if submitted, _ := event.Result.Metadata["submitted_plan"].(bool); submitted && !event.Result.IsError {
+					_, err := interact.ParseSubmittedPlan([]byte(event.Result.Content))
+					if err != nil {
+						return err
+					}
+					if err := sink.Emit(&protocol.PlanDeltaData{
+						Body: event.Result.Content, Done: true,
+					}); err != nil {
+						return err
+					}
+				}
 				if cmd, ok := commandExecutionFromResult(event.ToolCall.ID, event.Result); ok {
 					if err := sink.Emit(cmd); err != nil {
 						return err
@@ -566,6 +577,18 @@ func (a *EngineAdapter) StartTurn(
 			return sink.Emit(ProtocolCompactionData(event.Compaction))
 		}
 		return sink.Emit(&protocol.ToolStateData{State: string(event.State), Text: event.Text})
+	}
+	if payload.PlanExecution != nil {
+		seed := a.engine.OptionsSeed()
+		mode, permission := seed.Security.ModeValue(), seed.Security.PermissionValue()
+		a.engine.SetPolicyMode(policy.ModeAct)
+		if payload.PlanExecution.Transition == protocol.PlanTransitionAutopilot {
+			a.engine.SetPermission(policy.PermissionAuto)
+		}
+		defer func() {
+			a.engine.SetPolicyMode(mode)
+			a.engine.SetPermission(permission)
+		}()
 	}
 	_, runErr := a.engine.Execute(
 		tool.WithTurnIdentity(ctx, string(payload.ThreadID), string(payload.TurnID)),
@@ -905,11 +928,6 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 			SampleID: event.ReasoningCompleted.SampleID,
 		})
 	}
-	if event.Plan != nil {
-		return sink.Emit(&protocol.PlanDeltaData{
-			Text: event.Plan.Delta, Body: event.Plan.Body, Done: event.Plan.Done,
-		})
-	}
 	if event.Usage != nil {
 		return sink.Emit(&protocol.UsageData{
 			Sample: event.Sample, Provider: event.Provider, Model: event.Model,
@@ -950,6 +968,7 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 	}
 	return nil
 }
+
 func nonEmpty(value, fallback string) string {
 	if value == "" {
 		return fallback

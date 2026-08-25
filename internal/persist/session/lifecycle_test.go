@@ -3,6 +3,7 @@ package session_test
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -87,6 +88,54 @@ func TestCreateLifecycleAtomicallySeedsWorkspaceSessionAndThread(t *testing.T) {
 	}
 	if stored["isolation"] != "" {
 		t.Fatalf("shared isolation persisted as %#v, want legacy-compatible empty value", stored["isolation"])
+	}
+}
+
+func TestLifecycleCanonicalizesWorkspaceAliases(t *testing.T) {
+	store, err := sqlitestate.Open(
+		t.Context(),
+		filepath.Join(t.TempDir(), "state.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	root := t.TempDir()
+	alias := filepath.Join(t.TempDir(), "workspace-alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Skipf("symbolic links unavailable: %v", err)
+	}
+	repository := session.NewSQLiteRepository(store)
+	created, err := repository.CreateLifecycle(
+		t.Context(),
+		protocol.SessionCreateSeed{
+			Version:   protocol.SessionLifecycleVersion,
+			SessionID: "session-alias", WorkspaceID: "workspace-alias",
+			WorkspaceRoot: alias, WorkspaceLabel: "workspace",
+			ThreadID: "thread-alias", Title: "Alias",
+			Provider: "fixture", Model: "fixture", Isolation: "shared",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	physical, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.WorkspaceRoot != physical {
+		t.Fatalf("Workspace root = %q, want %q", created.WorkspaceRoot, physical)
+	}
+	list, err := repository.ListLifecycle(
+		t.Context(),
+		protocol.SessionListQuery{WorkspaceRoot: alias, Limit: 10},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Sessions) != 1 ||
+		list.Sessions[0].SessionID != created.SessionID {
+		t.Fatalf("alias Workspace sessions = %+v", list.Sessions)
 	}
 }
 

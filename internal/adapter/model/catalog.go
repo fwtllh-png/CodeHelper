@@ -52,11 +52,12 @@ type Limits struct {
 }
 
 type Capabilities struct {
-	Streaming        bool     `json:"streaming"`
-	Reasoning        bool     `json:"reasoning"`
-	ReasoningEfforts []string `json:"reasoning_efforts,omitempty"`
-	ToolCalls        bool     `json:"tool_calls"`
-	NativeSearch     bool     `json:"native_search"`
+	Streaming              bool     `json:"streaming"`
+	Reasoning              bool     `json:"reasoning"`
+	ReasoningEfforts       []string `json:"reasoning_efforts,omitempty"`
+	DefaultReasoningEffort string   `json:"default_reasoning_effort,omitempty"`
+	ToolCalls              bool     `json:"tool_calls"`
+	NativeSearch           bool     `json:"native_search"`
 	// IncrementalResponses allows connection-local Responses continuation.
 	IncrementalResponses bool `json:"incremental_responses,omitempty"`
 	Vision               bool `json:"vision"`
@@ -219,7 +220,8 @@ func validateProvider(provider Provider) error {
 			return fmt.Errorf("provider %q model %q output limit exceeds context", provider.ID, key)
 		}
 		if !model.Capabilities.Reasoning &&
-			len(model.Capabilities.ReasoningEfforts) != 0 {
+			(len(model.Capabilities.ReasoningEfforts) != 0 ||
+				model.Capabilities.DefaultReasoningEffort != "") {
 			return fmt.Errorf(
 				"provider %q model %q declares efforts without reasoning",
 				provider.ID,
@@ -244,6 +246,16 @@ func validateProvider(provider Provider) error {
 				)
 			}
 			efforts[effort] = struct{}{}
+		}
+		if effort := model.Capabilities.DefaultReasoningEffort; effort != "" {
+			if _, exists := efforts[effort]; !exists {
+				return fmt.Errorf(
+					"provider %q model %q default reasoning effort %q is not advertised",
+					provider.ID,
+					key,
+					effort,
+				)
+			}
 		}
 		if model.Pricing.Known && model.Pricing.Currency == "" {
 			return fmt.Errorf("provider %q model %q known pricing requires currency", provider.ID, key)

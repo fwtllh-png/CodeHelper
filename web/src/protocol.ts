@@ -32,7 +32,54 @@ export interface Bootstrap {
   workspace_root?: string;
   workspace?: WorkspaceIdentity;
   can_open_path?: boolean;
+  setup_required?: boolean;
+  setup_catalog?: SetupCatalog;
+  workspace_catalog?: WorkspaceCatalog;
   problem?: Problem;
+}
+
+export interface SetupProvider {
+  id: string;
+  display_name: string;
+  protocol: string;
+  requires_api_key: boolean;
+  custom?: boolean;
+}
+
+export interface SetupCatalog {
+  version: number;
+  providers: SetupProvider[];
+}
+
+export interface SetupRequest {
+  provider: string;
+  model: string;
+  api_key?: string;
+  base_url?: string;
+  protocol?: string;
+}
+
+export interface SetupResult {
+  ready: boolean;
+}
+
+export interface WorkspaceDescriptor {
+  id: string;
+  root: string;
+  label: string;
+  ready: boolean;
+  session_count: number;
+  problem?: string;
+}
+
+export interface WorkspaceCatalog {
+  version: number;
+  default_workspace_id: string;
+  workspaces: WorkspaceDescriptor[];
+}
+
+export interface WorkspaceAddResult {
+  workspace: WorkspaceDescriptor;
 }
 
 export interface SessionSummary {
@@ -178,7 +225,7 @@ export interface SessionProfileSnapshot {
     provider: string;
     model: string;
     mutable_fields: string[];
-    model_capabilities: Record<string, unknown>;
+    model_capabilities: ModelCapabilities;
   };
 }
 
@@ -269,6 +316,7 @@ export interface ModelCapabilities {
 export interface ModelCatalogEntry {
   provider: string;
   id: string;
+  source?: "catalog" | "connection_baseline";
   selected: boolean;
   capabilities: ModelCapabilities;
 }
@@ -276,6 +324,20 @@ export interface ModelCatalogEntry {
 export interface ModelCatalog {
   version: number;
   models: ModelCatalogEntry[];
+}
+
+export interface ModelTestResult {
+  provider: string;
+  model: string;
+  status: "available" | "not_listed";
+  detail: string;
+  tested_at: string;
+}
+
+export interface WorkspaceConnection {
+  provider: string;
+  endpoint: string;
+  protocol: string;
 }
 
 export interface ToolCatalogEntry {
@@ -350,10 +412,42 @@ export interface SessionPlanArtifact {
   cursor: Cursor;
   status: "ready";
   body: string;
+  document?: PlanDocument;
   profile_revision: number;
   can_implement: boolean;
   can_autopilot: boolean;
   created_at: string;
+}
+
+export interface PlanStep {
+  id: string;
+  title: string;
+  status: "pending" | "in_progress" | "done";
+  dependencies?: string[];
+  expected_evidence?: string;
+  affected_files?: string[];
+}
+
+export interface PlanDocument {
+  version: 1;
+  revision?: number;
+  supersedes_id?: string;
+  title?: string;
+  objective?: string;
+  context_summary?: string;
+  steps: PlanStep[];
+  sources_used?: string[];
+  critical_files?: string[];
+  constraints?: string[];
+  recommended_approach?: string;
+  verification_plan?: string;
+  risks_and_unknowns?: string;
+  handoff_packet?: string;
+  file_baseline?: Array<{
+    path: string;
+    digest?: string;
+    missing?: boolean;
+  }>;
 }
 
 export interface SessionPlanSnapshot {

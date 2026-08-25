@@ -5,12 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/model"
 	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 

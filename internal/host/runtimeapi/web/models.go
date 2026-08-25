@@ -1,0 +1,132 @@
+package web
+
+import (
+	"context"
+	"net/http"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+type ModelTestResult struct {
+	Provider string    `json:"provider"`
+	Model    string    `json:"model"`
+	Status   string    `json:"status"`
+	Detail   string    `json:"detail"`
+	TestedAt time.Time `json:"tested_at"`
+}
+
+type WorkspaceConnection struct {
+	Provider string `json:"provider"`
+	Endpoint string `json:"endpoint"`
+	Protocol string `json:"protocol"`
+}
+
+func sessionModelCatalog(
+	ctx context.Context,
+	dependencies Dependencies,
+	limit int,
+) (protocol.ModelCatalog, error) {
+	result := dependencies.ModelCatalog
+	sessions, err := dependencies.Runtime.ListSessions(
+		ctx,
+		protocol.SessionListQuery{
+			WorkspaceRoot:   dependencies.WorkspaceRoot,
+			IncludeArchived: true,
+			Limit:           limit,
+		},
+	)
+	if err != nil {
+		return protocol.ModelCatalog{}, err
+	}
+	seen := make(map[string]bool, len(result.Models))
+	for _, entry := range result.Models {
+		seen[model.RouteKey(entry.Provider, entry.ID)] = true
+	}
+	for _, session := range sessions.Sessions {
+		snapshot, profileErr := dependencies.Runtime.SessionProfile(
+			ctx,
+			session.SessionID,
+		)
+		if profileErr != nil {
+			continue
+		}
+		key := model.RouteKey(snapshot.Profile.Provider, snapshot.Profile.Model)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result.Models = append(result.Models, protocol.ModelCatalogEntry{
+			Provider:     snapshot.Profile.Provider,
+			ID:           snapshot.Profile.Model,
+			Source:       "connection_baseline",
+			Capabilities: snapshot.Capabilities.ModelCapabilities,
+		})
+	}
+	sort.Slice(result.Models, func(i, j int) bool {
+		if result.Models[i].Provider == result.Models[j].Provider {
+			return result.Models[i].ID < result.Models[j].ID
+		}
+		return result.Models[i].Provider < result.Models[j].Provider
+	})
+	return result, nil
+}
+
+func (s *Server) modelTest(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request struct {
+		Model string `json:"model"`
+	}
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	request.Model = strings.TrimSpace(request.Model)
+	if request.Model == "" || len(request.Model) > 256 ||
+		strings.ContainsAny(request.Model, "\x00\r\n\t ") {
+		return nil, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			"model id is invalid",
+			false,
+			nil,
+		)
+	}
+	if dependencies.ModelProbe == nil {
+		return nil, unavailable("model testing is unavailable")
+	}
+	available, err := dependencies.ModelProbe(r.Context(), request.Model)
+	if err != nil {
+		return nil, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			err.Error(),
+			true,
+			err,
+		)
+	}
+	result := ModelTestResult{
+		Provider: dependencies.DefaultProfile.Provider,
+		Model:    request.Model,
+		Status:   "not_listed",
+		Detail:   "Connection succeeded, but the provider did not list this model",
+		TestedAt: time.Now().UTC(),
+	}
+	if available {
+		result.Status = "available"
+		result.Detail = "Connection succeeded and the provider listed this model"
+	}
+	return result, nil
+}
+
+func (s *Server) connectionStatus(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	if err := s.decodeRequest(r, &struct{}{}); err != nil {
+		return nil, err
+	}
+	return dependencies.Connection, nil
+}

@@ -10,6 +10,7 @@ import {
   KeyRound,
   Monitor,
   Moon,
+  Plus,
   RefreshCw,
   Save,
   Search,
@@ -34,8 +35,10 @@ import type {
   AgentPresetProfile,
   CredentialStatus,
   ModelCatalogEntry,
+  ModelTestResult,
   SessionProfile,
-  SessionProfileUpdateResult
+  SessionProfileUpdateResult,
+  WorkspaceConnection
 } from "../protocol";
 import type {RuntimeClient, RuntimeSnapshot} from "../runtime/client";
 import type {BrowserNotificationSettings} from "./backgroundActivity";
@@ -47,7 +50,13 @@ import "./SettingsDialog.css";
 
 export type ThemeMode = "light" | "dark" | "system";
 
-type SettingsSection = "general" | "models" | "tools" | "extensions" | "agent";
+export type SettingsSection =
+  | "general"
+  | "connection"
+  | "models"
+  | "tools"
+  | "extensions"
+  | "agent";
 
 interface ProfileDraft {
   mode: SessionProfile["mode"];
@@ -70,6 +79,7 @@ interface Props {
   client: RuntimeClient;
   newIsolation: "shared" | "worktree";
   theme: ThemeMode;
+  initialSection?: SettingsSection;
   onIsolationChange: (value: "shared" | "worktree") => void;
   onThemeChange: (value: ThemeMode) => void;
   onClose: () => void;
@@ -82,6 +92,7 @@ const sections: readonly {
   icon: typeof Settings2;
 }[] = [
   {id: "general", label: "General", icon: Settings2},
+  {id: "connection", label: "Connection", icon: KeyRound},
   {id: "models", label: "Models", icon: Database},
   {id: "tools", label: "Tools", icon: Wrench},
   {id: "extensions", label: "Extensions", icon: Boxes},
@@ -93,12 +104,13 @@ export function SettingsDialog({
   client,
   newIsolation,
   theme,
+  initialSection = "general",
   onIsolationChange,
   onThemeChange,
   onClose,
   onError
 }: Props) {
-  const [active, setActive] = useState<SettingsSection>("general");
+  const [active, setActive] = useState<SettingsSection>(initialSection);
   const [credential, setCredential] = useState<CredentialStatus>();
   const [diagnostics, setDiagnostics] = useState("");
   const [toolQuery, setToolQuery] = useState("");
@@ -123,6 +135,7 @@ export function SettingsDialog({
   profileDraftRef.current = profileDraft;
   profileBaselineRef.current = profileBaseline;
   const dirty = !equalProfileDraft(profileDraft, profileBaseline);
+  const profileDraftProblem = modelIDProblem(profileDraft.model);
   const profileApplyBlocked = Boolean(snapshot.conversation.activeTurnID);
   const reportError = useCallback((value: unknown) => {
     setError(value instanceof Error ? value.message : String(value));
@@ -148,6 +161,8 @@ export function SettingsDialog({
   }, [dirty, onClose]);
   useEffect(() => {
     closeRef.current?.focus();
+  }, []);
+  useEffect(() => {
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") requestClose();
     };
@@ -207,7 +222,7 @@ export function SettingsDialog({
       );
       setProfileDraft(next);
       setProfileBaseline(next);
-      setApplyNotice(profileApplyNotice(result));
+      setApplyNotice(profileApplyNotice(result, profileBaseline, next));
     } catch (applyError) {
       reportError(applyError);
     } finally {
@@ -249,7 +264,9 @@ export function SettingsDialog({
                 <button
                   type="button"
                   key={section.id}
+                  aria-label={section.label}
                   aria-current={active === section.id ? "page" : undefined}
+                  title={section.label}
                   onClick={() => setActive(section.id)}
                 >
                   <Icon size={16} />
@@ -298,6 +315,13 @@ export function SettingsDialog({
                 snapshot={snapshot}
                 draft={profileDraft}
                 onDraftChange={changeProfileDraft}
+                client={client}
+                onError={reportError}
+              />
+            )}
+            {active === "connection" && (
+              <ConnectionSettings
+                snapshot={snapshot}
                 credential={credential}
                 onCredential={setCredential}
                 client={client}
@@ -337,7 +361,9 @@ export function SettingsDialog({
               {confirmClose
                 ? "Discard unsaved changes?"
                 : dirty
-                  ? profileApplyBlocked
+                  ? profileDraftProblem
+                    ? profileDraftProblem
+                    : profileApplyBlocked
                     ? "Unsaved changes · finish the active Turn to apply"
                     : "Unsaved changes"
                   : applyNotice?.text || "Settings are up to date"}
@@ -375,7 +401,10 @@ export function SettingsDialog({
                   <button
                     type="button"
                     className="settingsApply"
-                    disabled={!dirty || applying || profileApplyBlocked}
+                    disabled={
+                      !dirty || applying || profileApplyBlocked ||
+                      Boolean(profileDraftProblem)
+                    }
                     title={profileApplyBlocked
                       ? "Finish the active Turn before applying settings"
                       : "Apply changes to this Session"}
@@ -508,80 +537,164 @@ function ModelSettings({
   snapshot,
   draft,
   onDraftChange,
-  credential,
-  onCredential,
   client,
   onError
 }: {
   snapshot: RuntimeSnapshot;
   draft: ProfileDraft;
   onDraftChange: (patch: Partial<ProfileDraft>) => void;
-  credential?: CredentialStatus;
-  onCredential: (status: CredentialStatus) => void;
   client: RuntimeClient;
   onError: (error: unknown) => void;
 }) {
-  const selectedModel = snapshot.models.find(
+  const catalogModel = snapshot.models.find(
     (model) => model.provider === draft.provider && model.id === draft.model
   );
-  const changeProvider = (provider: string) => {
-    const model = snapshot.models.find(
-      (entry) => entry.provider === provider &&
-        entry.capabilities.availability === "available"
+  const availableModels = snapshot.models.filter(
+    (model) =>
+      model.provider === draft.provider &&
+      model.capabilities.availability === "available"
+  );
+  const profileCapabilities = snapshot.profile?.capabilities.model_capabilities;
+  const selectedModel = catalogModel ?? (
+    profileCapabilities && draft.model.trim()
+      ? {
+          provider: draft.provider,
+          id: draft.model,
+          source: "connection_baseline" as const,
+          selected: true,
+          capabilities: {
+            ...profileCapabilities,
+            display_name: draft.model,
+            selection_mode: "hot" as const
+          }
+        }
+      : undefined
+  );
+  const [configuringModel, setConfiguringModel] = useState(!catalogModel);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<ModelTestResult>();
+  const modelInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setConfiguringModel(!catalogModel);
+  }, [snapshot.selectedSessionID]);
+  useEffect(() => {
+    if (configuringModel) modelInputRef.current?.focus();
+  }, [configuringModel]);
+  const advertisedReasoningValues =
+    selectedModel?.capabilities.reasoning_efforts ?? [];
+  const reasoningValues = selectedModel?.capabilities.default_reasoning_effort
+    ? advertisedReasoningValues
+    : ["", ...advertisedReasoningValues];
+  const changeModel = (modelID: string) => {
+    setTestResult(undefined);
+    const model = availableModels.find(
+      (entry) => entry.id === modelID
     );
-    if (!model) return;
     onDraftChange({
-      provider,
-      model: model.id,
-      reasoningEffort: model.capabilities.default_reasoning_effort ?? ""
+      model: modelID,
+      reasoningEffort: model
+        ? model.capabilities.default_reasoning_effort ?? ""
+        : draft.reasoningEffort
     });
+  };
+  const showExistingModels = () => {
+    if (!catalogModel && availableModels[0]) {
+      changeModel(availableModels[0].id);
+    }
+    setConfiguringModel(false);
+  };
+  const showNewModel = () => {
+    changeModel("");
+    setConfiguringModel(true);
+  };
+  const testModel = async () => {
+    if (testing || modelIDProblem(draft.model)) return;
+    setTesting(true);
+    setTestResult(undefined);
+    try {
+      setTestResult(await client.testModel(draft.model.trim()));
+    } catch (error) {
+      onError(error);
+    } finally {
+      setTesting(false);
+    }
   };
   return (
     <SettingsSectionView
       title="Models"
-      description="Provider routing, model capabilities, and credential status."
+      description="Model selection for the current Session."
     >
-      <SettingRow title="Provider" description="Runtime model provider for this session.">
-        <SelectControl
-          label="Provider"
-          value={draft.provider}
-          values={snapshot.providers
-            .filter((provider) => provider.availability === "available")
-            .map((provider) => provider.id)}
-          disabled={!mutable(snapshot, "provider")}
-          onChange={changeProvider}
-        />
-      </SettingRow>
-      <SettingRow title="Model" description="Changing model resets the prompt cache.">
-        <select
-          className="settingsSelect"
-          aria-label="Settings model"
-          value={draft.model}
-          disabled={!mutable(snapshot, "model")}
-          onChange={(event) => {
-            const target = snapshot.models.find(
-              (model) =>
-                model.provider === draft.provider &&
-                model.id === event.target.value
-            );
-            onDraftChange({
-              model: event.target.value,
-              reasoningEffort: target?.capabilities.default_reasoning_effort ?? ""
-            });
-          }}
-        >
-          {snapshot.models
-            .filter((model) => model.provider === draft.provider)
-            .map((model) => (
-              <option
-                value={model.id}
-                key={`${model.provider}:${model.id}`}
-                disabled={model.capabilities.availability !== "available"}
+      <SettingRow
+        title="Session model"
+        description="Choose an existing model or configure a new exact Model ID."
+      >
+        <div>
+          <div className="settingsButtonRow">
+            {configuringModel ? (
+              <input
+                ref={modelInputRef}
+                className="settingsSelect"
+                aria-label="Settings model"
+                value={draft.model}
+                maxLength={256}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={!mutable(snapshot, "model")}
+                aria-invalid={Boolean(modelIDProblem(draft.model)) || undefined}
+                onChange={(event) => changeModel(event.target.value)}
+              />
+            ) : (
+              <SelectControl
+                label="Settings model"
+                value={draft.model}
+                values={availableModels.map((model) => model.id)}
+                disabled={!mutable(snapshot, "model")}
+                format={(value) => value}
+                onChange={changeModel}
+              />
+            )}
+            <button
+              type="button"
+              disabled={
+                !mutable(snapshot, "model") ||
+                (configuringModel && availableModels.length === 0)
+              }
+              onClick={() => configuringModel
+                ? showExistingModels()
+                : showNewModel()}
+            >
+              {configuringModel
+                ? <><Database size={13} /> Existing models</>
+                : <><Plus size={13} /> New model</>}
+            </button>
+          </div>
+          {configuringModel && modelIDProblem(draft.model) && (
+            <small role="alert">{modelIDProblem(draft.model)}</small>
+          )}
+          <div className="settingsButtonRow">
+            <button
+              type="button"
+              disabled={testing || Boolean(modelIDProblem(draft.model))}
+              onClick={() => void testModel()}
+            >
+              {testing
+                ? <><RefreshCw className="spin" size={13} /> Testing...</>
+                : <><Activity size={13} /> Test model</>}
+            </button>
+            {testResult && (
+              <span
+                className="settingsInlineResult"
+                data-tone={
+                  testResult.status === "available" ? undefined : "warning"
+                }
+                role="status"
               >
-                {model.capabilities.display_name || model.id}
-              </option>
-            ))}
-        </select>
+                {testResult.status === "available" && <Check size={13} />}
+                {testResult.detail}
+              </span>
+            )}
+          </div>
+        </div>
       </SettingRow>
       {selectedModel?.capabilities.reasoning && (
         <SettingRow
@@ -590,11 +703,14 @@ function ModelSettings({
         >
           <SelectControl
             label="Settings reasoning effort"
-            value={draft.reasoningEffort}
-            values={[
-              "",
-              ...(selectedModel.capabilities.reasoning_efforts ?? [])
-            ]}
+            value={
+              reasoningValues.includes(draft.reasoningEffort)
+                ? draft.reasoningEffort
+                : selectedModel.capabilities.default_reasoning_effort ??
+                  reasoningValues[0] ??
+                  ""
+            }
+            values={reasoningValues}
             disabled={!mutable(snapshot, "reasoning_effort")}
             onChange={(reasoningEffort) => onDraftChange({reasoningEffort})}
           />
@@ -603,27 +719,52 @@ function ModelSettings({
       {selectedModel && (
         <ModelCapabilityPanel model={selectedModel} />
       )}
-      <div className="settingsBlock">
-        <div className="settingsBlockTitle">Runtime routes</div>
-        <div className="settingsRouteList">
-          {snapshot.models.map((model) => (
-            <div key={`${model.provider}:${model.id}`}>
-              <span>
-                <strong>{model.capabilities.display_name || model.id}</strong>
-                <small>{model.provider} · {model.id}</small>
-              </span>
-              <b data-restart={
-                model.capabilities.selection_mode === "restart_required" || undefined
-              }>
-                {model.capabilities.selection_mode.replaceAll("_", " ")}
-              </b>
-              {model.capabilities.unavailable_reason && (
-                <small>{model.capabilities.unavailable_reason}</small>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+    </SettingsSectionView>
+  );
+}
+
+function ConnectionSettings({
+  snapshot,
+  credential,
+  onCredential,
+  client,
+  onError
+}: {
+  snapshot: RuntimeSnapshot;
+  credential?: CredentialStatus;
+  onCredential: (status: CredentialStatus) => void;
+  client: RuntimeClient;
+  onError: (error: unknown) => void;
+}) {
+  const provider = snapshot.providers.find((entry) => entry.selected);
+  const [connection, setConnection] = useState<WorkspaceConnection>();
+  useEffect(() => {
+    void client.connectionStatus().then(setConnection, onError);
+  }, [client, onError]);
+  return (
+    <SettingsSectionView
+      title="Connection"
+      description="Workspace Runtime provider and credential boundary."
+    >
+      <SettingRow
+        title="Provider"
+        description="Shared by every Session in this Workspace."
+      >
+        <span className="settingsStatus" data-ready>
+          <span />
+          {provider?.display_name || snapshot.profile?.profile.provider}
+        </span>
+      </SettingRow>
+      <SettingRow title="Endpoint" description="Fixed for this Workspace Runtime.">
+        <code className="settingsReference">
+          {connection ? connection.endpoint || "Runtime-managed" : "Loading..."}
+        </code>
+      </SettingRow>
+      <SettingRow title="Protocol" description="Provider wire protocol.">
+        <code className="settingsReference">
+          {connection?.protocol || "Loading..."}
+        </code>
+      </SettingRow>
       <CredentialPanel
         status={credential}
         onSet={(secret) => client.setKeyringCredential(secret).then(onCredential)}
@@ -659,6 +800,11 @@ function ModelCapabilityPanel({model}: {model: ModelCatalogEntry}) {
       </div>
       {capabilities.unavailable_reason && (
         <p>{capabilities.unavailable_reason}</p>
+      )}
+      {model.source === "connection_baseline" && (
+        <p role="status">
+          Unverified metadata inherited from the Workspace connection.
+        </p>
       )}
       <dl className="settingsFacts">
         <div><dt>Context window</dt><dd>{capabilities.context_window.toLocaleString()}</dd></div>
@@ -1272,28 +1418,6 @@ function AgentSettings({
           </div>
         </div>
       )}
-      {snapshot.plan && (
-        <div className="settingsBlock">
-          <div className="settingsBlockTitle">Current plan</div>
-          <p className="settingsSummary">{snapshot.plan.body}</p>
-          <div className="settingsButtonRow">
-            <button
-              type="button"
-              disabled={!snapshot.plan.can_implement}
-              onClick={() => void client.transitionPlan("implement").catch(onError)}
-            >
-              Implement
-            </button>
-            <button
-              type="button"
-              disabled={!snapshot.plan.can_autopilot}
-              onClick={() => void client.transitionPlan("autopilot").catch(onError)}
-            >
-              Autopilot
-            </button>
-          </div>
-        </div>
-      )}
       {snapshot.checkpoints.length > 0 && (
         <div className="settingsBlock">
           <div className="settingsBlockTitle">Recovery checkpoints</div>
@@ -1439,9 +1563,10 @@ function CredentialPanel({
         <button
           type="button"
           disabled={!status?.configured || pending}
-          onClick={() => void run(onValidate, "Credential validated")}
+          onClick={() => void run(onValidate, "Connection verified")}
         >
-          <RefreshCw size={13} /> Validate
+          <RefreshCw className={pending ? "spin" : undefined} size={13} />
+          {pending ? "Testing..." : "Test connection"}
         </button>
         {status?.reference.kind === "keyring" && (
           confirmClear ? (
@@ -1524,12 +1649,14 @@ function SelectControl({
   value,
   values,
   disabled,
+  format = titleCase,
   onChange
 }: {
   label: string;
   value: string;
   values: readonly string[];
   disabled?: boolean;
+  format?: (value: string) => string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -1542,7 +1669,7 @@ function SelectControl({
         onChange={(event) => onChange(event.target.value)}
       >
         {values.map((option) => (
-          <option key={option} value={option}>{titleCase(option)}</option>
+          <option key={option} value={option}>{format(option)}</option>
         ))}
       </select>
       <ChevronDown size={15} />
@@ -1628,8 +1755,15 @@ function equalProfileDraft(
     left.approvalPosture === right.approvalPosture &&
     left.executionTarget === right.executionTarget &&
     left.maxSteps === right.maxSteps &&
-    left.enabledToolIDs.length === right.enabledToolIDs.length &&
-    left.enabledToolIDs.every((id, index) => id === right.enabledToolIDs[index]);
+    arraysEqual(left.enabledToolIDs, right.enabledToolIDs);
+}
+
+function modelIDProblem(modelID: string): string {
+  const value = modelID.trim();
+  if (!value) return "Model ID is required";
+  if (value.length > 256) return "Model ID must be 256 characters or fewer";
+  if (/\s/.test(value)) return "Model ID cannot contain whitespace";
+  return "";
 }
 
 function changedProfileFields(
@@ -1690,16 +1824,33 @@ function profileDraftFromPreset(
   };
 }
 
-function profileApplyNotice(result: SessionProfileUpdateResult): ApplyNotice {
-  if (result.prompt_cache_reset) {
-    return {
-      tone: "success",
-      text: `Applied to current Session · Prompt cache reset${
-        result.reset_reason ? ` (${result.reset_reason.replaceAll(",", ", ")})` : ""
-      }`
-    };
-  }
-  return {tone: "success", text: "Applied to current Session"};
+function profileApplyNotice(
+  result: SessionProfileUpdateResult,
+  before?: ProfileDraft,
+  after?: ProfileDraft
+): ApplyNotice {
+  const changes = before && after ? [
+    before.model !== after.model && `Model ${before.model} → ${after.model}`,
+    before.mode !== after.mode && `Mode ${before.mode} → ${after.mode}`,
+    before.reasoningEffort !== after.reasoningEffort &&
+      `Reasoning ${before.reasoningEffort || "default"} → ${
+        after.reasoningEffort || "default"
+      }`,
+    before.approvalPosture !== after.approvalPosture &&
+      `Approval ${before.approvalPosture} → ${after.approvalPosture}`,
+    before.maxSteps !== after.maxSteps && `Maximum steps ${after.maxSteps}`,
+    !arraysEqual(before.enabledToolIDs, after.enabledToolIDs) && "Tools updated"
+  ].filter((value): value is string => Boolean(value)) : [];
+  const cache = result.prompt_cache_reset ? " · Prompt cache reset" : "";
+  return {
+    tone: "success",
+    text: `${changes.length ? `Applied: ${changes.join("; ")}` : "Applied to current Session"}${cache}`
+  };
+}
+
+function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length &&
+    left.every((value, index) => value === right[index]);
 }
 
 function uniquePresetName(

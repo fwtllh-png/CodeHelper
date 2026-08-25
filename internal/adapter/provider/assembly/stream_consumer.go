@@ -18,7 +18,6 @@ type StreamProjection struct {
 	Search    *provider.SearchResult
 	Citation  *provider.Citation
 	Usage     *provider.Usage
-	Plan      *ProposedPlanUpdate
 	Transport provider.TransportMetadata
 }
 
@@ -131,7 +130,6 @@ func ConsumeStream(
 			Meaningful: assembly.CurrentMeaningful(),
 		}
 	}
-	var planParser ProposedPlanParser
 	for {
 		event, err := stream.Recv()
 		if err != nil {
@@ -204,12 +202,6 @@ func ConsumeStream(
 				Block: &block,
 			}); err != nil {
 				return result, err
-			}
-			for _, update := range planParser.Feed(event.Text) {
-				copy := update
-				if err := project(StreamProjection{Plan: &copy}); err != nil {
-					return result, err
-				}
 			}
 		case provider.EventReasoningDelta:
 			output()

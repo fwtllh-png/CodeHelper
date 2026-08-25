@@ -1501,6 +1501,9 @@
               },
               "selected": {
                 "type": "boolean"
+              },
+              "source": {
+                "type": "string"
               }
             },
             "required": [
@@ -3628,6 +3631,44 @@
           ],
           "additionalProperties": false
         },
+        "plan_execution": {
+          "type": "object",
+          "properties": {
+            "checkpoint_id": {
+              "type": "string"
+            },
+            "destination": {
+              "type": "string"
+            },
+            "idempotency_key": {
+              "type": "string"
+            },
+            "plan_id": {
+              "type": "string"
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "transition": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "destination",
+            "idempotency_key",
+            "plan_id",
+            "session_id",
+            "transition",
+            "version"
+          ],
+          "additionalProperties": false
+        },
         "prompt": {
           "type": "string"
         },
@@ -5288,9 +5329,6 @@
           "type": "integer"
         },
         "status": {
-          "type": "string"
-        },
-        "text": {
           "type": "string"
         }
       },

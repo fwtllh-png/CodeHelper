@@ -13,7 +13,7 @@ code_paths:
   - internal/adapter/tool
 test_paths:
   - internal/runtime/agent/engine/engine_test.go
-  - internal/adapter/provider/assembly/proposed_plan_test.go
+  - internal/adapter/tool/interact/interact_test.go
   - internal/runtime/agent/engine/toolfailure_test.go
 source_of_truth:
   - internal/runtime/agent/engine/turn_handler.go
@@ -148,7 +148,8 @@ Cancellation、Conflict-aware Serialization，以及每个 Call 唯一 Observati
 sed -n '138,180p' internal/adapter/tool/tool.go
 sed -n '278,340p' internal/adapter/tool/guard/guard.go
 go test ./internal/runtime/agent/engine \
-  -run 'Test.*(ProposedPlan|ToolFailure|Scheduler)'
+  -run 'Test.*(ToolFailure|Scheduler)'
+go test ./internal/adapter/tool/interact -run TestSubmitPlan
 go test ./internal/adapter/tool/guard \
   -run 'TestAliasDeferredUnknownAvailabilityAndSandboxFailClosed'
 ```
