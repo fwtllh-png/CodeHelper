@@ -199,14 +199,8 @@ go test ./internal/runtime/agent/engine \
 运行 Hermetic Fixture，并在 `turn.receipt` 中观察 Context Section、Route 与 Usage：
 
 ```bash
-make build
-./bin/codehelper exec \
-  --provider-fixture ./testdata/providers/openai \
-  --provider openai \
-  --model gpt-fixture \
-  --workspace . \
-  --output-format stream-json \
-  "say hello"
+go test ./internal/host/runtimeapi/web -run TestWebHostMeetsTheRuntimeContract
+go test ./internal/host/bench -run TestCodingBenchmarkSuite
 ```
 
 固定 Prompt 属于确定性 Fixture Contract，不是 Model 的通用限制。

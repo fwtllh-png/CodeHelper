@@ -81,6 +81,7 @@ func prepareRuntime(
 		content: options.ContentStore, lifecycle: options.Lifecycle,
 		metrics: options.Observability.Metrics, logger: options.Observability.Logger,
 		profiles: options.SessionProfiles, defaultProfile: options.DefaultProfile,
+		agentPresets:        options.AgentPresets,
 		profileCapabilities: options.ProfileCapabilities,
 		profileModels:       options.ProfileModels,
 		toolCatalog:         options.ToolCatalog, sessionLifecycle: options.SessionLifecycle,
@@ -147,6 +148,9 @@ func (r *Runtime) activate(ctx context.Context) error {
 		startErr := fmt.Errorf("recover pending turns: %w", err)
 		<-r.done
 		return startErr
+	}
+	for _, threadID := range r.TurnQueueService.threads() {
+		r.TurnQueueService.Drain(threadID)
 	}
 	return nil
 }

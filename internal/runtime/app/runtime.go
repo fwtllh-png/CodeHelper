@@ -71,6 +71,21 @@ type SessionProfileStore interface {
 	) (protocol.SessionProfileUpdateResult, error)
 }
 
+type AgentPresetStore interface {
+	List(context.Context) (protocol.AgentPresetList, error)
+	Get(context.Context, string) (protocol.AgentPreset, error)
+	Save(
+		context.Context,
+		protocol.AgentPreset,
+		uint64,
+	) (protocol.AgentPresetMutationResult, error)
+	Delete(
+		context.Context,
+		string,
+		uint64,
+	) (protocol.AgentPresetMutationResult, error)
+}
+
 type SessionProfileEngine interface {
 	ValidateSessionProfile(protocol.ThreadID, protocol.SessionProfile) error
 	ApplySessionProfile(protocol.ThreadID, protocol.SessionProfile) error
@@ -139,6 +154,7 @@ type Options struct {
 	Recovery            *RecoveryState
 	Observability       RuntimeObservability
 	SessionProfiles     SessionProfileStore
+	AgentPresets        AgentPresetStore
 	DefaultProfile      protocol.SessionProfile
 	ProfileCapabilities protocol.SessionProfileCapabilities
 	ProfileModels       map[string]protocol.ModelCapabilities
@@ -184,6 +200,7 @@ type Runtime struct {
 	metrics              *telemetry.Metrics
 	logger               *slog.Logger
 	profiles             SessionProfileStore
+	agentPresets         AgentPresetStore
 	defaultProfile       protocol.SessionProfile
 	profileCapabilities  protocol.SessionProfileCapabilities
 	profileModels        map[string]protocol.ModelCapabilities
@@ -204,7 +221,9 @@ type Runtime struct {
 	*RecoveryService
 	*HistoryService
 	*ArtifactService
+	*AgentPresetService
 	*TurnService
+	*TurnQueueService
 	TraceQuery RuntimeTraceQuery
 
 	done      chan struct{}
@@ -646,6 +665,7 @@ func (r *SessionService) deleteSession(
 	if discard {
 		r.clearSessionInteractions(threadIDs)
 	}
+	r.TurnQueueService.clearThreads(threadIDs)
 	if current.Isolation == SessionIsolationWorktree {
 		if discardErr := r.sessionWorkspaces.Discard(
 			ctx,
@@ -1255,10 +1275,11 @@ func (r *Runtime) FormatTurnDiff(threadID protocol.ThreadID) string {
 func (r *Runtime) RecoveryState(context.Context) RecoveryState {
 	r.EventService.mu.Lock()
 	result := RecoveryState{
-		LastSequence:     r.hub.Snapshot().LastSequence,
-		Terminals:        make(map[protocol.TurnID]protocol.EventKind, len(r.terminals)),
-		PendingApprovals: make(map[string]PendingApproval, len(r.approvals)),
-		PendingInputs:    make(map[string]PendingInput, len(r.inputs)),
+		LastSequence:       r.hub.Snapshot().LastSequence,
+		Terminals:          make(map[protocol.TurnID]protocol.EventKind, len(r.terminals)),
+		PendingApprovals:   make(map[string]PendingApproval, len(r.approvals)),
+		PendingInputs:      make(map[string]PendingInput, len(r.inputs)),
+		PendingQueuedTurns: r.TurnQueueService.snapshotMapLocked(),
 	}
 	for turnID, kind := range r.terminals {
 		result.Terminals[turnID] = kind
@@ -1521,6 +1542,7 @@ func (s *TurnService) run(
 				context.Background(), payload.ThreadID, payload.TurnID,
 			)
 			sink.commitOperation()
+			r.TurnQueueService.Drain(payload.ThreadID)
 		}
 		return
 	}
@@ -1540,6 +1562,7 @@ func (s *TurnService) run(
 			context.Background(), payload.ThreadID, payload.TurnID,
 		)
 		sink.commitOperation()
+		r.TurnQueueService.Drain(payload.ThreadID)
 	} else if rejectErr := r.reject(operation, terminalErr); rejectErr == nil {
 		r.commit(operation.ID)
 	}
@@ -1608,6 +1631,23 @@ type runtimeSink struct {
 }
 
 func (s *runtimeSink) Emit(data protocol.EventData) error {
+	switch payload := s.operation.Payload.(type) {
+	case *protocol.StartTurnPayload:
+		if started, ok := data.(*protocol.TurnStartedData); ok &&
+			started.QueueID == "" {
+			started.QueueID = payload.QueueID
+		}
+	case *protocol.SteerTurnPayload:
+		if steered, ok := data.(*protocol.TurnSteeredData); ok &&
+			steered.QueueID == "" {
+			steered.QueueID = payload.QueueID
+		}
+	case *protocol.PromoteQueuedTurnPayload:
+		if steered, ok := data.(*protocol.TurnSteeredData); ok &&
+			steered.QueueID == "" {
+			steered.QueueID = payload.QueueID
+		}
+	}
 	if s.deferTerminal && protocol.IsTerminalEvent(eventhub.EventKind(data)) {
 		if s.terminal == nil {
 			s.terminal = data
@@ -1755,7 +1795,8 @@ func (r *RecoveryService) recoverPendingTurns(ctx context.Context) error {
 			if err != nil {
 				return err
 			}
-			if len(facts) == 0 {
+			start, _ := operation.Payload.(*protocol.StartTurnPayload)
+			if len(facts) == 0 && (start == nil || start.QueueID == "") {
 				continue
 			}
 		}
@@ -1890,6 +1931,9 @@ func (r *EventService) publishWithIdentity(
 		var projectionErr error
 		if r.lifecycle != nil {
 			projectionErr = r.lifecycle.Project(context.Background(), event)
+		}
+		if projectionErr == nil {
+			projectionErr = r.TurnQueueService.Apply(event)
 		}
 		if projectionErr == nil && !protocol.IsTerminalEvent(kind) {
 			r.ArtifactService.PersistSessionArtifact(context.Background(), event)
@@ -2043,6 +2087,10 @@ func (r *RecoveryService) restore(recovery RecoveryState) {
 			r.OperationService.acceptedKeys[pending.IdempotencyKey] = operationID
 		}
 	}
+	r.TurnQueueService.Restore(
+		recovery.PendingQueuedTurns,
+		recovery.PendingOperations,
+	)
 }
 func (s *OperationService) accept(
 	ctx context.Context,

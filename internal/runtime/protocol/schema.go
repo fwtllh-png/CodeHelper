@@ -70,6 +70,24 @@ func GenerateSchema() *Schema {
 	schema.Envelope["session_profile_update"] = schemaOf(
 		reflect.TypeOf(&SessionProfileUpdateResult{}),
 	)
+	schema.Envelope["agent_preset_list"] = schemaOf(
+		reflect.TypeOf(&AgentPresetList{}),
+	)
+	schema.Envelope["agent_preset_save"] = schemaOf(
+		reflect.TypeOf(&AgentPresetSaveRequest{}),
+	)
+	schema.Envelope["agent_preset_delete"] = schemaOf(
+		reflect.TypeOf(&AgentPresetDeleteRequest{}),
+	)
+	schema.Envelope["agent_preset_mutation"] = schemaOf(
+		reflect.TypeOf(&AgentPresetMutationResult{}),
+	)
+	schema.Envelope["agent_preset_apply"] = schemaOf(
+		reflect.TypeOf(&AgentPresetApplyRequest{}),
+	)
+	schema.Envelope["agent_preset_apply_result"] = schemaOf(
+		reflect.TypeOf(&AgentPresetApplyResult{}),
+	)
 	schema.Envelope["provider_catalog"] = schemaOf(
 		reflect.TypeOf(&ProviderCatalog{}),
 	)
@@ -204,8 +222,8 @@ func schemaOf(goType reflect.Type) *TypeSchema {
 		return &TypeSchema{Type: "string", Enum: []string{
 			string(EditorContextFile), string(EditorContextSelection),
 			string(EditorContextSymbol), string(EditorContextDiagnostics),
-			string(EditorContextImage), string(EditorContextTerminal),
-			string(EditorContextGitDiff),
+			string(EditorContextImage), string(EditorContextAttachment),
+			string(EditorContextTerminal), string(EditorContextGitDiff),
 		}}
 	case goType == editorContextSourceType:
 		return &TypeSchema{Type: "string", Enum: []string{

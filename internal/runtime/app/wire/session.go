@@ -149,13 +149,6 @@ func (s *Session) ContributionReceipts() []ContributionReceipt {
 	return s.extensions.contributionReceipts()
 }
 
-func (s *Session) Jobs() process.JobCenter {
-	if s.processes == nil {
-		return nil
-	}
-	return s.processes
-}
-
 func (s *Session) SetPolicyMode(mode policy.Mode) {
 	// Applies to the next turn's SnapshotTurnContext; in-flight turns use a
 	// CloneSampling policy installed on Guard for the turn duration.

@@ -120,6 +120,77 @@
   overflow-y: auto;
 }
 
+.settingsApplyBar {
+  display: flex;
+  min-height: 54px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--ch-border);
+  background: var(--ch-panel-raised);
+}
+
+.settingsApplyBar > span {
+  min-width: 0;
+  flex: 1;
+  color: var(--ch-text-muted);
+  font-size: 12px;
+}
+
+.settingsApplyBar[data-dirty] > span {
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+  font-weight: 600;
+}
+
+.settingsApplyBar > small,
+.settingsInlineResult {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ch-accent-strong);
+  font-size: 11px;
+}
+
+.settingsApplyBar > small[data-tone="warning"] {
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+}
+
+.settingsInlineResult[data-tone="warning"] {
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+}
+
+.settingsApplyBar > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settingsApplyBar button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 11px;
+  border: 1px solid var(--ch-border);
+  border-radius: 7px;
+  background: var(--ch-panel);
+  color: var(--ch-text-secondary);
+  font-size: 12px;
+}
+
+.settingsApplyBar .settingsApply {
+  border-color: color-mix(in srgb, var(--ch-accent) 45%, var(--ch-border));
+  background: var(--ch-accent-soft);
+  color: var(--ch-accent-strong);
+}
+
+.settingsApplyBar button:disabled,
+.settingsButtonRow button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .settingsError {
   margin-bottom: 12px;
   padding: 8px 10px;
@@ -218,6 +289,30 @@
 .settingsNumber {
   width: 96px;
   padding-right: 8px;
+}
+
+.settingsPreferenceControl {
+  display: inline-flex;
+  min-width: 116px;
+  height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  color: var(--ch-text-secondary);
+  font-size: 12px;
+}
+
+.settingsPreferenceControl input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--ch-accent);
+}
+
+.settingsPreferenceControl input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .settingsBlock {
@@ -343,6 +438,53 @@
   font-weight: 600;
 }
 
+.modelCapabilityPanel [data-restart],
+.settingsRouteList b[data-restart] {
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+}
+
+.settingsRouteList {
+  display: grid;
+}
+
+.settingsRouteList > div {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--ch-border);
+}
+
+.settingsRouteList > div > span {
+  display: grid;
+  min-width: 0;
+}
+
+.settingsRouteList strong,
+.settingsRouteList small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settingsRouteList strong {
+  font-size: 12px;
+}
+
+.settingsRouteList small,
+.settingsRouteList b {
+  color: var(--ch-text-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.settingsRouteList > div > small {
+  grid-column: 1 / -1;
+  color: color-mix(in srgb, var(--ch-warning) 60%, var(--ch-text));
+}
+
 .capabilityTags,
 .settingsTags {
   display: flex;
@@ -455,7 +597,7 @@
 
 .settingsCatalog {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 8px;
 }
@@ -506,8 +648,143 @@
   accent-color: var(--ch-accent);
 }
 
+.settingsToggle {
+  display: inline-grid;
+}
+
+.settingsToggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ch-accent);
+}
+
+.settingsToolRow,
+.settingsExtension {
+  align-items: start;
+}
+
+.settingsCatalogDetails,
+.settingsExtensionFacts,
+.settingsExtensionActions,
+.settingsExtensionDetail {
+  grid-column: 1 / -1;
+}
+
+.settingsCatalogDetails summary {
+  color: var(--ch-text-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.settingsCatalogDetails dl {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+}
+
+.settingsCatalogDetails dl > div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.settingsCatalogDetails dt,
+.settingsCatalogDetails dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ch-text-muted);
+  font-size: 10px;
+}
+
+.settingsCatalogDetails dd {
+  color: var(--ch-text-secondary);
+}
+
 .settingsExtensionGrid {
   margin-top: 8px;
+}
+
+.settingsExtensionFacts {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--ch-text-muted);
+  font-size: 10px;
+}
+
+.settingsExtensionDetail {
+  max-height: 180px;
+}
+
+.settingsDanger {
+  color: color-mix(in srgb, var(--ch-danger) 72%, var(--ch-text)) !important;
+}
+
+.settingsReference {
+  overflow-wrap: anywhere;
+  font-family: var(--ch-font-mono);
+}
+
+.presetWorkbench {
+  gap: 12px;
+}
+
+.presetFields {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.8fr) minmax(150px, 1fr);
+  gap: 8px;
+}
+
+.presetFields label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: var(--ch-text-muted);
+  font-size: 10px;
+}
+
+.presetFields label:last-child {
+  grid-column: 1 / -1;
+}
+
+.presetFields input,
+.presetFields select {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  outline: none;
+  background: var(--ch-panel);
+  color: var(--ch-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.presetFields input:focus,
+.presetFields select:focus {
+  border-color: var(--ch-focus);
+}
+
+.presetScope {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--ch-text-muted);
+  font-size: 11px;
+}
+
+.presetScope strong {
+  color: var(--ch-text);
+  font-size: 11px;
+}
+
+.presetScope small {
+  margin-left: auto;
 }
 
 .settingsEmpty {
@@ -629,6 +906,19 @@
     padding: 0 14px 18px;
   }
 
+  .settingsApplyBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settingsApplyBar > div {
+    justify-content: flex-end;
+  }
+
+  .settingsApplyBar button {
+    flex: 1 1 auto;
+  }
+
   .settingsRow {
     align-items: stretch;
     flex-direction: column;
@@ -641,7 +931,12 @@
   }
 
   .themeChoices,
-  .settingsCatalog {
+  .settingsCatalog,
+  .presetFields {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .presetFields label:last-child {
+    grid-column: auto;
   }
 }

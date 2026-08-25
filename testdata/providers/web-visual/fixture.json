@@ -5,6 +5,26 @@
   "stream_delay_ms": 40,
   "routes": [
     {
+      "match": ["visual navigation"],
+      "streams": [
+        "tools-read.sse",
+        "tools-bash.sse",
+        "tools-grep.sse",
+        "tools-glob.sse",
+        "tools-complete.sse",
+        "chrome-complete.sse",
+        "chrome-complete.sse",
+        "chrome-complete.sse"
+      ]
+    },
+    {
+      "match": ["visual queue"],
+      "streams": [
+        "long-streaming.sse",
+        "streaming-complete.sse"
+      ]
+    },
+    {
       "match": ["visual long streaming"],
       "streams": ["long-streaming.sse", "streaming-complete.sse"]
     },
@@ -15,6 +35,14 @@
     {
       "match": ["visual approval"],
       "streams": ["approval-request.sse", "approval-complete.sse"]
+    },
+    {
+      "match": ["visual background approval"],
+      "streams": [
+        "background-approval.sse",
+        "background-verify.sse",
+        "approval-complete.sse"
+      ]
     },
     {
       "match": ["visual edit approval"],
@@ -47,6 +75,10 @@
     {
       "match": ["visual chrome"],
       "streams": ["chrome-summary.sse", "chrome-complete.sse"]
+    },
+    {
+      "match": ["visual rich content"],
+      "streams": ["rich-content-complete.sse"]
     },
     {
       "match": ["visual diff"],

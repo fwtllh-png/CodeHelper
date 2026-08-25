@@ -36,16 +36,24 @@ func (l *Lifecycle) Recover(ctx context.Context) (app.RecoveryState, error) {
 		return app.RecoveryState{}, fmt.Errorf("replay lifecycle events: %w", err)
 	}
 	recovery := app.RecoveryState{
-		Terminals:         make(map[protocol.TurnID]protocol.EventKind),
-		PendingApprovals:  make(map[string]app.PendingApproval),
-		PendingInputs:     make(map[string]app.PendingInput),
-		PendingOperations: make(map[protocol.OperationID]app.PendingOperation),
-		ToolItems:         make(map[app.EventItemOwner]protocol.ItemID),
+		Terminals:          make(map[protocol.TurnID]protocol.EventKind),
+		PendingApprovals:   make(map[string]app.PendingApproval),
+		PendingInputs:      make(map[string]app.PendingInput),
+		PendingQueuedTurns: make(map[string]protocol.QueuedTurn),
+		PendingOperations:  make(map[protocol.OperationID]app.PendingOperation),
+		ToolItems:          make(map[app.EventItemOwner]protocol.ItemID),
 	}
 	confirmed := make(map[protocol.OperationID]app.CommitReceipt)
 	for _, event := range events {
 		if err := l.Project(ctx, event); err != nil {
 			return app.RecoveryState{}, fmt.Errorf("recover event %d projection: %w", event.Sequence, err)
+		}
+		if err := app.ApplyTurnQueueEvent(recovery.PendingQueuedTurns, event); err != nil {
+			return app.RecoveryState{}, fmt.Errorf(
+				"recover event %d turn queue: %w",
+				event.Sequence,
+				err,
+			)
 		}
 		recovery.LastSequence = max(recovery.LastSequence, event.Sequence)
 		if protocol.IsTerminalEvent(event.Kind) {
@@ -642,6 +650,9 @@ func confirmsOperation(kind protocol.EventKind) bool {
 	return protocol.IsTerminalEvent(kind) ||
 		kind == protocol.EventOperationRejected ||
 		kind == protocol.EventTurnSteered ||
+		kind == protocol.EventTurnQueued ||
+		kind == protocol.EventQueuedTurnUpdated ||
+		kind == protocol.EventQueuedTurnRemoved ||
 		kind == protocol.EventApprovalResolved ||
 		kind == protocol.EventThreadCompacted ||
 		kind == protocol.EventThreadForked ||

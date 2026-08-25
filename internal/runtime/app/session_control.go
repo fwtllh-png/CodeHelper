@@ -483,6 +483,39 @@ func (r *OperationService) SubmitForSession(
 			)
 		}
 	}
+	if enqueue, ok := request.Payload.(*protocol.EnqueueTurnPayload); ok {
+		if request.WorkspaceIdentity == nil {
+			return OperationReceipt{}, runtimeProblem(
+				protocol.CodeInvalidArgument,
+				"workspace identity is required for a queued turn",
+				nil,
+			)
+		}
+		if enqueue.WorkspaceIdentity == nil {
+			identity := *request.WorkspaceIdentity
+			enqueue.WorkspaceIdentity = &identity
+		} else if *enqueue.WorkspaceIdentity != *request.WorkspaceIdentity {
+			return OperationReceipt{}, runtimeProblem(
+				protocol.CodeConflict,
+				"queued turn workspace identity does not match the Runtime binding",
+				nil,
+			)
+		}
+		if enqueue.QueueID == "" {
+			if request.IdempotencyKey == "" {
+				return OperationReceipt{}, runtimeProblem(
+					protocol.CodeInvalidArgument,
+					"queued turn requires an idempotency key",
+					nil,
+				)
+			}
+			enqueue.QueueID = sessionDerivedID(
+				"queue",
+				request.IdempotencyKey,
+				request.SessionID,
+			)
+		}
+	}
 	if cancel, ok := request.Payload.(*protocol.CancelTurnPayload); ok {
 		active, found := r.active.LookupTurn(cancel.TurnID)
 		if !found {

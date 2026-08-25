@@ -315,7 +315,7 @@ func buildLedger(items []inventoryItem) ledger {
 				current.RequiredQualifications = []string{"pending"}
 			case "intentional_drop":
 				current.DropRationale = "legacy host-specific surface"
-				current.Replacement = "Web primary entry or retained CLI surface"
+				current.Replacement = "Web primary entry"
 			}
 			features[id] = current
 		}
@@ -337,7 +337,7 @@ func buildLedger(items []inventoryItem) ledger {
 func classify(item inventoryItem) (string, string) {
 	switch item.Kind {
 	case "secondary_surface":
-		return item.Name, "retained_secondary"
+		return item.Name, "intentional_drop"
 	case "legacy_make_target":
 		return "legacy-vscode-acp-build-chain", "intentional_drop"
 	case "acp_dynamic_method":
@@ -715,6 +715,8 @@ func verifyLegacyHostsRemoved(root string) error {
 	for _, name := range []string{
 		"extensions/vscode",
 		"internal/host/runtimeapi/acp",
+		"internal/host/cli",
+		"internal/host/tui",
 		"internal/compatibility",
 	} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(name))); err == nil {

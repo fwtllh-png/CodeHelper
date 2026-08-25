@@ -104,8 +104,6 @@
 
 ### 部分 10: Host 与协议
 
-- [CLI 与 Machine-readable Output](./10-hosts-protocols/01-cli.md) — `host-cli` — `draft` — 规划路径: `10-hosts-protocols/01-cli.md`
-- [TUI State Projection](./10-hosts-protocols/02-tui.md) — `host-tui` — `draft` — 规划路径: `10-hosts-protocols/02-tui.md`
 - [本机 Web Transport 与 Runtime Authority](./10-hosts-protocols/04-web-transport.md) — `host-web-transport` — `verified` — 规划路径: `10-hosts-protocols/04-web-transport.md`
 - [React Web 工作区与 Runtime Authority](./10-hosts-protocols/06-web.md) — `host-web` — `draft` — 规划路径: `10-hosts-protocols/06-web.md`
 

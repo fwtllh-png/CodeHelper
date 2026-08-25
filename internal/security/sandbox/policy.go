@@ -41,7 +41,7 @@ type Options struct {
 	PrivateTemp   string
 	HelperPath    string
 	// AllowNetwork permits outbound/inbound sockets inside the OS sandbox.
-	// codehelper enables it for the interactive tool session so host CLIs like
+	// codehelper enables it for the interactive tool session so host processes like
 	// ubomcli can reach their APIs.
 	AllowNetwork     bool
 	ManagedProxyPort uint16

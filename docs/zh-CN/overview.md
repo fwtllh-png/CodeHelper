@@ -58,7 +58,7 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 | 可观测性 | 版本化 Observation Envelope、冻结终态 Measurement、Trace、Usage、Redaction、Retention、OTLP |
 | 编排 | 统一 Durable WorkGraph 的 Run/Node/Attempt/Effect、Worker、Workflow、Lane、Fleet、Subagent |
 | 生态 | Typed Extension Plan/Lifecycle、Model Catalog、MCP、Skill、Plugin、Hook、Memory |
-| Host | CLI、TUI、Web |
+| Host | 本机 Web |
 
 ## 产品边界
 
@@ -89,7 +89,7 @@ CodeHelper 不是：
   -> 脱敏 Observation + 有界 Telemetry Projection
 ```
 
-所有 Host 都应观察到相同语义。编辑器插件不能拥有私有文件写路径，后台 Worker 也
+Web 与后台执行都应观察到相同语义。浏览器不能拥有私有文件写路径，后台 Worker 也
 不能绕过交互 Turn 使用的 Guard。
 
 ## 当前成熟度

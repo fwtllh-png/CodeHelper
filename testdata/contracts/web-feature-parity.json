@@ -15,26 +15,23 @@
         "internal/host/runtimeapi/acp/server.go"
       ],
       "drop_rationale": "legacy host-specific surface",
-      "replacement": "Web primary entry or retained CLI surface"
+      "replacement": "Web primary entry"
     },
     {
       "id": "automation-management",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.automation-management"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/automation_cmd_test.go#TestAutomationCLIListRunPause",
-        "internal/host/cli/web_worker_coexist_test.go#TestWebWorkerAndAutomationShareDurableStateWithoutOwnerConflict"
-      ],
-      "secondary_surface": "automation-management"
+      "drop_rationale": "standalone automation management is outside the Web-only product surface",
+      "replacement": "Web primary entry"
     },
     {
       "id": "binary-update",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "vscode_command.codehelper-checkbinaryupdates",
         "vscode_configuration.codehelper-binarypath",
@@ -46,24 +43,20 @@
       "legacy_evidence": [
         "extensions/vscode/package.json"
       ],
-      "secondary_surface": "codehelper update check",
-      "required_qualifications": [
-        "internal/host/cli/ops_test.go#TestUpdateCheckFixture"
-      ]
+      "drop_rationale": "standalone binary update commands are outside the Web-only product surface",
+      "replacement": "external package distribution"
     },
     {
       "id": "boot-repair",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.boot-repair"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/command_tree_test.go#TestCobraCommandTreeExposesNewSurfaces"
-      ],
-      "secondary_surface": "boot-repair"
+      "drop_rationale": "standalone repair commands are outside the Web-only product surface",
+      "replacement": "Web boot diagnostics"
     },
     {
       "id": "checkpoint",
@@ -95,18 +88,34 @@
     },
     {
       "id": "cli-host",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.cli-host"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/command_tree_test.go#TestCobraCommandTreeExposesNewSurfaces",
-        "internal/host/cli/quickstart_test.go#TestQuickstartCompletesGovernedFirstTurn"
+      "drop_rationale": "the product exposes a single Web host",
+      "replacement": "Web primary entry"
+    },
+    {
+      "id": "conversation-navigation",
+      "disposition": "required",
+      "legacy_inventory_ids": [],
+      "runtime_owner": "internal/runtime/app",
+      "web_api": [
+        "session/history",
+        "events WebSocket"
       ],
-      "secondary_surface": "cli-host"
+      "web_surface": [
+        "Conversation header navigation and search"
+      ],
+      "required_qualifications": [
+        "internal/host/runtimeapi/web/contract_test.go#TestWebHostMeetsTheRuntimeContract",
+        "web/src/ui/conversationNavigation.test.ts#indexes turns, questions, tools, and structured file references",
+        "web/src/ui/App.test.tsx#searches stable conversation identities and navigates between questions",
+        "web/tests/e2e/visual.spec.ts#navigates long conversations by stable semantic anchors"
+      ]
     },
     {
       "id": "credential",
@@ -438,22 +447,19 @@
         "extensions/vscode/package.json"
       ],
       "drop_rationale": "legacy host-specific surface",
-      "replacement": "Web primary entry or retained CLI surface"
+      "replacement": "Web primary entry"
     },
     {
       "id": "mcp-management",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.mcp-management"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/workflow_fleet_mcp_cli_test.go#TestMCPManageAndAuthSlots",
-        "internal/host/tui/mcp_health_test.go#TestMCPHealthEventUpdatesPanel"
-      ],
-      "secondary_surface": "mcp-management"
+      "drop_rationale": "standalone MCP management is outside the Web-only product surface",
+      "replacement": "Web extension status and startup configuration"
     },
     {
       "id": "plan-recovery",
@@ -522,7 +528,7 @@
       ],
       "secondary_surface": "make package",
       "required_qualifications": [
-        "internal/host/cli/run_test.go#TestRunVersionJSON",
+        "internal/host/web/launcher_test.go#TestRunContextExposesOnlyWebStartupFlags",
         "scripts/package-release.sh"
       ]
     },
@@ -659,18 +665,15 @@
     },
     {
       "id": "tui-host",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.tui-host"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/tui/host_journey_test.go#TestHostJourneyProjectsPrimaryLifecycleFromRuntimeEvents",
-        "internal/host/tui/host_journey_test.go#TestHostJourneyCancelIsTerminalFailureAndRecoveryKeepsComposer"
-      ],
-      "secondary_surface": "tui-host"
+      "drop_rationale": "the product exposes a single Web host",
+      "replacement": "Web primary entry"
     },
     {
       "id": "usage-receipt",
@@ -866,7 +869,7 @@
         "internal/host/runtimeapi/web/contract_internal_test.go#TestWebDependenciesExposeNarrowQueryPorts",
         "internal/host/runtimeapi/web/server_test.go#TestStaticAssetsRejectTraversalAndSupportETag",
         "internal/host/runtimeapi/web/capacity_integration_test.go#TestWebSocketSlowReaderReleasesConnectionSlotAfterWriteTimeout",
-        "internal/host/cli/web_readiness_test.go#TestProbeWebReadinessRequiresTrustedReadyEndpoint",
+        "internal/host/web/launcher_test.go#TestProbeWebReadinessRequiresTrustedReadyEndpoint",
         "internal/platform/ownerlease/lease_test.go#TestPathCanonicalizesDataDirectoryAliases",
         "scripts/webprotocolgen/main_test.go#TestGenerateProducesDeterministicGuardedRoutes",
         "scripts/webexperiencecheck/main_test.go#TestRepositoryWebExperienceContract",
@@ -888,19 +891,15 @@
     },
     {
       "id": "worker-execution",
-      "disposition": "retained_secondary",
+      "disposition": "intentional_drop",
       "legacy_inventory_ids": [
         "secondary_surface.worker-execution"
       ],
       "legacy_evidence": [
         "docs/zh-CN/web-primary-entry-plan.md"
       ],
-      "required_qualifications": [
-        "internal/host/cli/worker_cmd_test.go#TestWorkerRunReportsWhatItClaimsAndStopsCleanly",
-        "internal/host/cli/worker_cmd_test.go#TestWorkerEnqueueCreatesExecutableWorkThatListShows",
-        "internal/host/cli/web_worker_coexist_test.go#TestWebWorkerAndAutomationShareDurableStateWithoutOwnerConflict"
-      ],
-      "secondary_surface": "worker-execution"
+      "drop_rationale": "standalone worker commands are outside the Web-only product surface",
+      "replacement": "Runtime-owned background services reached through Web"
     },
     {
       "id": "workspace-binding",

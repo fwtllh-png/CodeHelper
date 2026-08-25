@@ -20,7 +20,6 @@ var requiredJourneys = []string{
 	"web_browser_durability",
 	"web_long_session",
 	"web_streaming_soak",
-	"web_worker_coexistence",
 }
 
 var validLanes = map[string]bool{

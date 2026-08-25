@@ -65,8 +65,6 @@ Capability，不是普通 Catalog Validation 自动开放的值；这防止 Conf
 
 ## 生命周期
 
-CLI Auth Command 可以把 Env Value 写入 Keyring，但不会序列化到 TOML。
-
 在 Web 中，Password Input 收集 Value，Runtime 按 Exact Workspace/Provider Identity
 生成 OS Keyring Entry。data-dir 只保存带 Generation 的 Reference 和不含 Secret 的
 Recovery Intent。浏览器状态只包含 Credential Status、Reference 和 Sanitized
@@ -126,8 +124,7 @@ Backend Message。
 | Resolver | `provider/httpclient/credentials.go` |
 | File Check | `credential_file_*.go` |
 | Keyring | `security/keyring` |
-| CLI | `host/cli/auth_cmd.go` |
-| Web Credential Control | `security/credential`、`host/cli/web.go` |
+| Web Credential Control | `security/credential`、`host/web/launcher.go` |
 
 ## 设计取舍与替代方案
 
@@ -154,8 +151,8 @@ cd web && npm test -- credentials
 
 ## 动手实验
 
-用 Fake Value 创建临时 Env-reference Config，运行 `codehelper config show`，确认只显示
-Reference/Provenance；不要发送 Provider Request，随后删除临时 Config。
+用 Fake Value 创建临时 Env-reference Config，启动 Fixture-backed Web，确认 Settings
+只显示 Reference/Provenance；不要发送真实 Provider Request，随后删除临时 Config。
 
 ## 复习问题
 

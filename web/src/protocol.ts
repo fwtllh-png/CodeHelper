@@ -112,6 +112,25 @@ export interface PresentationSnapshot {
   history_truncated_before?: Cursor;
 }
 
+export interface QueuedTurn {
+  queue_id: string;
+  thread_id: string;
+  source_turn_id: string;
+  prompt: string;
+  display_prompt?: string;
+  intent?: string;
+  workspace_identity?: WorkspaceIdentity;
+  context?: EditorContextReference[];
+  added_sequence: Cursor;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TurnQueue {
+  version: number;
+  items: QueuedTurn[];
+}
+
 export interface SessionHistoryPage {
   session_id: string;
   events: RuntimeEvent[];
@@ -150,6 +169,7 @@ export interface SessionProfile {
   approval_posture: string;
   execution_target: string;
   max_steps: number;
+  prompt_cache_revision?: number;
 }
 
 export interface SessionProfileSnapshot {
@@ -166,6 +186,51 @@ export interface SessionProfileUpdateResult {
   profile: SessionProfile;
   prompt_cache_reset: boolean;
   reset_reason?: string;
+}
+
+export interface AgentPresetProfile {
+  mode: SessionProfile["mode"];
+  provider: string;
+  model: string;
+  reasoning_effort?: string;
+  enabled_tool_ids?: string[];
+  approval_posture: string;
+  execution_target: string;
+  max_steps: number;
+}
+
+export interface AgentPreset {
+  version: number;
+  id: string;
+  revision: number;
+  name: string;
+  description?: string;
+  scope: "workspace";
+  profile: AgentPresetProfile;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentPresetList {
+  version: number;
+  revision: number;
+  presets: AgentPreset[];
+}
+
+export interface AgentPresetMutationResult {
+  version: number;
+  revision: number;
+  preset?: AgentPreset;
+  deleted_id?: string;
+  duplicate?: boolean;
+}
+
+export interface AgentPresetApplyResult {
+  version: number;
+  preset_id: string;
+  profile_update: SessionProfileUpdateResult;
+  restart_required: boolean;
+  restart_reason?: string;
 }
 
 export interface ProviderCatalogEntry {
@@ -219,9 +284,18 @@ export interface ToolCatalogEntry {
   description: string;
   source_kind: string;
   source_label: string;
+  capability: string;
+  access_mode: string;
   risk_level: string;
+  sandbox_requirement: string;
+  policy_state: string;
+  policy_reason: string;
+  constitution_state: string;
+  constitution_reason: string;
   availability: string;
   unavailable_reason?: string;
+  state: string;
+  revision: number;
   enabled: boolean;
   guarded: boolean;
 }
@@ -255,6 +329,16 @@ export interface CheckpointList {
   version: number;
   session_id: string;
   checkpoints: SessionCheckpoint[];
+}
+
+export interface CheckpointForkResult {
+  version: number;
+  checkpoint: SessionCheckpoint;
+  session_id: string;
+  thread_id: string;
+  parent_thread_id: string;
+  exact_context: boolean;
+  workspace_claims_valid: boolean;
 }
 
 export interface SessionPlanArtifact {
@@ -352,14 +436,71 @@ export interface ExtensionProjection {
   name: string;
   version?: string;
   source?: string;
+  publisher?: string;
   trust?: string;
+  digest?: string;
+  generation?: number;
   enabled: boolean;
   health: string;
+  permissions?: string[];
+  capabilities?: Array<{
+    id: string;
+    kind: string;
+    enabled: boolean;
+    source_digest?: string;
+    permission_digest?: string;
+    authority_token?: string;
+  }>;
+  last_action?: string;
+  changed_at?: string;
 }
 
+export type ExtensionControlAction =
+  | "detail"
+  | "health"
+  | "permissions"
+  | "receipts"
+  | "trust"
+  | "enable"
+  | "disable"
+  | "revoke"
+  | "security_revoke"
+  | "install"
+  | "update"
+  | "rollback"
+  | "capability_enable"
+  | "capability_disable"
+  | "lint"
+  | "lock"
+  | "verify";
+
 export interface ExtensionControlResult {
+  operation_id?: string;
+  duplicate?: boolean;
   revision: number;
   extensions?: ExtensionProjection[];
+  detail?: unknown;
+  receipt?: {
+    operation_id: string;
+    action: string;
+    kind: string;
+    name?: string;
+    status: string;
+    digest: string;
+    revision: number;
+    occurred_at: string;
+  };
+  receipts?: Array<{
+    operation_id: string;
+    action: string;
+    kind: string;
+    name?: string;
+    status: string;
+    digest: string;
+    revision: number;
+    occurred_at: string;
+  }>;
+  diagnostics?: unknown;
 }
 
 export interface EditPlanFile {
@@ -456,7 +597,7 @@ export interface EditorDiagnostic {
 }
 
 export interface EditorContextReference {
-  kind: "file" | "selection" | "symbol" | "diagnostics" | "image" | "terminal" | "git_diff";
+  kind: "file" | "selection" | "symbol" | "diagnostics" | "image" | "attachment" | "terminal" | "git_diff";
   source: "composer" | "selection_command" | "code_action" | "native_picker";
   uri?: string;
   path?: string;

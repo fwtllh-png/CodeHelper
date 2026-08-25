@@ -26,7 +26,7 @@ CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景�
 1. [项目介绍与定位](./overview.md)
 2. [快速开始](./getting-started.md)
 3. [配置说明](./configuration.md)
-4. [命令与工作流](./usage.md)
+4. [Web 使用与工作流](./usage.md)
 5. [本机 DeepSeek 一键配置与运行](./deepseek-local.md)
 6. [安全模型](./security.md)
 7. [排障指南](./troubleshooting.md)
@@ -50,22 +50,21 @@ CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景�
 8. [本地开发与脚本](./development.md)
 9. [源码阅读路线指南](./reading-guide.md)
 10. [Agent 指南](./agent-guide.md)
-11. [Web 与 TUI 体验契约](./experience.md)
-12. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-13. [文档治理](./documentation-governance.md)
-14. [后续规划](./roadmap.md)
+11. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+12. [文档治理](./documentation-governance.md)
+13. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 
 | 文档内容 | 代码事实来源 |
 | --- | --- |
-| CLI 名称与参数 | `internal/host/cli` 与 `codehelper <command> --help` |
+| Web 启动参数 | `internal/host/web` 与 `codehelper --help` |
 | TOML、环境变量与默认值 | `internal/config/schema.go`、`defaults.go`、`environment.go` |
 | Runtime 协议 | `docs/protocol/runtime-protocol.schema.json` |
 | 架构边界 | Import 图和 Architecture Test |
 | 构建测试命令 | `Makefile` 与 `web/package.json` |
 | Web 能力迁移范围 | `testdata/contracts/web-feature-parity.json` |
-| Web 与 TUI 体验语义 | `testdata/contracts/experience-contract.json` |
+| Web 体验语义 | `testdata/contracts/web-experience-contract.json` |
 | 知识书籍信息架构 | `knowledge-base-plan.md` |
 | 书籍目录与章节状态 | `docs/book/catalog.json` |
 | 书籍 Ownership、新鲜度与发布事实 | `docs/book/governance.json` |

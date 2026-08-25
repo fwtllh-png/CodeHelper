@@ -1,76 +1,76 @@
 package config
 
 func applyOverrides(overrides Overrides, config *Config, provenance map[string]Source) {
-	applyInt(overrides.OperationBuffer, &config.Runtime.OperationBuffer, fieldOperationBuffer, SourceCLI, provenance)
-	applyInt(overrides.EventHistory, &config.Runtime.EventHistory, fieldEventHistory, SourceCLI, provenance)
-	applyInt(overrides.SubscriberBuffer, &config.Runtime.SubscriberBuffer, fieldSubscriberBuffer, SourceCLI, provenance)
-	applyString(overrides.StateDataDir, &config.State.DataDir, fieldStateDataDir, SourceCLI, provenance)
-	applyDuration(overrides.StateBusyTimeout, &config.State.BusyTimeout, fieldStateBusyTimeout, SourceCLI, provenance)
-	applyInt(overrides.StateRetention, &config.State.EventRetention, fieldStateRetention, SourceCLI, provenance)
-	applyBool(overrides.MemoryEnabled, &config.Memory.Enabled, fieldMemoryEnabled, SourceCLI, provenance)
-	applyString(overrides.MemoryPath, &config.Memory.Path, fieldMemoryPath, SourceCLI, provenance)
-	applyInt(overrides.MemoryMaxCandidates, &config.Memory.MaxCandidates, fieldMemoryMaxCandidates, SourceCLI, provenance)
-	applyInt(overrides.MemoryMaxPromptBytes, &config.Memory.MaxPromptBytes, fieldMemoryMaxPromptBytes, SourceCLI, provenance)
-	applyBool(overrides.MemorySemanticRerank, &config.Memory.SemanticRerank, fieldMemorySemanticRerank, SourceCLI, provenance)
+	applyInt(overrides.OperationBuffer, &config.Runtime.OperationBuffer, fieldOperationBuffer, SourceStartup, provenance)
+	applyInt(overrides.EventHistory, &config.Runtime.EventHistory, fieldEventHistory, SourceStartup, provenance)
+	applyInt(overrides.SubscriberBuffer, &config.Runtime.SubscriberBuffer, fieldSubscriberBuffer, SourceStartup, provenance)
+	applyString(overrides.StateDataDir, &config.State.DataDir, fieldStateDataDir, SourceStartup, provenance)
+	applyDuration(overrides.StateBusyTimeout, &config.State.BusyTimeout, fieldStateBusyTimeout, SourceStartup, provenance)
+	applyInt(overrides.StateRetention, &config.State.EventRetention, fieldStateRetention, SourceStartup, provenance)
+	applyBool(overrides.MemoryEnabled, &config.Memory.Enabled, fieldMemoryEnabled, SourceStartup, provenance)
+	applyString(overrides.MemoryPath, &config.Memory.Path, fieldMemoryPath, SourceStartup, provenance)
+	applyInt(overrides.MemoryMaxCandidates, &config.Memory.MaxCandidates, fieldMemoryMaxCandidates, SourceStartup, provenance)
+	applyInt(overrides.MemoryMaxPromptBytes, &config.Memory.MaxPromptBytes, fieldMemoryMaxPromptBytes, SourceStartup, provenance)
+	applyBool(overrides.MemorySemanticRerank, &config.Memory.SemanticRerank, fieldMemorySemanticRerank, SourceStartup, provenance)
 	index := &config.Context.Index
-	applyBool(overrides.IndexEnabled, &index.Enabled, fieldIndexEnabled, SourceCLI, provenance)
-	applyInt64(overrides.IndexMaxBytes, &index.MaxFileBytes, fieldIndexMaxBytes, SourceCLI, provenance)
-	applyInt(overrides.IndexMaxFiles, &index.MaxFiles, fieldIndexMaxFiles, SourceCLI, provenance)
+	applyBool(overrides.IndexEnabled, &index.Enabled, fieldIndexEnabled, SourceStartup, provenance)
+	applyInt64(overrides.IndexMaxBytes, &index.MaxFileBytes, fieldIndexMaxBytes, SourceStartup, provenance)
+	applyInt(overrides.IndexMaxFiles, &index.MaxFiles, fieldIndexMaxFiles, SourceStartup, provenance)
 	repoMap := &config.Context.RepoMap
-	applyBool(overrides.RepoMapEnabled, &repoMap.Enabled, fieldRepoMapEnabled, SourceCLI, provenance)
-	applyInt(overrides.RepoMapMaxBytes, &repoMap.MaxBytes, fieldRepoMapMaxBytes, SourceCLI, provenance)
+	applyBool(overrides.RepoMapEnabled, &repoMap.Enabled, fieldRepoMapEnabled, SourceStartup, provenance)
+	applyInt(overrides.RepoMapMaxBytes, &repoMap.MaxBytes, fieldRepoMapMaxBytes, SourceStartup, provenance)
 	applyInt(
 		overrides.RepoMapMaxDirectories, &repoMap.MaxDirectories,
-		fieldRepoMapMaxDirectories, SourceCLI, provenance,
+		fieldRepoMapMaxDirectories, SourceStartup, provenance,
 	)
 	workingSet := &config.Context.WorkingSet
 	applyBool(
 		overrides.WorkingSetEnabled, &workingSet.Enabled,
-		fieldWorkingSetEnabled, SourceCLI, provenance,
+		fieldWorkingSetEnabled, SourceStartup, provenance,
 	)
 	applyInt(
 		overrides.WorkingSetMaxEntries, &workingSet.MaxEntries,
-		fieldWorkingSetMaxEntries, SourceCLI, provenance,
+		fieldWorkingSetMaxEntries, SourceStartup, provenance,
 	)
 	applyInt(
 		overrides.WorkingSetMaxBytes, &workingSet.MaxBytes,
-		fieldWorkingSetMaxBytes, SourceCLI, provenance,
+		fieldWorkingSetMaxBytes, SourceStartup, provenance,
 	)
 	evidence := &config.Context.Evidence
-	applyBool(overrides.EvidenceEnabled, &evidence.Enabled, fieldEvidenceEnabled, SourceCLI, provenance)
+	applyBool(overrides.EvidenceEnabled, &evidence.Enabled, fieldEvidenceEnabled, SourceStartup, provenance)
 	applyInt(
 		overrides.EvidenceMaxEntries, &evidence.MaxEntries,
-		fieldEvidenceMaxEntries, SourceCLI, provenance,
+		fieldEvidenceMaxEntries, SourceStartup, provenance,
 	)
-	applyInt(overrides.EvidenceMaxBytes, &evidence.MaxBytes, fieldEvidenceMaxBytes, SourceCLI, provenance)
+	applyInt(overrides.EvidenceMaxBytes, &evidence.MaxBytes, fieldEvidenceMaxBytes, SourceStartup, provenance)
 	applyBool(
 		overrides.CodingPolicyEnabled, &config.Context.CodingPolicy.Enabled,
-		fieldCodingPolicyEnabled, SourceCLI, provenance,
+		fieldCodingPolicyEnabled, SourceStartup, provenance,
 	)
 	compaction := &config.Context.Compact
 	applyInt(
 		overrides.CompactPrepareTokens, &compaction.PrepareTokens,
-		fieldCompactPrepareTokens, SourceCLI, provenance,
+		fieldCompactPrepareTokens, SourceStartup, provenance,
 	)
 	applyInt(
 		overrides.CompactAutoTokens, &compaction.AutoCompactTokens,
-		fieldCompactAutoTokens, SourceCLI, provenance,
+		fieldCompactAutoTokens, SourceStartup, provenance,
 	)
 	applyInt(
 		overrides.CompactEmergencyTokens, &compaction.EmergencyTokens,
-		fieldCompactEmergencyTokens, SourceCLI, provenance,
+		fieldCompactEmergencyTokens, SourceStartup, provenance,
 	)
 	applyString(
 		overrides.CompactScope, &compaction.Scope,
-		fieldCompactScope, SourceCLI, provenance,
+		fieldCompactScope, SourceStartup, provenance,
 	)
 	applyInt(
 		overrides.CompactSummaryMax, &compaction.SummaryMaxBytes,
-		fieldCompactSummaryMax, SourceCLI, provenance,
+		fieldCompactSummaryMax, SourceStartup, provenance,
 	)
 	applyInt(
 		overrides.CompactMaxDigest, &compaction.MaxDigestEntries,
-		fieldCompactMaxDigest, SourceCLI, provenance,
+		fieldCompactMaxDigest, SourceStartup, provenance,
 	)
 	for _, value := range []struct {
 		source *int
@@ -95,88 +95,88 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 		{overrides.CompactOwnerDeltaMaxSegments, &compaction.OwnerDeltaMaxSegments, fieldCompactOwnerDeltaMaxSegments},
 		{overrides.CompactOwnerDeltaMaxBytes, &compaction.OwnerDeltaMaxBytes, fieldCompactOwnerDeltaMaxBytes},
 	} {
-		applyInt(value.source, value.target, value.field, SourceCLI, provenance)
+		applyInt(value.source, value.target, value.field, SourceStartup, provenance)
 	}
 	applyString(
 		overrides.CompactSemanticNarrative,
 		&compaction.SemanticNarrative,
 		fieldCompactSemanticNarrative,
-		SourceCLI,
+		SourceStartup,
 		provenance,
 	)
 	applyDuration(
 		overrides.CompactSemanticNarrativeTimeout,
 		&compaction.SemanticNarrativeTimeout,
 		fieldCompactSemanticNarrativeTimeout,
-		SourceCLI,
+		SourceStartup,
 		provenance,
 	)
-	applyString(overrides.LogLevel, &config.Telemetry.LogLevel, fieldLogLevel, SourceCLI, provenance)
-	applyString(overrides.CredentialKind, &config.Credential.Kind, fieldCredentialKind, SourceCLI, provenance)
-	applyString(overrides.CredentialName, &config.Credential.Name, fieldCredentialName, SourceCLI, provenance)
+	applyString(overrides.LogLevel, &config.Telemetry.LogLevel, fieldLogLevel, SourceStartup, provenance)
+	applyString(overrides.CredentialKind, &config.Credential.Kind, fieldCredentialKind, SourceStartup, provenance)
+	applyString(overrides.CredentialName, &config.Credential.Name, fieldCredentialName, SourceStartup, provenance)
 	execution := &config.Execution
-	applyString(overrides.Provider, &execution.Provider, fieldProvider, SourceCLI, provenance)
-	applyString(overrides.Model, &execution.Model, fieldModel, SourceCLI, provenance)
-	applyString(overrides.Protocol, &execution.Protocol, fieldProtocol, SourceCLI, provenance)
-	applyString(overrides.Mode, &execution.Mode, fieldMode, SourceCLI, provenance)
-	applyString(overrides.Workspace, &execution.Workspace, fieldWorkspace, SourceCLI, provenance)
-	applyBool(overrides.Tools, &execution.Tools, fieldTools, SourceCLI, provenance)
-	applyUint64(overrides.MaxOutputTokens, &execution.MaxOutputTokens, fieldMaxOutputTokens, SourceCLI, provenance)
-	applyInt(overrides.MaxSteps, &execution.MaxSteps, fieldMaxSteps, SourceCLI, provenance)
-	applyDuration(overrides.Timeout, &execution.Timeout, fieldTimeout, SourceCLI, provenance)
-	applyDuration(overrides.ConnectionTimeout, &execution.ConnectionTimeout, fieldConnectionTimeout, SourceCLI, provenance)
-	applyDuration(overrides.TLSHandshakeTimeout, &execution.TLSHandshakeTimeout, fieldTLSHandshakeTimeout, SourceCLI, provenance)
-	applyDuration(overrides.ResponseHeaderTimeout, &execution.ResponseHeaderTimeout, fieldResponseHeaderTimeout, SourceCLI, provenance)
-	applyDuration(overrides.IdleTimeout, &execution.IdleTimeout, fieldIdleTimeout, SourceCLI, provenance)
-	applyInt(overrides.MaxConcurrent, &execution.MaxConcurrent, fieldMaxConcurrent, SourceCLI, provenance)
-	applyFloat64(overrides.RateLimit, &execution.RateLimit, fieldRateLimit, SourceCLI, provenance)
-	applyUint64(overrides.BudgetTokens, &execution.BudgetTokens, fieldBudgetTokens, SourceCLI, provenance)
-	applyUint64(overrides.TurnBudgetTokens, &execution.TurnBudgetTokens, fieldTurnBudgetTokens, SourceCLI, provenance)
-	applyFloat64(overrides.BudgetUSD, &execution.BudgetUSD, fieldBudgetUSD, SourceCLI, provenance)
-	applyString(overrides.ReasoningEffort, &execution.ReasoningEffort, fieldReasoning, SourceCLI, provenance)
-	applyBool(overrides.NativeSearch, &execution.NativeSearch, fieldNativeSearch, SourceCLI, provenance)
+	applyString(overrides.Provider, &execution.Provider, fieldProvider, SourceStartup, provenance)
+	applyString(overrides.Model, &execution.Model, fieldModel, SourceStartup, provenance)
+	applyString(overrides.Protocol, &execution.Protocol, fieldProtocol, SourceStartup, provenance)
+	applyString(overrides.Mode, &execution.Mode, fieldMode, SourceStartup, provenance)
+	applyString(overrides.Workspace, &execution.Workspace, fieldWorkspace, SourceStartup, provenance)
+	applyBool(overrides.Tools, &execution.Tools, fieldTools, SourceStartup, provenance)
+	applyUint64(overrides.MaxOutputTokens, &execution.MaxOutputTokens, fieldMaxOutputTokens, SourceStartup, provenance)
+	applyInt(overrides.MaxSteps, &execution.MaxSteps, fieldMaxSteps, SourceStartup, provenance)
+	applyDuration(overrides.Timeout, &execution.Timeout, fieldTimeout, SourceStartup, provenance)
+	applyDuration(overrides.ConnectionTimeout, &execution.ConnectionTimeout, fieldConnectionTimeout, SourceStartup, provenance)
+	applyDuration(overrides.TLSHandshakeTimeout, &execution.TLSHandshakeTimeout, fieldTLSHandshakeTimeout, SourceStartup, provenance)
+	applyDuration(overrides.ResponseHeaderTimeout, &execution.ResponseHeaderTimeout, fieldResponseHeaderTimeout, SourceStartup, provenance)
+	applyDuration(overrides.IdleTimeout, &execution.IdleTimeout, fieldIdleTimeout, SourceStartup, provenance)
+	applyInt(overrides.MaxConcurrent, &execution.MaxConcurrent, fieldMaxConcurrent, SourceStartup, provenance)
+	applyFloat64(overrides.RateLimit, &execution.RateLimit, fieldRateLimit, SourceStartup, provenance)
+	applyUint64(overrides.BudgetTokens, &execution.BudgetTokens, fieldBudgetTokens, SourceStartup, provenance)
+	applyUint64(overrides.TurnBudgetTokens, &execution.TurnBudgetTokens, fieldTurnBudgetTokens, SourceStartup, provenance)
+	applyFloat64(overrides.BudgetUSD, &execution.BudgetUSD, fieldBudgetUSD, SourceStartup, provenance)
+	applyString(overrides.ReasoningEffort, &execution.ReasoningEffort, fieldReasoning, SourceStartup, provenance)
+	applyBool(overrides.NativeSearch, &execution.NativeSearch, fieldNativeSearch, SourceStartup, provenance)
 	verify := &execution.Verify
-	applyString(overrides.VerifyMode, &verify.Mode, fieldVerifyMode, SourceCLI, provenance)
-	applyString(overrides.VerifyScope, &verify.Scope, fieldVerifyScope, SourceCLI, provenance)
-	applyString(overrides.VerifyOnFailure, &verify.OnFailure, fieldVerifyOnFailure, SourceCLI, provenance)
-	applyString(overrides.VerifyCommand, &verify.Command, fieldVerifyCommand, SourceCLI, provenance)
-	applyInt(overrides.VerifyRepair, &verify.MaxRepairSteps, fieldVerifyRepair, SourceCLI, provenance)
-	applyDuration(overrides.VerifyTimeout, &verify.Timeout, fieldVerifyTimeout, SourceCLI, provenance)
+	applyString(overrides.VerifyMode, &verify.Mode, fieldVerifyMode, SourceStartup, provenance)
+	applyString(overrides.VerifyScope, &verify.Scope, fieldVerifyScope, SourceStartup, provenance)
+	applyString(overrides.VerifyOnFailure, &verify.OnFailure, fieldVerifyOnFailure, SourceStartup, provenance)
+	applyString(overrides.VerifyCommand, &verify.Command, fieldVerifyCommand, SourceStartup, provenance)
+	applyInt(overrides.VerifyRepair, &verify.MaxRepairSteps, fieldVerifyRepair, SourceStartup, provenance)
+	applyDuration(overrides.VerifyTimeout, &verify.Timeout, fieldVerifyTimeout, SourceStartup, provenance)
 	child := &execution.Subagent
-	applyString(overrides.SubagentDelegation, &child.Delegation, fieldSubagentDelegation, SourceCLI, provenance)
-	applyInt(overrides.SubagentMaxDepth, &child.MaxDepth, fieldSubagentMaxDepth, SourceCLI, provenance)
-	applyInt(overrides.SubagentMaxParallel, &child.MaxParallel, fieldSubagentMaxParallel, SourceCLI, provenance)
-	applyInt(overrides.SubagentMaxResident, &child.MaxResident, fieldSubagentMaxResident, SourceCLI, provenance)
-	applyInt(overrides.SubagentMaxTotal, &child.MaxTotal, fieldSubagentMaxTotal, SourceCLI, provenance)
-	applyInt(overrides.SubagentMaxSteps, &child.MaxSteps, fieldSubagentMaxSteps, SourceCLI, provenance)
-	applyUint64(overrides.SubagentMaxTokens, &child.MaxTokens, fieldSubagentMaxTokens, SourceCLI, provenance)
-	applyFloat64(overrides.SubagentMaxCostUSD, &child.MaxCostUSD, fieldSubagentMaxCostUSD, SourceCLI, provenance)
-	applyDuration(overrides.SubagentWallTime, &child.WallTime, fieldSubagentWallTime, SourceCLI, provenance)
-	applyString(overrides.SubagentWorkspace, &child.Workspace, fieldSubagentWorkspace, SourceCLI, provenance)
+	applyString(overrides.SubagentDelegation, &child.Delegation, fieldSubagentDelegation, SourceStartup, provenance)
+	applyInt(overrides.SubagentMaxDepth, &child.MaxDepth, fieldSubagentMaxDepth, SourceStartup, provenance)
+	applyInt(overrides.SubagentMaxParallel, &child.MaxParallel, fieldSubagentMaxParallel, SourceStartup, provenance)
+	applyInt(overrides.SubagentMaxResident, &child.MaxResident, fieldSubagentMaxResident, SourceStartup, provenance)
+	applyInt(overrides.SubagentMaxTotal, &child.MaxTotal, fieldSubagentMaxTotal, SourceStartup, provenance)
+	applyInt(overrides.SubagentMaxSteps, &child.MaxSteps, fieldSubagentMaxSteps, SourceStartup, provenance)
+	applyUint64(overrides.SubagentMaxTokens, &child.MaxTokens, fieldSubagentMaxTokens, SourceStartup, provenance)
+	applyFloat64(overrides.SubagentMaxCostUSD, &child.MaxCostUSD, fieldSubagentMaxCostUSD, SourceStartup, provenance)
+	applyDuration(overrides.SubagentWallTime, &child.WallTime, fieldSubagentWallTime, SourceStartup, provenance)
+	applyString(overrides.SubagentWorkspace, &child.Workspace, fieldSubagentWorkspace, SourceStartup, provenance)
 	worker := &execution.Worker
-	applyBool(overrides.WorkerEnabled, &worker.Enabled, fieldWorkerEnabled, SourceCLI, provenance)
-	applyInt(overrides.WorkerMaxParallel, &worker.MaxParallel, fieldWorkerMaxParallel, SourceCLI, provenance)
-	applyInt(overrides.WorkerMaxAttempts, &worker.MaxAttempts, fieldWorkerMaxAttempts, SourceCLI, provenance)
-	applyDuration(overrides.WorkerLease, &worker.Lease, fieldWorkerLease, SourceCLI, provenance)
+	applyBool(overrides.WorkerEnabled, &worker.Enabled, fieldWorkerEnabled, SourceStartup, provenance)
+	applyInt(overrides.WorkerMaxParallel, &worker.MaxParallel, fieldWorkerMaxParallel, SourceStartup, provenance)
+	applyInt(overrides.WorkerMaxAttempts, &worker.MaxAttempts, fieldWorkerMaxAttempts, SourceStartup, provenance)
+	applyDuration(overrides.WorkerLease, &worker.Lease, fieldWorkerLease, SourceStartup, provenance)
 	applyDuration(
-		overrides.WorkerClaimInterval, &worker.ClaimInterval, fieldWorkerClaimInterval, SourceCLI, provenance,
+		overrides.WorkerClaimInterval, &worker.ClaimInterval, fieldWorkerClaimInterval, SourceStartup, provenance,
 	)
 	applyDuration(
 		overrides.WorkerAutomationInterval, &worker.AutomationInterval,
-		fieldWorkerAutomationTick, SourceCLI, provenance,
+		fieldWorkerAutomationTick, SourceStartup, provenance,
 	)
 	applyDuration(
-		overrides.WorkerRetryBackoff, &worker.RetryBackoff, fieldWorkerRetryBackoff, SourceCLI, provenance,
+		overrides.WorkerRetryBackoff, &worker.RetryBackoff, fieldWorkerRetryBackoff, SourceStartup, provenance,
 	)
 	applyDuration(
 		overrides.WorkerRetryBackoffMax, &worker.RetryBackoffMax,
-		fieldWorkerRetryBackoffMax, SourceCLI, provenance,
+		fieldWorkerRetryBackoffMax, SourceStartup, provenance,
 	)
-	applyUint64(overrides.WorkerMaxTokens, &worker.MaxTokens, fieldWorkerMaxTokens, SourceCLI, provenance)
-	applyFloat64(overrides.WorkerMaxCostUSD, &worker.MaxCostUSD, fieldWorkerMaxCostUSD, SourceCLI, provenance)
-	applyBool(overrides.VisionEnabled, &config.Vision.Enabled, fieldVisionEnabled, SourceCLI, provenance)
-	applyString(overrides.VisionProvider, &config.Vision.Provider, fieldVisionProvider, SourceCLI, provenance)
-	applyString(overrides.VisionModel, &config.Vision.Model, fieldVisionModel, SourceCLI, provenance)
-	applyString(overrides.WebSearchBackend, &config.Web.SearchBackend, fieldWebSearchBackend, SourceCLI, provenance)
-	applyBool(overrides.RouteLock, &config.Route.Lock, fieldRouteLock, SourceCLI, provenance)
+	applyUint64(overrides.WorkerMaxTokens, &worker.MaxTokens, fieldWorkerMaxTokens, SourceStartup, provenance)
+	applyFloat64(overrides.WorkerMaxCostUSD, &worker.MaxCostUSD, fieldWorkerMaxCostUSD, SourceStartup, provenance)
+	applyBool(overrides.VisionEnabled, &config.Vision.Enabled, fieldVisionEnabled, SourceStartup, provenance)
+	applyString(overrides.VisionProvider, &config.Vision.Provider, fieldVisionProvider, SourceStartup, provenance)
+	applyString(overrides.VisionModel, &config.Vision.Model, fieldVisionModel, SourceStartup, provenance)
+	applyString(overrides.WebSearchBackend, &config.Web.SearchBackend, fieldWebSearchBackend, SourceStartup, provenance)
+	applyBool(overrides.RouteLock, &config.Route.Lock, fieldRouteLock, SourceStartup, provenance)
 }

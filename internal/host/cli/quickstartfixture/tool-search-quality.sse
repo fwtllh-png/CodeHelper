@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_tool_search","function":{"name":"tool_search","arguments":"{\"query\":\"quality verify covered paths\"}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

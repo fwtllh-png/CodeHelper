@@ -3,6 +3,10 @@
 export const webProtocolVersion = 1 as const;
 
 export const webRPCRoutes = [
+  "agent-preset/apply",
+  "agent-preset/delete",
+  "agent-preset/list",
+  "agent-preset/save",
   "agent/list",
   "checkpoint/fork",
   "checkpoint/get",
@@ -38,6 +42,7 @@ export const webRPCRoutes = [
   "task/list",
   "tool/catalog",
   "trace/query",
+  "turn/queue",
   "turn/recover",
   "usage/query",
   "workspace/browse",
@@ -75,6 +80,9 @@ export const webEventKinds = [
   "turn.canceled",
   "operation.rejected",
   "turn.steered",
+  "turn.queued",
+  "turn.queue.updated",
+  "turn.queue.removed",
   "approval.required",
   "approval.resolved",
   "input.required",

@@ -48,6 +48,15 @@ func TestBootstrapIsLoopbackFencedAndDoesNotCacheToken(t *testing.T) {
 	if response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("cache control = %q", response.Header().Get("Cache-Control"))
 	}
+	if policy := response.Header().Get("Content-Security-Policy"); !strings.Contains(
+		policy,
+		"img-src 'self' data: blob: https:",
+	) {
+		t.Fatalf("content security policy = %q", policy)
+	}
+	if response.Header().Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("referrer policy = %q", response.Header().Get("Referrer-Policy"))
+	}
 
 	rebound := httptest.NewRequest(http.MethodGet, "http://evil.test/api/v1/bootstrap", nil)
 	rebound.Host = "evil.test"
@@ -752,7 +761,16 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 
 func TestUnaryRejectsDeclaredOversizedBody(t *testing.T) {
 	const host = "127.0.0.1:43210"
-	server := newTestServer(t, host)
+	server := newTestServerWithOptions(t, webhost.Options{
+		Assets: fstest.MapFS{
+			"index.html": &fstest.MapFile{
+				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+			},
+		},
+		ExpectedHost: host,
+		Origin:       "http://" + host,
+		Capacity:     webhost.Capacity{MaxJSONBodyBytes: 2},
+	})
 	runtime := app.NewRuntime(app.Options{})
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
 	identity, err := protocol.NewWorkspaceIdentity("file:///workspace", "/workspace", "")
@@ -771,7 +789,7 @@ func TestUnaryRejectsDeclaredOversizedBody(t *testing.T) {
 		strings.NewReader(`{}`),
 	)
 	request.Host = host
-	request.ContentLength = (1 << 20) + 1
+	request.ContentLength = 3
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+bootstrapToken(t, server, host))
 	response := httptest.NewRecorder()

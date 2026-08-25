@@ -233,7 +233,7 @@ func TestLockRouteOverrideBeatsTheFile(t *testing.T) {
 	if !snapshot.Config.Route.Lock {
 		t.Fatal("--lock-route did not win over the file")
 	}
-	if snapshot.Provenance[fieldRouteLock] != SourceCLI {
+	if snapshot.Provenance[fieldRouteLock] != SourceStartup {
 		t.Fatalf("provenance = %q", snapshot.Provenance[fieldRouteLock])
 	}
 }

@@ -116,7 +116,7 @@ flowchart TD
 ## 设计取舍
 
 直接调用 `os`/`exec` 虽短，却绕过 Path、Sandbox、Approval、Journal 与 Observability。
-Built-in 提供 Narrow Structured Operation，并在所有 Host 复用同一 Guard。
+Built-in 提供 Narrow Structured Operation，并在 Web 与后台执行中复用同一 Guard。
 
 ## 失败模式与安全边界
 

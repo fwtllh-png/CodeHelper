@@ -10,7 +10,6 @@ LOCAL_DOC="${CODEHELPER_DEEPSEEK_LOCAL_DOC:-$ROOT/docs/DEEPSEEK-LIVE.zh-CN.md}"
 CONFIG_DIR="${CODEHELPER_CONFIG_DIR:-$HOME/.config/codehelper}"
 CONFIG_PATH="$CONFIG_DIR/config.toml"
 WORKSPACE="${CODEHELPER_LOCAL_WORKSPACE:-$ROOT}"
-POSTURE="${CODEHELPER_LOCAL_POSTURE:-bypass}"
 PROVIDER="deepseek-v4-flash"
 MODEL="deepseek-v4-flash"
 KEYRING_NAME="deepseek/default"
@@ -20,15 +19,10 @@ usage() {
 Usage: ./scripts/deepseek-local.sh COMMAND
 
 Commands:
-  init      build CodeHelper, install config, migrate the key to Keychain
-  tui       run init, then launch the TUI with the DeepSeek model
+  init      build CodeHelper and install the local Web configuration
   web       run init, then launch the local Web workspace
-  live-smoke
-            run the real-provider single-turn release smoke
-  multi-agent-smoke
-            run the real-provider Multi-Agent release smoke
   doc       create or refresh the ignored local runbook with the real API key
-  check     validate the existing binary, config, route, and credential
+  check     validate the existing binary and config
 
 Credential lookup order:
   1. DEEPSEEK_API_KEY
@@ -40,16 +34,8 @@ Credential lookup order:
 Environment overrides:
   CODEHELPER_DEEPSEEK_LOCAL_DOC  local ignored runbook path
   CODEHELPER_CONFIG_DIR          config directory (default ~/.config/codehelper)
-  CODEHELPER_LOCAL_WORKSPACE     TUI workspace (default repository root)
-  CODEHELPER_LOCAL_POSTURE       TUI posture (default bypass)
+  CODEHELPER_LOCAL_WORKSPACE     Web workspace (default repository root)
 EOF
-}
-
-require_macos() {
-  if [[ "$(uname -s)" != "Darwin" ]]; then
-    echo "DeepSeek one-click setup currently requires macOS Keychain" >&2
-    exit 1
-  fi
 }
 
 decode_stored_key() {
@@ -138,25 +124,7 @@ EOF
 make deepseek-init
 ```
 
-完成 Go Binary 编译、配置安装、Keychain 写入、配置与模型路由检查。
-
-## 一键启动 TUI
-
-```bash
-make deepseek-tui
-```
-
-默认使用当前仓库作为 Workspace，`act + bypass` 便于本机完整联调。切换为审批模式：
-
-```bash
-CODEHELPER_LOCAL_POSTURE=suggest make deepseek-tui
-```
-
-指定其他仓库：
-
-```bash
-CODEHELPER_LOCAL_WORKSPACE=/path/to/project make deepseek-tui
-```
+完成 Go Binary 编译和 Web 配置安装。
 
 ## 一键启动 Web 工作区
 
@@ -172,18 +140,16 @@ Agent 只需调用下列确定性命令，不应读取或输出本文件中的 K
 
 ```bash
 make deepseek-init
-CODEHELPER_LOCAL_POSTURE=suggest make deepseek-tui
 make deepseek-web
 ```
 
-如果 IDE Sandbox 拒绝写 macOS Keychain，Agent 应停止并请用户在普通 macOS Terminal
-执行同一命令，不得把密钥降级写入受 Git 跟踪的配置。
+API Key 只通过环境变量传给 Web 进程，不写入受 Git 跟踪的配置。
 
 ## 检查
 
 ```bash
 ./scripts/deepseek-local.sh check
-./bin/codehelper config show --config ~/.config/codehelper/config.toml
+./bin/codehelper --version
 ```
 EOF
   } >"$LOCAL_DOC"
@@ -191,19 +157,9 @@ EOF
 }
 
 install_runtime_config() {
-  local key=$1
-  require_macos
   make build
   install -d -m 700 "$CONFIG_DIR"
   install -m 600 "$ROOT/docs/examples/codehelper-deepseek.toml" "$CONFIG_PATH"
-  if ! DEEPSEEK_API_KEY="$key" "$ROOT/bin/codehelper" auth login \
-      --config "$CONFIG_PATH" \
-      --kind keyring \
-      --name "$KEYRING_NAME" \
-      --from-env DEEPSEEK_API_KEY >/dev/null; then
-    echo "macOS Keychain write failed; rerun this command in a normal Terminal" >&2
-    exit 1
-  fi
 }
 
 check_environment() {
@@ -215,20 +171,11 @@ check_environment() {
     echo "CodeHelper config is missing: $CONFIG_PATH" >&2
     exit 1
   }
-  "$ROOT/bin/codehelper" config check --config "$CONFIG_PATH" >/dev/null
-  "$ROOT/bin/codehelper" auth status --config "$CONFIG_PATH" >/dev/null
-  local route
-  route="$("$ROOT/bin/codehelper" model resolve \
-    --provider "$PROVIDER" --model "$MODEL" --json)"
-  if [[ "$route" != *'"protocol":"openai_responses"'* ||
-    "$route" != *'"endpoint":"https://api.deepseek.com"'* ]]; then
-    echo "bundled DeepSeek route verification failed" >&2
-    exit 1
-  fi
+  "$ROOT/bin/codehelper" --version >/dev/null
   echo "DeepSeek local environment is ready."
   echo "  binary: $ROOT/bin/codehelper"
   echo "  config: $CONFIG_PATH"
-  echo "  credential: macOS Keychain ($KEYRING_NAME)"
+  echo "  credential: injected into the Web process"
   echo "  workspace: $WORKSPACE"
 }
 
@@ -238,62 +185,24 @@ case "$command_name" in
     api_key="$(load_api_key)"
     trap 'api_key=""; unset DEEPSEEK_API_KEY' EXIT
     write_local_doc "$api_key"
-    install_runtime_config "$api_key"
+    install_runtime_config
     check_environment
-    ;;
-  tui)
-    api_key="$(load_api_key)"
-    trap 'api_key=""; unset DEEPSEEK_API_KEY' EXIT
-    write_local_doc "$api_key"
-    install_runtime_config "$api_key"
-    check_environment
-    exec "$ROOT/bin/codehelper" tui \
-      --config "$CONFIG_PATH" \
-      --workspace "$WORKSPACE" \
-      --provider "$PROVIDER" \
-      --model "$MODEL" \
-      --protocol openai_responses \
-      --enable-tools \
-      --mode act \
-      --posture "$POSTURE"
     ;;
   web)
     api_key="$(load_api_key)"
     trap 'api_key=""; unset DEEPSEEK_API_KEY' EXIT
     write_local_doc "$api_key"
-    install_runtime_config "$api_key"
+    install_runtime_config
     check_environment
-    exec "$ROOT/bin/codehelper" web \
+    DEEPSEEK_API_KEY="$api_key" exec "$ROOT/bin/codehelper" \
       --config "$CONFIG_PATH" \
       --workspace "$WORKSPACE" \
       --provider "$PROVIDER" \
       --model "$MODEL" \
+      --api-key-env DEEPSEEK_API_KEY \
       --enable-tools \
       --posture suggest \
       --open
-    ;;
-  live-smoke|multi-agent-smoke)
-    api_key="$(load_api_key)"
-    trap 'api_key=""; unset DEEPSEEK_API_KEY LIVE_MODEL_API_KEY' EXIT
-    live_binary="${CODEHELPER_LIVE_BINARY:-$ROOT/bin/codehelper}"
-    if [[ -z "${CODEHELPER_LIVE_BINARY:-}" ]]; then
-      make build
-    fi
-    [[ -x "$live_binary" ]] || {
-      echo "CodeHelper live binary is missing: $live_binary" >&2
-      exit 1
-    }
-    multi_agent=0
-    if [[ "$command_name" == "multi-agent-smoke" ]]; then
-      multi_agent=1
-    fi
-    LIVE_MODEL_MULTI_AGENT="$multi_agent" \
-      LIVE_MODEL_NAME="$PROVIDER" \
-      LIVE_MODEL_BASE_URL="https://api.deepseek.com" \
-      LIVE_MODEL_WIRE_MODEL="$MODEL" \
-      LIVE_MODEL_API_KEY="$api_key" \
-      LIVE_MODEL_PROTOCOL="openai_responses" \
-      "$ROOT/scripts/live-model-smoke.sh" "$live_binary"
     ;;
   doc)
     api_key="$(load_api_key)"

@@ -44,7 +44,6 @@ test.beforeEach(async () => {
   server = spawn(
     path.join(repositoryRoot, "bin/codehelper"),
     [
-      "web",
       "--workspace", workspaceDir,
       "--data-dir", dataDir,
       "--provider-fixture", path.join(repositoryRoot, "testdata/providers/openai"),
@@ -153,6 +152,95 @@ test("creates a Session and completes a fixture-backed Turn", async ({page}) => 
   await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
 });
 
+test("submits local attachments as verified Runtime context", async ({page}) => {
+  await page.goto(baseURL);
+  await page.getByRole("button", {name: "Create session"}).click();
+
+  const picker = page.locator('input[type="file"][aria-label="Attach files"]');
+  await expect(page.locator(
+    '.composerControls button[aria-label="Attach files"]'
+  )).toBeEnabled();
+  await picker.setInputFiles(path.join(workspaceDir, "README.md"));
+  await expect(page.getByLabel("Composer attachments")).toContainText(
+    "Text"
+  );
+  await expect(page.getByLabel("Composer attachments")).toContainText(
+    "picker"
+  );
+
+  const operation = page.waitForRequest((request) =>
+    request.url().endsWith("/api/v1/operation/submit") &&
+    request.postDataJSON()?.kind === "turn.start"
+  );
+  await page.getByPlaceholder("Ask CodeHelper").fill("review the attachment");
+  await page.getByRole("button", {name: "Send"}).click();
+  const payload = await operation;
+  expect(payload.postDataJSON()).toMatchObject({
+    payload: {
+      prompt: "review the attachment",
+      context: [{
+        kind: "attachment",
+        source: "native_picker",
+        label: "README.md",
+        media_type: "text/plain",
+        explicit: true
+      }]
+    }
+  });
+  await expect(page.getByLabel("Composer attachments")).toHaveCount(0);
+});
+
+test("searches and invokes slash commands entirely from the keyboard", async ({page}) => {
+  await page.goto(baseURL);
+  await page.getByRole("button", {name: "Create session"}).click();
+
+  const composer = page.getByPlaceholder("Ask CodeHelper");
+  await composer.fill("/cont");
+  const search = page.getByRole("searchbox", {name: "Search commands"});
+  await expect(search).toBeFocused();
+  await expect(search).toHaveValue("cont");
+  await expect(page.getByRole("menuitem", {name: /\/context/})).toBeVisible();
+  await expect(page.getByRole("menuitem", {name: /\/compact/})).toHaveCount(0);
+  const accessibility = await new AxeBuilder({page})
+    .include(".commandMenu")
+    .withTags(["wcag2a", "wcag2aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+  await search.press("Enter");
+
+  await expect(page.getByRole("dialog", {name: "Add context"})).toBeVisible();
+  await page.getByRole("button", {name: "Close context browser"}).click();
+  await page.getByRole("button", {name: "Commands"}).click();
+  await expect(page.getByText("Recent", {exact: true})).toBeVisible();
+  await expect(page.getByRole("menuitem").first()).toContainText("/context");
+});
+
+test("keeps a long mobile draft scrollable above a resized visual viewport", async ({page}) => {
+  await page.setViewportSize({width: 390, height: 844});
+  await page.goto(baseURL);
+  await page.getByRole("button", {name: "Create session"}).click();
+
+  const composer = page.getByPlaceholder("Ask CodeHelper");
+  await composer.fill(Array.from({length: 120}, (_, index) => `line ${index}`).join("\n"));
+  await composer.focus();
+  await page.setViewportSize({width: 390, height: 420});
+
+  const geometry = await composer.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return {
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      bottom: box.bottom,
+      viewportHeight: window.visualViewport?.height ?? window.innerHeight,
+      pageOverflow: document.documentElement.scrollWidth - window.innerWidth
+    };
+  });
+  expect(geometry.clientHeight).toBeLessThanOrEqual(336);
+  expect(geometry.scrollHeight).toBeGreaterThan(geometry.clientHeight);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight + 1);
+  expect(geometry.pageOverflow).toBeLessThanOrEqual(0);
+});
+
 test("opens the execution trajectory and inspects its event ledger", async ({page}) => {
   await page.goto(baseURL);
   await page.getByRole("button", {name: "Create session"}).click();
@@ -232,6 +320,57 @@ test("shows model routing and capabilities in Settings", async ({page}) => {
   await expect(model).toHaveText("fixture-model");
   await expect(page.getByText("Context window")).toBeVisible();
   await expect(page.getByText("Prompt cache", {exact: true})).toBeVisible();
+});
+
+test("persists and applies a workspace Agent preset", async ({page}) => {
+  await page.goto(baseURL);
+  await page.locator('button[aria-label="New chat"]').click();
+  await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+  await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Agent preset"}).click();
+
+  await page.getByLabel("Agent mode").selectOption("plan");
+  await page.getByLabel("Maximum steps").fill("16");
+  await page.getByLabel("Agent preset name").fill("Focused review");
+  await page.getByLabel("Agent preset description").fill("Plan with bounded steps");
+  await page.getByRole("button", {name: "Save new"}).click();
+  const presetStatus = page.locator(".presetWorkbench").getByRole("status");
+  await expect(presetStatus).toContainText("Preset created");
+  const accessibility = await new AxeBuilder({page})
+    .include(".settingsDialog")
+    .withTags(["wcag2a", "wcag2aa"])
+    .analyze();
+  expect(accessibility.violations).toEqual([]);
+
+  await page.getByRole("button", {name: "Discard"}).click();
+  await page.getByRole("button", {name: "Apply to session"}).click();
+  await expect(presetStatus).toContainText("Preset applied");
+  await expect(page.getByLabel("Agent mode")).toHaveValue("plan");
+  await expect(page.getByLabel("Maximum steps")).toHaveValue("16");
+
+  await page.getByRole("button", {name: "Close settings"}).click();
+  await page.reload();
+  await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Agent preset"}).click();
+  await expect(page.getByLabel("Saved agent preset")).toContainText("Focused review");
+
+  await page.setViewportSize({width: 390, height: 844});
+  const mobileGeometry = await page.locator(".settingsDialog").evaluate((dialog) => {
+    const box = dialog.getBoundingClientRect();
+    const buttons = Array.from(dialog.querySelectorAll<HTMLElement>("button"))
+      .filter((button) => button.offsetParent !== null)
+      .map((button) => button.getBoundingClientRect());
+    return {
+      overflow: dialog.scrollWidth - dialog.clientWidth,
+      insideViewport: box.left >= 0 && box.right <= window.innerWidth,
+      buttonsInside: buttons.every(
+        (button) => button.left >= box.left && button.right <= box.right
+      )
+    };
+  });
+  expect(mobileGeometry.overflow).toBeLessThanOrEqual(0);
+  expect(mobileGeometry.insideViewport).toBe(true);
+  expect(mobileGeometry.buttonsInside).toBe(true);
 });
 
 test("browses workspace resources and restores an archived Session", async ({page}) => {

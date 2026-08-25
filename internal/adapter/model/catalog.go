@@ -37,7 +37,7 @@ type Provenance string
 const (
 	ProvenanceBundled Provenance = "bundled"
 	ProvenanceConfig  Provenance = "config"
-	ProvenanceCLI     Provenance = "cli"
+	ProvenanceStartup Provenance = "startup"
 	ProvenanceFixture Provenance = "fixture"
 )
 

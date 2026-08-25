@@ -121,7 +121,7 @@
           "id": "history_prepend_anchor",
           "points": 4,
           "evidence": [
-            "web/src/ui/App.tsx#prependAnchorRef",
+            "web/src/ui/App.tsx#pendingReadingRestoreRef",
             "web/src/runtime/client.test.ts#prepends an older history page without duplicating snapshot events"
           ]
         }

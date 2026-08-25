@@ -26,7 +26,7 @@ func Probe() map[string]bool {
 }
 
 // CodeExecutionReady reports platforms that declare a strong sandbox path.
-// Live seatbelt/bwrap probing stays in the sandbox package (CLI must not import it).
+// Live seatbelt/bwrap probing stays in the sandbox package (hosts must not import it).
 func CodeExecutionReady() bool {
 	switch runtime.GOOS {
 	case "darwin", "linux":

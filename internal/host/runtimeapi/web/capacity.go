@@ -1,7 +1,7 @@
 package web
 
 const (
-	defaultMaxJSONBodyBytes       int64 = 1 << 20
+	defaultMaxJSONBodyBytes       int64 = 12 << 20
 	defaultMaxWebSocketFrameBytes int64 = 4 << 20
 	defaultMaxReplayEvents              = 10_000
 	defaultMaxConnections               = 16

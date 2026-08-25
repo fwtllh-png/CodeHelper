@@ -34,7 +34,7 @@ class DocumentationGovernanceTest(unittest.TestCase):
             )
         )
         self.assertFalse(
-            governance.matches("internal/host/cli/run.go", "internal/runtime/**")
+            governance.matches("internal/host/web/launcher.go", "internal/runtime/**")
         )
 
     def test_runtime_change_maps_to_runtime_chapters(self) -> None:

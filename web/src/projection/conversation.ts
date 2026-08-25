@@ -24,6 +24,18 @@ export interface ProjectedEditPlan {
   readonly files: readonly ProjectedEditPlanFile[];
 }
 
+export interface ProjectedDeliverable {
+  readonly path: string;
+  readonly tool: string;
+  readonly kind: string;
+  readonly added: number;
+  readonly removed: number;
+  readonly summary: string;
+  readonly callID?: string;
+  readonly diff?: ProjectedEditPlanFile;
+  readonly stale: boolean;
+}
+
 export type ConversationNode =
   | {
       readonly id: string;
@@ -31,6 +43,7 @@ export type ConversationNode =
       readonly turnID: string;
       readonly sequence: number;
       readonly text: string;
+      readonly steering?: boolean;
     }
   | {
       readonly id: string;
@@ -38,6 +51,7 @@ export type ConversationNode =
       readonly turnID: string;
       readonly sequence: number;
       readonly text: string;
+      readonly superseded?: boolean;
     }
   | {
       readonly id: string;
@@ -85,6 +99,12 @@ export type ConversationNode =
       readonly text: string;
       readonly failed: boolean;
       readonly recoverable: boolean;
+      readonly recovery?: {
+        readonly canRetry: boolean;
+        readonly canContinue: boolean;
+        readonly sideEffects: string;
+        readonly action: string;
+      };
     }
   | {
       readonly id: string;
@@ -92,6 +112,14 @@ export type ConversationNode =
       readonly turnID: string;
       readonly sequence: number;
       readonly data: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "deliverables";
+      readonly turnID: string;
+      readonly sequence: number;
+      readonly files: readonly ProjectedDeliverable[];
+      readonly verification: "passed" | "failed" | "unverified";
     }
   | {
       readonly id: string;
@@ -140,6 +168,8 @@ export class ConversationProjection {
   private readonly activeTurns = new Set<string>();
   private readonly approvals = new Map<string, RuntimeEvent>();
   private readonly inputs = new Map<string, RuntimeEvent>();
+  private readonly receipts = new Map<string, Readonly<Record<string, unknown>>>();
+  private readonly deliverablesByPath = new Map<string, Set<string>>();
   private revision = 0;
   private dirty = false;
   private current: ConversationSnapshot = emptyConversation;
@@ -160,6 +190,27 @@ export class ConversationProjection {
           sequence: event.sequence,
           text: stringValue(data.display_prompt ?? data.prompt)
         });
+        break;
+      case "turn.steered":
+        {
+          const outputID = this.outputByTurn.get(event.turn_id);
+          const output = outputID ? this.nodes.get(outputID) : undefined;
+          if (output?.kind === "assistant") {
+            this.put({...output, superseded: true});
+          }
+        }
+        this.put({
+          id: event.id,
+          kind: "user",
+          turnID: event.turn_id,
+          sequence: event.sequence,
+          text: stringValue(data.prompt),
+          steering: true
+        });
+        this.outputByTurn.set(
+          event.turn_id,
+          `output-${event.turn_id}-after-${event.id}`
+        );
         break;
       case "output.delta":
         this.appendAssistant(event, stringValue(data.text));
@@ -243,6 +294,12 @@ export class ConversationProjection {
         });
         break;
       case "turn.receipt":
+        this.receipts.set(event.turn_id, Object.freeze({...data}));
+        this.markPriorDeliverablesStale(
+          event.thread_id,
+          event.turn_id,
+          data.changes
+        );
         this.put({
           id: event.id,
           kind: "receipt",
@@ -463,6 +520,7 @@ export class ConversationProjection {
           text: finalText
         });
       }
+      this.putDeliverables(event);
       this.touch();
       return;
     }
@@ -479,8 +537,90 @@ export class ConversationProjection {
         "Turn did not complete"
       ),
       failed,
-      recoverable: failed
+      recoverable: failed,
+      recovery: failed ? recoveryOptions(
+        event,
+        this.receipts.get(event.turn_id)
+      ) : undefined
     });
+    this.putDeliverables(event);
+  }
+
+  private markPriorDeliverablesStale(
+    threadID: string,
+    turnID: string,
+    value: unknown
+  ): void {
+    if (!Array.isArray(value)) return;
+    for (const change of value) {
+      if (!isRecord(change)) continue;
+      const path = stringValue(change.path);
+      if (!path) continue;
+      for (const id of this.deliverablesByPath.get(
+        deliverablePathKey(threadID, path)
+      ) ?? []) {
+        const node = this.nodes.get(id);
+        if (node?.kind !== "deliverables" || node.turnID === turnID) continue;
+        this.put({
+          ...node,
+          files: Object.freeze(node.files.map((file) =>
+            file.path === path ? Object.freeze({...file, stale: true}) : file
+          ))
+        });
+      }
+    }
+  }
+
+  private putDeliverables(event: RuntimeEvent): void {
+    const receipt = this.receipts.get(event.turn_id);
+    if (!receipt || !Array.isArray(receipt.changes) || receipt.changes.length === 0) {
+      return;
+    }
+    const id = `deliverables-${event.turn_id}`;
+    const files = receipt.changes.flatMap((change) => {
+      if (!isRecord(change)) return [];
+      const path = stringValue(change.path);
+      if (!path) return [];
+      const tool = this.toolForChange(event.turn_id, path, stringValue(change.tool));
+      return [Object.freeze({
+        path,
+        tool: stringValue(change.tool) || tool?.tool || "workspace",
+        kind: stringValue(change.kind) || "modified",
+        added: numberValue(change.added) ?? 0,
+        removed: numberValue(change.removed) ?? 0,
+        summary: stringValue(change.summary),
+        callID: tool?.callID,
+        diff: tool?.editPlan?.files.find((file) => file.path === path),
+        stale: false
+      })];
+    });
+    if (files.length === 0) return;
+    this.put({
+      id,
+      kind: "deliverables",
+      turnID: event.turn_id,
+      sequence: event.sequence,
+      files: Object.freeze(files),
+      verification: verificationState(receipt.verification)
+    });
+    for (const file of files) {
+      const key = deliverablePathKey(event.thread_id, file.path);
+      const ids = this.deliverablesByPath.get(key) ?? new Set<string>();
+      ids.add(id);
+      this.deliverablesByPath.set(key, ids);
+    }
+  }
+
+  private toolForChange(turnID: string, path: string, tool: string) {
+    return [...this.nodes.values()].reverse().find((node) =>
+      node.kind === "tool" &&
+      node.turnID === turnID &&
+      (!tool || node.tool === tool) &&
+      (
+        node.changes.some((change) => stringValue(change.path) === path) ||
+        node.editPlan?.files.some((file) => file.path === path)
+      )
+    ) as Extract<ConversationNode, {kind: "tool"}> | undefined;
   }
 
   private toolNode(event: RuntimeEvent): Extract<ConversationNode, {kind: "tool"}> | undefined {
@@ -510,6 +650,10 @@ function reasoningKey(event: RuntimeEvent): string {
   return `${event.turn_id}:${sampleID || "active"}`;
 }
 
+function deliverablePathKey(threadID: string, path: string): string {
+  return `${threadID}\u0000${path}`;
+}
+
 function stringValue(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
 }
@@ -535,6 +679,48 @@ function lastNonEmptyLine(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function recoveryOptions(
+  event: RuntimeEvent,
+  receipt: Readonly<Record<string, unknown>> | undefined
+) {
+  const fault = isRecord(event.data.fault) ? event.data.fault : undefined;
+  const disposition = stringValue(fault?.disposition);
+  let sideEffects = stringValue(fault?.side_effects) || "unknown";
+  if ((sideEffects === "unknown" || !sideEffects) && receipt) {
+    const changes = Array.isArray(receipt.changes) ? receipt.changes : [];
+    const workspace = isRecord(receipt.workspace_outcome)
+      ? receipt.workspace_outcome
+      : undefined;
+    if (changes.length > 0 || workspace?.changed === true) {
+      sideEffects = "committed";
+    }
+  }
+  const legacy = !disposition;
+  return Object.freeze({
+    canRetry: event.kind === "turn.canceled" ||
+      disposition === "retry_turn" ||
+      legacy,
+    canContinue: event.kind === "turn.canceled" ||
+      disposition === "resume_turn" ||
+      disposition === "retry_turn" ||
+      disposition === "fail_turn" ||
+      legacy,
+    sideEffects,
+    action: stringValue(fault?.recovery_action)
+  });
+}
+
+function verificationState(
+  value: unknown
+): "passed" | "failed" | "unverified" {
+  if (!isRecord(value)) return "unverified";
+  const states = ["diagnostics", "tests", "verify"]
+    .map((key) => stringValue(value[key]))
+    .filter(Boolean);
+  if (states.includes("failed")) return "failed";
+  return states.includes("passed") ? "passed" : "unverified";
 }
 
 export function projectEditPlan(value: unknown): ProjectedEditPlan | undefined {

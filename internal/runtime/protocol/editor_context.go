@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"strings"
@@ -10,11 +11,19 @@ import (
 type EditorContextKind string
 
 const (
+	maxEditorContextReferences      = 8
+	maxInlineTextAttachmentBytes    = 64 << 10
+	maxInlineImageAttachmentBytes   = 5 << 20
+	maxInlineAttachmentPayloadBytes = 5 << 20
+)
+
+const (
 	EditorContextFile        EditorContextKind = "file"
 	EditorContextSelection   EditorContextKind = "selection"
 	EditorContextSymbol      EditorContextKind = "symbol"
 	EditorContextDiagnostics EditorContextKind = "diagnostics"
 	EditorContextImage       EditorContextKind = "image"
+	EditorContextAttachment  EditorContextKind = "attachment"
 	EditorContextTerminal    EditorContextKind = "terminal"
 	EditorContextGitDiff     EditorContextKind = "git_diff"
 )
@@ -73,15 +82,19 @@ func (r EditorContextReference) validate() error {
 	switch r.Kind {
 	case EditorContextFile, EditorContextSelection,
 		EditorContextSymbol, EditorContextDiagnostics, EditorContextImage,
-		EditorContextTerminal, EditorContextGitDiff:
+		EditorContextAttachment, EditorContextTerminal, EditorContextGitDiff:
 	default:
 		return errors.New("unsupported editor context kind")
 	}
 	if !validSHA256(r.Digest) {
 		return errors.New("editor context digest is required")
 	}
+	contentLimit := maxInlineTextAttachmentBytes
+	if r.Kind == EditorContextImage && r.Path == "" {
+		contentLimit = base64.StdEncoding.EncodedLen(maxInlineImageAttachmentBytes)
+	}
 	if len(r.URI) > 4096 || len(r.Path) > 4096 || len(r.Label) > 512 ||
-		len(r.MediaType) > 128 || len(r.Content) > 64<<10 {
+		len(r.MediaType) > 128 || len(r.Content) > contentLimit {
 		return errors.New("editor context uri or path exceeds its size limit")
 	}
 	if !r.Explicit {
@@ -121,10 +134,27 @@ func (r EditorContextReference) validate() error {
 			return errors.New("diagnostics context requires between 1 and 32 diagnostics")
 		}
 	case EditorContextImage:
-		if !r.validFileIdentity() || r.Range != nil || r.Symbol != nil ||
+		if r.Range != nil || r.Symbol != nil ||
 			len(r.Diagnostics) != 0 || r.OmittedDiagnostics != 0 ||
-			r.Label == "" || !validImageMediaType(r.MediaType) || r.Content != "" {
+			r.Label == "" || !validImageMediaType(r.MediaType) {
 			return errors.New("image context requires a labeled workspace image")
+		}
+		if r.Path == "" {
+			if r.URI != "" || r.DocumentVersion != 0 || r.Content == "" ||
+				!validInlineImageDigest(r.Content, r.Digest) {
+				return errors.New("inline image context is invalid")
+			}
+		} else if !r.validFileIdentity() || r.Content != "" {
+			return errors.New("workspace image context identity is invalid")
+		}
+	case EditorContextAttachment:
+		if r.URI != "" || r.Path != "" || r.DocumentVersion != 0 ||
+			r.Range != nil || r.Symbol != nil || len(r.Diagnostics) != 0 ||
+			r.OmittedDiagnostics != 0 || r.Label == "" ||
+			r.MediaType != "text/plain" || r.Content == "" ||
+			strings.ContainsRune(r.Content, '\x00') ||
+			!validInlineTextDigest(r.Content, r.Digest) {
+			return errors.New("text attachment context is invalid")
 		}
 	case EditorContextTerminal, EditorContextGitDiff:
 		if r.URI != "" || r.Path != "" || r.DocumentVersion != 0 ||
@@ -227,7 +257,7 @@ func validateEditorContextReceipts(values []EditorContextReceipt) error {
 		switch value.Kind {
 		case EditorContextFile, EditorContextSelection,
 			EditorContextSymbol, EditorContextDiagnostics, EditorContextImage,
-			EditorContextTerminal, EditorContextGitDiff:
+			EditorContextAttachment, EditorContextTerminal, EditorContextGitDiff:
 		default:
 			return errors.New("editor context receipt kind is invalid")
 		}
@@ -282,12 +312,19 @@ func validateEditorContextReceipts(values []EditorContextReceipt) error {
 				return errors.New("diagnostics context receipt is invalid")
 			}
 		case EditorContextImage:
-			if value.Path == "" || value.Source == "" || value.Label == "" ||
+			if value.Source == "" || value.Label == "" ||
 				!validImageMediaType(value.MediaType) || value.Range != nil ||
 				value.Symbol != nil || value.DiagnosticCount != 0 ||
 				value.OmittedDiagnostics != 0 || value.Truncated ||
 				value.RetainedBytes != value.OriginalBytes {
 				return errors.New("image context receipt is invalid")
+			}
+		case EditorContextAttachment:
+			if value.Path != "" || value.Source == "" || value.Label == "" ||
+				value.MediaType != "text/plain" || value.Range != nil ||
+				value.Symbol != nil || value.DiagnosticCount != 0 ||
+				value.OmittedDiagnostics != 0 {
+				return errors.New("attachment context receipt is invalid")
 			}
 		case EditorContextTerminal, EditorContextGitDiff:
 			if value.Path != "" || value.Source == "" || value.Label == "" ||
@@ -316,4 +353,44 @@ func validSHA256(value string) bool {
 	}
 	_, err := hex.DecodeString(value)
 	return err == nil && value == strings.ToLower(value)
+}
+
+func validInlineTextDigest(content, digest string) bool {
+	value := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(value[:]) == digest
+}
+
+func validInlineImageDigest(content, digest string) bool {
+	data, err := base64.StdEncoding.DecodeString(content)
+	if err != nil || len(data) == 0 || len(data) > maxInlineImageAttachmentBytes {
+		return false
+	}
+	value := sha256.Sum256(data)
+	return hex.EncodeToString(value[:]) == digest
+}
+
+func validateEditorContextReferences(
+	references []EditorContextReference,
+	subject string,
+) error {
+	if len(references) > maxEditorContextReferences {
+		return errors.New(subject + " accepts at most 8 editor context references")
+	}
+	attachmentBytes := 0
+	for _, reference := range references {
+		if err := reference.validate(); err != nil {
+			return err
+		}
+		switch {
+		case reference.Kind == EditorContextAttachment:
+			attachmentBytes += len(reference.Content)
+		case reference.Kind == EditorContextImage && reference.Path == "":
+			data, _ := base64.StdEncoding.DecodeString(reference.Content)
+			attachmentBytes += len(data)
+		}
+		if attachmentBytes > maxInlineAttachmentPayloadBytes {
+			return errors.New(subject + " attachments exceed the 5 MiB total limit")
+		}
+	}
+	return nil
 }

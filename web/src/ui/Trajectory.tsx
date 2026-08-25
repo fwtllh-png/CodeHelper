@@ -10,6 +10,7 @@ import {
   FileDiff,
   Gauge,
   ListTree,
+  MessageSquareText,
   RefreshCw,
   Search,
   Settings2,
@@ -45,6 +46,7 @@ interface Props {
   onInspectConsumed: () => void;
   onLoadEarlier: () => Promise<number>;
   onRetryTrace: () => Promise<void>;
+  onOpenChat: (turnID: string, callID?: string) => void;
 }
 
 type TimeRange = {start: number; end: number};
@@ -59,7 +61,8 @@ export function Trajectory({
   inspectCallID,
   onInspectConsumed,
   onLoadEarlier,
-  onRetryTrace
+  onRetryTrace,
+  onOpenChat
 }: Props) {
   const projection = useMemo(
     () => projectTrajectory(events, trace),
@@ -205,6 +208,10 @@ export function Trajectory({
             span={selectedSpan}
             records={visibleRecords}
             onClose={() => setSelectedID("")}
+            onOpenChat={() => onOpenChat(
+              selected.turnID,
+              selected.callID || undefined
+            )}
             onSelect={(id) => {
               setSelectedID(id);
               requestAnimationFrame(() => {
@@ -583,12 +590,14 @@ function RecordInspector({
   span,
   records,
   onClose,
+  onOpenChat,
   onSelect
 }: {
   record: TrajectoryRecord;
   span?: TrajectorySpan;
   records: readonly TrajectoryRecord[];
   onClose: () => void;
+  onOpenChat: () => void;
   onSelect: (id: string) => void;
 }) {
   const index = records.findIndex((candidate) => candidate.id === record.id);
@@ -644,6 +653,11 @@ function RecordInspector({
           <small title={record.summary}>{record.summary}</small>
         </span>
         <div>
+          {record.turnID && (
+            <button aria-label="Show in chat" onClick={onOpenChat}>
+              <MessageSquareText size={14} />
+            </button>
+          )}
           <button
             aria-label="Previous record"
             disabled={index <= 0}

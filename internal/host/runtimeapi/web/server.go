@@ -384,6 +384,14 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.profile(r, dependencies)
 	case "profile/update":
 		result, err = s.updateProfile(r, dependencies)
+	case "agent-preset/list":
+		result, err = s.agentPresetList(r, dependencies)
+	case "agent-preset/save":
+		result, err = s.agentPresetSave(r, dependencies)
+	case "agent-preset/delete":
+		result, err = s.agentPresetDelete(r, dependencies)
+	case "agent-preset/apply":
+		result, err = s.agentPresetApply(r, dependencies)
 	case "provider/list":
 		if err = s.decodeRequest(r, &struct{}{}); err == nil {
 			result = dependencies.ProviderCatalog
@@ -404,6 +412,8 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.checkpointFork(r, dependencies)
 	case "turn/recover":
 		result, err = s.turnRecover(r, dependencies)
+	case "turn/queue":
+		result, err = s.turnQueue(r, dependencies)
 	case "plan/get":
 		result, err = s.planGet(r, dependencies)
 	case "plan/transition":
@@ -486,7 +496,7 @@ func (s *Server) describe(dependencies Dependencies) map[string]any {
 		"can_open_path":    s.openPath != nil,
 		"profile":          dependencies.DefaultProfile,
 		"features": []string{
-			"sessions", "events", "profiles", "tools", "mcp_health",
+			"sessions", "events", "profiles", "agent_presets", "tools", "mcp_health",
 			"workspace", "credentials", "diagnostics", "session_export",
 			"trajectory", "trace_query",
 		},
@@ -913,6 +923,50 @@ func (s *Server) updateProfile(
 	)
 }
 
+func (s *Server) agentPresetList(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request protocol.AgentPresetListRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.AgentPresetService.List(r.Context(), request)
+}
+
+func (s *Server) agentPresetSave(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request protocol.AgentPresetSaveRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.AgentPresetService.Save(r.Context(), request)
+}
+
+func (s *Server) agentPresetDelete(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request protocol.AgentPresetDeleteRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.AgentPresetService.Delete(r.Context(), request)
+}
+
+func (s *Server) agentPresetApply(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request protocol.AgentPresetApplyRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.AgentPresetService.Apply(r.Context(), request)
+}
+
 func (s *Server) toolCatalog(
 	r *http.Request,
 	dependencies Dependencies,
@@ -1047,6 +1101,22 @@ func (s *Server) turnRecover(
 				Recovery:      &prepared.Recovery,
 			},
 		},
+	)
+}
+
+func (s *Server) turnQueue(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	var request struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return dependencies.Runtime.TurnQueueService.List(
+		r.Context(),
+		request.SessionID,
 	)
 }
 
@@ -1850,13 +1920,24 @@ func validateWebEditorContext(
 	dependencies Dependencies,
 	payload protocol.OperationPayload,
 ) error {
-	start, ok := payload.(*protocol.StartTurnPayload)
-	if !ok || len(start.Context) == 0 {
+	var (
+		threadID   protocol.ThreadID
+		references []protocol.EditorContextReference
+	)
+	switch value := payload.(type) {
+	case *protocol.StartTurnPayload:
+		threadID, references = value.ThreadID, value.Context
+	case *protocol.EnqueueTurnPayload:
+		threadID, references = value.ThreadID, value.Context
+	default:
+		return nil
+	}
+	if len(references) == 0 {
 		return nil
 	}
 	terminalReferences := make([]protocol.EditorContextReference, 0)
 	diagnosticReferences := make([]protocol.EditorContextReference, 0)
-	for _, reference := range start.Context {
+	for _, reference := range references {
 		switch reference.Kind {
 		case protocol.EditorContextFile,
 			protocol.EditorContextSelection,
@@ -1900,6 +1981,30 @@ func validateWebEditorContext(
 				diagnosticReferences = append(diagnosticReferences, reference)
 			}
 		case protocol.EditorContextImage:
+			if reference.Path == "" {
+				data, err := base64.StdEncoding.DecodeString(reference.Content)
+				if err != nil || len(data) == 0 || len(data) > 5<<20 {
+					return protocol.NewProblem(
+						protocol.CodeInvalidArgument,
+						"inline image attachment is invalid",
+						false,
+						err,
+					)
+				}
+				digest := sha256.Sum256(data)
+				detected := http.DetectContentType(data)
+				if reference.Digest != hex.EncodeToString(digest[:]) ||
+					reference.MediaType != detected ||
+					!supportedImageMediaType(detected) {
+					return protocol.NewProblem(
+						protocol.CodeConflict,
+						"inline image attachment failed content validation",
+						false,
+						nil,
+					)
+				}
+				continue
+			}
 			if dependencies.Workspace == nil {
 				return unavailable("workspace query is unavailable")
 			}
@@ -1927,8 +2032,18 @@ func validateWebEditorContext(
 					nil,
 				)
 			}
+		case protocol.EditorContextAttachment:
+			digest := sha256.Sum256([]byte(reference.Content))
+			if reference.Digest != hex.EncodeToString(digest[:]) {
+				return protocol.NewProblem(
+					protocol.CodeConflict,
+					"text attachment digest does not match content",
+					false,
+					nil,
+				)
+			}
 		case protocol.EditorContextGitDiff:
-			diff := dependencies.Runtime.FormatTurnDiff(start.ThreadID)
+			diff := dependencies.Runtime.FormatTurnDiff(threadID)
 			digest := sha256.Sum256([]byte(diff))
 			if reference.Content != diff ||
 				reference.Digest != hex.EncodeToString(digest[:]) {
@@ -1948,7 +2063,7 @@ func validateWebEditorContext(
 	if err := validateWebTerminalContexts(
 		ctx,
 		dependencies.Runtime,
-		start.ThreadID,
+		threadID,
 		terminalReferences,
 	); err != nil {
 		return err
@@ -1956,7 +2071,7 @@ func validateWebEditorContext(
 	return validateWebDiagnosticContexts(
 		ctx,
 		dependencies,
-		start.ThreadID,
+		threadID,
 		diagnosticReferences,
 	)
 }
@@ -2531,7 +2646,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set(
 			"Content-Security-Policy",
 			"default-src 'self'; script-src 'self'; style-src 'self'; "+
-				"img-src 'self' data: blob:; connect-src 'self' "+
+				"img-src 'self' data: blob: https:; connect-src 'self' "+
 				strings.Replace(s.origin, "http://", "ws://", 1)+"; "+
 				"object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "+
 				"form-action 'none'",
@@ -2626,19 +2741,23 @@ func decodeStrict(data []byte, target any) error {
 }
 
 var webOperationExposure = map[protocol.OperationKind]bool{
-	protocol.OperationStartTurn:        true,
-	protocol.OperationCancelTurn:       true,
-	protocol.OperationSteerTurn:        false,
-	protocol.OperationApprovalDecision: true,
-	protocol.OperationInputReply:       true,
-	protocol.OperationCompactThread:    true,
-	protocol.OperationForkThread:       false,
-	protocol.OperationRevertTurn:       false,
-	protocol.OperationSubmitRun:        false,
-	protocol.OperationCancelRun:        false,
-	protocol.OperationResumeRun:        false,
-	protocol.OperationRetryNode:        false,
-	protocol.OperationSkipNode:         false,
+	protocol.OperationStartTurn:         true,
+	protocol.OperationCancelTurn:        true,
+	protocol.OperationSteerTurn:         true,
+	protocol.OperationEnqueueTurn:       true,
+	protocol.OperationUpdateQueuedTurn:  true,
+	protocol.OperationRemoveQueuedTurn:  true,
+	protocol.OperationPromoteQueuedTurn: true,
+	protocol.OperationApprovalDecision:  true,
+	protocol.OperationInputReply:        true,
+	protocol.OperationCompactThread:     true,
+	protocol.OperationForkThread:        false,
+	protocol.OperationRevertTurn:        false,
+	protocol.OperationSubmitRun:         false,
+	protocol.OperationCancelRun:         false,
+	protocol.OperationResumeRun:         false,
+	protocol.OperationRetryNode:         false,
+	protocol.OperationSkipNode:          false,
 }
 
 func webOperationExposed(kind protocol.OperationKind) bool {

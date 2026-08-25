@@ -1,7 +1,7 @@
-# Safe example: this file contains a Keychain reference, never a secret value.
+# Safe example: this file contains an environment-variable reference, never a secret value.
 [credential]
-kind = "keyring"
-name = "deepseek/default"
+kind = "env"
+name = "DEEPSEEK_API_KEY"
 
 [execution]
 provider = "deepseek-v4-flash"

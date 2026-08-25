@@ -43,9 +43,9 @@ type modelMetadataFile struct {
 
 func resolveModelMetadata(modelID string, options ModelMetadataOptions) (*model.Model, error) {
 	descriptor := model.Model{
-		ID: modelID, CanonicalID: modelID, WireID: modelID, Provenance: model.ProvenanceCLI,
+		ID: modelID, CanonicalID: modelID, WireID: modelID, Provenance: model.ProvenanceStartup,
 		MetadataProvenance: model.MetadataProvenance{
-			CanonicalID: model.ProvenanceCLI, WireID: model.ProvenanceCLI,
+			CanonicalID: model.ProvenanceStartup, WireID: model.ProvenanceStartup,
 		},
 	}
 	if options.Path != "" {
@@ -62,7 +62,7 @@ func resolveModelMetadata(modelID string, options ModelMetadataOptions) (*model.
 		descriptor.Limits = model.Limits{
 			ContextTokens: options.ContextTokens, MaxOutputTokens: options.MaxOutputTokens,
 		}
-		descriptor.MetadataProvenance.Limits = model.ProvenanceCLI
+		descriptor.MetadataProvenance.Limits = model.ProvenanceStartup
 	}
 	if options.CapabilitiesSet {
 		capabilities, err := parseCapabilities(options.Capabilities)
@@ -70,7 +70,7 @@ func resolveModelMetadata(modelID string, options ModelMetadataOptions) (*model.
 			return nil, err
 		}
 		descriptor.Capabilities = capabilities
-		descriptor.MetadataProvenance.Capabilities = model.ProvenanceCLI
+		descriptor.MetadataProvenance.Capabilities = model.ProvenanceStartup
 	}
 	if options.InputPriceSet || options.OutputPriceSet || options.CurrencySet {
 		if !options.InputPriceSet || !options.OutputPriceSet || !options.CurrencySet {
@@ -82,9 +82,9 @@ func resolveModelMetadata(modelID string, options ModelMetadataOptions) (*model.
 		}
 		descriptor.Pricing = model.Pricing{
 			InputPerMillion: options.InputPerMillion, OutputPerMillion: options.OutputPerMillion,
-			Currency: options.Currency, Known: true, Provenance: model.ProvenanceCLI,
+			Currency: options.Currency, Known: true, Provenance: model.ProvenanceStartup,
 		}
-		descriptor.MetadataProvenance.Pricing = model.ProvenanceCLI
+		descriptor.MetadataProvenance.Pricing = model.ProvenanceStartup
 	}
 	if descriptor.Limits.ContextTokens == 0 ||
 		descriptor.Limits.MaxOutputTokens == 0 ||

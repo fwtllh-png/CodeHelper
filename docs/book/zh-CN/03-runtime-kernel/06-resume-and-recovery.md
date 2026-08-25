@@ -244,7 +244,7 @@ go test ./internal/persist/workspacejournal \
 ## 动手实验
 
 ```bash
-go test ./internal/host/cli -run TestExecPersistentResumeListTurns
+go test ./internal/runtime/app/wire -run TestPersistentRuntimeRestartIsIdempotentAndKeepsOneTerminal
 ```
 
 再阅读 `persistent_test.go`，将用例分类为 Resume、Logical Recovery、Lease Recovery

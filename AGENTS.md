@@ -6,8 +6,8 @@ This file is the repository entry point for coding agents.
 
 ## Objective
 
-Maintain CodeHelper as one local, guarded coding-agent runtime shared by Web,
-CLI, TUI, workers, and orchestration.
+Maintain CodeHelper as one local, guarded coding-agent runtime exposed through
+Web and shared by workers and orchestration.
 
 ## Read Before Editing
 
@@ -42,7 +42,7 @@ CLI, TUI, workers, and orchestration.
 ## Ownership
 
 ```text
-Web/CLI/TUI hosts          internal/host
+Web host                   internal/host
 protocol/app/agent/wiring  internal/runtime
 providers/tools/ecosystem internal/adapter
 policy/sandbox            internal/security

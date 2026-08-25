@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"net/url"
 	"os"
@@ -206,6 +207,10 @@ func TestResolveNativeImageAndInlineContext(t *testing.T) {
 	imageDigest := sha256.Sum256(image)
 	inline := "go test ./...\nPASS"
 	inlineDigest := sha256.Sum256([]byte(inline))
+	attachment := "Review the parser boundary."
+	attachmentDigest := sha256.Sum256([]byte(attachment))
+	pastedImage := []byte("\x89PNG\r\n\x1a\npasted")
+	pastedImageDigest := sha256.Sum256(pastedImage)
 	prompt, receipts, attachments, err := ResolveEditorContextWithAttachments(
 		root,
 		"inspect",
@@ -227,18 +232,37 @@ func TestResolveNativeImageAndInlineContext(t *testing.T) {
 				Label:  "Terminal output", MediaType: "text/plain",
 				Content: inline, Explicit: true,
 			},
+			{
+				Kind:   protocol.EditorContextAttachment,
+				Source: protocol.EditorContextSourceNativePicker,
+				Digest: hex.EncodeToString(attachmentDigest[:]),
+				Label:  "notes.txt", MediaType: "text/plain",
+				Content: attachment, Explicit: true,
+			},
+			{
+				Kind:   protocol.EditorContextImage,
+				Source: protocol.EditorContextSourceNativePicker,
+				Digest: hex.EncodeToString(pastedImageDigest[:]),
+				Label:  "pasted.png", MediaType: "image/png",
+				Content:  base64.StdEncoding.EncodeToString(pastedImage),
+				Explicit: true,
+			},
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(attachments) != 1 || attachments[0].MediaType != "image/png" ||
-		len(receipts) != 2 || receipts[0].Kind != protocol.EditorContextImage ||
-		receipts[1].Kind != protocol.EditorContextTerminal {
+	if len(attachments) != 2 || attachments[0].MediaType != "image/png" ||
+		attachments[1].Name != "pasted.png" ||
+		len(receipts) != 4 || receipts[0].Kind != protocol.EditorContextImage ||
+		receipts[1].Kind != protocol.EditorContextTerminal ||
+		receipts[2].Kind != protocol.EditorContextAttachment ||
+		receipts[3].Kind != protocol.EditorContextImage {
 		t.Fatalf("attachments=%+v receipts=%+v", attachments, receipts)
 	}
 	if !strings.Contains(prompt, "native model content block") ||
-		!strings.Contains(prompt, "go test ./...") {
+		!strings.Contains(prompt, "go test ./...") ||
+		!strings.Contains(prompt, "Review the parser boundary.") {
 		t.Fatalf("resolved prompt = %q", prompt)
 	}
 }

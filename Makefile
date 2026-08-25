@@ -12,29 +12,27 @@ LDFLAGS := -s -w \
 
 .PHONY: fmt verify test test-hermetic test-platform-capability reliability-gate test-integration \
 	test-release release-baseline-check integration-gate release-gate race build cross-build smoke \
-	docs-check book-check experience-check web-experience-check experience-baseline \
+	docs-check book-check web-experience-check \
 	host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
 	observation-traits observation-traits-check \
 	web-protocol web-protocol-check \
 	provider-deepseek-live-control provider-deepseek-live-ce7 \
 	architecture-ratchet architecture-freeze \
-	book-navigation command-docs command-docs-check \
+	book-navigation \
 	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
 	doc-governance-check doc-governance-test doc-impact \
 	doc-reverify doc-reverify-dry-run \
 	doc-external-links release-fact-check brand-check \
-	security-test sandbox-attack-test secret-leak-test live-model-smoke \
-	live-multi-agent-smoke \
+	security-test sandbox-attack-test secret-leak-test \
 	stress stress-nightly \
 	canary canary-nightly \
 		canary-adversarial canary-adversarial-quick \
-	cli-smoke tui-smoke protocol-contract protocol-schema \
+	web-host-smoke protocol-contract protocol-schema \
 	web-install web-check web-test web-build web-brand-assets web-assets-check web-e2e web-parity-check web-parity-report \
 		web-harness-parity-check \
 		web-release-drill web-streaming-soak web-performance web-supply-chain-check web-vulnerability-check \
-	deepseek-init deepseek-tui deepseek-web deepseek-live-smoke \
-	deepseek-multi-agent-smoke \
+	deepseek-init deepseek-web \
 	bench catalog-bench package clean
 
 # Stress tests run concurrent pressure tests to catch deadlocks,
@@ -44,16 +42,14 @@ stress:
 	$(GO) test -tags=stress -race -count=1 -timeout 5m -run '^TestStress' \
 		./internal/runtime/agent/engine/... \
 		./internal/adapter/mcp/... \
-		./internal/runtime/app/eventhub/... \
-		./internal/host/tui/...
+		./internal/runtime/app/eventhub/...
 
 # stress-nightly runs extended stress tests for nightly CI.
 stress-nightly:
 	$(GO) test -tags=stress -race -count=3 -timeout 15m -run '^TestStress' \
 		./internal/runtime/agent/engine/... \
 		./internal/adapter/mcp/... \
-		./internal/runtime/app/eventhub/... \
-		./internal/host/tui/...
+		./internal/runtime/app/eventhub/...
 
 # canary runs behavioral replay and performance regression checks against
 # the hermetic benchmark suite. Fails on any regression.
@@ -168,18 +164,16 @@ provider-deepseek-live-ce7:
 		$(GO) test -count=1 -v ./internal/adapter/provider/httpclient \
 		-run '^TestDeepSeek(P0LiveControl|CE7LiveCacheShare)$$'
 
-# Architecture behavior freeze. Package tests carry characterization, visual/wire
-# goldens, config provenance drift, state transitions, and schema drift. Race is
-# focused on the concurrent TUI and turn engine.
+# Architecture behavior freeze. Package tests carry characterization, config
+# provenance drift, state transitions, and schema drift. Race is focused on the
+# concurrent turn engine.
 architecture-freeze: hotspot-baseline architecture-ratchet
 	@mkdir -p '$(TEST_HOME)'
 	$(TEST_HOME_ENV) $(GO) test -count=1 \
-		./internal/host/tui \
 		./internal/runtime/agent/engine \
 		./internal/config \
 		./internal/runtime/protocol
 	$(TEST_HOME_ENV) $(GO) test -race -count=1 \
-		./internal/host/tui \
 		./internal/runtime/agent/engine
 
 # Hermetic is the default developer lane: no network, live credentials, GUI,
@@ -213,7 +207,7 @@ test-integration:
 		-- $(MAKE) integration-gate
 
 integration-gate: build web-build
-	$(GO) test -count=1 ./internal/host/runtimeapi/web ./internal/host/cli
+	$(GO) test -count=1 ./internal/host/runtimeapi/web ./internal/host/web
 
 test-release: release-baseline-check
 	python3 scripts/run-test-lane.py release \
@@ -334,11 +328,10 @@ cross-build:
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build -trimpath -o "$$tmp/codehelper-windows-amd64.exe" ./cmd/codehelper
 
 smoke: build
-	./$(BINARY) help >/dev/null
-	./$(BINARY) version
-	./$(BINARY) version --json
+	./$(BINARY) --help >/dev/null
+	./$(BINARY) --version
 
-docs-check: command-docs-check experience-check benchmark-v2-check
+docs-check: web-experience-check benchmark-v2-check
 	./scripts/check-docs.sh
 	$(MAKE) doc-governance-check
 	$(MAKE) doc-governance-test
@@ -348,12 +341,6 @@ book-check:
 
 book-navigation:
 	python3 scripts/render-book-navigation.py
-
-command-docs:
-	$(GO) run ./scripts/commanddocs
-
-command-docs-check:
-	$(GO) run ./scripts/commanddocs --check
 
 turn-kernel-convergence-baseline:
 	$(GO) test -count=1 \
@@ -372,21 +359,13 @@ turn-kernel-convergence-exit-gate:
 		./internal/runtime/app \
 		-run '^TestC0.*ExitGate$$'
 
-experience-check:
-	$(GO) run ./scripts/experiencecontract
-	$(MAKE) web-experience-check
-
 web-experience-check:
 	$(GO) run ./scripts/webexperiencecheck
-
-experience-baseline: experience-check
-	$(GO) test ./internal/host/tui -run VisualSnapshot -count=1
 
 host-journey-contract:
 	$(GO) test -count=1 ./internal/host/runtimeapi/runtimecontract
 	$(GO) test -count=1 ./internal/host/runtimeapi/web
-	$(GO) test -count=1 ./internal/host/cli -run Quickstart
-	$(GO) test -count=1 ./internal/host/tui -run HostJourney
+	$(GO) test -count=1 ./internal/host/web
 	$(NPM) --prefix web test
 
 doc-governance-check:
@@ -416,7 +395,7 @@ brand-check:
 	./scripts/test-brand-check.sh
 
 security-test:
-	$(GO) test -race ./internal/security/... ./internal/adapter/tool/guard/... ./internal/adapter/plugin/... ./internal/host/cli/... ./internal/runtime/agent/engine/... ./internal/runtime/app/...
+	$(GO) test -race ./internal/security/... ./internal/adapter/tool/guard/... ./internal/adapter/plugin/... ./internal/host/web/... ./internal/runtime/agent/engine/... ./internal/runtime/app/...
 	$(GO) test -race ./internal/platform/process/... -run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunSanitizesRegularAndPTYEnvironments|RunPinsWorkingDirectoryToDescriptor|SanitizedEnvironment)'
 
 sandbox-attack-test:
@@ -427,20 +406,12 @@ sandbox-attack-test:
 		-run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunPinsWorkingDirectoryToDescriptor|SessionCancellationKillsProcessGroup|RealSandboxAttackCorpus|RealManagedProxyBlocksDirectEgress)'
 
 secret-leak-test: build
-	./scripts/test-secret-leak.sh ./$(BINARY)
-	$(GO) test -race ./internal/platform/process/... -run 'Test(RunSanitizesRegularAndPTYEnvironments|SanitizedEnvironment)'
+	$(GO) test -race ./internal/config ./internal/observability/telemetry \
+		./internal/platform/process/... \
+		-run 'Test(Secret|JSONLogger|RunSanitizesRegularAndPTYEnvironments|SanitizedEnvironment)'
 
-live-model-smoke: build
-	./scripts/live-model-smoke.sh ./$(BINARY)
-
-live-multi-agent-smoke: build
-	LIVE_MODEL_MULTI_AGENT=1 ./scripts/live-model-smoke.sh ./$(BINARY)
-
-cli-smoke:
-	$(GO) test -race -count=1 ./internal/host/cli/... -run 'Test(RunHelp|RunVersion|RunUnknown|RunMachine|Auth|Model|Thread|Doctor|Cobra)'
-
-tui-smoke:
-	$(GO) test -race -count=1 ./internal/host/tui/...
+web-host-smoke:
+	$(GO) test -race -count=1 ./internal/host/web/...
 
 protocol-contract:
 	$(GO) test -count=1 -v ./internal/runtime/app/... ./internal/host/runtimeapi/web/...
@@ -476,18 +447,8 @@ observation-traits-check:
 deepseek-init:
 	./scripts/deepseek-local.sh init
 
-deepseek-tui:
-	./scripts/deepseek-local.sh tui
-
 deepseek-web:
 	./scripts/deepseek-local.sh web
-
-deepseek-live-smoke:
-	./scripts/deepseek-local.sh live-smoke
-
-deepseek-multi-agent-smoke:
-	./scripts/deepseek-local.sh multi-agent-smoke
-
 
 # bench runs the hermetic coding benchmark (fixture provider, no network/model).
 # Set BENCH_REPORT to write the JSON report for tracking across runs.
@@ -503,8 +464,8 @@ benchmark-v2: benchmark-v2-check bench
 	$(GO) test -count=1 -run 'Recovery' ./internal/persist/workspacejournal
 	$(GO) test -count=1 -run '^TestWebSocketDownlinkConcurrencyAndShutdown$$' \
 		./internal/host/runtimeapi/web
-	$(GO) test -count=1 -run '^TestWebWorkerAndAutomationShareDurableStateWithoutOwnerConflict$$' \
-		./internal/host/cli
+	$(GO) test -count=1 -run '^TestRunContextStartsAndStopsWebHost$$' \
+		./internal/host/web
 	$(GO) test -count=1 -run '^TestWeb(Socket(ReplaysTenThousandEvents|CapsBrowserConnectionsAtSixteen|DisconnectStormReleasesSlotsGoroutinesAndDescriptors)|SessionCapacity(AllowsThirtyTwoAndPreservesIdempotentRetry|IsAtomicUnderConcurrentCreate))$$' \
 		./internal/host/runtimeapi/web
 	$(NPM) --prefix web run test:e2e -- visual.spec.ts --grep 'reloads|frozen'

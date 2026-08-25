@@ -113,93 +113,6 @@ func TestStdioFixtureContract(t *testing.T) {
 	}
 }
 
-func TestCodeHelperMCPServerBinaryContract(t *testing.T) {
-	binary := buildCodeHelper(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	command := exec.CommandContext(
-		ctx,
-		binary,
-		"mcp",
-		"serve",
-		"--allow=result_get",
-		"--posture=bypass",
-		"--workspace="+t.TempDir(),
-	)
-	stdin, err := command.StdinPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	stdout, err := command.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
-	if err := command.Start(); err != nil {
-		t.Fatal(err)
-	}
-	encoder := json.NewEncoder(stdin)
-	decoder := json.NewDecoder(stdout)
-	send := func(value any) {
-		t.Helper()
-		if err := encoder.Encode(value); err != nil {
-			t.Fatal(err)
-		}
-	}
-	receive := func() rpcResponse {
-		t.Helper()
-		var response rpcResponse
-		if err := decoder.Decode(&response); err != nil {
-			t.Fatalf("decode response: %v; stderr=%s", err, stderr.String())
-		}
-		return response
-	}
-	send(rpcRequest(1, "initialize", map[string]any{
-		"protocolVersion": "2024-11-05",
-		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "contract-test", "version": "1"},
-	}))
-	assertRPCSuccess(t, receive(), "1")
-	send(map[string]any{
-		"jsonrpc": "2.0",
-		"method":  "notifications/initialized",
-		"params":  map[string]any{},
-	})
-	send(rpcRequest(2, "tools/list", map[string]any{}))
-	list := receive()
-	assertRPCSuccess(t, list, "2")
-	var listed struct {
-		Tools []struct {
-			Name string `json:"name"`
-		} `json:"tools"`
-	}
-	if err := json.Unmarshal(list.Result, &listed); err != nil {
-		t.Fatal(err)
-	}
-	if len(listed.Tools) != 1 || listed.Tools[0].Name != "result_get" {
-		t.Fatalf("tools/list = %+v", listed.Tools)
-	}
-	send(rpcRequest(3, "ping", map[string]any{}))
-	assertRPCSuccess(t, receive(), "3")
-	send(rpcRequest(4, "tools/call", map[string]any{
-		"name":      "result_get",
-		"arguments": map[string]any{"handle": "missing"},
-	}))
-	failed := receive()
-	if failed.Error == nil || failed.Error.Code != -32000 {
-		t.Fatalf("guarded tools/call response = %+v", failed)
-	}
-	send(rpcRequest(5, "shutdown", map[string]any{}))
-	assertRPCSuccess(t, receive(), "5")
-	if err := stdin.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := command.Wait(); err != nil {
-		t.Fatalf("CodeHelper MCP shutdown: %v; stderr=%s", err, stderr.String())
-	}
-}
-
 func TestHTTPSSEFixtureContract(t *testing.T) {
 	binary := buildFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -442,22 +355,6 @@ func buildFixture(t *testing.T) string {
 	command.Dir = root
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build fixture: %v\n%s", err, output)
-	}
-	return binary
-}
-
-func buildCodeHelper(t *testing.T) string {
-	t.Helper()
-	root := repositoryRoot(t)
-	name := "codehelper"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	binary := filepath.Join(t.TempDir(), name)
-	command := exec.Command("go", "build", "-trimpath", "-o", binary, "./cmd/codehelper")
-	command.Dir = root
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("build CodeHelper: %v\n%s", err, output)
 	}
 	return binary
 }

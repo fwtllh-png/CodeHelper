@@ -6,13 +6,17 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   CircleStop,
   Download,
   FileCode2,
   FolderOpen,
+  GitFork,
   LoaderCircle,
+  ListPlus,
   KeyRound,
   MoreHorizontal,
+  Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -27,6 +31,7 @@ import {
   Settings2,
   TextSelect,
   Trash2,
+  Zap,
   Wrench,
   X
 } from "lucide-react";
@@ -43,11 +48,10 @@ import {
   useSyncExternalStore,
   type ReactNode
 } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import type {
   CredentialStatus,
   RuntimeEvent,
+  SessionCheckpoint,
   SessionSummary
 } from "../protocol";
 import {
@@ -60,20 +64,37 @@ import {CapybaraMark} from "./brand/CapybaraMark";
 import {CodeHelperWordmark} from "./brand/CodeHelperWordmark";
 import {
   compactSelectWidth,
-  ComposerCommandMenu,
   ContextMeter,
   MessageActions,
   type ContextAttribution,
   type MessageChrome,
   type MessageFeedbackRating
 } from "./ConversationChrome";
+import type {ComposerCommand} from "./ComposerCommandMenu";
 import {experience} from "./experience";
 import type {ThemeMode} from "./SettingsDialog";
+import type {BackgroundActivityTarget} from "./backgroundActivity";
 import {
   EditPlanPreview,
   ReasoningDisclosure,
   ToolDisclosure
 } from "./TranscriptCards";
+import {
+  maxComposerAttachmentBytes,
+  maxComposerAttachments,
+  composerAttachmentAccept
+} from "./attachmentLimits";
+import type {
+  ComposerAttachment,
+  ComposerAttachmentSource
+} from "./attachmentPipeline";
+import {
+  adjacentQuestion,
+  projectConversationNavigation,
+  questionPosition,
+  transcriptPageForEntry,
+  type ConversationNavigationItem
+} from "./conversationNavigation";
 
 export {selectionRange} from "./WorkspaceContextDialog";
 
@@ -82,6 +103,8 @@ interface Props {
 }
 
 const transcriptPageSize = 200;
+const transcriptPageOverlap = 32;
+const transcriptPageStep = transcriptPageSize - transcriptPageOverlap;
 const compactCountFormat = new Intl.NumberFormat("en", {
   notation: "compact",
   maximumFractionDigits: 1
@@ -95,6 +118,43 @@ const SettingsDialog = lazy(async () => ({
 const WorkspaceContextDialog = lazy(async () => ({
   default: (await import("./WorkspaceContextDialog")).WorkspaceContextDialog
 }));
+const ComposerAttachments = lazy(async () => ({
+  default: (await import("./ComposerAttachments")).ComposerAttachments
+}));
+const ComposerCommandMenu = lazy(async () => ({
+  default: (await import("./ComposerCommandMenu")).ComposerCommandMenu
+}));
+const ProducedFiles = lazy(async () => ({
+  default: (await import("./ProducedFiles")).ProducedFiles
+}));
+const SessionProgress = lazy(async () => ({
+  default: (await import("./SessionProgress")).SessionProgress
+}));
+const TurnQueue = lazy(async () => ({
+  default: (await import("./TurnQueue")).TurnQueue
+}));
+const BackgroundActivityMonitor = lazy(async () => ({
+  default: (await import("./BackgroundActivityMonitor")).BackgroundActivityMonitor
+}));
+const ConversationNavigator = lazy(async () => ({
+  default: (await import("./ConversationNavigator")).ConversationNavigator
+}));
+const MarkdownMessage = lazy(async () => ({
+  default: (await import("./MarkdownMessage")).MarkdownMessage
+}));
+
+interface TranscriptReadingPosition {
+  readonly entryID: string;
+  readonly top: number;
+  readonly scrollTop: number;
+  readonly page: number;
+  readonly atBottom: boolean;
+}
+
+interface TranscriptNavigationTarget {
+  readonly entryID: string;
+  readonly path?: string;
+}
 
 function initialRailCollapsed(): boolean {
   return readPreference("ch.sidebar.collapsed") === "true";
@@ -152,9 +212,18 @@ export function App({client}: Props) {
   const [inspectCallID, setInspectCallID] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
+  const [activityTarget, setActivityTarget] =
+    useState<BackgroundActivityTarget>();
   const [submitting, setSubmitting] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
   const [localError, setLocalError] = useState("");
+  const [composerAttachments, setComposerAttachments] =
+    useState<ComposerAttachment[]>([]);
+  const [draggingAttachment, setDraggingAttachment] = useState(false);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [commandMenuSource, setCommandMenuSource] =
+    useState<"button" | "slash">("button");
   const [sessionAction, setSessionAction] = useState<{
     sessionID: string;
     pending: boolean;
@@ -164,16 +233,34 @@ export function App({client}: Props) {
     useState<"shared" | "worktree">(initialSessionIsolation);
   const [credentialStatus, setCredentialStatus] = useState<CredentialStatus>();
   const [transcriptPage, setTranscriptPage] = useState(0);
+  const [conversationNavigatorOpen, setConversationNavigatorOpen] =
+    useState(false);
+  const [readerEntryID, setReaderEntryID] = useState("");
+  const [navigationHighlightID, setNavigationHighlightID] = useState("");
+  const [navigationTarget, setNavigationTarget] =
+    useState<TranscriptNavigationTarget>();
   const transcriptRef = useRef<HTMLDivElement>(null);
   const transcriptContentRef = useRef<HTMLDivElement>(null);
-  const prependAnchorRef = useRef<{height: number; top: number}>();
+  const readingPositionsRef =
+    useRef(new Map<string, TranscriptReadingPosition>());
+  const pendingReadingRestoreRef = useRef<TranscriptReadingPosition>();
+  const readerFrameRef = useRef<number>();
+  const navigationReaderLockRef = useRef("");
+  const navigationReaderLockTimerRef = useRef<number>();
+  const navigationHighlightTimerRef = useRef<number>();
   const atBottomRef = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const composingRef = useRef(false);
+  const attachmentGenerationRef = useRef(0);
+  const removedAttachmentIDs = useRef(new Set<string>());
+  const attachmentsRef = useRef(composerAttachments);
   const selectedSessionRef = useRef(snapshot.selectedSessionID);
   const draftRef = useRef(draft);
   selectedSessionRef.current = snapshot.selectedSessionID;
   draftRef.current = draft;
+  attachmentsRef.current = composerAttachments;
   const selected = snapshot.sessions.find(
     (item) => item.session_id === snapshot.selectedSessionID
   );
@@ -192,9 +279,46 @@ export function App({client}: Props) {
     () => projectedEntries.filter((entry) => entry.kind !== "receipt"),
     [projectedEntries]
   );
-  const transcriptEnd = Math.max(0, entries.length - transcriptPage * transcriptPageSize);
+  const transcriptEnd = Math.max(
+    0,
+    entries.length - transcriptPage * transcriptPageStep
+  );
   const transcriptStart = Math.max(0, transcriptEnd - transcriptPageSize);
   const visibleEntries = entries.slice(transcriptStart, transcriptEnd);
+  const conversationNavigation = useMemo(
+    () => projectConversationNavigation(entries),
+    [entries]
+  );
+  const readerEntryIndex = useMemo(
+    () => entries.findIndex((entry) => entry.id === readerEntryID),
+    [entries, readerEntryID]
+  );
+  const currentQuestion = useMemo(
+    () => questionPosition(
+      conversationNavigation,
+      readerEntryID,
+      readerEntryIndex < 0 ? undefined : readerEntryIndex
+    ),
+    [conversationNavigation, readerEntryID, readerEntryIndex]
+  );
+  const previousQuestion = useMemo(
+    () => adjacentQuestion(
+      conversationNavigation,
+      readerEntryID,
+      -1,
+      readerEntryIndex < 0 ? undefined : readerEntryIndex
+    ),
+    [conversationNavigation, readerEntryID, readerEntryIndex]
+  );
+  const nextQuestion = useMemo(
+    () => adjacentQuestion(
+      conversationNavigation,
+      readerEntryID,
+      1,
+      readerEntryIndex < 0 ? undefined : readerEntryIndex
+    ),
+    [conversationNavigation, readerEntryID, readerEntryIndex]
+  );
   const pendingApproval = snapshot.conversation.pendingApproval;
   const pendingInput = snapshot.conversation.pendingInput;
   const pendingApprovalKey = pendingRequestKey(snapshot.selectedSessionID, pendingApproval);
@@ -238,13 +362,236 @@ export function App({client}: Props) {
   const reportLocalError = useCallback((error: unknown) => {
     setLocalError(error instanceof Error ? error.message : String(error));
   }, []);
+  const captureReadingPosition = useCallback((includeNavigationLock = false) => {
+    if (activeView !== "chat" || !snapshot.selectedSessionID) return undefined;
+    if (navigationReaderLockRef.current && !includeNavigationLock) {
+      setReaderEntryID(navigationReaderLockRef.current);
+      return undefined;
+    }
+    const node = transcriptRef.current;
+    if (!node) return undefined;
+    const position = readTranscriptPosition(
+      node,
+      transcriptPage,
+      atBottomRef.current
+    );
+    if (!position) return undefined;
+    readingPositionsRef.current.set(snapshot.selectedSessionID, position);
+    setReaderEntryID(transcriptFocusEntryID(node) ?? position.entryID);
+    return position;
+  }, [activeView, snapshot.selectedSessionID, transcriptPage]);
+  const scheduleReadingPositionCapture = useCallback(() => {
+    if (readerFrameRef.current !== undefined) return;
+    readerFrameRef.current = window.requestAnimationFrame(() => {
+      readerFrameRef.current = undefined;
+      captureReadingPosition();
+    });
+  }, [captureReadingPosition]);
+  const switchConversationView = useCallback(
+    (view: "chat" | "trajectory") => {
+      if (view === activeView) return;
+      if (activeView === "chat") captureReadingPosition(true);
+      if (view === "chat") {
+        pendingReadingRestoreRef.current = readingPositionsRef.current.get(
+          snapshot.selectedSessionID
+        );
+      }
+      setActiveView(view);
+      if (view === "trajectory") {
+        requestAnimationFrame(() => {
+          if (transcriptRef.current) transcriptRef.current.scrollTop = 0;
+        });
+      }
+    },
+    [
+      activeView,
+      captureReadingPosition,
+      snapshot.selectedSessionID
+    ]
+  );
+  const jumpToNavigationItem = useCallback(
+    (item: ConversationNavigationItem) => {
+      const page = transcriptPageForEntry(
+        entries,
+        item.entryID,
+        transcriptPageSize,
+        transcriptPageStep
+      );
+      if (page === undefined) return;
+      setNavigationTarget({
+        entryID: item.entryID,
+        path: item.path
+      });
+      setConversationNavigatorOpen(false);
+      setTranscriptPage(page);
+      setActiveView("chat");
+      setNavigationHighlightID(item.entryID);
+      setReaderEntryID(item.entryID);
+      navigationReaderLockRef.current = item.entryID;
+      atBottomRef.current = false;
+      setAtBottom(false);
+    },
+    [entries]
+  );
+  const jumpToQuestion = useCallback(
+    (item?: ConversationNavigationItem) => {
+      if (item) jumpToNavigationItem(item);
+    },
+    [jumpToNavigationItem]
+  );
+  const openChatFromTrajectory = useCallback(
+    (turnID: string, callID?: string) => {
+      const item = conversationNavigation.find(
+        (candidate) =>
+          candidate.kind === "tool" &&
+          candidate.turnID === turnID &&
+          candidate.callID === callID
+      ) ?? conversationNavigation.find(
+        (candidate) =>
+          candidate.kind === "question" && candidate.turnID === turnID
+      ) ?? conversationNavigation.find(
+        (candidate) => candidate.turnID === turnID
+      );
+      if (item) jumpToNavigationItem(item);
+    },
+    [conversationNavigation, jumpToNavigationItem]
+  );
+  const openBackgroundActivity = useCallback(
+    (target: BackgroundActivityTarget) => {
+      window.focus();
+      setActivityTarget(target);
+      setTranscriptPage(0);
+      setActiveView("chat");
+      setConversationNavigatorOpen(false);
+      void client.selectSession(target.sessionID).catch((error) => {
+        setActivityTarget(undefined);
+        reportLocalError(error);
+      });
+    },
+    [client, reportLocalError]
+  );
   const closeContext = useCallback(() => setContextOpen(false), []);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const inspectTool = useCallback((callID: string) => {
     setInspectCallID(callID);
-    setActiveView("trajectory");
+    switchConversationView("trajectory");
     void client.refreshTrace();
-  }, [client]);
+  }, [client, switchConversationView]);
+  const attachmentBusy = composerAttachments.some(
+    (attachment) => attachment.status === "processing"
+  );
+  const attachmentFailed = composerAttachments.some(
+    (attachment) => attachment.status === "error"
+  );
+  const visibleContextResources = snapshot.contextResources.filter(
+    (resource) =>
+      resource.kind !== "attachment" &&
+      !(resource.kind === "image" && !resource.path)
+  );
+
+  const attachFiles = (
+    values: FileList | readonly File[],
+    source: ComposerAttachmentSource
+  ) => {
+    const files = Array.from(values);
+    if (
+      files.length === 0 ||
+      !snapshot.selectedSessionID ||
+      snapshot.hydratingSessionID ||
+      submitting
+    ) {
+      return;
+    }
+    setLocalError("");
+    const processing = composerAttachments.filter(
+      (attachment) => attachment.status === "processing"
+    ).length;
+    const available = Math.max(
+      0,
+      maxComposerAttachments - snapshot.contextResources.length - processing
+    );
+    const countAccepted = files.slice(0, available);
+    let reservedBytes = composerAttachments
+      .filter((attachment) => attachment.status !== "error")
+      .reduce((total, attachment) => total + attachment.bytes, 0);
+    const accepted = countAccepted.filter((file) => {
+      if (reservedBytes + file.size > maxComposerAttachmentBytes) return false;
+      reservedBytes += file.size;
+      return true;
+    });
+    if (countAccepted.length < files.length) {
+      setLocalError(`A prompt accepts at most ${maxComposerAttachments} context items`);
+    } else if (accepted.length < countAccepted.length) {
+      setLocalError("Attachments exceed the 5 MiB total prompt limit");
+    }
+    const generation = attachmentGenerationRef.current;
+    const sessionID = snapshot.selectedSessionID;
+    const pending = accepted.map((file) => ({
+      file,
+      attachment: {
+        id: crypto.randomUUID(),
+        name: file.name || "Pasted image",
+        mediaType: file.type || "application/octet-stream",
+        bytes: file.size,
+        source,
+        status: "processing" as const
+      }
+    }));
+    setComposerAttachments((current) => [
+      ...current,
+      ...pending.map(({attachment}) => attachment)
+    ]);
+    const pipeline = import("./attachmentPipeline");
+    for (const {file, attachment} of pending) {
+      void pipeline.then(({prepareComposerAttachment}) =>
+        prepareComposerAttachment(file)
+      ).then((context) => {
+        if (
+          generation !== attachmentGenerationRef.current ||
+          sessionID !== selectedSessionRef.current ||
+          removedAttachmentIDs.current.has(attachment.id)
+        ) {
+          return;
+        }
+        if (client.getSnapshot().contextResources.some(
+          (resource) => resource.digest === context.digest
+        )) {
+          throw new Error(`${context.label || attachment.name} is already attached`);
+        }
+        client.addAttachmentContext(context);
+        setComposerAttachments((current) => current.map((value) =>
+          value.id === attachment.id
+            ? {
+                ...value,
+                name: context.label || value.name,
+                mediaType: context.media_type || value.mediaType,
+                digest: context.digest,
+                status: "ready",
+                error: undefined
+              }
+            : value
+        ));
+      }).catch((error) => {
+        if (generation !== attachmentGenerationRef.current) return;
+        setComposerAttachments((current) => current.map((value) =>
+          value.id === attachment.id
+            ? {
+                ...value,
+                status: "error",
+                error: error instanceof Error ? error.message : String(error)
+              }
+            : value
+        ));
+      });
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    removedAttachmentIDs.current.add(id);
+    const attachment = attachmentsRef.current.find((value) => value.id === id);
+    if (attachment?.digest) client.removeAttachmentContext(attachment.digest);
+    setComposerAttachments((current) => current.filter((value) => value.id !== id));
+  };
 
   useEffect(() => {
     writePreference("ch.sidebar.collapsed", String(railCollapsed));
@@ -259,12 +606,63 @@ export function App({client}: Props) {
   }, [newIsolation]);
 
   useEffect(() => {
-    setTranscriptPage(0);
+    if (
+      !activityTarget ||
+      snapshot.selectedSessionID !== activityTarget.sessionID ||
+      snapshot.hydratingSessionID
+    ) {
+      return;
+    }
+    setActiveView("chat");
+    const frame = window.requestAnimationFrame(() => {
+      const pending = activityTarget.status === "awaiting_approval" ||
+        activityTarget.status === "awaiting_input"
+        ? document.querySelector<HTMLElement>(".pendingComposer")
+        : undefined;
+      const anchors = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-turn-id]")
+      ).filter((node) => node.dataset.turnId === activityTarget.turnID);
+      const target = pending ?? anchors.at(-1)?.firstElementChild ??
+        transcriptRef.current;
+      if (target instanceof HTMLElement) {
+        target.scrollIntoView?.({block: "center"});
+      }
+      if (pending) {
+        const focusTarget = activityTarget.status === "awaiting_approval"
+          ? pending.querySelector<HTMLElement>(".approvalBody")
+          : pending.querySelector<HTMLElement>(
+            "textarea:not(:disabled), button:not(:disabled)"
+          );
+        focusTarget?.focus();
+      }
+      setActivityTarget(undefined);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    activityTarget,
+    snapshot.conversation.revision,
+    snapshot.hydratingSessionID,
+    snapshot.selectedSessionID
+  ]);
+
+  useLayoutEffect(() => {
+    const saved = readingPositionsRef.current.get(snapshot.selectedSessionID);
+    pendingReadingRestoreRef.current = saved;
+    setTranscriptPage(saved?.page ?? 0);
     setActiveView("chat");
     setInspectCallID("");
+    setConversationNavigatorOpen(false);
+    setReaderEntryID(saved?.entryID ?? "");
     setContextOpen(false);
-    atBottomRef.current = true;
-    setAtBottom(true);
+    attachmentGenerationRef.current += 1;
+    removedAttachmentIDs.current.clear();
+    setComposerAttachments([]);
+    setDraggingAttachment(false);
+    setCommandMenuOpen(false);
+    setCommandQuery("");
+    setCommandMenuSource("button");
+    atBottomRef.current = saved?.atBottom ?? true;
+    setAtBottom(saved?.atBottom ?? true);
   }, [snapshot.selectedSessionID]);
 
   useEffect(() => {
@@ -299,17 +697,129 @@ export function App({client}: Props) {
 
   useLayoutEffect(() => {
     const node = transcriptRef.current;
-    if (!node) return;
-    const prepend = prependAnchorRef.current;
-    if (prepend) {
-      prependAnchorRef.current = undefined;
-      node.scrollTop = prepend.top + node.scrollHeight - prepend.height;
+    if (!node || activeView !== "chat") return;
+    const navigation = navigationTarget;
+    if (navigation) {
+      const anchor = transcriptAnchor(node, navigation.entryID);
+      if (!anchor) return;
+      setNavigationTarget(undefined);
+      const target = navigation.path
+        ? fileTarget(anchor, navigation.path) ?? anchorContent(anchor)
+        : anchorContent(anchor);
+      centerTranscriptTarget(node, target);
+      atBottomRef.current = false;
+      setAtBottom(false);
+      setReaderEntryID(navigation.entryID);
+      setNavigationHighlightID(navigation.entryID);
+      if (navigationReaderLockTimerRef.current !== undefined) {
+        window.clearTimeout(navigationReaderLockTimerRef.current);
+      }
+      navigationReaderLockTimerRef.current = window.setTimeout(() => {
+        navigationReaderLockRef.current = "";
+      }, 250);
+      if (navigationHighlightTimerRef.current !== undefined) {
+        window.clearTimeout(navigationHighlightTimerRef.current);
+      }
+      navigationHighlightTimerRef.current = window.setTimeout(
+        () => setNavigationHighlightID(""),
+        1_400
+      );
+      return;
+    }
+    const saved = pendingReadingRestoreRef.current;
+    if (saved && saved.page === transcriptPage) {
+      pendingReadingRestoreRef.current = undefined;
+      restoreTranscriptPosition(node, saved);
+      atBottomRef.current = saved.atBottom;
+      setAtBottom(saved.atBottom);
+      setReaderEntryID(saved.entryID);
       return;
     }
     if (atBottomRef.current && transcriptPage === 0) {
       node.scrollTop = node.scrollHeight;
     }
-  }, [snapshot.conversation.revision, transcriptPage]);
+  }, [
+    activeView,
+    navigationTarget,
+    snapshot.conversation.revision,
+    transcriptPage
+  ]);
+
+  useEffect(() => {
+    const content = transcriptContentRef.current;
+    if (
+      !content ||
+      activeView !== "chat" ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      const node = transcriptRef.current;
+      if (!node) return;
+      if (atBottomRef.current && transcriptPage === 0) {
+        node.scrollTop = node.scrollHeight;
+        return;
+      }
+      const saved = readingPositionsRef.current.get(snapshot.selectedSessionID);
+      if (saved?.page === transcriptPage) {
+        restoreTranscriptPosition(node, saved);
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [activeView, snapshot.selectedSessionID, transcriptPage]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const editable = isEditableElement(event.target);
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLocaleLowerCase() === "f" &&
+        !editable &&
+        !settingsOpen &&
+        !contextOpen &&
+        !commandMenuOpen &&
+        selected &&
+        entries.length > 0
+      ) {
+        event.preventDefault();
+        setConversationNavigatorOpen(true);
+        return;
+      }
+      if (editable || !event.altKey || event.metaKey || event.ctrlKey) return;
+      if (event.key === "ArrowUp" && previousQuestion) {
+        event.preventDefault();
+        jumpToQuestion(previousQuestion);
+      } else if (event.key === "ArrowDown" && nextQuestion) {
+        event.preventDefault();
+        jumpToQuestion(nextQuestion);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [
+    commandMenuOpen,
+    contextOpen,
+    entries.length,
+    jumpToQuestion,
+    nextQuestion,
+    previousQuestion,
+    selected,
+    settingsOpen
+  ]);
+
+  useEffect(() => () => {
+    if (readerFrameRef.current !== undefined) {
+      window.cancelAnimationFrame(readerFrameRef.current);
+    }
+    if (navigationHighlightTimerRef.current !== undefined) {
+      window.clearTimeout(navigationHighlightTimerRef.current);
+    }
+    if (navigationReaderLockTimerRef.current !== undefined) {
+      window.clearTimeout(navigationReaderLockTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -317,6 +827,23 @@ export function App({client}: Props) {
     textarea.style.height = "0";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 336)}px`;
   }, [draft]);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const keepComposerVisible = () => {
+      if (document.activeElement !== textareaRef.current) return;
+      requestAnimationFrame(() => textareaRef.current?.scrollIntoView({
+        block: "nearest"
+      }));
+    };
+    viewport.addEventListener("resize", keepComposerVisible);
+    viewport.addEventListener("scroll", keepComposerVisible);
+    return () => {
+      viewport.removeEventListener("resize", keepComposerVisible);
+      viewport.removeEventListener("scroll", keepComposerVisible);
+    };
+  }, []);
 
   useEffect(() => {
     if (activeView !== "trajectory" || !activeTurn) return;
@@ -337,18 +864,28 @@ export function App({client}: Props) {
     return () => media.removeEventListener("change", apply);
   }, [themeMode]);
 
-  const submit = async () => {
+  const submit = async (activeAction: "queue" | "steer" = "queue") => {
     const prompt = draft.trim();
-    if (!prompt || submitting) return;
+    if (!prompt || submitting || attachmentBusy || attachmentFailed) return;
     const submittedSessionID = snapshot.selectedSessionID;
+    const submittedTurnID = activeTurn;
     setSubmitting(true);
     setLocalError("");
     try {
-      await client.submitPrompt(prompt);
-      if (selectedSessionRef.current === submittedSessionID &&
-          draftRef.current.trim() === prompt) {
-        setDraft("");
-        client.saveDraft("", submittedSessionID);
+      if (submittedTurnID && activeAction === "steer") {
+        await client.steer(submittedTurnID, prompt);
+      } else if (submittedTurnID) {
+        await client.enqueue(submittedTurnID, prompt);
+      } else {
+        await client.submitPrompt(prompt);
+      }
+      if (selectedSessionRef.current === submittedSessionID) {
+        setComposerAttachments([]);
+        removedAttachmentIDs.current.clear();
+        if (draftRef.current.trim() === prompt) {
+          setDraft("");
+          client.saveDraft("", submittedSessionID);
+        }
       }
     } catch (error) {
       setLocalError(error instanceof Error ? error.message : String(error));
@@ -387,11 +924,20 @@ export function App({client}: Props) {
     }
   };
 
-  const composerCommands = [
+  const composerCommands: ComposerCommand[] = [
+    {
+      id: "attach",
+      label: "attach",
+      description: "Attach local text files or images",
+      argumentHint: "file",
+      icon: Paperclip,
+      run: () => attachmentInputRef.current?.click()
+    },
     {
       id: "context",
       label: "context",
       description: "Browse files, symbols, diagnostics, and diffs",
+      argumentHint: "file, symbol, or diff",
       icon: FileCode2,
       run: () => setContextOpen(true)
     },
@@ -514,6 +1060,13 @@ export function App({client}: Props) {
         "--ch-rail-width": `${railWidth}px`
       } as React.CSSProperties}
     >
+      <Suspense fallback={null}>
+        <BackgroundActivityMonitor
+          sessions={snapshot.sessions}
+          selectedSessionID={snapshot.selectedSessionID}
+          onOpen={openBackgroundActivity}
+        />
+      </Suspense>
       <aside className="sessionRail" aria-label="Sessions">
         <div className="brandRow">
           <button
@@ -629,7 +1182,10 @@ export function App({client}: Props) {
                   key={session.session_id}
                   session={session}
                   active={session.session_id === snapshot.selectedSessionID}
-                  onClick={() => void client.selectSession(session.session_id)}
+                  onClick={() => {
+                    captureReadingPosition(true);
+                    void client.selectSession(session.session_id);
+                  }}
                   onRename={() => {
                     const title = window.prompt("Rename session", session.title)?.trim();
                     if (title && title !== session.title) {
@@ -705,14 +1261,14 @@ export function App({client}: Props) {
               <nav className="viewTabs" aria-label="Conversation views">
                 <button
                   aria-current={activeView === "chat" ? "page" : undefined}
-                  onClick={() => setActiveView("chat")}
+                  onClick={() => switchConversationView("chat")}
                 >
                   Chat
                 </button>
                 <button
                   aria-current={activeView === "trajectory" ? "page" : undefined}
                   onClick={() => {
-                    setActiveView("trajectory");
+                    switchConversationView("trajectory");
                     void client.refreshTrace();
                   }}
                 >
@@ -727,6 +1283,38 @@ export function App({client}: Props) {
             ) : activeTurn ? (
               <span className="workingLabel">Working</span>
             ) : null}
+            {selected && currentQuestion.total > 0 && (
+              <div
+                className="conversationNavigationControls"
+                aria-label="Question navigation"
+              >
+                <IconButton
+                  label="Previous user question"
+                  disabled={!previousQuestion}
+                  icon={<ChevronUp size={16} />}
+                  onClick={() => jumpToQuestion(previousQuestion)}
+                />
+                <button
+                  type="button"
+                  className="conversationNavigationPosition"
+                  aria-label="Search conversation"
+                  title="Search conversation"
+                  data-current-entry={readerEntryID || undefined}
+                  onClick={() => setConversationNavigatorOpen(true)}
+                >
+                  <Search size={14} />
+                  <span>
+                    {currentQuestion.index + 1}/{currentQuestion.total}
+                  </span>
+                </button>
+                <IconButton
+                  label="Next user question"
+                  disabled={!nextQuestion}
+                  icon={<ChevronDown size={16} />}
+                  onClick={() => jumpToQuestion(nextQuestion)}
+                />
+              </div>
+            )}
             {selected && (
               <>
                 <IconButton
@@ -751,6 +1339,7 @@ export function App({client}: Props) {
               experience.scrolling.followThreshold;
             atBottomRef.current = next;
             setAtBottom(next);
+            scheduleReadingPositionCapture();
           }}
         >
           {activeView === "trajectory" && selected ? (
@@ -765,6 +1354,7 @@ export function App({client}: Props) {
                 onInspectConsumed={() => setInspectCallID("")}
                 onLoadEarlier={() => client.loadEarlierHistory()}
                 onRetryTrace={() => client.refreshTrace()}
+                onOpenChat={openChatFromTrajectory}
               />
             </Suspense>
           ) : <div className="transcript" ref={transcriptContentRef} aria-live="polite">
@@ -784,13 +1374,8 @@ export function App({client}: Props) {
                 {(transcriptStart > 0 || snapshot.historyMoreBefore) && (
                   <button
                     onClick={() => {
-                      const node = transcriptRef.current;
-                      if (node) {
-                        prependAnchorRef.current = {
-                          height: node.scrollHeight,
-                          top: node.scrollTop
-                        };
-                      }
+                      const anchor = captureReadingPosition(true);
+                      pendingReadingRestoreRef.current = anchor;
                       if (transcriptStart > 0) {
                         setTranscriptPage((page) => page + 1);
                         return;
@@ -829,22 +1414,36 @@ export function App({client}: Props) {
               </div>
             ) : (
               visibleEntries.map((entry) => (
-                <TranscriptItem
+                <div
+                  className="transcriptEntryAnchor"
+                  data-entry-id={entry.id}
+                  data-entry-kind={entry.kind}
+                  data-turn-id={entry.turnID || undefined}
+                  data-navigation-current={
+                    navigationHighlightID === entry.id || undefined
+                  }
                   key={entry.id}
-                  entry={entry}
-                  client={client}
-                  onError={reportLocalError}
-                  onInspect={inspectTool}
-                  canOpenPath={snapshot.canOpenPath}
-                  chrome={turnChrome.get(entry.turnID)}
-                  feedback={snapshot.messageFeedback[
-                    `${snapshot.selectedSessionID}:${entry.id}`
-                  ]}
-                  onFeedback={(rating) => client.toggleMessageFeedback(
-                    entry.id,
-                    rating
-                  )}
-                />
+                >
+                  <TranscriptItem
+                    entry={entry}
+                    client={client}
+                    onError={reportLocalError}
+                    onInspect={inspectTool}
+                    canOpenPath={snapshot.canOpenPath}
+                    checkpoint={checkpointForTurn(
+                      snapshot.checkpoints,
+                      entry.turnID
+                    )}
+                    chrome={turnChrome.get(entry.turnID)}
+                    feedback={snapshot.messageFeedback[
+                      `${snapshot.selectedSessionID}:${entry.id}`
+                    ]}
+                    onFeedback={(rating) => client.toggleMessageFeedback(
+                      entry.id,
+                      rating
+                    )}
+                  />
+                </div>
               ))
             )}
             {activeTurn && <TurnStatus events={snapshot.events} turnID={activeTurn} />}
@@ -861,6 +1460,12 @@ export function App({client}: Props) {
                   node.scrollTo({top: node.scrollHeight, behavior: "smooth"});
                   atBottomRef.current = true;
                   setAtBottom(true);
+                  readingPositionsRef.current.delete(snapshot.selectedSessionID);
+                  setReaderEntryID(
+                    conversationNavigation
+                      .filter((item) => item.kind === "question")
+                      .at(-1)?.entryID ?? ""
+                  );
                 }}
               />
             </div>
@@ -868,9 +1473,9 @@ export function App({client}: Props) {
 
           {selected && <div className="composerSeat" data-composer-seat>
             {localError && <div className="composerError">{localError}</div>}
-            {snapshot.contextResources.length > 0 && (
+            {visibleContextResources.length > 0 && (
               <div className="contextTray" aria-label="Prompt context">
-                {snapshot.contextResources.map((resource) => (
+                {visibleContextResources.map((resource) => (
                   <span
                     className="contextItem"
                     key={`${resource.kind}:${resource.path ?? ""}:${resource.label ?? ""}:${resource.symbol?.name ?? ""}:${resource.digest}`}
@@ -891,6 +1496,35 @@ export function App({client}: Props) {
                 ))}
               </div>
             )}
+            {(snapshot.plan || snapshot.tasks.length > 0 ||
+              snapshot.agents.length > 0) && (
+              <Suspense fallback={null}>
+                <SessionProgress
+                  plan={snapshot.plan}
+                  tasks={snapshot.tasks}
+                  agents={snapshot.agents}
+                  onOpenTrajectory={() => {
+                    switchConversationView("trajectory");
+                    void client.refreshTrace();
+                  }}
+                />
+              </Suspense>
+            )}
+            {snapshot.queuedTurns.length > 0 && (
+              <Suspense fallback={null}>
+                <TurnQueue
+                  items={snapshot.queuedTurns}
+                  activeTurnID={activeTurn}
+                  onUpdate={(queueID, prompt) =>
+                    client.updateQueuedTurn(queueID, prompt).then(() => undefined)}
+                  onRemove={(queueID) =>
+                    client.removeQueuedTurn(queueID).then(() => undefined)}
+                  onPromote={(queueID, turnID) =>
+                    client.promoteQueuedTurn(queueID, turnID).then(() => undefined)}
+                  onError={reportLocalError}
+                />
+              </Suspense>
+            )}
             {pendingApproval ? (
               <ApprovalComposer
                 key={pendingApprovalKey}
@@ -906,19 +1540,102 @@ export function App({client}: Props) {
                 activeTurn={activeTurn}
               />
             ) : (
-              <div className="composer">
+              <div
+                className="composer"
+                data-dragging={draggingAttachment || undefined}
+                onDragEnter={(event) => {
+                  if (!event.dataTransfer.types.includes("Files")) return;
+                  event.preventDefault();
+                  setDraggingAttachment(true);
+                }}
+                onDragOver={(event) => {
+                  if (!event.dataTransfer.types.includes("Files")) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                }}
+                onDragLeave={(event) => {
+                  if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                  setDraggingAttachment(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDraggingAttachment(false);
+                  attachFiles(event.dataTransfer.files, "drop");
+                }}
+              >
+                <input
+                  ref={attachmentInputRef}
+                  className="srOnly"
+                  type="file"
+                  multiple
+                  accept={composerAttachmentAccept}
+                  aria-label="Attach files"
+                  disabled={Boolean(snapshot.hydratingSessionID) || submitting}
+                  onChange={(event) => {
+                    if (event.target.files) {
+                      attachFiles(event.target.files, "picker");
+                    }
+                    event.target.value = "";
+                  }}
+                />
+                {composerAttachments.length > 0 && (
+                  <Suspense fallback={null}>
+                    <ComposerAttachments
+                      attachments={composerAttachments}
+                      onRemove={removeAttachment}
+                    />
+                  </Suspense>
+                )}
                 <div className="composerInputRow">
                   <textarea
                     ref={textareaRef}
                     value={draft}
                     rows={1}
                     placeholder="Ask CodeHelper"
+                    enterKeyHint="send"
                     disabled={Boolean(snapshot.hydratingSessionID) || submitting}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setDraft(value);
+                      const slashQuery = composerSlashQuery(value);
+                      if (slashQuery !== undefined) {
+                        setCommandMenuSource("slash");
+                        setCommandQuery(slashQuery);
+                        setCommandMenuOpen(true);
+                      } else if (commandMenuSource === "slash") {
+                        setCommandMenuOpen(false);
+                        setCommandQuery("");
+                      }
+                    }}
+                    onCompositionStart={() => {
+                      composingRef.current = true;
+                    }}
+                    onCompositionEnd={() => {
+                      composingRef.current = false;
+                    }}
+                    onPaste={(event) => {
+                      const files = Array.from(event.clipboardData.files);
+                      if (files.length === 0) return;
+                      event.preventDefault();
+                      attachFiles(files, "paste");
+                    }}
                     onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing || composingRef.current) return;
+                      if (
+                        commandMenuOpen &&
+                        commandMenuSource === "slash" &&
+                        composerSlashQuery(draft) !== undefined
+                      ) {
+                        if (event.key === "Enter") event.preventDefault();
+                        return;
+                      }
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
-                        void submit();
+                        void submit(
+                          activeTurn && (event.metaKey || event.ctrlKey)
+                            ? "steer"
+                            : "queue"
+                        );
                       }
                     }}
                   />
@@ -935,33 +1652,93 @@ export function App({client}: Props) {
                         : 0
                     ) || selectedModelEntry?.capabilities.context_window}
                   />
-                  {activeTurn ? (
-                    <IconButton
-                      label="Stop turn"
-                      danger
-                      icon={<CircleStop size={19} />}
-                      onClick={() => void client.cancel(activeTurn)}
-                    />
-                  ) : (
-                    <IconButton
-                      label="Send"
-                      primary
-                      disabled={
-                        Boolean(snapshot.hydratingSessionID) ||
-                        !draft.trim() ||
-                        submitting
-                      }
-                      icon={submitting ? <LoaderCircle className="spin" size={19} /> : <Send size={19} />}
-                      onClick={() => void submit()}
-                    />
-                  )}
+                  <div className="composerActions">
+                    {activeTurn && (
+                      <IconButton
+                        label="Stop turn"
+                        danger
+                        icon={<CircleStop size={19} />}
+                        onClick={() => void client.cancel(activeTurn)}
+                      />
+                    )}
+                    {(!activeTurn || Boolean(draft.trim())) && (
+                      <>
+                        {activeTurn &&
+                          snapshot.contextResources.length === 0 &&
+                          composerAttachments.length === 0 && (
+                          <IconButton
+                            label="Steer current turn"
+                            disabled={submitting}
+                            icon={<Zap size={18} />}
+                            onClick={() => void submit("steer")}
+                          />
+                        )}
+                        <IconButton
+                          label={activeTurn ? "Queue next" : "Send"}
+                          primary
+                          disabled={
+                            Boolean(snapshot.hydratingSessionID) ||
+                            !draft.trim() ||
+                            submitting ||
+                            attachmentBusy ||
+                            attachmentFailed
+                          }
+                          icon={submitting
+                            ? <LoaderCircle className="spin" size={19} />
+                            : activeTurn
+                              ? <ListPlus size={19} />
+                              : <Send size={19} />}
+                          onClick={() => void submit("queue")}
+                        />
+                      </>
+                    )}
+                  </div>
                 </div>
                 <div className="composerControls">
                   <div>
-                    <ComposerCommandMenu
-                      commands={composerCommands}
-                      disabled={Boolean(snapshot.hydratingSessionID)}
+                    <IconButton
+                      label="Attach files"
+                      icon={<Paperclip size={15} />}
+                      disabled={
+                        Boolean(snapshot.hydratingSessionID) ||
+                        submitting ||
+                        snapshot.contextResources.length >= maxComposerAttachments
+                      }
+                      onClick={() => attachmentInputRef.current?.click()}
                     />
+                    <Suspense fallback={null}>
+                      <ComposerCommandMenu
+                        commands={composerCommands}
+                        disabled={Boolean(snapshot.hydratingSessionID) || submitting}
+                        open={commandMenuOpen}
+                        query={commandQuery}
+                        onOpenChange={(open) => {
+                          setCommandMenuOpen(open);
+                          if (open) {
+                            setCommandMenuSource("button");
+                            setCommandQuery("");
+                          } else if (commandMenuSource === "slash") {
+                            setDraft("");
+                            setCommandQuery("");
+                            setCommandMenuSource("button");
+                          }
+                        }}
+                        onQueryChange={setCommandQuery}
+                        onSelect={() => {
+                          setCommandQuery("");
+                          if (commandMenuSource === "slash") {
+                            setDraft("");
+                            requestAnimationFrame(() => textareaRef.current?.focus());
+                          }
+                          setCommandMenuSource("button");
+                        }}
+                        onRequestComposerFocus={
+                          commandMenuSource === "slash"
+                            ? () => textareaRef.current?.focus()
+                            : undefined
+                        }
+                      />
+                    </Suspense>
                     <CompactSelect
                       label="Mode"
                       value={snapshot.profile?.profile.mode ?? "act"}
@@ -1032,6 +1809,21 @@ export function App({client}: Props) {
         </div>
       </main>
 
+      {conversationNavigatorOpen && (
+        <Suspense fallback={null}>
+          <ConversationNavigator
+            items={conversationNavigation}
+            currentEntryID={readerEntryID}
+            hasEarlier={snapshot.historyMoreBefore}
+            onClose={() => setConversationNavigatorOpen(false)}
+            onSelect={jumpToNavigationItem}
+            onLoadEarlier={async () => {
+              pendingReadingRestoreRef.current = captureReadingPosition(true);
+              return client.loadEarlierHistory();
+            }}
+          />
+        </Suspense>
+      )}
       {contextOpen && (
         <Suspense fallback={null}>
           <WorkspaceContextDialog
@@ -1061,6 +1853,120 @@ export function App({client}: Props) {
 
 }
 
+function readTranscriptPosition(
+  scrollport: HTMLElement,
+  page: number,
+  atBottom: boolean
+): TranscriptReadingPosition | undefined {
+  const anchors = Array.from(
+    scrollport.querySelectorAll<HTMLElement>("[data-entry-id]")
+  );
+  if (anchors.length === 0) return undefined;
+  const viewport = scrollport.getBoundingClientRect();
+  const composer = scrollport.querySelector<HTMLElement>("[data-composer-seat]");
+  const visibleBottom = composer?.getBoundingClientRect().top ?? viewport.bottom;
+  const visible = anchors.filter((anchor) => {
+    const box = anchorContent(anchor).getBoundingClientRect();
+    return box.bottom > viewport.top && box.top < visibleBottom;
+  });
+  const anchor = (atBottom ? visible.at(-1) : visible[0]) ??
+    (atBottom ? anchors.at(-1) : anchors[0]);
+  const entryID = anchor?.dataset.entryId;
+  if (!anchor || !entryID) return undefined;
+  return {
+    entryID,
+    top: anchorContent(anchor).getBoundingClientRect().top - viewport.top,
+    scrollTop: scrollport.scrollTop,
+    page,
+    atBottom
+  };
+}
+
+function transcriptAnchor(
+  scrollport: HTMLElement,
+  entryID: string
+): HTMLElement | undefined {
+  return Array.from(
+    scrollport.querySelectorAll<HTMLElement>("[data-entry-id]")
+  ).find((node) => node.dataset.entryId === entryID);
+}
+
+function transcriptFocusEntryID(scrollport: HTMLElement): string | undefined {
+  const viewport = scrollport.getBoundingClientRect();
+  const composer = scrollport.querySelector<HTMLElement>("[data-composer-seat]");
+  const visibleBottom = composer?.getBoundingClientRect().top ?? viewport.bottom;
+  const focusLine = viewport.top + (visibleBottom - viewport.top) * 0.42;
+  let nearest: {id: string; distance: number} | undefined;
+  for (const anchor of scrollport.querySelectorAll<HTMLElement>(
+    "[data-entry-id]"
+  )) {
+    const id = anchor.dataset.entryId;
+    if (!id) continue;
+    const box = anchorContent(anchor).getBoundingClientRect();
+    if (box.bottom <= viewport.top || box.top >= visibleBottom) continue;
+    const center = box.top + Math.min(box.height, visibleBottom - box.top) / 2;
+    const distance = Math.abs(center - focusLine);
+    if (!nearest || distance < nearest.distance) nearest = {id, distance};
+  }
+  return nearest?.id;
+}
+
+function anchorContent(anchor: HTMLElement): HTMLElement {
+  return anchor.firstElementChild instanceof HTMLElement
+    ? anchor.firstElementChild
+    : anchor;
+}
+
+function fileTarget(
+  anchor: HTMLElement,
+  path: string
+): HTMLElement | undefined {
+  return Array.from(
+    anchor.querySelectorAll<HTMLElement>("[data-file-path]")
+  ).find((node) => node.dataset.filePath === path);
+}
+
+function centerTranscriptTarget(
+  scrollport: HTMLElement,
+  target: HTMLElement
+): void {
+  const viewport = scrollport.getBoundingClientRect();
+  const composer = scrollport.querySelector<HTMLElement>("[data-composer-seat]");
+  const visibleBottom = composer?.getBoundingClientRect().top ?? viewport.bottom;
+  const targetBox = target.getBoundingClientRect();
+  const visibleHeight = Math.max(1, visibleBottom - viewport.top);
+  const desiredTop = viewport.top +
+    Math.max(16, (visibleHeight - Math.min(targetBox.height, visibleHeight)) / 2);
+  const behavior = scrollport.style.scrollBehavior;
+  scrollport.style.scrollBehavior = "auto";
+  scrollport.scrollTop += targetBox.top - desiredTop;
+  scrollport.style.scrollBehavior = behavior;
+}
+
+function restoreTranscriptPosition(
+  scrollport: HTMLElement,
+  position: TranscriptReadingPosition
+): void {
+  if (position.atBottom) {
+    scrollport.scrollTop = scrollport.scrollHeight;
+    return;
+  }
+  scrollport.scrollTop = position.scrollTop;
+  const anchor = transcriptAnchor(scrollport, position.entryID);
+  if (!anchor) return;
+  const top = anchorContent(anchor).getBoundingClientRect().top -
+    scrollport.getBoundingClientRect().top;
+  scrollport.scrollTop += top - position.top;
+}
+
+function isEditableElement(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement;
+}
+
 function SessionRow({
   session,
   active,
@@ -1083,12 +1989,32 @@ function SessionRow({
   actionError: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const showStatus = session.status !== "idle" && session.status !== "completed";
+  const showStatus = session.status !== "idle";
   const statusTone = session.status === "failed" || session.status === "interrupted"
     ? "error"
     : session.status === "awaiting_approval" || session.status === "awaiting_input"
       ? "warning"
-      : "active";
+      : session.status === "completed"
+        ? "complete"
+        : "active";
+  const statusLabel = session.status === "awaiting_approval"
+    ? "Approval required"
+    : session.status === "awaiting_input"
+      ? "Input required"
+      : session.status === "interrupted"
+        ? "Interrupted"
+        : session.status === "failed"
+          ? "Failed"
+          : session.status === "completed"
+            ? "Completed"
+            : "Running";
+  const StatusIcon = session.status === "running"
+    ? LoaderCircle
+    : session.status === "completed"
+      ? Check
+      : session.status === "interrupted"
+        ? CircleStop
+        : AlertTriangle;
   const run = (action: () => void) => {
     setMenuOpen(false);
     action();
@@ -1109,12 +2035,22 @@ function SessionRow({
     >
       <button className="sessionSelect" onClick={onClick}>
         <span className="sessionStatusSlot">
-          {showStatus && <span className="sessionStatusDot" data-tone={statusTone} />}
+          {showStatus && (
+            <span
+              className="sessionStatusMark"
+              data-tone={statusTone}
+              title={statusLabel}
+              role="img"
+              aria-label={statusLabel}
+            >
+              <StatusIcon
+                className={session.status === "running" ? "spin" : undefined}
+                size={12}
+              />
+            </span>
+          )}
         </span>
         <span className="sessionTitle">{session.title}</span>
-        {showStatus && (
-          <span className="srOnly">{session.status.replaceAll("_", " ")}</span>
-        )}
         <span className="sessionAge">{relativeTime(session.updated_at)}</span>
       </button>
       <div className="sessionActions">
@@ -1188,6 +2124,7 @@ const TranscriptItem = memo(function TranscriptItem({
   onError,
   onInspect,
   canOpenPath,
+  checkpoint,
   chrome,
   feedback,
   onFeedback
@@ -1197,48 +2134,44 @@ const TranscriptItem = memo(function TranscriptItem({
   onError: (error: unknown) => void;
   onInspect: (callID: string) => void;
   canOpenPath: boolean;
+  checkpoint?: SessionCheckpoint;
   chrome?: MessageChrome;
   feedback?: MessageFeedbackRating;
   onFeedback: (rating: MessageFeedbackRating) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [guidanceOpen, setGuidanceOpen] = useState(false);
+  const [guidance, setGuidance] = useState("");
+  const [recoveryPending, setRecoveryPending] = useState("");
   if (entry.kind === "user") {
-    return <div className="userMessage">{entry.text}</div>;
+    return (
+      <div
+        className="userMessage"
+        data-steering={entry.steering || undefined}
+      >
+        {entry.steering && <small>Steered</small>}
+        {entry.text}
+      </div>
+    );
   }
   if (entry.kind === "assistant") {
     return (
-      <article className="assistantMessage" data-time-hover-root>
-        <div className="assistantMarkdown">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              a: ({href, children, ...properties}) => (
-                <a
-                  {...properties}
-                  href={href}
-                  rel={isExternalURL(href) ? "noopener noreferrer" : undefined}
-                  target={isExternalURL(href) ? "_blank" : undefined}
-                >
-                  {children}
-                </a>
-              ),
-              img: ({alt}) => <span className="markdownImageAlt">{alt ?? "Image"}</span>,
-              table: ({children}) => (
-                <div
-                  className="markdownTable"
-                  role="region"
-                  aria-label="Response table"
-                  tabIndex={0}
-                >
-                  <table>{children}</table>
-                </div>
-              )
-            }}
-          >
-            {entry.text}
-          </ReactMarkdown>
-        </div>
-        {chrome && (
+      <article
+        className="assistantMessage"
+        data-superseded={entry.superseded || undefined}
+        data-time-hover-root
+      >
+        <Suspense fallback={
+          <div className="assistantMarkdownFallback">{entry.text}</div>
+        }>
+          <MarkdownMessage
+            text={entry.text}
+            settled={Boolean(chrome)}
+            canOpenPath={canOpenPath}
+            onOpenFile={(path) => void client.openWorkspacePath(path).catch(onError)}
+          />
+        </Suspense>
+        {chrome && !entry.superseded && (
           <MessageActions
             text={entry.text}
             chrome={chrome}
@@ -1254,24 +2187,90 @@ const TranscriptItem = memo(function TranscriptItem({
       <div className="terminalState" data-failed={entry.failed || undefined}>
         {entry.failed ? <AlertTriangle size={16} /> : <Check size={16} />}
         <div><strong>{entry.title}</strong><span>{entry.text}</span></div>
-        {entry.recoverable && entry.turnID && (
-          <div className="artifactActions">
-            <button onClick={() => void client.recoverTurn(
-              entry.turnID,
-              "retry"
-            ).catch(onError)}>
-              <RotateCcw size={13} /> Retry
-            </button>
-            <button onClick={() => {
-              const guidance = window.prompt("Continue with guidance", "") ?? "";
-              void client.recoverTurn(
-                entry.turnID,
-                "continue",
-                guidance
-              ).catch(onError);
-            }}>
-              <Play size={13} /> Continue
-            </button>
+        {entry.recoverable && entry.turnID && entry.recovery && (
+          <div className="turnRecovery">
+            <div className="turnRecoveryStatus">
+              <span data-state={entry.recovery.sideEffects}>
+                Side effects: {entry.recovery.sideEffects.replaceAll("_", " ")}
+              </span>
+              {entry.recovery.action && <small>{entry.recovery.action}</small>}
+            </div>
+            <div className="artifactActions">
+              {entry.recovery.canRetry && (
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => {
+                    setRecoveryPending("retry");
+                    void client.recoverTurn(entry.turnID, "retry")
+                      .catch(onError)
+                      .finally(() => setRecoveryPending(""));
+                  }}
+                >
+                  <RotateCcw size={13} /> Retry
+                </button>
+              )}
+              {entry.recovery.canContinue && (
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => setGuidanceOpen((value) => !value)}
+                >
+                  <Play size={13} /> Continue
+                </button>
+              )}
+              {checkpoint?.can_restore && (
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => {
+                    setRecoveryPending("restore");
+                    void client.restoreCheckpoint(checkpoint.id)
+                      .catch(onError)
+                      .finally(() => setRecoveryPending(""));
+                  }}
+                >
+                  <RefreshCw size={13} /> Restore
+                </button>
+              )}
+              {checkpoint?.can_fork && (
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => {
+                    setRecoveryPending("fork");
+                    void client.forkCheckpoint(checkpoint.id)
+                      .catch(onError)
+                      .finally(() => setRecoveryPending(""));
+                  }}
+                >
+                  <GitFork size={13} /> Fork
+                </button>
+              )}
+            </div>
+            {guidanceOpen && (
+              <div className="turnRecoveryGuidance">
+                <textarea
+                  aria-label="Continue guidance"
+                  value={guidance}
+                  autoFocus
+                  onChange={(event) => setGuidance(event.target.value)}
+                  placeholder="Additional guidance"
+                />
+                <button
+                  disabled={Boolean(recoveryPending)}
+                  onClick={() => {
+                    setRecoveryPending("continue");
+                    void client.recoverTurn(
+                      entry.turnID,
+                      "continue",
+                      guidance
+                    ).catch(onError).finally(() => {
+                      setRecoveryPending("");
+                      setGuidanceOpen(false);
+                    });
+                  }}
+                >
+                  <Play size={13} /> Continue
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1279,6 +2278,19 @@ const TranscriptItem = memo(function TranscriptItem({
   }
   if (entry.kind === "receipt") {
     return null;
+  }
+  if (entry.kind === "deliverables") {
+    return (
+      <Suspense fallback={null}>
+        <ProducedFiles
+          entry={entry}
+          client={client}
+          canOpenPath={canOpenPath}
+          onInspect={onInspect}
+          onError={onError}
+        />
+      </Suspense>
+    );
   }
   if (entry.kind === "context") {
     return (
@@ -2351,6 +3363,24 @@ function pendingRequestKey(sessionID: string, event?: RuntimeEvent): string {
   return `${sessionID}:${String(event?.data.request_id ?? "")}`;
 }
 
+function checkpointForTurn(
+  checkpoints: readonly SessionCheckpoint[],
+  turnID: string
+): SessionCheckpoint | undefined {
+  return checkpoints
+    .filter((checkpoint) => checkpoint.turn_id === turnID)
+    .reduce<SessionCheckpoint | undefined>(
+      (latest, checkpoint) =>
+        !latest || checkpoint.cursor > latest.cursor ? checkpoint : latest,
+      undefined
+    );
+}
+
+function composerSlashQuery(value: string): string | undefined {
+  const match = /^\/([^\s]*)$/.exec(value);
+  return match?.[1];
+}
+
 function pretty(value: unknown): string {
   if (value === undefined || value === null) return "";
   if (typeof value === "string") return value;
@@ -2406,9 +3436,4 @@ function applyThemeMode(theme: ThemeMode, systemDark: boolean) {
 function safeFilename(value: string): string {
   const safe = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return safe || "codehelper-session";
-}
-
-function isExternalURL(value: string | undefined): boolean {
-  return value?.startsWith("https://") === true ||
-    value?.startsWith("http://") === true;
 }

@@ -42,8 +42,18 @@ func PreparePersistentRuntime(
 	if err != nil {
 		return nil, err
 	}
-	if _, err := repositories.Tasks.RecoverInterrupted(ctx, time.Time{}); err != nil {
-		return nil, fmt.Errorf("recover interrupted tasks: %w", err)
+	presets, err := apppersistence.OpenAgentPresetStore(
+		options.Store,
+		options.WorkspaceRoot,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("open agent presets: %w", err)
+	}
+	if _, recoverErr := repositories.Tasks.RecoverInterrupted(
+		ctx,
+		time.Time{},
+	); recoverErr != nil {
+		return nil, fmt.Errorf("recover interrupted tasks: %w", recoverErr)
 	}
 	terminalStore := turnstate.NewSQLiteRepository(options.Store.SQLite())
 	contextRebases := apppersistence.NewContextRebaseRepository(options.Store)
@@ -67,6 +77,7 @@ func PreparePersistentRuntime(
 
 		TerminalStore:       terminalStore,
 		ContextRebaseStore:  contextRebases,
+		AgentPresets:        presets,
 		Orchestration:       orchestration,
 		SkipRuntimeRecovery: options.SkipRuntimeRecovery, Observability: options.Observability,
 	}

@@ -6,6 +6,95 @@ import {
 } from "./conversation";
 
 describe("ConversationProjection", () => {
+  it("derives recovery actions and side effects from Runtime facts", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.failed", {
+        code: "unavailable",
+        message: "provider unavailable",
+        fault: {
+          disposition: "resume_turn",
+          side_effects: "rolled_back",
+          recovery_action: "continue from durable state"
+        }
+      })
+    ]);
+
+    expect(snapshot.nodes.get(snapshot.order[0])).toMatchObject({
+      kind: "status",
+      recovery: {
+        canRetry: false,
+        canContinue: true,
+        sideEffects: "rolled_back",
+        action: "continue from durable state"
+      }
+    });
+  });
+
+  it("projects produced files and marks older paths stale", () => {
+    const first = [
+      turnEvent(1, "turn-one", "turn.started", {display_prompt: "Edit"}),
+      turnEvent(2, "turn-one", "tool.start", {
+        call_id: "edit-one",
+        tool: "file_edit",
+        arguments: {path: "main.go", old: "old\n", new: "new\n"}
+      }),
+      turnEvent(3, "turn-one", "tool.result", {
+        call_id: "edit-one",
+        tool: "file_edit",
+        output: "updated",
+        changes: [{path: "main.go", kind: "modified", added: 1, removed: 1}]
+      }),
+      turnEvent(4, "turn-one", "turn.receipt", {
+        changes: [{
+          path: "main.go",
+          tool: "file_edit",
+          kind: "modified",
+          added: 1,
+          removed: 1
+        }],
+        verification: {tests: "passed", diagnostics: "not_evaluated"}
+      }),
+      turnEvent(5, "turn-one", "turn.completed", {text: "First"})
+    ];
+    const snapshot = projectConversation([
+      ...first,
+      turnEvent(6, "turn-two", "turn.started", {display_prompt: "Edit again"}),
+      turnEvent(7, "turn-two", "turn.receipt", {
+        changes: [{
+          path: "main.go",
+          tool: "file_write",
+          kind: "modified",
+          added: 2,
+          removed: 1
+        }],
+        verification: {tests: "not_evaluated"}
+      }),
+      turnEvent(8, "turn-two", "turn.completed", {text: "Second"})
+    ]);
+    const deliverables = snapshot.order.flatMap((id) => {
+      const node = snapshot.nodes.get(id);
+      return node?.kind === "deliverables" ? [node] : [];
+    });
+
+    expect(deliverables).toMatchObject([
+      {
+        turnID: "turn-one",
+        verification: "passed",
+        files: [{
+          path: "main.go",
+          callID: "edit-one",
+          stale: true,
+          diff: {before: "old\n", after: "new\n"}
+        }]
+      },
+      {
+        turnID: "turn-two",
+        verification: "unverified",
+        files: [{path: "main.go", stale: false}]
+      }
+    ]);
+  });
+
   it("matches a full rebuild after incremental application", () => {
     const events = [
       event(1, "turn.started", {display_prompt: "Inspect the workspace"}),
@@ -131,6 +220,23 @@ describe("ConversationProjection", () => {
     });
   });
 
+  it("projects accepted steering as a durable user interjection", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.started", {display_prompt: "Inspect"}),
+      event(2, "output.delta", {text: "Initial direction"}),
+      event(3, "turn.steered", {prompt: "Focus on the parser"}),
+      event(4, "output.delta", {text: "Revised direction"}),
+      event(5, "turn.completed", {text: "Done"})
+    ]);
+
+    expect(snapshot.order.map((id) => snapshot.nodes.get(id))).toMatchObject([
+      {kind: "user", text: "Inspect"},
+      {kind: "assistant", text: "Initial direction", superseded: true},
+      {kind: "user", text: "Focus on the parser", steering: true},
+      {kind: "assistant", text: "Done"}
+    ]);
+  });
+
   it("retains an approval edit plan on the associated tool result", () => {
     const snapshot = projectConversation([
       event(1, "tool.start", {
@@ -210,5 +316,18 @@ function event(
     sequence,
     created_at: `2026-01-01T00:00:0${sequence}Z`,
     data
+  };
+}
+
+function turnEvent(
+  sequence: number,
+  turnID: string,
+  kind: string,
+  data: Record<string, unknown>
+): RuntimeEvent {
+  return {
+    ...event(sequence, kind, data),
+    id: `${turnID}-event-${sequence}`,
+    turn_id: turnID
   };
 }

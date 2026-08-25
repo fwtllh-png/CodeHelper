@@ -1,18 +1,14 @@
 import {
   Check,
   Copy,
-  Plus,
   ThumbsDown,
-  ThumbsUp,
-  type LucideIcon
+  ThumbsUp
 } from "lucide-react";
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
-  type CSSProperties,
-  type KeyboardEvent
+  type CSSProperties
 } from "react";
 
 export type MessageFeedbackRating = "positive" | "negative";
@@ -224,128 +220,6 @@ export function ContextMeter({
             </dl>
           )}
           <small>Last model sample · provider-safe token attribution</small>
-        </div>
-      )}
-    </span>
-  );
-}
-
-export interface ComposerCommand {
-  id: string;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  active?: boolean;
-  disabled?: boolean;
-  run: () => void | Promise<void>;
-}
-
-export function ComposerCommandMenu({
-  commands,
-  disabled
-}: {
-  commands: readonly ComposerCommand[];
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const rootRef = useRef<HTMLSpanElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const enabled = useMemo(
-    () => commands.flatMap((command, index) => command.disabled ? [] : [index]),
-    [commands]
-  );
-
-  useEffect(() => {
-    if (!open) return;
-    setActive(enabled[0] ?? 0);
-    menuRef.current?.focus();
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Node &&
-          rootRef.current?.contains(event.target)) {
-        return;
-      }
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [enabled, open]);
-
-  const select = (command: ComposerCommand) => {
-    if (command.disabled) return;
-    setOpen(false);
-    void command.run();
-  };
-  const move = (direction: number) => {
-    if (enabled.length === 0) return;
-    const current = enabled.indexOf(active);
-    const next = current < 0
-      ? 0
-      : (current + direction + enabled.length) % enabled.length;
-    setActive(enabled[next] ?? enabled[0] ?? 0);
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      setOpen(false);
-      triggerRef.current?.focus();
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      move(event.key === "ArrowDown" ? 1 : -1);
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      const command = commands[active];
-      if (command) select(command);
-    }
-  };
-
-  return (
-    <span className="commandMenuRoot" ref={rootRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="commandMenuTrigger"
-        aria-label="Commands"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <Plus size={15} />
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          className="commandMenu"
-          role="menu"
-          aria-label="Commands"
-          tabIndex={-1}
-          onKeyDown={onKeyDown}
-        >
-          <span className="commandMenuTitle">Commands</span>
-          {commands.map((command, index) => {
-            const Icon = command.icon;
-            return (
-              <button
-                key={command.id}
-                type="button"
-                role="menuitem"
-                disabled={command.disabled}
-                data-active={index === active || undefined}
-                aria-current={command.active ? "true" : undefined}
-                onMouseEnter={() => {
-                  if (!command.disabled) setActive(index);
-                }}
-                onClick={() => select(command)}
-              >
-                <Icon size={15} />
-                <span>{command.label}</span>
-                <small>{command.description}</small>
-                {command.active && <Check size={14} aria-hidden="true" />}
-              </button>
-            );
-          })}
         </div>
       )}
     </span>

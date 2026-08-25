@@ -125,7 +125,6 @@
       "source_patterns": [
         "internal/host/**",
         "web/**",
-        "testdata/contracts/experience-contract.json",
         "testdata/contracts/host-journey-contract.json"
       ]
     },
@@ -221,13 +220,6 @@
       ]
     },
     {
-      "id": "command-tree",
-      "command": [
-        "make",
-        "command-docs-check"
-      ]
-    },
-    {
       "id": "repository-test-topology",
       "command": [
         "go",
@@ -250,10 +242,10 @@
       ]
     },
     {
-      "id": "experience-contract",
+      "id": "web-experience-contract",
       "command": [
         "make",
-        "experience-baseline"
+        "web-experience-check"
       ]
     },
     {

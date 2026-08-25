@@ -31,7 +31,7 @@ PR Body 使用以下机器可读块：
 
 ```text
 Documentation-impact: affected
-Documentation-chapters: runtime-protocol, host-cli
+Documentation-chapters: runtime-protocol, host-web
 Documentation-rationale: N/A
 ```
 
@@ -40,7 +40,7 @@ Documentation-rationale: N/A
 ```text
 Documentation-impact: none
 Documentation-chapters: N/A
-Documentation-rationale: 本次重构不改变协议和 CLI 输出。
+Documentation-rationale: 本次重构不改变协议和 Web 行为。
 ```
 
 理由是供 Review 的工程断言，不是绕过 Owner Review 的开关。
@@ -62,8 +62,8 @@ BASE_REF=origin/main make doc-impact
 make release-fact-check
 ```
 
-`governance.json` 中的命令验证当前 CLI Help/Version 行为、Protocol Schema 漂移、
-Compatibility 数据和两类文档契约。新增发布结论无法由现有命令证明时，必须增加
+`governance.json` 中的命令验证当前 Web 启动行为、Protocol Schema 漂移、
+Compatibility 数据和文档契约。新增发布结论无法由现有命令证明时，必须增加
 对应的 Fact Command。
 
 ## 新鲜度与漂移

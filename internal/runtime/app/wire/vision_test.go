@@ -122,7 +122,7 @@ model = "fixture-model"
 	if len(usageEvents) == 0 {
 		t.Fatal("no usage events reached the host")
 	}
-	// The rollup is what `codehelper usage` and the TUI cost panel read. The image
+	// The rollup is what the Web usage panel reads. The image
 	// has to be in there too, or the turn's own report and the ledger disagree.
 	rollup, err := usage.NewSQLiteRepository(store.SQLite()).
 		QueryRollup(t.Context(), usage.Query{TurnID: "turn"})

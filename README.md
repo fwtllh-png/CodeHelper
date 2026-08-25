@@ -10,7 +10,7 @@
 可执行的 Agent 工程知识书籍。**
 
 CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、持久化会话与编排统一放在
-一套 Runtime 协议之后，并同时服务本机 Web、CLI、TUI、自动化与 Worker。
+一套 Runtime 协议之后，并通过本机 Web 这一产品入口服务交互式使用、自动化与 Worker。
 
 > 项目状态：初始开发版本。首次公开稳定发布前，接口和持久化格式仍可能调整。
 
@@ -18,7 +18,7 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 
 | 交付物 | 提供的价值 |
 | --- | --- |
-| **面向真实工程的 Agent Runtime** | 模型接入、上下文工程、受控工具、持久化状态、任务编排、可观测性和多种 Host |
+| **面向真实工程的 Agent Runtime** | 模型接入、上下文工程、受控工具、持久化状态、任务编排、可观测性和本机 Web |
 | **可执行的 Agent 工程知识书籍** | 从基础原理进入真实源码、测试、架构图、失败模式和可复现实验的中文路径 |
 
 `docs/zh-CN` 下的中文产品手册描述已交付行为。
@@ -32,7 +32,7 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 的工程属性：
 
 - **本地控制权**：源码和执行仍在用户工作区中。
-- **一套 Runtime，多种 Host**：终端、编辑器、自动化和 API 客户端共享同一套
+- **一个 Web 入口，一套 Runtime**：交互界面、自动化和后台工作共享同一套
   Operation/Event 模型。
 - **受控执行**：所有修改型工具都经过 policy、permission、constitution、journal
   与操作系统沙箱检查。
@@ -62,60 +62,25 @@ git clone https://github.com/fwtllh-png/CodeHelper.git
 cd CodeHelper
 
 make build
-./bin/codehelper version
-./bin/codehelper doctor
-```
-
-先运行不访问网络的 fixture：
-
-```bash
-./bin/codehelper exec \
-  --provider-fixture ./testdata/providers/openai \
-  --provider openai \
-  --model gpt-fixture \
-  --output-format stream-json \
-  "say hello"
-```
-
-调用已配置的真实模型：
-
-```bash
-export OPENAI_API_KEY='...'
-./bin/codehelper exec \
-  --provider openai \
-  --model gpt-4.1 \
-  --api-key-env OPENAI_API_KEY \
-  --workspace . \
-  --enable-tools \
-  --mode act \
-  --posture suggest \
-  "找到风险最高的缺陷并提出修复方案"
-```
-
-启动终端界面：
-
-```bash
-./bin/codehelper tui --workspace . --config ./codehelper.toml
+./bin/codehelper --version
 ```
 
 启动本机 Web 工作区：
 
 ```bash
-./bin/codehelper web \
+./bin/codehelper \
   --workspace . \
   --config ./codehelper.toml \
   --enable-tools
 ```
 
 Web 只监听 `127.0.0.1`，默认选择可用端口。终端会分别输出页面开始监听和
-Runtime 完成恢复的 URL。
+Runtime 完成恢复的 URL。`--open` 会自动打开系统浏览器。
 
-仓库所有者在 macOS 上使用 DeepSeek 时，可以一条命令完成编译、配置并启动 Web
-或 TUI：
+仓库所有者使用 DeepSeek 时，可以一条命令完成编译、配置并启动 Web：
 
 ```bash
 make deepseek-web
-make deepseek-tui
 ```
 
 密钥来源、生成文件、Agent 执行方式和校验说明见
@@ -128,10 +93,7 @@ make deepseek-tui
 
 | 入口 | 命令或路径 | 主要用途 |
 | --- | --- | --- |
-| 本机 Web | `codehelper web` | 默认交互入口、会话、审批、变更与运行状态 |
-| 单次 CLI | `codehelper exec` | 脚本、CI 实验、机器可读事件流 |
-| 终端界面 | `codehelper tui` | 交互式仓库开发 |
-| Worker 与编排 | `worker`、`automation`、`workflow`、`lane`、`fleet` | 持久化、多步骤执行 |
+| 本机 Web | `codehelper` | 唯一产品入口，覆盖会话、审批、变更、编排与运行状态 |
 
 ## 一分钟理解安全模型
 
@@ -146,16 +108,15 @@ make deepseek-tui
 - `never`：只读
 - `suggest`：风险操作请求用户审批
 - `auto`：按策略自动判断，不被允许的操作直接拒绝
-- `bypass`：宽松的本地权限，但仍不能绕过 constitution 和沙箱硬边界
 
-日常交互推荐 `suggest`。`bypass` 只应用于隔离且可信的工作区。凭证应保存为环境变量、
-文件或系统 Keyring 的引用，TOML 中不应出现原始密钥。
+日常交互推荐 `suggest`。凭证应保存为环境变量、文件或系统 Keyring 的引用，TOML 中
+不应出现原始密钥。
 
 ## 仓库结构
 
 ```text
 cmd/codehelper/          进程入口
-internal/host/           Web、CLI、TUI
+internal/host/           Web Host 与 Runtime Transport
 internal/runtime/        Operation/Event Runtime 与 Agent Engine
 internal/adapter/        Provider、Model、Tool、MCP、Skill、Plugin、Hook
 internal/security/       Policy、Permission、Constitution、Sandbox
@@ -177,7 +138,7 @@ testdata/                Hermetic Provider 与 Benchmark Fixture
 | 产品介绍与定位 | [项目介绍](./docs/zh-CN/overview.md) |
 | 安装与上手 | [快速开始](./docs/zh-CN/getting-started.md) |
 | 配置 | [配置说明](./docs/zh-CN/configuration.md) |
-| 命令与工作流 | [使用指南](./docs/zh-CN/usage.md) |
+| Web 与工作流 | [使用指南](./docs/zh-CN/usage.md) |
 | 架构 | [架构设计](./docs/zh-CN/architecture.md) |
 | Runtime 所有权与可维护性 | [核心流程与边界](./docs/zh-CN/runtime-maintainability-refactoring-plan.md) |
 | 安全 | [安全指南](./docs/zh-CN/security.md) |

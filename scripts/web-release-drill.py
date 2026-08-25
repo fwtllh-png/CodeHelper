@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import queue
 import shutil
 import signal
@@ -105,49 +104,11 @@ def run_previous(
     fixture: str,
     data_dir: str,
     session_id: str,
-    thread_id: str,
     source_turn_id: str,
 ) -> tuple[int, int, str]:
-    requests = [
-        {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
-        {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "session/list",
-            "params": {"limit": 20},
-        },
-        {
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "session/load",
-            "params": {"sessionId": session_id, "threadId": thread_id},
-        },
-        {
-            "jsonrpc": "2.0",
-            "id": 4,
-            "method": "session/history",
-            "params": {"sessionId": session_id, "turnLimit": 20},
-        },
-        {
-            "jsonrpc": "2.0",
-            "id": 5,
-            "method": "turn/recover",
-            "params": {
-                "sessionId": session_id,
-                "sourceTurnId": source_turn_id,
-                "action": "retry",
-                "idempotencyKey": "release-drill-recover",
-            },
-        },
-        {"jsonrpc": "2.0", "id": 6, "method": "shutdown", "params": {}},
-    ]
-    payload = "".join(json.dumps(value) + "\n" for value in requests)
-    completed = subprocess.run(
+    previous = subprocess.Popen(
         [
             binary,
-            "host",
-            "--adapter",
-            "acp",
             "--workspace",
             workspace,
             "--data-dir",
@@ -158,40 +119,57 @@ def run_previous(
             "openai",
             "--model",
             "fixture-model",
+            "--port",
+            "0",
+            "--no-open",
         ],
-        input=payload,
+        cwd=workspace,
         text=True,
-        capture_output=True,
-        timeout=30,
-        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     )
-    responses = {}
-    for line in completed.stdout.splitlines():
-        value = json.loads(line)
-        if "id" in value:
-            responses[value["id"]] = value
-    for identifier in (1, 2, 3, 4, 5, 6):
-        if identifier not in responses or "error" in responses[identifier]:
-            raise RuntimeError(f"previous binary request {identifier} failed")
-    sessions = responses[2]["result"]["sessions"]
-    if session_id not in {item["session_id"] for item in sessions}:
-        raise RuntimeError("previous binary could not list the Web RC session")
-    latest = int(responses[3]["result"]["latestSeq"])
-    events = responses[4]["result"]["events"]
-    source_events = [
-        event for event in events if event.get("turn_id") == source_turn_id
-    ]
-    terminal_kinds = {"turn.completed", "turn.failed", "turn.canceled"}
-    if (
-        latest < 1
-        or not source_events
-        or not any(event.get("kind") in terminal_kinds for event in source_events)
-    ):
-        raise RuntimeError("previous binary could not recover the Web RC Turn")
-    recovery = responses[5]["result"]
-    if not recovery.get("accepted") or not recovery.get("turnId"):
-        raise RuntimeError("previous binary did not accept Turn recovery")
-    return latest, len(events), str(recovery["turnId"])
+    try:
+        url = wait_for_url(previous)
+        token = bootstrap(url)
+        sessions = request(url, token, "session/list", {"limit": 20})["sessions"]
+        if session_id not in {item["session_id"] for item in sessions}:
+            raise RuntimeError("previous binary could not list the Web RC session")
+        status = request(url, token, "session/status", {"session_id": session_id})
+        history = request(
+            url,
+            token,
+            "session/history",
+            {"session_id": session_id, "limit": 256},
+        )
+        latest = int(status["latest_sequence"])
+        events = history["events"]
+        source_events = [
+            event for event in events if event.get("turn_id") == source_turn_id
+        ]
+        terminal_kinds = {"turn.completed", "turn.failed", "turn.canceled"}
+        if (
+            latest < 1
+            or not source_events
+            or not any(event.get("kind") in terminal_kinds for event in source_events)
+        ):
+            raise RuntimeError("previous binary could not recover the Web RC Turn")
+        recovery = request(
+            url,
+            token,
+            "turn/recover",
+            {
+                "version": 1,
+                "session_id": session_id,
+                "source_turn_id": source_turn_id,
+                "action": "retry",
+                "idempotency_key": "release-drill-recover",
+            },
+        )
+        if not recovery.get("accepted") or not recovery.get("turn_id"):
+            raise RuntimeError("previous binary did not accept Turn recovery")
+        return latest, len(events), str(recovery["turn_id"])
+    finally:
+        stop(previous)
 
 
 def main() -> None:
@@ -203,7 +181,6 @@ def main() -> None:
         current = subprocess.Popen(
             [
                 args.current_binary,
-                "web",
                 "--workspace",
                 workspace,
                 "--data-dir",
@@ -251,7 +228,6 @@ def main() -> None:
             if replayed != binding:
                 raise RuntimeError("Web RC session create retry changed its binding")
             session_id = binding["session_id"]
-            thread_id = binding["thread_id"]
             submitted = request(
                 url,
                 token,
@@ -303,7 +279,6 @@ def main() -> None:
             args.fixture,
             str(restored),
             session_id,
-            thread_id,
             source_turn_id,
         )
         report = {

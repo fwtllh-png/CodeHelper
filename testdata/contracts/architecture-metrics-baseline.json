@@ -101,7 +101,7 @@
         "mutex_fields": 2
       },
       "relaxations": {
-        "production_lines": "Classify the durable reasoning completion event in the Runtime event hub."
+        "production_lines": "Map retained reasoning completion events into the terminal event codec."
       }
     },
     {
@@ -344,12 +344,9 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 77,
-        "production_lines": 9622,
-        "options_fields": 84,
+        "production_lines": 9115,
+        "options_fields": 74,
         "mutex_fields": 7
-      },
-      "relaxations": {
-        "production_lines": "Expose the privacy-safe Trace query through persistent Runtime construction."
       }
     },
     {
@@ -522,10 +519,13 @@
       "kind": "package",
       "path": "internal/runtime/app/persistence",
       "limits": {
-        "internal_fanout": 11,
+        "internal_fanout": 12,
         "production_lines": 725,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "internal_fanout": "Construct the Agent Preset repository inside the durable persistence assembly boundary."
       }
     },
     {
@@ -570,7 +570,7 @@
         "mutex_fields": 4
       },
       "relaxations": {
-        "production_lines": "Publish one durable reasoning completion fact for each logical model sample."
+        "production_lines": "Publish sample-bound reasoning completion facts for stable Web transcript reconstruction."
       }
     },
     {
@@ -590,12 +590,13 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 20,
-        "production_lines": 5913,
-        "options_fields": 22,
+        "production_lines": 6728,
+        "options_fields": 23,
         "mutex_fields": 10
       },
       "relaxations": {
-        "production_lines": "Persist prompt-derived Session titles and backfill legacy default titles in the Runtime-owned lifecycle path."
+        "production_lines": "Add Runtime-owned Agent Preset validation, persistence control, and Session application.",
+        "options_fields": "Inject the Agent Preset store through an explicit Runtime option."
       }
     },
     {
@@ -619,28 +620,17 @@
       }
     },
     {
-      "id": "tui_package",
-      "kind": "package",
-      "path": "internal/host/tui",
-      "limits": {
-        "internal_fanout": 23,
-        "production_lines": 7549,
-        "options_fields": 28,
-        "mutex_fields": 2
-      }
-    },
-    {
       "id": "protocol_package",
       "kind": "package",
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6406,
+        "production_lines": 6992,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "Define durable reasoning completion and bounded tool-result presentation metadata."
+        "production_lines": "Define typed, versioned Agent Preset profiles and mutation contracts."
       }
     },
     {
@@ -648,11 +638,11 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2154,
+        "lines": 2202,
         "max_function_lines": 119
       },
       "relaxations": {
-        "lines": "Expose the Runtime-owned Trace query service."
+        "lines": "Expose the narrow Agent Preset store interface and service facade from Runtime."
       }
     },
     {
@@ -723,8 +713,12 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime_start.go",
       "limits": {
-        "lines": 152,
-        "max_function_lines": 70
+        "lines": 156,
+        "max_function_lines": 71
+      },
+      "relaxations": {
+        "lines": "Install the injected Agent Preset store during Runtime construction.",
+        "max_function_lines": "Install the injected Agent Preset store during Runtime construction."
       }
     },
     {
@@ -974,7 +968,7 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 22,
+        "event_switch_sites": 21,
         "runtime_package_dirs": 20,
         "runtime_one_file_packages": 7,
         "runtime_agent_package_dirs": 6,
@@ -983,7 +977,7 @@
         "runtime_app_unexpected_packages": 0
       },
       "relaxations": {
-        "event_switch_sites": "Project Runtime events once into stable Conversation nodes and once into the audit-focused Trajectory ledger."
+        "event_switch_sites": "Project retained Queue transition events into one Runtime-owned pending Queue."
       }
     },
     {
@@ -1003,9 +997,12 @@
       "path": "internal/runtime/agent/prompt",
       "limits": {
         "internal_fanout": 8,
-        "production_lines": 2470,
+        "production_lines": 2502,
         "options_fields": 22,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Resolve verified inline text and native image attachments into model context."
       }
     },
     {
@@ -1029,5 +1026,7 @@
       "kind": "file"
     }
   ],
-  "retirements": {}
+  "retirements": {
+    "tui_package": "The TUI host was removed in favor of the single Web product entry."
+  }
 }

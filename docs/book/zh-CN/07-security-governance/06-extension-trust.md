@@ -87,7 +87,7 @@ MCP Schema/Capability Change 触发 Catalog Reconcile，Stale Binding 被 Fence�
 Health 隔离失败 Server。Skill Lock 保证 Resolution Reproducible，但 Skill Text 仍是
 Untrusted Model Context，不能授予 Tool Authority。
 
-Plugin/Skill CLI、Web 向同一 Runtime Owner 提交幂等 Control Operation。
+Web 向同一 Runtime Owner 提交幂等 Control Operation。
 Durable Prepare/Commit Receipt 使 Restart/Retry 可审计。Host 不能通过编辑 Local State
 或报告 Extension Healthy 建立 Trust。
 

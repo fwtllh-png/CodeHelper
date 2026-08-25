@@ -16,7 +16,7 @@ func TestReadyRouteGolden(t *testing.T) {
 	route, err := resolver.Resolve(RouteRequest{
 		ProviderID: "openai",
 		ModelID:    "gpt-4.1",
-		Provenance: ProvenanceCLI,
+		Provenance: ProvenanceStartup,
 	})
 	if err != nil {
 		t.Fatal(err)

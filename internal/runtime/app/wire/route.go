@@ -18,7 +18,7 @@ func resolveExecRoute(options execRouteOptions) (model.ReadyRoute, error) {
 	if options.BaseURL == "" {
 		catalog = model.DefaultCatalog()
 	} else {
-		provenance := model.ProvenanceCLI
+		provenance := model.ProvenanceStartup
 		if options.Fixture {
 			provenance = model.ProvenanceFixture
 		}
@@ -54,7 +54,7 @@ func resolveExecRoute(options execRouteOptions) (model.ReadyRoute, error) {
 	if err != nil {
 		return model.ReadyRoute{}, err
 	}
-	provenance := model.ProvenanceCLI
+	provenance := model.ProvenanceStartup
 	if options.Fixture {
 		provenance = model.ProvenanceFixture
 	}

@@ -70,13 +70,6 @@
       "capabilities": [],
       "evidence": ["internal/host/runtimeapi/web/streaming_soak_test.go"],
       "command": "CODEHELPER_WEB_STREAMING_SOAK_DURATION=1h go test -count=1 -timeout 70m -run '^TestWebSocketSustainedStreamingSoak$' ./internal/host/runtimeapi/web"
-    },
-    {
-      "id": "web_worker_coexistence",
-      "lane": "integration",
-      "capabilities": [],
-      "evidence": ["internal/host/cli/web_worker_coexist_test.go"],
-      "command": "go test -run '^TestWebWorkerAndAutomationShareDurableStateWithoutOwnerConflict$' ./internal/host/cli"
     }
   ]
 }

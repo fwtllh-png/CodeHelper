@@ -31,7 +31,7 @@ last_verified: 2026-08-16
 
 ## Responsibilities
 
-- **Lane**：记录 Durable Placement Metadata；显式 Lane CLI 操作仍可启动或控制
+- **Lane**：记录 Durable Placement Metadata；受控 Process Adapter 可启动或控制
   Inline/Tmux Process。
 - **Fleet**：读取 WorkGraph Aggregate/Facts，构建 Host View，审计 Snapshot Drift，
   并且只修复可重建 Snapshot。
@@ -44,7 +44,7 @@ flowchart LR
     W[Workflow Runtime] --> K[WorkGraph Kernel]
     K --> S[(SQLite Facts / Snapshot / Outbox)]
     S --> F[Fleet Projection]
-    F --> H[CLI / TUI / Host View]
+    F --> H[Web Host View]
     W --> L[Lane Placement]
 ```
 

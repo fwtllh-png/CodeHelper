@@ -8,6 +8,7 @@ afterEach(cleanup);
 
 describe("Trajectory", () => {
   it("searches, folds, selects, and navigates one event ledger", () => {
+    const onOpenChat = vi.fn();
     render(
       <Trajectory
         events={[
@@ -31,6 +32,7 @@ describe("Trajectory", () => {
         onInspectConsumed={vi.fn()}
         onLoadEarlier={vi.fn(async () => 0)}
         onRetryTrace={vi.fn(async () => {})}
+        onOpenChat={onOpenChat}
       />
     );
 
@@ -47,6 +49,8 @@ describe("Trajectory", () => {
     fireEvent.click(document.querySelectorAll<HTMLButtonElement>(".ledgerRow")[0]!);
     expect(screen.getByRole("complementary", {name: "Record inspector"}))
       .toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Show in chat"}));
+    expect(onOpenChat).toHaveBeenCalledWith("turn-1", undefined);
   });
 
   it("derives the virtualized ledger budget from viewport and row height", () => {
@@ -61,6 +65,7 @@ describe("Trajectory", () => {
         onInspectConsumed={vi.fn()}
         onLoadEarlier={vi.fn(async () => 0)}
         onRetryTrace={vi.fn(async () => {})}
+        onOpenChat={vi.fn()}
       />
     );
 

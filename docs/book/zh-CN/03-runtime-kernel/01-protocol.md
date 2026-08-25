@@ -37,7 +37,7 @@ last_verified: null
 
 ## 问题背景
 
-CLI、Web、Persistence 和 Test 都要描述同一份工作。消息跨 Process
+Web、Persistence 和 Test 都要描述同一份工作。消息跨 Process
 和语言后，共享 Go Struct 并不足够；契约必须拒绝 Unknown Shape、保留 Identity，并
 显式演进。
 

@@ -5,7 +5,7 @@ const (
 	SourceFile    Source = "file"
 	SourceRepo    Source = "repo"
 	SourceEnv     Source = "env"
-	SourceCLI     Source = "cli"
+	SourceStartup Source = "startup"
 )
 
 const (

@@ -145,7 +145,7 @@ cat > "$OUT/notes/RELEASE_NOTES.md" <<EOF
 ## Install smoke
 
 1. Extract tarball
-2. Run \`./bin/codehelper version\`
+2. Run \`./bin/codehelper --version\`
 3. Replace binary for upgrade and verify checksums
 4. Restore previous checksum-verified binary for rollback
 EOF
@@ -180,13 +180,13 @@ trap cleanup_smoke EXIT
 install_dir="$smoke_dir/install"
 mkdir -p "$install_dir"
 cp "$OUT/bin/${host_name}" "$install_dir/codehelper"
-"$install_dir/codehelper" version >/dev/null
-"$install_dir/codehelper" help >/dev/null
+"$install_dir/codehelper" --version >/dev/null
+"$install_dir/codehelper" --help >/dev/null
 cp "$install_dir/codehelper" "$smoke_dir/codehelper.prev"
 # Upgrade overwrite via new inode to avoid macOS text-busy / codesign cache kills.
 cp "$OUT/bin/${host_name}" "$install_dir/codehelper.upgrade"
 mv -f "$install_dir/codehelper.upgrade" "$install_dir/codehelper"
-"$install_dir/codehelper" version >/dev/null
+"$install_dir/codehelper" --version >/dev/null
 # Rollback restore previous binary and verify size match.
 cp "$smoke_dir/codehelper.prev" "$install_dir/codehelper.rollback"
 mv -f "$install_dir/codehelper.rollback" "$install_dir/codehelper"

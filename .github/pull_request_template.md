@@ -32,7 +32,7 @@ only when documentation facts do not change, and provide a concrete rationale.
 
 ```text
 Documentation-impact: affected
-Documentation-chapters: runtime-protocol, host-cli
+Documentation-chapters: runtime-protocol, host-web
 Documentation-rationale: N/A
 ```
 

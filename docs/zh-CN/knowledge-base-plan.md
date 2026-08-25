@@ -67,7 +67,7 @@ docs/book/
 
 - Runtime Protocol JSON Schema；
 - Web Compatibility Contract；
-- CLI `--help`；
+- Web 启动参数 `--help`；
 - Config Schema 与校验逻辑；
 - 生成的 TypeScript Protocol Type；
 - 测试 Fixture、Golden File 和 Release Evidence。
@@ -159,10 +159,8 @@ docs/book/
 
 ### 第十部分：Host 与协议
 
-1. CLI 和 Machine-readable Output
-2. TUI State Projection
-3. Web Transport Stdio 与编辑器互操作
-4. Web 原生 Agent Chat 与 Runtime Authority
+1. Web Transport 与 Runtime Authority
+2. Web Agent Chat 与 Runtime Authority
 
 ### 第十一部分：扩展生态
 
@@ -209,7 +207,7 @@ docs/book/
 | Task 与 Workflow | `internal/orchestration` |
 | Durable State | `internal/persist` |
 | Trace、Usage、Verify | `internal/observability` |
-| CLI、TUI、API Host | `internal/host` |
+| Web Host | `internal/host` |
 | OS 与 Process | `internal/platform` |
 | Web | `web` |
 
@@ -291,7 +289,7 @@ last_verified: null
 - 产品手册只维护 `docs/zh-CN`，知识书籍只维护 `docs/book/zh-CN`；
 - Catalog 的 `languages` 固定为 `["zh-CN"]`；
 - 术语表维护源码术语、推荐中文译法和禁用歧义；
-- 代码标识、协议名和 CLI 参数保持原文；
+- 代码标识、协议名和 Web 启动参数保持原文；
 - 文档检查应拒绝重新出现的英文文档树、章节 ID 不一致和目录漂移。
 
 ## 11. 自动化与质量门禁
@@ -396,9 +394,9 @@ Evidence-first Failure Investigation Worksheet。
 Checkpoint Commit Window、Lane/Fleet Control/Evidence，并将 Child-to-parent Merge 建模为
 Guarded Two-phase Integration。
 
-2026-08-06 已完成第十部分质量提升：Host 与协议章节现在明确 CLI Output Channel、TUI
-Reducer/Reconstruction、Web Transport Connection Ordering，以及 Web Supervisor、Cursor、
-Multi-root Workspace 与 Compatibility Recovery。
+2026-08-06 已完成第十部分质量提升：Host 与协议章节现在明确 Web Transport Connection
+Ordering，以及 Web Supervisor、Cursor、Multi-root Workspace 与 Compatibility
+Recovery。
 
 2026-08-06 已完成第十一部分质量提升：扩展生态章节现在明确 Provider Route/Stream
 Commit Boundary、Tool Generation Binding、MCP Source-scoped Reconciliation、Skill/
@@ -445,10 +443,10 @@ task-lease-retry、task-checkpoint-recovery、task-lane-fleet）。
 
 ### 阶段 4：Host 与扩展生态
 
-状态：进行中。Host 与协议、扩展生态共 10 章中文正文均已交付，其中 1 章在
+状态：进行中。Host 与协议、扩展生态共 8 章中文正文均已交付，其中 1 章在
 `docs/book/catalog.json` 中标记为 `verified`（host-web-transport）。
 
-- CLI、TUI、Web；
+- Web；
 - MCP、Skill、Plugin、Hook；
 - Provider、Tool 和 Host 扩展教程。
 
@@ -518,7 +516,7 @@ lab-worker-retry、lab-trace-failure）。
 - 用大量源码粘贴替代解释；
 - 承诺尚未实现的产品能力；
 - 为追求篇幅而记录无长期价值的开发过程；
-- 替代代码测试、Schema 或 CLI Help。
+- 替代代码测试、Schema 或 Web 启动参数。
 
 ## 16. 主要风险与控制
 

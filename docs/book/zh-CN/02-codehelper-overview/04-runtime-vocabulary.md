@@ -137,9 +137,9 @@ Projection 包括 Thread List、Latest Turn、Pending Approval、Usage Rollup、
 Chat。它应当在规定范围可 Rebuild、Duplicate Delivery 下 Idempotent、按 Cursor/Version
 排序、按 Workspace/Thread Scope，并只优化 Read。
 
-Go Host（TUI、CLI、Bench）共享同一 Projection 入口：`eventview.Project` 返回 Traits、
-Data 与归一化 Terminal Update（`completed`、`failed`、`canceled` 或 `rejected`），而
-Machine NDJSON 仍输出原始 Event Envelope。呈现可以因 Host 而异，分类不能。
+Go Benchmark 通过 `eventview.Project` 获取 Traits、Data 与归一化 Terminal Update
+（`completed`、`failed`、`canceled` 或 `rejected`）；Web 使用生成协议驱动的 Browser
+Projection。两者的呈现可以不同，事件分类不能分叉。
 
 Projection 与 Durable Event 冲突时应 Repair/Rebuild Projection，不能用方便的 View
 覆盖 Fact。

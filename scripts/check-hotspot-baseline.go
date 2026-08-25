@@ -64,8 +64,8 @@ func run(root, path string) error {
 	if contract.SchemaVersion != 1 || contract.RequirementID != "IMP-006" {
 		return errors.New("hotspot baseline must declare schema_version=1 and requirement_id=IMP-006")
 	}
-	if len(contract.Hotspots) != 4 {
-		return fmt.Errorf("hotspot baseline contains %d hotspots, want 4", len(contract.Hotspots))
+	if len(contract.Hotspots) != 3 {
+		return fmt.Errorf("hotspot baseline contains %d hotspots, want 3", len(contract.Hotspots))
 	}
 
 	var failures []string

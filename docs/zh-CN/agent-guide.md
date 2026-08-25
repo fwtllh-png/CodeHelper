@@ -5,7 +5,7 @@
 
 ## 任务目标
 
-保持 CodeHelper 是“一套受治理的本地 Coding Agent Runtime + 多种 Host”。优先保证
+保持 CodeHelper 是“一套受治理的本地 Coding Agent Runtime + 单一 Web Host”。优先保证
 正确性、证据、安全边界和可维护性，而不是能力数量。
 
 ## 开始工作
@@ -20,8 +20,7 @@
 
 | 变更领域 | 起始路径 |
 | --- | --- |
-| CLI Command/Flag | `internal/host/cli` |
-| TUI Rendering | `internal/host/tui` |
+| Web Process/Flag | `internal/host/web` |
 | HTTP/Web Transport | `internal/host/runtimeapi` |
 | Operation/Event Shape | `internal/runtime/protocol` |
 | Turn/Session State | `internal/runtime/app` |
@@ -168,8 +167,8 @@ Trust 时：
 - 区分已交付能力与 Roadmap；
 - 示例命令必须存在于 `--help`；
 - 受 Git 跟踪的文档不嵌入真实凭证；
-- 操作仓库所有者的本机 DeepSeek 环境时，调用 `make deepseek-init`、
-  `make deepseek-tui` 或 `make deepseek-web`，不检查被忽略的 Runbook；
+- 操作仓库所有者的本机 DeepSeek 环境时，调用 `make deepseek-init` 或
+  `make deepseek-web`，不检查被忽略的 Runbook；
 - 保持本地链接有效；
 - 更新 `docs/zh-CN`，不创建英文镜像；
 - 删除过时材料，不保留互相矛盾的副本。

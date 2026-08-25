@@ -29,9 +29,11 @@ var ErrOperationUnsupported = protocol.NewProblem(
 type NoopEngine struct{}
 
 func (NoopEngine) StartTurn(
-	_ context.Context, _ *protocol.StartTurnPayload, sink EngineSink,
+	_ context.Context, payload *protocol.StartTurnPayload, sink EngineSink,
 ) error {
-	if err := sink.Emit(&protocol.TurnStartedData{Provider: "local", Model: "noop"}); err != nil {
+	if err := sink.Emit(&protocol.TurnStartedData{
+		Provider: "local", Model: "noop", QueueID: payload.QueueID,
+	}); err != nil {
 		return err
 	}
 	return sink.Emit(&protocol.TurnCompletedData{})
@@ -322,6 +324,7 @@ func (a *EngineAdapter) StartTurn(
 			}
 			return sink.Emit(&protocol.TurnStartedData{
 				Provider: event.Provider, Model: event.Model,
+				QueueID: payload.QueueID,
 				Orchestration: protocol.CloneOrchestrationCorrelation(
 					payload.Orchestration,
 				),
@@ -659,7 +662,10 @@ func (a *EngineAdapter) SteerTurn(
 	if err := control.Steer(payload.Prompt); err != nil {
 		return err
 	}
-	return sink.Emit(&protocol.TurnSteeredData{Prompt: payload.Prompt})
+	return sink.Emit(&protocol.TurnSteeredData{
+		Prompt:  payload.Prompt,
+		QueueID: payload.QueueID,
+	})
 }
 
 func (a *EngineAdapter) DecideApproval(

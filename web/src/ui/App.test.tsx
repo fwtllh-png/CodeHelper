@@ -1,9 +1,10 @@
-import {cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {act, cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
 import {afterEach, describe, expect, it, vi} from "vitest";
 import type {RuntimeEvent, SessionSummary} from "../protocol";
 import {projectConversation} from "../projection/conversation";
 import type {RuntimeClient, RuntimeSnapshot} from "../runtime/client";
 import {App, projectTranscript, selectionRange} from "./App";
+import {notificationPreferenceKey} from "./browserNotifications";
 
 const clipboardWrite = vi.fn(async () => {});
 
@@ -27,7 +28,9 @@ Object.defineProperty(URL, "revokeObjectURL", {
 afterEach(() => {
   cleanup();
   clipboardWrite.mockClear();
+  document.title = "CodeHelper";
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("selectionRange", () => {
@@ -112,6 +115,63 @@ describe("projectTranscript", () => {
     expect(client.recoverTurn).toHaveBeenCalledWith("turn", "retry");
   });
 
+  it("renders Runtime recovery capabilities at the failed turn", async () => {
+    const value = snapshot([
+      event(1, "turn.failed", {
+        code: "internal",
+        message: "verification failed",
+        fault: {
+          disposition: "resume_turn",
+          side_effects: "committed",
+          recovery_action: "inspect the workspace before continuing"
+        }
+      })
+    ]);
+    value.checkpoints = [{
+      version: 2,
+      id: "checkpoint-failed",
+      session_id: "session",
+      thread_id: "thread",
+      turn_id: "turn",
+      cursor: 1,
+      status: "interrupted",
+      summary: "Before failure",
+      profile_revision: 1,
+      changed_files: 1,
+      external_side_effects: true,
+      can_restore: true,
+      can_fork: true,
+      created_at: "2026-01-01T00:00:00Z"
+    }];
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    expect(screen.queryByRole("button", {name: "Retry"})).toBeNull();
+    expect(screen.getByText("Side effects: committed")).toBeTruthy();
+    expect(screen.getByText("inspect the workspace before continuing")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Continue"}));
+    fireEvent.change(screen.getByRole("textbox", {name: "Continue guidance"}), {
+      target: {value: "Run focused verification"}
+    });
+    fireEvent.click(screen.getAllByRole("button", {name: "Continue"})[1]);
+    await waitFor(() => {
+      expect(client.recoverTurn).toHaveBeenCalledWith(
+        "turn",
+        "continue",
+        "Run focused verification"
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", {name: "Restore"}));
+    await waitFor(() => {
+      expect(client.restoreCheckpoint).toHaveBeenCalledWith("checkpoint-failed");
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Fork"}));
+    await waitFor(() => {
+      expect(client.forkCheckpoint).toHaveBeenCalledWith("checkpoint-failed");
+    });
+  });
+
   it("renders lifecycle, workspace, profile, and governed tool controls", async () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
@@ -132,14 +192,167 @@ describe("projectTranscript", () => {
     fireEvent.change(screen.getByLabelText("Settings model"), {
       target: {value: "reasoner"}
     });
-    expect(client.updateProfile).toHaveBeenCalledWith({
-      model: "reasoner",
-      reasoning_effort: ""
+    expect(client.updateProfile).not.toHaveBeenCalled();
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Apply changes"}));
+    await waitFor(() => {
+      expect(client.updateProfile).toHaveBeenCalledWith({
+        model: "reasoner"
+      });
     });
     fireEvent.click(screen.getByRole("button", {name: "Tools"}));
     expect(screen.getByText("read_file")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Agent preset"}));
     expect(screen.getByLabelText("Agent mode")).toBeTruthy();
+  });
+
+  it("projects background activity and opens privacy-safe browser notifications", async () => {
+    class TestNotification {
+      static permission: NotificationPermission = "default";
+      static instances: TestNotification[] = [];
+      static requestPermission = vi.fn(async () => {
+        TestNotification.permission = "granted";
+        return "granted" as NotificationPermission;
+      });
+      onclick: ((event: Event) => unknown) | null = null;
+      onclose: ((event: Event) => unknown) | null = null;
+
+      constructor(
+        readonly title: string,
+        readonly options?: NotificationOptions
+      ) {
+        TestNotification.instances.push(this);
+      }
+
+      close(): void {
+        this.onclose?.(new Event("close"));
+      }
+    }
+    vi.stubGlobal("Notification", TestNotification);
+    const preferences = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => preferences.get(key) ?? null,
+      setItem: (key: string, value: string) => preferences.set(key, value),
+      removeItem: (key: string) => preferences.delete(key)
+    });
+    const focus = vi.spyOn(window, "focus").mockImplementation(() => {});
+    const foreground = snapshot();
+    const background: SessionSummary = {
+      ...foreground.sessions[0],
+      session_id: "session-background",
+      thread_id: "thread-background",
+      title: "Private prompt title",
+      status: "running",
+      latest_turn_id: "turn-background"
+    };
+    let current = {
+      ...foreground,
+      sessions: [...foreground.sessions, background]
+    };
+    const listeners = new Set<() => void>();
+    const client = mockClient(current);
+    Object.assign(client, {
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      getSnapshot: () => current
+    });
+    render(<App client={client} />);
+
+    expect(document.title).toBe("(1) Working · CodeHelper");
+    const backgroundRow = screen.getByText("Private prompt title")
+      .closest(".sessionRow");
+    expect(backgroundRow?.querySelector('[title="Running"]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", {name: "Settings"}));
+    const notificationSwitch = await screen.findByRole("switch", {
+      name: "Desktop notifications"
+    });
+    expect(notificationSwitch).toHaveProperty("checked", false);
+    expect(screen.getByText(/Prompts and tool output are excluded/)).toBeTruthy();
+    fireEvent.click(notificationSwitch);
+    await waitFor(() => {
+      expect(notificationSwitch).toHaveProperty("checked", true);
+    });
+    expect(TestNotification.requestPermission).toHaveBeenCalledOnce();
+    expect(preferences.get(notificationPreferenceKey)).toBe("true");
+    fireEvent.click(screen.getByRole("button", {name: "Close settings"}));
+
+    act(() => {
+      current = {
+        ...current,
+        sessions: current.sessions.map((session) =>
+          session.session_id === background.session_id
+            ? {
+                ...session,
+                status: "awaiting_approval",
+                pending_approvals: 1,
+                latest_sequence: 2
+              }
+            : session
+        )
+      };
+      for (const listener of listeners) listener();
+    });
+
+    await waitFor(() => expect(TestNotification.instances).toHaveLength(1));
+    expect(document.title).toBe("(1) Action required · CodeHelper");
+    expect(TestNotification.instances[0]).toMatchObject({
+      title: "CodeHelper needs approval",
+      options: {
+        body: "A background Session is waiting for approval."
+      }
+    });
+    expect(JSON.stringify(TestNotification.instances[0].options))
+      .not.toContain(background.title);
+    expect(backgroundRow?.querySelector('[title="Approval required"]')).toBeTruthy();
+
+    TestNotification.instances[0].onclick?.(new Event("click"));
+    expect(focus).toHaveBeenCalledOnce();
+    expect(client.selectSession).toHaveBeenCalledWith(background.session_id);
+  });
+
+  it("shows every Runtime background state in the Session rail", () => {
+    const value = snapshot();
+    value.sessions = [
+      {...value.sessions[0], title: "Running task", status: "running"},
+      {
+        ...value.sessions[0],
+        session_id: "approval",
+        thread_id: "thread-approval",
+        title: "Approval task",
+        status: "awaiting_approval",
+        pending_approvals: 1
+      },
+      {
+        ...value.sessions[0],
+        session_id: "failed",
+        thread_id: "thread-failed",
+        title: "Failed task",
+        status: "failed"
+      },
+      {
+        ...value.sessions[0],
+        session_id: "completed",
+        thread_id: "thread-completed",
+        title: "Completed task",
+        status: "completed"
+      }
+    ];
+    render(<App client={mockClient(value)} />);
+
+    for (const [title, status] of [
+      ["Running task", "Running"],
+      ["Approval task", "Approval required"],
+      ["Failed task", "Failed"],
+      ["Completed task", "Completed"]
+    ]) {
+      const row = Array.from(document.querySelectorAll(".sessionRow")).find(
+        (item) => item.querySelector(".sessionTitle")?.textContent === title
+      );
+      expect(row?.querySelector(`[title="${status}"]`)).toBeTruthy();
+    }
   });
 
   it("renders run statistics as one readable line", () => {
@@ -349,9 +562,10 @@ describe("projectTranscript", () => {
     expect(screen.getByLabelText("Usage").textContent).toContain(
       "Turns2Calls3Tokens144CostUnpriced"
     );
-    expect(screen.getByText("tests failed")).toBeTruthy();
-    expect(screen.getByText("reviewing diff")).toBeTruthy();
-    expect(screen.getByText("Implement the verified change")).toBeTruthy();
+    expect(screen.getAllByText("tests failed").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("reviewing diff").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Implement the verified change").length)
+      .toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Before implementation")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", {name: "Implement"}));
@@ -368,6 +582,223 @@ describe("projectTranscript", () => {
       "review-tools",
       false
     );
+  });
+
+  it("stages Agent settings, protects dirty close, and applies one profile patch", async () => {
+    const client = mockClient(snapshot());
+    render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Settings"}));
+    await screen.findByRole("dialog", {name: "Settings"});
+    fireEvent.click(screen.getByRole("button", {name: "Agent preset"}));
+    await waitFor(() => expect(client.listAgentPresets).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText("Agent mode"), {
+      target: {value: "plan"}
+    });
+    fireEvent.change(screen.getByLabelText("Maximum steps"), {
+      target: {value: "16"}
+    });
+    expect(client.updateProfile).not.toHaveBeenCalled();
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", {name: "Close settings"}));
+    expect(screen.getByText("Discard unsaved changes?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Keep editing"}));
+    fireEvent.click(screen.getByRole("button", {name: "Apply changes"}));
+
+    await waitFor(() => {
+      expect(client.updateProfile).toHaveBeenCalledWith({
+        mode: "plan",
+        max_steps: 16
+      });
+    });
+    expect(await screen.findByText("Applied")).toBeTruthy();
+  });
+
+  it("stages tool allowlist changes and exposes guard metadata", async () => {
+    const value = snapshot();
+    value.tools = [
+      ...value.tools,
+      {
+        ...value.tools[0]!,
+        id: "write",
+        name: "write_file",
+        description: "Write a file",
+        capability: "write",
+        access_mode: "write",
+        risk_level: "medium"
+      }
+    ];
+    value.profile!.profile.enabled_tool_ids = ["read", "write"];
+    const client = mockClient(value);
+    render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Settings"}));
+    await screen.findByRole("dialog", {name: "Settings"});
+    fireEvent.click(screen.getByRole("button", {name: "Tools"}));
+
+    fireEvent.click(screen.getByRole("checkbox", {name: "Disable read_file"}));
+    expect(client.updateProfile).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByText("Details")[0]!);
+    expect(screen.getAllByText("strong")).toHaveLength(2);
+    expect(screen.getAllByText(/Validated when invoked/).length)
+      .toBeGreaterThanOrEqual(2);
+
+    fireEvent.click(screen.getByRole("button", {name: "Apply changes"}));
+    await waitFor(() => {
+      expect(client.updateProfile).toHaveBeenCalledWith({
+        enabled_tool_ids: ["write"]
+      });
+    });
+  });
+
+  it("creates, edits, copies, applies, and deletes workspace Agent presets", async () => {
+    const value = snapshot();
+    const preset = {
+      version: 1,
+      id: "preset-review",
+      revision: 3,
+      name: "Review",
+      description: "Review changes",
+      scope: "workspace" as const,
+      profile: {
+        mode: "plan" as const,
+        provider: "fixture",
+        model: "fixture",
+        reasoning_effort: "",
+        enabled_tool_ids: ["builtin:read"],
+        approval_posture: "suggest",
+        execution_target: "local",
+        max_steps: 16
+      },
+      created_at: "2026-01-01T00:00:00Z",
+      updated_at: "2026-01-01T00:00:00Z"
+    };
+    const client = mockClient(value);
+    vi.mocked(client.listAgentPresets).mockResolvedValue({
+      version: 1,
+      revision: 3,
+      presets: [preset]
+    });
+    vi.mocked(client.saveAgentPreset)
+      .mockResolvedValueOnce({
+        version: 1,
+        revision: 4,
+        preset: {...preset, revision: 4, name: "Strict review"}
+      })
+      .mockResolvedValueOnce({
+        version: 1,
+        revision: 5,
+        preset: {
+          ...preset,
+          id: "preset-review-copy",
+          revision: 1,
+          name: "Strict review copy"
+        }
+      });
+    vi.mocked(client.applyAgentPreset).mockResolvedValue({
+      version: 1,
+      preset_id: preset.id,
+      profile_update: {
+        profile: {
+          ...value.profile!.profile,
+          revision: 2,
+          mode: "plan",
+          max_steps: 16
+        },
+        prompt_cache_reset: true,
+        reset_reason: "mode"
+      },
+      restart_required: false
+    });
+    render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Settings"}));
+    await screen.findByRole("dialog", {name: "Settings"});
+    fireEvent.click(screen.getByRole("button", {name: "Agent preset"}));
+    await screen.findByDisplayValue("Review");
+
+    fireEvent.click(screen.getByRole("button", {name: "Load into draft"}));
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
+    const applyPreset = screen.getByRole("button", {name: "Apply to session"});
+    await waitFor(() => expect(applyPreset).toHaveProperty("disabled", false));
+    fireEvent.click(applyPreset);
+    await waitFor(() => {
+      expect(client.applyAgentPreset).toHaveBeenCalledWith("preset-review");
+    });
+
+    fireEvent.change(screen.getByLabelText("Agent preset name"), {
+      target: {value: "Strict review"}
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Update"}));
+    await waitFor(() => {
+      expect(client.saveAgentPreset).toHaveBeenCalledWith(expect.objectContaining({
+        id: "preset-review",
+        expectedRevision: 3,
+        name: "Strict review"
+      }));
+    });
+
+    fireEvent.click(screen.getByRole("button", {name: "Duplicate"}));
+    await waitFor(() => {
+      expect(client.saveAgentPreset).toHaveBeenCalledWith(expect.objectContaining({
+        name: "Strict review copy",
+        profile: expect.objectContaining({mode: "plan", max_steps: 16})
+      }));
+    });
+
+    fireEvent.click(screen.getByRole("button", {name: "Delete"}));
+    fireEvent.click(screen.getByRole("button", {name: "Confirm delete"}));
+    await waitFor(() => {
+      expect(client.deleteAgentPreset).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "preset-review-copy",
+          revision: 1,
+          name: "Strict review copy"
+        })
+      );
+    });
+  });
+
+  it("shows extension trust metadata and routes diagnostics through control plane", async () => {
+    const value = snapshot();
+    value.extensions = [{
+      kind: "plugin",
+      name: "review-tools",
+      version: "1.2.0",
+      source: "/plugins/review-tools",
+      publisher: "example",
+      trust: "untrusted",
+      digest: "a".repeat(64),
+      enabled: true,
+      health: "ready",
+      permissions: ["workspace.read"]
+    }];
+    const client = mockClient(value);
+    render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Settings"}));
+    await screen.findByRole("dialog", {name: "Settings"});
+    fireEvent.click(screen.getByRole("button", {name: "Extensions"}));
+
+    expect(screen.getByText("Trust: untrusted")).toBeTruthy();
+    expect(screen.getByText("Permissions: workspace.read")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Details"}));
+    await waitFor(() => {
+      expect(client.controlExtension).toHaveBeenCalledWith(
+        "plugin",
+        "review-tools",
+        "detail"
+      );
+    });
+    expect(await screen.findByText(/"status": "ready"/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", {name: "Trust publisher"}));
+    fireEvent.click(screen.getByRole("button", {name: "Confirm trust"}));
+    await waitFor(() => {
+      expect(client.controlExtension).toHaveBeenCalledWith(
+        "plugin",
+        "review-tools",
+        "trust"
+      );
+    });
   });
 
   it("adds a server-issued workspace diff to prompt context", async () => {
@@ -518,7 +949,9 @@ describe("projectTranscript", () => {
     const status = {
       reference: {kind: "keyring", name: "codehelper"},
       configured: true,
-      validation: "valid" as const
+      validation: "valid" as const,
+      validated_at: "2026-01-01T00:00:00Z",
+      restart_required: true
     };
     const client = mockClient(snapshot());
     vi.mocked(client.credentialStatus).mockResolvedValue(status);
@@ -534,10 +967,12 @@ describe("projectTranscript", () => {
     await screen.findByRole("dialog", {name: "Settings"});
     fireEvent.click(screen.getByRole("button", {name: "Models"}));
     await screen.findByText("valid");
+    expect(screen.getByText("Runtime restart required")).toBeTruthy();
+    expect(screen.getByText("Reference: codehelper")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Provider credential"), {
       target: {value: "fixture-credential"}
     });
-    fireEvent.click(screen.getByRole("button", {name: "Set key"}));
+    fireEvent.click(screen.getByRole("button", {name: "Rotate key"}));
     await waitFor(() => {
       expect(client.setKeyringCredential).toHaveBeenCalledWith("fixture-credential");
     });
@@ -548,6 +983,7 @@ describe("projectTranscript", () => {
     const clear = screen.getByRole("button", {name: "Clear key"});
     await waitFor(() => expect(clear).toHaveProperty("disabled", false));
     fireEvent.click(clear);
+    fireEvent.click(screen.getByRole("button", {name: "Confirm clear"}));
     expect(client.validateCredential).toHaveBeenCalledOnce();
     await waitFor(() => expect(client.clearKeyringCredential).toHaveBeenCalledOnce());
   });
@@ -759,6 +1195,74 @@ describe("projectTranscript", () => {
     expect(screen.getByRole("button", {name: "Chat"})).toBeTruthy();
   });
 
+  it("steers an active turn from the composer while keeping stop available", async () => {
+    const value = snapshot([
+      event(1, "turn.started", {display_prompt: "Inspect"})
+    ]);
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    const composer = await screen.findByPlaceholderText("Ask CodeHelper");
+    fireEvent.change(composer, {target: {value: "Focus on the parser"}});
+
+    expect(screen.getByRole("button", {name: "Stop turn"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Steer current turn"}));
+
+    await waitFor(() => {
+      expect(client.steer).toHaveBeenCalledWith(
+        "turn",
+        "Focus on the parser"
+      );
+    });
+    expect(client.submitPrompt).not.toHaveBeenCalled();
+  });
+
+  it("queues Enter during an active turn and exposes queue item actions", async () => {
+    const value = snapshot([
+      event(1, "turn.started", {display_prompt: "Inspect"})
+    ]);
+    value.queuedTurns = [{
+      queue_id: "queue-1",
+      thread_id: "thread",
+      source_turn_id: "turn",
+      prompt: "Run focused tests",
+      added_sequence: 2,
+      created_at: "2026-01-01T00:00:01Z",
+      updated_at: "2026-01-01T00:00:01Z"
+    }];
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    const composer = await screen.findByPlaceholderText("Ask CodeHelper");
+    fireEvent.change(composer, {target: {value: "Check the parser"}});
+    fireEvent.keyDown(composer, {key: "Enter"});
+    await waitFor(() => {
+      expect(client.enqueue).toHaveBeenCalledWith("turn", "Check the parser");
+    });
+
+    expect(await screen.findByText("1 queued message")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Edit queued message 1"}));
+    const editor = screen.getByRole("textbox", {name: "Edit queued message 1"});
+    fireEvent.change(editor, {target: {value: "Run all parser tests"}});
+    fireEvent.click(screen.getByRole("button", {name: "Save queued message 1"}));
+    await waitFor(() => {
+      expect(client.updateQueuedTurn).toHaveBeenCalledWith(
+        "queue-1",
+        "Run all parser tests"
+      );
+    });
+    fireEvent.click(screen.getByRole("button", {
+      name: "Steer with queued message 1"
+    }));
+    await waitFor(() => {
+      expect(client.promoteQueuedTurn).toHaveBeenCalledWith("queue-1", "turn");
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Remove queued message 1"}));
+    await waitFor(() => {
+      expect(client.removeQueuedTurn).toHaveBeenCalledWith("queue-1");
+    });
+  });
+
   it("renders durable Think and opens a line-numbered Read card in the editor", () => {
     const value = snapshot([
       event(1, "turn.started", {display_prompt: "Inspect"}),
@@ -859,11 +1363,13 @@ describe("projectTranscript", () => {
     expect(screen.getByText("Loading")).toBeTruthy();
     expect(screen.getByPlaceholderText("Ask CodeHelper"))
       .toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", {name: "Attach files"}))
+      .toHaveProperty("disabled", true);
     expect(screen.getByRole("button", {name: "Export session"}))
       .toHaveProperty("disabled", true);
   });
 
-  it("opens external Markdown links safely and never loads model images", () => {
+  it("opens external Markdown links safely and gates remote images", async () => {
     const value = snapshot([
       event(1, "output.delta", {
         text: "[docs](https://example.com) ![remote](https://example.com/image.png)"
@@ -871,11 +1377,11 @@ describe("projectTranscript", () => {
     ]);
     const {container} = render(<App client={mockClient(value)} />);
 
-    const link = screen.getByRole("link", {name: "docs"});
+    const link = await screen.findByRole("link", {name: "docs"});
     expect(link.getAttribute("target")).toBe("_blank");
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
     expect(container.querySelector("img")).toBeNull();
-    expect(screen.getByText("remote")).toBeTruthy();
+    expect(screen.getByRole("button", {name: "Load image remote"})).toBeTruthy();
   });
 
   it("renders settled response actions and persists feedback through the client", async () => {
@@ -931,6 +1437,211 @@ describe("projectTranscript", () => {
     await waitFor(() => {
       expect(client.compactThread).toHaveBeenCalled();
     });
+  });
+
+  it("opens slash commands with search, argument hints, keyboard selection, and recents", async () => {
+    const client = mockClient(snapshot());
+    const inputClick = vi.spyOn(HTMLInputElement.prototype, "click");
+    render(<App client={client} />);
+
+    const composer = screen.getByPlaceholderText("Ask CodeHelper");
+    fireEvent.change(composer, {target: {value: "/att"}});
+
+    let search = await screen.findByRole("searchbox", {name: "Search commands"});
+    expect(search).toHaveProperty("value", "att");
+    expect(screen.getByRole("menuitem", {name: /\/attach file/})).toBeTruthy();
+    expect(screen.queryByRole("menuitem", {name: /\/compact/})).toBeNull();
+
+    fireEvent.keyDown(search, {key: "Escape"});
+    expect(composer).toHaveProperty("value", "");
+    expect(document.activeElement).toBe(composer);
+
+    fireEvent.change(composer, {target: {value: "/att"}});
+    search = await screen.findByRole("searchbox", {name: "Search commands"});
+    fireEvent.keyDown(search, {key: "ArrowDown"});
+    fireEvent.keyDown(search, {key: "Enter"});
+    expect(inputClick).toHaveBeenCalled();
+    expect(composer).toHaveProperty("value", "");
+
+    fireEvent.click(screen.getByRole("button", {name: "Commands"}));
+    expect(screen.getByText("Recent")).toBeTruthy();
+    expect(screen.getAllByRole("menuitem")[0]?.textContent).toContain("/attach");
+    fireEvent.change(screen.getByRole("searchbox", {name: "Search commands"}), {
+      target: {value: "missing-command"}
+    });
+    expect(screen.getByText("No matching commands")).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("searchbox", {name: "Search commands"}), {
+      key: "Escape"
+    });
+    expect(screen.queryByRole("menu", {name: "Commands"})).toBeNull();
+  });
+
+  it("normalizes picker, paste, and drop files through one attachment pipeline", async () => {
+    const value = snapshot();
+    const client = mockClient(value);
+    const {container} = render(<App client={client} />);
+    const picker = container.querySelector<HTMLInputElement>(
+      'input[type="file"][aria-label="Attach files"]'
+    );
+    const composer = screen.getByPlaceholderText("Ask CodeHelper");
+    const surface = container.querySelector<HTMLElement>(".composer");
+    expect(picker).toBeTruthy();
+    expect(surface).toBeTruthy();
+
+    fireEvent.change(picker!, {
+      target: {files: [fixtureFile("picker.txt", "text/plain", "picker")]}
+    });
+    expect(await screen.findByText("Text · 6 B · picker")).toBeTruthy();
+
+    fireEvent.paste(composer, {
+      clipboardData: {
+        files: [fixtureFile("paste.md", "text/markdown", "paste")]
+      }
+    });
+    expect(await screen.findByText("Text · 5 B · paste")).toBeTruthy();
+
+    fireEvent.dragEnter(surface!, {
+      dataTransfer: {types: ["Files"], files: []}
+    });
+    expect(surface?.getAttribute("data-dragging")).toBe("true");
+    fireEvent.drop(surface!, {
+      dataTransfer: {
+        types: ["Files"],
+        files: [fixtureFile("drop.json", "application/json", "{}")]
+      }
+    });
+    expect(await screen.findByText("Text · 2 B · drop")).toBeTruthy();
+    expect(client.addAttachmentContext).toHaveBeenCalledTimes(3);
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "Remove attachment paste.md"
+    }));
+    expect(client.removeAttachmentContext).toHaveBeenCalledWith(
+      expect.stringMatching(/^[0-9a-f]{64}$/)
+    );
+  });
+
+  it("keeps failed attachments explicit and blocks accidental omission", async () => {
+    const client = mockClient(snapshot());
+    const {container} = render(<App client={client} />);
+    const picker = container.querySelector<HTMLInputElement>(
+      'input[type="file"][aria-label="Attach files"]'
+    );
+    fireEvent.change(picker!, {
+      target: {
+        files: [fixtureBytes("archive.zip", "application/zip", Uint8Array.of(1))]
+      }
+    });
+
+    expect(await screen.findByText(/not a supported text or image attachment/))
+      .toBeTruthy();
+    const composer = screen.getByPlaceholderText("Ask CodeHelper");
+    fireEvent.change(composer, {target: {value: "Inspect this archive"}});
+    expect(screen.getByRole("button", {name: "Send"}))
+      .toHaveProperty("disabled", true);
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "Remove attachment archive.zip"
+    }));
+    expect(screen.getByRole("button", {name: "Send"}))
+      .toHaveProperty("disabled", false);
+  });
+
+  it("discards an attachment that finishes after switching Sessions", async () => {
+    let resolveFile: ((value: ArrayBuffer) => void) | undefined;
+    const delayed = {
+      name: "delayed.txt",
+      type: "text/plain",
+      size: 7,
+      arrayBuffer: vi.fn(() => new Promise<ArrayBuffer>((resolve) => {
+        resolveFile = resolve;
+      }))
+    } as unknown as File;
+    const value = snapshot();
+    const client = mockClient(value);
+    const view = render(<App client={client} />);
+    const picker = view.container.querySelector<HTMLInputElement>(
+      'input[type="file"][aria-label="Attach files"]'
+    );
+
+    fireEvent.change(picker!, {target: {files: [delayed]}});
+    expect(screen.getByText("Processing · picker")).toBeTruthy();
+
+    value.sessions = [
+      ...value.sessions,
+      {...value.sessions[0]!, session_id: "session-2", thread_id: "thread-2"}
+    ];
+    value.selectedSessionID = "session-2";
+    view.rerender(<App client={client} />);
+    resolveFile?.(new TextEncoder().encode("delayed").buffer);
+
+    await waitFor(() => {
+      expect(screen.queryByText("delayed.txt")).toBeNull();
+    });
+    expect(client.addAttachmentContext).not.toHaveBeenCalled();
+  });
+
+  it("does not submit while an IME composition is active", async () => {
+    const client = mockClient(snapshot());
+    render(<App client={client} />);
+    const composer = screen.getByPlaceholderText("Ask CodeHelper");
+    fireEvent.change(composer, {target: {value: "检查解析器"}});
+    fireEvent.compositionStart(composer);
+    fireEvent.keyDown(composer, {key: "Enter"});
+    expect(client.submitPrompt).not.toHaveBeenCalled();
+
+    fireEvent.compositionEnd(composer);
+    fireEvent.keyDown(composer, {key: "Enter"});
+    await waitFor(() => {
+      expect(client.submitPrompt).toHaveBeenCalledWith("检查解析器");
+    });
+  });
+
+  it("keeps long drafts internally bounded and visible above mobile keyboards", async () => {
+    const listeners = new Map<string, EventListener>();
+    const previousViewport = window.visualViewport;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: {
+        addEventListener: (type: string, listener: EventListener) => {
+          listeners.set(type, listener);
+        },
+        removeEventListener: (type: string) => {
+          listeners.delete(type);
+        }
+      }
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView
+    });
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+
+    try {
+      render(<App client={mockClient(snapshot())} />);
+      const composer = screen.getByPlaceholderText(
+        "Ask CodeHelper"
+      ) as HTMLTextAreaElement;
+      Object.defineProperty(composer, "scrollHeight", {
+        configurable: true,
+        value: 900
+      });
+      fireEvent.change(composer, {target: {value: "line\n".repeat(300)}});
+      expect(composer.style.height).toBe("336px");
+
+      composer.focus();
+      listeners.get("resize")?.(new Event("resize"));
+      expect(scrollIntoView).toHaveBeenCalledWith({block: "nearest"});
+    } finally {
+      Object.defineProperty(window, "visualViewport", {
+        configurable: true,
+        value: previousViewport
+      });
+    }
   });
 
   it("shows provider-attributed context usage beside the send action", () => {
@@ -1018,7 +1729,7 @@ describe("projectTranscript", () => {
       }]
     };
     const client = mockClient(value);
-    render(<App client={client} />);
+    const {container} = render(<App client={client} />);
 
     fireEvent.click(screen.getByRole("button", {name: /Read README\.md/}));
     fireEvent.click(screen.getByRole("button", {name: "Inspect"}));
@@ -1035,6 +1746,69 @@ describe("projectTranscript", () => {
     expect(screen.getByRole("separator", {name: "Resize record inspector"}))
       .toBeTruthy();
     expect(client.refreshTrace).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", {name: "Show in chat"}));
+    await waitFor(() => {
+      expect(screen.getByRole("button", {name: "Chat"}).getAttribute("aria-current"))
+        .toBe("page");
+      expect(
+        container.querySelector("[data-entry-id='tool-call-1'][data-navigation-current]")
+      ).toBeTruthy();
+    });
+  });
+
+  it("searches stable conversation identities and navigates between questions", async () => {
+    const events = [
+      {...event(1, "turn.started", {display_prompt: "Inspect the parser"}), turn_id: "turn-a"},
+      {...event(2, "tool.start", {
+        call_id: "call-read",
+        tool: "file_read",
+        arguments: {path: "README.md"}
+      }), turn_id: "turn-a"},
+      {...event(3, "tool.result", {
+        call_id: "call-read",
+        tool: "file_read",
+        output: "# Project",
+        is_error: false
+      }), turn_id: "turn-a"},
+      {...event(4, "turn.completed", {text: "Parser inspected"}), turn_id: "turn-a"},
+      {...event(5, "turn.started", {display_prompt: "Update the tests"}), turn_id: "turn-b"},
+      {...event(6, "turn.completed", {text: "Tests updated"}), turn_id: "turn-b"},
+      {...event(7, "turn.started", {display_prompt: "Verify the result"}), turn_id: "turn-c"},
+      {...event(8, "turn.completed", {text: "Result verified"}), turn_id: "turn-c"}
+    ];
+    const {container} = render(<App client={mockClient(snapshot(events))} />);
+
+    expect(screen.getByRole("button", {name: "Search conversation"}).textContent)
+      .toContain("3/3");
+    fireEvent.keyDown(document, {key: "f", ctrlKey: true});
+    const dialog = await screen.findByRole("dialog", {name: "Search conversation"});
+    fireEvent.change(screen.getByRole("combobox", {name: "Search conversation"}), {
+      target: {value: "README.md"}
+    });
+    fireEvent.click(screen.getByRole("tab", {name: "Files"}));
+    fireEvent.click(screen.getByRole("option", {name: /README\.md/}));
+
+    await waitFor(() => {
+      expect(dialog.isConnected).toBe(false);
+      expect(
+        container.querySelector("[data-entry-id='tool-call-read'][data-navigation-current]")
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", {name: "Next user question"}));
+    await waitFor(() => {
+      expect(
+        container.querySelector("[data-entry-id='event-5'][data-navigation-current]")
+      ).toBeTruthy();
+      expect(screen.getByRole("button", {name: "Search conversation"}).textContent)
+        .toContain("2/3");
+    });
+    fireEvent.keyDown(document, {key: "ArrowDown", altKey: true});
+    await waitFor(() => {
+      expect(
+        container.querySelector("[data-entry-id='event-7'][data-navigation-current]")
+      ).toBeTruthy();
+    });
   });
 
   it("windows 500-turn transcripts to 200 projected rows with older and newer navigation", () => {
@@ -1093,6 +1867,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
     selectedSessionID: session.session_id,
     hydratingSessionID: "",
     events,
+    queuedTurns: [],
     conversation: projectConversation(events),
     historyMoreBefore: false,
     providers: [
@@ -1157,8 +1932,17 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
       description: "Read a file",
       source_kind: "builtin",
       source_label: "CodeHelper",
+      capability: "read",
+      access_mode: "read",
       risk_level: "read",
+      sandbox_requirement: "strong",
+      policy_state: "deferred",
+      policy_reason: "Validated when invoked",
+      constitution_state: "deferred",
+      constitution_reason: "Validated when invoked",
       availability: "available",
+      state: "active",
+      revision: 1,
       enabled: true,
       guarded: true
     }],
@@ -1191,14 +1975,58 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
     deleteSession: vi.fn(async () => {}),
     loadDraft: vi.fn(async () => ""),
     saveDraft: vi.fn(),
+    submitPrompt: vi.fn(async () => ({})),
+    steer: vi.fn(async () => ({})),
+    enqueue: vi.fn(async () => ({})),
+    updateQueuedTurn: vi.fn(async () => ({})),
+    removeQueuedTurn: vi.fn(async () => ({})),
+    promoteQueuedTurn: vi.fn(async () => ({})),
+    cancel: vi.fn(async () => ({})),
     decideApproval: vi.fn(async () => ({})),
     replyInput: vi.fn(async () => ({})),
     recoverTurn: vi.fn(async () => ({})),
-    updateProfile: vi.fn(async () => {}),
+    updateProfile: vi.fn(async (patch: Record<string, unknown>) => ({
+      profile: {
+        ...value.profile!.profile,
+        ...patch,
+        revision: value.profile!.profile.revision + 1
+      },
+      prompt_cache_reset: Boolean(
+        patch.model || patch.provider || patch.reasoning_effort ||
+        patch.enabled_tool_ids || patch.mode
+      ),
+      reset_reason: Object.keys(patch).join(",")
+    })),
+    listAgentPresets: vi.fn(async () => ({
+      version: 1,
+      revision: 0,
+      presets: []
+    })),
+    saveAgentPreset: vi.fn(async () => ({
+      version: 1,
+      revision: 1
+    })),
+    deleteAgentPreset: vi.fn(async () => ({
+      version: 1,
+      revision: 1
+    })),
+    applyAgentPreset: vi.fn(async () => ({
+      version: 1,
+      preset_id: "preset",
+      profile_update: {
+        profile: value.profile!.profile,
+        prompt_cache_reset: false
+      },
+      restart_required: false
+    })),
     transitionPlan: vi.fn(async () => ({})),
     restoreCheckpoint: vi.fn(async () => ({})),
     forkCheckpoint: vi.fn(async () => ({})),
     setExtensionEnabled: vi.fn(async () => ({})),
+    controlExtension: vi.fn(async () => ({
+      revision: 1,
+      detail: {status: "ready"}
+    })),
     credentialStatus: vi.fn(async () => ({
       reference: {kind: "none", name: ""},
       configured: false,
@@ -1250,6 +2078,8 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
     addSymbolContext: vi.fn(),
     addDiagnosticsContext: vi.fn(),
     addImageContext: vi.fn(),
+    addAttachmentContext: vi.fn(),
+    removeAttachmentContext: vi.fn(),
     refreshTrace: vi.fn(async () => {}),
     compactThread: vi.fn(async () => ({})),
     toggleMessageFeedback: vi.fn()
@@ -1273,6 +2103,19 @@ function modelCapabilities(displayName: string) {
     availability: "available" as const,
     selection_mode: "hot" as const
   };
+}
+
+function fixtureFile(name: string, type: string, content: string): File {
+  return fixtureBytes(name, type, new TextEncoder().encode(content));
+}
+
+function fixtureBytes(name: string, type: string, bytes: Uint8Array): File {
+  return {
+    name,
+    type,
+    size: bytes.byteLength,
+    arrayBuffer: vi.fn(async () => Uint8Array.from(bytes).buffer)
+  } as unknown as File;
 }
 
 function event(

@@ -535,22 +535,6 @@
       },
       "chapters": [
         {
-          "id": "host-cli",
-          "slug": "01-cli",
-          "status": "draft",
-          "titles": {
-            "zh-CN": "CLI 与 Machine-readable Output"
-          }
-        },
-        {
-          "id": "host-tui",
-          "slug": "02-tui",
-          "status": "draft",
-          "titles": {
-            "zh-CN": "TUI State Projection"
-          }
-        },
-        {
           "id": "host-web-transport",
           "slug": "04-web-transport",
           "status": "verified",
