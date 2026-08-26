@@ -108,8 +108,10 @@ func TestSchedulerRunsAQueuedTaskAsARealChildTurn(t *testing.T) {
 	if result.Context.Version != 1 ||
 		result.Context.Mode != subagent.ContextTaskCapsule ||
 		len(result.Context.Digest) != 64 ||
-		result.Context.Bytes > result.Context.MaxBytes ||
-		result.Context.TokenEstimate > int(result.Context.MaxTokens) {
+		result.Context.MaxBytes > 0 &&
+			result.Context.Bytes > result.Context.MaxBytes ||
+		result.Context.MaxTokens > 0 &&
+			result.Context.TokenEstimate > int(result.Context.MaxTokens) {
 		t.Fatalf("context receipt = %+v", result.Context)
 	}
 

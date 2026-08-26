@@ -28,6 +28,7 @@ func NewAdapter(id model.AdapterID) (*Adapter, error) {
 		return nil, fmt.Errorf("unsupported OpenAI-compatible adapter %q", id)
 	}
 }
+
 func (a *Adapter) ID() model.AdapterID { return a.id }
 func (a *Adapter) Supports(protocol model.WireProtocol) bool {
 	return protocol == model.ProtocolOpenAIChat ||
@@ -40,9 +41,17 @@ func (a *Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedC
 	)
 	switch request.Route.Protocol() {
 	case model.ProtocolOpenAIChat:
-		call, err = PrepareChat(request, a.id, ChatPolicy{})
+		policy := ChatPolicy{}
+		if a.id == model.AdapterOpenAICompatible {
+			policy.EmptyToolOutput = "(empty tool output)"
+			policy.ThinkingOff =
+				request.Route.Model().Capabilities.ThinkingToggle
+		}
+		call, err = PrepareChat(request, a.id, policy)
 	case model.ProtocolOpenAIResponses:
-		policy := ResponsesPolicy{IncludeEncryptedReasoning: true}
+		policy := ResponsesPolicy{
+			IncludeEncryptedReasoning: true,
+		}
 		if a.id == model.AdapterOpenAI {
 			policy.ReplayAdapter = model.AdapterOpenAI
 		}
@@ -53,7 +62,14 @@ func (a *Adapter) Prepare(request provider.ModelRequest) (providerwire.PreparedC
 	if err != nil {
 		return providerwire.PreparedCall{}, err
 	}
-	call.Projection = a.prepareProjection(request, call)
+	if a.id == model.AdapterOpenAICompatible {
+		call.Projection = providerwire.CompleteStatelessProjection(
+			request,
+			provider.ProjectionFallbackCapabilityDisabled,
+		)
+	} else {
+		call.Projection = a.prepareProjection(request, call)
+	}
 	return call, nil
 }
 
@@ -118,12 +134,103 @@ func prepareCall(
 	}, nil
 }
 func (a *Adapter) OpenStream(body io.ReadCloser, call providerwire.PreparedCall) (provider.Stream, error) {
-	return NewStreamWithOptions(body, call.Protocol, StreamPolicy{
-		CaptureReplay: a.id == model.AdapterOpenAI,
-	})
+	policy := StreamPolicy{CaptureReplay: a.id == model.AdapterOpenAI}
+	if a.id == model.AdapterOpenAICompatible {
+		policy.NativeCache = true
+	}
+	stream, err := NewStreamWithOptions(body, call.Protocol, policy)
+	if err != nil {
+		return nil, err
+	}
+	if a.id == model.AdapterOpenAICompatible {
+		return &meaningfulStream{Stream: stream}, nil
+	}
+	return stream, nil
 }
+
+type meaningfulStream struct {
+	provider.Stream
+	meaningful bool
+}
+
+func (s *meaningfulStream) Recv() (provider.StreamEvent, error) {
+	event, err := s.Stream.Recv()
+	if err != nil {
+		return provider.StreamEvent{}, err
+	}
+	switch event.Type {
+	case provider.EventTextDelta,
+		provider.EventReasoningDelta,
+		provider.EventToolCallDelta,
+		provider.EventSearchResult,
+		provider.EventCitation:
+		s.meaningful = true
+	case provider.EventMessageStop:
+		if !s.meaningful {
+			return provider.StreamEvent{}, &provider.Failure{
+				Code:    provider.FailureEmptyResponse,
+				Message: "provider returned an empty response",
+			}
+		}
+	}
+	return event, nil
+}
+
 func (a *Adapter) ClassifyHTTP(failure providerwire.HTTPFailure) error {
-	return providerwire.GenericHTTPFailure(failure)
+	var payload struct {
+		Error struct {
+			Message string `json:"message"`
+			Code    string `json:"code"`
+			Type    string `json:"type"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal([]byte(failure.Body), &payload)
+	message := payload.Error.Message
+	if message == "" {
+		message = fmt.Sprintf("provider returned HTTP %d", failure.Status)
+	}
+	code := classifyHTTPFailure(
+		failure.Status,
+		payload.Error.Code,
+		payload.Error.Type,
+		message,
+	)
+	return providerwire.TypedHTTPFailure(
+		failure,
+		code,
+		message,
+		providerwire.FirstHeader(
+			failure.Header,
+			"Openai-Request-Id",
+			"X-Request-Id",
+			"X-Deepseek-Request-Id",
+		),
+	)
+}
+
+func classifyHTTPFailure(
+	status int,
+	code, kind, message string,
+) provider.FailureCode {
+	value := strings.ToLower(code + " " + kind + " " + message)
+	switch {
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return provider.FailureAuth
+	case strings.Contains(value, "insufficient_quota") ||
+		strings.Contains(value, "credits exhausted"):
+		return provider.FailureQuota
+	case status == http.StatusTooManyRequests:
+		return provider.FailureRateLimit
+	case strings.Contains(value, "context_length") ||
+		strings.Contains(value, "context length"):
+		return provider.FailureContextWindowExceeded
+	case status == http.StatusBadRequest:
+		return provider.FailureInvalidRequest
+	case status >= 500:
+		return provider.FailureServer
+	default:
+		return provider.FailureUnknown
+	}
 }
 func chatBody(
 	request provider.ModelRequest,
@@ -147,7 +254,9 @@ func chatBody(
 	if request.NativeSearch {
 		appendTool(body, map[string]any{"type": "web_search_preview"})
 	}
-	if request.PromptCacheKey != "" && request.Route.Model().Capabilities.PromptCache {
+	if !request.Route.Model().Capabilities.AutomaticPromptCache &&
+		request.PromptCacheKey != "" &&
+		request.Route.Model().Capabilities.PromptCache {
 		body["prompt_cache_key"] = request.PromptCacheKey
 	}
 	return body
@@ -188,7 +297,9 @@ func responsesBody(
 	if request.NativeSearch {
 		appendTool(body, map[string]any{"type": "web_search"})
 	}
-	if request.PromptCacheKey != "" && request.Route.Model().Capabilities.PromptCache {
+	if !request.Route.Model().Capabilities.AutomaticPromptCache &&
+		request.PromptCacheKey != "" &&
+		request.Route.Model().Capabilities.PromptCache {
 		body["prompt_cache_key"] = request.PromptCacheKey
 	}
 	return body

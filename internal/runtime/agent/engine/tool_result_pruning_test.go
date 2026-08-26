@@ -10,7 +10,7 @@ import (
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
-func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
+func TestCompactGatePrunesOnlyConsumedToolResultBeforeSummaryReplacement(t *testing.T) {
 	results := tool.NewResultStore(32 << 10)
 	engine := newEngine(
 		t,
@@ -25,8 +25,10 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 	}
 	history := []provider.Message{
 		messageWithText(provider.RoleUser, "inspect the output", 1),
-		toolCallMessage(1, "call-large", "file_read", `{"path":"large.txt"}`),
-		toolResultMessage(1, "call-large", string(encoded)),
+		toolCallMessage(1, "call-consumed", "file_read", `{"path":"old.txt"}`),
+		toolResultMessage(1, "call-consumed", string(encoded)),
+		toolCallMessage(1, "call-latest", "file_read", `{"path":"latest.txt"}`),
+		toolResultMessage(1, "call-latest", string(encoded)),
 	}
 	original := cloneMessages(history)
 	var receipt *CompactionReceipt
@@ -41,6 +43,8 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 			receipt = event.Compaction
 			return nil
 		},
+		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -52,12 +56,14 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 		receipt.TruncationReason != "tool_result_surface_pruning" ||
 		receipt.AuthorityDigest == "" ||
 		!receipt.AuthorityEquivalent ||
-		window.active > window.compactLimit {
+		window.active <= window.compactLimit {
 		t.Fatalf("window=%+v receipt=%+v", window, receipt)
 	}
 	if len(history) != len(original) ||
-		messageToolCalls(history[1])[0].ID != "call-large" ||
-		messageToolResultID(history[2]) != "call-large" {
+		messageToolCalls(history[1])[0].ID != "call-consumed" ||
+		messageToolResultID(history[2]) != "call-consumed" ||
+		history[4].Blocks[0].ToolResult.Content !=
+			original[4].Blocks[0].ToolResult.Content {
 		t.Fatalf("tool pairing changed: %+v", history)
 	}
 	var projected tool.Result
@@ -105,6 +111,8 @@ func TestStatelessDefaultCompactsLargeHistoryIntoTruthCapsule(t *testing.T) {
 			receipt = event.Compaction
 			return nil
 		},
+		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -149,6 +157,8 @@ func TestToolResultPruningSkipsMalformedAndRetrievalResults(t *testing.T) {
 		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
 		128,
 		true,
+		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -194,6 +204,8 @@ func TestCompactGateKeepsConsumedResultsBelowDynamicPressureThreshold(t *testing
 			receipt = event.Compaction
 			return nil
 		},
+		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)

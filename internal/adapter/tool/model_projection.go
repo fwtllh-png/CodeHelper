@@ -17,6 +17,7 @@ func ProjectModelResults(
 		return nil, errors.New("tool call and result counts differ")
 	}
 	messages := make([]provider.Message, 0, len(calls))
+	var attachments []provider.Attachment
 	for index, call := range calls {
 		data, err := json.Marshal(ModelResult(call.Name, results[index]))
 		if err != nil {
@@ -36,6 +37,19 @@ func ProjectModelResults(
 					),
 				},
 			}},
+		})
+		attachments = append(attachments, results[index].Attachments...)
+	}
+	if len(attachments) != 0 {
+		blocks := make([]provider.ContentBlock, 0, len(attachments))
+		for index := range attachments {
+			attachment := attachments[index]
+			blocks = append(blocks, provider.ContentBlock{
+				Type: provider.ContentImage, Attachment: &attachment,
+			})
+		}
+		messages = append(messages, provider.Message{
+			Role: provider.RoleUser, Turn: turn, Blocks: blocks,
 		})
 	}
 	return messages, nil

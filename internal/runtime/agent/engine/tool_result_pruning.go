@@ -6,7 +6,27 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	contextview "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
+
+func (e *Engine) recordToolSurfaceBudget(
+	scope *Scope,
+	context protocol.SampleContextData,
+	admission contextview.EconomicAdmission,
+) {
+	if scope == nil || e.options.Tools == nil {
+		return
+	}
+	maxBytes, itemBytes := contextview.ToolSurfaceBudget(
+		context, admission,
+		e.options.Tools.ResultTokenCapacity(),
+	)
+	scope.mu.Lock()
+	scope.state.toolSurfaceMaxBytes = max(1, maxBytes)
+	scope.state.toolSurfaceItemBytes = max(1, itemBytes)
+	scope.mu.Unlock()
+}
 
 type toolResultPruneStats struct {
 	results int
@@ -18,10 +38,13 @@ func (e *Engine) pruneToolResultSurfaces(
 	input agentcontext.MessageSnapshot,
 	outputReserve uint64,
 	force bool,
+	economicInput uint64,
+	projectHistory agentcontext.HistoryProjector,
 ) (toolResultPruneStats, tokenWindow, error) {
 	measured, err := e.measureTokenWindow(
-		input.WithHistory(*history),
+		input.WithHistory(agentcontext.ProjectHistory(*history, projectHistory)),
 		outputReserve,
+		economicInput,
 	)
 	if err != nil {
 		return toolResultPruneStats{}, tokenWindow{}, err
@@ -37,8 +60,9 @@ func (e *Engine) pruneToolResultSurfaces(
 		force,
 		func(history []provider.Message) (toolresult.PruneWindow, error) {
 			measured, err := e.measureTokenWindow(
-				input.WithHistory(history),
+				input.WithHistory(agentcontext.ProjectHistory(history, projectHistory)),
 				outputReserve,
+				economicInput,
 			)
 			return toolresult.PruneWindow{
 				Active: measured.active, CompactLimit: measured.compactLimit,

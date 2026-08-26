@@ -21,7 +21,6 @@ func (e *Engine) progressSignature(kernel *turnkernel.RuntimeKernel) string {
 		}
 	}
 	e.planMu.Unlock()
-
 	evidenceDigest := ""
 	if kernel.Intent() == protocol.TurnIntentAnswer ||
 		kernel.Intent() == protocol.TurnIntentPlan {

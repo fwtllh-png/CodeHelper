@@ -976,6 +976,9 @@ func (s *Server) submitOperation(
 			err,
 		)
 	}
+	if err := validateWebOperationPayload(payload); err != nil {
+		return nil, err
+	}
 	if err := validateWebEditorContext(
 		r.Context(),
 		dependencies,
@@ -990,6 +993,19 @@ func (s *Server) submitOperation(
 			Payload: payload, IdempotencyKey: request.IdempotencyKey,
 			WorkspaceIdentity: &dependencies.WorkspaceIdentity,
 		},
+	)
+}
+
+func validateWebOperationPayload(payload protocol.OperationPayload) error {
+	start, ok := payload.(*protocol.StartTurnPayload)
+	if !ok || start.PlanExecution == nil && start.Recovery == nil {
+		return nil
+	}
+	return protocol.NewProblem(
+		protocol.CodeInvalidArgument,
+		"Plan execution and Turn recovery require their dedicated Web routes",
+		false,
+		nil,
 	)
 }
 
@@ -1251,6 +1267,15 @@ func (s *Server) planTransition(
 	if err := s.decodeRequest(r, &request); err != nil {
 		return nil, err
 	}
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if idempotencyKey == "" {
+		return nil, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			"Idempotency-Key header is required",
+			false,
+			nil,
+		)
+	}
 	var artifact protocol.SessionPlanArtifact
 	if request.SourceSessionID == "" {
 		prepared, err := dependencies.Runtime.PreparePlanExecution(
@@ -1276,7 +1301,6 @@ func (s *Server) planTransition(
 		}
 		artifact = prepared.Artifact
 	}
-	idempotencyKey := fmt.Sprintf("plan:%s:execute", request.PlanID)
 	sourceSessionID, destination := request.SourceSessionID, protocol.PlanDestinationNewSession
 	if sourceSessionID == "" {
 		sourceSessionID, destination = request.SessionID, protocol.PlanDestinationCurrentSession

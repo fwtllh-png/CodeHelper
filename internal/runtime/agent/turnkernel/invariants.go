@@ -164,9 +164,9 @@ func Validate(state State) error {
 		return errors.New("no-progress samples exceed observed samples")
 	}
 	if state.Convergence != nil {
-		if state.Convergence.Used == 0 ||
-			state.Convergence.Limit == 0 ||
-			state.Convergence.Used < state.Convergence.Limit {
+		if state.Convergence.Used < state.Convergence.Limit ||
+			state.Convergence.Limit == 0 && (state.Convergence.Used != 0 ||
+				state.Convergence.Cause != ConvergenceRepairBudget) {
 			return errors.New("convergence budget is invalid")
 		}
 		switch state.Convergence.Cause {

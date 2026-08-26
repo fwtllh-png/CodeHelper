@@ -1,12 +1,33 @@
-# 长会话 Token 与成本优化方案
+# 长会话 Token 与调用开销优化方案
 
-> 状态：设计文档 / 实施计划，尚未全部交付。
+> 状态：P0 与 P1 Provider 输入主链路已实现，真实 DeepSeek Wire/Engine
+> 跨 Turn E2E 已通过，生产多 Session 灰度统计仍待持续积累。
 >
-> 本文是长会话 Token、Provider 调用放大、Context Admission、Tool Result 生命周期、
-> Prompt Cache 和成本治理的统一实施入口。当前 Context 正确性契约见
+> 本文是长会话 Token、Provider 调用放大、Context Admission、Tool Result 生命周期和
+> Prompt Cache 治理的统一实施入口。当前 Context 正确性契约见
 > [Session Context、Memory 与持久化](./session-context-optimization.md)，容量常量治理见
-> [固定阈值审计与动态容量治理](./fixed-threshold-audit.md)，缓存专项设计见
+> [固定阈值审计与动态容量治理](./fixed-threshold-audit.md)，真实 Session 结果见
+> [长会话 Token 与调用开销优化实测报告](./token-cost-optimization-effect-report.md)。
 > [提升 Prompt Cache 命中率的优化方案](./prompt-cache-hit-rate-optimization.md)。
+
+## 0. 实施状态
+
+本次实现覆盖直接决定 Provider Token 与未缓存输入的 P0/P1 主链路：
+
+| 项目 | 已实现行为 |
+| --- | --- |
+| P0-1 | Web Total 固定为 `input + output`；Reasoning 仅作 Output 子项；同时显示 Cached 与 Uncached Input |
+| P0-2/P0-4 | 每次 Sample 前按 Hard Capacity、Operator Ceiling、Turn/Session Usage、当前 Output Reserve 与 Finalization Reserve 计算 Economic Admission；Mandatory 输入无法容纳时返回结构化 Budget Exhaustion |
+| P0-3 | 未执行工具的只读 Answer/Plan 可由合法 `end_turn` 完成；执行过工具或发生副作用的 Turn 仍要求结构化完成，Mutation/Operation/Workspace Change 继续要求 Verification；Declaration Repair 默认仅一次 |
+| P0-5 | Tool Result 在普通 Sample 和跨 Turn 请求中保持 append-only；只有显式 compaction/rebase 才按本次 Economic Admission 的剩余 Surface Budget 降级，并保留可重取 Handle |
+| P1-1 | Stateless Route 跨 Turn 保留 append-only World Patch，仅在显式 compaction/rebase 时折叠旧版本，避免日常请求删除前部消息 |
+| P1-2 | Sample Receipt 增加内容安全 Prefix Manifest、公共前缀 Token、首个分歧类型、Tool Definition Digest、Uncached Input 与 Economic Admission 字段 |
+| P1-3 | 图片进入会话级 Content Store 并获得稳定 `image_*` Handle；普通跨 Turn 请求保留已发送图片字节，只有显式 compaction/rebase 才能替换为携带 Handle 的短占位符。模型可调用 `image_reopen` 恢复被显式降级的图片 |
+| P1-4 | DeepSeek Provider 复用 `openai_compatible` Chat Completions Adapter；兼容请求省略显式 `prompt_cache_key`，保留 reasoning 与原生 Cache Usage，并通过 Engine/Wire 双层测试锁定跨 Turn 严格追加 |
+| P1-5 | 已提供逐 Sample 原始指标；Web Composer 汇总 Cache Hit Rate 与 Turn TTFT，Trajectory 聚合平均公共前缀长度；Runtime 不生成或静默写回启发式建议值 |
+
+这里的“已实现”不等于已经证明生产降幅。`55%～75%` 仍是第 2 节样本的验收预测，必须用
+相同 Workspace、Prompt、Route 和附件进行多次 A/B，不能由单元测试替代。
 
 ## 1. 结论
 
@@ -85,7 +106,7 @@ Input_t ≈ Σ(j=1..s_t) (H_t + D_t,j)
 s × [nH_0 + Δ × n(n+1)/2]
 ```
 
-这解释了长会话中总 Token 加速增长。Prompt Cache 可以降低命中前缀的 Prefill 费用与 TTFT，
+这解释了长会话中总 Token 加速增长。Prompt Cache 可以降低命中前缀的 Prefill 计算与 TTFT，
 但 Cache Hit Tokens 仍是 Input Tokens 的子集，不能改变这个 Token 计数模型。
 
 目标模型是令 Active Context 有界为 `H`，每 Turn 的 Provider Sample 有界为 `S`：
@@ -106,10 +127,10 @@ Budget、当前 Usage 和运行时观测共同推导。
 - 在每次 Provider Call 前同时执行容量 Admission 与累计成本 Admission；
 - 为最终收尾保留预算，避免在预算耗尽后再追加一次完整上下文 Sample；
 - 降低 Tool、Completion Declaration、Verification 和 Failure Repair 导致的重复 Sample；
-- 已消费 Tool Result 自动降级为 Facts、Receipt、Digest 与 Handle；
+- 在显式 compaction/rebase 中将可重取 Tool Result 降级为 Facts、Receipt、Digest 与 Handle；
 - 同一 Turn 内尽量保持 Provider 输入前缀单调，提升 DeepSeek 自动 Context Cache 命中；
 - 图片等大对象保存在 CAS/Content Store，模型按能力和任务相关性获取有界投影；
-- Usage、Cached、Reasoning 和 Cost 使用一致且可验证的统计口径；
+- Usage、Cached 与 Reasoning 使用一致且可验证的统计口径；
 - 所有经济阈值具有 Config、Provenance、校验、文档和边界测试。
 
 ### 4.2 非目标
@@ -118,7 +139,7 @@ Budget、当前 Usage 和运行时观测共同推导。
 - 不把 Prompt Cache 当作 Token Budget；
 - 不伪造 DeepSeek `previous_response_id` 或在 Stateless API 上只发送 Delta；
 - 不根据 `deepseek-*`、`gpt-*` 等模型名称维护隐式容量档位；
-- 不改变 Audit、Usage 和 Cost 的单调性；
+- 不改变 Audit 和 Usage 的单调性；
 - 不绕过 Tool Guard、Approval、Journal、Verification、Policy 或 Sandbox。
 
 ## 5. 目标架构
@@ -126,7 +147,7 @@ Budget、当前 Usage 和运行时观测共同推导。
 ```text
 Durable Event / History / CAS
         │
-        ├── Accounting Plane ── Usage / Cost / Budget（只增不减）
+        ├── Accounting Plane ── Usage / Token Budget（只增不减）
         ├── Audit Plane ─────── Event / Receipt / Raw Tool Result / Image
         │
         ▼
@@ -213,16 +234,8 @@ H_allowed = min(hard_input_capacity, H_operator, H_budget)
 - 只执行 Hard Capacity Admission；
 - 由 Operator Profile 或请求级配置选择是否启用 Economic Admission。
 
-如果 Provider Pricing 已知，可在 Token Budget 之外增加 USD 计算：
-
-```text
-expected_input_price =
-  cache_hit_share × cached_input_price
-  + (1 - cache_hit_share) × uncached_input_price
-```
-
-Cache Hit Share 必须来自当前 Route 的观测，不得在没有样本时臆造。Pricing 未知时 Token Budget 保持
-权威，`budget_usd` 不得给出虚假的保护承诺。
+Provider 单价变化频繁且可能因渠道、时间和协议而不同，本方案不计算或推导价格。Token Budget、
+Uncached Input、Provider Calls 与 TTFT 是容量和效率判断的权威事实。
 
 ## 7. 初始 Operator Profile
 
@@ -253,9 +266,8 @@ summary_max_bytes = 32768
 - 600K：允许约 4～6 次 64K～96K 级调用并保留收尾；
 - 12 Steps：状态机的异常上限，不是成本额度；实际调用仍由 Turn Budget 更早收窄。
 
-后续不应长期维护这组人工值。积累足够成功任务样本后，从当前 Route 的 Provider Calls、Active Tokens、
-Output Tokens、Cache Hit、TTFT、Handle Reopen 和正确完成率推导 Operator 建议值；最终决定仍由显式配置
-确认，并记录 Provenance。
+后续不应长期维护这组人工值。Operator 应基于导出的 Provider Calls、Active Tokens、Output Tokens、
+Cache Hit、TTFT、Handle Reopen 和正确完成率调整显式配置。Runtime 不从有限样本自动生成或写回阈值。
 
 ## 8. P0：立即控制真实 Token
 
@@ -285,7 +297,7 @@ Web 不得再次把 `ReasoningTokens` 加入 Total。实施项：
 
 1. 获取已提交 Session Usage、当前 Turn Usage 和当前 Sample 已观察 Usage；
 2. 计算下一次 Active Context、Output Reserve 和必要 Finalization Reserve；
-3. 同时检查 Hard Capacity、Turn Token、Session Token 和已知情况下的 USD Budget；
+3. 同时检查 Hard Capacity、Turn Token 和 Session Token；
 4. 达到收敛阶段时禁止探索性 Tool Definitions；
 5. 无法同时支付当前 Sample 与必要收尾时，不再发起当前探索 Sample；
 6. 返回结构化 Budget Exhaustion，并保留可恢复状态。
@@ -310,8 +322,8 @@ Setup 应明确提示风险，并提供显式 Operator Profile，而不是静默
 3. 每次 Repair 必须记录 `reason`、`progress_key`、已用次数和新增事实；
 4. 无进展 Repair 直接进入 Convergence，不因改变反馈文本重置进展；
 5. 为最终结构化收尾预留一次调用；
-6. 对无 Mutation、无 Pending Tool、输出非空的 Answer/Plan Turn，评估由 Runtime 接受合法
-   `end_turn` 并合成安全终态，避免为了形式再采样；
+6. 对未执行工具、无 Mutation、无 Pending Tool 且输出非空的 Answer/Plan Turn，Runtime 接受合法
+   `end_turn` 并合成安全终态；执行过工具后必须显式 `turn_complete`，防止中间叙述被误判为答案；
 7. Workspace Change、Operation 和有 Side Effect 的 Turn 仍必须经过结构化完成与 Verification，
    不得因降本放宽正确性门禁；
 8. Tool Selection 继续鼓励批量独立只读调用，避免一文件一 Sample。
@@ -339,7 +351,7 @@ Setup 应明确提示风险，并提供显式 Operator Profile，而不是静默
 Economic Compaction 可以比模型硬窗口更早发生，但必须来自 Operator Budget/SLA 或观测状态；不能在代码
 里增加另一套隐藏的固定百分比。
 
-### 8.5 P0-5：Tool Result 消费后降级
+### 8.5 P0-5：Tool Result 显式压缩降级
 
 Tool Result 生命周期调整为：
 
@@ -347,6 +359,8 @@ Tool Result 生命周期调整为：
 Produced
   -> Latest Batch（当前下一次 Sample 可见）
   -> Consumed（模型成功处理该 Batch）
+  -> Append-only History（普通 Sample / 跨 Turn）
+  -> Explicit Compaction/Rebase
   -> Receipt + Facts + Digest + Handle
   -> 按需 result_get / handle_read
 ```
@@ -354,8 +368,9 @@ Produced
 约束：
 
 - 最新 Tool Batch 在被模型成功消费前保持闭合且可见；
+- 成功消费不会触发原地改写，下一请求必须逐字保留上一请求中的 Tool Result；
 - 旧 Result 原文保存在 Content Store/CAS；
-- 降级投影保留 Tool Name、Call ID、Outcome、关键文件变化、错误类别、Verification Facts 和 Handle；
+- 只有显式 compaction/rebase 可执行降级；降级投影保留 Tool Name、Call ID、Outcome、关键文件变化、错误类别、Verification Facts 和 Handle；
 - Retrieval Result 本身不能再次无限内联；
 - 当前 Turn 开放因果链与最新失败恢复信息不得裁剪；
 - 累计 Tool Surface 使用本次 `H_allowed` 的剩余容量，而不是另设模型无关固定档位。
@@ -368,7 +383,7 @@ Produced
 - `internal/runtime/agent/turnkernel/tool_effect.go`
 - `internal/runtime/agent/context`
 
-## 9. P1：降低未缓存费用与长期尾部
+## 9. P1：降低未缓存输入与长期尾部
 
 ### 9.1 P1-1：同一 Turn 内冻结可替换 World Snapshot
 
@@ -378,8 +393,9 @@ DeepSeek 官方 API 当前是 Stateless API，不支持 `previous_response_id`�
 - <https://api-docs.deepseek.com/guides/responses_api/>
 - <https://api-docs.deepseek.com/guides/kv_cache/>
 
-当前 `ProjectWorld` 会追加新版本 World Message，`ProjectStatelessHistory` 又会从请求中删除旧版本，仅保留
-最新版本。若旧版本位于历史前部，下一次请求会在很早的位置发生删除和替换，破坏 Prefix Monotonicity。
+`ProjectWorld` 会追加新版本 World Message。Stateless Provider View 必须保留这些 Patch，直到显式
+compaction/rebase 才将旧版本折叠为当前 World State；否则若旧版本位于历史前部，下一次请求会在很早的位置
+发生删除和替换，破坏 Prefix Monotonicity。
 
 优先方案：
 
@@ -431,16 +447,20 @@ Compaction/Rebase。
 
 ### 9.3 P1-3：图片生命周期
 
-输入协议的 5 MiB 附件上限属于 DoS/协议边界，应保留；它不是模型可见生命周期策略。实施项：
+输入协议的 5 MiB 附件上限属于 DoS/协议边界，应保留；它不是模型可见生命周期策略。Provider 输入
+主链路实现以下行为：
 
-1. Durable History 与 Event 保存图片 CAS Handle、Digest、Media Type、尺寸和来源，避免重复内联大字节；
-2. 当前用户 Turn 首次使用图片时，按 Route Capability 投影；
-3. 不支持图片的 Route 继续使用明确占位符；
-4. 图片被消费后保留结构化视觉事实与 Handle，后续只有明确引用或检索才重新投影；
-5. Image Token Estimator 从 Model/Provider Capability 获取，不使用跨模型统一估算；
-6. Receipt 区分 Durable Bytes、Transport Bytes 和 Provider Image Tokens。
+1. 当前用户 Turn 首次使用图片时，按 Route Capability 投影；
+2. 不支持图片的 Route 使用明确占位符；
+3. 支持图片的 Stateless Route 将附件写入会话级 Content Store，并在普通跨 Turn 请求中逐字保留已发送图片 Block；
+4. 只有显式 compaction/rebase 可以把历史图片降级为含稳定 `image_*` Handle 的占位符；
+5. 模型需要重新查看被显式降级的旧图时调用 `image_reopen`；Runtime 把原始图片作为独立图片 Block 注入下一次 Provider View，而不是将 Base64 复制进 Tool Result 文本；
+6. Durable History 不被修改，Receipt 记录本次投影图片数与显式压缩发生的历史图片替换数。
 
-### 9.4 P1-4：DeepSeek Cache 与 Pricing 闭环
+图片 Handle 由内容摘要稳定生成，实际字节保存在会话 Content Store；没有成功绑定 Handle 或没有广告 `image_reopen` 的路径不得淘汰原图。
+在引入 Model/Provider 明确的图片 Token Capability 前，估算值仅用于观测，不能作为图片裁剪阈值。
+
+### 9.4 P1-4：DeepSeek Cache 观测闭环
 
 DeepSeek Context Cache 是自动前缀缓存，官方 Responses API 当前不支持 `prompt_cache_key`。Adapter 不应依赖
 该字段实现 DeepSeek 缓存，并应按 Provider Contract 省略不支持的 Request Property。
@@ -449,12 +469,10 @@ DeepSeek Context Cache 是自动前缀缓存，官方 Responses API 当前不支
 
 1. 将 `prompt_cache_hit_tokens`、`prompt_cache_miss_tokens` 投影到 Sample、Turn、Session Rollup；
 2. 展示 Cached、Uncached、Output 和 Reasoning 的非重叠口径；
-3. 从权威 Provider Metadata 或显式 Operator Config 加载 DeepSeek Pricing 与 Provenance；
-4. Pricing 未知时显示 `Unpriced`，Token Budget 仍可执行；
-5. Pricing 已知后启用 USD Budget，并区分 Cached/Uncached Input 单价；
-6. 关联 Cache Hit、TTFT、Transport Bytes 与 Cost，不以 Token 总量代替实际费用。
+3. 关联 Cache Hit、TTFT 与 Transport Bytes，不以 Token 总量代替缓存收益；
+4. 不展示或推导价格，避免易变单价产生不可信统计。
 
-### 9.5 P1-5：从观测派生 Operator 建议值
+### 9.5 P1-5：导出 Operator 决策证据
 
 按 Route、Mode、Intent 和是否包含图片分组，使用成功且正确完成的 Turn 观测：
 
@@ -467,8 +485,8 @@ DeepSeek Context Cache 是自动前缀缓存，官方 Responses API 当前不支
 - Completion/Verification Repair；
 - TTFT 与完成质量。
 
-系统可以生成建议值，但不得静默修改运行配置。建议必须展示样本范围、观测时间、Route、当前值、建议值和
-预期影响，由 Operator 接受后写入配置并记录 Provenance。
+这些字段通过逐 Sample Receipt 和 Benchmark Report 导出。Runtime 不生成启发式建议值，也不修改运行配置；
+Operator 使用固定 Workspace、Route 和任务集合完成 A/B 后，再显式调整带 Provenance 的配置。
 
 ## 10. P2：Provider 增量传输
 
@@ -493,7 +511,6 @@ ActiveContextView，并依赖自动 Prefix Cache。
 
 - `execution.budget_tokens`
 - `execution.turn_budget_tokens`
-- `execution.budget_usd`
 - `execution.max_output_tokens`
 - `execution.max_steps`
 - `context.compact.prepare_tokens`
@@ -557,7 +574,7 @@ terminal_outcome
 
 提供 Turn 排名、增长曲线和归因，而不仅是一个 Total：
 
-- Token/Cost 最高的 Turn；
+- Token 最高的 Turn；
 - 无 Workspace Change 但高消耗的失败 Turn；
 - Calls/Turn、Input/Call 和 Uncached/Call；
 - Active Context 随 Turn 的变化；
@@ -571,12 +588,11 @@ terminal_outcome
 
 - Budget：当前 Sample + Finalization Reserve 恰好等于、低于和高于剩余预算；
 - Repair：Declaration/Completion/Verification 各自耗尽且不互相重置；
-- Tool Result：最新 Batch 保留、消费后降级、Handle 可重取、Tool Pair 始终闭合；
+- Tool Result：普通请求 append-only、显式压缩后 Handle 可重取、Tool Pair 始终闭合；
 - Context：Mandatory Fact 无损、Recent Tail 有界、重复 Compaction 保留 Goal；
 - Prefix：同一 Turn 尾部追加保持公共前缀，World Patch 不改写前部；
-- Image：Vision、非 Vision、CAS 丢失、超协议上限和重复引用；
+- Image：Vision、非 Vision、普通请求逐字保留、显式压缩替换、超协议上限和重复引用；
 - Usage：Reasoning/Cached 不重复计入 Total；
-- Pricing：Unknown、Cached Price 缺失和完整 Pricing 的 Budget 行为。
 
 ### 13.2 Integration Tests
 
@@ -646,7 +662,7 @@ git diff --check
 
 ### 阶段 C：显式 Profile 强制
 
-- 仅对显式启用的 Session 执行 Turn Budget、早期 Compaction 和 Tool Result 降级；
+- 仅对显式启用的 Session 执行 Turn Budget、早期 Compaction 和显式 Tool Result 降级；
 - 保留一键回退到 Hard Capacity-only；
 - 重点监控 Completion、Handle Reopen 和验证失败。
 
@@ -678,7 +694,7 @@ git diff --check
 同时满足：
 
 - Token Total 使用 `input + output`；
-- Cache 优化单独报告 Uncached Input、Cost 和 TTFT，不伪装成 Token 降幅；
+- Cache 优化单独报告 Uncached Input 和 TTFT，不伪装成 Token 降幅；
 - 不再出现未显式授权的百万 Token、零 Workspace Change 失败 Turn；
 - 每次预算收敛都能解释 Used、Remaining、Reserve、Action 和 Scope。
 
@@ -710,13 +726,12 @@ Selection 或 Budget，而不是直接扩大隐藏阈值。
 | 风险 | 防护与回退 |
 | --- | --- |
 | 压缩丢失用户意图 | Mandatory Goal/Request 由 Authority 生成并做 Digest 校验 |
-| Tool Result 过早降级 | 最新 Batch 消费确认后才降级；原文可通过 Handle 读取 |
+| Tool Result 过早降级 | 普通请求禁止降级；仅显式 compaction/rebase 可改写，原文可通过 Handle 读取 |
 | Turn Budget 过小 | 显式 Profile、Audit-only 阶段、结构化 Budget Exhaustion |
 | Completion Repair 过严 | 为有效进展保留独立 Repair Budget，不放宽安全终态 |
 | World Snapshot 冻结导致过期 | 新事实通过尾部 Tool Result/Patch 可见；下一 Turn 或安全点 Rebase |
 | Cache 优化掩盖逻辑差异 | 比较 Logical Input Digest，Transport 优化不得改变逻辑输入 |
 | 图片 CAS 不可用 | 当前 Turn 保留安全投影；CAS 校验失败返回明确 Problem |
-| DeepSeek Pricing 变化 | Pricing 带来源与更新时间；未知时回退 Token Budget |
 | Semantic Narrative 失败 | 回退 Truth + Recent Tail，不影响业务终态 |
 
 所有灰度功能必须能按 Session/Profile 回退。回退只改变后续 Context Projection，不回滚 Usage、Audit、
@@ -730,11 +745,11 @@ Workspace Side Effect 或已提交 Session State。
 | 2 | Finalization Reserve 与累计 Spend Governor | `internal/runtime/agent/engine`、`internal/runtime/agent/context` |
 | 3 | Repair Budget 与终态收敛 | `internal/runtime/agent/turnkernel`、`internal/runtime/agent/engine` |
 | 4 | Economic Context Admission | `internal/runtime/agent/context`、`internal/runtime/agent/prompt` |
-| 5 | Tool Result 消费后降级 | `internal/adapter/tool`、`internal/runtime/agent/engine` |
+| 5 | Tool Result 显式压缩降级 | `internal/adapter/tool`、`internal/runtime/agent/engine` |
 | 6 | Prefix Manifest 与 World Snapshot 冻结 | `internal/runtime/agent/context`、`internal/runtime/agent/engine` |
-| 7 | 图片 CAS 与能力化 Token 估算 | `internal/runtime/protocol`、`internal/persist`、Provider Adapter |
-| 8 | DeepSeek Pricing/Cache 闭环 | `internal/adapter/model`、`internal/adapter/provider`、Usage/Web |
-| 9 | 观测驱动的 Operator 建议 | `internal/observability`、`internal/config`、Web Settings |
+| 7 | Provider 图片生命周期 | `internal/runtime/agent/contextview`、Provider Adapter |
+| 8 | DeepSeek Cache 观测闭环 | `internal/adapter/provider`、Usage/Web |
+| 9 | Operator 决策证据导出 | `internal/runtime/protocol`、Benchmark Report |
 
 每个工作项独立提交、独立验证，不在一次变更中同时修改 Budget、Compaction、Terminal 和 Provider
 Transport。先建立可信观测，再开启强制策略；先减少无效 Sample，再收窄 Active Context；最后优化 Cache
@@ -749,7 +764,7 @@ Transport。先建立可信观测，再开启强制策略；先减少无效 Samp
 3. Tool Result、Image 和 World State 具有明确的模型可见生命周期；
 4. Completion/Verification Repair 不会形成无预算的完整上下文循环；
 5. DeepSeek Prefix Cache 的命中和失配点可以逐 Sample 解释；
-6. Token、Cached、Reasoning、Uncached 和 Cost 口径不重叠；
+6. Token、Cached、Reasoning 和 Uncached 口径不重叠；
 7. 真实会话达到第 15 节目标，同时正确性、恢复、安全和验证不回归；
 8. 所有新增阈值均有 Config、Provenance、文档和边界测试；
 9. `make ratchet-fast`、相关 Go/Web 测试、文档检查和 Diff 检查全部通过。

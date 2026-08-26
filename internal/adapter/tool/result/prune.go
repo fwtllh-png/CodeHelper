@@ -9,10 +9,7 @@ import (
 )
 
 type PruneStats struct {
-	Results       int
-	Bytes         int
-	OriginalBytes int
-	RetainedBytes int
+	Results, Bytes, OriginalBytes, RetainedBytes int
 }
 
 type PruneWindow struct {
@@ -30,6 +27,7 @@ func PruneSurfaces(
 	measure func([]provider.Message) (PruneWindow, error),
 ) (PruneStats, PruneWindow, error) {
 	names := ToolCallNames(*history)
+	latest := latestToolCallIDs(*history)
 	var stats PruneStats
 	var window PruneWindow
 	for messageIndex := range *history {
@@ -38,6 +36,9 @@ func PruneSurfaces(
 			block := &message.Blocks[blockIndex]
 			if block.Type != provider.ContentToolResult ||
 				block.ToolResult == nil {
+				continue
+			}
+			if _, protected := latest[block.ToolResult.CallID]; protected {
 				continue
 			}
 			name := names[block.ToolResult.CallID]
@@ -89,79 +90,6 @@ func PruneSurfaces(
 	return stats, window, nil
 }
 
-// PruneConsumedSurfaces bounds the cumulative model-visible Tool Result
-// surface while retaining the newest tool batch verbatim. Older results remain
-// addressable through stable handles created by ResultStore.
-func PruneConsumedSurfaces(
-	history *[]provider.Message,
-	registry *tool.Registry,
-	maxBytes int,
-	itemMaxBytes int,
-) PruneStats {
-	if history == nil || registry == nil || maxBytes <= 0 || itemMaxBytes <= 0 {
-		return PruneStats{}
-	}
-	names := ToolCallNames(*history)
-	latest := latestToolCallIDs(*history)
-	stats := PruneStats{
-		OriginalBytes: toolResultBytes(*history),
-	}
-	stats.RetainedBytes = stats.OriginalBytes
-	if stats.OriginalBytes <= maxBytes {
-		return stats
-	}
-	for messageIndex := range *history {
-		message := &(*history)[messageIndex]
-		for blockIndex := range message.Blocks {
-			block := &message.Blocks[blockIndex]
-			if block.Type != provider.ContentToolResult ||
-				block.ToolResult == nil {
-				continue
-			}
-			callID := block.ToolResult.CallID
-			if _, keep := latest[callID]; keep {
-				continue
-			}
-			name := names[callID]
-			if name == "" {
-				continue
-			}
-			var value tool.Result
-			if err := json.Unmarshal(
-				[]byte(block.ToolResult.Content),
-				&value,
-			); err != nil {
-				continue
-			}
-			projected, changed := registry.PruneResultSurface(
-				name,
-				value,
-				itemMaxBytes,
-			)
-			if !changed {
-				continue
-			}
-			encoded, err := json.Marshal(tool.ModelResult(name, projected))
-			if err != nil || len(encoded) >= len(block.ToolResult.Content) {
-				continue
-			}
-			removed := len(block.ToolResult.Content) - len(encoded)
-			stats.Results++
-			stats.Bytes += removed
-			stats.RetainedBytes -= removed
-			block.ToolResult.Content = string(encoded)
-			block.ToolResult.IsError = projected.IsError
-			block.ToolResult.Admission = adaptercontent.CloneAdmissionReceipt(
-				projected.Admission,
-			)
-			if stats.RetainedBytes <= maxBytes {
-				return stats
-			}
-		}
-	}
-	return stats
-}
-
 func latestToolCallIDs(messages []provider.Message) map[string]struct{} {
 	for messageIndex := len(messages) - 1; messageIndex >= 0; messageIndex-- {
 		var result map[string]struct{}
@@ -179,19 +107,6 @@ func latestToolCallIDs(messages []provider.Message) map[string]struct{} {
 		}
 	}
 	return nil
-}
-
-func toolResultBytes(messages []provider.Message) int {
-	total := 0
-	for _, message := range messages {
-		for _, block := range message.Blocks {
-			if block.Type == provider.ContentToolResult &&
-				block.ToolResult != nil {
-				total += len(block.ToolResult.Content)
-			}
-		}
-	}
-	return total
 }
 
 func ToolCallNames(messages []provider.Message) map[string]string {

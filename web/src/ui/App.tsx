@@ -3219,14 +3219,13 @@ function ComposerStats({
   const output = numberValue(receipt?.output_tokens);
   const reasoning = numberValue(receipt?.reasoning_tokens);
   const cached = numberValue(receipt?.cached_tokens);
-  const totalTokens = input + output + reasoning || usage?.total_tokens || 0;
-  const cacheShare = input > 0 && cached > 0
+  // Reasoning tokens are a subset of output tokens in the Runtime contract.
+  // Keep them visible as a breakdown without charging them a second time.
+  const totalTokens = input + output || usage?.total_tokens || 0;
+  const cacheShare = input > 0
     ? `${Math.round(cached / input * 100)}% cache`
     : "";
   const turns = numberValue(usage?.turns) || (receipt ? 1 : 0);
-  const cost = receipt?.cost_known === false || usage?.cost_known === false
-    ? "Unpriced"
-    : `${numberValue(receipt?.cost_microunits ?? usage?.cost_microunits)} µ`;
   const detailedValues = [
     `${turns} ${turns === 1 ? "turn" : "turns"}`,
     `${toolCalls} ${toolCalls === 1 ? "tool" : "tools"}`,
@@ -3246,9 +3245,9 @@ function ComposerStats({
     output > 0 ? `${output.toLocaleString()} out` : "",
     reasoning > 0 ? `${reasoning.toLocaleString()} reasoning` : "",
     cached > 0 ? `${cached.toLocaleString()} cached` : "",
+    input > 0 ? `${(input - cached).toLocaleString()} uncached` : "",
     totalTokens > 0 ? `${totalTokens.toLocaleString()} tokens` : "",
-    cacheShare,
-    cost
+    cacheShare
   ].filter(Boolean);
   const summary = [
     [
@@ -3272,8 +3271,7 @@ function ComposerStats({
     [
       totalTokens > 0 ? `${formatCompactCount(totalTokens)} tokens` : "",
       cacheShare
-    ].filter(Boolean).join(" · "),
-    cost
+    ].filter(Boolean).join(" · ")
   ].filter(Boolean).join(" | ");
   return (
     <div

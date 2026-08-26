@@ -13,6 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -549,8 +550,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	}
 	if err := send(Preparing, Event{
 		Provider: spec.Provider, Model: spec.Model,
-		Purpose: string(spec.Purpose),
-		Mode:    string(spec.Mode), Posture: string(spec.Posture),
+		Purpose:         string(spec.Purpose),
+		ProfileRevision: spec.Identity.ProfileRevision,
+		Mode:            string(spec.Mode), Posture: string(spec.Posture),
 		Workspace:          spec.Workspace,
 		WorkspaceIsolation: e.options.WorkspaceIsolation,
 		Sandbox:            spec.Sandbox,
@@ -909,8 +911,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				return result, nil
 			}
 		}
-		if remaining := promptcontext.StepBudgetWarningRemaining(spec.Limits.MaxSteps, step); remaining > 0 {
-			transaction = append(transaction, promptcontext.StepBudgetFeedback(e.turn, remaining))
+		if contextview.StepBudgetWarningRemaining(spec.Limits.MaxSteps, step) > 0 {
+			transaction = append(transaction, contextview.StepBudgetFeedback(e.turn, step, spec.Limits.MaxSteps, kernel.Snapshot(), cache.SuppressedNonRetryableCalls()))
 		}
 		progressSignature := e.progressSignature(kernel)
 		progress, err = kernel.ObserveProgress(progressSignature)

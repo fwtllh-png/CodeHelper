@@ -1,6 +1,9 @@
 package protocol
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestSessionProfilePatchRevisionAndPromptCacheReset(t *testing.T) {
 	current := testSessionProfile()
@@ -72,6 +75,92 @@ func TestSessionProfileAllowsUncappedExecutionSteps(t *testing.T) {
 	profile.MaxSteps = 0
 	if err := profile.Validate(); err != nil {
 		t.Fatalf("uncapped profile: %v", err)
+	}
+}
+
+func TestSessionProfileEnabledToolIDsAreSetOrderInsensitive(t *testing.T) {
+	// An unsorted initial profile followed by a patch carrying the same tool
+	// set in a different order must be a no-op: tool-set order is not part of
+	// the projected prompt prefix, so it must never bump Revision or
+	// PromptCacheRevision.
+	current := testSessionProfile()
+	current.EnabledToolIDs = []string{"zeta", "alpha"}
+	patch := SessionProfilePatch{EnabledToolIDs: &[]string{"alpha", "zeta"}}
+	updated, err := ApplySessionProfilePatch(current, patch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Profile.Revision != current.Revision ||
+		updated.Profile.PromptCacheRevision != current.PromptCacheRevision ||
+		updated.PromptCacheReset {
+		t.Fatalf("set-reordered tool ids changed the profile: %+v", updated)
+	}
+}
+
+func TestSessionProfileProviderModelChangeResetsPromptCache(t *testing.T) {
+	current := testSessionProfile()
+	current.EnabledToolIDs = []string{"file_read", "file_write"}
+	provider := "other-provider"
+	model := "other-model"
+	updated, err := ApplySessionProfilePatch(current, SessionProfilePatch{
+		Provider: &provider, Model: &model,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Profile.Revision != current.Revision+1 ||
+		updated.Profile.PromptCacheRevision != current.PromptCacheRevision+1 ||
+		!updated.PromptCacheReset ||
+		updated.ResetReason != "provider,model" {
+		t.Fatalf("provider/model switch did not reset prompt cache: %+v", updated)
+	}
+}
+
+func TestSessionProfileUnrelatedMetadataDoesNotResetPromptCache(t *testing.T) {
+	current := testSessionProfile()
+	steps := 64
+	posture := "never"
+	target := "local"
+	updated, err := ApplySessionProfilePatch(current, SessionProfilePatch{
+		MaxSteps: &steps, ApprovalPosture: &posture, ExecutionTarget: &target,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Profile.Revision != current.Revision+1 ||
+		updated.Profile.PromptCacheRevision != current.PromptCacheRevision ||
+		updated.PromptCacheReset {
+		t.Fatalf("unrelated metadata reset the prompt cache: %+v", updated)
+	}
+}
+
+func TestAgentPresetProfileNormalizesEnabledToolIDs(t *testing.T) {
+	preset := AgentPresetProfile{
+		Mode: "act", Provider: "fixture", Model: "fixture-model",
+		ApprovalPosture: "suggest", ExecutionTarget: "local", MaxSteps: 8,
+		EnabledToolIDs: []string{"zeta", "alpha"},
+	}
+	derived := preset.sessionProfile(1, 1)
+	if got := derived.EnabledToolIDs; !slices.Equal(got, []string{"alpha", "zeta"}) {
+		t.Fatalf("sessionProfile tool ids not sorted: %v", got)
+	}
+	fromProfile := NewAgentPresetProfile(derived)
+	if got := fromProfile.EnabledToolIDs; !slices.Equal(got, []string{"alpha", "zeta"}) {
+		t.Fatalf("NewAgentPresetProfile tool ids not sorted: %v", got)
+	}
+}
+
+func TestAgentPresetPatchIsSetOrderInsensitive(t *testing.T) {
+	current := testSessionProfile()
+	current.EnabledToolIDs = []string{"alpha", "zeta"}
+	preset := AgentPresetProfile{
+		Mode: "act", Provider: "fixture", Model: "fixture-model",
+		ApprovalPosture: "suggest", ExecutionTarget: "local", MaxSteps: 32,
+		EnabledToolIDs: []string{"zeta", "alpha"},
+	}
+	patch := preset.Patch(current)
+	if patch.EnabledToolIDs != nil {
+		t.Fatalf("same tool set in different order produced a tool patch: %+v", patch.EnabledToolIDs)
 	}
 }
 

@@ -518,7 +518,7 @@ func measureRepository(root string) (map[string]int, error) {
 		root,
 		"agent",
 		map[string]struct{}{
-			"context": {}, "engine": {}, "prompt": {},
+			"context": {}, "contextview": {}, "engine": {}, "prompt": {},
 			"repository": {}, "rlm": {}, "turnkernel": {},
 		},
 	)

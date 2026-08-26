@@ -87,7 +87,11 @@ func TestClientPropagatesW3CTraceContext(t *testing.T) {
 			propagated, _ = tracecontext.Current(extracted)
 		}
 		writer.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(writer, "data: [DONE]\n\n")
+		_, _ = io.WriteString(
+			writer,
+			"data: {\"choices\":[{\"delta\":{\"content\":\"ok\"},"+
+				"\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+		)
 	}))
 	defer server.Close()
 	ctx, err := tracecontext.NewRoot(t.Context())
@@ -189,7 +193,12 @@ func TestClientOpenAIResponsesRequest(t *testing.T) {
 		if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
 			t.Error(err)
 		}
-		_, _ = io.WriteString(writer, "data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n")
+		_, _ = io.WriteString(
+			writer,
+			"data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\n"+
+				"data: {\"type\":\"response.completed\",\"response\":{\"usage\":"+
+				"{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
+		)
 	}))
 	defer server.Close()
 
@@ -402,15 +411,12 @@ func TestEncodeToolHistoryByProtocol(t *testing.T) {
 		if err := json.Unmarshal(data, &body); err != nil {
 			t.Fatal(err)
 		}
-		// Thinking-mode providers need a reasoning item before function_call
-		// even when the assistant turn only stored text + tools.
-		if len(body.Input) != 5 ||
+		if len(body.Input) != 4 ||
 			body.Input[1]["role"] != "assistant" ||
-			body.Input[2]["type"] != "reasoning" ||
-			body.Input[3]["type"] != "function_call" ||
-			body.Input[3]["call_id"] != "call_1" ||
-			body.Input[4]["type"] != "function_call_output" ||
-			body.Input[4]["call_id"] != "call_1" {
+			body.Input[2]["type"] != "function_call" ||
+			body.Input[2]["call_id"] != "call_1" ||
+			body.Input[3]["type"] != "function_call_output" ||
+			body.Input[3]["call_id"] != "call_1" {
 			t.Fatalf("input = %#v", body.Input)
 		}
 	})
@@ -662,22 +668,13 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		if err := json.Unmarshal(data, &body); err != nil {
 			t.Fatal(err)
 		}
-		// Empty shell is dropped, but the tool call still needs a non-empty
-		// placeholder so DeepSeek thinking mode accepts the replay.
-		if len(body.Input) < 3 || body.Input[1]["type"] != "reasoning" || body.Input[2]["type"] != "function_call" {
-			t.Fatalf("expected placeholder reasoning before tool call: %#v", body.Input)
-		}
-		content, _ := body.Input[1]["content"].([]any)
-		part, _ := content[0].(map[string]any)
-		if part["text"] != responsesReasoningPlaceholder {
-			t.Fatalf("placeholder = %#v", part)
-		}
-		if body.Input[1]["id"] != nil {
-			t.Fatalf("placeholder must not reuse empty shell id: %#v", body.Input[1])
+		if len(body.Input) != 2 ||
+			body.Input[1]["type"] != "function_call" {
+			t.Fatalf("empty reasoning shell was retained: %#v", body.Input)
 		}
 	})
 
-	t.Run("responses injects reasoning before orphan tool call", func(t *testing.T) {
+	t.Run("responses keeps orphan tool call without synthetic reasoning", func(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = []provider.Message{
 			provider.TextMessage(provider.RoleUser, "q"),
@@ -704,22 +701,17 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 		if err := json.Unmarshal(data, &body); err != nil {
 			t.Fatal(err)
 		}
-		var sawPlaceholder bool
+		var sawCall bool
 		for i, item := range body.Input {
 			if item["type"] != "function_call" || item["call_id"] != "c2" {
 				continue
 			}
-			if i == 0 || body.Input[i-1]["type"] != "reasoning" {
-				t.Fatalf("orphan function_call at %d: %#v", i, body.Input)
+			if i > 0 && body.Input[i-1]["type"] == "reasoning" {
+				t.Fatalf("synthetic reasoning inserted before c2: %#v", body.Input)
 			}
-			content, _ := body.Input[i-1]["content"].([]any)
-			part, _ := content[0].(map[string]any)
-			if part["text"] != responsesReasoningPlaceholder {
-				t.Fatalf("expected placeholder before c2: %#v", body.Input[i-1])
-			}
-			sawPlaceholder = true
+			sawCall = true
 		}
-		if !sawPlaceholder {
+		if !sawCall {
 			t.Fatalf("c2 not found in %#v", body.Input)
 		}
 	})
@@ -895,7 +887,7 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 			t.Fatal(err)
 		}
 		item := body.Input[1]
-		if item["type"] != "reasoning" || item["id"] != "rs_2" {
+		if item["type"] != "reasoning" || item["id"] != nil {
 			t.Fatalf("item = %#v", item)
 		}
 		if _, hasCipher := item["encrypted_content"]; hasCipher {

@@ -3723,6 +3723,15 @@
             "action": {
               "type": "string"
             },
+            "plan_id": {
+              "type": "string"
+            },
+            "plan_transition": {
+              "type": "string"
+            },
+            "profile_revision": {
+              "type": "integer"
+            },
             "source_turn_id": {
               "type": "string"
             }
@@ -8625,8 +8634,17 @@
           ],
           "additionalProperties": false
         },
+        "plan_id": {
+          "type": "string"
+        },
+        "plan_transition": {
+          "type": "string"
+        },
         "posture": {
           "type": "string"
+        },
+        "profile_revision": {
+          "type": "integer"
         },
         "prompt": {
           "type": "string"
@@ -8787,7 +8805,55 @@
             "dynamic_tokens": {
               "type": "integer"
             },
+            "economic_budget_limit": {
+              "type": "integer"
+            },
+            "economic_budget_mode": {
+              "type": "string"
+            },
+            "economic_budget_remaining": {
+              "type": "integer"
+            },
+            "economic_budget_scope": {
+              "type": "string"
+            },
+            "economic_budget_used": {
+              "type": "integer"
+            },
+            "economic_budgeted": {
+              "type": "boolean"
+            },
+            "economic_granted_tokens": {
+              "type": "integer"
+            },
+            "economic_hard_input_tokens": {
+              "type": "integer"
+            },
+            "economic_input_tokens": {
+              "type": "integer"
+            },
+            "economic_operator_tokens": {
+              "type": "integer"
+            },
+            "economic_provenance": {
+              "type": "string"
+            },
+            "economic_reason": {
+              "type": "string"
+            },
+            "economic_requested_tokens": {
+              "type": "integer"
+            },
+            "economic_source": {
+              "type": "string"
+            },
             "estimated_tokens": {
+              "type": "integer"
+            },
+            "finalization_output_reserve": {
+              "type": "integer"
+            },
+            "historical_images_replaced": {
               "type": "integer"
             },
             "history_assistant_tokens": {
@@ -8831,6 +8897,27 @@
             },
             "pairing_visible_orphans": {
               "type": "integer"
+            },
+            "prefix_common_items": {
+              "type": "integer"
+            },
+            "prefix_common_tokens": {
+              "type": "integer"
+            },
+            "prefix_compared": {
+              "type": "boolean"
+            },
+            "prefix_divergence_kind": {
+              "type": "string"
+            },
+            "prefix_first_divergence": {
+              "type": "integer"
+            },
+            "prefix_monotonic": {
+              "type": "boolean"
+            },
+            "previous_context_digest": {
+              "type": "string"
             },
             "projected_images": {
               "type": "integer"
@@ -8899,6 +8986,15 @@
             "request_bytes": {
               "type": "integer"
             },
+            "request_property_digest": {
+              "type": "string"
+            },
+            "route_digest": {
+              "type": "string"
+            },
+            "stable_prefix_digest": {
+              "type": "string"
+            },
             "stable_tokens": {
               "type": "integer"
             },
@@ -8908,11 +9004,17 @@
             "tool_definition_count": {
               "type": "integer"
             },
+            "tool_definition_digest": {
+              "type": "string"
+            },
             "tool_definition_tokens": {
               "type": "integer"
             },
             "transport_payload_digest": {
               "type": "string"
+            },
+            "uncached_input_tokens": {
+              "type": "integer"
             },
             "window_body_tokens": {
               "type": "integer"

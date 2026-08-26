@@ -81,22 +81,24 @@ func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	}
 }
 
-func TestSnapshotTurnSpecRequiresStructuredTerminalForEveryToolEnabledEngine(
+func TestSnapshotTurnSpecRequiresStructuredTerminalForPlanOnly(
 	t *testing.T,
 ) {
 	for _, test := range []struct {
 		name      string
 		inputHost *interact.Host
+		intent    protocol.TurnIntent
+		require   bool
 		want      bool
 	}{
-		{name: "interactive", inputHost: interact.NewHost(0), want: true},
-		{name: "child", want: true},
+		{name: "answer", inputHost: interact.NewHost(0), intent: protocol.TurnIntentAnswer, require: true, want: false},
+		{name: "plan", intent: protocol.TurnIntentPlan, want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			spec, err := SnapshotTurnSpec(
 				Options{ProviderConfig: ProviderConfig{Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil),
 
-					RequireCompletionDeclaration: true}, SecurityConfig: SecurityConfig{Security: policy.DefaultRuntime(
+					RequireCompletionDeclaration: test.require}, SecurityConfig: SecurityConfig{Security: policy.DefaultRuntime(
 					policy.ModeAct,
 					policy.PermissionBypass,
 				)}, LifecycleConfig: LifecycleConfig{InputHost: test.inputHost},
@@ -104,7 +106,7 @@ func TestSnapshotTurnSpecRequiresStructuredTerminalForEveryToolEnabledEngine(
 				TurnIdentity{TurnID: "turn-1"},
 				TurnRequest{
 					Prompt: "answer",
-					Intent: protocol.TurnIntentAnswer,
+					Intent: test.intent,
 				},
 			)
 			if err != nil {
@@ -116,6 +118,9 @@ func TestSnapshotTurnSpecRequiresStructuredTerminalForEveryToolEnabledEngine(
 					spec.Kernel.StructuredTerminalRequired,
 					test.want,
 				)
+			}
+			if spec.Kernel.CompletionRequired != (test.require || test.intent == protocol.TurnIntentPlan) {
+				t.Fatalf("completion required = %t", spec.Kernel.CompletionRequired)
 			}
 		})
 	}

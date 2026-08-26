@@ -74,6 +74,9 @@ func NewWithIndex(
 	if err := completiontool.Register(registry); err != nil {
 		return nil, nil, err
 	}
+	if err := tool.RegisterImageReopen(registry); err != nil {
+		return nil, nil, err
+	}
 	files, err := filetool.NewWithBackend(root, backend)
 	if err != nil {
 		return nil, nil, err

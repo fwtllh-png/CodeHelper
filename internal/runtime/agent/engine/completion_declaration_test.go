@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -154,6 +155,26 @@ func TestAutoApprovedSubmittedPlanContinuesCurrentTurn(t *testing.T) {
 	}
 }
 
+func TestReadOnlyAnswerCompletesFromEndTurnWithoutDeclarationRepair(t *testing.T) {
+	registry := declarationRegistry(t, false)
+	runtime := &scriptedProvider{streams: []provider.Stream{textStream("Direct answer.")}}
+	engine := declarationEngine(t, runtime, registry, passedReceipt())
+
+	result, err := engine.RunForTurnWithIntentAndAttachments(
+		t.Context(), "turn-answer-direct", "answer this",
+		protocol.TurnIntentAnswer, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed || result.Text != "Direct answer." {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(runtime.requests) != 1 {
+		t.Fatalf("model requests = %d, want 1", len(runtime.requests))
+	}
+}
+
 func TestWorkspaceChangeRequiresCompletionDeclaration(t *testing.T) {
 	registry := declarationRegistry(t, false)
 	runtime := &scriptedProvider{streams: []provider.Stream{
@@ -244,7 +265,7 @@ func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
 	}
 }
 
-func TestStructuredReadOnlyToolTurnRequiresDeclaration(t *testing.T) {
+func TestReadOnlyToolTurnRequiresCompletionDeclaration(t *testing.T) {
 	registry := declarationRegistry(t, false)
 	if err := registry.Register(&echoTool{}, nil); err != nil {
 		t.Fatal(err)
@@ -278,16 +299,16 @@ func TestStructuredReadOnlyToolTurnRequiresDeclaration(t *testing.T) {
 	}
 	if len(runtime.requests) != 3 ||
 		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
-		t.Fatalf("read-only tool turn skipped declaration repair: %+v", runtime.requests)
+		t.Fatalf("read-only tool requests = %+v", runtime.requests)
 	}
-	for _, event := range events {
-		if event.Text == "I will now prepare the findings." {
-			t.Fatalf("provisional narration reached stable output: %+v", events)
-		}
+	if slices.ContainsFunc(events, func(event Event) bool {
+		return event.Text == "I will now prepare the findings."
+	}) {
+		t.Fatalf("provisional narration reached stable output: %+v", events)
 	}
 }
 
-func TestStructuredNoToolPlanRequiresDeclaration(t *testing.T) {
+func TestNoToolPlanRejectsPreparatoryNarration(t *testing.T) {
 	registry := declarationRegistry(t, false)
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		textStream("I will now provide the implementation plan."),
@@ -308,11 +329,9 @@ func TestStructuredNoToolPlanRequiresDeclaration(t *testing.T) {
 	}
 	if result.State != Completed ||
 		result.Text != "The implementation plan is ready." ||
-		len(runtime.requests) != 2 {
+		len(runtime.requests) != 2 ||
+		!requestContains(runtime.requests[1], "[completion_declaration_required]") {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
-	}
-	if !requestContains(runtime.requests[1], "[completion_declaration_required]") {
-		t.Fatalf("plan skipped declaration repair: %+v", runtime.requests)
 	}
 	history := engine.History()
 	if len(history) == 0 {
@@ -325,12 +344,11 @@ func TestStructuredNoToolPlanRequiresDeclaration(t *testing.T) {
 	}
 }
 
-func TestDeclarationRepairsContinueWhileProgressChanges(t *testing.T) {
+func TestReadOnlyPlanDeclarationRepairConvergesAfterSingleRetry(t *testing.T) {
 	registry := declarationRegistry(t, false)
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		textStream("I am checking the provider evidence."),
 		textStream("I am checking the persistence evidence."),
-		textStream("I am checking the recovery evidence."),
 		toolCallStream("complete-1", completiontool.Name, `{
 			"status":"complete",
 			"summary":"The R3, R4, and R5 evidence review is complete.",
@@ -349,20 +367,8 @@ func TestDeclarationRepairsContinueWhileProgressChanges(t *testing.T) {
 	}
 	if result.State != Completed ||
 		result.Text != "The R3, R4, and R5 evidence review is complete." ||
-		len(runtime.requests) != 4 {
+		len(runtime.requests) != 3 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
-	}
-	for index := 1; index < len(runtime.requests); index++ {
-		if !requestContains(
-			runtime.requests[index],
-			"[completion_declaration_required]",
-		) {
-			t.Fatalf(
-				"request %d skipped declaration repair: %+v",
-				index,
-				runtime.requests[index],
-			)
-		}
 	}
 }
 
@@ -638,7 +644,7 @@ func TestVerificationRepairInvalidatesCompletionDeclaration(t *testing.T) {
 	}
 }
 
-func TestCompletionRepairBudgetResetsAfterAcceptedQualityEvidence(t *testing.T) {
+func TestDeclarationRepairBudgetDoesNotResetWithoutAcceptedDeclaration(t *testing.T) {
 	registry := declarationRegistry(t, true)
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		toolCallStream("write-1", "write_fixture", `{}`),
@@ -662,16 +668,15 @@ func TestCompletionRepairBudgetResetsAfterAcceptedQualityEvidence(t *testing.T) 
 		Message: "no diagnostics covered a.go",
 	})
 
-	result, err := engine.RunForTurnWithIntentAndAttachments(
+	_, err := engine.RunForTurnWithIntentAndAttachments(
 		t.Context(), "turn-progress", "change a.go",
 		protocol.TurnIntentWorkspaceChange, nil, nil,
 	)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.Contains(err.Error(), "repair_budget") {
+		t.Fatalf("bounded declaration repair error = %v", err)
 	}
-	if result.State != Completed || result.Verification == nil ||
-		result.Verification.Status != verify.StatusPassed {
-		t.Fatalf("result = %+v", result)
+	if len(runtime.requests) > 5 {
+		t.Fatalf("declaration repair exceeded bounded samples: %d", len(runtime.requests))
 	}
 }
 

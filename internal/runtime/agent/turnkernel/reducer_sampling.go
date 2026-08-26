@@ -546,8 +546,8 @@ func beginConvergence(
 }
 
 func validConvergenceRequest(command ConvergenceRequested) bool {
-	if command.Used == 0 || command.Limit == 0 ||
-		command.Used < command.Limit {
+	if command.Used < command.Limit || command.Limit == 0 &&
+		(command.Used != 0 || command.Cause != ConvergenceRepairBudget) {
 		return false
 	}
 	switch command.Cause {

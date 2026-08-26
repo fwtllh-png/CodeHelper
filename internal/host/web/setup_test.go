@@ -53,7 +53,7 @@ func TestWebSetupResolvesKnownModelToOwningProviderPreset(t *testing.T) {
 	if selection.Provider != "deepseek" ||
 		selection.Model != "deepseek-v4-flash" ||
 		selection.BaseURL != "" ||
-		selection.Protocol != string(model.ProtocolOpenAIResponses) {
+		selection.Protocol != string(model.ProtocolOpenAIChat) {
 		t.Fatalf("resolved selection = %+v", selection)
 	}
 	if providerID := setupRuntimeProviderID(selection); providerID != "deepseek-v4-flash" {
@@ -85,7 +85,7 @@ func TestWebSetupResolvesKnownModelToOwningProviderPreset(t *testing.T) {
 		t.Fatal(err)
 	}
 	if visionSelection.BaseURL != "" ||
-		visionSelection.Protocol != string(model.ProtocolOpenAIResponses) ||
+		visionSelection.Protocol != string(model.ProtocolOpenAIChat) ||
 		!resolvedVision.Model().Capabilities.ImageInput {
 		t.Fatalf(
 			"resolved vision selection=%+v model=%+v",

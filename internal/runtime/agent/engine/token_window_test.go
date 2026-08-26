@@ -13,6 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	contextview "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -49,12 +50,12 @@ func TestTokenWindowIncludesStableDynamicToolsAndOutputReserve(t *testing.T) {
 			Name: "lookup", Description: strings.Repeat("schema", 100),
 		}},
 	}).Snapshot()
-	total, err := engine.measureTokenWindow(input, 128)
+	total, err := engine.measureTokenWindow(input, 128, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	engine.options.Context.Window.Scope = compactScopeBodyAfterPrefix
-	body, err := engine.measureTokenWindow(input, 128)
+	body, err := engine.measureTokenWindow(input, 128, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +87,30 @@ func TestTokenWindowUsesObservedBaselineForPendingDelta(t *testing.T) {
 		float64(actualNextInput)
 	if errorRate > 0.05 {
 		t.Fatalf("compaction trigger error=%f projection=%+v", errorRate, projected)
+	}
+}
+
+func TestEconomicWindowCountsCachedPrefixAgainstTokenBudget(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	attachTestScope(t, engine)
+	observed := protocol.SampleContextData{
+		ContextDigest: "sha256:observed", EstimatedTokens: 100,
+	}
+	engine.prepareTokenWindow(&observed, 20)
+	engine.observeTokenWindow(&observed, 150, 100)
+	engine.options.Context.Window.Scope = compactScopeBodyAfterPrefix
+	input := agentcontext.NewMessageLedger(agentcontext.LedgerInput{
+		History: []provider.Message{provider.TextMessage(
+			provider.RoleUser, strings.Repeat("budgeted ", 160),
+		)},
+	}).Snapshot()
+	window, err := engine.measureTokenWindow(input, 20, 120)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if window.active != window.accounting.FullActiveTokens ||
+		window.compactLimit > 120 {
+		t.Fatalf("economic window = %+v", window)
 	}
 }
 
@@ -239,9 +264,52 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 	window, err := engine.runCompactGate(t.Context(), &history, input, 128, CompactionPhasePreSampling, false, func(_ State, event Event) error {
 		receipt = event.Compaction
 		return nil
-	})
+	}, 0, nil)
 	if err != nil || receipt == nil || window.total > window.hardLimit {
 		t.Fatalf("window=%+v receipt=%+v error=%v", window, receipt, err)
+	}
+}
+
+func TestCompactGateMeasuresStatelessProviderProjection(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.Context.Window.AutoTokens = 1_800
+	call := toolCallMessage(1, "closed", "file_read", `{}`)
+	call.Blocks = append([]provider.ContentBlock{{
+		Type: provider.ContentText,
+		Text: strings.Repeat("provider replay only ", 2_000),
+	}}, call.Blocks...)
+	history := []provider.Message{
+		call,
+		toolResultMessage(1, "closed", `{"content":"ok"}`),
+	}
+	originalBytes := agentcontext.HistoryBytes(history)
+	var receipt *CompactionReceipt
+	project := func(history []provider.Message) []provider.Message {
+		projected := contextview.ProjectStatelessHistory(history)
+		return projected
+	}
+	window, err := engine.runCompactGate(
+		t.Context(),
+		&history,
+		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
+		128,
+		CompactionPhasePreSampling,
+		true,
+		func(_ State, event Event) error {
+			receipt = event.Compaction
+			return nil
+		},
+		0, project,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt != nil || window.active >= window.compactLimit {
+		t.Fatalf("window=%+v receipt=%+v", window, receipt)
+	}
+	if agentcontext.HistoryBytes(history) != originalBytes ||
+		history[0].Blocks[0].Type != provider.ContentText {
+		t.Fatalf("durable history was compacted: %+v", history)
 	}
 }
 

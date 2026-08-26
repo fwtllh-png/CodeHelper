@@ -37,6 +37,7 @@ type Attachment struct {
 	MediaType string `json:"media_type"`
 	Data      []byte `json:"data"`
 	Name      string `json:"name,omitempty"`
+	Handle    string `json:"handle,omitempty"`
 }
 
 func (a Attachment) DataURL() string {

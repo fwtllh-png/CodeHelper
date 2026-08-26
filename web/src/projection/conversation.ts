@@ -787,13 +787,19 @@ export function projectEditPlan(value: unknown): ProjectedEditPlan | undefined {
   if (!isRecord(value) || !Array.isArray(value.files)) return undefined;
   const files = value.files.flatMap((entry) => {
     if (!isRecord(entry) || typeof entry.path !== "string") return [];
+    const operation = stringValue(entry.op);
     return [{
       path: entry.path,
-      kind: stringValue(entry.kind) || "modified",
-      before: stringValue(entry.before),
-      after: stringValue(entry.after),
-      beforeExists: Boolean(entry.before_exists),
-      afterExists: Boolean(entry.after_exists)
+      kind: stringValue(entry.kind) ||
+        (operation === "create" ? "created" : operation === "delete" ? "deleted" : "modified"),
+      before: stringValue(entry.before ?? entry.old),
+      after: stringValue(entry.after ?? entry.new),
+      beforeExists: entry.before_exists === undefined
+        ? operation !== "create"
+        : Boolean(entry.before_exists),
+      afterExists: entry.after_exists === undefined
+        ? operation !== "delete"
+        : Boolean(entry.after_exists)
     }];
   });
   if (files.length === 0) return undefined;
@@ -808,12 +814,31 @@ function editPlanFromArguments(
   tool: string,
   value: unknown
 ): ProjectedEditPlan | undefined {
-  if (tool !== "file_edit" && tool !== "edit_file") return undefined;
   const input = isRecord(value) ? value : undefined;
+  if (tool === "file_apply") {
+    if (!Array.isArray(input?.changes) || input.changes.some((entry) =>
+      !isRecord(entry) || entry.op !== "edit"
+    )) {
+      return undefined;
+    }
+    return projectEditPlan({
+      files: input.changes.map((entry) => ({
+        path: entry.path,
+        kind: "modified",
+        before: entry.old,
+        after: entry.new,
+        before_exists: true,
+        after_exists: true
+      }))
+    });
+  }
+  if (tool !== "file_edit" && tool !== "edit_file") {
+    return undefined;
+  }
   const path = stringValue(input?.path);
   const before = stringValue(input?.old);
   const after = stringValue(input?.new);
-  if (!path || !before || before === after) return undefined;
+  if (!path || !after || before === after) return undefined;
   return Object.freeze({
     id: "",
     diff: "",

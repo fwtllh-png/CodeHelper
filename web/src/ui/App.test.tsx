@@ -584,10 +584,24 @@ describe("projectTranscript", () => {
     const stats = screen.getByLabelText(/^Run statistics:/);
     expect(stats.textContent).toBe(
       "1 turn · 0 tools | 36.4 s total · 35.0 s model · 388 ms tools | " +
-      "1.34 s TTFT | 119.9K tokens · 45% cache | Unpriced"
+      "1.34 s TTFT | 119.2K tokens · 45% cache"
     );
     expect(container.querySelectorAll(".composerMeta > span")).toHaveLength(1);
     expect(stats.getAttribute("title")).toContain("115,465 in");
+    expect(stats.getAttribute("title")).toContain("63,241 uncached");
+  });
+
+  it("shows a zero cache hit rate instead of hiding a cold sample", () => {
+    render(<App client={mockClient(snapshot([
+      event(1, "turn.receipt", {
+        input_tokens: 100,
+        output_tokens: 5,
+        cached_tokens: 0
+      })
+    ]))} />);
+
+    expect(screen.getByLabelText(/^Run statistics:/).textContent)
+      .toContain("0% cache");
   });
 
   it("creates a new session without replaying first-run setup", async () => {
@@ -788,7 +802,7 @@ describe("projectTranscript", () => {
     await screen.findByRole("dialog", {name: "Settings"});
     fireEvent.click(screen.getByRole("button", {name: "Agent preset"}));
     expect(screen.getByLabelText("Usage").textContent).toContain(
-      "Turns2Calls3Tokens144CostUnpriced"
+      "Turns2Calls3Tokens144"
     );
     expect(screen.getAllByText("tests failed").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("reviewing diff").length).toBeGreaterThanOrEqual(2);

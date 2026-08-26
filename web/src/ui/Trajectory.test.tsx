@@ -73,6 +73,34 @@ describe("Trajectory", () => {
       trajectoryDOMBudget(experience.trajectory.initialViewportHeight)
     );
   });
+
+  it("shows the average common prefix in the toolbar", () => {
+    render(
+      <Trajectory
+        events={[
+          event(1, "turn.started", {display_prompt: "inspect cache"}),
+          event(2, "usage", {
+            input_tokens: 200,
+            cached_tokens: 150,
+            context: {prefix_compared: true, prefix_common_tokens: 120}
+          }),
+          event(3, "turn.receipt", {
+            latency: {first_token_ms: 320}
+          }),
+          event(4, "turn.completed", {text: "done"})
+        ]}
+        tracePhase="unavailable"
+        hasEarlier={false}
+        onInspectConsumed={vi.fn()}
+        onLoadEarlier={vi.fn(async () => 0)}
+        onRetryTrace={vi.fn(async () => {})}
+        onOpenChat={vi.fn()}
+      />
+    );
+
+    const metrics = screen.getByLabelText("Prefix metrics");
+    expect(metrics.textContent).toContain("Prefix 120 tok");
+  });
 });
 
 function event(

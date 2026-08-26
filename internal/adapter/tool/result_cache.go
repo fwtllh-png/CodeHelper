@@ -17,8 +17,9 @@ type resultCacheEntry struct {
 }
 
 type ResultCache struct {
-	revision uint64
-	entries  map[string]resultCacheEntry
+	revision                    uint64
+	entries                     map[string]resultCacheEntry
+	suppressedNonRetryableCalls int
 }
 
 type ReplayPlan struct {
@@ -28,6 +29,7 @@ type ReplayPlan struct {
 	Fingerprints     []string
 	CacheSources     []string
 	ParallelPolicies []ParallelPolicy
+	ReplaySuccessful []bool
 	DuplicateOwners  map[int]int
 }
 
@@ -43,6 +45,7 @@ func (c *ResultCache) Plan(
 		Fingerprints:     make([]string, len(calls)),
 		CacheSources:     make([]string, len(calls)),
 		ParallelPolicies: make([]ParallelPolicy, len(calls)),
+		ReplaySuccessful: make([]bool, len(calls)),
 		DuplicateOwners:  make(map[int]int),
 	}
 	for index := range plan.ParallelPolicies {
@@ -50,6 +53,19 @@ func (c *ResultCache) Plan(
 	}
 	if c.entries == nil {
 		c.entries = make(map[string]resultCacheEntry)
+	}
+	accessModes := make([]AccessMode, len(calls))
+	writeCalls := 0
+	for index, call := range calls {
+		binding := BindingForCall(call)
+		_, descriptor, _, err := registry.ResolveBound(call.Name, binding)
+		if err != nil {
+			continue
+		}
+		accessModes[index] = descriptor.AccessMode
+		if descriptor.AccessMode == AccessWrite {
+			writeCalls++
+		}
 	}
 	batchOwners := make(map[string]int)
 	for index, call := range calls {
@@ -65,18 +81,34 @@ func (c *ResultCache) Plan(
 			continue
 		}
 		plan.ParallelPolicies[index] = descriptor.ParallelPolicy
-		if descriptor.RepeatPolicy != RepeatReplaySameTurn {
-			continue
-		}
+		plan.ReplaySuccessful[index] =
+			descriptor.RepeatPolicy == RepeatReplaySameTurn
 		fingerprint, err := resultFingerprint(call, binding, c.revision)
 		if err != nil {
 			continue
 		}
 		plan.Fingerprints[index] = fingerprint
 		if cached, exists := c.entries[fingerprint]; exists {
-			plan.Results[index] = CachedResult(cached.result, cached.callID)
-			plan.CacheSources[index] = cached.callID
-			plan.SkipExecution[index] = true
+			otherWriteCall := writeCalls > 0
+			if accessModes[index] == AccessWrite {
+				otherWriteCall = writeCalls > 1
+			}
+			if (plan.ReplaySuccessful[index] ||
+				nonRetryableResult(cached.result)) && !otherWriteCall {
+				plan.Results[index] = CachedResult(cached.result, cached.callID)
+				plan.CacheSources[index] = cached.callID
+				plan.SkipExecution[index] = true
+				if nonRetryableResult(cached.result) {
+					c.suppressedNonRetryableCalls++
+				}
+				continue
+			}
+		}
+		otherWriteCall := writeCalls > 0
+		if accessModes[index] == AccessWrite {
+			otherWriteCall = writeCalls > 1
+		}
+		if descriptor.RepeatPolicy != RepeatReplaySameTurn || otherWriteCall {
 			continue
 		}
 		if owner, exists := batchOwners[fingerprint]; exists {
@@ -103,7 +135,8 @@ func (c *ResultCache) Commit(
 	}
 	for index, fingerprint := range plan.Fingerprints {
 		if fingerprint == "" || plan.CacheSources[index] != "" ||
-			results[index].IsError {
+			!plan.ReplaySuccessful[index] &&
+				!nonRetryableResult(results[index]) {
 			continue
 		}
 		c.entries[fingerprint] = resultCacheEntry{
@@ -111,6 +144,18 @@ func (c *ResultCache) Commit(
 			result: results[index],
 		}
 	}
+}
+
+func (c *ResultCache) SuppressedNonRetryableCalls() int {
+	if c == nil {
+		return 0
+	}
+	return c.suppressedNonRetryableCalls
+}
+
+func nonRetryableResult(result Result) bool {
+	retry, exists := result.Metadata["retry_original"].(bool)
+	return result.IsError && exists && !retry
 }
 
 func BindingForCall(call provider.ToolCall) CatalogBinding {

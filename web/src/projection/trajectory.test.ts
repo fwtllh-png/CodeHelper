@@ -54,7 +54,6 @@ describe("projectTrajectory", () => {
       lane: "tools",
       durationMS: 1_000
       });
-    expect(projection.timingAvailable).toBe(true);
   });
 
   it("keeps event rows usable when trace timing is unavailable", () => {
@@ -63,7 +62,6 @@ describe("projectTrajectory", () => {
       event(2, "turn.completed", {text: "Hi"})
     ]);
 
-    expect(projection.timingAvailable).toBe(false);
     expect(projection.records.map((record) => record.label)).toEqual([
       "USER", "ASSISTANT", "TURN"
     ]);
@@ -174,7 +172,8 @@ describe("projectTrajectory", () => {
       event(4, "usage", {
         provider: "fixture",
         input_tokens: 40,
-        output_tokens: 8
+        output_tokens: 8,
+        reasoning_tokens: 3
       }),
       event(5, "turn.receipt", {
         outcome: "changed",
@@ -186,9 +185,55 @@ describe("projectTrajectory", () => {
     expect(projection.records.find((record) => record.label === "APPROVAL"))
       .toMatchObject({summary: "file_write · workspace_write"});
     expect(projection.records.find((record) => record.label === "USAGE"))
-      .toBeTruthy();
+      .toMatchObject({summary: "fixture · 48 tokens"});
     expect(projection.spans.find((span) => span.recordID === "output-turn"))
       .toMatchObject({ttftMS: 250});
+  });
+
+  it("aggregates average common prefix length", () => {
+    const projection = projectTrajectory([
+      event(1, "turn.started", {display_prompt: "Cache audit"}),
+      event(2, "usage", {
+        sample: 1,
+        provider: "fixture",
+        input_tokens: 100,
+        cached_tokens: 70,
+        context: {prefix_compared: true, prefix_common_tokens: 60}
+      }),
+      event(3, "usage", {
+        sample: 2,
+        provider: "fixture",
+        input_tokens: 200,
+        cached_tokens: 150,
+        context: {prefix_compared: true, prefix_common_tokens: 120}
+      }),
+      event(4, "usage", {
+        sample: 2,
+        provider: "fixture",
+        context: {prefix_compared: true, prefix_common_tokens: 180}
+      }),
+      event(5, "turn.receipt", {
+        outcome: "changed",
+        latency: {first_token_ms: 300, provider_ms: 900}
+      }),
+      event(6, "turn.completed", {text: "Done"})
+    ]);
+
+    expect(projection.prefixTokens).toBe(120);
+  });
+
+  it("includes compared zero-length prefixes without inventing cache samples", () => {
+    const projection = projectTrajectory([
+      event(1, "turn.started", {display_prompt: "Plain turn"}),
+      event(2, "usage", {
+        provider: "fixture",
+        input_tokens: 0,
+        context: {prefix_compared: true, prefix_common_tokens: 0}
+      }),
+      event(3, "turn.completed", {text: "Hi"})
+    ]);
+
+    expect(projection.prefixTokens).toBe(0);
   });
 });
 

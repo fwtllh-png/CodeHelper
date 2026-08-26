@@ -200,6 +200,7 @@ func DefaultPolicy() Policy {
 		VerificationOnFailure:   "fail",
 		CompletionRepairLimit:   2,
 		WorkspaceRepairLimit:    1,
+		DeclarationRepairLimit:  1,
 		VerificationRepairLimit: 1,
 		Convergence:             DefaultConvergencePolicy(),
 	}
@@ -400,10 +401,9 @@ func RequiresCompletion(state State) bool {
 	}
 	required := state.MutationRevision != 0 ||
 		state.Intent == protocol.TurnIntentWorkspaceChange
-	if state.Intent == protocol.TurnIntentOperation {
-		for _, result := range state.ClosedCalls {
-			required = required || !result.IsError
-		}
+	for _, result := range state.ClosedCalls {
+		required = required ||
+			!result.IsError && result.Name != "request_user_input"
 	}
 	return required
 }

@@ -84,6 +84,8 @@ describe("RuntimeClient", () => {
   let setupRequired = false;
   let multipleWorkspaces = false;
   let emptyPrimaryWorkspace = false;
+  let activePlan = false;
+  let planTransitionGate: Promise<void> | undefined;
 
   beforeEach(() => {
     requests.length = 0;
@@ -107,6 +109,8 @@ describe("RuntimeClient", () => {
     setupRequired = false;
     multipleWorkspaces = false;
     emptyPrimaryWorkspace = false;
+    activePlan = false;
+    planTransitionGate = undefined;
     window.history.replaceState(null, "", "/?workspace=workspace-id");
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("crypto", {
@@ -433,7 +437,37 @@ describe("RuntimeClient", () => {
         return envelope({version: 1, session_id: "session", checkpoints: null});
       }
       if (route.endsWith("/plan/get")) {
-        return envelope({version: 1});
+        return envelope(activePlan ? {
+          version: 2,
+          artifact: {
+            version: 2,
+            id: "plan-id",
+            session_id: "session",
+            thread_id: "thread",
+            turn_id: "plan-turn",
+            cursor: 1,
+            status: "ready",
+            body: `{"version":1,"revision":1,"steps":[]}`,
+            document: {version: 1, revision: 1, steps: []},
+            profile_revision: 1,
+            can_implement: true,
+            can_autopilot: true,
+            created_at: "2026-01-01T00:00:00Z"
+          }
+        } : {version: 1});
+      }
+      if (route.endsWith("/plan/transition")) {
+        await planTransitionGate;
+        return envelope({
+          operation: {
+            operation_id: "plan-operation",
+            kind: "turn.start",
+            thread_id: "thread",
+            turn_id: "implementation-turn",
+            item_id: "implementation-item",
+            accepted: true
+          }
+        });
       }
       if (route.endsWith("/task/list")) {
         return envelope({tasks: []});
@@ -720,6 +754,49 @@ describe("RuntimeClient", () => {
     expect(requests.filter(
       (request) => request.route.endsWith("/session/list")
     )).toHaveLength(sessionListsBefore + 1);
+    client.stop();
+  });
+
+  it("uses a fresh retry-safe identity for each Plan execution attempt", async () => {
+    activePlan = true;
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.transitionPlan("implement");
+
+    const transition = requests.find((request) =>
+      request.route.endsWith("/plan/transition")
+    );
+    expect(transition?.body).toEqual({
+      session_id: "session",
+      plan_id: "plan-id",
+      transition: "implement"
+    });
+    expect(transition?.headers.get("Idempotency-Key"))
+      .toBe("plan:plan-id:execute:request-id");
+    client.stop();
+  });
+
+  it("coalesces duplicate Plan transitions while the request is pending", async () => {
+    activePlan = true;
+    let release = () => {};
+    planTransitionGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    const first = client.transitionPlan("implement");
+    const second = client.transitionPlan("implement");
+    await vi.waitFor(() => expect(requests.filter((request) =>
+      request.route.endsWith("/plan/transition")
+    )).toHaveLength(1));
+    release();
+    await Promise.all([first, second]);
+
+    expect(requests.filter((request) =>
+      request.route.endsWith("/plan/transition")
+    )).toHaveLength(1);
     client.stop();
   });
 

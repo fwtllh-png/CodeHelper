@@ -325,9 +325,12 @@ func (a *EngineAdapter) StartTurn(
 			if displayPrompt == "" {
 				displayPrompt = payload.Prompt
 			}
+			planID, planTransition, _ := turnPlanExecution(payload)
 			return sink.Emit(&protocol.TurnStartedData{
 				Provider: event.Provider, Model: event.Model,
-				QueueID: payload.QueueID,
+				QueueID: payload.QueueID, PlanID: planID,
+				PlanTransition:  planTransition,
+				ProfileRevision: event.ProfileRevision,
 				Orchestration: protocol.CloneOrchestrationCorrelation(
 					payload.Orchestration,
 				),
@@ -584,11 +587,12 @@ func (a *EngineAdapter) StartTurn(
 	}
 	security := a.engine.OptionsSeed().Security
 	defer security.ResetPlanState()
-	if payload.PlanExecution != nil {
+	_, planTransition, planApproved := turnPlanExecution(payload)
+	if planApproved {
 		mode, permission := security.ModeValue(), security.PermissionValue()
 		a.engine.SetPolicyMode(policy.ModeAct)
 		security.ApprovePlan()
-		if payload.PlanExecution.Transition == protocol.PlanTransitionAutopilot {
+		if planTransition == protocol.PlanTransitionAutopilot {
 			a.engine.SetPermission(policy.PermissionAuto)
 		}
 		defer func() {
@@ -606,6 +610,25 @@ func (a *EngineAdapter) StartTurn(
 		emit,
 	)
 	return runErr
+}
+
+func turnPlanExecution(
+	payload *protocol.StartTurnPayload,
+) (string, protocol.PlanTransition, bool) {
+	switch {
+	case payload == nil:
+		return "", "", false
+	case payload.PlanExecution != nil:
+		return payload.PlanExecution.PlanID,
+			payload.PlanExecution.Transition,
+			true
+	case payload.Recovery != nil && payload.Recovery.PlanID != "":
+		return payload.Recovery.PlanID,
+			payload.Recovery.PlanTransition,
+			true
+	default:
+		return "", "", false
+	}
 }
 
 func turnImageAttachments(

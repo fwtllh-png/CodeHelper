@@ -5,6 +5,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	contextview "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
 )
 
 func (e *Engine) checkBudget(
@@ -44,13 +45,30 @@ func (e *Engine) turnBudgetScope() string {
 	return "turn"
 }
 
+func (e *Engine) economicAdmission(turnUsage, stepUsage provider.Usage,
+	currentOutput, finalizationOutput, remainingCalls uint64,
+) contextview.EconomicAdmission {
+	capacity := e.contextCapacity()
+	return contextview.ResolveEconomicAdmission(contextview.EconomicAdmissionRequest{
+		HardInput: capacity.HardInputTokens, OperatorInput: e.autoCompactLimit(),
+		SessionUsage: e.usage, TurnUsage: turnUsage, StepUsage: stepUsage,
+		MaxSessionTokens: e.options.Budget.MaxTokens,
+		MaxTurnTokens:    e.options.Budget.MaxTurnTokens,
+		CurrentOutput:    currentOutput, FinalizationOutput: finalizationOutput,
+		RemainingCalls: remainingCalls, TurnScope: e.turnBudgetScope(),
+		OperatorConfigured: e.options.Context.Window.AutoTokens != 0,
+	})
+}
+
 func (e *Engine) budgetConvergence(turnUsed uint64) (provider.Message, bool) {
+	outputReserve := e.maxOutputFor(e.activeRoute())
 	used, limit := turnUsed, e.options.Budget.MaxTurnTokens
-	stage, finishOnly := agentcontext.BudgetStage(used, limit)
+	stage, finishOnly := contextview.BudgetStage(used, limit, outputReserve)
 	sessionUsed := e.BudgetSnapshot().TokensUsed + turnUsed
-	sessionStage, sessionFinishOnly := agentcontext.BudgetStage(
+	sessionStage, sessionFinishOnly := contextview.BudgetStage(
 		sessionUsed,
 		e.options.Budget.MaxTokens,
+		outputReserve,
 	)
 	if sessionStage > stage {
 		used, limit = sessionUsed, e.options.Budget.MaxTokens

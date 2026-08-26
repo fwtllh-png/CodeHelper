@@ -47,7 +47,7 @@ CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景�
 5. [Web 体验对齐 DeepSeek Harness 实施方案](./deepseek-harness-web-parity-plan.md)
 6. [Session Context、Memory 与持久化](./session-context-optimization.md)
 7. [固定阈值审计与动态容量治理](./fixed-threshold-audit.md)
-8. [长会话 Token 与成本优化方案](./token-cost-optimization-plan.md)
+8. [长会话 Token 与调用开销优化方案](./token-cost-optimization-plan.md)
 9. [安全模型](./security.md)
 10. [本地开发与脚本](./development.md)
 11. [源码阅读路线指南](./reading-guide.md)

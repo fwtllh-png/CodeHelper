@@ -38,41 +38,38 @@ func TestValidateRejectsNonJSONMetadata(t *testing.T) {
 	}
 }
 
-func TestPruneConsumedSurfacesRetainsNewestBatchAndFullHandles(t *testing.T) {
+func TestPruneSurfacesProtectsLatestUnconsumedBatch(t *testing.T) {
 	store := tool.NewResultStore(32 << 10)
 	registry := tool.NewRegistry(nil, store)
+	oldContent := strings.Repeat("old ", 1200)
+	latestContent := strings.Repeat("latest ", 1200)
 	history := []provider.Message{
-		toolCallMessage("old-1", "file_read"),
-		toolResultMessage(t, "old-1", strings.Repeat("old-one ", 1200)),
-		toolCallMessage("old-2", "shell_read"),
-		toolResultMessage(t, "old-2", strings.Repeat("old-two ", 1200)),
+		toolCallMessage("old", "file_read"),
+		toolResultMessage(t, "old", oldContent),
 		toolCallMessage("latest", "file_read"),
-		toolResultMessage(t, "latest", strings.Repeat("latest ", 1200)),
+		toolResultMessage(t, "latest", latestContent),
 	}
-	latestBefore := history[5].Blocks[0].ToolResult.Content
-	stats := PruneConsumedSurfaces(&history, registry, 12<<10, 256)
-	if stats.Results != 2 || stats.Bytes <= 0 ||
-		stats.RetainedBytes >= stats.OriginalBytes {
+	stats, _, err := PruneSurfaces(
+		&history, registry, 256, true,
+		func([]provider.Message) (PruneWindow, error) {
+			return PruneWindow{}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Results != 1 {
 		t.Fatalf("stats = %+v", stats)
 	}
-	if history[5].Blocks[0].ToolResult.Content != latestBefore {
-		t.Fatal("newest tool batch was pruned")
+	var latest tool.Result
+	if err := json.Unmarshal(
+		[]byte(history[3].Blocks[0].ToolResult.Content),
+		&latest,
+	); err != nil {
+		t.Fatal(err)
 	}
-	for _, index := range []int{1, 3} {
-		var projected tool.Result
-		if err := json.Unmarshal(
-			[]byte(history[index].Blocks[0].ToolResult.Content),
-			&projected,
-		); err != nil {
-			t.Fatal(err)
-		}
-		if projected.Handle == "" || !projected.Truncated {
-			t.Fatalf("projected result = %+v", projected)
-		}
-		if full, found := store.Get(projected.Handle); !found ||
-			!strings.HasPrefix(full, "old-") {
-			t.Fatalf("full result found=%t bytes=%d", found, len(full))
-		}
+	if latest.Content != latestContent || latest.Truncated {
+		t.Fatalf("latest result was pruned before consumption: %+v", latest)
 	}
 }
 

@@ -1,6 +1,7 @@
 package agentcontext
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -235,5 +236,110 @@ func TestEmptyProjectionDoesNotAdvanceRevision(t *testing.T) {
 	ledger := NewMessageLedger(LedgerInput{})
 	if got := ledger.Project(LedgerProjection{}).Revision(); got != 1 {
 		t.Fatalf("empty projection revision=%d", got)
+	}
+}
+
+func TestDefinitionsDeterministicAcrossInputOrders(t *testing.T) {
+	toolSet := []provider.ToolDefinition{
+		{
+			Name: "zeta", Description: "z tool",
+			InputSchema: map[string]any{"type": "object"},
+		},
+		{
+			Name: "alpha", Description: "a tool",
+			InputSchema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"path": map[string]any{"type": "string"}},
+			},
+		},
+		{Name: "mid", Description: "m tool"},
+	}
+	shuffled := []provider.ToolDefinition{toolSet[2], toolSet[0], toolSet[1]}
+
+	fromBase := NewMessageLedger(LedgerInput{
+		Definitions: toolSet,
+	}).Snapshot().Definitions()
+	fromShuffled := NewMessageLedger(LedgerInput{
+		Definitions: shuffled,
+	}).Snapshot().Definitions()
+
+	// The projected definitions must not depend on caller-supplied order.
+	if !reflect.DeepEqual(fromBase, fromShuffled) {
+		t.Fatalf("definitions differ by input order: base=%+v shuffled=%+v", fromBase, fromShuffled)
+	}
+	// Output must be name-ascending.
+	for index := 1; index < len(fromBase); index++ {
+		if fromBase[index-1].Name > fromBase[index].Name {
+			t.Fatalf("definitions not name-ascending at %d: %+v", index, fromBase)
+		}
+	}
+	// Byte sequence must be identical for the same tool set.
+	encodedBase, err := json.Marshal(fromBase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedShuffled, err := json.Marshal(fromShuffled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encodedBase, encodedShuffled) {
+		t.Fatalf("definitions byte sequence differs: %s vs %s", encodedBase, encodedShuffled)
+	}
+}
+
+func TestProjectIgnoresDefinitionInputOrder(t *testing.T) {
+	first := []provider.ToolDefinition{{Name: "b"}, {Name: "a"}}
+	reordered := []provider.ToolDefinition{{Name: "a"}, {Name: "b"}}
+	ledger := NewMessageLedger(LedgerInput{Definitions: first})
+	before := ledger.Snapshot().Revision()
+	if got := ledger.Project(LedgerProjection{Definitions: reordered}).Revision(); got != before {
+		t.Fatalf("order-only definitions change advanced revision: before=%d after=%d", before, got)
+	}
+	got := ledger.Snapshot().Definitions()
+	if got[0].Name != "a" || got[1].Name != "b" {
+		t.Fatalf("projected definitions not canonical: %+v", got)
+	}
+}
+
+func TestMessagesDeterministicByteSequence(t *testing.T) {
+	build := func() MessageSnapshot {
+		return NewMessageLedger(LedgerInput{
+			Stable:       []provider.Message{provider.TextMessage(provider.RoleSystem, "stable")},
+			History:      []provider.Message{provider.TextMessage(provider.RoleUser, "question")},
+			Dynamic:      []provider.Message{provider.TextMessage(provider.RoleSystem, "dynamic")},
+			Continuation: []provider.Message{provider.TextMessage(provider.RoleAssistant, "continue")},
+			Definitions:  []provider.ToolDefinition{{Name: "b"}, {Name: "a"}},
+		}).Snapshot()
+	}
+	first, err := json.Marshal(build().Messages())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := json.Marshal(build().Messages())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatalf("messages byte sequence is not deterministic: %s vs %s", first, second)
+	}
+}
+
+func TestDigestIndependentOfDefinitionInputOrder(t *testing.T) {
+	ledgerA := NewMessageLedger(LedgerInput{
+		Definitions: []provider.ToolDefinition{{Name: "zeta"}, {Name: "alpha"}},
+	})
+	ledgerB := NewMessageLedger(LedgerInput{
+		Definitions: []provider.ToolDefinition{{Name: "alpha"}, {Name: "zeta"}},
+	})
+	digestA, err := ledgerA.Snapshot().Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	digestB, err := ledgerB.Snapshot().Digest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digestA != digestB {
+		t.Fatalf("digest differs by definition input order: %s vs %s", digestA, digestB)
 	}
 }

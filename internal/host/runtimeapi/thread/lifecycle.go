@@ -472,6 +472,16 @@ func (l *Lifecycle) Project(ctx context.Context, event protocol.Event) error {
 					return ErrTerminal
 				}
 			}
+		case protocol.EventOperationRejected:
+			_, err := tx.ExecContext(ctx, `
+				UPDATE turns SET status = ?, updated_at = ?, completed_at = ?
+				WHERE id = ? AND operation_id = ? AND status = ?`,
+				TurnFailed, timestamp(event.CreatedAt), timestamp(event.CreatedAt),
+				event.TurnID, event.OperationID, TurnActive,
+			)
+			if err != nil {
+				return err
+			}
 		case protocol.EventThreadForked:
 			data, ok := event.Data.(*protocol.ThreadForkedData)
 			if !ok {

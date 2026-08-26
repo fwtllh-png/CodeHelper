@@ -363,6 +363,79 @@ describe("ConversationProjection", () => {
       }
     });
   });
+
+  it("projects file_apply patch content into the edit card", () => {
+    const snapshot = projectConversation([
+      event(1, "tool.start", {
+        call_id: "apply-1",
+        tool: "file_apply",
+        arguments: {
+          changes: [{
+            op: "edit",
+            path: "main.go",
+            old: "old\n",
+            new: "new\n"
+          }]
+        }
+      }),
+      event(2, "tool.result", {
+        call_id: "apply-1",
+        tool: "file_apply",
+        output: "modified main.go +1 -1",
+        changes: [{path: "main.go", kind: "modified", added: 1, removed: 1}],
+        is_error: false
+      })
+    ]);
+
+    expect(snapshot.nodes.get("tool-apply-1")).toMatchObject({
+      kind: "tool",
+      variant: "diff",
+      editPlan: {
+        files: [{
+          path: "main.go",
+          before: "old\n",
+          after: "new\n"
+        }]
+      }
+    });
+  });
+
+  it("waits for an authoritative plan for file_apply write and move operations", () => {
+    const snapshot = projectConversation([
+      event(1, "tool.start", {
+        call_id: "apply-write",
+        tool: "file_apply",
+        arguments: {
+          changes: [{
+            op: "write",
+            path: "new.go",
+            content: "package main\n"
+          }]
+        }
+      }),
+      event(2, "tool.start", {
+        call_id: "apply-move",
+        tool: "file_apply",
+        arguments: {
+          changes: [{
+            op: "move",
+            path: "old.go",
+            to: "new.go"
+          }]
+        }
+      })
+    ]);
+
+    const write = snapshot.nodes.get("tool-apply-write");
+    const move = snapshot.nodes.get("tool-apply-move");
+    expect(write?.kind).toBe("tool");
+    expect(move?.kind).toBe("tool");
+    if (write?.kind !== "tool" || move?.kind !== "tool") {
+      throw new Error("file_apply calls were not projected as tools");
+    }
+    expect(write.editPlan).toBeUndefined();
+    expect(move.editPlan).toBeUndefined();
+  });
 });
 
 function serializable(snapshot: ReturnType<typeof projectConversation>) {

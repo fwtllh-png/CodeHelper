@@ -440,7 +440,7 @@ go test -run 'Test(ContextManifest|WorkspaceReconciliation|RetentionRemainsBound
 3. `internal/adapter/provider/router`：Provider Route；
 4. `internal/adapter/provider/wire`：请求编码与协议属性；
 5. `internal/adapter/provider/httpclient/client.go`：连接、状态码、Deadline 和 Transport；
-6. 一个具体 Adapter，例如 `provider/deepseek/adapter.go`；
+6. 一个具体 Adapter，例如 `provider/openai/adapter.go`；
 7. `provider/assembly/response_assembly.go`：增量顺序、Tool Fragment、Usage；
 8. `provider/assembly/stream_consumer.go`：校验、Projection、Incomplete Output 和
    自适应 Durable Checkpoint；

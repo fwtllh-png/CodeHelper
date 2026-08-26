@@ -2112,20 +2112,21 @@ textarea:disabled {
   gap: 4px;
 }
 
-.turnQueue {
+.turnQueue,
+.sessionProgress {
   width: min(var(--ch-chat-width), calc(100% - 32px));
+}
+
+.turnQueue {
   margin: 0 auto 6px;
   border: 1px solid var(--ch-border);
-  border-radius: var(--ch-radius-control);
   background: var(--ch-panel);
+  border-radius: var(--ch-radius-control);
 }
 
 .sessionProgress {
-  width: min(var(--ch-chat-width), calc(100% - 32px));
-  margin: 0 auto 6px;
-  border: 1px solid var(--ch-border);
-  border-radius: var(--ch-radius-control);
-  background: var(--ch-panel);
+  margin: 0 auto 8px;
+  border-block: 1px solid var(--ch-border);
 }
 
 .producedFiles {
@@ -2147,7 +2148,6 @@ textarea:disabled {
   background: transparent;
   color: var(--ch-text-secondary);
   text-align: left;
-  cursor: pointer;
 }
 
 .producedFilesSummary > span:first-of-type {
@@ -2314,52 +2314,53 @@ textarea:disabled {
   white-space: pre;
 }
 
-.sessionProgressSummary {
-  display: flex;
-  width: 100%;
-  min-height: 36px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 10px;
-  border: 0;
-  background: transparent;
-  color: var(--ch-text-secondary);
-  text-align: left;
-  cursor: pointer;
-}
-
-.sessionProgressSummary > span {
-  flex: 1;
-  overflow: hidden;
-  font-size: 12px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sessionProgressSummary small,
-.progressLabel small {
-  color: var(--ch-text-muted);
-  font-size: 10px;
-}
-
-.sessionProgressSummary svg:last-child[data-expanded] {
-  transform: rotate(180deg);
-}
-
 .sessionProgressBody {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: 1px solid var(--ch-border);
 }
 
 .progressSection {
   min-width: 0;
-  padding: 9px 10px;
+  padding: 10px 12px 11px;
 }
 
 .progressPlan {
+  position: relative;
   grid-column: 1 / -1;
+  padding: 6px 0 8px;
+}
+
+.progressPlan[data-collapsed] {
+  min-height: 32px;
+  padding: 0;
+}
+
+.planDisclosure {
+  position: absolute;
+  z-index: var(--ch-layer-content);
+  top: 3px;
+  right: 6px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  padding: 0;
+  border-radius: var(--ch-radius-control);
+  background: transparent;
+  color: var(--ch-text-muted);
+}
+
+.planDisclosure:hover {
+  background: var(--ch-panel-subtle);
+  color: var(--ch-text);
+}
+
+.planDisclosure svg {
+  transition: transform var(--ch-motion-disclosure) var(--ch-ease-in-out);
+}
+
+.planDisclosure svg:not([data-expanded]) {
+  transform: rotate(-90deg);
 }
 
 .progressSection + .progressSection {
@@ -2377,11 +2378,8 @@ textarea:disabled {
 .progressLabel {
   display: flex;
   align-items: center;
-  gap: 5px;
   color: var(--ch-text-muted);
   font-size: 10px;
-  font-weight: 650;
-  text-transform: uppercase;
 }
 
 .progressLabel small,
@@ -2398,35 +2396,40 @@ textarea:disabled {
   cursor: pointer;
 }
 
-.progressSection > p {
-  margin: 6px 0 0;
-  overflow: hidden;
-  color: var(--ch-text);
-  font-size: 12px;
-  line-height: 18px;
-}
-
 .progressTasks,
 .progressAgents {
   display: grid;
-  gap: 5px;
-  margin: 6px 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .progressTasks li {
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 5px;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 7px;
   color: var(--ch-text-secondary);
-  font-size: 11px;
 }
 
-.progressTasks li[data-state="succeeded"],
-.progressTasks li[data-state="completed"] {
-  color: var(--ch-text-muted);
+.progressPlan .progressTasks li {
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.progressPlan .progressTasks li:first-child {
+  padding-right: 42px;
+}
+
+.progressPlan .progressTasks li:last-child {
+  border-bottom: 0;
+}
+
+.progressPlan > .artifactActions {
+  justify-content: flex-end;
+  padding: 7px 10px 0;
 }
 
 .progressTasks span,
@@ -2477,6 +2480,11 @@ textarea:disabled {
 
 .progressAgents small {
   grid-column: 2 / -1;
+}
+
+.progressPlan > .artifactActions button:last-child {
+  color: var(--ch-text-secondary);
+  background: var(--ch-panel);
 }
 
 @media (max-width: 760px) {

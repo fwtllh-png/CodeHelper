@@ -52,6 +52,25 @@ func ConvergenceDefinitionAllowed(definition provider.ToolDefinition) bool {
 	}
 }
 
+// RemainingBusinessCalls reserves the current Sample and one follow-up when
+// the advertised surface can produce more business work. Terminal-only calls
+// do not need that follow-up.
+func RemainingBusinessCalls(
+	definitions []provider.ToolDefinition,
+	terminalOnly bool,
+) uint64 {
+	const currentCall uint64 = 1
+	if terminalOnly {
+		return currentCall
+	}
+	for _, definition := range definitions {
+		if !ConvergenceDefinitionAllowed(definition) {
+			return currentCall + 1
+		}
+	}
+	return currentCall
+}
+
 func FinishOnlyDefinitionAllowed(
 	catalog CatalogSnapshot,
 	definition provider.ToolDefinition,

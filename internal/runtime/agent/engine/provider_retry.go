@@ -61,6 +61,8 @@ func (e *Engine) recoverContextOverflow(
 		true,
 		input,
 		outputReserve,
+		0,
+		nil,
 	)
 	if receipt == nil || receipt.RetainedTokens >= receipt.OriginalTokens {
 		return false, nil

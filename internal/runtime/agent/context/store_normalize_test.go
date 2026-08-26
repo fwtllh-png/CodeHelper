@@ -84,72 +84,14 @@ func TestNormalizeProjectsUnsupportedModalities(t *testing.T) {
 	}
 }
 
-func TestProjectStatelessHistoryCollapsesWorldAndConsumedReasoning(t *testing.T) {
-	worldV1 := provider.TextMessage(provider.RoleSystem, "world v1")
-	full, err := ProjectWorld([]WorldSection{{
-		ID: "workspace", Digest: "v1", Message: &worldV1,
-	}}, WorldBaseline{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	worldV2 := provider.TextMessage(provider.RoleSystem, "world v2")
-	patch, err := ProjectWorld([]WorldSection{{
-		ID: "workspace", Digest: "v2", Message: &worldV2,
-	}}, full.Baseline, full.Messages)
-	if err != nil {
-		t.Fatal(err)
-	}
-	call := toolCallContextMessage("closed", 1)
-	call.Blocks = append([]provider.ContentBlock{
-		{Type: provider.ContentReasoning, Text: "consumed reasoning"},
-		{Type: provider.ContentText, Text: "running the tool"},
-	}, call.Blocks...)
-	pending := toolCallContextMessage("pending", 1)
-	pending.Blocks = append([]provider.ContentBlock{{
-		Type: provider.ContentReasoning, Text: "pending reasoning",
-	}}, pending.Blocks...)
-	history := append(CloneMessages(full.Messages), call)
-	history = append(history, toolResultContextMessage("closed", 1))
-	history = append(history, patch.Messages...)
-	history = append(history, pending)
-
-	projected := ProjectStatelessHistory(history)
-	if len(projected) != 4 {
-		t.Fatalf("projected messages = %+v", projected)
-	}
-	if projected[0].Blocks[0].ToolCall == nil ||
-		len(projected[0].Blocks) != 1 {
-		t.Fatalf("closed tool message = %+v", projected[0])
-	}
-	if projected[2].Text() != "world v2" {
-		t.Fatalf("world projection = %+v", projected[2])
-	}
-	if projected[3].Blocks[0].Type != provider.ContentReasoning {
-		t.Fatalf("pending reasoning was removed: %+v", projected[3])
-	}
-	if history[1].Blocks[0].Type != provider.ContentReasoning {
-		t.Fatal("durable history was mutated")
-	}
-}
-
 func toolCallContextMessage(id string, turn uint64) provider.Message {
-	return provider.Message{
-		Role: provider.RoleAssistant, Turn: turn,
-		Blocks: []provider.ContentBlock{{
-			Type: provider.ContentToolCall,
-			ToolCall: &provider.ToolCall{
-				ID: id, Name: "fixture", Arguments: `{}`,
-			},
-		}},
-	}
+	return provider.Message{Role: provider.RoleAssistant, Turn: turn,
+		Blocks: []provider.ContentBlock{{Type: provider.ContentToolCall,
+			ToolCall: &provider.ToolCall{ID: id, Name: "fixture", Arguments: `{}`}}}}
 }
 
 func toolResultContextMessage(id string, turn uint64) provider.Message {
-	return provider.Message{
-		Role: provider.RoleTool, Turn: turn,
-		Blocks: []provider.ContentBlock{{
-			Type:       provider.ContentToolResult,
-			ToolResult: &provider.ToolResult{CallID: id, Content: "ok"},
-		}},
-	}
+	return provider.Message{Role: provider.RoleTool, Turn: turn,
+		Blocks: []provider.ContentBlock{{Type: provider.ContentToolResult,
+			ToolResult: &provider.ToolResult{CallID: id, Content: "ok"}}}}
 }

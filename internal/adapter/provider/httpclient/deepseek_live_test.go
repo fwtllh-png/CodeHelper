@@ -10,7 +10,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/deepseek"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
 	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
@@ -126,6 +126,45 @@ func deepSeekLiveRuntime(
 ) (provider.Provider, model.ReadyRoute, *telemetry.Metrics) {
 	t.Helper()
 	route := bundledRoute(t, "deepseek-v4-flash", "deepseek-v4-flash")
+	return deepSeekLiveRuntimeWithRoute(t, route)
+}
+
+func deepSeekLiveRuntimeForProtocol(
+	t *testing.T,
+	protocol model.WireProtocol,
+) (provider.Provider, model.ReadyRoute, *telemetry.Metrics) {
+	t.Helper()
+	bundled := model.DefaultCatalog()
+	descriptor, exists := bundled.Provider("deepseek-v4-flash")
+	if !exists {
+		t.Fatal("bundled DeepSeek V4 provider is unavailable")
+	}
+	descriptor.ID += "-" + string(protocol)
+	descriptor.Protocol = protocol
+	catalog, err := model.NewCatalog(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := model.NewResolver(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(model.RouteRequest{
+		ProviderID: descriptor.ID,
+		ModelID:    "deepseek-v4-flash",
+		Provenance: model.ProvenanceFixture,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return deepSeekLiveRuntimeWithRoute(t, route)
+}
+
+func deepSeekLiveRuntimeWithRoute(
+	t *testing.T,
+	route model.ReadyRoute,
+) (provider.Provider, model.ReadyRoute, *telemetry.Metrics) {
+	t.Helper()
 	credential, err := DefaultCredentials().Resolve(t.Context(), route.Credential())
 	if err != nil {
 		t.Skipf("DeepSeek live control skipped: configured credential is unavailable: %v", err)
@@ -142,7 +181,10 @@ func deepSeekLiveRuntime(
 	client.Egress = gate
 	client.Metrics = metrics
 	client.IdleTimeout = 2 * time.Minute
-	adapter := deepseek.NewAdapter()
+	adapter, err := openai.NewAdapter(route.Adapter())
+	if err != nil {
+		t.Fatal(err)
+	}
 	registry, err := providerrouter.NewRegistry(adapter)
 	if err != nil {
 		t.Fatal(err)

@@ -7,22 +7,43 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
-func TestBudgetConvergenceTransitionsAtSeventyAndEightyFivePercent(t *testing.T) {
-	engine := newEngine(t, &scriptedProvider{}, nil)
-	engine.options.Budget = Budget{MaxTokens: 1000}
-	attachTestScope(t, engine)
-
-	message, finish := engine.budgetConvergence(700)
-	if finish || message.Text() == "" {
-		t.Fatalf("70%% stage = %q finish=%t", message.Text(), finish)
+func TestRemainingBusinessCallsUsesAdvertisedToolSurface(t *testing.T) {
+	terminal := []provider.ToolDefinition{{Name: "turn_complete"}}
+	withBusinessTool := append(
+		append([]provider.ToolDefinition(nil), terminal...),
+		provider.ToolDefinition{Name: "file_read"},
+	)
+	if got := tool.RemainingBusinessCalls(terminal, false); got != 1 {
+		t.Fatalf("terminal calls = %d, want 1", got)
 	}
-	message, finish = engine.budgetConvergence(750)
+	if got := tool.RemainingBusinessCalls(withBusinessTool, false); got != 2 {
+		t.Fatalf("business calls = %d, want 2", got)
+	}
+	if got := tool.RemainingBusinessCalls(withBusinessTool, true); got != 1 {
+		t.Fatalf("finish-only calls = %d, want 1", got)
+	}
+}
+
+func TestBudgetConvergenceTransitionsFromOutputReservation(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	attachTestScope(t, engine)
+	reserve := engine.maxOutputFor(engine.activeRoute())
+	limit := reserve * 10
+	engine.options.Budget = Budget{MaxTokens: limit}
+	convergeAt := limit - 3*reserve
+	finishAt := limit - 2*reserve
+
+	message, finish := engine.budgetConvergence(convergeAt)
+	if finish || message.Text() == "" {
+		t.Fatalf("converge stage = %q finish=%t", message.Text(), finish)
+	}
+	message, finish = engine.budgetConvergence(convergeAt + 1)
 	if finish || message.Text() != "" {
 		t.Fatalf("repeated stage = %q finish=%t", message.Text(), finish)
 	}
-	message, finish = engine.budgetConvergence(850)
+	message, finish = engine.budgetConvergence(finishAt)
 	if !finish || message.Text() == "" {
-		t.Fatalf("85%% stage = %q finish=%t", message.Text(), finish)
+		t.Fatalf("finish stage = %q finish=%t", message.Text(), finish)
 	}
 }
 

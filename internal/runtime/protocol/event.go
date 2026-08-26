@@ -113,6 +113,9 @@ type TurnStartedData struct {
 	Provider           string                    `json:"provider"`
 	Model              string                    `json:"model"`
 	QueueID            string                    `json:"queue_id,omitempty"`
+	PlanID             string                    `json:"plan_id,omitempty"`
+	PlanTransition     PlanTransition            `json:"plan_transition,omitempty"`
+	ProfileRevision    uint64                    `json:"profile_revision,omitempty"`
 	Orchestration      *OrchestrationCorrelation `json:"orchestration,omitempty"`
 	Intent             TurnIntent                `json:"intent,omitempty"`
 	Mode               string                    `json:"mode,omitempty"`
@@ -137,9 +140,21 @@ func (d *TurnStartedData) validate() error {
 	if d.Orchestration != nil {
 		orchestrationErr = d.Orchestration.Validate()
 	}
+	var planErr error
+	if d.PlanID != "" || d.PlanTransition != "" {
+		if !validProfileIdentifier(d.PlanID) {
+			planErr = errors.New("turn started plan id is invalid")
+		} else if d.PlanTransition != PlanTransitionImplement &&
+			d.PlanTransition != PlanTransitionAutopilot {
+			planErr = errors.New("turn started plan transition is invalid")
+		} else if d.ProfileRevision == 0 {
+			planErr = errors.New("turn started plan profile revision is required")
+		}
+	}
 	return errors.Join(
 		require(d.Provider != "" && d.Model != "", "turn started provider and model are required"),
 		orchestrationErr,
+		planErr,
 		require(NormalizeTurnIntent(d.Intent).Valid(), "turn started intent is invalid"),
 		require(slices.Contains([]string{"", "shared", "worktree"}, d.WorkspaceIsolation), "turn started workspace isolation is invalid"),
 		require(!slices.ContainsFunc(d.Images, func(value EditorContextReference) bool { return value.Kind != EditorContextImage }), "turn images must contain only image context"),
@@ -264,56 +279,84 @@ type ProviderProjectionData struct {
 // SampleContextData is low-cardinality token attribution for one provider call.
 // It contains counts and content-safe digests, never prompt or tool content.
 type SampleContextData struct {
-	Reason                  string                  `json:"reason"`
-	ReasoningEffort         string                  `json:"reasoning_effort,omitempty"`
-	ContextRevision         uint64                  `json:"context_revision,omitempty"`
-	ContextDigest           string                  `json:"context_digest,omitempty"`
-	WorldRevision           uint64                  `json:"world_revision,omitempty"`
-	WorldDigest             string                  `json:"world_digest,omitempty"`
-	WorldMode               string                  `json:"world_mode,omitempty"`
-	WorldChangedSections    int                     `json:"world_changed_sections,omitempty"`
-	WindowID                string                  `json:"window_id,omitempty"`
-	WindowNumber            uint64                  `json:"window_number,omitempty"`
-	WindowObserved          bool                    `json:"window_observed,omitempty"`
-	WindowProjectedTokens   uint64                  `json:"window_projected_tokens,omitempty"`
-	WindowFullActiveTokens  uint64                  `json:"window_full_active_tokens,omitempty"`
-	WindowPrefillTokens     uint64                  `json:"window_prefill_tokens,omitempty"`
-	WindowBodyTokens        uint64                  `json:"window_body_tokens,omitempty"`
-	WindowPendingTokens     uint64                  `json:"window_pending_tokens,omitempty"`
-	WindowOutputReserve     uint64                  `json:"window_output_reserve,omitempty"`
-	WindowHardInputTokens   uint64                  `json:"window_hard_input_tokens,omitempty"`
-	WindowOutputSource      string                  `json:"window_output_source,omitempty"`
-	PairingCalls            int                     `json:"pairing_calls,omitempty"`
-	PairingResults          int                     `json:"pairing_results,omitempty"`
-	PairingPairs            int                     `json:"pairing_pairs,omitempty"`
-	PairingDroppedOrphans   int                     `json:"pairing_dropped_orphans,omitempty"`
-	PairingVisibleOrphans   int                     `json:"pairing_visible_orphans,omitempty"`
-	ProjectedImages         int                     `json:"projected_images,omitempty"`
-	DroppedReasoning        int                     `json:"dropped_reasoning,omitempty"`
-	MaxItemTokens           uint64                  `json:"max_item_tokens,omitempty"`
-	AdmissionItems          int                     `json:"admission_items,omitempty"`
-	AdmissionSpilledItems   int                     `json:"admission_spilled_items,omitempty"`
-	AdmissionOriginalTokens uint64                  `json:"admission_original_tokens,omitempty"`
-	AdmissionRetainedTokens uint64                  `json:"admission_retained_tokens,omitempty"`
-	StableTokens            uint64                  `json:"stable_tokens,omitempty"`
-	HistoryUserTokens       uint64                  `json:"history_user_tokens,omitempty"`
-	HistoryAssistantTokens  uint64                  `json:"history_assistant_tokens,omitempty"`
-	HistoryToolTokens       uint64                  `json:"history_tool_tokens,omitempty"`
-	HistoryOtherTokens      uint64                  `json:"history_other_tokens,omitempty"`
-	DynamicTokens           uint64                  `json:"dynamic_tokens,omitempty"`
-	ContinuationTokens      uint64                  `json:"continuation_tokens,omitempty"`
-	TextTokens              uint64                  `json:"text_tokens,omitempty"`
-	ImageTokens             uint64                  `json:"image_tokens,omitempty"`
-	ToolDefinitionTokens    uint64                  `json:"tool_definition_tokens,omitempty"`
-	ProviderFramingTokens   uint64                  `json:"provider_framing_tokens,omitempty"`
-	EstimatedTokens         uint64                  `json:"estimated_tokens,omitempty"`
-	MessageCount            int                     `json:"message_count,omitempty"`
-	ToolDefinitionCount     int                     `json:"tool_definition_count,omitempty"`
-	RequestBytes            uint64                  `json:"request_bytes,omitempty"`
-	LogicalRequestDigest    string                  `json:"logical_request_digest,omitempty"`
-	TransportPayloadDigest  string                  `json:"transport_payload_digest,omitempty"`
-	IncrementalTransport    bool                    `json:"incremental_transport,omitempty"`
-	ProviderProjection      *ProviderProjectionData `json:"provider_projection,omitempty"`
+	Reason                    string                  `json:"reason"`
+	ReasoningEffort           string                  `json:"reasoning_effort,omitempty"`
+	ContextRevision           uint64                  `json:"context_revision,omitempty"`
+	ContextDigest             string                  `json:"context_digest,omitempty"`
+	WorldRevision             uint64                  `json:"world_revision,omitempty"`
+	WorldDigest               string                  `json:"world_digest,omitempty"`
+	WorldMode                 string                  `json:"world_mode,omitempty"`
+	WorldChangedSections      int                     `json:"world_changed_sections,omitempty"`
+	PrefixCompared            bool                    `json:"prefix_compared,omitempty"`
+	PrefixMonotonic           bool                    `json:"prefix_monotonic,omitempty"`
+	PrefixCommonItems         int                     `json:"prefix_common_items,omitempty"`
+	PrefixCommonTokens        uint64                  `json:"prefix_common_tokens,omitempty"`
+	PrefixFirstDivergence     int                     `json:"prefix_first_divergence,omitempty"`
+	PrefixDivergenceKind      string                  `json:"prefix_divergence_kind,omitempty"`
+	StablePrefixDigest        string                  `json:"stable_prefix_digest,omitempty"`
+	PreviousContextDigest     string                  `json:"previous_context_digest,omitempty"`
+	RouteDigest               string                  `json:"route_digest,omitempty"`
+	RequestPropertyDigest     string                  `json:"request_property_digest,omitempty"`
+	ToolDefinitionDigest      string                  `json:"tool_definition_digest,omitempty"`
+	WindowID                  string                  `json:"window_id,omitempty"`
+	WindowNumber              uint64                  `json:"window_number,omitempty"`
+	WindowObserved            bool                    `json:"window_observed,omitempty"`
+	WindowProjectedTokens     uint64                  `json:"window_projected_tokens,omitempty"`
+	WindowFullActiveTokens    uint64                  `json:"window_full_active_tokens,omitempty"`
+	WindowPrefillTokens       uint64                  `json:"window_prefill_tokens,omitempty"`
+	WindowBodyTokens          uint64                  `json:"window_body_tokens,omitempty"`
+	WindowPendingTokens       uint64                  `json:"window_pending_tokens,omitempty"`
+	WindowOutputReserve       uint64                  `json:"window_output_reserve,omitempty"`
+	WindowHardInputTokens     uint64                  `json:"window_hard_input_tokens,omitempty"`
+	WindowOutputSource        string                  `json:"window_output_source,omitempty"`
+	EconomicRequestedTokens   uint64                  `json:"economic_requested_tokens,omitempty"`
+	EconomicGrantedTokens     uint64                  `json:"economic_granted_tokens,omitempty"`
+	EconomicInputTokens       uint64                  `json:"economic_input_tokens,omitempty"`
+	EconomicHardInputTokens   uint64                  `json:"economic_hard_input_tokens,omitempty"`
+	EconomicOperatorTokens    uint64                  `json:"economic_operator_tokens,omitempty"`
+	EconomicReason            string                  `json:"economic_reason,omitempty"`
+	EconomicSource            string                  `json:"economic_source,omitempty"`
+	EconomicProvenance        string                  `json:"economic_provenance,omitempty"`
+	EconomicBudgeted          bool                    `json:"economic_budgeted,omitempty"`
+	EconomicBudgetMode        string                  `json:"economic_budget_mode,omitempty"`
+	EconomicBudgetScope       string                  `json:"economic_budget_scope,omitempty"`
+	EconomicBudgetUsed        uint64                  `json:"economic_budget_used,omitempty"`
+	EconomicBudgetLimit       uint64                  `json:"economic_budget_limit,omitempty"`
+	EconomicBudgetRemaining   uint64                  `json:"economic_budget_remaining,omitempty"`
+	FinalizationOutputReserve uint64                  `json:"finalization_output_reserve,omitempty"`
+	PairingCalls              int                     `json:"pairing_calls,omitempty"`
+	PairingResults            int                     `json:"pairing_results,omitempty"`
+	PairingPairs              int                     `json:"pairing_pairs,omitempty"`
+	PairingDroppedOrphans     int                     `json:"pairing_dropped_orphans,omitempty"`
+	PairingVisibleOrphans     int                     `json:"pairing_visible_orphans,omitempty"`
+	ProjectedImages           int                     `json:"projected_images,omitempty"`
+	HistoricalImagesReplaced  int                     `json:"historical_images_replaced,omitempty"`
+	DroppedReasoning          int                     `json:"dropped_reasoning,omitempty"`
+	MaxItemTokens             uint64                  `json:"max_item_tokens,omitempty"`
+	AdmissionItems            int                     `json:"admission_items,omitempty"`
+	AdmissionSpilledItems     int                     `json:"admission_spilled_items,omitempty"`
+	AdmissionOriginalTokens   uint64                  `json:"admission_original_tokens,omitempty"`
+	AdmissionRetainedTokens   uint64                  `json:"admission_retained_tokens,omitempty"`
+	StableTokens              uint64                  `json:"stable_tokens,omitempty"`
+	HistoryUserTokens         uint64                  `json:"history_user_tokens,omitempty"`
+	HistoryAssistantTokens    uint64                  `json:"history_assistant_tokens,omitempty"`
+	HistoryToolTokens         uint64                  `json:"history_tool_tokens,omitempty"`
+	HistoryOtherTokens        uint64                  `json:"history_other_tokens,omitempty"`
+	DynamicTokens             uint64                  `json:"dynamic_tokens,omitempty"`
+	ContinuationTokens        uint64                  `json:"continuation_tokens,omitempty"`
+	TextTokens                uint64                  `json:"text_tokens,omitempty"`
+	ImageTokens               uint64                  `json:"image_tokens,omitempty"`
+	ToolDefinitionTokens      uint64                  `json:"tool_definition_tokens,omitempty"`
+	ProviderFramingTokens     uint64                  `json:"provider_framing_tokens,omitempty"`
+	UncachedInputTokens       uint64                  `json:"uncached_input_tokens,omitempty"`
+	EstimatedTokens           uint64                  `json:"estimated_tokens,omitempty"`
+	MessageCount              int                     `json:"message_count,omitempty"`
+	ToolDefinitionCount       int                     `json:"tool_definition_count,omitempty"`
+	RequestBytes              uint64                  `json:"request_bytes,omitempty"`
+	LogicalRequestDigest      string                  `json:"logical_request_digest,omitempty"`
+	TransportPayloadDigest    string                  `json:"transport_payload_digest,omitempty"`
+	IncrementalTransport      bool                    `json:"incremental_transport,omitempty"`
+	ProviderProjection        *ProviderProjectionData `json:"provider_projection,omitempty"`
 }
 
 func (*UsageData) eventKind() EventKind { return EventUsage }

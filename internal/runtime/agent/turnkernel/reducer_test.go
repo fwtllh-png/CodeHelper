@@ -85,11 +85,25 @@ func TestStructuredInteractiveTurnRequiresDeclarationAndUsesItsSummary(
 	}
 }
 
+func TestZeroDeclarationRepairBudgetConvergesWithoutAnotherRepair(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state.Policy.StructuredTerminalRequired = true
+	state.Policy.DeclarationRepairLimit = 0
+	state = apply(t, state, ModelTextReceived{Text: "provisional"}).State
+	evaluated := apply(t, state, EvaluateTurnStep{ProgressKey: "sample=1"})
+	if evaluated.State.NextAction != StepActionFinalize ||
+		evaluated.State.Convergence == nil ||
+		evaluated.State.Convergence.RepairKind != RepairDeclaration ||
+		evaluated.State.Convergence.Limit != 0 {
+		t.Fatalf("zero declaration budget = %+v", evaluated.State)
+	}
+}
+
 func TestCompletionRequirementUsesMutationIntentAndOperationFacts(t *testing.T) {
 	answer := startSampling(t, protocol.TurnIntentAnswer)
 	answer.ClosedCalls["read"] = ToolResultState{ID: "read", Name: "file_read"}
-	if RequiresCompletion(answer) {
-		t.Fatal("read-only answer requires completion")
+	if !RequiresCompletion(answer) {
+		t.Fatal("tool-backed answer does not require completion")
 	}
 	answer.Policy.StructuredTerminalRequired = true
 	if !RequiresCompletion(answer) {
@@ -508,7 +522,7 @@ func TestMutationInvalidatesCompletionAndVerification(t *testing.T) {
 	}
 }
 
-func TestToolAssistedReadOnlyTurnCompletesWithoutDeclaration(t *testing.T) {
+func TestToolAssistedReadOnlyTurnRequiresDeclaration(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
 	state = apply(t, state, ToolCallsProposed{
 		Calls: []ToolCallState{{ID: "read-1", Name: "file_read"}},
@@ -517,9 +531,9 @@ func TestToolAssistedReadOnlyTurnCompletesWithoutDeclaration(t *testing.T) {
 	state.ProvisionalOutput = []string{"The review is complete."}
 
 	transition := apply(t, state, EvaluateTurnStep{ProgressKey: "read-only"})
-	if transition.State.NextAction != StepActionComplete {
+	if transition.State.NextAction != StepActionRepairDeclaration {
 		t.Fatalf("next action = %q, want %q",
-			transition.State.NextAction, StepActionComplete)
+			transition.State.NextAction, StepActionRepairDeclaration)
 	}
 }
 

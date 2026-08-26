@@ -170,9 +170,11 @@ func ApplySessionProfilePatch(
 	applyCached(&next.Model, patch.Model, "model")
 	applyCached(&next.ReasoningEffort, patch.ReasoningEffort, "reasoning_effort")
 	if patch.EnabledToolIDs != nil {
-		tools := append([]string(nil), (*patch.EnabledToolIDs)...)
-		slices.Sort(tools)
-		setCacheReason(!slices.Equal(next.EnabledToolIDs, tools), "enabled_tool_ids")
+		tools := sortedToolIDs(*patch.EnabledToolIDs)
+		setCacheReason(
+			!slices.Equal(sortedToolIDs(next.EnabledToolIDs), tools),
+			"enabled_tool_ids",
+		)
 		next.EnabledToolIDs = tools
 	}
 	if patch.ApprovalPosture != nil {
@@ -262,6 +264,19 @@ func validProfileIdentifier(value string) bool {
 		!strings.ContainsAny(value, "\x00\r\n")
 }
 
+// sortedToolIDs returns a sorted copy of tool ids so enabled_tool_ids is
+// compared as a set: reordering the same tools never changes profile equality
+// or the PromptCacheRevision, because tool-set order is not part of the
+// projected prompt prefix (tool definitions are canonically sorted upstream).
+func sortedToolIDs(ids []string) []string {
+	if ids == nil {
+		return nil
+	}
+	result := append([]string(nil), ids...)
+	slices.Sort(result)
+	return result
+}
+
 func equalSessionProfile(left, right SessionProfile) bool {
 	return left.Version == right.Version &&
 		left.Revision == right.Revision &&
@@ -270,7 +285,10 @@ func equalSessionProfile(left, right SessionProfile) bool {
 		left.Provider == right.Provider &&
 		left.Model == right.Model &&
 		left.ReasoningEffort == right.ReasoningEffort &&
-		slices.Equal(left.EnabledToolIDs, right.EnabledToolIDs) &&
+		slices.Equal(
+			sortedToolIDs(left.EnabledToolIDs),
+			sortedToolIDs(right.EnabledToolIDs),
+		) &&
 		left.ApprovalPosture == right.ApprovalPosture &&
 		left.ExecutionTarget == right.ExecutionTarget &&
 		left.MaxSteps == right.MaxSteps &&

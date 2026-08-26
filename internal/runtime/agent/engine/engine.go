@@ -15,6 +15,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -79,6 +80,8 @@ type Engine struct {
 	planReceipt *promptcontext.Receipt
 
 	context         agentcontext.Authority
+	prefixMu        sync.Mutex
+	prefixManifest  contextview.PrefixManifest
 	promptCacheBase string
 	profileReadOnly bool
 	enabledTools    map[string]struct{}

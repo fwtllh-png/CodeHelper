@@ -86,6 +86,7 @@
         "internal/observability/verify",
         "internal/persist/workspacejournal",
         "internal/runtime/agent/context",
+        "internal/runtime/agent/contextview",
         "internal/runtime/agent/prompt",
         "internal/runtime/agent/repository",
         "internal/runtime/agent/turnkernel",

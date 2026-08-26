@@ -225,6 +225,9 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
 1. Host 校验用户输入并提交 Operation。
 2. Application 解析 Session、Thread、Workspace 和 Policy。
 3. Prompt Context 组装 Repo Map、Pin 文件、Working Set、Evidence、Policy 与压缩历史。
+   `internal/runtime/agent/contextview` 将权威状态编译成 Provider 可见的有界视图，并集中
+   实现 Economic Admission、Stateless 投影和内容安全 Prefix Manifest；它不拥有
+   Durable History，也不执行 Provider 或 Tool。
 4. Coordinator 请求 Provider Sample Effect；`DurableEffectDispatcher` 在 Engine
    调用 Provider 前持久化 `EffectStarted`。
 5. 模型 Text、Usage 与 Tool Proposal 通过 `ModelSampleResultReceived` 一次返回。
@@ -234,18 +237,26 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
 8. Tool、Approval、Input Result 以一个可保留重试的 Result Command 返回；Coordinator
    在 Host Projection 前持久化逻辑闭合。
 9. 修改型工具通过 Journal/事务 Adapter 写入。
-10. 交互式主 Turn 必须选择结构化状态：`request_user_input` 创建可持久化的 Input
-    Wait，Tool Call 继续同一个 Turn，被接受的 `turn_complete` 才结束 Turn。
-    Provider `message_stop` 只结束一次 Sample；普通模型正文保持 Provisional，不能完成
-    Turn。对于 `status=complete`，声明中的 `summary` 是精确的用户可见 Final Output，
+10. 交互式主 Turn 必须选择合法 Runtime 状态：`request_user_input` 创建可持久化的 Input
+    Wait，Tool Call 继续同一个 Turn。未执行工具、没有 Mutation、Pending Tool 或 Workspace Change 的
+    只读 Answer/Plan，可以由带非空正文的 Provider `end_turn` 完成，避免纯文本直答仅为形式化声明再次
+    采样；执行过工具的 Turn 必须显式 `turn_complete`，防止中间叙述被误判为答案。其他 Turn
+    仍只有被接受的 `turn_complete` 才能结束，Provider `message_stop` 只结束一次 Sample，
+    普通模型正文保持 Provisional。对于 `status=complete`，声明中的 `summary` 是精确的用户可见 Final Output，
     Runtime 无需额外 Model Sample 即可发布。Convergence Finalization 也可以使用
     `output_mode=preserve_provisional` 保留已捕获正文并追加简短收尾。Runtime 不根据
-    正文措辞推断必需输入或完成状态。Child Executor 没有 Input Host，不能等待用户
+    正文措辞推断必需输入。Child Executor 没有 Input Host，不能等待用户
     输入，但仍必须通过 Tool Call 继续或通过 `turn_complete` 完成。
 11. `EvaluateTurnStep` 由 Reducer 选择 Repair、Verification、Finalize、Block 或
     Complete。Repair、连续 No-progress 与显式普通 Work Step Limit 只会请求类型化
     Kernel Convergence，不会由 Engine 或 Provider 局部循环直接决定终态错误。
     Provider 输出不完整时没有默认续写次数上限，只要 Context 与显式 Budget 允许就继续。
+    对非零 `MaxSteps`，Runtime 在进入最后四分之一步骤预算时注入一次结构化执行证据，
+    包含已完成 Sample、连续无进展 Sample、工具成功/失败、已改路径、验证状态和已抑制调用；
+    已读路径、Plan 进度、验证风险和重复调用提醒继续由同一请求的 Working Set 与 Evidence 提供。
+    该提醒完全由调用方显式步骤预算按比例推导，不使用模型档位或绝对经验阈值。
+    Tool Result 明确声明 `retry_original=false` 时，同一 Turn、同一 Workspace Revision
+    下的完全相同调用会直接回放该失败事实；Workspace 发生变更后缓存失效，允许根据新状态重试。
     Kernel 允许一次只保留 Terminal/Input 能力的 Finalization Sample。Complete 进入
     正常 Commit；Incomplete 记录用于恢复的摘要与 Pending Actions。
 12. 跨层故障统一使用协议 `Fault` 契约：Error Code、Origin、Disposition、

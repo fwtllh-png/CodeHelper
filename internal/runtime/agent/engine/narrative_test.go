@@ -155,6 +155,8 @@ func TestInlineNarrativeCommitsRebaseBeforeApplyingHistory(t *testing.T) {
 			events = append(events, event)
 			return nil
 		},
+		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -233,6 +235,8 @@ func TestInlineNarrativeFailureCommitsDeterministicRebase(t *testing.T) {
 			events = append(events, event)
 			return nil
 		},
+		0,
+		nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -308,6 +312,8 @@ func TestNarrativeOffCommitsDeterministicRebase(t *testing.T) {
 		CompactionPhaseMidTurn,
 		true,
 		func(State, Event) error { return nil },
+		0,
+		nil,
 	); err != nil {
 		t.Fatal(err)
 	}

@@ -26,67 +26,6 @@ type blockPosition struct {
 	order int
 }
 
-// ProjectStatelessHistory removes replay-only redundancy for providers that
-// receive the complete logical history on every request. Durable history is
-// not modified.
-func ProjectStatelessHistory(
-	messages []provider.Message,
-) []provider.Message {
-	lastWorld := make(map[string]int)
-	results := make(map[string]struct{})
-	for index, message := range messages {
-		if marker, _, ok := parseWorldMessage(message); ok {
-			lastWorld[marker.ID] = index
-		}
-		for _, block := range message.Blocks {
-			if block.ToolResult != nil {
-				results[block.ToolResult.CallID] = struct{}{}
-			}
-		}
-	}
-	projected := make([]provider.Message, 0, len(messages))
-	for index, source := range messages {
-		if marker, _, ok := parseWorldMessage(source); ok &&
-			lastWorld[marker.ID] != index {
-			continue
-		}
-		message := CloneMessage(source)
-		if message.Role == provider.RoleAssistant &&
-			(message.Provenance == nil || message.Provenance.Replay == nil) {
-			closedToolCall := false
-			for _, block := range message.Blocks {
-				if block.ToolCall == nil {
-					continue
-				}
-				if _, closed := results[block.ToolCall.ID]; closed {
-					closedToolCall = true
-					break
-				}
-			}
-			if closedToolCall {
-				message.Blocks = removeConsumedAssistantBlocks(message.Blocks)
-			}
-		}
-		if len(message.Blocks) != 0 {
-			projected = append(projected, message)
-		}
-	}
-	return projected
-}
-
-func removeConsumedAssistantBlocks(
-	blocks []provider.ContentBlock,
-) []provider.ContentBlock {
-	result := make([]provider.ContentBlock, 0, len(blocks))
-	for _, block := range blocks {
-		if block.Type != provider.ContentReasoning &&
-			block.Type != provider.ContentText {
-			result = append(result, block)
-		}
-	}
-	return result
-}
-
 func NormalizePairs(
 	messages []provider.Message,
 ) ([]provider.Message, NormalizationReceipt, error) {

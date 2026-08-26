@@ -16,6 +16,18 @@ type SurfacePruning struct {
 	Bytes   int
 }
 
+type HistoryProjector func([]provider.Message) []provider.Message
+
+func ProjectHistory(
+	history []provider.Message,
+	project HistoryProjector,
+) []provider.Message {
+	if project != nil {
+		return project(history)
+	}
+	return history
+}
+
 type CompactionSelectionRequest struct {
 	History             []provider.Message
 	Force               bool
@@ -28,8 +40,11 @@ type CompactionSelectionRequest struct {
 	EmergencyLimit      uint64
 	AuthorityDigest     string
 	EstimateMessages    func([]provider.Message) uint64
-	Measure             func(MessageSnapshot, uint64) (WindowMeasurement, error)
-	Prune               func(
+	// ProjectHistory builds the exact Provider-visible history for measurement.
+	// Durable History remains the authority used to build compaction candidates.
+	ProjectHistory HistoryProjector
+	Measure        func(MessageSnapshot, uint64) (WindowMeasurement, error)
+	Prune          func(
 		*[]provider.Message,
 		MessageSnapshot,
 		uint64,
@@ -56,7 +71,12 @@ func SelectCompaction(
 		OriginalMessages: len(request.History),
 		OriginalBytes:    HistoryBytes(request.History),
 	}
-	input := request.Input.WithHistory(request.History)
+	project := func(history []provider.Message) MessageSnapshot {
+		return request.Input.WithHistory(
+			ProjectHistory(history, request.ProjectHistory),
+		)
+	}
+	input := project(request.History)
 	original, err := request.Measure(input, request.OutputReserve)
 	if err != nil {
 		return CompactionSelection{}, err
@@ -110,14 +130,14 @@ func SelectCompaction(
 			continue
 		}
 		window, measureErr := request.Measure(
-			request.Input.WithHistory(candidate.History),
+			project(candidate.History),
 			request.OutputReserve,
 		)
 		if measureErr == nil && window.Active > original.CompactLimit {
 			minimal, minimalErr := request.Build(working, cut, false)
 			if minimalErr == nil {
 				minimalWindow, minimalMeasureErr := request.Measure(
-					request.Input.WithHistory(minimal.History),
+					project(minimal.History),
 					request.OutputReserve,
 				)
 				if minimalMeasureErr == nil &&

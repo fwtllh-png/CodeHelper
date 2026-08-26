@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -226,6 +227,9 @@ type Result struct {
 	OriginalBytes int                              `json:"original_bytes,omitempty"`
 	Handle        string                           `json:"handle,omitempty"`
 	Admission     *adaptercontent.AdmissionReceipt `json:"admission,omitempty"`
+	// Attachments are projected as bounded Provider image input after the tool
+	// result. They are not serialized into the textual tool-result payload.
+	Attachments []provider.Attachment `json:"-"`
 }
 
 const MetadataCompletionDeclaration = "completion_declaration"
@@ -339,6 +343,7 @@ type Registry struct {
 	maxSchemaBytes  int
 	claims          *Claims
 	results         *ResultStore
+	images          *ImageStore
 	backend         sandbox.Backend
 }
 
@@ -363,6 +368,7 @@ func NewRegistry(claims *Claims, results *ResultStore) *Registry {
 		maxMaterialized: DefaultMaxMaterialized,
 		maxSchemaBytes:  DefaultMaxMaterializedSchemaBytes,
 		claims:          claims, results: results,
+		images: newImageStore(results.store),
 	}
 	retrieval := &resultRetrieval{store: results}
 	descriptor := retrieval.Descriptor()
@@ -989,7 +995,8 @@ func (s *ResultStore) AdmitWithin(
 	result Result,
 	maxTokens uint64,
 ) (Result, adaptercontent.AdmissionReceipt) {
-	if s.validAdmission(result) {
+	if s.validAdmission(result) &&
+		(maxTokens == 0 || result.Admission.TokenLimit <= maxTokens) {
 		result.Admission = adaptercontent.CloneAdmissionReceipt(result.Admission)
 		return result, *result.Admission
 	}

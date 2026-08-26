@@ -988,6 +988,46 @@ func TestRunToolsReturnsReadFailureToModelAndClosesEveryStartedCall(t *testing.T
 	}
 }
 
+func TestRunToolsEnforcesRecordedEconomicSurfaceBudget(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(largeResultTool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	scope := engine.executionScope()
+	scope.mu.Lock()
+	scope.state.toolSurfaceMaxBytes = 40
+	scope.state.toolSurfaceItemBytes = 40
+	scope.mu.Unlock()
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	results, err := engine.runToolsWithCache(
+		t.Context(),
+		"turn-budget",
+		[]provider.ToolCall{{
+			ID: "call-large", Name: "large_result", Arguments: `{}`,
+		}},
+		make(map[string]tool.Result),
+		&toolResultCache{},
+		kernel,
+		func(State, Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Admission == nil ||
+		results[0].Admission.TokenLimit != 10 ||
+		!results[0].Admission.Truncated {
+		t.Fatalf("economic result admission = %+v", results)
+	}
+}
+
 func TestFinishOnlyClosesExplorationCallWithoutExecutingIt(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &echoTool{}
@@ -2422,7 +2462,7 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 	_, err := engine.runCompactGate(t.Context(), &history, snapshot, 128, CompactionPhaseMidTurn, true, func(_ State, event Event) error {
 		receipt = event.Compaction
 		return nil
-	})
+	}, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2461,7 +2501,7 @@ func TestMidTurnCompactionFailsClosedWhenNoSafeCandidateFits(t *testing.T) {
 	window, err := engine.runCompactGate(t.Context(), &history, snapshot, 128, CompactionPhaseMidTurn, true, func(State, Event) error {
 		t.Fatal("failed compaction emitted an event")
 		return nil
-	})
+	}, 0, nil)
 	if err != nil || window.total <= window.hardLimit {
 		t.Fatalf("window=%+v error=%v", window, err)
 	}
@@ -2536,10 +2576,14 @@ func TestStepBudgetWarningProvidesGracefulCompletionWindow(t *testing.T) {
 		step     int
 		want     int
 	}{
-		{maxSteps: 32, step: 24, want: 0},
+		{maxSteps: 0, step: 0, want: 0},
+		{maxSteps: 1, step: 0, want: 1},
+		{maxSteps: 4, step: 3, want: 1},
+		{maxSteps: 32, step: 24, want: 8},
+		{maxSteps: 45, step: 34, want: 11},
 		{maxSteps: 64, step: 48, want: 16},
 		{maxSteps: 128, step: 96, want: 32},
-		{maxSteps: 256, step: 224, want: 32},
+		{maxSteps: 256, step: 192, want: 64},
 		{maxSteps: 256, step: 225, want: 0},
 	}
 	for _, test := range tests {
@@ -2550,9 +2594,25 @@ func TestStepBudgetWarningProvidesGracefulCompletionWindow(t *testing.T) {
 			)
 		}
 	}
-	feedback := stepBudgetFeedback(7, 32)
+	state := turnkernel.NewState(protocol.TurnIntentWorkspaceChange, "act", 1)
+	state.Progress.NoProgressSamples = 3
+	state.SampleLedger["sample"] = turnkernel.ModelSampleState{
+		ID: "sample", Status: turnkernel.SampleCompleted,
+	}
+	state.ClosedCalls["read"] = turnkernel.ToolResultState{
+		ID: "read", Name: "file_read",
+	}
+	state.ClosedCalls["failed"] = turnkernel.ToolResultState{
+		ID: "failed", Name: "exec_command", IsError: true,
+	}
+	state.Changes = []turnkernel.ObservedChange{{Path: "a.go"}}
+	feedback := stepBudgetFeedback(7, 34, 45, state, 1)
 	if feedback.Turn != 7 ||
-		!strings.Contains(feedback.Text(), "remaining_steps=32") ||
+		!strings.Contains(feedback.Text(), "remaining_steps=11") ||
+		!strings.Contains(feedback.Text(), `"samples_without_progress":3`) ||
+		!strings.Contains(feedback.Text(), `"successful_tool_calls":1`) ||
+		!strings.Contains(feedback.Text(), `"failed_tool_calls":1`) ||
+		!strings.Contains(feedback.Text(), `"suppressed_failed_calls":1`) ||
 		!strings.Contains(feedback.Text(), "status=incomplete") {
 		t.Fatalf("feedback = %+v", feedback)
 	}
@@ -3400,6 +3460,27 @@ func (*steerStream) Close() error { return nil }
 
 type echoTool struct {
 	calls atomic.Int32
+}
+
+type largeResultTool struct{}
+
+func (largeResultTool) Descriptor() tool.Descriptor {
+	return tool.Descriptor{
+		Name: "large_result", Description: "large result fixture",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelSerial,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type":                 "object",
+			"properties":           map[string]any{},
+			"additionalProperties": false,
+		},
+	}
+}
+
+func (largeResultTool) Execute(context.Context, json.RawMessage) (tool.Result, error) {
+	return tool.Result{Content: strings.Repeat("large result ", 100)}, nil
 }
 
 type processSessionTool struct{}

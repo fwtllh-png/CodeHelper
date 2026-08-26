@@ -1,9 +1,11 @@
 package engine
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -81,6 +83,88 @@ func TestBlindModelReceivesTextProjectionInsteadOfImage(t *testing.T) {
 		}
 	}
 	t.Fatalf("request has no image placeholder: %+v", runtime.requests[0])
+}
+
+func TestStatelessVisionModelKeepsHistoricalImageUntilExplicitCompaction(t *testing.T) {
+	registry := declarationRegistry(t, false)
+	if err := tool.RegisterImageReopen(registry); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{textStream("first")}}
+	engine := newEngine(t, runtime, registry)
+	route := engine.options.Route
+	caps := route.Model().Capabilities
+	caps.ImageInput, caps.Vision = true, true
+	route = route.WithCapabilities(caps)
+	engine.options.Route = route
+	engine.options.Routes, _ = model.NewRouteSet(route, nil, false)
+	engine.options.Context.RecentTailTurns = 1
+	image := provider.Attachment{
+		Name: "screen.png", MediaType: "image/png", Data: []byte("png"),
+	}
+	if _, err := engine.RunForTurnWithAttachments(
+		t.Context(), "image-turn", "inspect this", []provider.Attachment{image}, nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var handle string
+	for _, message := range engine.History() {
+		for _, block := range message.Blocks {
+			if block.Attachment != nil {
+				handle = block.Attachment.Handle
+			}
+		}
+	}
+	if handle == "" {
+		t.Fatal("image was not bound to a reopen handle")
+	}
+	runtime.streams = append(runtime.streams,
+		textStream("second"),
+		toolCallStream("reopen-image", tool.ImageReopenToolName,
+			fmt.Sprintf(`{"handle":%q}`, handle)),
+		toolCallStream("complete", "turn_complete", `{
+			"status":"complete",
+			"summary":"done with the original image",
+			"pending_actions":[]
+		}`),
+	)
+	if _, err := engine.RunForTurnWithAttachments(
+		t.Context(), "second-turn", "continue", nil, nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.RunForTurnWithAttachments(
+		t.Context(), "third-turn", "reinspect", nil, nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	request := runtime.requests[len(runtime.requests)-1]
+	var reopened bool
+	for _, message := range request.Messages {
+		for _, block := range message.Blocks {
+			if block.Type == provider.ContentImage && block.Attachment != nil &&
+				string(block.Attachment.Data) == "png" {
+				reopened = true
+			}
+		}
+	}
+	if !reopened {
+		t.Fatalf("reopened image missing from provider request: %+v", request.Messages)
+	}
+	agedRequest := runtime.requests[len(runtime.requests)-2]
+	var retained bool
+	for _, message := range agedRequest.Messages {
+		for _, block := range message.Blocks {
+			if block.Type == provider.ContentImage && block.Attachment != nil &&
+				block.Attachment.Handle == handle &&
+				string(block.Attachment.Data) == "png" {
+				retained = true
+			}
+		}
+	}
+	if !retained {
+		t.Fatalf("historical image was rewritten before compaction: %+v", agedRequest.Messages)
+	}
 }
 
 func TestProviderProjectionDropsOrphanedToolBlocks(t *testing.T) {

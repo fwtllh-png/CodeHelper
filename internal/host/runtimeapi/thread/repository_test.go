@@ -106,6 +106,74 @@ func TestLifecycleAcceptsWorkGraphOperationWithoutTurnRow(t *testing.T) {
 	}
 }
 
+func TestRejectedStartTurnReleasesThreadForRetry(t *testing.T) {
+	store, err := state.Open(t.Context(), state.Options{DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close(t.Context()) })
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, statement := range []string{
+		`INSERT INTO workspaces(id, root_path, created_at, updated_at)
+		 VALUES ('workspace', '/workspace', ?, ?)`,
+		`INSERT INTO sessions(id, workspace_id, status, created_at, updated_at)
+		 VALUES ('session', 'workspace', 'open', ?, ?)`,
+		`INSERT INTO threads(id, session_id, title, status, created_at, updated_at)
+		 VALUES ('thread', 'session', 'chat', 'open', ?, ?)`,
+	} {
+		if _, err := store.SQLite().DB().ExecContext(
+			t.Context(), statement, now, now,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lifecycle := NewLifecycle(store)
+	start := func(operationID, turnID, itemID string) protocol.Operation {
+		operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+			ThreadID: "thread", TurnID: protocol.TurnID(turnID),
+			ItemID: protocol.ItemID(itemID), Prompt: "implement",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		operation.ID = protocol.OperationID(operationID)
+		canonical, err := app.CanonicalOperationPayload(operation)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := lifecycle.Accept(
+			t.Context(), operation, operationID, canonical,
+		); err != nil {
+			t.Fatal(err)
+		}
+		return operation
+	}
+	rejected := start("operation-1", "turn-1", "item-1")
+	event, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: rejected.ID,
+		ThreadID: "thread", TurnID: "turn-1", ItemID: "item-1",
+	}, &protocol.OperationRejectedData{
+		Code: protocol.CodeConflict, Message: "rejected",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lifecycle.Project(t.Context(), event); err != nil {
+		t.Fatal(err)
+	}
+	var status TurnStatus
+	if err := store.SQLite().DB().QueryRowContext(
+		t.Context(),
+		`SELECT status FROM turns WHERE id = 'turn-1'`,
+	).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != TurnFailed {
+		t.Fatalf("rejected turn status = %s, want %s", status, TurnFailed)
+	}
+	start("operation-2", "turn-2", "item-2")
+}
+
 func TestCreateSeedReusesWorkspaceRoot(t *testing.T) {
 	store, err := sqlitestate.Open(t.Context(), filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {

@@ -54,8 +54,7 @@ export interface TrajectorySpan {
 export interface TrajectoryProjection {
   readonly records: readonly TrajectoryRecord[];
   readonly spans: readonly TrajectorySpan[];
-  readonly turnIDs: readonly string[];
-  readonly timingAvailable: boolean;
+  readonly prefixTokens?: number;
 }
 
 export function projectTrajectory(
@@ -67,8 +66,7 @@ export function projectTrajectory(
   const assistantByTurn = new Map<string, string>();
   const reasoningByTurn = new Map<string, string>();
   const toolByCall = new Map<string, string>();
-  const turnIDs: string[] = [];
-  const turns = new Set<string>();
+  const prefixes = new Map<string, number>();
 
   const put = (record: TrajectoryRecord) => {
     const index = recordIndex.get(record.id);
@@ -77,10 +75,6 @@ export function projectTrajectory(
       records.push(Object.freeze(record));
     } else {
       records[index] = Object.freeze(record);
-    }
-    if (record.turnID && !turns.has(record.turnID)) {
-      turns.add(record.turnID);
-      turnIDs.push(record.turnID);
     }
   };
 
@@ -256,11 +250,19 @@ export function projectTrajectory(
           {output: data, failed: event.kind.endsWith(".failed")}
         ));
         break;
-      case "usage":
+      case "usage": {
+        const context = isRecord(data.context) ? data.context : undefined;
+        if (Boolean(context?.prefix_compared)) {
+          prefixes.set(
+            `${event.turn_id}:${String(data.sample ?? event.sequence)}`,
+            finiteNumber(context?.prefix_common_tokens) ?? 0
+          );
+        }
         put(record(event, "receipt", "USAGE", usageSummary(data), {
           usage: data
         }));
         break;
+      }
       case "turn.completed": {
         const output = text(data.text ?? data.summary);
         if (output) {
@@ -361,11 +363,13 @@ export function projectTrajectory(
   }).sort((left, right) =>
     left.startedAt - right.startedAt || left.id.localeCompare(right.id)
   );
+  const prefixValues = [...prefixes.values()];
   return Object.freeze({
     records: Object.freeze(records),
     spans: Object.freeze(spans),
-    turnIDs: Object.freeze(turnIDs),
-    timingAvailable: Boolean(trace?.turns.some((turn) => turn.spans.length > 0))
+    prefixTokens: prefixValues.length > 0
+      ? prefixValues.reduce((sum, value) => sum + value, 0) / prefixValues.length
+      : undefined
   });
 }
 
@@ -605,8 +609,7 @@ function receiptSummary(data: Record<string, unknown>): string {
 
 function usageSummary(data: Record<string, unknown>): string {
   const total = Number(data.input_tokens ?? 0) +
-    Number(data.output_tokens ?? 0) +
-    Number(data.reasoning_tokens ?? 0);
+    Number(data.output_tokens ?? 0);
   return `${text(data.provider) || "Model"} · ${total} tokens`;
 }
 

@@ -41,7 +41,7 @@ func TestWorldStatePersistsAcrossTurnsAndEmitsOnlyChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	third := runtime.requests[2].Messages
-	if countWorldSection(third, "working_set_ledger") != 1 ||
+	if countWorldSection(third, "working_set_ledger") != 2 ||
 		countWorldMode(third, "patch") != 1 ||
 		engine.context.World().Revision != 2 {
 		t.Fatalf("patched request=%+v baseline=%+v", third, engine.context.World())
@@ -158,7 +158,7 @@ func TestPolicyAndSkillsChangesProduceTypedPatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := runtime.requests[1].Messages
-	if countWorldSection(second, "policy") != 1 ||
+	if countWorldSection(second, "policy") != 2 ||
 		countWorldSection(second, "skills") != 1 ||
 		countWorldMode(second, "patch") != 1 {
 		t.Fatalf("policy patch request=%+v", second)
@@ -172,7 +172,7 @@ func TestPolicyAndSkillsChangesProduceTypedPatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	third := runtime.requests[2].Messages
-	if countWorldSection(third, "skills") != 1 ||
+	if countWorldSection(third, "skills") != 2 ||
 		countWorldMode(third, "patch") != 2 {
 		t.Fatalf("skills patch request=%+v", third)
 	}
@@ -200,7 +200,7 @@ func TestToolCatalogChangeProducesTypedPatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := runtime.requests[1].Messages
-	if countWorldSection(request, "tool_catalog") != 1 ||
+	if countWorldSection(request, "tool_catalog") != 2 ||
 		countWorldMode(request, "patch") != 1 {
 		t.Fatalf("catalog patch request=%+v", request)
 	}

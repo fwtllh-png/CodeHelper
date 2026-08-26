@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	contextview "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -98,6 +99,12 @@ func (e *Engine) modelStep(
 		return nil, nil, provider.Usage{}, 0, err
 	}
 	catalog := e.scopeCatalog(scope)
+	_, imageReopenAvailable := catalog.Lookup(tool.ImageReopenToolName)
+	if imageReopenAvailable {
+		if err := e.options.Tools.BindImageHandles(ctx, *history); err != nil {
+			return nil, nil, provider.Usage{}, 0, err
+		}
+	}
 	if changed := e.catalogChange(catalog); changed != nil {
 		if err := send(CallingModel, Event{CatalogChanged: changed}); err != nil {
 			return nil, nil, provider.Usage{}, 0, err
@@ -159,14 +166,14 @@ func (e *Engine) modelStep(
 		var turnContext []provider.Message
 		turnReceipts := append([]promptcontext.Receipt(nil), worldReceipts...)
 		e.recordTurnContextReceipts(turnReceipts)
+		route := e.activeRoute()
+		maxOutputTokens := e.maxOutputFor(route)
 		budgetMessage, budgetFinishOnly := e.budgetConvergence(
 			turnUsage.Total() + totalUsage.Total(),
 		)
 		if len(budgetMessage.Blocks) != 0 {
 			turnContext = append(turnContext, budgetMessage)
 		}
-		route := e.activeRoute()
-		maxOutputTokens := e.maxOutputFor(route)
 		requestTools := definitions
 		reasoningEffort := baseReasoningEffort
 		nativeSearch := e.options.NativeSearch
@@ -174,18 +181,20 @@ func (e *Engine) modelStep(
 			reasoningEffort = "low"
 			nativeSearch = false
 		}
+		remainingCalls := tool.RemainingBusinessCalls(
+			requestTools,
+			finishOnly || convergenceOnly || budgetFinishOnly,
+		)
 		sampleReason := promptcontext.SampleReason(
 			reason, attempt, continuations > 0,
 		)
+		statelessProjector := contextview.NewStatelessProjector(
+			route.Model().Capabilities.IncrementalResponses,
+		)
+		projectHistory := statelessProjector.Project
 		project := func() agentcontext.MessageSnapshot {
-			projectedHistory := *history
-			if !route.Model().Capabilities.IncrementalResponses {
-				projectedHistory = agentcontext.ProjectStatelessHistory(
-					projectedHistory,
-				)
-			}
 			return contextLedger.Project(agentcontext.LedgerProjection{
-				Stable: stableContext, History: projectedHistory, Dynamic: turnContext,
+				Stable: stableContext, History: projectHistory(*history), Dynamic: turnContext,
 				Continuation: continuationMessages, Definitions: requestTools,
 			})
 		}
@@ -195,9 +204,21 @@ func (e *Engine) modelStep(
 			phase = CompactionPhasePreSampling
 		}
 		gateSend := deduplicateCompactionReceipts(send)
+		admission := e.economicAdmission(
+			turnUsage, totalUsage, maxOutputTokens, maxOutputTokens,
+			remainingCalls,
+		)
+		economicFinishOnly := false
+		if admission.Budgeted && admission.AllowedInput == 0 {
+			admission = e.economicAdmission(
+				turnUsage, totalUsage, 0, 0, 1,
+			)
+			economicFinishOnly = true
+		}
 		window, err := e.runCompactGate(
 			ctx,
 			history, snapshot, maxOutputTokens, phase, true, gateSend,
+			admission.AllowedInput, projectHistory,
 		)
 		if err != nil {
 			return nil, nil, totalUsage, window.estimated, err
@@ -212,12 +233,38 @@ func (e *Engine) modelStep(
 			window, err = e.runCompactGate(
 				ctx,
 				history, snapshot, maxOutputTokens, phase, true, gateSend,
+				admission.AllowedInput, projectHistory,
 			)
 			if err != nil {
 				return nil, nil, totalUsage, window.estimated, err
 			}
 		}
+		if admission.Budgeted && window.active > admission.AllowedInput &&
+			!economicFinishOnly {
+			finalAdmission := e.economicAdmission(
+				turnUsage, totalUsage, 0, 0, 1,
+			)
+			if finalAdmission.AllowedInput > admission.AllowedInput {
+				admission = finalAdmission
+				economicFinishOnly = true
+				snapshot = project()
+				window, err = e.runCompactGate(
+					ctx,
+					history, snapshot, maxOutputTokens,
+					phase, true, gateSend,
+					admission.AllowedInput, projectHistory,
+				)
+				if err != nil {
+					return nil, nil, totalUsage, window.estimated, err
+				}
+			}
+		}
+		if admission.Budgeted && window.active > admission.AllowedInput {
+			return nil, nil, totalUsage, window.estimated,
+				contextview.EconomicBudgetError(admission, window.active)
+		}
 		finishOnly = finishOnly || convergenceOnly || budgetFinishOnly ||
+			economicFinishOnly ||
 			window.hardLimit > 0 &&
 				window.active >= e.emergencyCompactLimit()
 		if finishOnly {
@@ -251,6 +298,7 @@ func (e *Engine) modelStep(
 		attribution.WorldDigest = worldProjection.Baseline.Digest
 		attribution.WorldMode = string(worldProjection.Mode)
 		attribution.WorldChangedSections = len(worldProjection.Changed)
+		contextview.ApplyEconomicAttribution(&attribution, admission)
 		attribution.PairingCalls = normalization.ToolCalls
 		attribution.PairingResults = normalization.ToolResults
 		attribution.PairingPairs = normalization.PairedCalls
@@ -258,8 +306,11 @@ func (e *Engine) modelStep(
 		attribution.PairingVisibleOrphans = normalization.ModelVisibleOrphans
 		attribution.ProjectedImages = normalization.ProjectedImages
 		attribution.DroppedReasoning = normalization.DroppedReasoning
+		e.recordToolSurfaceBudget(scope, attribution, admission)
 		lastEstimate = attribution.EstimatedTokens
 		windowProjection := e.prepareTokenWindow(&attribution, 0)
+		attribution.EconomicRequestedTokens =
+			windowProjection.FullActiveTokens
 		maxOutputTokens, err = e.checkBudget(
 			windowProjection.FullActiveTokens,
 			turnUsage,
@@ -269,6 +320,24 @@ func (e *Engine) modelStep(
 		if err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
 		}
+		routeDigest, propertyDigest := contextview.PrefixRequestIdentity(
+			route, maxOutputTokens, reasoningEffort, nativeSearch,
+		)
+		prefixManifest, prefixErr := contextview.BuildPrefixManifest(
+			snapshot,
+			e.options.TokenEstimator,
+			routeDigest,
+			propertyDigest,
+		)
+		if prefixErr != nil {
+			return nil, nil, totalUsage, lastEstimate, prefixErr
+		}
+		e.prefixMu.Lock()
+		previousPrefix := e.prefixManifest
+		e.prefixMu.Unlock()
+		contextview.ApplyPrefixAttribution(
+			&attribution, previousPrefix, prefixManifest,
+		)
 		windowProjection = e.prepareTokenWindow(
 			&attribution,
 			maxOutputTokens,
@@ -419,6 +488,9 @@ func (e *Engine) modelStep(
 			}
 			return nil, nil, totalUsage, lastEstimate, err
 		}
+		e.prefixMu.Lock()
+		e.prefixManifest = prefixManifest
+		e.prefixMu.Unlock()
 		consumed := transport.ConsumeResult
 		blocks, calls := consumed.Blocks, consumed.Calls
 		usage, meaningful := consumed.Usage, consumed.Meaningful

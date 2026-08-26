@@ -198,13 +198,3 @@ func costBudgetExhausted(request BudgetRequest, spent float64) error {
 		nil,
 	)
 }
-
-func BudgetStage(used, limit uint64) (uint8, bool) {
-	if limit == 0 || used < limit*70/100 {
-		return 0, false
-	}
-	if used >= limit*85/100 {
-		return 2, true
-	}
-	return 1, false
-}

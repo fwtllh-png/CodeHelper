@@ -184,9 +184,12 @@
       "path": "internal/adapter/tool/result",
       "limits": {
         "internal_fanout": 8,
-        "production_lines": 529,
+        "production_lines": 533,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Protect the newest Tool Result batch until a successful Provider sample consumes it."
       }
     },
     {
@@ -195,12 +198,12 @@
       "path": "internal/adapter/model",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 966,
+        "production_lines": 1000,
         "options_fields": 0,
         "mutex_fields": 1
       },
       "relaxations": {
-        "production_lines": "Represent authoritative model capability provenance used by Runtime capacity admission."
+        "production_lines": "Represent authoritative model capability provenance and a pricing-independent Route identity for cache attribution."
       }
     },
     {
@@ -242,9 +245,12 @@
       "path": "internal/adapter/provider/wire",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 386,
+        "production_lines": 423,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Record content-safe complete-request projection evidence for stateless providers."
       }
     },
     {
@@ -300,20 +306,12 @@
       "path": "internal/adapter/provider/openai",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1843,
+        "production_lines": 1953,
         "options_fields": 0,
         "mutex_fields": 2
-      }
-    },
-    {
-      "id": "provider_deepseek_package",
-      "kind": "package",
-      "path": "internal/adapter/provider/deepseek",
-      "limits": {
-        "internal_fanout": 5,
-        "production_lines": 413,
-        "options_fields": 0,
-        "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Absorb DeepSeek into the shared OpenAI-compatible adapter with capability-gated thinking, automatic cache usage, typed failures, and empty-response validation."
       }
     },
     {
@@ -343,7 +341,7 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 77,
+        "internal_fanout": 76,
         "production_lines": 9114,
         "options_fields": 74,
         "mutex_fields": 7
@@ -366,9 +364,12 @@
       "path": "internal/runtime/app/extension",
       "limits": {
         "internal_fanout": 21,
-        "production_lines": 3178,
+        "production_lines": 3198,
         "options_fields": 0,
         "mutex_fields": 6
+      },
+      "relaxations": {
+        "production_lines": "Persist and restore validated Plan execution identity across failed-turn recovery."
       }
     },
     {
@@ -561,10 +562,15 @@
       "kind": "package",
       "path": "internal/runtime/agent/engine",
       "limits": {
-        "internal_fanout": 22,
-        "production_lines": 7756,
+        "internal_fanout": 23,
+        "production_lines": 7998,
         "options_fields": 6,
-        "mutex_fields": 4
+        "mutex_fields": 5
+      },
+      "relaxations": {
+        "internal_fanout": "Delegate bounded provider-view compilation to the dedicated contextview owner.",
+      "production_lines": "Enforce economic admission, resource-derived write reservations, finalization reserve, consumed-result lifecycle, and cross-turn prefix attribution in the provider sampling loop.",
+      "mutex_fields": "Keep the cross-turn Prefix Manifest baseline independent from broader mutable Engine state."
       }
     },
     {
@@ -573,9 +579,12 @@
       "path": "internal/runtime/agent/turnkernel",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 8023,
+        "production_lines": 8027,
         "options_fields": 0,
         "mutex_fields": 8
+      },
+      "relaxations": {
+        "production_lines": "Treat an explicit zero declaration-repair budget as immediate typed convergence."
       }
     },
     {
@@ -584,9 +593,12 @@
       "path": "internal/runtime/app",
       "limits": {
         "internal_fanout": 20,
-        "production_lines": 6728,
+        "production_lines": 6797,
         "options_fields": 23,
         "mutex_fields": 10
+      },
+      "relaxations": {
+        "production_lines": "Persist Plan execution and recovery identity while exposing cache and token attribution through the Runtime."
       }
     },
     {
@@ -615,9 +627,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6992,
+        "production_lines": 7065,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+      "production_lines": "Publish content-safe economic admission, prefix divergence, append-only image attribution, uncached-input, and Profile-bound recoverable Plan identity facts."
       }
     },
     {
@@ -625,8 +640,11 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2202,
+        "lines": 2272,
         "max_function_lines": 119
+      },
+      "relaxations": {
+        "lines": "Expose Plan transition and recovery operations through the guarded Runtime service."
       }
     },
     {
@@ -868,7 +886,7 @@
       "kind": "file",
       "path": "internal/runtime/agent/context/store_normalize.go",
       "limits": {
-        "lines": 337,
+        "lines": 296,
         "max_function_lines": 130
       }
     },
@@ -948,13 +966,17 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 21,
+        "event_switch_sites": 23,
         "runtime_package_dirs": 20,
         "runtime_one_file_packages": 7,
-        "runtime_agent_package_dirs": 6,
+        "runtime_agent_package_dirs": 7,
         "runtime_agent_unexpected_packages": 0,
         "runtime_app_package_dirs": 4,
         "runtime_app_unexpected_packages": 0
+      },
+      "relaxations": {
+        "event_switch_sites": "Project new structured Runtime lifecycle and cache-attribution events.",
+        "runtime_agent_package_dirs": "Add contextview as the owned package for prefix, admission, and stateless projection contracts."
       }
     },
     {
@@ -966,9 +988,6 @@
         "production_lines": 9037,
         "options_fields": 0,
         "mutex_fields": 3
-      },
-      "relaxations": {
-        "production_lines": "Centralize model-derived input capacity, output reserve, and budget-aware admission."
       }
     },
     {
@@ -1003,5 +1022,7 @@
       "kind": "file"
     }
   ],
-  "retirements": {}
+  "retirements": {
+    "provider_deepseek_package": "DeepSeek now uses the shared OpenAI-compatible adapter and no longer owns a protocol package."
+  }
 }

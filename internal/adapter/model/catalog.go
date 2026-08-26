@@ -19,7 +19,6 @@ type AdapterID string
 
 const (
 	AdapterOpenAI           AdapterID = "openai"
-	AdapterDeepSeek         AdapterID = "deepseek"
 	AdapterAnthropic        AdapterID = "anthropic"
 	AdapterOpenAICompatible AdapterID = "openai_compatible"
 )
@@ -63,6 +62,8 @@ type Capabilities struct {
 	Vision               bool `json:"vision"`
 	ImageInput           bool `json:"image_input"`
 	PromptCache          bool `json:"prompt_cache"`
+	AutomaticPromptCache bool `json:"automatic_prompt_cache,omitempty"`
+	ThinkingToggle       bool     `json:"thinking_toggle,omitempty"`
 }
 
 func (c Capabilities) ReasoningEffortLevels() []string {
@@ -219,6 +220,14 @@ func validateProvider(provider Provider) error {
 		if model.Limits.MaxOutputTokens > model.Limits.ContextTokens {
 			return fmt.Errorf("provider %q model %q output limit exceeds context", provider.ID, key)
 		}
+		if model.Capabilities.AutomaticPromptCache &&
+			!model.Capabilities.PromptCache {
+			return fmt.Errorf(
+				"provider %q model %q declares automatic prompt cache without prompt cache support",
+				provider.ID,
+				key,
+			)
+		}
 		if !model.Capabilities.Reasoning &&
 			(len(model.Capabilities.ReasoningEfforts) != 0 ||
 				model.Capabilities.DefaultReasoningEffort != "") {
@@ -279,7 +288,7 @@ func validateProvider(provider Provider) error {
 
 func (a AdapterID) Supports(protocol WireProtocol) bool {
 	switch a {
-	case AdapterOpenAI, AdapterDeepSeek, AdapterOpenAICompatible:
+	case AdapterOpenAI, AdapterOpenAICompatible:
 		return protocol == ProtocolOpenAIChat || protocol == ProtocolOpenAIResponses
 	case AdapterAnthropic:
 		return protocol == ProtocolAnthropic

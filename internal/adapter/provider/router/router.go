@@ -97,7 +97,7 @@ func (r *Router) Stream(ctx context.Context, request provider.ModelRequest) (pro
 	if call.Adapter != adapter.ID() || call.Protocol != request.Route.Protocol() {
 		return nil, fmt.Errorf("adapter %q prepared a mismatched call", adapter.ID())
 	}
-	if sessionAdapter, ok := adapter.(providerwire.SessionAdapter); ok {
+	if sessionAdapter, ok := adapter.(providerwire.SessionAdapter); ok && request.Route.Model().Capabilities.IncrementalResponses {
 		sessionTransport, supported := r.transport.(providerwire.SessionTransport)
 		if supported {
 			stream, handled, err := sessionAdapter.TrySession(

@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/artifact"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/persist/artifact"
 
 	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
 
@@ -561,6 +562,79 @@ func TestPlanExecutionDoesNotMutateProfile(t *testing.T) {
 	}
 }
 
+func TestPlanExecutionAllowsTrailingSourceOperationCommit(t *testing.T) {
+	profile := runtimeTestProfile()
+	profile.Mode = "plan"
+	profiles := &memoryProfileStore{profile: profile}
+	artifacts := &memoryArtifactStore{plan: protocol.SessionPlanArtifact{
+		Version: protocol.CheckpointProtocolVersion,
+		ID:      "plan-race", SessionID: "session-profile",
+		ThreadID: "thread-profile", TurnID: "turn-plan", Cursor: 7,
+		Status: protocol.PlanArtifactReady,
+		Body: `{"version":1,"revision":1,"steps":[` +
+			`{"id":"implement","title":"Update parser","status":"pending"}]}`,
+		ProfileRevision: profile.Revision,
+		CanImplement:    true, CanAutopilot: true,
+		CreatedAt: time.Now().UTC(),
+	}}
+	runtime := NewRuntime(Options{
+		Engine: &profileTestEngine{}, SessionProfiles: profiles,
+		DefaultProfile:      profile,
+		ProfileCapabilities: runtimeTestCapabilities(profile),
+		SessionLifecycle:    artifactLifecycle(), SessionArtifacts: artifacts,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	runtime.EventService.mu.Lock()
+	runtime.terminals["turn-plan"] = protocol.EventTurnCompleted
+	runtime.EventService.mu.Unlock()
+	runtime.OperationService.mu.Lock()
+	runtime.OperationService.accepted["operation-plan"] = PendingOperation{
+		ID: "operation-plan", SessionID: "session-profile",
+	}
+	runtime.OperationService.mu.Unlock()
+
+	status, err := runtime.SessionStatus(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != protocol.SessionStatusRunning {
+		t.Fatalf("race status = %q, want running", status.Status)
+	}
+	plan, err := runtime.SessionPlan(t.Context(), "session-profile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Artifact == nil || !plan.Artifact.CanImplement {
+		t.Fatalf("Plan transition remained disabled: %+v", plan.Artifact)
+	}
+	if _, err := runtime.PreparePlanExecution(
+		t.Context(),
+		"session-profile",
+		"plan-race",
+		protocol.PlanTransitionImplement,
+	); err != nil {
+		t.Fatalf("prepare during trailing commit: %v", err)
+	}
+	lease, err := runtime.active.Reserve(
+		"thread-profile",
+		"turn-active",
+		"operation-active",
+		"item-active",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = runtime.active.Release(lease) }()
+	if _, err := runtime.PreparePlanExecution(
+		t.Context(),
+		"session-profile",
+		"plan-race",
+		protocol.PlanTransitionImplement,
+	); protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("active Plan execution error = %v", err)
+	}
+}
+
 func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	events := NewMemoryEventStore(16)
 	meta := protocol.EventMeta{
@@ -571,10 +645,13 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		ItemID:      "item-source",
 	}
 	started, err := protocol.NewEvent(meta, &protocol.TurnStartedData{
-		Provider: "fixture",
-		Model:    "fixture-model",
-		Prompt:   "Fix the parser",
-		Intent:   protocol.TurnIntentWorkspaceChange,
+		Provider:        "fixture",
+		Model:           "fixture-model",
+		Prompt:          "Fix the parser",
+		Intent:          protocol.TurnIntentWorkspaceChange,
+		PlanID:          "plan-source",
+		PlanTransition:  protocol.PlanTransitionImplement,
+		ProfileRevision: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -694,6 +771,9 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		continued.Intent != protocol.TurnIntentWorkspaceChange ||
 		continued.Recovery.Action != protocol.TurnRecoveryContinue ||
 		continued.Recovery.SourceTurnID != "turn-source" ||
+		continued.Recovery.PlanID != "plan-source" ||
+		continued.Recovery.PlanTransition != protocol.PlanTransitionImplement ||
+		continued.Recovery.ProfileRevision != profile.Revision ||
 		!strings.Contains(continued.Prompt, "Source Turn ID: turn-source") ||
 		!strings.Contains(continued.Prompt, "<source_request>\nFix the parser") ||
 		!strings.Contains(continued.Prompt, "failed (conflict): validation failed") ||
@@ -709,6 +789,32 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	if continued.DisplayPrompt !=
 		"Continue: Fix the parser\n\nGuidance: Run focused tests" {
 		t.Fatalf("Continue display prompt = %q", continued.DisplayPrompt)
+	}
+	recoveryPayload := &protocol.StartTurnPayload{
+		ThreadID: "thread-profile",
+		Recovery: &continued.Recovery,
+	}
+	if err := runtime.PrepareStartPayload(
+		t.Context(), "/workspace", recoveryPayload,
+	); err != nil {
+		t.Fatalf("validated Plan recovery = %v", err)
+	}
+	profiles.mu.Lock()
+	profiles.profile.Revision++
+	profiles.mu.Unlock()
+	if err := runtime.PrepareStartPayload(
+		t.Context(), "/workspace", recoveryPayload,
+	); protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("stale profile recovery error = %v, want conflict", err)
+	}
+	profiles.mu.Lock()
+	profiles.profile.Revision--
+	profiles.mu.Unlock()
+	recoveryPayload.Recovery.PlanID = "plan-other"
+	if err := runtime.PrepareStartPayload(
+		t.Context(), "/workspace", recoveryPayload,
+	); protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("forged Plan recovery error = %v, want conflict", err)
 	}
 	for _, internal := range []string{
 		"Source Turn ID",

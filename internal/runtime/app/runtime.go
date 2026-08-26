@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -514,6 +515,75 @@ func (r *SessionService) SessionStatus(
 		)
 	}
 	return r.projectSessionActivity(ctx, summary)
+}
+
+// EnsurePlanExecutionReady closes the terminal-publication race without
+// treating the source operation's trailing commit as active work.
+func (r *Runtime) EnsurePlanExecutionReady(
+	ctx context.Context,
+	sessionID string,
+	threadID protocol.ThreadID,
+	planTurnID protocol.TurnID,
+) error {
+	summary, err := r.sessionLifecycle.GetLifecycle(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if r.workspaceRoot != "" &&
+		!sameWorkspaceRoot(r.workspaceRoot, summary.WorkspaceRoot) {
+		return runtimeProblem(
+			protocol.CodeConflict,
+			"session does not belong to this Runtime workspace",
+			nil,
+		)
+	}
+	threadIDs, err := r.sessionLifecycle.ThreadIDs(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	threadFound, active := false, false
+	for _, candidate := range threadIDs {
+		threadFound = threadFound || candidate == threadID
+		if _, found := r.active.LookupThread(candidate); found {
+			active = true
+		}
+	}
+	if !threadFound {
+		return runtimeProblem(
+			protocol.CodeInvalidArgument,
+			"Plan Artifact does not belong to the active Session Thread",
+			nil,
+		)
+	}
+	r.EventService.mu.Lock()
+	terminal := r.terminals[planTurnID]
+	pendingApprovals, pendingInputs := 0, 0
+	for _, approval := range r.approvals {
+		if slices.Contains(threadIDs, approval.ThreadID) {
+			pendingApprovals++
+		}
+	}
+	for _, input := range r.inputs {
+		if slices.Contains(threadIDs, input.ThreadID) {
+			pendingInputs++
+		}
+	}
+	r.EventService.mu.Unlock()
+	summary.PendingApprovals = pendingApprovals
+	summary.PendingInputs = pendingInputs
+	switch {
+	case pendingApprovals > 0:
+		summary.Status = protocol.SessionStatusAwaitingApproval
+	case pendingInputs > 0:
+		summary.Status = protocol.SessionStatusAwaitingInput
+	case active ||
+		summary.Status == protocol.SessionStatusRunning &&
+			terminal != protocol.EventTurnCompleted:
+		summary.Status = protocol.SessionStatusRunning
+	default:
+		return nil
+	}
+	return ensureSessionQuiescent(summary, "implement Plan")
 }
 
 func (r *SessionService) UpdateSessionLifecycle(

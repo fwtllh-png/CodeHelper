@@ -116,7 +116,7 @@ func TestBundledResponsesRouteIsReachableWithoutACustomEndpoint(t *testing.T) {
 	}
 }
 
-func TestDeepSeekV4FlashKeepsResponsesProtocol(t *testing.T) {
+func TestDeepSeekV4FlashDefaultsToChatCompletions(t *testing.T) {
 	resolver, err := NewResolver(DefaultCatalog())
 	if err != nil {
 		t.Fatal(err)
@@ -127,14 +127,14 @@ func TestDeepSeekV4FlashKeepsResponsesProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if route.Protocol() != ProtocolOpenAIResponses {
-		t.Fatalf("protocol = %q, want openai_responses", route.Protocol())
+	if route.Protocol() != ProtocolOpenAIChat {
+		t.Fatalf("protocol = %q, want openai_chat", route.Protocol())
 	}
-	if route.Adapter() != AdapterDeepSeek {
-		t.Fatalf("adapter = %q, want deepseek", route.Adapter())
+	if route.Adapter() != AdapterOpenAICompatible {
+		t.Fatalf("adapter = %q, want openai_compatible", route.Adapter())
 	}
 	if route.Model().Capabilities.IncrementalResponses {
-		t.Fatal("DeepSeek Responses must keep complete HTTP/SSE transport")
+		t.Fatal("DeepSeek Chat must keep complete HTTP/SSE transport")
 	}
 	if route.Model().Limits.ContextTokens != 1_048_576 ||
 		route.Model().Limits.MaxOutputTokens != 393_216 ||
@@ -143,6 +143,28 @@ func TestDeepSeekV4FlashKeepsResponsesProtocol(t *testing.T) {
 	}
 	if route.Model().Pricing.Known {
 		t.Fatal("time-varying DeepSeek pricing must fail closed without an effective window")
+	}
+}
+
+func TestRouteIdentityExcludesVolatilePricing(t *testing.T) {
+	resolver, err := NewResolver(DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(RouteRequest{
+		ProviderID: "openai", ModelID: "gpt-4.1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := route.Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if identity.ProviderID != route.ProviderID() ||
+		identity.ModelID != route.Model().ID ||
+		identity.WireID != route.Model().WireID {
+		t.Fatalf("route identity = %+v", identity)
 	}
 }
 

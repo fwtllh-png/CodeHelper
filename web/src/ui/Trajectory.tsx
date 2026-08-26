@@ -161,6 +161,11 @@ export function Trajectory({
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
+        {projection.prefixTokens !== undefined && (
+          <span className="ledgerDuration" aria-label="Prefix metrics">
+            Prefix {Math.round(projection.prefixTokens)} tok
+          </span>
+        )}
       </div>
       <Timeline
         spans={projection.spans}

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 
 	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -89,8 +90,9 @@ func (l *MessageLedger) Project(value LedgerProjection) MessageSnapshot {
 	changed = l.replace(KindHistory, value.History) || changed
 	changed = l.replace(KindDynamic, value.Dynamic) || changed
 	changed = l.replace(KindContinuation, value.Continuation) || changed
-	if !reflect.DeepEqual(l.definitions, value.Definitions) {
-		l.definitions = cloneDefinitions(value.Definitions)
+	projectedDefinitions := cloneDefinitions(value.Definitions)
+	if !reflect.DeepEqual(l.definitions, projectedDefinitions) {
+		l.definitions = projectedDefinitions
 		changed = true
 	}
 	if changed {
@@ -270,6 +272,11 @@ func CloneBlocks(blocks []provider.ContentBlock) []provider.ContentBlock {
 	return result
 }
 
+// cloneDefinitions deep-clones tool definitions into a canonical order.
+// Definitions are sorted by stable identity (name, then description, then
+// canonical input schema JSON) so the same tool set always projects to the
+// same byte sequence regardless of caller-supplied order. Keeping the provider
+// prompt prefix stable is what lets automatic context caches (DeepSeek) hit.
 func cloneDefinitions(
 	definitions []provider.ToolDefinition,
 ) []provider.ToolDefinition {
@@ -281,7 +288,34 @@ func cloneDefinitions(
 		result[index] = definition
 		result[index].InputSchema = cloneMap(definition.InputSchema)
 	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return toolDefinitionLess(result[i], result[j])
+	})
 	return result
+}
+
+func toolDefinitionLess(left, right provider.ToolDefinition) bool {
+	if left.Name != right.Name {
+		return left.Name < right.Name
+	}
+	if left.Description != right.Description {
+		return left.Description < right.Description
+	}
+	return canonicalDefinitionSchema(left) < canonicalDefinitionSchema(right)
+}
+
+// canonicalDefinitionSchema renders the input schema as deterministic JSON
+// (encoding/json sorts map keys at every depth) for use as a total-order
+// tie-breaker. Marshal failure falls back to "" so ordering stays defined.
+func canonicalDefinitionSchema(definition provider.ToolDefinition) string {
+	if definition.InputSchema == nil {
+		return ""
+	}
+	encoded, err := json.Marshal(definition.InputSchema)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 func cloneMap(value map[string]any) map[string]any {

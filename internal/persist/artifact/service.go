@@ -216,6 +216,8 @@ func (r *Service) PrepareTurnRecovery(
 		IdempotencyKey: request.IdempotencyKey,
 		Recovery: protocol.TurnRecoveryContext{
 			Action: request.Action, SourceTurnID: request.SourceTurnID,
+			PlanID: started.PlanID, PlanTransition: started.PlanTransition,
+			ProfileRevision: started.ProfileRevision,
 		},
 	}, nil
 }
@@ -850,7 +852,7 @@ func (r *Service) SessionPlan(
 		return protocol.SessionPlanSnapshot{}, err
 	}
 	compatible := profile.Profile.Revision == artifact.ProfileRevision &&
-		ensureSessionQuiescent(current, "implement Plan") == nil
+		r.ensurePlanExecutionReady(ctx, current, artifact) == nil
 	artifact.CanImplement = artifact.CanImplement && compatible
 	artifact.CanAutopilot = artifact.CanAutopilot && compatible
 	return protocol.SessionPlanSnapshot{
@@ -866,9 +868,6 @@ func (r *Service) PreparePlanExecution(
 ) (PlanExecutionPreparation, error) {
 	current, err := r.SessionStatus(ctx, sessionID)
 	if err != nil {
-		return PlanExecutionPreparation{}, err
-	}
-	if err := ensureSessionQuiescent(current, "implement Plan"); err != nil {
 		return PlanExecutionPreparation{}, err
 	}
 	artifact, err := r.ArtifactStore().GetPlan(ctx, planID)
@@ -888,6 +887,9 @@ func (r *Service) PreparePlanExecution(
 			"Plan Artifact does not belong to the active Session Thread",
 			nil,
 		)
+	}
+	if err := r.ensurePlanExecutionReady(ctx, current, artifact); err != nil {
+		return PlanExecutionPreparation{}, err
 	}
 	profile, err := r.SessionProfile(ctx, sessionID)
 	if err != nil {
@@ -931,6 +933,29 @@ func (r *Service) PreparePlanExecution(
 		Artifact: artifact,
 		Prompt:   prompt,
 	}, nil
+}
+
+func (r *Service) ensurePlanExecutionReady(
+	ctx context.Context,
+	current protocol.SessionSummary,
+	artifact protocol.SessionPlanArtifact,
+) error {
+	if readiness, ok := r.ArtifactRuntime.(interface {
+		EnsurePlanExecutionReady(
+			context.Context,
+			string,
+			protocol.ThreadID,
+			protocol.TurnID,
+		) error
+	}); ok {
+		return readiness.EnsurePlanExecutionReady(
+			ctx,
+			current.SessionID,
+			artifact.ThreadID,
+			artifact.TurnID,
+		)
+	}
+	return ensureSessionQuiescent(current, "implement Plan")
 }
 
 func (r *Service) PreparePlanExecutionTo(

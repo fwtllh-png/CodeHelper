@@ -25,6 +25,7 @@ type Event struct {
 	// Purpose is which route the turn's samples go to, and so why this provider
 	// and model rather than the session's default pair.
 	Purpose            string                 `json:"purpose,omitempty"`
+	ProfileRevision    uint64                 `json:"profile_revision,omitempty"`
 	Mode               string                 `json:"mode,omitempty"`
 	Posture            string                 `json:"posture,omitempty"`
 	Workspace          string                 `json:"workspace,omitempty"`

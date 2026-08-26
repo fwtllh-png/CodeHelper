@@ -50,6 +50,21 @@ func (e *Engine) runToolsWithCache(
 	toolCtx, cancel := context.WithCancelCause(tool.WithInvocationIdentity(ctx, identity))
 	toolCtx = tool.WithInvocationSource(toolCtx, tool.InvocationSourceModel)
 	resultBudget := max(uint64(1), e.autoCompactLimit()/uint64(max(1, len(calls))))
+	scope := e.executionScope()
+	if scope == nil {
+		cancel(nil)
+		return nil, errors.New("turn scope is not active")
+	}
+	scope.mu.Lock()
+	surfaceMaxBytes := scope.state.toolSurfaceMaxBytes
+	surfaceItemBytes := scope.state.toolSurfaceItemBytes
+	scope.mu.Unlock()
+	if surfaceItemBytes > 0 && surfaceMaxBytes > 0 {
+		batchItemBytes := surfaceMaxBytes / max(1, len(calls))
+		surfaceBytes := min(surfaceItemBytes, max(1, batchItemBytes))
+		surfaceTokens := uint64((surfaceBytes + 3) / 4)
+		resultBudget = min(resultBudget, max(uint64(1), surfaceTokens))
+	}
 	toolCtx = tool.WithResultTokenBudget(toolCtx, min(e.options.Tools.ResultTokenCapacity(), resultBudget))
 
 	toolCtx = withToolAccount(toolCtx, &toolAccount{
@@ -72,10 +87,6 @@ func (e *Engine) runToolsWithCache(
 	defer e.clearActiveCancel()
 	defer cancel(nil)
 
-	scope := e.executionScope()
-	if scope == nil {
-		return nil, errors.New("turn scope is not active")
-	}
 	sched := scope.state.scheduler
 	diagnosticReceipts := make(map[string][]diagnostics.Receipt, len(calls))
 	return kernel.ExecuteToolEffect(turnkernel.ToolEffect{
@@ -104,8 +115,8 @@ func (e *Engine) runToolsWithCache(
 				if resolveErr == nil &&
 					!tool.FinishOnlyAllowed(canonical, descriptor) {
 					return tool.Result{
-						Content: "read-only exploration is disabled after 32 " +
-							"model steps without structured progress; apply a " +
+						Content: "read-only exploration is disabled after repeated " +
+							"model samples without structured progress; apply a " +
 							"workspace change, run a quality tool, update the " +
 							"plan, or call turn_complete",
 						IsError: true,

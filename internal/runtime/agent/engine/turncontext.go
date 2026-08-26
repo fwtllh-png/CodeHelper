@@ -148,9 +148,10 @@ func SnapshotTurnSpec(
 		request.Recovery = &recovery
 	}
 	kernelPolicy := turnkernel.DefaultPolicy()
-	kernelPolicy.CompletionRequired = options.RequireCompletionDeclaration
+	kernelPolicy.CompletionRequired = options.RequireCompletionDeclaration ||
+		request.Intent == protocol.TurnIntentPlan
 	kernelPolicy.StructuredTerminalRequired =
-		options.RequireCompletionDeclaration
+		request.Intent == protocol.TurnIntentPlan
 	kernelPolicy.VerificationRequired = options.Verify.Enabled() ||
 		request.Intent == protocol.TurnIntentWorkspaceChange ||
 		options.RequireCompletionDeclaration

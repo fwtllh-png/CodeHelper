@@ -246,6 +246,7 @@ export class RuntimeClient {
   private storageWrite: Promise<void> = Promise.resolve();
   private storageTimer?: number;
   private pendingStorage?: {scope: string; value: BrowserProjectionState};
+  private pendingPlanTransition?: Promise<void>;
 
   constructor(
     private readonly storage: BrowserStorage = new IndexedDBBrowserStorage()
@@ -1136,15 +1137,29 @@ export class RuntimeClient {
     await this.selectSession(result.session_id);
   }
 
-  async transitionPlan(transition: "implement" | "autopilot"): Promise<void> {
+  transitionPlan(transition: "implement" | "autopilot"): Promise<void> {
     if (!this.state.plan) {
-      throw new Error("No active plan");
+      return Promise.reject(new Error("No active plan"));
     }
-    await this.call("plan/transition", {
-      session_id: this.requireSession(),
-      plan_id: this.state.plan.id,
+    const sessionID = this.requireSession();
+    const planID = this.state.plan.id;
+    if (this.pendingPlanTransition) {
+      return this.pendingPlanTransition;
+    }
+    const promise = this.call<void>("plan/transition", {
+      session_id: sessionID,
+      plan_id: planID,
       transition
+    }, {
+      idempotencyKey: `plan:${planID}:execute:${crypto.randomUUID()}`,
+      retryNetwork: true
+    }).finally(() => {
+      if (this.pendingPlanTransition === promise) {
+        this.pendingPlanTransition = undefined;
+      }
     });
+    this.pendingPlanTransition = promise;
+    return promise;
   }
 
   async setExtensionEnabled(

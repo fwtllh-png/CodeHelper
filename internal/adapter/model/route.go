@@ -35,6 +35,16 @@ type RouteDescriptor struct {
 	Provenance Provenance    `json:"provenance"`
 }
 
+type RouteIdentity struct {
+	ProviderID string        `json:"provider_id"`
+	Adapter    AdapterID     `json:"adapter"`
+	Endpoint   string        `json:"endpoint"`
+	Protocol   WireProtocol  `json:"protocol"`
+	Credential CredentialRef `json:"credential"`
+	ModelID    string        `json:"model_id"`
+	WireID     string        `json:"wire_id"`
+}
+
 func RouteKey(providerID, modelID string) string { return providerID + "\x00" + modelID }
 
 func (r ReadyRoute) ProviderID() string        { return r.providerID }
@@ -57,6 +67,21 @@ func (r ReadyRoute) WithModelID(id string) ReadyRoute {
 }
 func (r ReadyRoute) Model() Model           { return r.model }
 func (r ReadyRoute) Provenance() Provenance { return r.provenance }
+
+func (r ReadyRoute) Identity() (RouteIdentity, error) {
+	if err := r.Validate(); err != nil {
+		return RouteIdentity{}, err
+	}
+	return RouteIdentity{
+		ProviderID: r.providerID,
+		Adapter:    r.adapter,
+		Endpoint:   r.endpoint,
+		Protocol:   r.protocol,
+		Credential: r.credential,
+		ModelID:    r.model.ID,
+		WireID:     r.model.WireID,
+	}, nil
+}
 
 func (r ReadyRoute) Describe() (RouteDescriptor, error) {
 	if err := r.Validate(); err != nil {

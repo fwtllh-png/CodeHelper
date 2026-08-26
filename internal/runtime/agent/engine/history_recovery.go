@@ -30,9 +30,14 @@ func (e *Engine) runCompactGate(
 	phase string,
 	allowCurrentTurn bool,
 	send func(State, Event) error,
+	economicInput uint64,
+	projectHistory agentcontext.HistoryProjector,
 ) (tokenWindow, error) {
-	input = input.WithHistory(*history)
-	window, err := e.measureTokenWindow(input, outputReserve)
+	baseInput := input
+	input = baseInput.WithHistory(
+		agentcontext.ProjectHistory(*history, projectHistory),
+	)
+	window, err := e.measureTokenWindow(input, outputReserve, economicInput)
 	if err != nil {
 		return tokenWindow{}, err
 	}
@@ -42,6 +47,7 @@ func (e *Engine) runCompactGate(
 		agentcontext.EstimateMessageTokens(*history) > recentTailMaxTokens
 	receipt := e.compactHistoryWithPolicy(
 		history, forceTailBudget, allowCurrentTurn, input, outputReserve,
+		economicInput, projectHistory,
 	)
 	if receipt != nil {
 		receipt.Phase = phase
@@ -63,8 +69,12 @@ func (e *Engine) runCompactGate(
 		}
 	}
 	if receipt != nil || inlineReceipt != nil {
-		input = input.WithHistory(*history)
-		window, err = e.measureTokenWindow(input, outputReserve)
+		input = baseInput.WithHistory(
+			agentcontext.ProjectHistory(*history, projectHistory),
+		)
+		window, err = e.measureTokenWindow(
+			input, outputReserve, economicInput,
+		)
 	}
 	return window, err
 }
@@ -79,6 +89,7 @@ func (e *Engine) runTerminalCompactGate(
 		context.Background(),
 		history, input, 0,
 		CompactionPhasePostTurn, allowCurrentTurn, send,
+		0, nil,
 	)
 	if err == nil && window.total > window.hardLimit {
 		err = compactionBudgetError(window)
@@ -94,6 +105,7 @@ type tokenWindow struct {
 func (e *Engine) measureTokenWindow(
 	input agentcontext.MessageSnapshot,
 	outputReserve uint64,
+	economicInput uint64,
 ) (tokenWindow, error) {
 	measured, err := input.Measure("", "", e.options.TokenEstimator)
 	if err != nil {
@@ -101,17 +113,22 @@ func (e *Engine) measureTokenWindow(
 	}
 	projected := e.projectTokenWindow(&measured, outputReserve)
 	active := projected.FullActiveTokens
-	if e.options.Context.Window.Scope == compactScopeBodyAfterPrefix {
+	if economicInput == 0 &&
+		e.options.Context.Window.Scope == compactScopeBodyAfterPrefix {
 		active = projected.BodyTokens
 		if !projected.Observed {
 			active = projected.PendingTokens
 		}
 	}
+	compactLimit := projected.AutoCompactLimit
+	if economicInput != 0 {
+		compactLimit = min(compactLimit, economicInput)
+	}
 	return tokenWindow{
 		estimated: measured.EstimatedTokens,
 		total:     projected.FullActiveTokens + outputReserve,
 		active:    active, hardLimit: projected.HardLimit,
-		compactLimit: projected.AutoCompactLimit,
+		compactLimit: compactLimit,
 		accounting:   projected,
 	}, nil
 }
@@ -130,7 +147,7 @@ func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudget
 		scope.mu.Unlock()
 	}
 	input := agentcontext.NewMessageLedger(value).Snapshot()
-	window, _ := e.measureTokenWindow(input, e.maxOutputFor(e.activeRoute()))
+	window, _ := e.measureTokenWindow(input, e.maxOutputFor(e.activeRoute()), 0)
 	capacity := e.contextCapacity()
 	return ContextBudgetSnapshot{
 		ActiveTokens: window.active, AutoCompactTokens: window.compactLimit,
@@ -176,7 +193,7 @@ func (e *Engine) reconcileWorldBaseline(history []provider.Message) {
 func (e *Engine) compactHistory(history *[]provider.Message, force bool) *CompactionReceipt {
 	input := agentcontext.NewMessageLedger(agentcontext.LedgerInput{Stable: e.promptMessages()}).Snapshot()
 	return e.compactHistoryWithPolicy(
-		history, force, false, input, 0,
+		history, force, false, input, 0, 0, nil,
 	)
 }
 
@@ -186,6 +203,8 @@ func (e *Engine) compactHistoryWithPolicy(
 	allowCurrentTurn bool,
 	input agentcontext.MessageSnapshot,
 	outputReserve uint64,
+	economicInput uint64,
+	projectHistory agentcontext.HistoryProjector,
 ) *CompactionReceipt {
 	if e.options.Hooks != nil {
 		if err := e.options.Hooks.PreCompact(context.Background(), hooks.CompactInput{
@@ -228,11 +247,14 @@ func (e *Engine) compactHistoryWithPolicy(
 			EmergencyLimit:      e.emergencyCompactLimit(),
 			AuthorityDigest:     authorityDigest,
 			EstimateMessages:    agentcontext.EstimateMessageTokens,
+			ProjectHistory:      projectHistory,
 			Measure: func(
 				snapshot agentcontext.MessageSnapshot,
 				reserve uint64,
 			) (agentcontext.WindowMeasurement, error) {
-				window, err := e.measureTokenWindow(snapshot, reserve)
+				window, err := e.measureTokenWindow(
+					snapshot, reserve, economicInput,
+				)
 				return agentcontext.WindowMeasurement{
 					Estimated: window.estimated, Total: window.total,
 					Active: window.active, HardLimit: window.hardLimit,
@@ -255,6 +277,8 @@ func (e *Engine) compactHistoryWithPolicy(
 					snapshot,
 					reserve,
 					forced,
+					economicInput,
+					projectHistory,
 				)
 				return agentcontext.SurfacePruning{
 						Results: stats.results,

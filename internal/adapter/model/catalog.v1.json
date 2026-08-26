@@ -186,7 +186,7 @@
     },
     {
       "id": "deepseek",
-      "adapter": "deepseek",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.deepseek.com/v1",
       "protocol": "openai_chat",
       "credential": {
@@ -210,7 +210,9 @@
             "native_search": false,
             "vision": false,
             "image_input": false,
-            "prompt_cache": false
+            "prompt_cache": true,
+            "automatic_prompt_cache": true,
+            "thinking_toggle": true
           },
           "pricing": {
             "input_per_million": 0.27,
@@ -245,7 +247,9 @@
             "native_search": false,
             "vision": false,
             "image_input": false,
-            "prompt_cache": false
+            "prompt_cache": true,
+            "automatic_prompt_cache": true,
+            "thinking_toggle": true
           },
           "pricing": {
             "input_per_million": 0.55,
@@ -267,9 +271,9 @@
     },
     {
       "id": "deepseek-v4-flash",
-      "adapter": "deepseek",
+      "adapter": "openai_compatible",
       "endpoint": "https://api.deepseek.com",
-      "protocol": "openai_responses",
+      "protocol": "openai_chat",
       "credential": {
         "kind": "keyring",
         "name": "deepseek/default"
@@ -293,7 +297,9 @@
             "native_search": false,
             "vision": false,
             "image_input": false,
-            "prompt_cache": true
+            "prompt_cache": true,
+            "automatic_prompt_cache": true,
+            "thinking_toggle": true
           },
           "pricing": {
             "input_per_million": 0,
@@ -328,7 +334,9 @@
             "native_search": false,
             "vision": true,
             "image_input": true,
-            "prompt_cache": true
+            "prompt_cache": true,
+            "automatic_prompt_cache": true,
+            "thinking_toggle": true
           },
           "pricing": {
             "input_per_million": 0,

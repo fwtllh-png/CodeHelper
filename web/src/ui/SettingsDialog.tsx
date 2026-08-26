@@ -1367,14 +1367,6 @@ function AgentSettings({
               <div><dt>Turns</dt><dd>{snapshot.usage.turns}</dd></div>
               <div><dt>Calls</dt><dd>{snapshot.usage.calls}</dd></div>
               <div><dt>Tokens</dt><dd>{snapshot.usage.total_tokens.toLocaleString()}</dd></div>
-              <div>
-                <dt>Cost</dt>
-                <dd>
-                  {snapshot.usage.cost_known
-                    ? `${snapshot.usage.cost_microunits} µ`
-                    : "Unpriced"}
-                </dd>
-              </div>
             </dl>
           )}
           <div className="settingsActivity">

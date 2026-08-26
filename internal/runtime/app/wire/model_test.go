@@ -72,8 +72,11 @@ func TestEndpointOverrideUsesCatalogAdapterWithoutNameInference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if deepSeek.Adapter() != model.AdapterDeepSeek {
-		t.Fatalf("known provider adapter = %q, want deepseek", deepSeek.Adapter())
+	if deepSeek.Adapter() != model.AdapterOpenAICompatible {
+		t.Fatalf(
+			"known provider adapter = %q, want openai_compatible",
+			deepSeek.Adapter(),
+		)
 	}
 	lookalike, err := resolveExecRoute(execRouteOptions{
 		ProviderID: "deepseek-shadow", ModelID: "shadow",

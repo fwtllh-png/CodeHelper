@@ -17,8 +17,11 @@ const (
 // TurnRecoveryContext binds a newly-created recovery Turn to the terminal Turn
 // whose request or retained workspace draft it is recovering.
 type TurnRecoveryContext struct {
-	Action       TurnRecoveryAction `json:"action"`
-	SourceTurnID TurnID             `json:"source_turn_id"`
+	Action          TurnRecoveryAction `json:"action"`
+	SourceTurnID    TurnID             `json:"source_turn_id"`
+	PlanID          string             `json:"plan_id,omitempty"`
+	PlanTransition  PlanTransition     `json:"plan_transition,omitempty"`
+	ProfileRevision uint64             `json:"profile_revision,omitempty"`
 }
 
 func (c TurnRecoveryContext) Validate() error {
@@ -27,10 +30,19 @@ func (c TurnRecoveryContext) Validate() error {
 	}
 	switch c.Action {
 	case TurnRecoveryRetry, TurnRecoveryContinue:
-		return nil
 	default:
 		return errors.New("turn recovery action is invalid")
 	}
+	if c.PlanID == "" && c.PlanTransition == "" {
+		return nil
+	}
+	if !validProfileIdentifier(c.PlanID) ||
+		(c.PlanTransition != PlanTransitionImplement &&
+			c.PlanTransition != PlanTransitionAutopilot) ||
+		c.ProfileRevision == 0 {
+		return errors.New("turn recovery plan identity is invalid")
+	}
+	return nil
 }
 
 // TurnRecoveryRequest always creates a new Turn. Retry reuses the source Turn's

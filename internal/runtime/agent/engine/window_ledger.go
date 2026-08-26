@@ -63,8 +63,8 @@ func (e *Engine) observeTokenWindow(
 	if hardLimit != 0 && inputTokens > hardLimit {
 		return
 	}
-	projectedTokens := context.WindowProjectedTokens
-	pendingTokens := context.WindowPendingTokens
+	projectedTokens, pendingTokens := context.WindowProjectedTokens, context.WindowPendingTokens
+	context.UncachedInputTokens = inputTokens - min(inputTokens, cachedTokens)
 	scope := e.runningScope()
 	if scope == nil {
 		window := e.context.Window()

@@ -7,7 +7,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -30,11 +32,23 @@ func projectionRecoveryID(
 }
 
 func stepBudgetWarningRemaining(maxSteps, step int) int {
-	return promptcontext.StepBudgetWarningRemaining(maxSteps, step)
+	return contextview.StepBudgetWarningRemaining(maxSteps, step)
 }
 
-func stepBudgetFeedback(turn uint64, remaining int) provider.Message {
-	return promptcontext.StepBudgetFeedback(turn, remaining)
+func stepBudgetFeedback(
+	turn uint64,
+	used int,
+	maxSteps int,
+	state turnkernel.State,
+	suppressedFailedCalls int,
+) provider.Message {
+	return contextview.StepBudgetFeedback(
+		turn,
+		used,
+		maxSteps,
+		state,
+		suppressedFailedCalls,
+	)
 }
 
 func estimateCost(pricing model.Pricing, usage provider.Usage) float64 {

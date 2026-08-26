@@ -1,8 +1,10 @@
 # 提升 Prompt Cache 命中率的优化方案
 
-> 状态：设计文档 / 方案草稿（非已交付）。本文结合 DeepSeek 上下文缓存机制与 CodeHelper 现有实现，
-> 给出「提升预填充缓存命中率、从而降低 TTFT」的落地思路。涉及改动的部分均标注文件与行为约束，
-> 不引入未登记的固定阈值或启发式常量（遵循仓库硬规则）。
+> 状态：设计文档，已按当前分支（codex/token-cost-p0-p1）实现情况修订。P0（工具定义确定性排序）、
+> P1-1～P1-4 与 §5.2/§5.3/§5.4 已实施（见对应小节）；P2（配置化）仍待实施。
+> 本文结合 DeepSeek 上下文缓存机制与 CodeHelper 现有实现，给出「提升预填充缓存命中率、从而降低
+> TTFT」的落地思路。涉及改动的部分均标注文件与行为约束，不引入未登记的固定阈值或启发式常量
+> （遵循仓库硬规则）。
 
 ## 1. 背景与目标
 
@@ -34,11 +36,11 @@ DeepSeek 提供**自动上下文缓存（Context Caching）**，其要点如下�
   序列变化的东西（改顺序、改措辞、插入时间戳、动态写入系统指令、重排工具定义）都会让缓存从变化点
   之后失效。
 
-> CodeHelper 通过 `internal/adapter/provider/deepseek/stream.go` 走 OpenAI Responses 协议
-> （`dsmlStream` 包装），并开启 `NativeCache: true / FinalUsage: true`，顺带在
-> `internal/adapter/provider/openai/adapter.go:150` 注入 `prompt_cache_key`。DeepSeek 的缓存本身是
-> 自动按前缀生效，因此「前缀稳定」是根本驱动；`prompt_cache_key` 作为附加的缓存作用域标识，同样需要保持
-> 稳定，避免 key 漂移导致缓存条目失配。
+> DeepSeek Route 使用通用 `openai_compatible` Adapter 和 OpenAI Chat Completions 协议。
+> `internal/adapter/provider/openai/adapter.go` 对兼容 Provider 省略显式
+> `prompt_cache_key`，同时保留 `reasoning_content` 并解析
+> `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`。DeepSeek 不再拥有独立的协议
+> Adapter；命中率只由真实 Wire 请求的精确前缀稳定性驱动。
 
 ## 3. CodeHelper 当前实现与缓存相关路径
 
@@ -54,12 +56,19 @@ orderedKinds = [ Stable, History, Dynamic, Continuation ]
 - `History`：历史因果消息；
 - `Dynamic`：工作集、证据、失败记录、计划、世界状态等随 turn 变化的部分；
 - `Continuation`：本次续写。
-- 工具定义（`Definitions`）在 `store_store.go` 中经 `cloneDefinitions` 复制，**其顺序直接继承
-  `LedgerInput.Definitions`，未做确定性排序**。
+- 工具定义（`Definitions`）在 `store_store.go:273` 经 `cloneDefinitions` 复制，并已按稳定 ID
+  （Name → Description → 规范 InputSchema JSON）**确定性排序**（P0 已实施）：同一工具集在任何
+  调用中投影为相同字节序列，与 `LedgerInput.Definitions` 的输入顺序无关。
 
-`model_handler.go` 在请求前调用 `snapshot.Normalize`、`snapshot.Measure`（token 估算/归因，
-`store_attribution.go:58`）、`prepareTokenWindow`、`checkBudget`，最后
-`requestTools = snapshot.Definitions()`。
+Stateless 投影已从 `store_normalize.go` 迁出，当前由
+`internal/runtime/agent/contextview/stateless_projection.go` 的 `ProjectStatelessHistory`
+实现：World Patch、Tool Result 和历史图片跨 Turn 保持 append-only，普通 Sample 不按消费状态或
+Turn 年龄改写已发送消息。只有显式 compaction/rebase 才允许折叠旧版本或降级可重取 Surface；
+`image_reopen` 仅用于显式降级后的恢复，不参与普通跨 Turn 投影。
+
+`model_handler.go` 在请求前调用 `contextview.ProjectStatelessHistory`、`snapshot.Normalize`、
+`snapshot.Measure`（token 估算/归因，`store_attribution.go:58`）、`prepareTokenWindow`、
+`checkBudget`，最后 `requestTools = snapshot.Definitions()`。
 
 ### 3.2 Cache Key 与 Revision
 
@@ -97,13 +106,19 @@ orderedKinds = [ Stable, History, Dynamic, Continuation ]
    漂移 → 缓存条目失配。
 4. **跨模型/跨 provider 切换**：更换 model/provider 会改变 tokenizer 与缓存体系，缓存必然失效（合理，
    不可优化）。
-5. **缺少命中率观测闭环**：虽然解析了 hit/miss token，但未在 receipt/telemetry 中形成可对比的
-   「cache hit rate / 平均命中前缀长度」信号，难以判断优化是否有效。
+5. **命中率观测需要闭环**：仅解析 hit/miss token 仍不足以定位问题；当前 Web 在 Composer
+   汇总 cache hit rate 与 Turn TTFT，并在 Trajectory 展示平均公共前缀长度，可联合检查前缀与延迟。
 6. **Coder 上下文天然动态**：工作集、证据、plans 每轮都会变，若这些落在前缀前段，命中率自然低。
 
 ## 5. 优化方案（分阶段）
 
 ### 5.1 P0：确定性排序与稳定前缀（收益最大、风险最低）
+
+> 实施状态：**已实施**。`store_store.go` 的 `cloneDefinitions` 在复制后按稳定 ID 全序排序
+> （Name → Description → 规范 InputSchema JSON，`toolDefinitionLess`），作为
+> `NewMessageLedger`/`Project`/`Snapshot().Definitions()` 的唯一咽喉点覆盖所有构造路径；
+> `Project` 比较排序后副本，仅顺序变化的 Definitions 不推进 revision。契约测试
+> （`store_store_test.go`）验证「相同内容 → 相同字节序列」与 Digest 顺序无关。
 
 - **工具定义按稳定 ID 排序**：在 `Definitions` 进入 `Ledger`/`ModelRequest` 前，按
   `ToolDefinition` 的稳定标识排序，保证同一套工具在任何调用中顺序一致。
@@ -117,6 +132,14 @@ orderedKinds = [ Stable, History, Dynamic, Continuation ]
 
 ### 5.2 P1：前缀 / 易变内容的布局
 
+> 实施状态：**已实施**（P1-1 + §5.2 契约）。`ProjectStatelessHistory` 已按「跨 Turn
+> append-only World Patch/Tool Result/历史图片、显式 compaction/rebase 才折叠或降级」落地；`Stable` 分区仅来自
+> `StaticContext`（`promptcontext.Assemble` 输出，无时间戳/随机数/世界 digest），每轮易变内容
+> （模式/策略/工具目录/仓库状态/plan）经 `projectWorldState` 追加到 `History` 尾部。新增引擎级
+> 契约测试 `TestContextPartitionPurityKeepsWorldSectionsAfterStablePrefix`
+> （`internal/runtime/agent/engine/context_ledger_test.go`）锁定：Stable 前缀与 StaticContext
+> 字节一致、世界段（`[tool_catalog]`）只出现在 Stable 前缀之后。
+
 - 维持 `[Stable, History, Dynamic, Continuation]` 顺序，并**把最易变的内容尽量后置**：
   世界状态、workspace binding、journal revision、repository head、当前 diff、运行中的工具结果、
   plan 增量等应落在 `Dynamic`/`Continuation`，不应进入 `Stable` 或 `History` 前段。
@@ -125,14 +148,24 @@ orderedKinds = [ Stable, History, Dynamic, Continuation ]
 - 若某个工作区头部信息必须在开头（例如 system role 需要绑定 workspace），考虑把它作为**稳定但独立于
   世界 digest 的标识**，**不要**把每轮刷新的 revisions 嵌入其中。
 
-**落地文件**：`internal/runtime/agent/context` 的分区构造（`LedgerInput`/`Project`）、
+**落地文件**：`internal/runtime/agent/contextview/stateless_projection.go`（已实施）、
+`internal/runtime/agent/context` 的分区构造（`LedgerInput`/`Project`）、
 `internal/runtime/app/wire` 的上下文装配处。
 
 ### 5.3 P1：Cache Key 与 Revision 收敛
 
-- **让 Cache Key 反映「真实前缀内容」而非「profile 元数据变化」**：可考虑将 `PromptCacheKey` 推导为
-  「稳定前缀内容摘要 + profile 中影响前缀的少数维度」，使得与无关元数据（如 `MaxSteps`、
-  `ExecutionTarget`、`ApprovalPosture`）完全解耦（现状已部分解耦）。
+> 实施状态：**已实施**。`sortedToolIDs`（`session_profile.go`）在
+> `ApplySessionProfilePatch`/`equalSessionProfile`/`AgentPresetProfile.sessionProfile`/
+> `NewAgentPresetProfile` 全构造点成立排序不变量：`enabled_tool_ids` 按集合判定，重排不触发
+> `PromptCacheRevision`（契约测试 `TestSessionProfileEnabledToolIDsAreSetOrderInsensitive`、
+> `TestAgentPresetProfileNormalizesEnabledToolIDs`、`TestAgentPresetPatchIsSetOrderInsensitive`）。
+> 触发面收敛为真正影响前缀的维度：`mode / planning_policy / plan_approval / provider / model /
+> reasoning_effort / enabled_tool_ids`；`provider`/`model` 变更即跨 model/provider 失效，属预期
+> 语义（`TestSessionProfileProviderModelChangeResetsPromptCache`）；`MaxSteps`/`ApprovalPosture`/
+> `ExecutionTarget` 只递增 `Revision`，不影响 `PromptCacheKey`
+> （`TestSessionProfileUnrelatedMetadataDoesNotResetPromptCache`）。未采用「稳定前缀内容摘要」推导
+> key：DeepSeek 已清空 `prompt_cache_key`，其余 provider 的 key 以 `PromptCacheRevision` 表达
+> 前缀相关 profile 维度，避免把逐 Turn 变化的内容摘要引入本应跨请求稳定的作用域 key。
 - **最小化 `PromptCacheRevision` 触发面**：复核 `session_profile.go` 的 `setCacheReason` 字段集，
   确认没有把「会频繁变化但对前缀影响可忽略」的字段纳入；对 `enabled_tool_ids` 这类集合，已排序后仍
   应按「集合是否变化」而非「顺序是否变化」判定。
@@ -144,12 +177,20 @@ orderedKinds = [ Stable, History, Dynamic, Continuation ]
 
 ### 5.4 P1：观测与命中率度量
 
+> 实施状态：**已实施**（P1-2 + Web 聚合）。`contextview/prefix_manifest.go` 提供
+> `BuildPrefixManifest`/`ComparePrefix`，产出公共前缀 token、首个分歧 index/kind；`event.go` 的
+> `ProviderProjectionData` 已暴露 `PrefixCommonTokens`、`PrefixFirstDivergence`、
+> `PrefixDivergenceKind`、`CachedTokens`、`UncachedInputTokens` 等字段；`turn_scope.go` 保留相邻
+> Sample 的 `prefixManifest` 用于对比。Web Composer 已按 Turn 展示 cache hit rate 与 TTFT；
+> `projectTrajectory` 按已比较的 Usage Sample 聚合平均公共前缀长度，并在 Trajectory 工具栏展示。
+
 - 在 usage/receipt 中暴露 `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`（已在
   `openai/stream.go:331` 解析），并**新增聚合指标**：cache hit rate、平均命中前缀长度、
   TTFT 与 hit rate 的关联。
 - 为 turn receipt / observable 增加字段，供 web 层与运维对比，确保优化可被数据验证，而非凭感觉。
 
-**落地文件**：`internal/observability/receipt`、`internal/runtime/protocol/receipt.go`、
+**落地文件**：`internal/runtime/agent/contextview/prefix_manifest.go`（已实施）、
+`internal/runtime/protocol/event.go`（已实施）、`internal/observability/receipt`、
 `internal/observability/trace`（TTFT 关联）。
 
 ### 5.5 P2：配置化与 Provenance
@@ -164,7 +205,8 @@ orderedKinds = [ Stable, History, Dynamic, Continuation ]
 ## 6. 验收标准 / 验证计划
 
 - **前缀稳定性**：对相同内容重复构建 `ModelRequest`，`Messages()`/`Definitions()` 字节序列一致；
-  增加契约/回归测试覆盖「工具重排」「动态字段注入」不再破坏摘要。
+  增加契约/回归测试覆盖「工具重排」「动态字段注入」不再破坏摘要；真实会话中相邻 Sample 的
+  `PrefixMonotonic=true` 且 `PrefixFirstDivergence` 落在尾部。
 - **命中率提升**：在 1M 上下文模型上跑真实会话，观测 `prompt_cache_hit_tokens` 占比上升、TTFT 下降；
   记录优化前后对比。
 - **不回归正确性**：`PRUNE`/`COMPACT` 发生率不上升，Tool/Result 因果链完整，使用 `make ratchet-fast`、
@@ -187,11 +229,17 @@ orderedKinds = [ Stable, History, Dynamic, Continuation ]
 | --- | --- |
 | Prompt 分区顺序 | `internal/runtime/agent/context/store_store.go:25` |
 | Ledger / Snapshot / Definitions | `internal/runtime/agent/context/store_store.go` |
+| Stateless 投影（跨 Turn append-only） | `internal/runtime/agent/contextview/stateless_projection.go` |
+| Prefix Manifest / Divergence 观测 | `internal/runtime/agent/contextview/prefix_manifest.go` |
 | 请求前投影/估算 | `internal/runtime/agent/engine/model_handler.go` |
+| 命中率 Receipt 字段 | `internal/runtime/protocol/event.go`（`ProviderProjectionData`） |
+| Web Cache/TTFT 汇总 | `web/src/ui/App.tsx`（`ComposerStats`） |
+| 公共前缀聚合与展示 | `web/src/projection/trajectory.ts`、`web/src/ui/Trajectory.tsx` |
 | Cache Key 推导 | `internal/runtime/agent/engine/engine.go:281` |
 | StickyCacheKey 门控 | `internal/adapter/provider/types.go:119` |
-| PromptCache capability | `internal/adapter/model/capability.go:21` |
+| PromptCache capability | `internal/adapter/model/capability.go:22` |
 | hit/miss 解析 | `internal/adapter/provider/openai/stream.go:331` |
-| DeepSeek 流（Responses + NativeCache） | `internal/adapter/provider/deepseek/stream.go` |
+| OpenAI-compatible Chat 与 Native Cache | `internal/adapter/provider/openai/adapter.go`、`stream.go` |
+| Wire 请求追加性契约 | `internal/adapter/provider/openai/compatible_adapter_test.go` |
 | Revision 触发面 | `internal/runtime/protocol/session_profile.go` |
 | TTFT 定义 | `internal/observability/trace/trace.go:421` |

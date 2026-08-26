@@ -106,6 +106,21 @@ func TestIncrementalResponsesIsAdvertisedOnlyByBundledResponsesRoute(t *testing.
 	}
 }
 
+func TestAutomaticPromptCacheRequiresPromptCacheSupport(t *testing.T) {
+	provider, ok := DefaultCatalog().Provider("deepseek")
+	if !ok {
+		t.Fatal("DeepSeek provider is missing")
+	}
+	descriptor := provider.Models["deepseek-chat"]
+	descriptor.Capabilities.PromptCache = false
+	descriptor.Capabilities.AutomaticPromptCache = true
+	provider.Models["deepseek-chat"] = descriptor
+	if _, err := NewCatalog(provider); err == nil ||
+		!strings.Contains(err.Error(), "automatic prompt cache") {
+		t.Fatalf("NewCatalog() error = %v", err)
+	}
+}
+
 func TestBundledReasoningEffortsAreExplicitAndIsolated(t *testing.T) {
 	catalog := DefaultCatalog()
 	for _, entry := range []struct {

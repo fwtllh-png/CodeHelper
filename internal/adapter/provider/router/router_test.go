@@ -65,13 +65,13 @@ func (sessionTestAdapter) TrySession(
 
 func TestRouterFiltersReplayBeforeAdapterAndTransport(t *testing.T) {
 	registry, err := NewRegistry(
-		testAdapter{id: model.AdapterDeepSeek},
+		testAdapter{id: model.AdapterOpenAICompatible},
 		testAdapter{id: model.AdapterOpenAI},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	route := testRoute(t, model.AdapterDeepSeek, model.ProtocolOpenAIChat)
+	route := testRoute(t, model.AdapterOpenAICompatible, model.ProtocolOpenAIChat)
 	routes, err := model.NewRouteSet(route, nil, false)
 	if err != nil {
 		t.Fatal(err)
@@ -110,11 +110,11 @@ func TestRouterFiltersReplayBeforeAdapterAndTransport(t *testing.T) {
 }
 
 func TestRouterDropsReplayAfterAssistantContentRewrite(t *testing.T) {
-	registry, err := NewRegistry(testAdapter{id: model.AdapterDeepSeek})
+	registry, err := NewRegistry(testAdapter{id: model.AdapterOpenAICompatible})
 	if err != nil {
 		t.Fatal(err)
 	}
-	route := testRoute(t, model.AdapterDeepSeek, model.ProtocolOpenAIChat)
+	route := testRoute(t, model.AdapterOpenAICompatible, model.ProtocolOpenAIChat)
 	routes, err := model.NewRouteSet(route, nil, false)
 	if err != nil {
 		t.Fatal(err)
@@ -153,11 +153,11 @@ func TestRouterDropsReplayAfterAssistantContentRewrite(t *testing.T) {
 }
 
 func TestRouterDropsReplayFromAnotherModelOnTheSameAdapter(t *testing.T) {
-	registry, err := NewRegistry(testAdapter{id: model.AdapterDeepSeek})
+	registry, err := NewRegistry(testAdapter{id: model.AdapterOpenAICompatible})
 	if err != nil {
 		t.Fatal(err)
 	}
-	route := testRoute(t, model.AdapterDeepSeek, model.ProtocolOpenAIResponses)
+	route := testRoute(t, model.AdapterOpenAICompatible, model.ProtocolOpenAIResponses)
 	routes, err := model.NewRouteSet(route, nil, false)
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +208,7 @@ func TestRegistryRejectsDuplicateAdapter(t *testing.T) {
 }
 
 func TestRouterRejectsMissingActiveAdapter(t *testing.T) {
-	route := testRoute(t, model.AdapterDeepSeek, model.ProtocolOpenAIChat)
+	route := testRoute(t, model.AdapterOpenAICompatible, model.ProtocolOpenAIChat)
 	routes, err := model.NewRouteSet(route, nil, false)
 	if err != nil {
 		t.Fatal(err)
@@ -218,7 +218,7 @@ func TestRouterRejectsMissingActiveAdapter(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := New(registry, routes, &testTransport{}); err == nil ||
-		!strings.Contains(err.Error(), `adapter "deepseek" is not registered`) {
+		!strings.Contains(err.Error(), `adapter "openai_compatible" is not registered`) {
 		t.Fatalf("New() error = %v, want missing adapter refusal", err)
 	}
 }
@@ -226,12 +226,12 @@ func TestRouterRejectsMissingActiveAdapter(t *testing.T) {
 func TestRouterSelectsReadyRouteAdapter(t *testing.T) {
 	registry, err := NewRegistry(
 		testAdapter{id: model.AdapterOpenAI},
-		testAdapter{id: model.AdapterDeepSeek},
+		testAdapter{id: model.AdapterOpenAICompatible},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	route := testRoute(t, model.AdapterDeepSeek, model.ProtocolOpenAIChat)
+	route := testRoute(t, model.AdapterOpenAICompatible, model.ProtocolOpenAIChat)
 	routes, err := model.NewRouteSet(route, nil, false)
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +252,7 @@ func TestRouterSelectsReadyRouteAdapter(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = stream.Close()
-	if transport.calls != 1 || transport.id != model.AdapterDeepSeek {
+	if transport.calls != 1 || transport.id != model.AdapterOpenAICompatible {
 		t.Fatalf("calls=%d adapter=%q", transport.calls, transport.id)
 	}
 }

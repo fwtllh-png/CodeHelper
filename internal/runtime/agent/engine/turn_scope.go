@@ -31,36 +31,38 @@ type Scope struct {
 }
 
 type scopeState struct {
-	samples             uint32
-	toolSamples         map[uint32]toolSpend
-	approvalEmit        func(Event) error
-	kernel              *turnkernel.RuntimeKernel
-	recorder            *trace.Recorder
-	toolSpans           map[string]uint64
-	scheduler           *turnkernel.ToolScheduler
-	diff                *turnkernel.TurnDiffTracker
-	contextSeen         []promptcontext.Receipt
-	selections          []promptcontext.Selection
-	catalog             tool.CatalogSnapshot
-	catalogProjected    tool.CatalogSnapshot
-	sampledCatalog      tool.CatalogSnapshot
-	sampledTools        map[string]bool
-	contextLedger       *agentcontext.MessageLedger
-	extensionsProjected bool
-	mcpProjected        bool
-	diagnostics         []diagnostics.Receipt
-	verification        []verify.Evidence
-	rollback            []string
-	budgetStage         uint8
-	reasoningEscalation uint8
-	mailbox             *turnkernel.Mailbox[PendingInput]
-	requests            *turnkernel.RequestLedger
-	cancel              context.CancelCauseFunc
-	cancelReason        string
-	delta               *SessionDelta
-	context             agentcontext.Authority
-	contextUsage        provider.Usage
-	contextCost         float64
+	samples              uint32
+	toolSamples          map[uint32]toolSpend
+	approvalEmit         func(Event) error
+	kernel               *turnkernel.RuntimeKernel
+	recorder             *trace.Recorder
+	toolSpans            map[string]uint64
+	scheduler            *turnkernel.ToolScheduler
+	diff                 *turnkernel.TurnDiffTracker
+	contextSeen          []promptcontext.Receipt
+	selections           []promptcontext.Selection
+	catalog              tool.CatalogSnapshot
+	catalogProjected     tool.CatalogSnapshot
+	sampledCatalog       tool.CatalogSnapshot
+	sampledTools         map[string]bool
+	contextLedger        *agentcontext.MessageLedger
+	extensionsProjected  bool
+	mcpProjected         bool
+	diagnostics          []diagnostics.Receipt
+	verification         []verify.Evidence
+	rollback             []string
+	budgetStage          uint8
+	reasoningEscalation  uint8
+	toolSurfaceMaxBytes  int
+	toolSurfaceItemBytes int
+	mailbox              *turnkernel.Mailbox[PendingInput]
+	requests             *turnkernel.RequestLedger
+	cancel               context.CancelCauseFunc
+	cancelReason         string
+	delta                *SessionDelta
+	context              agentcontext.Authority
+	contextUsage         provider.Usage
+	contextCost          float64
 }
 
 type ScopeSnapshot struct {

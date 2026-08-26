@@ -18,7 +18,7 @@ const (
 	CapVision Capability = "vision"
 	// CapImageInput permits image content blocks.
 	CapImageInput Capability = "image_input"
-	// CapPromptCache permits a sticky provider cache key.
+	// CapPromptCache reports that the provider exposes prompt-cache usage.
 	CapPromptCache Capability = "prompt_cache"
 )
 

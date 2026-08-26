@@ -7,28 +7,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 )
 
-func StepBudgetWarningRemaining(maxSteps, step int) int {
-	if maxSteps < 64 {
-		return 0
-	}
-	warning := min(32, max(16, maxSteps/4))
-	if step != maxSteps-warning {
-		return 0
-	}
-	return warning
-}
-
-func StepBudgetFeedback(turn uint64, remaining int) provider.Message {
-	return feedback(turn, fmt.Sprintf(
-		"[step_budget]\nremaining_steps=%d\nhard_limit=true\n"+
-			"Prioritize the requested deliverable now. Stop broad exploration, "+
-			"finish the smallest coherent verified result, and call turn_complete. "+
-			"If required work cannot fit, call turn_complete with status=incomplete "+
-			"and concrete pending_actions instead of waiting for forced termination.",
-		remaining,
-	))
-}
-
 func ContextWindowFeedback(turn uint64) provider.Message {
 	return feedback(turn,
 		"[context_window]\nStop broad exploration. Complete the smallest coherent "+
@@ -148,7 +126,7 @@ func NoProgressFeedback(
 			"stage=%s\n"+
 			"required_action=converge\n"+
 			"Stop broad exploration and repeated inventory. Execute the smallest "+
-			"coherent batch now (at most 5 files), verify it, and update the plan. "+
+			"coherent batch now, verify it, and update the plan. "+
 			"A workspace-change turn advances only through observed mutations, "+
 			"completed plan steps, verification, or completion. If the remaining "+
 			"work cannot be completed, call turn_complete with status=incomplete "+

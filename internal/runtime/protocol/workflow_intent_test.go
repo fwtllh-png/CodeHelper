@@ -21,9 +21,15 @@ func TestTurnRecoveryContractNeverEncodesHistoricalOperationReplay(t *testing.T)
 	}
 	context := TurnRecoveryContext{
 		Action: TurnRecoveryContinue, SourceTurnID: "turn-source",
+		PlanID: "plan-1", PlanTransition: PlanTransitionImplement,
+		ProfileRevision: 2,
 	}
 	if err := context.Validate(); err != nil {
 		t.Fatal(err)
+	}
+	context.PlanTransition = ""
+	if err := context.Validate(); err == nil {
+		t.Fatal("recovery accepted a partial Plan identity")
 	}
 }
 
