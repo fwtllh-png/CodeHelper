@@ -102,7 +102,8 @@ DeepSeek Responses 协议发送图片。支持图片的 Session 会在模型上�
 Sample 完成后持久化完整推理，因此重载页面或切换 Session 后仍可恢复多个独立 Think
 段。Read、Bash、Grep/Glob 分别使用带行号的文件面板、Terminal 面板和分组搜索面板；
 文件名与搜索结果路径可通过仅接受当前 Workspace 普通文件的 Host 接口在本机编辑器中
-打开。
+打开。macOS 默认优先使用 Visual Studio Code；未安装或无法启动 VS Code 时回退到
+系统文本编辑器。Windows 和 Linux 继续使用各自的系统文件打开机制。
 
 最终回答支持 GFM 表格、CJK 相邻强调、行内与块级数学公式、引用、嵌套列表、图片和
 带语言标识的代码块。宽表格与长代码只在各自区域滚动；Markdown 文件链接通过
@@ -114,6 +115,10 @@ Conversation Header 显示当前用户问题位置，并提供上一个、下一
 Entry、Turn、Call 和 Path Identity 定位。Chat 与 Trajectory 往返、切换 Session、
 加载更早历史或展开 Tool 时，页面会保留当前语义阅读锚点。Transcript 使用最多
 200 个业务节点的重叠分页窗口，避免长会话无限扩张 DOM。
+
+Runtime 连接中断时，页面立即停止当前 Turn 的运行计时和操作控件，显示连接中断提示，
+并禁止继续提交。自动重连会重新读取 Runtime 的持久化状态，以确认该 Turn 实际为
+继续、完成或失败；Browser 不会自行伪造业务终态。
 
 ## Session 与恢复
 

@@ -2,13 +2,6 @@ package wire
 
 import "github.com/fwtllh-png/CodeHelper/internal/config"
 
-func effectiveTurnTokenBudget(configured, contextWindow uint64) uint64 {
-	if configured != 0 {
-		return configured
-	}
-	return contextWindow
-}
-
 func effectiveSubagentLimits(
 	limits config.Subagent,
 	turnBudget uint64,

@@ -61,12 +61,18 @@ idle_timeout = "1m"             # 每个流事件都会续期
 max_concurrent = 8
 rate_limit = 0
 budget_tokens = 0            # 0 表示不设置累计 Session Token 上限
-turn_budget_tokens = 0       # 0 表示按当前模型 context window 派生每 Turn 上限
+turn_budget_tokens = 0       # 0 表示不设置累计 Turn Token 上限
 budget_usd = 0               # 0 表示不增加成本上限
 reasoning_effort = ""        # 空值为自适应；显式值固定 Effort
 native_search = false
 
+
+`turn_budget_tokens` 统计一个 Turn 内所有模型调用的累计输入与输出。它不是模型的
+Context Window：后者只约束单次请求。默认值 `0` 不设置累计上限，单次请求仍受模型
+能力约束，循环仍受 `max_steps` 约束。需要控制成本时应显式设置
+`turn_budget_tokens`、`budget_tokens` 或 `budget_usd`。
 [execution.verify]
+mode = "soft"                # off | soft | hard
 mode = "soft"                # off | soft | hard
 scope = "diagnostics"        # diagnostics | repository | affected
 on_failure = "fail"          # fail | revert

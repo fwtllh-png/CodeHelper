@@ -51,10 +51,10 @@ Interaction、未验证 Change 和开放 Diagnostic 等 Mandatory Fact 不能由
 执行预算和容量预算分开：
 
 - `execution.budget_tokens`：可选的累计 Session 上限；`0` 表示不增加该上限；
-- `execution.turn_budget_tokens`：可选的单 Turn 操作员上限；`0` 时从当前模型
-  Context Window 派生；
-- `execution.subagent.max_tokens`：可选的整棵 Child Tree 上限；`0` 时从 Turn 上限和
-  `max_parallel` 派生；
+- `execution.turn_budget_tokens`：可选的单 Turn 累计操作员上限；`0` 表示不设置。
+  模型 Context Window 只约束单次请求，不能作为多次采样的累计成本上限；
+- `execution.subagent.max_tokens`：可选的整棵 Child Tree 上限；`0` 时仅在显式设置
+  Turn 上限后从该上限和 `max_parallel` 派生；
 - `max_output_tokens`：正值是操作员上限，实际值仍受模型能力和剩余输入空间约束；
 - 默认 Context Compaction 边界是
   `ContextTokens - 当前 Output Reserve`；显式值只用于 Operator 主动设置更小的成本

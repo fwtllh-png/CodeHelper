@@ -2331,8 +2331,6 @@ const TranscriptItem = memo(function TranscriptItem({
   onFeedback: (rating: MessageFeedbackRating) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [guidanceOpen, setGuidanceOpen] = useState(false);
-  const [guidance, setGuidance] = useState("");
   const [recoveryPending, setRecoveryPending] = useState("");
   if (entry.kind === "user") {
     return (
@@ -2392,12 +2390,9 @@ const TranscriptItem = memo(function TranscriptItem({
         <div><strong>{entry.title}</strong><span>{entry.text}</span></div>
         {entry.recoverable && entry.turnID && entry.recovery && (
           <div className="turnRecovery">
-            <div className="turnRecoveryStatus">
-              <span data-state={entry.recovery.sideEffects}>
-                Side effects: {entry.recovery.sideEffects.replaceAll("_", " ")}
-              </span>
-              {entry.recovery.action && <small>{entry.recovery.action}</small>}
-            </div>
+            <span className="turnRecoveryStatus">
+              {recoverySummary(entry.recovery.sideEffects)}
+            </span>
             <div className="artifactActions">
               {entry.recovery.canRetry && (
                 <button
@@ -2415,7 +2410,12 @@ const TranscriptItem = memo(function TranscriptItem({
               {entry.recovery.canContinue && (
                 <button
                   disabled={Boolean(recoveryPending)}
-                  onClick={() => setGuidanceOpen((value) => !value)}
+                  onClick={() => {
+                    setRecoveryPending("continue");
+                    void client.recoverTurn(entry.turnID, "continue")
+                      .catch(onError)
+                      .finally(() => setRecoveryPending(""));
+                  }}
                 >
                   <Play size={13} /> Continue
                 </button>
@@ -2447,33 +2447,6 @@ const TranscriptItem = memo(function TranscriptItem({
                 </button>
               )}
             </div>
-            {guidanceOpen && (
-              <div className="turnRecoveryGuidance">
-                <textarea
-                  aria-label="Continue guidance"
-                  value={guidance}
-                  autoFocus
-                  onChange={(event) => setGuidance(event.target.value)}
-                  placeholder="Additional guidance"
-                />
-                <button
-                  disabled={Boolean(recoveryPending)}
-                  onClick={() => {
-                    setRecoveryPending("continue");
-                    void client.recoverTurn(
-                      entry.turnID,
-                      "continue",
-                      guidance
-                    ).catch(onError).finally(() => {
-                      setRecoveryPending("");
-                      setGuidanceOpen(false);
-                    });
-                  }}
-                >
-                  <Play size={13} /> Continue
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -2524,6 +2497,21 @@ const TranscriptItem = memo(function TranscriptItem({
     } : {})}
   />;
 });
+
+function recoverySummary(sideEffects: string): string {
+  switch (sideEffects) {
+    case "draft":
+      return "Draft saved. Continue from the last durable step.";
+    case "committed":
+      return "Workspace changes were kept.";
+    case "rolled_back":
+      return "Workspace changes were rolled back.";
+    case "none":
+      return "No workspace changes were made.";
+    default:
+      return "Review the workspace before continuing.";
+  }
+}
 
 function TurnStatus({
   events,

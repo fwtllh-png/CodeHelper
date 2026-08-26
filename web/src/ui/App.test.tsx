@@ -82,7 +82,12 @@ describe("projectTranscript", () => {
     ]);
 
     expect(entries).toMatchObject([
-      {kind: "status", title: "Verification", text: "passed", failed: false},
+      {
+        kind: "status",
+        title: "Checks passed",
+        text: "Changed files are covered by recorded checks.",
+        failed: false
+      },
       {kind: "receipt", data: {outcome: "changed"}},
       {kind: "status", title: "Rejected", text: "stale request", failed: true}
     ]);
@@ -147,18 +152,12 @@ describe("projectTranscript", () => {
     render(<App client={client} />);
 
     expect(screen.queryByRole("button", {name: "Retry"})).toBeNull();
-    expect(screen.getByText("Side effects: committed")).toBeTruthy();
-    expect(screen.getByText("inspect the workspace before continuing")).toBeTruthy();
+    expect(screen.getByText("Workspace changes were kept.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Continue"}));
-    fireEvent.change(screen.getByRole("textbox", {name: "Continue guidance"}), {
-      target: {value: "Run focused verification"}
-    });
-    fireEvent.click(screen.getAllByRole("button", {name: "Continue"})[1]);
     await waitFor(() => {
       expect(client.recoverTurn).toHaveBeenCalledWith(
         "turn",
-        "continue",
-        "Run focused verification"
+        "continue"
       );
     });
 
@@ -1467,6 +1466,28 @@ describe("projectTranscript", () => {
       );
     });
     expect(client.submitPrompt).not.toHaveBeenCalled();
+  });
+
+  it("stops active progress when the Runtime connection is interrupted", async () => {
+    const value = {
+      ...snapshot([event(1, "turn.started", {display_prompt: "Inspect"})]),
+      phase: "failed" as const,
+      socketConnected: false,
+      problem: {
+        version: 1,
+        code: "internal",
+        message: "Connection interrupted.",
+        retryable: true
+      }
+    };
+    render(<App client={mockClient(value)} />);
+
+    expect(screen.getByRole("heading", {name: "Runtime unavailable"})).toBeTruthy();
+    expect(screen.getByText("Connection interrupted.")).toBeTruthy();
+    expect(screen.queryByText("Deep diving...")).toBeNull();
+    expect(screen.queryByText("Working")).toBeNull();
+    expect(screen.queryByRole("button", {name: "Stop turn"})).toBeNull();
+    expect(screen.queryByPlaceholderText("Ask CodeHelper")).toBeNull();
   });
 
   it("queues Enter during an active turn and exposes queue item actions", async () => {

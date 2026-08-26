@@ -23,6 +23,7 @@ describe("SessionProgress", () => {
           document: {
             version: 1,
             revision: 2,
+            title: "Parser rollout",
             objective: "Ship the parser fix",
             steps: [{
               id: "implement",
@@ -53,10 +54,11 @@ describe("SessionProgress", () => {
       />
     );
 
+    expect(screen.getByText("Parser rollout")).toBeTruthy();
     expect(screen.getByText("Ship the parser fix")).toBeTruthy();
     expect(screen.getByText("Revision 2")).toBeTruthy();
     expect(screen.getByText("Focused tests pass")).toBeTruthy();
-    expect(screen.getByText("1 done")).toBeTruthy();
+    expect(screen.getByText("1/2 complete")).toBeTruthy();
     expect(screen.getByText("Checking the diff")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Open trajectory"}));
     expect(onOpenTrajectory).toHaveBeenCalledOnce();
@@ -64,5 +66,35 @@ describe("SessionProgress", () => {
     expect(onPlanTransition).toHaveBeenCalledWith("implement");
     expect(screen.getByRole("button", {name: "Autopilot"}).hasAttribute("disabled"))
       .toBe(true);
+  });
+
+  it("never exposes serialized plan JSON as the summary title", () => {
+    const body = `{"version":1,"revision":1,` +
+      `"constraints":["Keep the prefix stable"],"steps":[]}`;
+    render(
+      <SessionProgress
+        plan={{
+          version: 1,
+          id: "plan",
+          session_id: "session",
+          thread_id: "thread",
+          turn_id: "turn",
+          cursor: 1,
+          status: "ready",
+          body,
+          document: {version: 1, revision: 1, steps: []},
+          profile_revision: 1,
+          can_implement: true,
+          can_autopilot: true,
+          created_at: "2026-01-01T00:00:00Z"
+        }}
+        tasks={[]}
+        agents={[]}
+        onOpenTrajectory={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Implementation plan")).toBeTruthy();
+    expect(screen.queryByText(body)).toBeNull();
   });
 });

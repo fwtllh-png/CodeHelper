@@ -65,6 +65,15 @@ func TestServiceBrowsesSearchesAndReadsWithinWorkspace(t *testing.T) {
 	if resolved != filepath.Join(canonicalRoot, "src", "main.go") {
 		t.Fatalf("resolved file = %q", resolved)
 	}
+	resolvedAbsolute, err := service.ResolveFile(
+		filepath.Join(canonicalRoot, "src", "main.go"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolvedAbsolute != resolved {
+		t.Fatalf("absolute resolved file = %q, want %q", resolvedAbsolute, resolved)
+	}
 }
 
 func TestServiceRejectsEscapesAndSkippedPaths(t *testing.T) {
@@ -79,6 +88,11 @@ func TestServiceRejectsEscapesAndSkippedPaths(t *testing.T) {
 	}
 	if _, err := service.ResolveFile("../secret"); err == nil {
 		t.Fatal("expected open traversal rejection")
+	}
+	if _, err := service.ResolveFile(
+		filepath.Join(filepath.Dir(root), "secret"),
+	); err == nil {
+		t.Fatal("expected absolute open traversal rejection")
 	}
 	if _, err := service.ResolveFile("."); err == nil {
 		t.Fatal("expected directory open rejection")
@@ -159,7 +173,8 @@ func TestServiceReportsGitStateWhenSandboxRejectsUnrelatedLinks(t *testing.T) {
 	root := t.TempDir()
 	initRepository(t, root)
 	runGit(t, root, "commit", "--allow-empty", "-m", "initial")
-	service, err := New(root, rejectingQueryBackend{})
+	prepares := 0
+	service, err := New(root, rejectingQueryBackend{prepares: &prepares})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,6 +184,9 @@ func TestServiceReportsGitStateWhenSandboxRejectsUnrelatedLinks(t *testing.T) {
 	}
 	if !state.Repository || state.Branch == "" {
 		t.Fatalf("GitState() = %+v", state)
+	}
+	if prepares != 0 {
+		t.Fatalf("read-only Git metadata used sandbox Prepare %d times", prepares)
 	}
 }
 
@@ -230,16 +248,19 @@ func runGit(t *testing.T, root string, arguments ...string) {
 
 type queryTestBackend struct{}
 
-type rejectingQueryBackend struct{}
+type rejectingQueryBackend struct{ prepares *int }
 
 func (rejectingQueryBackend) Capability() sandbox.Capability {
 	return queryTestBackend{}.Capability()
 }
 
-func (rejectingQueryBackend) Prepare(
+func (b rejectingQueryBackend) Prepare(
 	context.Context,
 	sandbox.Command,
 ) (sandbox.Command, error) {
+	if b.prepares != nil {
+		(*b.prepares)++
+	}
 	return sandbox.Command{}, errors.New("workspace link validation failed")
 }
 

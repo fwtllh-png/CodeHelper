@@ -291,16 +291,29 @@ export class ConversationProjection {
         });
         break;
       case "turn.verification":
-        this.put({
-          id: event.id,
-          kind: "status",
-          turnID: event.turn_id,
-          sequence: event.sequence,
-          title: "Verification",
-          text: stringValue(data.verdict ?? data.status ?? "Recorded"),
-          failed: data.verdict === "failed" || data.status === "failed",
-          recoverable: false
-        });
+        {
+          const status = stringValue(data.verdict ?? data.status);
+          const label = status === "passed"
+            ? "Checks passed"
+            : status === "failed"
+              ? "Checks failed"
+              : "Not fully verified";
+          const message = status === "passed"
+            ? "Changed files are covered by recorded checks."
+            : status === "failed"
+              ? stringValue(data.message) || label
+              : "No structured check covered every changed file.";
+          this.put({
+            id: `verification-${event.turn_id}`,
+            kind: "status",
+            turnID: event.turn_id,
+            sequence: event.sequence,
+            title: label,
+            text: message,
+            failed: status === "failed",
+            recoverable: false
+          });
+        }
         break;
       case "turn.receipt":
         this.receipts.set(event.turn_id, Object.freeze({...data}));
@@ -533,18 +546,14 @@ export class ConversationProjection {
       this.touch();
       return;
     }
+    const failure = failurePresentation(event);
     this.put({
       id: `${event.id}-status`,
       kind: "status",
       turnID: event.turn_id,
       sequence: event.sequence,
-      title: event.kind === "turn.canceled" ? "Canceled" : "Failed",
-      text: stringValue(
-        event.data.outcome ??
-        event.data.message ??
-        event.data.reason ??
-        "Turn did not complete"
-      ),
+      title: failure.title,
+      text: failure.text,
       failed,
       recoverable: failed,
       recovery: failed ? recoveryOptions(
@@ -648,6 +657,34 @@ export class ConversationProjection {
   private touch(): void {
     this.dirty = true;
   }
+}
+
+function failurePresentation(event: RuntimeEvent) {
+  const fallback = stringValue(
+    event.data.outcome ??
+    event.data.message ??
+    event.data.reason ??
+    "Turn did not complete"
+  );
+  const budget = fallback.match(
+    /^token budget exhausted: projected (\d+), limit (\d+)$/
+  );
+  if (budget) {
+    return {
+      title: "Token limit reached",
+      text: `The next model call would exceed this run's token limit (${formatInteger(
+        budget[1]
+      )} projected, ${formatInteger(budget[2])} allowed).`
+    };
+  }
+  return {
+    title: event.kind === "turn.canceled" ? "Canceled" : "Failed",
+    text: fallback
+  };
+}
+
+function formatInteger(value: string): string {
+  return value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
 function requestID(event: RuntimeEvent): string {

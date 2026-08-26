@@ -14,6 +14,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 type declarationWriteTool struct{}
@@ -77,6 +78,80 @@ func (declarationQualityTool) Execute(
 		return tool.Result{}, err
 	}
 	return qualityEvidenceResult(verify.StatusPassed, input.CoveredPaths), nil
+}
+
+func TestManualSubmittedPlanCompletesWithoutAnotherModelSample(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	root := t.TempDir()
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: root,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("plan-1", "submit_plan", `{
+			"version":1,
+			"title":"Review this plan",
+			"steps":[{"id":"implement","title":"Implement the change"}]
+		}`),
+	}}
+	engine := newEngine(t, runtime, registry)
+	engine.options.Security.ConfigurePlanning(
+		policy.PlanningAdaptive,
+		policy.PlanApprovalManual,
+	)
+
+	result, err := engine.RunForTurn(t.Context(), "turn-plan", "implement", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed || result.Text != "Plan submitted for review." {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(runtime.requests) != 1 {
+		t.Fatalf("model requests = %d, want 1", len(runtime.requests))
+	}
+}
+
+func TestAutoApprovedSubmittedPlanContinuesCurrentTurn(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	root := t.TempDir()
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: root,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("plan-1", "submit_plan", `{
+			"version":1,
+			"title":"Execute this plan",
+			"steps":[{"id":"implement","title":"Implement the change"}]
+		}`),
+		toolCallStream("complete-1", completiontool.Name, `{
+			"status":"complete",
+			"summary":"Implemented.",
+			"pending_actions":[]
+		}`),
+	}}
+	engine := newEngine(t, runtime, registry)
+	engine.options.Security.ConfigurePlanning(
+		policy.PlanningAdaptive,
+		policy.PlanApprovalAuto,
+	)
+
+	result, err := engine.RunForTurn(t.Context(), "turn-plan-auto", "implement", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed || result.Text != "Implemented." {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(runtime.requests) != 2 {
+		t.Fatalf("model requests = %d, want 2", len(runtime.requests))
+	}
 }
 
 func TestWorkspaceChangeRequiresCompletionDeclaration(t *testing.T) {

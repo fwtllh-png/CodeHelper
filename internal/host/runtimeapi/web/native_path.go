@@ -31,28 +31,45 @@ func nativeTextPathOpener() func(context.Context, string) error {
 }
 
 func openNativeTextPath(ctx context.Context, target string) error {
-	var command *exec.Cmd
-	switch runtime.GOOS {
+	commands, err := nativeTextPathCommands(runtime.GOOS, target)
+	if err != nil {
+		return err
+	}
+	var failures []string
+	for _, arguments := range commands {
+		command := exec.CommandContext(ctx, arguments[0], arguments[1:]...)
+		output, err := command.CombinedOutput()
+		if err == nil {
+			return nil
+		}
+		failures = append(failures, fmt.Sprintf(
+			"%s: %v: %s",
+			arguments[0],
+			err,
+			strings.TrimSpace(string(output)),
+		))
+	}
+	return fmt.Errorf("native path opener failed: %s", strings.Join(failures, "; "))
+}
+
+func nativeTextPathCommands(goos, target string) ([][]string, error) {
+	switch goos {
 	case "darwin":
-		command = exec.CommandContext(ctx, "open", "-t", target)
+		return [][]string{
+			{"open", "-a", "Visual Studio Code", target},
+			{"open", "-t", target},
+		}, nil
 	case "windows":
-		command = exec.CommandContext(
-			ctx,
+		return [][]string{{
 			"rundll32.exe",
 			"url.dll,FileProtocolHandler",
 			target,
-		)
+		}}, nil
 	case "linux":
-		command = exec.CommandContext(ctx, "xdg-open", target)
+		return [][]string{{"xdg-open", target}}, nil
 	default:
-		return errors.New("native path opening is unsupported on this platform")
-	}
-	if output, err := command.CombinedOutput(); err != nil {
-		return fmt.Errorf(
-			"native path opener failed: %w: %s",
-			err,
-			strings.TrimSpace(string(output)),
+		return nil, errors.New(
+			"native path opening is unsupported on this platform",
 		)
 	}
-	return nil
 }

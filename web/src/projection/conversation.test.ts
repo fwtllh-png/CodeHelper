@@ -6,6 +6,39 @@ import {
 } from "./conversation";
 
 describe("ConversationProjection", () => {
+  it("replaces intermediate verification with the final verdict", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.verification", {status: "unavailable", action: "repair"}),
+      event(2, "turn.verification", {status: "passed", action: "passed"})
+    ]);
+    const verification = snapshot.order
+      .map((id) => snapshot.nodes.get(id))
+      .filter((node) => node?.kind === "status");
+
+    expect(verification).toMatchObject([
+      {
+        title: "Checks passed",
+        text: "Changed files are covered by recorded checks.",
+        failed: false
+      }
+    ]);
+  });
+
+  it("explains an unavailable verification without internal terminology", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.verification", {
+        status: "unavailable",
+        message: "structured quality evidence does not cover every changed path"
+      })
+    ]);
+
+    expect(snapshot.nodes.get(snapshot.order[0])).toMatchObject({
+      title: "Not fully verified",
+      text: "No structured check covered every changed file.",
+      failed: false
+    });
+  });
+
   it("derives recovery actions and side effects from Runtime facts", () => {
     const snapshot = projectConversation([
       event(1, "turn.failed", {
@@ -27,6 +60,25 @@ describe("ConversationProjection", () => {
         sideEffects: "rolled_back",
         action: "continue from durable state"
       }
+    });
+  });
+
+  it("presents token admission failures without protocol jargon", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.failed", {
+        code: "resource_exhausted",
+        message: "token budget exhausted: projected 1139573, limit 1048576",
+        fault: {
+          disposition: "resume_turn",
+          side_effects: "draft"
+        }
+      })
+    ]);
+
+    expect(snapshot.nodes.get(snapshot.order[0])).toMatchObject({
+      kind: "status",
+      title: "Token limit reached",
+      text: "The next model call would exceed this run's token limit (1,139,573 projected, 1,048,576 allowed)."
     });
   });
 

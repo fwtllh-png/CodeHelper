@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -242,6 +243,13 @@ func (s *Service) Resource(ctx context.Context, name string) (Resource, error) {
 // ResolveFile returns the canonical absolute path of one regular workspace
 // file for a local host action such as opening it in the user's editor.
 func (s *Service) ResolveFile(name string) (string, error) {
+	if filepath.IsAbs(name) {
+		relative, err := filepath.Rel(s.workspace.Root(), name)
+		if err != nil {
+			return "", err
+		}
+		name = filepath.ToSlash(relative)
+	}
 	name, err := normalizeFile(name)
 	if err != nil {
 		return "", err

@@ -7,6 +7,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 func (e *Engine) completionCandidate(
@@ -16,6 +17,19 @@ func (e *Engine) completionCandidate(
 	batchSize int,
 	mutationRevision uint64,
 ) turnkernel.CompletionCandidate {
+	if submitted, _ := result.Metadata["submitted_plan"].(bool); submitted &&
+		!result.IsError &&
+		e.options.Security.PlanningSnapshot().PlanApproval ==
+			string(policy.PlanApprovalManual) {
+		return turnkernel.CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "complete",
+			Summary:          "Plan submitted for review.",
+			CompletionCall:   call.ID,
+			BatchMutated:     batchMutated,
+			BatchSize:        batchSize,
+		}
+	}
 	evidenceInputs := e.verificationEvidence()
 	currentEvidence := make(map[string]struct{}, len(evidenceInputs))
 	for _, evidence := range evidenceInputs {

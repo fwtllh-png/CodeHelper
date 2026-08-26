@@ -104,20 +104,21 @@ func (s *Service) git(
 		return "", err
 	}
 	defer directory.Close()
-	result, err := process.Run(ctx, process.Options{
-		Path: process.GitExecutable(), Args: process.ManagedGitArguments(arguments),
-		Dir: root, DirFile: directory, Sandbox: s.backend,
-		WorkspaceReadOnly: readOnly, DenyNetwork: true,
-	})
-	if err != nil && readOnly {
-		// These fixed metadata queries do not execute repository content. Keep
-		// branch discovery available when unrelated dependency symlinks make the
-		// full Workspace sandbox preflight reject the repository.
-		result, err = process.Run(ctx, process.Options{
-			Path: process.GitExecutable(), Args: process.ManagedGitArguments(arguments),
-			Dir: root, DirFile: directory,
-		})
+	args := process.ManagedGitArguments(arguments)
+	options := process.Options{
+		Path: process.GitExecutable(), Args: args,
+		Dir: root, DirFile: directory,
 	}
+	if readOnly {
+		// These fixed metadata queries cannot invoke hooks, filesystem monitors,
+		// maintenance, or network operations. Avoid a full workspace link audit
+		// before every Git metadata command.
+		options.Args = append([]string{"--no-optional-locks"}, args...)
+	} else {
+		options.Sandbox = s.backend
+		options.DenyNetwork = true
+	}
+	result, err := process.Run(ctx, options)
 	if err != nil {
 		return "", err
 	}

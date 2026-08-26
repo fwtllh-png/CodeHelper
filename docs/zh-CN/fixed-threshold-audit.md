@@ -93,6 +93,7 @@ Prompt 各 Partition 不应各自持有模型无关的 Token 档位。应先预�
 | `internal/runtime/agent/engine/context_policy.go` | Compaction 默认读取 Route Context Window | 已改善 | 继续迁移到基于实际请求 reservation 的单一 admission，最终移除三档比例 |
 | `internal/runtime/agent/context/store_window.go` | 默认边界等于硬输入容量 | 已改善 | 显式非零值仅作为 Operator Ceiling |
 | `internal/runtime/agent/engine/model_handler.go` | 输出 Ceiling 来自冻结的 Turn Capacity | 已改善 | 每次 Sample 再按实际输入、Token 与 USD Budget 收窄 |
+| `internal/runtime/app/wire/modules_runtime.go` | `turn_budget_tokens=0` 不再从 Context Window 派生累计上限 | 已修复 | Context 仅约束单次请求；累计成本必须来自显式 Token/USD Budget |
 | `internal/config/defaults.go:45` | Recent Tail 默认值已改为 0 | 已改善 | 0 由当前 Route 的动态容量解析，显式值只作为 Operator Ceiling |
 | `internal/runtime/agent/engine/compaction.go` | Summary 默认使用 Turn 硬输入容量作为 Ceiling | 已改善 | 实际内容仍由 Truth Retention 和 Digest 数量约束 |
 | `internal/config/defaults.go:37` | Truth、Digest、Fact、Handle 分别有固定配额 | 应动态化 | Mandatory 先分配，剩余容量按优先级共享，不为每类预切固定空间 |

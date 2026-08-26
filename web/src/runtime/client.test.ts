@@ -1826,6 +1826,24 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
+  it("disconnects live progress when the event stream closes", async () => {
+    vi.useFakeTimers();
+    snapshotEvents = [runtimeEvent(1, "turn.started")];
+    snapshotSequence = 1;
+    const client = new RuntimeClient();
+    const socket = await startClient(client);
+
+    expect(client.getSnapshot().conversation.activeTurnID).toBe("turn");
+    socket.emit("close");
+
+    expect(client.getSnapshot()).toMatchObject({
+      phase: "failed",
+      socketConnected: false,
+      problem: {message: "Connection interrupted.", retryable: true}
+    });
+    client.stop();
+  });
+
   it("authenticates the event stream before requesting hydration data", async () => {
     const client = new RuntimeClient();
     const starting = client.start();

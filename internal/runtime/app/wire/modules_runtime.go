@@ -35,7 +35,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	toolPrefix := promptcontext.ToolInstructions(execution.Tools, delegation)
 	budgets := routePromptBudgets(
 		state.options.PromptBudgets, route, execution.MaxOutputTokens,
-		effectiveTurnTokenBudget(execution.TurnBudgetTokens, route.Model().Limits.ContextTokens),
+		execution.TurnBudgetTokens,
 		execution.BudgetTokens,
 	)
 	prompt, err := promptcontext.Assemble(promptcontext.Options{
@@ -94,7 +94,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 
 		Budget: agentengine.Budget{
 			MaxTokens:     execution.BudgetTokens,
-			MaxTurnTokens: effectiveTurnTokenBudget(execution.TurnBudgetTokens, route.Model().Limits.ContextTokens),
+			MaxTurnTokens: execution.TurnBudgetTokens,
 			MaxCostUSD:    execution.BudgetUSD,
 		},
 

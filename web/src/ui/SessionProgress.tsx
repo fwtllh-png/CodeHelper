@@ -56,7 +56,7 @@ export function SessionProgress({
       {expanded && (
         <div className="sessionProgressBody">
           {plan && (
-            <div className="progressSection">
+            <div className="progressSection progressPlan">
               <div className="progressLabel">
                 <Target size={13} /> Plan
                 {plan.document?.revision &&
@@ -105,8 +105,8 @@ export function SessionProgress({
           {tasks.length > 0 && (
             <div className="progressSection">
               <div className="progressLabel">
-                <ListChecks size={13} /> Todo
-                <small>{done} done</small>
+                <ListChecks size={13} /> Tasks
+                <small>{done}/{tasks.length} complete</small>
               </div>
               <ol className="progressTasks">
                 {orderedTasks.map((task) => (
@@ -156,8 +156,13 @@ function goalTitle(
   plan: SessionPlanArtifact | undefined,
   tasks: readonly TaskSummary[]
 ): string {
+  const title = plan?.document?.title?.trim();
+  if (title) return title;
+  const objective = plan?.document?.objective?.trim();
+  if (objective) return objective;
   const firstLine = plan?.body.split(/\r?\n/, 1)[0]?.trim();
-  return firstLine || tasks[0]?.kind || "Session progress";
+  if (firstLine && !firstLine.startsWith("{")) return firstLine;
+  return tasks[0]?.kind || "Implementation plan";
 }
 
 function isDone(state: string): boolean {

@@ -129,23 +129,27 @@ func (s *RuntimeKernel) ExecuteToolEffect(
 			projectionErr = errors.Join(projectionErr, err)
 			continue
 		}
-		if call.Name == "turn_complete" &&
+		submittedPlan, _ := result.Metadata["submitted_plan"].(bool)
+		if (call.Name == "turn_complete" || submittedPlan) &&
 			effect.CompletionCandidate != nil {
-			decision, err := s.EvaluateCompletion(
-				effect.CompletionCandidate(
-					call,
-					results[index],
-					batchMutated,
-					len(effect.Calls),
-					mutationRevision,
-				),
+			candidate := effect.CompletionCandidate(
+				call,
+				results[index],
+				batchMutated,
+				len(effect.Calls),
+				mutationRevision,
 			)
-			if err != nil {
-				projectionErr = errors.Join(projectionErr, err)
-				continue
+			if call.Name == "turn_complete" || candidate.DeclarationValid {
+				decision, err := s.EvaluateCompletion(candidate)
+				if err != nil {
+					projectionErr = errors.Join(projectionErr, err)
+					continue
+				}
+				if call.Name == "turn_complete" {
+					BindCompletionDecision(&results[index], decision)
+					result = results[index]
+				}
 			}
-			BindCompletionDecision(&results[index], decision)
-			result = results[index]
 		}
 		effect.Executed[call.ID] = results[index]
 		if effect.AfterClose != nil {

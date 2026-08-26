@@ -1614,7 +1614,7 @@ export class RuntimeClient {
         if (this.state.phase === "desynchronized") {
           return;
         }
-        this.update({socketConnected: false, phase: "reconnecting"});
+        this.fail("Connection interrupted.");
         if (!connected) {
           reject(new Error("Web event stream closed before readiness"));
         }
@@ -1934,7 +1934,7 @@ export class RuntimeClient {
             message: error instanceof Error ? error.message : String(error),
             retryable: true
           };
-    this.update({phase: "failed", problem});
+    this.update({phase: "failed", socketConnected: false, problem});
   }
 
   private requireSession(): string {

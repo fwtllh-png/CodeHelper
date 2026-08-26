@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
@@ -1053,6 +1054,23 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 		opened != filepath.Join(canonicalRoot, "main.go") {
 		t.Fatalf(
 			"open status=%d opened=%q body=%s",
+			response.Code,
+			opened,
+			response.Body.String(),
+		)
+	}
+	response = postWeb(
+		t,
+		server,
+		host,
+		token,
+		"workspace/open",
+		fmt.Sprintf(`{"path":%q}`, filepath.Join(canonicalRoot, "main.go")),
+	)
+	if response.Code != http.StatusOK ||
+		opened != filepath.Join(canonicalRoot, "main.go") {
+		t.Fatalf(
+			"absolute open status=%d opened=%q body=%s",
 			response.Code,
 			opened,
 			response.Body.String(),

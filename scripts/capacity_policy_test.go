@@ -20,6 +20,16 @@ func TestCapacityPathsDoNotReintroduceLegacyTiers(t *testing.T) {
 			"MaxTokens: 8 << 10", "MaxTokens: 32 << 10",
 			"MaxTokens: 64 << 10",
 		},
+		"internal/runtime/app/wire/budget_policy.go": {
+			"contextWindow",
+		},
+		"internal/runtime/app/wire/modules_runtime.go": {
+			"MaxTurnTokens: route.Model().Limits.ContextTokens",
+			"execution.TurnBudgetTokens, route.Model().Limits.ContextTokens",
+		},
+		"internal/runtime/app/wire/orchestration_components.go": {
+			"execution.TurnBudgetTokens, state.provider.route.Model().Limits.ContextTokens",
+		},
 		"internal/adapter/tool/tool.go": {
 			`kind, tokens := "generic", 2048`,
 		},

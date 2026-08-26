@@ -160,7 +160,8 @@ func (m *workspaceRuntimeManager) List(
 		if runtime := active[identity.RootID]; runtime != nil {
 			descriptor.Ready = true
 			if workspace := runtime.application.WorkspaceQuery(); workspace != nil {
-				if git, gitErr := workspace.GitState(ctx); gitErr == nil {
+				git, gitErr := workspace.GitState(ctx)
+				if gitErr == nil {
 					descriptor.Git = &git
 				}
 			}

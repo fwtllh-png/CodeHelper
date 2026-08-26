@@ -150,8 +150,8 @@ type Execution struct {
 	MaxConcurrent int           `json:"max_concurrent" toml:"max_concurrent"`
 	RateLimit     float64       `json:"rate_limit" toml:"rate_limit"`
 	BudgetTokens  uint64        `json:"budget_tokens" toml:"budget_tokens"`
-	// TurnBudgetTokens is an optional operator ceiling. Zero derives the
-	// per-turn ceiling from the active model's context window.
+	// TurnBudgetTokens is an optional cumulative operator ceiling. Zero leaves
+	// the Turn uncapped; each request remains bounded by model capacity.
 	TurnBudgetTokens uint64   `json:"turn_budget_tokens" toml:"turn_budget_tokens"`
 	BudgetUSD        float64  `json:"budget_usd" toml:"budget_usd"`
 	ReasoningEffort  string   `json:"reasoning_effort" toml:"reasoning_effort"`

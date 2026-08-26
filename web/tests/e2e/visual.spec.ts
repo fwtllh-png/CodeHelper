@@ -546,6 +546,25 @@ test("captures the approval state", async ({page}) => {
   await expect(page).toHaveScreenshot("canonical-approval.png");
 });
 
+test("captures the implementation plan", async ({page}) => {
+  await createSession(page);
+  await submitPrompt(page, "visual plan");
+
+  const progress = page.getByRole("region", {name: "Session progress"});
+  await expect(progress).toBeVisible();
+  await expect(progress).toContainText("Stabilize prompt cache prefixes");
+  await expect(progress.getByRole("button", {name: "Implement"})).toBeVisible();
+  await expect(progress).not.toContainText('{"version":1');
+  await expect(progress).toHaveScreenshot("canonical-plan.png");
+
+  await page.setViewportSize({width: 390, height: 844});
+  await progress.scrollIntoViewIfNeeded();
+  expect(await progress.evaluate((node) =>
+    node.scrollWidth <= node.clientWidth
+  )).toBe(true);
+  await expect(progress).toHaveScreenshot("canonical-plan-mobile.png");
+});
+
 test("captures a complex edit and approval workflow", async ({page}) => {
   await createSession(page);
   await enableAutomaticPlanApproval(page);
@@ -576,7 +595,7 @@ test("captures the failure state", async ({page}) => {
   await createSession(page);
   await submitPrompt(page, "visual failure");
   await expect(page.getByText("Failed", {exact: true})).toBeVisible();
-  await expect(page.getByText(/Side effects:/)).toBeVisible();
+  await expect(page.getByText("Review the workspace before continuing.")).toBeVisible();
   await expect(page.getByRole("button", {name: "Continue"})).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-failure.png");
 });

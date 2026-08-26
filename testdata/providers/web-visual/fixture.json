@@ -5,6 +5,10 @@
   "stream_delay_ms": 40,
   "routes": [
     {
+      "match": ["visual plan"],
+      "streams": ["plan-layout.sse"]
+    },
+    {
       "match": ["visual navigation"],
       "streams": [
         "tools-read.sse",

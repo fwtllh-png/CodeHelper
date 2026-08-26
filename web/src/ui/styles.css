@@ -1939,6 +1939,11 @@ textarea:disabled {
   border-color: color-mix(in srgb, var(--ch-danger) 35%, var(--ch-border));
 }
 
+.terminalState[data-failed] {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
 .terminalState div {
   display: grid;
   min-width: 0;
@@ -1952,66 +1957,29 @@ textarea:disabled {
 }
 
 .terminalState > .turnRecovery {
-  display: grid;
-  min-width: min(420px, 55%);
-  gap: 7px;
-  margin-left: auto;
+  display: flex;
+  grid-column: 2;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
 }
 
 .turnRecoveryStatus {
-  display: flex !important;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.turnRecoveryStatus span {
-  padding: 1px 6px;
-  border: 1px solid var(--ch-border);
-  border-radius: 4px;
-  background: var(--ch-panel);
-}
-
-.turnRecoveryStatus span[data-state="committed"],
-.turnRecoveryStatus span[data-state="unknown"] {
-  border-color: color-mix(in srgb, var(--ch-warning) 55%, var(--ch-border));
-  color: var(--ch-warning);
+  min-width: 0;
+  color: var(--ch-text-muted);
 }
 
 .turnRecovery .artifactActions {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
-  justify-content: flex-end;
 }
 
-.turnRecovery .artifactActions button,
-.turnRecoveryGuidance button {
+.turnRecovery .artifactActions button {
   color: var(--ch-text);
   background: var(--ch-panel);
   border: 1px solid var(--ch-border);
-}
-
-.turnRecoveryGuidance {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-}
-
-.turnRecoveryGuidance textarea {
-  min-height: 54px;
-  resize: vertical;
-  padding: 7px 8px;
-  border: 1px solid var(--ch-border);
-  border-radius: var(--ch-radius-control);
-  outline: none;
-  background: var(--ch-panel);
-  color: var(--ch-text);
-  font: inherit;
-  font-size: 12px;
-}
-
-.turnRecoveryGuidance textarea:focus {
-  border-color: var(--ch-accent);
 }
 
 .terminalState span {
@@ -2026,10 +1994,10 @@ textarea:disabled {
 
   .terminalState > .turnRecovery {
     min-width: 0;
-    margin-left: 26px;
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .turnRecoveryStatus,
   .turnRecovery .artifactActions {
     justify-content: flex-start;
   }
@@ -2381,7 +2349,7 @@ textarea:disabled {
 
 .sessionProgressBody {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border-top: 1px solid var(--ch-border);
 }
 
@@ -2390,8 +2358,20 @@ textarea:disabled {
   padding: 9px 10px;
 }
 
+.progressPlan {
+  grid-column: 1 / -1;
+}
+
 .progressSection + .progressSection {
   border-left: 1px solid var(--ch-border);
+}
+
+.progressPlan ~ .progressSection {
+  border-top: 1px solid var(--ch-border);
+}
+
+.progressPlan + .progressSection {
+  border-left: 0;
 }
 
 .progressLabel {
@@ -2419,21 +2399,18 @@ textarea:disabled {
 }
 
 .progressSection > p {
-  display: -webkit-box;
   margin: 6px 0 0;
   overflow: hidden;
   color: var(--ch-text);
   font-size: 12px;
   line-height: 18px;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
 }
 
 .progressTasks,
 .progressAgents {
   display: grid;
   gap: 5px;
-  margin: 6px 0 0;
+  margin: 6px 0;
   padding: 0;
   list-style: none;
 }
@@ -2460,19 +2437,15 @@ textarea:disabled {
 
 .progressTasks strong,
 .progressAgents strong {
-  overflow: hidden;
   color: inherit;
   font-weight: 550;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .progressTasks small,
 .progressAgents small {
-  overflow: hidden;
   color: var(--ch-text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .progressTasks b,
@@ -2480,6 +2453,7 @@ textarea:disabled {
   color: var(--ch-text-muted);
   font-size: 9px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .progressAgents li {
