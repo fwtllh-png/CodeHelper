@@ -22,6 +22,8 @@ const AgentPresetScopeWorkspace AgentPresetScope = "workspace"
 
 type AgentPresetProfile struct {
 	Mode            string   `json:"mode"`
+	PlanningPolicy  string   `json:"planning_policy,omitempty"`
+	PlanApproval    string   `json:"plan_approval,omitempty"`
 	Provider        string   `json:"provider"`
 	Model           string   `json:"model"`
 	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
@@ -33,7 +35,8 @@ type AgentPresetProfile struct {
 
 func NewAgentPresetProfile(profile SessionProfile) AgentPresetProfile {
 	return AgentPresetProfile{
-		Mode: profile.Mode, Provider: profile.Provider, Model: profile.Model,
+		Mode: profile.Mode, PlanningPolicy: profile.PlanningPolicy, PlanApproval: profile.PlanApproval,
+		Provider: profile.Provider, Model: profile.Model,
 		ReasoningEffort: profile.ReasoningEffort,
 		EnabledToolIDs:  append([]string(nil), profile.EnabledToolIDs...),
 		ApprovalPosture: profile.ApprovalPosture,
@@ -49,22 +52,12 @@ func (p AgentPresetProfile) Validate() error {
 
 func (p AgentPresetProfile) Patch(current SessionProfile) SessionProfilePatch {
 	var patch SessionProfilePatch
-	if p.Mode != current.Mode {
-		value := p.Mode
-		patch.Mode = &value
-	}
-	if p.Provider != current.Provider {
-		value := p.Provider
-		patch.Provider = &value
-	}
-	if p.Model != current.Model {
-		value := p.Model
-		patch.Model = &value
-	}
-	if p.ReasoningEffort != current.ReasoningEffort {
-		value := p.ReasoningEffort
-		patch.ReasoningEffort = &value
-	}
+	setStringPatch(&patch.Mode, p.Mode, current.Mode)
+	setStringPatch(&patch.PlanningPolicy, p.PlanningPolicy, current.PlanningPolicy)
+	setStringPatch(&patch.PlanApproval, p.PlanApproval, current.PlanApproval)
+	setStringPatch(&patch.Provider, p.Provider, current.Provider)
+	setStringPatch(&patch.Model, p.Model, current.Model)
+	setStringPatch(&patch.ReasoningEffort, p.ReasoningEffort, current.ReasoningEffort)
 	tools := append([]string(nil), p.EnabledToolIDs...)
 	slices.Sort(tools)
 	currentTools := append([]string(nil), current.EnabledToolIDs...)
@@ -72,14 +65,8 @@ func (p AgentPresetProfile) Patch(current SessionProfile) SessionProfilePatch {
 	if !slices.Equal(tools, currentTools) {
 		patch.EnabledToolIDs = &tools
 	}
-	if p.ApprovalPosture != current.ApprovalPosture {
-		value := p.ApprovalPosture
-		patch.ApprovalPosture = &value
-	}
-	if p.ExecutionTarget != current.ExecutionTarget {
-		value := p.ExecutionTarget
-		patch.ExecutionTarget = &value
-	}
+	setStringPatch(&patch.ApprovalPosture, p.ApprovalPosture, current.ApprovalPosture)
+	setStringPatch(&patch.ExecutionTarget, p.ExecutionTarget, current.ExecutionTarget)
 	if p.MaxSteps != current.MaxSteps {
 		value := p.MaxSteps
 		patch.MaxSteps = &value
@@ -87,12 +74,20 @@ func (p AgentPresetProfile) Patch(current SessionProfile) SessionProfilePatch {
 	return patch
 }
 
+func setStringPatch(target **string, next, current string) {
+	if next != current {
+		*target = &next
+	}
+}
+
 func (p AgentPresetProfile) sessionProfile(
 	revision, promptCacheRevision uint64,
 ) SessionProfile {
 	return SessionProfile{
 		Version: SessionProfileVersion, Revision: revision,
-		Mode: p.Mode, Provider: p.Provider, Model: p.Model,
+		Mode: p.Mode, PlanningPolicy: p.PlanningPolicy,
+		PlanApproval: p.PlanApproval, Provider: p.Provider,
+		Model:           p.Model,
 		ReasoningEffort: p.ReasoningEffort,
 		EnabledToolIDs:  append([]string(nil), p.EnabledToolIDs...),
 		ApprovalPosture: p.ApprovalPosture,

@@ -549,6 +549,8 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.workspaceDiagnostics(r, dependencies)
 	case "workspace/diff":
 		result, err = s.workspaceDiff(r, dependencies)
+	case "workspace/git-switch":
+		result, err = s.workspaceGitSwitch(r, dependencies)
 	case "credential/status":
 		result, err = s.credentialStatus(r, dependencies)
 	case "credential/set-keyring":

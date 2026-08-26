@@ -310,6 +310,41 @@
             "pricing": "bundled"
           },
           "provenance": "bundled"
+        },
+        "deepseek-v4-flash-vision-exp": {
+          "id": "deepseek-v4-flash-vision-exp",
+          "canonical_id": "deepseek-v4-flash-vision-exp",
+          "wire_id": "deepseek-v4-flash-vision-exp",
+          "limits": {
+            "context_tokens": 1048576,
+            "max_output_tokens": 393216
+          },
+          "capabilities": {
+            "streaming": true,
+            "reasoning": true,
+            "reasoning_efforts": ["off", "low", "high", "max"],
+            "default_reasoning_effort": "high",
+            "tool_calls": true,
+            "native_search": false,
+            "vision": true,
+            "image_input": true,
+            "prompt_cache": true
+          },
+          "pricing": {
+            "input_per_million": 0,
+            "output_per_million": 0,
+            "currency": "",
+            "known": false,
+            "provenance": "bundled"
+          },
+          "metadata_provenance": {
+            "canonical_id": "bundled",
+            "wire_id": "bundled",
+            "limits": "bundled",
+            "capabilities": "bundled",
+            "pricing": "bundled"
+          },
+          "provenance": "bundled"
         }
       }
     },

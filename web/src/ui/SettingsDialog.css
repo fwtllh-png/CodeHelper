@@ -491,7 +491,7 @@
   justify-content: center;
   gap: 6px;
   padding: 0 11px;
-  color: var(--ch-text-secondary);
+  color: var(--ch-text);
   background: var(--ch-panel-subtle);
   font-size: 12px;
 }
@@ -506,6 +506,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.modelSelectionPrimary .settingsSelectWrap {
+  flex: 1;
+}
+
+.modelSelectionPrimary .settingsSelect {
+  width: 100%;
 }
 
 .settingsSearch {

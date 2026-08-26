@@ -52,12 +52,12 @@ type Limits struct {
 }
 
 type Capabilities struct {
-	Streaming              bool     `json:"streaming"`
-	Reasoning              bool     `json:"reasoning"`
-	ReasoningEfforts       []string `json:"reasoning_efforts,omitempty"`
+	Streaming             bool     `json:"streaming"`
+	Reasoning             bool     `json:"reasoning"`
+	ReasoningEfforts      []string `json:"reasoning_efforts,omitempty"`
 	DefaultReasoningEffort string   `json:"default_reasoning_effort,omitempty"`
-	ToolCalls              bool     `json:"tool_calls"`
-	NativeSearch           bool     `json:"native_search"`
+	ToolCalls             bool     `json:"tool_calls"`
+	NativeSearch          bool     `json:"native_search"`
 	// IncrementalResponses allows connection-local Responses continuation.
 	IncrementalResponses bool `json:"incremental_responses,omitempty"`
 	Vision               bool `json:"vision"`

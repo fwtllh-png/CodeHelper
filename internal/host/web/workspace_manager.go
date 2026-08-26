@@ -159,6 +159,11 @@ func (m *workspaceRuntimeManager) List(
 		}
 		if runtime := active[identity.RootID]; runtime != nil {
 			descriptor.Ready = true
+			if workspace := runtime.application.WorkspaceQuery(); workspace != nil {
+				if git, gitErr := workspace.GitState(ctx); gitErr == nil {
+					descriptor.Git = &git
+				}
+			}
 			page, listErr := runtime.application.Runtime.ListSessions(
 				ctx,
 				protocol.SessionListQuery{
@@ -276,6 +281,11 @@ func (m *workspaceRuntimeManager) descriptor(
 	descriptor := webhost.WorkspaceDescriptor{
 		ID: identity.RootID, Root: identity.RuntimePath,
 		Label: filepath.Base(identity.RuntimePath), Ready: true,
+	}
+	if workspace := runtime.application.WorkspaceQuery(); workspace != nil {
+		if git, err := workspace.GitState(ctx); err == nil {
+			descriptor.Git = &git
+		}
 	}
 	page, err := runtime.application.Runtime.ListSessions(
 		ctx,

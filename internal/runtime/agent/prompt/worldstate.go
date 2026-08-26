@@ -30,9 +30,10 @@ func digestJSON(value any) string {
 
 // PolicySection snapshots mode/permission/granular for WorldState.
 type PolicySection struct {
-	Mode       string          `json:"mode"`
-	Permission string          `json:"permission"`
-	Granular   policy.Granular `json:"granular"`
+	Mode       string `json:"mode"`
+	Permission string `json:"permission"`
+	policy.PlanningSnapshot
+	Granular policy.Granular `json:"granular"`
 }
 
 func NewPolicySection(runtime *policy.Runtime) PolicySection {
@@ -41,7 +42,7 @@ func NewPolicySection(runtime *policy.Runtime) PolicySection {
 	}
 	return PolicySection{
 		Mode: string(runtime.Mode), Permission: string(runtime.Permission),
-		Granular: runtime.Granular,
+		PlanningSnapshot: runtime.PlanningSnapshot(), Granular: runtime.Granular,
 	}
 }
 
@@ -53,19 +54,13 @@ func (p PolicySection) Render() string {
 	var b strings.Builder
 	b.WriteString("Policy snapshot:\n")
 	b.WriteString(fmt.Sprintf("- mode=%s permission=%s\n", p.Mode, p.Permission))
+	b.WriteString(p.Guidance())
 	b.WriteString(fmt.Sprintf(
 		"- granular: sandbox=%s rules=%s skills=%s mcp=%s\n",
-		postureLabel(p.Granular.Sandbox), postureLabel(p.Granular.Rules),
-		postureLabel(p.Granular.Skills), postureLabel(p.Granular.MCP),
+		p.Granular.Sandbox.Label(), p.Granular.Rules.Label(),
+		p.Granular.Skills.Label(), p.Granular.MCP.Label(),
 	))
 	return strings.TrimSpace(b.String())
-}
-
-func postureLabel(value policy.SurfacePosture) string {
-	if value == "" {
-		return "inherit"
-	}
-	return string(value)
 }
 
 // ToolCatalogEntry is one model-visible tool line for WorldState.

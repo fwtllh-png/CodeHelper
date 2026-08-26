@@ -629,6 +629,11 @@ func (g *Guard) afterAttempt(
 	result tool.Result,
 	err error,
 ) {
+	if err == nil && !result.IsError {
+		if submitted, _ := result.Metadata["submitted_plan"].(bool); submitted {
+			g.Policy().SubmitPlan()
+		}
+	}
 	if g.hooks != nil {
 		g.hooks.After(ctx, invocation, result, err)
 	}

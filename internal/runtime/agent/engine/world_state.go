@@ -49,7 +49,7 @@ func (e *Engine) projectWorldState(
 		promptcontext.WorldProjectionInput{
 			Context: ctx, History: history, Stable: e.promptMessages(),
 			Catalog: catalog, Advertised: advertised, Baseline: baseline,
-			Turn: e.turn, Mode: string(scope.spec.Mode),
+			Turn: e.turn, Mode: string(scope.spec.Mode), ImageInput: scope.spec.Route.Model().Capabilities.ImageInput,
 			Policy: scope.spec.Policy, CodingPolicy: e.options.CodingPolicy,
 			Memory: scope.spec.Memory, Skills: scope.spec.Skills,
 			Budgets: e.options.ContextBudgets, Repository: e.options.RepoContext,

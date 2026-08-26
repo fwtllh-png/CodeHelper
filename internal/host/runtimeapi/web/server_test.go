@@ -959,6 +959,9 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "diagram.png"), png, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	runWorkspaceGit(t, root, "add", ".")
+	runWorkspaceGit(t, root, "commit", "-m", "initial")
+	runWorkspaceGit(t, root, "branch", "feature")
 	query, err := workspacequery.New(root, webTestBackend{})
 	if err != nil {
 		t.Fatal(err)
@@ -993,6 +996,25 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 	token := bootstrapToken(t, server, host)
+	branchRequest := httptest.NewRequest(
+		http.MethodPost,
+		"http://"+host+"/api/v1/workspace/git-switch",
+		strings.NewReader(`{"branch":"feature"}`),
+	)
+	branchRequest.Host = host
+	branchRequest.Header.Set("Content-Type", "application/json")
+	branchRequest.Header.Set("Authorization", "Bearer "+token)
+	branchRequest.Header.Set("Idempotency-Key", "switch-feature")
+	branchResponse := httptest.NewRecorder()
+	server.Handler().ServeHTTP(branchResponse, branchRequest)
+	if branchResponse.Code != http.StatusOK ||
+		!strings.Contains(branchResponse.Body.String(), `"branch":"feature"`) {
+		t.Fatalf(
+			"branch switch status=%d body=%s",
+			branchResponse.Code,
+			branchResponse.Body.String(),
+		)
+	}
 	response := postWeb(t, server, host, token, "workspace/search", `{"query":"hello"}`)
 	if response.Code != http.StatusOK ||
 		!strings.Contains(response.Body.String(), `"path":"main.go"`) {
@@ -1252,6 +1274,20 @@ func bootstrapToken(t *testing.T, server *webhost.Server, host string) string {
 	return value.Token
 }
 
+func runWorkspaceGit(t *testing.T, root string, arguments ...string) {
+	t.Helper()
+	command := exec.Command("git", arguments...)
+	command.Dir = root
+	command.Env = append(
+		os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+root,
+		"GIT_AUTHOR_NAME=CodeHelper", "GIT_AUTHOR_EMAIL=fixture@invalid",
+		"GIT_COMMITTER_NAME=CodeHelper", "GIT_COMMITTER_EMAIL=fixture@invalid",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", arguments, err, output)
+	}
+}
+
 func fetchBootstrapToken(t *testing.T, origin string) string {
 	t.Helper()
 	response, err := http.Get(origin + "/api/v1/bootstrap")
@@ -1311,5 +1347,13 @@ func (webTestBackend) Prepare(
 	_ context.Context,
 	command sandbox.Command,
 ) (sandbox.Command, error) {
+	command.PreparedReadOnly = command.WorkspaceReadOnly
+	command.PreparedReadPaths = append(
+		[]string(nil), command.AdditionalReadPaths...,
+	)
+	command.PreparedWritePaths = append(
+		[]string(nil), command.WorkspaceWritePaths...,
+	)
+	command.PreparedNetworkDenied = command.DenyNetwork
 	return command, nil
 }

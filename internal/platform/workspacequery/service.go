@@ -71,6 +71,7 @@ type ImageResource struct {
 type Service struct {
 	workspace *sandbox.Workspace
 	walker    *repowalk.Walker
+	backend   sandbox.Backend
 }
 
 func New(root string, backend sandbox.Backend) (*Service, error) {
@@ -82,7 +83,7 @@ func New(root string, backend sandbox.Backend) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{workspace: workspace, walker: walker}, nil
+	return &Service{workspace: workspace, walker: walker, backend: backend}, nil
 }
 
 func (s *Service) Browse(

@@ -578,10 +578,12 @@ func (a *EngineAdapter) StartTurn(
 		}
 		return sink.Emit(&protocol.ToolStateData{State: string(event.State), Text: event.Text})
 	}
+	security := a.engine.OptionsSeed().Security
+	defer security.ResetPlanState()
 	if payload.PlanExecution != nil {
-		seed := a.engine.OptionsSeed()
-		mode, permission := seed.Security.ModeValue(), seed.Security.PermissionValue()
+		mode, permission := security.ModeValue(), security.PermissionValue()
 		a.engine.SetPolicyMode(policy.ModeAct)
+		security.ApprovePlan()
 		if payload.PlanExecution.Transition == protocol.PlanTransitionAutopilot {
 			a.engine.SetPermission(policy.PermissionAuto)
 		}

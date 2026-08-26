@@ -43,7 +43,7 @@
   --ch-rail-width: 280px;
   --ch-rail-collapsed-width: 56px;
   --ch-chat-width: 748px;
-  --ch-composer-width: 780px;
+  --ch-composer-width: 920px;
   --ch-trajectory-row-height: 30px;
   --ch-trajectory-span-min: 2px;
   --ch-header-height: 80px;
@@ -397,21 +397,35 @@ textarea:disabled {
   line-height: 20px;
 }
 
-.workspaceRow:hover,
-.workspaceRow[data-active],
+.workspaceHeader {
+  display: flex;
+  min-width: 0;
+  height: 34px;
+  align-items: center;
+  border-radius: var(--ch-radius);
+}
+
+.workspaceHeader > .workspaceRow {
+  width: auto;
+  min-width: 0;
+  flex: 1;
+}
+
+.workspaceHeader:hover,
+.workspaceHeader[data-active],
 .archiveFilter[aria-pressed="true"] {
   color: var(--ch-text);
   background: var(--ch-panel-subtle);
 }
 
-.workspaceRow[data-error] {
+.workspaceHeader[data-error] {
   color: var(--ch-danger);
 }
 
 .workspaceRow > small {
   margin-left: auto;
-  color: var(--ch-text-muted);
-  font-size: 10px;
+  color: var(--ch-text-secondary);
+  font-size: 11px;
 }
 
 .workspaceRow .disclosureLeading {
@@ -427,6 +441,28 @@ textarea:disabled {
 .workspaceRow:hover .disclosureChevron,
 .workspaceRow:focus-visible .disclosureChevron {
   opacity: 1;
+}
+
+.workspaceBranch {
+  display: flex;
+  width: min(146px, 46%);
+  align-items: center;
+  margin-right: 6px;
+  padding-left: 5px;
+  color: var(--ch-text-secondary);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.workspaceBranch select {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 0 16px 0 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
 }
 
 .sessionGroup {
@@ -2060,9 +2096,9 @@ textarea:disabled {
 .pendingComposer {
   position: relative;
   display: grid;
-  min-height: 54px;
-  gap: 8px;
-  padding: 8px;
+  min-height: 92px;
+  gap: 12px;
+  padding: 12px 14px;
   background: var(--ch-panel-raised);
   border: 1px solid var(--ch-border-strong);
   border-radius: var(--ch-radius-conversation);
@@ -2083,7 +2119,7 @@ textarea:disabled {
 
 .composerInputRow {
   align-items: flex-end;
-  gap: 8px;
+  gap: 12px;
 }
 
 .composerActions {
@@ -2566,24 +2602,24 @@ textarea:disabled {
 .composerControls {
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 5px 12px;
+  gap: 8px 20px;
 }
 
 .composerControls > div {
-  gap: 3px;
+  gap: 8px;
 }
 
 .composerControls .iconButton {
-  width: 26px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
 }
 
 .composer textarea {
   width: 100%;
   min-width: 0;
-  min-height: 36px;
+  min-height: 48px;
   max-height: 336px;
-  padding: 8px 6px;
+  padding: 10px 8px;
   resize: none;
   background: transparent;
   border: 0;
@@ -2609,18 +2645,18 @@ textarea:disabled {
   appearance: none;
   min-width: 0;
   max-width: 142px;
-  height: 24px;
-  padding: 0 18px 0 5px;
+  height: 30px;
+  padding: 0 22px 0 8px;
   color: var(--ch-text-muted);
   background: transparent;
   border: 0;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .compactSelect > svg {
   position: absolute;
-  right: 3px;
+  right: 5px;
   flex: 0 0 auto;
   color: var(--ch-text-muted);
   pointer-events: none;
@@ -2879,12 +2915,6 @@ textarea:disabled {
   width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.composerError {
-  margin: 0 0 6px;
-  color: var(--ch-danger);
-  font-size: 12px;
 }
 
 .contextTray {

@@ -200,6 +200,8 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	defaultProfile := protocol.SessionProfile{
 		Version: protocol.SessionProfileVersion, Revision: 1,
 		Mode:                execution.Mode,
+		PlanningPolicy:      "adaptive",
+		PlanApproval:        "manual",
 		Provider:            route.ProviderID(),
 		Model:               route.Model().ID,
 		ReasoningEffort:     reasoningEffort,
@@ -214,13 +216,10 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		defaultProfile.Provider,
 		state.provider.modelCapabilities,
 	)
-	mutableFields := append([]string{"mode", "max_steps"}, modelFields...)
-	if modelCapabilities.ToolCalls {
-		mutableFields = append(mutableFields, "enabled_tool_ids")
-	}
-	if approvalPosture != policy.PermissionNever {
-		mutableFields = append(mutableFields, "approval_posture")
-	}
+	mutableFields := mutableSessionProfileFields(
+		modelFields, modelCapabilities.ToolCalls,
+		approvalPosture != policy.PermissionNever,
+	)
 	profileCapabilities := protocol.SessionProfileCapabilities{
 		Provider:          defaultProfile.Provider,
 		Model:             defaultProfile.Model,

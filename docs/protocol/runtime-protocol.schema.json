@@ -60,6 +60,12 @@
                 "model": {
                   "type": "string"
                 },
+                "plan_approval": {
+                  "type": "string"
+                },
+                "planning_policy": {
+                  "type": "string"
+                },
                 "prompt_cache_revision": {
                   "type": "integer"
                 },
@@ -185,6 +191,12 @@
                   "model": {
                     "type": "string"
                   },
+                  "plan_approval": {
+                    "type": "string"
+                  },
+                  "planning_policy": {
+                    "type": "string"
+                  },
                   "provider": {
                     "type": "string"
                   },
@@ -292,6 +304,12 @@
                 "model": {
                   "type": "string"
                 },
+                "plan_approval": {
+                  "type": "string"
+                },
+                "planning_policy": {
+                  "type": "string"
+                },
                 "provider": {
                   "type": "string"
                 },
@@ -385,6 +403,12 @@
               "type": "string"
             },
             "model": {
+              "type": "string"
+            },
+            "plan_approval": {
+              "type": "string"
+            },
+            "planning_policy": {
               "type": "string"
             },
             "provider": {
@@ -2232,6 +2256,12 @@
         "model": {
           "type": "string"
         },
+        "plan_approval": {
+          "type": "string"
+        },
+        "planning_policy": {
+          "type": "string"
+        },
         "provider": {
           "type": "string"
         },
@@ -2368,6 +2398,12 @@
             "model": {
               "type": "string"
             },
+            "plan_approval": {
+              "type": "string"
+            },
+            "planning_policy": {
+              "type": "string"
+            },
             "prompt_cache_revision": {
               "type": "integer"
             },
@@ -2429,6 +2465,12 @@
               "type": "string"
             },
             "model": {
+              "type": "string"
+            },
+            "plan_approval": {
+              "type": "string"
+            },
+            "planning_policy": {
               "type": "string"
             },
             "prompt_cache_revision": {

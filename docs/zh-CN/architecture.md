@@ -349,6 +349,28 @@ Runtime 在 Dispatch 时重新校验 Session/Thread/Profile 和文件摘要，�
 及 Turn-scoped Act/Autopilot Policy 注入 Engine。Host 不先修改 Profile，因此不存在
 “Profile 已切换但 Turn 未接受”的两阶段窗口；重启恢复仍重放同一 Accepted Operation。
 
+Act Mode 额外接受 Session Profile 中的 `planning_policy=off|adaptive|required` 与
+`plan_approval=manual|auto`。Guard 在 Capability、Resource、Effect 和 Risk 已规范化
+后执行 Planning Gate：`required` 拦截全部有后果的 Effect，`adaptive` 至少拦截高风险、
+网络写、外部写、Agent Lifecycle 和同次调用中的多文件写。成功的 `submit_plan` Tool
+Result 才能推进 Turn-scoped `submitted/approved` 状态；文本声明不能解锁工具。`auto`
+只解锁当前 Turn，`manual` 必须通过已有的 Durable Plan Execution 启动批准后的新 Turn。
+每个 Turn 结束时状态归零。
+
+Turn 的 Model Route 继续在 Scope 创建时冻结。独立 Plan Mode 选择 `PurposePlan`；
+Act 内规划选择 `PurposeAct`，因此 Auto 流程可以在同一 Turn 中从规划继续执行，而不会
+发生中途换模型或重建 Context 的隐式状态变化。
+
+Workspace Git 状态由 `internal/platform/workspacequery` 在已绑定沙箱中查询。Web Host
+只路由显式、带幂等键的分支切换请求；服务只接受已存在的本地分支，并在 Runtime 有活动
+Turn 或待处理 Operation 时拒绝切换。Session 列表聚合同时保存
+`session_id -> workspace_id` 来源映射，所有 Session 请求固定使用 Owner Workspace，
+不从切换中的 UI 状态临时推断。
+
+Provider Replay State 同时绑定 Adapter、Provider 和 Model。Router 在目标 Route 改变时
+清除不兼容的原生 Replay，仅保留可见 Assistant 内容，避免同 Adapter 跨模型切换后因
+Provenance 不匹配导致下一 Turn 失败。
+
 Terminal Envelope 不再重复写入完整 Session Snapshot，而是引用 CAS 中的 Context
 Manifest。CAS 先按 Digest 幂等 Stage，SQLite 再提交 Manifest 可达性和 Terminal
 事实。Inline Narrative 使用 `generate_narrative` 与 `commit_context_rebase` Durable

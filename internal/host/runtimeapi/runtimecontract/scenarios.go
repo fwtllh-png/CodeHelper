@@ -370,6 +370,8 @@ func sessionProfileRevisionIsShared(t *testing.T, host Host, _ Setup) {
 	}
 	if snapshot.Profile.Revision == 0 ||
 		snapshot.Profile.PromptCacheRevision == 0 ||
+		snapshot.Profile.PlanningPolicy != "adaptive" ||
+		snapshot.Profile.PlanApproval != "manual" ||
 		snapshot.Profile.Provider == "" ||
 		snapshot.Profile.Model == "" ||
 		snapshot.Capabilities.Provider != snapshot.Profile.Provider ||
@@ -552,6 +554,18 @@ func readModelsExposeCompletedThread(t *testing.T, host Host, setup Setup) {
 }
 
 func dynamicToolsCompleteLifecycle(t *testing.T, host Host, setup Setup) {
+	snapshot, err := host.SessionProfile(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	planningOff := "off"
+	if _, err := host.UpdateSessionProfile(
+		t.Context(),
+		snapshot.Profile.Revision,
+		protocol.SessionProfilePatch{PlanningPolicy: &planningOff},
+	); err != nil {
+		t.Fatal(err)
+	}
 	spec := protocol.DynamicToolSpec{
 		Version: protocol.DynamicToolSpecVersion, Name: "host_echo",
 		Description: "Echo a value through the trusted host",

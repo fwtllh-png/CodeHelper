@@ -152,6 +152,46 @@ func TestRouterDropsReplayAfterAssistantContentRewrite(t *testing.T) {
 	}
 }
 
+func TestRouterDropsReplayFromAnotherModelOnTheSameAdapter(t *testing.T) {
+	registry, err := NewRegistry(testAdapter{id: model.AdapterDeepSeek})
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := testRoute(t, model.AdapterDeepSeek, model.ProtocolOpenAIResponses)
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &testTransport{}
+	runtime, err := New(registry, routes, transport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := route.WithModelID("previous-model")
+	message := provider.ProducedAssistant(
+		source,
+		[]provider.ContentBlock{{Type: provider.ContentText, Text: "answer"}},
+		1,
+		&provider.ReplayState{
+			Version: provider.ReplayVersion, Data: []byte(`{"items":[]}`),
+		},
+	)
+	_, err = runtime.Stream(t.Context(), provider.ModelRequest{
+		Route: route,
+		Messages: []provider.Message{
+			message,
+			provider.TextMessage(provider.RoleUser, "current branch?"),
+		},
+		MaxOutputTokens: 16,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replay := transport.request.Messages[0].Provenance.Replay; replay != nil {
+		t.Fatalf("cross-model replay reached transport: %+v", replay)
+	}
+}
+
 type testStream struct{}
 
 func (testStream) Recv() (provider.StreamEvent, error) { return provider.StreamEvent{}, io.EOF }

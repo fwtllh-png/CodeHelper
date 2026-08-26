@@ -60,6 +60,8 @@ export type SettingsSection =
 
 interface ProfileDraft {
   mode: SessionProfile["mode"];
+  planningPolicy: NonNullable<SessionProfile["planning_policy"]>;
+  planApproval: NonNullable<SessionProfile["plan_approval"]>;
   provider: string;
   model: string;
   reasoningEffort: string;
@@ -112,7 +114,6 @@ export function SettingsDialog({
 }: Props) {
   const [active, setActive] = useState<SettingsSection>(initialSection);
   const [credential, setCredential] = useState<CredentialStatus>();
-  const [diagnostics, setDiagnostics] = useState("");
   const [toolQuery, setToolQuery] = useState("");
   const [error, setError] = useState("");
   const [profileDraft, setProfileDraft] = useState(
@@ -193,16 +194,6 @@ export function SettingsDialog({
     void client.credentialStatus().then(setCredential, reportError);
   }, [client, reportError]);
 
-  const loadDiagnostics = () => {
-    void client.diagnostics().then(
-      (value) => {
-        setDiagnostics(JSON.stringify(value, null, 2));
-        setActive("general");
-      },
-      reportError
-    );
-  };
-
   const changeProfileDraft = (patch: Partial<ProfileDraft>) => {
     setProfileDraft((current) => current ? {...current, ...patch} : current);
     setApplyNotice(undefined);
@@ -279,13 +270,6 @@ export function SettingsDialog({
         <div className="settingsMain">
           <header className="settingsHeader">
             <button
-              type="button"
-              className="settingsHeaderAction"
-              onClick={loadDiagnostics}
-            >
-              <Activity size={14} /> Runtime diagnostics
-            </button>
-            <button
               ref={closeRef}
               type="button"
               className="settingsClose"
@@ -304,7 +288,6 @@ export function SettingsDialog({
                 theme={theme}
                 notificationSettings={notificationSettings}
                 notificationPending={notificationPending}
-                diagnostics={diagnostics}
                 onIsolationChange={onIsolationChange}
                 onThemeChange={onThemeChange}
                 onNotificationsChange={(enabled) => void changeNotifications(enabled)}
@@ -429,7 +412,6 @@ function GeneralSettings({
   theme,
   notificationSettings,
   notificationPending,
-  diagnostics,
   onIsolationChange,
   onThemeChange,
   onNotificationsChange
@@ -439,7 +421,6 @@ function GeneralSettings({
   theme: ThemeMode;
   notificationSettings: BrowserNotificationSettings;
   notificationPending: boolean;
-  diagnostics: string;
   onIsolationChange: (value: "shared" | "worktree") => void;
   onThemeChange: (value: ThemeMode) => void;
   onNotificationsChange: (enabled: boolean) => void;
@@ -523,12 +504,6 @@ function GeneralSettings({
           {snapshot.socketConnected ? "Connected" : snapshot.phase}
         </span>
       </SettingRow>
-      {diagnostics && (
-        <div className="settingsBlock">
-          <div className="settingsBlockTitle">Runtime diagnostics</div>
-          <pre className="settingsCode">{diagnostics}</pre>
-        </div>
-      )}
     </SettingsSectionView>
   );
 }
@@ -622,14 +597,12 @@ function ModelSettings({
   return (
     <SettingsSectionView
       title="Models"
-      description="Model selection for the current Session."
+      description="Choose the model CodeHelper uses for this session."
     >
-      <SettingRow
-        title="Session model"
-        description="Choose an existing model or configure a new exact Model ID."
-      >
-        <div>
-          <div className="settingsButtonRow">
+      <div className="settingsBlock">
+        <div className="settingsBlockTitle">Session model</div>
+        <p>Select a configured model, or add another model.</p>
+          <div className="settingsButtonRow modelSelectionPrimary">
             {configuringModel ? (
               <input
                 ref={modelInputRef}
@@ -694,12 +667,11 @@ function ModelSettings({
               </span>
             )}
           </div>
-        </div>
-      </SettingRow>
+      </div>
       {selectedModel?.capabilities.reasoning && (
         <SettingRow
           title="Reasoning effort"
-          description="Applied with the selected model at the next Turn."
+          description="Choose how much time the model spends thinking before it answers."
         >
           <SelectControl
             label="Settings reasoning effort"
@@ -1351,6 +1323,34 @@ function AgentSettings({
           })}
         />
       </SettingRow>
+      <SettingRow
+        title="Planning"
+        description="Require a structured plan for complex or all consequential actions."
+      >
+        <SelectControl
+          label="Planning policy"
+          value={draft.planningPolicy}
+          values={["adaptive", "required", "off"]}
+          disabled={!mutable(snapshot, "planning_policy")}
+          onChange={(planningPolicy) => onDraftChange({
+            planningPolicy: planningPolicy as ProfileDraft["planningPolicy"]
+          })}
+        />
+      </SettingRow>
+      <SettingRow
+        title="Plan approval"
+        description="Continue automatically or wait before executing a submitted plan."
+      >
+        <SelectControl
+          label="Plan approval"
+          value={draft.planApproval}
+          values={["manual", "auto"]}
+          disabled={!mutable(snapshot, "plan_approval")}
+          onChange={(planApproval) => onDraftChange({
+            planApproval: planApproval as ProfileDraft["planApproval"]
+          })}
+        />
+      </SettingRow>
       <SettingRow title="Approval" description="Control when consequential actions ask first.">
         <SelectControl
           label="Approval posture"
@@ -1716,6 +1716,8 @@ function settingsProfileDraft(snapshot: RuntimeSnapshot): ProfileDraft {
     version: 1,
     revision: 1,
     mode: "act",
+    planning_policy: "adaptive",
+    plan_approval: "manual",
     provider: "",
     model: "",
     approval_posture: "suggest",
@@ -1734,6 +1736,8 @@ function settingsProfileDraftFromProfile(
     : tools.filter((tool) => tool.enabled).map((tool) => tool.id);
   return {
     mode: profile.mode,
+    planningPolicy: profile.planning_policy ?? "adaptive",
+    planApproval: profile.plan_approval ?? "manual",
     provider: profile.provider,
     model: profile.model,
     reasoningEffort: profile.reasoning_effort ?? "",
@@ -1749,6 +1753,8 @@ function equalProfileDraft(
   right: ProfileDraft
 ): boolean {
   return left.mode === right.mode &&
+    left.planningPolicy === right.planningPolicy &&
+    left.planApproval === right.planApproval &&
     left.provider === right.provider &&
     left.model === right.model &&
     left.reasoningEffort === right.reasoningEffort &&
@@ -1772,6 +1778,12 @@ function changedProfileFields(
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (draft.mode !== baseline.mode) patch.mode = draft.mode;
+  if (draft.planningPolicy !== baseline.planningPolicy) {
+    patch.planning_policy = draft.planningPolicy;
+  }
+  if (draft.planApproval !== baseline.planApproval) {
+    patch.plan_approval = draft.planApproval;
+  }
   if (draft.provider !== baseline.provider) patch.provider = draft.provider;
   if (draft.model !== baseline.model) patch.model = draft.model;
   if (draft.reasoningEffort !== baseline.reasoningEffort) {
@@ -1796,6 +1808,8 @@ function changedProfileFields(
 function agentPresetProfile(draft: ProfileDraft): AgentPresetProfile {
   return {
     mode: draft.mode,
+    planning_policy: draft.planningPolicy,
+    plan_approval: draft.planApproval,
     provider: draft.provider,
     model: draft.model,
     reasoning_effort: draft.reasoningEffort,
@@ -1812,6 +1826,8 @@ function profileDraftFromPreset(
 ): ProfileDraft {
   return {
     mode: profile.mode,
+    planningPolicy: profile.planning_policy ?? "adaptive",
+    planApproval: profile.plan_approval ?? "manual",
     provider: profile.provider,
     model: profile.model,
     reasoningEffort: profile.reasoning_effort ?? "",
@@ -1832,6 +1848,10 @@ function profileApplyNotice(
   const changes = before && after ? [
     before.model !== after.model && `Model ${before.model} → ${after.model}`,
     before.mode !== after.mode && `Mode ${before.mode} → ${after.mode}`,
+    before.planningPolicy !== after.planningPolicy &&
+      `Planning ${before.planningPolicy} → ${after.planningPolicy}`,
+    before.planApproval !== after.planApproval &&
+      `Plan approval ${before.planApproval} → ${after.planApproval}`,
     before.reasoningEffort !== after.reasoningEffort &&
       `Reasoning ${before.reasoningEffort || "default"} → ${
         after.reasoningEffort || "default"

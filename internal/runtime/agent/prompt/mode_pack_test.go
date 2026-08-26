@@ -33,3 +33,12 @@ func TestModeInstructionPackDiffersByMode(t *testing.T) {
 		}
 	}
 }
+
+func TestModeInstructionPackAdvertisesImageInput(t *testing.T) {
+	if value := ModeInstructionPack("act", true); !strings.Contains(
+		value,
+		"accepts image attachments",
+	) {
+		t.Fatalf("vision mode pack = %q", value)
+	}
+}

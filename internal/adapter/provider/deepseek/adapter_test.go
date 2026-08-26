@@ -126,6 +126,26 @@ func TestResponsesPrepareMapsReasoningOffToNone(t *testing.T) {
 	}
 }
 
+func TestResponsesPrepareAcceptsImageInput(t *testing.T) {
+	request := testRequest(t, model.ProtocolOpenAIResponses)
+	request.Messages = []provider.Message{{
+		Role: provider.RoleUser,
+		Blocks: []provider.ContentBlock{
+			{Type: provider.ContentText, Text: "describe"},
+			{Type: provider.ContentImage, Attachment: &provider.Attachment{
+				MediaType: "image/png", Data: []byte("png"),
+			}},
+		},
+	}}
+	call, err := NewAdapter().Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(call.Body), `"type":"input_image"`) {
+		t.Fatalf("image input missing: %s", call.Body)
+	}
+}
+
 func TestResponsesPreparePreservesNativeReasoningEfforts(t *testing.T) {
 	for _, effort := range []string{"low", "high", "max"} {
 		t.Run(effort, func(t *testing.T) {

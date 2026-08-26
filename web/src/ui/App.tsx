@@ -52,6 +52,7 @@ import {
 import type {
   RuntimeEvent,
   SessionCheckpoint,
+  SessionProfile,
   SessionSummary,
   SetupCatalog,
   SetupRequest
@@ -1225,7 +1226,7 @@ export function App({client}: Props) {
               {snapshot.includeArchived ? "Hide archived" : "Show archived"}
             </button>
           )}
-        <div className="sessionList" role="tree" aria-label="Workspace sessions">
+        <div className="sessionList" aria-label="Workspace sessions">
             {snapshot.workspaces.map((workspace) => {
               const expanded = Boolean(query) ||
                 !collapsedWorkspaceIDs.has(workspace.id);
@@ -1234,41 +1235,77 @@ export function App({client}: Props) {
               );
               return (
                 <div className="workspaceGroup" key={workspace.id}>
-                  <button
-                    className="workspaceRow"
+                  <div
+                    className="workspaceHeader"
                     data-active={
                       workspace.id === snapshot.selectedWorkspaceID || undefined
                     }
                     data-error={Boolean(workspace.problem) || undefined}
-                    role="treeitem"
-                    aria-expanded={expanded}
-                    onClick={() => {
-                      if (workspace.id !== snapshot.selectedWorkspaceID) {
+                  >
+                    <button
+                      className="workspaceRow"
+                      aria-expanded={expanded}
+                      onClick={() => {
+                        if (workspace.id !== snapshot.selectedWorkspaceID) {
+                          setCollapsedWorkspaceIDs((current) => {
+                            const next = new Set(current);
+                            next.delete(workspace.id);
+                            return next;
+                          });
+                          void client.selectWorkspace(workspace.id).catch(reportLocalError);
+                          return;
+                        }
                         setCollapsedWorkspaceIDs((current) => {
                           const next = new Set(current);
-                          next.delete(workspace.id);
+                          if (next.has(workspace.id)) next.delete(workspace.id);
+                          else next.add(workspace.id);
                           return next;
                         });
-                        void client.selectWorkspace(workspace.id).catch(reportLocalError);
-                        return;
-                      }
-                      setCollapsedWorkspaceIDs((current) => {
-                        const next = new Set(current);
-                        if (next.has(workspace.id)) next.delete(workspace.id);
-                        else next.add(workspace.id);
-                        return next;
-                      });
-                    }}
-                  >
-                    <DisclosureLeading
-                      open={expanded}
-                      icon={<FolderOpen size={16} />}
-                    />
-                    <span className="sessionTitle">{workspace.label}</span>
-                    <small>{workspace.problem ? "!" : workspaceSessions.length}</small>
-                  </button>
+                      }}
+                    >
+                      <DisclosureLeading
+                        open={expanded}
+                        icon={<FolderOpen size={16} />}
+                      />
+                      <span className="sessionTitle">{workspace.label}</span>
+                      {!workspace.git?.repository && (
+                        <small>
+                          {workspace.problem
+                            ? "!"
+                            : workspace.ready
+                              ? workspaceSessions.length
+                              : "…"}
+                        </small>
+                      )}
+                    </button>
+                    {workspace.git?.repository && (
+                      <label className="workspaceBranch">
+                        <GitFork size={12} aria-hidden="true" />
+                        <select
+                          aria-label={`Branch for ${workspace.label}`}
+                          value={workspace.git.branch}
+                          onChange={(event) => void client.switchWorkspaceBranch(
+                            workspace.id,
+                            event.target.value
+                          ).catch(reportLocalError)}
+                        >
+                          {workspace.git.detached && workspace.git.branch && (
+                            <option value={workspace.git.branch}>
+                              {workspace.git.branch} (detached)
+                            </option>
+                          )}
+                          {(workspace.git.branches ?? []).map((branch) => (
+                            <option value={branch} key={branch}>
+                              {branch}{branch === workspace.git?.branch &&
+                                workspace.git.dirty ? " *" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
                   {expanded && (
-                    <div className="sessionGroup" role="group">
+                    <div className="sessionGroup">
                       {workspaceSessions.map((session) => (
                         <SessionRow
                           key={session.session_id}
@@ -1276,7 +1313,9 @@ export function App({client}: Props) {
                           active={session.session_id === snapshot.selectedSessionID}
                           onClick={() => {
                             captureReadingPosition(true);
-                            void client.selectSession(session.session_id);
+                            setLocalError("");
+                            void client.selectSession(session.session_id)
+                              .catch(reportLocalError);
                           }}
                           onRename={() => {
                             const title = window.prompt(
@@ -1489,6 +1528,21 @@ export function App({client}: Props) {
                 />
               </div>
             )}
+            {localError && (
+              <div className="inlineProblem" role="alert">
+                <AlertTriangle size={17} />
+                <span>
+                  {localError.includes("would be overwritten by checkout")
+                    ? "Branch not switched. Commit or stash local changes first."
+                    : localError}
+                </span>
+                <IconButton
+                  label="Dismiss error"
+                  icon={<X size={14} />}
+                  onClick={() => setLocalError("")}
+                />
+              </div>
+            )}
             {(transcriptStart > 0 || snapshot.historyMoreBefore || transcriptPage > 0) && (
               <div className="transcriptPagination" aria-label="Transcript pagination">
                 {(transcriptStart > 0 || snapshot.historyMoreBefore) && (
@@ -1518,7 +1572,6 @@ export function App({client}: Props) {
             {!selected ? (
               <EmptySessionSetup
                 creating={creatingSession}
-                error={localError}
                 workspaceReady={Boolean(selectedWorkspace)}
                 onCreate={() => void createSession()}
                 onChooseWorkspace={() => setWorkspaceDialogOpen(true)}
@@ -1588,7 +1641,6 @@ export function App({client}: Props) {
           )}
 
           {selected && <div className="composerSeat" data-composer-seat>
-            {localError && <div className="composerError">{localError}</div>}
             {visibleContextResources.length > 0 && (
               <div className="contextTray" aria-label="Prompt context">
                 {visibleContextResources.map((resource) => (
@@ -1861,12 +1913,13 @@ export function App({client}: Props) {
                     </Suspense>
                     <CompactSelect
                       label="Mode"
-                      value={snapshot.profile?.profile.mode ?? "act"}
-                      values={["plan", "act", "operate"]}
+                      value={composerModeValue(snapshot.profile?.profile)}
+                      values={composerModeOptions}
                       disabled={!profileMutable(snapshot, "mode") ||
+                        !profileMutable(snapshot, "planning_policy") ||
                         Boolean(profilePending)}
                       onChange={(value) => void updateComposerProfile(
-                        {mode: value},
+                        composerModePatch(value),
                         "Updating mode"
                       )}
                     />
@@ -3023,13 +3076,11 @@ function FirstRunSetup({
 
 function EmptySessionSetup({
   creating,
-  error,
   workspaceReady,
   onCreate,
   onChooseWorkspace
 }: {
   creating: boolean;
-  error: string;
   workspaceReady: boolean;
   onCreate: () => void;
   onChooseWorkspace: () => void;
@@ -3062,7 +3113,6 @@ function EmptySessionSetup({
               : "Choose workspace"}</span>
         </button>
       </div>
-      {error && <p className="startupError">{error}</p>}
     </section>
   );
 }
@@ -3109,6 +3159,27 @@ function CompactSelect({
       <ChevronDown size={13} aria-hidden="true" />
     </label>
   );
+}
+
+const composerModeOptions = [
+  "plan",
+  "act · adaptive",
+  "act · required",
+  "act · off",
+  "operate · adaptive",
+  "operate · required",
+  "operate · off"
+];
+
+function composerModeValue(profile?: SessionProfile): string {
+  if (!profile || profile.mode === "plan") return profile?.mode ?? "act · adaptive";
+  return `${profile.mode} · ${profile.planning_policy ?? "adaptive"}`;
+}
+
+function composerModePatch(value: string): Record<string, unknown> {
+  if (value === "plan") return {mode: "plan"};
+  const [mode, planningPolicy] = value.split(" · ");
+  return {mode, planning_policy: planningPolicy};
 }
 
 function CompactCatalogSelect({

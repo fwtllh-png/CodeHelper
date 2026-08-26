@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -15,7 +16,7 @@ type EventStore interface {
 
 // EncodeCompactedHistory converts provider messages into durable compacted messages.
 func EncodeCompactedHistory(messages []provider.Message) ([]protocol.CompactedMessage, error) {
-	messages = provider.FilterReplayForAdapter(messages, "")
+	messages = provider.FilterReplayForRoute(messages, model.ReadyRoute{})
 	result := make([]protocol.CompactedMessage, 0, len(messages))
 	for _, message := range messages {
 		content, err := json.Marshal(message.Blocks)

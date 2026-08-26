@@ -289,16 +289,7 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 		e.promptCacheBase,
 		profile.PromptCacheRevision,
 	)
-	if e.options.Security != nil {
-		e.options.Security.SetModePermissionWithinCeiling(
-			policy.Mode(profile.Mode),
-			effectiveProfilePermission(
-				e.profileReadOnly,
-				policy.Permission(profile.ApprovalPosture),
-			),
-			e.options.ProfilePermissionCeiling,
-		)
-	}
+	e.applySessionPolicyLocked(profile)
 	return nil
 }
 

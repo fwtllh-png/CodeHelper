@@ -114,6 +114,7 @@ func TestBundledReasoningEffortsAreExplicitAndIsolated(t *testing.T) {
 	}{
 		{provider: "deepseek", model: "deepseek-reasoner"},
 		{provider: "deepseek-v4-flash", model: "deepseek-v4-flash"},
+		{provider: "deepseek-v4-flash", model: "deepseek-v4-flash-vision-exp"},
 	} {
 		deepseek, ok := catalog.Provider(entry.provider)
 		if !ok {
@@ -134,6 +135,10 @@ func TestBundledReasoningEffortsAreExplicitAndIsolated(t *testing.T) {
 		}
 	}
 	deepseek, _ := catalog.Provider("deepseek-v4-flash")
+	vision := deepseek.Models["deepseek-v4-flash-vision-exp"].Capabilities
+	if !vision.Vision || !vision.ImageInput {
+		t.Fatalf("vision model capabilities = %+v", vision)
+	}
 	levels := deepseek.Models["deepseek-v4-flash"].
 		Capabilities.ReasoningEffortLevels()
 	levels[3] = "mutated"

@@ -65,6 +65,9 @@ Workspace、跨 Workspace Session 和内容句柄均拒绝访问。浏览器为�
 低频轮询更新，当前 Workspace 使用实时事件流。裸 Supervisor URL 不隐式选择默认
 Workspace；用户必须先选择一个 Ready Workspace，页面和 Host 才允许创建 Session。
 从项目目录执行 `codehelper` 时，启动器会把该目录作为显式 Workspace 参数打开。
+Git Workspace 会在侧栏显示当前本地分支，并可从本地分支列表直接切换。切换在沙箱内
+执行，活动 Turn 或待处理 Operation 存在时拒绝；Git 自身仍负责拒绝会覆盖本地修改的
+切换。
 
 Composer 下方的 Stats 使用一条可整体省略的摘要展示 Turn、Tool、总耗时、模型耗时、
 Tool 耗时、TTFT、Token、Cache 和 Cost；完整明细保留在 Tooltip 中，不逐项压缩。
@@ -75,6 +78,24 @@ Artifact 不接受 Markdown 或 XML 标签输出。计划显示在 Composer 上�
 `Implement` 或 `Autopilot`。两种动作都复用持久化的 `turn.start` Acceptance；
 Autopilot 的 `auto` Posture 只对该执行 Turn 生效，不修改 Session 默认值。提交计划时
 会记录受影响文件摘要，执行前若文件已变化，Runtime 拒绝旧 Revision 并要求重新规划。
+
+Act 模式可通过 `planning_policy` 将规划纳入同一工作流：
+
+- `adaptive`（默认）允许简单、低风险的单文件操作直接执行；复杂或高风险操作先提交计划；
+- `required` 要求所有有后果的操作先提交计划；
+- `off` 关闭 Act 内的规划门，保留普通权限与审批检查。
+
+`plan_approval=manual` 在提交计划后停止执行，由用户在对话中的 Plan 面板批准；
+`plan_approval=auto` 允许当前 Turn 在 `submit_plan` 成功后继续。提交与批准状态只属于
+当前 Turn，不写回 Session 默认审批姿态。独立 Plan 模式仍使用 Plan 模型路由；Act
+内规划保持 Turn 已冻结的 Act 路由，不在一次回答中途切换模型。
+
+创建新 Session 时，Web 会继承当前 Session 的 Approval Posture；因此用户选择 `auto`
+后，新建 Session 不会重新回到 `suggest`。显式的新建参数仍优先于继承值。
+
+内置 `deepseek-v4-flash-vision-exp` 模型声明 Image Input 与 Vision 能力，并通过
+DeepSeek Responses 协议发送图片。支持图片的 Session 会在模型上下文中明确声明该能力，
+避免模型仅凭通用身份说明误判为纯文本环境。
 
 模型推理在 Chat 中显示为可折叠的 `Think` 行。运行时摘要跟随最新内容，每次模型
 Sample 完成后持久化完整推理，因此重载页面或切换 Session 后仍可恢复多个独立 Think

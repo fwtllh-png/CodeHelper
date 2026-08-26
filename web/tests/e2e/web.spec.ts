@@ -210,6 +210,7 @@ test("passes the WCAG A and AA accessibility scan", async ({page}) => {
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({colorScheme});
     await page.goto(baseURL);
+    await expect(page.locator(".app")).toBeVisible();
 
     for (const state of ["empty", "settings"] as const) {
       if (state === "settings") {
@@ -245,6 +246,25 @@ test("groups Sessions by Workspace and reveals row actions on demand", async ({p
   await expect(page.locator(".sessionRow")).toHaveCount(0);
   await workspace.click();
   await expect(page.locator(".sessionRow")).toHaveCount(1);
+});
+
+test("shows and switches the Workspace Git branch", async ({page}) => {
+  execFileSync("git", ["add", "."], {cwd: workspaceDir});
+  execFileSync("git", [
+    "-c", "user.name=CodeHelper",
+    "-c", "user.email=fixture@codehelper.invalid",
+    "commit", "-qm", "branch fixture"
+  ], {cwd: workspaceDir});
+  execFileSync("git", ["branch", "feature"], {cwd: workspaceDir});
+  await page.goto(baseURL);
+
+  const branch = page.getByLabel(`Branch for ${path.basename(workspaceDir)}`);
+  await expect(branch).toBeVisible();
+  await branch.selectOption("feature");
+  await expect(branch).toHaveValue("feature");
+  expect(execFileSync(
+    "git", ["branch", "--show-current"], {cwd: workspaceDir, encoding: "utf8"}
+  ).trim()).toBe("feature");
 });
 
 test("adds a second Workspace and keeps its Sessions isolated", async ({page}) => {
@@ -309,6 +329,16 @@ test("creates a Session and completes a fixture-backed Turn", async ({page}) => 
   );
   await expect(page.getByText("Working", {exact: true})).toHaveCount(0);
   await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
+});
+
+test("inherits Approval when creating another Session", async ({page}) => {
+  await page.goto(baseURL);
+  await page.locator('button[aria-label="New chat"]').click();
+  await page.getByLabel("Approval").selectOption("auto");
+  await expect(page.getByLabel("Approval")).toHaveValue("auto");
+
+  await page.locator('button[aria-label="New chat"]').click();
+  await expect(page.getByLabel("Approval")).toHaveValue("auto");
 });
 
 test("submits local attachments as verified Runtime context", async ({page}) => {

@@ -681,6 +681,41 @@ func TestValidateWorkspaceLinksAllowsLinksContainedInWorkspace(t *testing.T) {
 	}
 }
 
+func TestValidateWorkspaceLinksAllowsDanglingSymlinkWithinWorkspace(t *testing.T) {
+	root := t.TempDir()
+	link := filepath.Join(root, "node_modules", "package")
+	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../packages/missing", link); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateWorkspaceLinks(t.Context(), workspace); err != nil {
+		t.Fatalf("validateWorkspaceLinks() rejected contained dangling link: %v", err)
+	}
+}
+
+func TestValidateWorkspaceLinksRejectsDanglingSymlinkOutsideWorkspace(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(root, "package")
+	if err := os.Symlink(filepath.Join(outside, "missing"), link); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = validateWorkspaceLinks(t.Context(), workspace)
+	if err == nil || !strings.Contains(err.Error(), "escapes the sandbox") {
+		t.Fatalf("validateWorkspaceLinks() error = %v", err)
+	}
+}
+
 func TestValidateWorkspaceLinksRejectsLinkOutsideWorkspace(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()

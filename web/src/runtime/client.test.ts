@@ -74,6 +74,7 @@ describe("RuntimeClient", () => {
   let failToolCatalog = false;
   let currentProvider = "fixture";
   let currentModel = "fixture";
+  let currentApproval = "suggest";
   let snapshotEvents: ReturnType<typeof runtimeEvent>[] | null = null;
   let snapshotTruncatedBefore = 0;
   let earlierEvents: ReturnType<typeof runtimeEvent>[] = [];
@@ -96,6 +97,7 @@ describe("RuntimeClient", () => {
     failToolCatalog = false;
     currentProvider = "fixture";
     currentModel = "fixture";
+    currentApproval = "suggest";
     snapshotEvents = null;
     snapshotTruncatedBefore = 0;
     earlierEvents = [];
@@ -256,6 +258,44 @@ describe("RuntimeClient", () => {
           deleted_at: "2026-01-01T00:00:00Z"
         });
       }
+      if (route.endsWith("/session/update")) {
+        return envelope({
+          session: {
+            version: 1,
+            revision: 2,
+            session_id: body.session_id,
+            thread_id: body.session_id === "session-b" ? "thread-b" : "thread",
+            title: "Updated",
+            status: "idle",
+            pinned: true,
+            archived: false,
+            isolation: "shared",
+            workspace_root: body.session_id === "session-b"
+              ? "/workspace-b"
+              : "/workspace",
+            workspace_label: body.session_id === "session-b"
+              ? "workspace-b"
+              : "workspace",
+            pending_approvals: 0,
+            pending_inputs: 0,
+            checkpoint_count: 0,
+            changed_files: 0,
+            total_tokens: 0,
+            cost_microunits: 0,
+            cost_known: true,
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:00Z"
+          }
+        });
+      }
+      if (route.endsWith("/workspace/git-switch")) {
+        return envelope({
+          repository: true,
+          branch: body.branch,
+          branches: ["feature", "main"],
+          dirty: false
+        });
+      }
       if (route.endsWith("/session/list")) {
         const workspaceID = new Headers(init?.headers)
           .get("X-CodeHelper-Workspace-ID");
@@ -343,7 +383,7 @@ describe("RuntimeClient", () => {
             mode: "act",
             provider: currentProvider,
             model: currentModel,
-            approval_posture: "suggest",
+            approval_posture: currentApproval,
             execution_target: "local",
             max_steps: 0,
             prompt_cache_revision: 1
@@ -362,6 +402,7 @@ describe("RuntimeClient", () => {
         const patch = body.patch as Record<string, unknown>;
         currentProvider = String(patch.provider ?? currentProvider);
         currentModel = String(patch.model ?? currentModel);
+        currentApproval = String(patch.approval_posture ?? currentApproval);
         return envelope({
           profile: {
             version: 1,
@@ -369,7 +410,7 @@ describe("RuntimeClient", () => {
             mode: "act",
             provider: currentProvider,
             model: currentModel,
-            approval_posture: "suggest",
+            approval_posture: currentApproval,
             execution_target: "local",
             max_steps: 0
           },
@@ -894,6 +935,79 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
+  it("routes background Session lifecycle mutations to their owner Workspace", async () => {
+    multipleWorkspaces = true;
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.updateSession("session-b", 1, {pinned: true});
+    await client.deleteSession("session-b", 1);
+
+    const mutations = requests.filter((request) =>
+      request.route.endsWith("/session/update") ||
+      request.route.endsWith("/session/delete")
+    );
+    expect(mutations).toHaveLength(2);
+    expect(mutations.map((request) =>
+      request.headers.get("X-CodeHelper-Workspace-ID")
+    )).toEqual(["workspace-b-id", "workspace-b-id"]);
+    expect(client.getSnapshot().selectedWorkspaceID).toBe("workspace-id");
+    client.stop();
+  });
+
+  it("switches a Git branch through the owning Workspace Runtime", async () => {
+    multipleWorkspaces = true;
+    const client = new RuntimeClient();
+    await startClient(client);
+    await client.switchWorkspaceBranch("workspace-b-id", "feature");
+
+    const request = requests.find(
+      (value) => value.route.endsWith("/workspace/git-switch")
+    );
+    expect(request?.body).toEqual({branch: "feature"});
+    expect(request?.headers.get("X-CodeHelper-Workspace-ID"))
+      .toBe("workspace-b-id");
+    expect(request?.headers.get("Idempotency-Key")).toBe("request-id");
+    client.stop();
+  });
+
+  it("binds cross-Workspace Session hydration to its owner Runtime", async () => {
+    multipleWorkspaces = true;
+    const client = new RuntimeClient();
+    await startClient(client);
+    const before = requests.length;
+
+    const selecting = client.selectSession("session-b");
+    await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+    const secondary = FakeWebSocket.instances[1]!;
+    secondary.emit("open");
+    secondary.emit("message", {
+      type: "hello",
+      protocol_version: 1,
+      sequence: 0
+    });
+    await selecting;
+
+    const hydrationRoutes = new Set([
+      "/session/activate", "/session/snapshot", "/profile/get", "/tool/catalog",
+      "/checkpoint/list", "/plan/get", "/task/list", "/agent/list",
+      "/usage/query", "/extension/list", "/turn/queue"
+    ]);
+    const hydration = requests.slice(before).filter((request) =>
+      [...hydrationRoutes].some((route) => request.route.endsWith(route)) &&
+      request.body.session_id === "session-b"
+    );
+    expect(hydration.length).toBeGreaterThan(5);
+    expect(hydration.every((request) =>
+      request.headers.get("X-CodeHelper-Workspace-ID") === "workspace-b-id"
+    )).toBe(true);
+    expect(client.getSnapshot()).toMatchObject({
+      selectedWorkspaceID: "workspace-b-id",
+      selectedSessionID: "session-b"
+    });
+    client.stop();
+  });
+
   it("does not fall back to another Workspace Session when the selected one is empty", async () => {
     multipleWorkspaces = true;
     emptyPrimaryWorkspace = true;
@@ -1014,9 +1128,11 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
-  it("applies startup model choices after creating the session", async () => {
+  it("inherits approval and applies explicit choices to a new session", async () => {
     const client = new RuntimeClient();
     await startClient(client);
+    await client.updateProfile({approval_posture: "auto"});
+    requests.length = 0;
 
     await client.createSession("worktree", {
       model: "reasoner",
@@ -1029,7 +1145,8 @@ describe("RuntimeClient", () => {
     expect(update?.body).toMatchObject({
       patch: {
         model: "reasoner",
-        reasoning_effort: "high"
+        reasoning_effort: "high",
+        approval_posture: "auto"
       }
     });
     expect(client.getSnapshot().profile?.profile.model).toBe("reasoner");

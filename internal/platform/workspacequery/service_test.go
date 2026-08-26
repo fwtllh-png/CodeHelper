@@ -2,6 +2,7 @@ package workspacequery
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -118,6 +119,59 @@ func TestServiceDoesNotExposeGitIgnoredFiles(t *testing.T) {
 	}
 }
 
+func TestServiceReportsAndSwitchesCleanGitBranches(t *testing.T) {
+	root := t.TempDir()
+	initRepository(t, root)
+	runGit(t, root, "commit", "--allow-empty", "-m", "initial")
+	runGit(t, root, "branch", "feature")
+	service, err := New(root, queryTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := service.GitState(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.Repository || before.Branch == "" ||
+		len(before.Branches) != 2 || before.Dirty {
+		t.Fatalf("GitState() = %+v", before)
+	}
+	after, err := service.SwitchBranch(t.Context(), "feature")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Branch != "feature" || after.Detached || after.Dirty {
+		t.Fatalf("SwitchBranch() = %+v", after)
+	}
+	if err := os.WriteFile(filepath.Join(root, "dirty.txt"), []byte("dirty"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err := service.SwitchBranch(t.Context(), before.Branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirty.Branch != before.Branch || !dirty.Dirty {
+		t.Fatalf("dirty branch switch = %+v", dirty)
+	}
+}
+
+func TestServiceReportsGitStateWhenSandboxRejectsUnrelatedLinks(t *testing.T) {
+	root := t.TempDir()
+	initRepository(t, root)
+	runGit(t, root, "commit", "--allow-empty", "-m", "initial")
+	service, err := New(root, rejectingQueryBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := service.GitState(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Repository || state.Branch == "" {
+		t.Fatalf("GitState() = %+v", state)
+	}
+}
+
 func TestServiceReadsOnlyEnumeratedSupportedImages(t *testing.T) {
 	root := t.TempDir()
 	initRepository(t, root)
@@ -160,7 +214,34 @@ func initRepository(t *testing.T, root string) {
 	}
 }
 
+func runGit(t *testing.T, root string, arguments ...string) {
+	t.Helper()
+	command := exec.Command("git", arguments...)
+	command.Dir = root
+	command.Env = append(
+		os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+root,
+		"GIT_AUTHOR_NAME=CodeHelper", "GIT_AUTHOR_EMAIL=fixture@invalid",
+		"GIT_COMMITTER_NAME=CodeHelper", "GIT_COMMITTER_EMAIL=fixture@invalid",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", arguments, err, output)
+	}
+}
+
 type queryTestBackend struct{}
+
+type rejectingQueryBackend struct{}
+
+func (rejectingQueryBackend) Capability() sandbox.Capability {
+	return queryTestBackend{}.Capability()
+}
+
+func (rejectingQueryBackend) Prepare(
+	context.Context,
+	sandbox.Command,
+) (sandbox.Command, error) {
+	return sandbox.Command{}, errors.New("workspace link validation failed")
+}
 
 func (queryTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
@@ -173,5 +254,13 @@ func (queryTestBackend) Prepare(
 	_ context.Context,
 	command sandbox.Command,
 ) (sandbox.Command, error) {
+	command.PreparedReadOnly = command.WorkspaceReadOnly
+	command.PreparedReadPaths = append(
+		[]string(nil), command.AdditionalReadPaths...,
+	)
+	command.PreparedWritePaths = append(
+		[]string(nil), command.WorkspaceWritePaths...,
+	)
+	command.PreparedNetworkDenied = command.DenyNetwork
 	return command, nil
 }

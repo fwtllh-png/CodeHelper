@@ -7,6 +7,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 func (e *Engine) ValidateSessionProfile(profile protocol.SessionProfile) error {
@@ -37,6 +38,15 @@ func (e *Engine) validateSessionProfileLocked(
 		}
 	}
 	return nil
+}
+
+func (e *Engine) applySessionPolicyLocked(profile protocol.SessionProfile) {
+	if e.options.Security == nil {
+		return
+	}
+	permission := effectiveProfilePermission(e.profileReadOnly, policy.Permission(profile.ApprovalPosture))
+	e.options.Security.SetModePermissionWithinCeiling(policy.Mode(profile.Mode), permission, e.options.ProfilePermissionCeiling)
+	e.options.Security.ConfigurePlanning(policy.PlanningPolicy(profile.PlanningPolicy), policy.PlanApproval(profile.PlanApproval))
 }
 
 func (e *Engine) routesForProfileLocked(

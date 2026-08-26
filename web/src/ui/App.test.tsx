@@ -177,7 +177,7 @@ describe("projectTranscript", () => {
     render(<App client={client} />);
     expect(screen.getByRole("button", {name: "New chat"}).textContent)
       .toContain("New session");
-    expect(screen.getByRole("treeitem", {name: /^workspace/})).toBeTruthy();
+    expect(screen.getByRole("button", {name: /^workspace/})).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Search sessions"}));
     expect(screen.getByRole("textbox", {name: "Search sessions"})).toBeTruthy();
     await openContextDetails();
@@ -259,6 +259,50 @@ describe("projectTranscript", () => {
     });
   });
 
+  it("shows and switches the current Git branch", async () => {
+    const value = snapshot();
+    value.workspaces[0]!.git = {
+      repository: true,
+      branch: "main",
+      branches: ["feature", "main"]
+    };
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    fireEvent.change(screen.getByLabelText("Branch for workspace"), {
+      target: {value: "feature"}
+    });
+    await waitFor(() => {
+      expect(client.switchWorkspaceBranch)
+        .toHaveBeenCalledWith("workspace-id", "feature");
+    });
+  });
+
+  it("summarizes branch conflicts and keeps technical details collapsed", async () => {
+    const value = snapshot();
+    value.workspaces[0]!.git = {
+      repository: true,
+      branch: "main",
+      branches: ["feature", "main"],
+      dirty: true
+    };
+    const client = mockClient(value);
+    vi.mocked(client.switchWorkspaceBranch).mockRejectedValue(new Error(
+      "git switch: error: Your local changes to README.md would be overwritten by checkout"
+    ));
+    render(<App client={client} />);
+
+    fireEvent.change(screen.getByLabelText("Branch for workspace"), {
+      target: {value: "feature"}
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Branch not switched");
+    expect(alert.textContent).toContain("Commit or stash local changes");
+    fireEvent.click(screen.getByRole("button", {name: "Dismiss error"}));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("switches Session models from the composer and opens new model settings", async () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
@@ -278,6 +322,22 @@ describe("projectTranscript", () => {
     });
     expect(await screen.findByRole("dialog", {name: "Settings"})).toBeTruthy();
     expect(screen.getByRole("heading", {name: "Models"})).toBeTruthy();
+  });
+
+  it("changes mode and planning policy from one composer control", async () => {
+    const client = mockClient(snapshot());
+    render(<App client={client} />);
+
+    expect(screen.queryByLabelText("Planning")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Mode"), {
+      target: {value: "act · required"}
+    });
+    await waitFor(() => {
+      expect(client.updateProfile).toHaveBeenCalledWith({
+        mode: "act",
+        planning_policy: "required"
+      });
+    });
   });
 
   it("blocks duplicate composer profile updates while one is pending", async () => {
@@ -761,6 +821,12 @@ describe("projectTranscript", () => {
     fireEvent.change(screen.getByLabelText("Agent mode"), {
       target: {value: "plan"}
     });
+    fireEvent.change(screen.getByLabelText("Planning policy"), {
+      target: {value: "required"}
+    });
+    fireEvent.change(screen.getByLabelText("Plan approval"), {
+      target: {value: "auto"}
+    });
     fireEvent.change(screen.getByLabelText("Maximum steps"), {
       target: {value: "16"}
     });
@@ -775,6 +841,8 @@ describe("projectTranscript", () => {
     await waitFor(() => {
       expect(client.updateProfile).toHaveBeenCalledWith({
         mode: "plan",
+        planning_policy: "required",
+        plan_approval: "auto",
         max_steps: 16
       });
     });
@@ -2082,6 +2150,8 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
         version: 1,
         revision: 1,
         mode: "act",
+        planning_policy: "adaptive",
+        plan_approval: "manual",
         provider: "fixture",
         model: "fixture",
         approval_posture: "suggest",
@@ -2093,7 +2163,8 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
         provider: "fixture",
         model: "fixture",
         mutable_fields: [
-          "mode", "provider", "model", "reasoning_effort",
+          "mode", "planning_policy", "plan_approval",
+          "provider", "model", "reasoning_effort",
           "approval_posture", "execution_target", "max_steps",
           "enabled_tool_ids"
         ],
@@ -2149,6 +2220,7 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
 		})),
 		addWorkspace: vi.fn(async () => {}),
 		selectWorkspace: vi.fn(async () => {}),
+    switchWorkspaceBranch: vi.fn(async () => {}),
     setArchivedVisible: vi.fn(async () => {}),
     createSession: vi.fn(async () => {}),
 		completeSetup: vi.fn(async () => {}),
@@ -2218,6 +2290,12 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
       provider: "fixture",
       endpoint: "https://models.example.com/v1",
       protocol: "openai_chat"
+    })),
+    diagnostics: vi.fn(async () => ({
+      ready: true,
+      draining: false,
+      runtime_health: {},
+      mcp_health: []
     })),
     setKeyringCredential: vi.fn(async () => ({})),
     validateCredential: vi.fn(async () => ({})),

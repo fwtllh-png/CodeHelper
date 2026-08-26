@@ -1037,6 +1037,8 @@ func samePlanTargetProfile(
 	source, target protocol.SessionProfile,
 ) bool {
 	return source.Mode == target.Mode &&
+		source.PlanningPolicy == target.PlanningPolicy &&
+		source.PlanApproval == target.PlanApproval &&
 		source.Provider == target.Provider &&
 		source.Model == target.Model &&
 		source.ReasoningEffort == target.ReasoningEffort &&

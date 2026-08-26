@@ -64,6 +64,7 @@ type WorldProjectionInput struct {
 	Baseline     agentcontext.WorldBaseline
 	Turn         uint64
 	Mode         string
+	ImageInput   bool
 	Policy       *policy.Runtime
 	CodingPolicy bool
 	Memory       MemorySnapshot
@@ -127,7 +128,7 @@ func ProjectWorldState(
 	appendSection(
 		PartitionMode,
 		"session://profile.mode",
-		ModeInstructionPack(input.Mode),
+		ModeInstructionPack(input.Mode, input.ImageInput),
 		"",
 	)
 	policySection := NewPolicySection(input.Policy)

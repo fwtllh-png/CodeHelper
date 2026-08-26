@@ -70,6 +70,15 @@ export interface WorkspaceDescriptor {
   ready: boolean;
   session_count: number;
   problem?: string;
+  git?: WorkspaceGitState;
+}
+
+export interface WorkspaceGitState {
+  repository: boolean;
+  branch?: string;
+  branches?: string[];
+  detached?: boolean;
+  dirty?: boolean;
 }
 
 export interface WorkspaceCatalog {
@@ -209,6 +218,8 @@ export interface SessionProfile {
   version: number;
   revision: number;
   mode: "plan" | "act" | "operate";
+  planning_policy?: "off" | "adaptive" | "required";
+  plan_approval?: "manual" | "auto";
   provider: string;
   model: string;
   reasoning_effort?: string;
@@ -237,6 +248,8 @@ export interface SessionProfileUpdateResult {
 
 export interface AgentPresetProfile {
   mode: SessionProfile["mode"];
+  planning_policy?: SessionProfile["planning_policy"];
+  plan_approval?: SessionProfile["plan_approval"];
   provider: string;
   model: string;
   reasoning_effort?: string;

@@ -33,7 +33,7 @@ func TestProducedAssistantBindsReplayToContent(t *testing.T) {
 	}
 }
 
-func TestFilterReplayForAdapterDropsCrossAdapterAndLegacyState(t *testing.T) {
+func TestFilterReplayForRouteDropsCrossAdapterAndLegacyState(t *testing.T) {
 	route := responsesRoute(t, true)
 	message := ProducedAssistant(
 		route,
@@ -44,11 +44,15 @@ func TestFilterReplayForAdapterDropsCrossAdapterAndLegacyState(t *testing.T) {
 		&ReplayState{Version: ReplayVersion, Data: json.RawMessage(`{"items":[]}`)},
 	)
 
-	same := FilterReplayForAdapter([]Message{message}, model.AdapterOpenAICompatible)
+	same := FilterReplayForRoute([]Message{message}, route)
 	if same[0].Provenance == nil || same[0].Provenance.Replay == nil {
 		t.Fatalf("same-adapter replay was dropped: %+v", same[0])
 	}
-	cross := FilterReplayForAdapter([]Message{message}, model.AdapterAnthropic)
+	crossMessage := message
+	crossProvenance := *message.Provenance
+	crossProvenance.Adapter = model.AdapterAnthropic
+	crossMessage.Provenance = &crossProvenance
+	cross := FilterReplayForRoute([]Message{crossMessage}, route)
 	if cross[0].Provenance == nil || cross[0].Provenance.Replay != nil {
 		t.Fatalf("cross-adapter replay survived: %+v", cross[0])
 	}
@@ -59,9 +63,7 @@ func TestFilterReplayForAdapterDropsCrossAdapterAndLegacyState(t *testing.T) {
 	rewritten := message
 	rewritten.Blocks = append([]ContentBlock(nil), message.Blocks...)
 	rewritten.Blocks[0].Text = "rewritten"
-	filtered := FilterReplayForAdapter(
-		[]Message{rewritten}, model.AdapterOpenAICompatible,
-	)
+	filtered := FilterReplayForRoute([]Message{rewritten}, route)
 	if filtered[0].Provenance.Replay != nil {
 		t.Fatalf("rewritten content retained replay: %+v", filtered[0])
 	}

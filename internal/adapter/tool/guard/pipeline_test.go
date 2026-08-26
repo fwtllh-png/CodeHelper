@@ -10,8 +10,47 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
+
+func TestSubmittedPlanUnlocksAutoApprovedActTurn(t *testing.T) {
+	workspace := t.TempDir()
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: workspace,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	write := &testExecutor{descriptor: writeDescriptor()}
+	if err := registry.Register(write, nil); err != nil {
+		t.Fatal(err)
+	}
+	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
+	runtime.ConfigurePlanning(policy.PlanningRequired, policy.PlanApprovalAuto)
+	guard, err := New(Options{
+		Registry: registry, Policy: runtime, Workspace: workspace,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeArgs := json.RawMessage(`{"path":"target.txt","value":"updated"}`)
+	if _, err := guard.Execute(t.Context(), "write-before-plan", "write", writeArgs); err == nil ||
+		!strings.Contains(err.Error(), "plan_required") {
+		t.Fatalf("write before plan error = %v", err)
+	}
+	plan := json.RawMessage(`{"version":1,"objective":"Update target","steps":[` +
+		`{"id":"edit","title":"Edit target","affected_files":["target.txt"]}]}`)
+	if _, err := guard.Execute(t.Context(), "submit-plan", "submit_plan", plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guard.Execute(t.Context(), "write-after-plan", "write", writeArgs); err != nil {
+		t.Fatalf("write after plan: %v", err)
+	}
+	if write.calls.Load() != 1 {
+		t.Fatalf("write calls = %d, want 1", write.calls.Load())
+	}
+}
 
 func TestApprovalWaitHoldsNeitherAdmissionNorClaims(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)

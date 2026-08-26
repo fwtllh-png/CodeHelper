@@ -76,6 +76,7 @@ var unaryRouteContracts = []RouteContract{
 	rpc("workspace/symbols", "workspace_symbols", "workspace_symbol_list", false, false),
 	rpc("workspace/diagnostics", "session_identity", "workspace_diagnostics", false, false),
 	rpc("workspace/diff", "workspace_diff", "workspace_diff", false, false),
+	rpc("workspace/git-switch", "workspace_git_switch", "workspace_git", true, true),
 	rpc("credential/status", "empty", "credential_status", false, false),
 	rpc("credential/set-keyring", "credential_set", "credential_status", true, true),
 	rpc("credential/clear-keyring", "empty", "credential_status", true, true),

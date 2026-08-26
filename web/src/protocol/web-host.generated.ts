@@ -52,6 +52,7 @@ export const webRPCRoutes = [
   "workspace/browse",
   "workspace/diagnostics",
   "workspace/diff",
+  "workspace/git-switch",
   "workspace/image",
   "workspace/list",
   "workspace/open",

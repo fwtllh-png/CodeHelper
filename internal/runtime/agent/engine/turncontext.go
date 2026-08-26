@@ -162,6 +162,7 @@ func SnapshotTurnSpec(
 		uint32(max(options.Verify.MaxRepairSteps, 0))
 	kernelPolicy.ExecutionStepLimit = uint32(max(options.MaxSteps, 0))
 	kernelPolicy.JournalRequired = options.Journal != nil
+	planning := security.PlanningSnapshot()
 	spec := TurnSpec{
 		Identity: identity,
 		Request:  request,
@@ -169,7 +170,8 @@ func SnapshotTurnSpec(
 			Version:  protocol.SessionProfileVersion,
 			Revision: identity.ProfileRevision,
 			Mode:     string(security.Mode), Provider: route.ProviderID(),
-			Model: route.Model().ID, ReasoningEffort: options.ReasoningEffort,
+			PlanningPolicy: planning.Planning, PlanApproval: planning.PlanApproval,
+			Model:          route.Model().ID, ReasoningEffort: options.ReasoningEffort,
 			ApprovalPosture: string(security.Permission),
 			ExecutionTarget: "local", MaxSteps: options.MaxSteps,
 			PromptCacheRevision: identity.ProfileRevision,

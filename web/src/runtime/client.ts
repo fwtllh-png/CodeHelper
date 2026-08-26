@@ -58,6 +58,7 @@ import type {
   WorkspaceDiagnosticContext,
   WorkspaceDiagnostics,
   WorkspaceDiff,
+  WorkspaceGitState,
   WorkspaceImage,
   WorkspaceOpenResult,
   WorkspaceResource,
@@ -225,6 +226,7 @@ export class RuntimeClient {
   private bootTimer?: number;
   private generation = 0;
   private sessionListGeneration = 0;
+  private sessionWorkspaceIDs = new Map<string, string>();
   private selectionGeneration = 0;
   private hydration?: Hydration;
   private state: RuntimeSnapshot = emptySnapshot;
@@ -386,19 +388,26 @@ export class RuntimeClient {
       }, {workspaceID: workspace.id})
     ));
     if (generation !== this.sessionListGeneration) return;
+    const sessionWorkspaceIDs = new Map<string, string>();
     const sessions = lists.flatMap((list, index) => {
-      if (list.status === "fulfilled") return list.value.sessions;
-      const root = workspaces[index]?.root;
-      return this.state.sessions.filter((session) => session.workspace_root === root);
+      const workspace = workspaces[index];
+      const values = list.status === "fulfilled"
+        ? list.value.sessions
+        : this.state.sessions.filter(
+          (session) => session.workspace_root === workspace?.root
+        );
+      for (const session of values) {
+        if (workspace) sessionWorkspaceIDs.set(session.session_id, workspace.id);
+      }
+      return values;
     });
+    this.sessionWorkspaceIDs = sessionWorkspaceIDs;
     const selected = this.state.selectedSessionID || this.stored.selectedSessionID;
-    const selectedRoot = this.state.workspaces.find(
-      (workspace) => workspace.id === this.state.selectedWorkspaceID
-    )?.root;
     const preferred = sessions.filter(
-      (session) => session.workspace_root === selectedRoot
+      (session) => sessionWorkspaceIDs.get(session.session_id) ===
+        this.state.selectedWorkspaceID
     );
-    const candidates = selectedRoot ? preferred : sessions;
+    const candidates = this.state.selectedWorkspaceID ? preferred : sessions;
     const nextSelected =
       selected && candidates.some((item) => item.session_id === selected)
         ? selected
@@ -436,6 +445,26 @@ export class RuntimeClient {
       );
     }
     await this.selectWorkspace(result.workspace.id);
+  }
+
+  async switchWorkspaceBranch(
+    workspaceID: string,
+    branch: string
+  ): Promise<void> {
+    const git = await this.call<WorkspaceGitState>(
+      "workspace/git-switch",
+      {branch},
+      {
+        workspaceID,
+        idempotencyKey: crypto.randomUUID(),
+        retryNetwork: true
+      }
+    );
+    this.update({
+      workspaces: this.state.workspaces.map((workspace) =>
+        workspace.id === workspaceID ? {...workspace, git} : workspace
+      )
+    });
   }
 
   async selectWorkspace(workspaceID: string): Promise<void> {
@@ -513,6 +542,11 @@ export class RuntimeClient {
     if (!workspace) {
       throw new Error("Select a ready workspace before creating a session");
     }
+    const approval = this.state.profile?.profile.approval_posture;
+    profilePatch = {
+      ...(approval ? {approval_posture: approval} : {}),
+      ...profilePatch
+    };
     const idempotencyKey = crypto.randomUUID();
     const sessionID = `session_web_${idempotencyKey}`;
     const binding = await this.call<SessionBinding>(
@@ -546,7 +580,7 @@ export class RuntimeClient {
       session_id: sessionID,
       expected_revision: expectedRevision,
       patch
-    });
+    }, {workspaceID: this.workspaceIDForSession(sessionID)});
     await this.refreshSessions();
   }
 
@@ -559,7 +593,7 @@ export class RuntimeClient {
       session_id: sessionID,
       expected_revision: expectedRevision,
       discard
-    });
+    }, {workspaceID: this.workspaceIDForSession(sessionID)});
     if (this.state.selectedSessionID === sessionID) {
       this.selectionGeneration += 1;
       this.hydration = undefined;
@@ -588,15 +622,14 @@ export class RuntimeClient {
   }
 
   async selectSession(sessionID: string): Promise<void> {
-    const owner = this.state.sessions.find((item) => item.session_id === sessionID);
-    const ownerWorkspace = owner
-      ? this.state.workspaces.find(
-        (workspace) => workspace.root === owner.workspace_root
-      )
-      : undefined;
+    const ownerWorkspaceID = this.workspaceIDForSession(sessionID);
+    const ownerWorkspace = this.state.workspaces.find(
+      (workspace) => workspace.id === ownerWorkspaceID
+    );
     if (ownerWorkspace && ownerWorkspace.id !== this.state.selectedWorkspaceID) {
       await this.switchWorkspace(ownerWorkspace.id, false);
     }
+    const workspaceID = ownerWorkspace?.id ?? this.state.selectedWorkspaceID;
     this.eventNotifier.cancel();
     this.pendingSelectedEvents = [];
     const previousSessionID = this.state.selectedSessionID;
@@ -630,40 +663,46 @@ export class RuntimeClient {
     await this.call<SessionBinding>("session/activate", {
       session_id: sessionID,
       thread_id: summary?.thread_id
-    });
+    }, {workspaceID});
     if (generation !== this.selectionGeneration) return;
     const snapshot = await this.call<PresentationSnapshot>("session/snapshot", {
       session_id: sessionID
-    });
+    }, {workspaceID});
     if (generation !== this.selectionGeneration) return;
     const snapshotEvents = snapshot.events ?? [];
     const traceTurnIDs = turnIDs(snapshotEvents);
     const details = await Promise.allSettled([
-      this.call<SessionProfileSnapshot>("profile/get", {session_id: sessionID}),
-      this.call<ToolCatalog>("tool/catalog", {session_id: sessionID}),
-      this.call<CheckpointList>("checkpoint/list", {session_id: sessionID, limit: 20}),
-      this.call<SessionPlanSnapshot>("plan/get", {session_id: sessionID}),
-      this.call<TaskList>("task/list", {session_id: sessionID, limit: 20}),
-      this.call<AgentList>("agent/list", {session_id: sessionID, limit: 20}),
+      this.call<SessionProfileSnapshot>("profile/get", {session_id: sessionID}, {workspaceID}),
+      this.call<ToolCatalog>("tool/catalog", {session_id: sessionID}, {workspaceID}),
+      this.call<CheckpointList>(
+        "checkpoint/list", {session_id: sessionID, limit: 20}, {workspaceID}
+      ),
+      this.call<SessionPlanSnapshot>("plan/get", {session_id: sessionID}, {workspaceID}),
+      this.call<TaskList>(
+        "task/list", {session_id: sessionID, limit: 20}, {workspaceID}
+      ),
+      this.call<AgentList>(
+        "agent/list", {session_id: sessionID, limit: 20}, {workspaceID}
+      ),
       this.call<UsageQueryResult>("usage/query", {
         session_id: sessionID,
         include_children: true,
         limit: 100
-      }),
-      this.call<ExtensionControlResult>("extension/list", {kind: "all"}),
+      }, {workspaceID}),
+      this.call<ExtensionControlResult>("extension/list", {kind: "all"}, {workspaceID}),
       traceTurnIDs.length > 0
         ? this.call<TraceSnapshot>("trace/query", {
           session_id: sessionID,
           turn_ids: traceTurnIDs,
           through_sequence: snapshot.through_sequence
-        })
+        }, {workspaceID})
         : Promise.resolve<TraceSnapshot>({
           version: 1,
           session_id: sessionID,
           through_sequence: snapshot.through_sequence,
           turns: []
         }),
-      this.call<TurnQueue>("turn/queue", {session_id: sessionID})
+      this.call<TurnQueue>("turn/queue", {session_id: sessionID}, {workspaceID})
     ]);
     if (generation !== this.selectionGeneration || this.hydration !== hydration) return;
     const profile = fulfilled(details[0]);
@@ -726,6 +765,9 @@ export class RuntimeClient {
       void this.refreshSessions("", false);
     }
     } catch (error) {
+      if (generation !== this.selectionGeneration || this.hydration !== hydration) {
+        return;
+      }
       if (this.hydration === hydration) {
         this.hydration = undefined;
         this.update({
@@ -1762,6 +1804,16 @@ export class RuntimeClient {
   private update(patch: Partial<RuntimeSnapshot>): void {
     this.state = Object.freeze({...this.state, ...patch});
     this.listeners.forEach((listener) => listener());
+  }
+
+  private workspaceIDForSession(sessionID: string): string {
+    const ownerWorkspaceID = this.sessionWorkspaceIDs.get(sessionID);
+    if (ownerWorkspaceID) return ownerWorkspaceID;
+    const root = this.state.sessions.find(
+      (session) => session.session_id === sessionID
+    )?.workspace_root;
+    return this.state.workspaces.find((workspace) => workspace.root === root)?.id ??
+      this.state.selectedWorkspaceID;
   }
 
   private async refreshModelCatalog(): Promise<void> {

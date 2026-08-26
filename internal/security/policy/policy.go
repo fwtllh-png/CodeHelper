@@ -69,10 +69,14 @@ type Rule struct {
 }
 
 type Runtime struct {
-	mu         sync.RWMutex
-	Revision   uint64
-	Mode       Mode
-	Permission Permission
+	mu             sync.RWMutex
+	Revision       uint64
+	Mode           Mode
+	Permission     Permission
+	PlanningPolicy PlanningPolicy
+	PlanApproval   PlanApproval
+	PlanSubmitted  bool
+	PlanApproved   bool
 	// DisableAutoReview is the fail-closed operational kill switch.
 	DisableAutoReview        bool
 	Grants, User, Repository []Rule
@@ -97,6 +101,7 @@ func (e *DecisionError) Error() string {
 func DefaultRuntime(mode Mode, permission Permission) *Runtime {
 	return &Runtime{
 		Revision: 1, Mode: mode, Permission: permission,
+		PlanningPolicy: PlanningOff, PlanApproval: PlanApprovalManual,
 		Grants:    []Rule{{Tool: "*", Resource: "*", Action: ActionAllow}},
 		Approvals: NewApprovalCache(), Now: time.Now,
 	}
@@ -252,6 +257,8 @@ func (r *Runtime) CloneSampling() *Runtime {
 	defer r.mu.RUnlock()
 	return &Runtime{
 		Revision: r.Revision, Mode: r.Mode, Permission: r.Permission,
+		PlanningPolicy: r.PlanningPolicy, PlanApproval: r.PlanApproval,
+		PlanSubmitted: r.PlanSubmitted, PlanApproved: r.PlanApproved,
 		DisableAutoReview: r.DisableAutoReview,
 		Grants:            append([]Rule(nil), r.Grants...),
 		User:              append([]Rule(nil), r.User...),
@@ -323,6 +330,9 @@ func (r *Runtime) evaluate(invocation Invocation) Decision {
 	effect := NormalizeEffect(invocation)
 	if err := modeDecision(r.Mode, invocation.Capability, effect.Kind); err != nil {
 		return decisionFromError(err)
+	}
+	if decision := planningDecision(r, invocation, effect); decision != nil {
+		return *decision
 	}
 	permissionAction, err := permissionDecision(r.Permission, invocation.Capability, effect.Risk)
 	if err != nil {
@@ -476,6 +486,9 @@ func Validate(runtime *Runtime) error {
 	}
 	if _, err := permissionDecision(runtime.Permission, tool.CapabilityRead, RiskLow); err != nil {
 		return fmt.Errorf("permission: %w", err)
+	}
+	if err := validatePlanning(runtime.PlanningPolicy, runtime.PlanApproval); err != nil {
+		return err
 	}
 	if err := ValidateRules(SourceManaged, runtime.Grants); err != nil {
 		return err

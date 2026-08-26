@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -16,12 +17,13 @@ const WorkspaceCatalogVersion = 1
 const workspaceHeader = "X-CodeHelper-Workspace-ID"
 
 type WorkspaceDescriptor struct {
-	ID           string `json:"id"`
-	Root         string `json:"root"`
-	Label        string `json:"label"`
-	Ready        bool   `json:"ready"`
-	SessionCount int    `json:"session_count"`
-	Problem      string `json:"problem,omitempty"`
+	ID           string                   `json:"id"`
+	Root         string                   `json:"root"`
+	Label        string                   `json:"label"`
+	Ready        bool                     `json:"ready"`
+	SessionCount int                      `json:"session_count"`
+	Problem      string                   `json:"problem,omitempty"`
+	Git          *workspacequery.GitState `json:"git,omitempty"`
 }
 
 type WorkspaceCatalog struct {

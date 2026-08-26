@@ -130,7 +130,7 @@ func (e *executor) Descriptor() tool.Descriptor {
 		description := "Replace the structured working plan projected through ContextLedger."
 		if e.name == "submit_plan" {
 			description = "Submit a structured, user-reviewable implementation plan. " +
-				"Use this in plan mode after resolving discoverable facts."
+				"Use this in plan mode or when the active planning policy requires a plan."
 		}
 		return tool.Descriptor{
 			Name: e.name, Description: description,

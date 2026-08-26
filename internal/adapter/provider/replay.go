@@ -57,9 +57,9 @@ func MessageContentDigest(message Message) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func FilterReplayForAdapter(
+func FilterReplayForRoute(
 	messages []Message,
-	adapter model.AdapterID,
+	route model.ReadyRoute,
 ) []Message {
 	filtered := make([]Message, len(messages))
 	for index, message := range messages {
@@ -70,10 +70,9 @@ func FilterReplayForAdapter(
 		}
 		provenance := *message.Provenance
 		provenance.Replay = cloneReplay(message.Provenance.Replay)
-		if provenance.Adapter != adapter ||
-			provenance.Replay != nil &&
-				provenance.Replay.ContentDigest !=
-					MessageContentDigest(filtered[index]) {
+		if provenance.Adapter != route.Adapter() || provenance.Provider != route.ProviderID() ||
+			provenance.Model != route.Model().ID || provenance.Replay != nil &&
+			provenance.Replay.ContentDigest != MessageContentDigest(filtered[index]) {
 			provenance.Replay = nil
 		}
 		filtered[index].Provenance = &provenance

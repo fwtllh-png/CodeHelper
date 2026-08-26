@@ -13,7 +13,7 @@ structured request_user_input or turn_complete terminal state.`
 // ModeInstructionPack returns the developer-facing CollaborationMode pack
 // injected into PartitionMode (W5.2). Switching mode changes this text for the
 // next Assemble / turn.
-func ModeInstructionPack(mode string) string {
+func ModeInstructionPack(mode string, imageInput ...bool) string {
 	var instructions string
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "plan":
@@ -38,6 +38,10 @@ High-risk capabilities (process/network/plugin) still follow the active permissi
 			return ""
 		}
 		instructions = "Mode: " + mode
+	}
+	if len(imageInput) != 0 && imageInput[0] {
+		instructions += `
+This Session accepts image attachments. You can inspect and reason about images supplied by the user.`
 	}
 	return strings.TrimSpace(instructions + interactionInstructions)
 }

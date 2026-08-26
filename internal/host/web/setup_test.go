@@ -66,6 +66,33 @@ func TestWebSetupResolvesKnownModelToOwningProviderPreset(t *testing.T) {
 		metadata.OutputSet || metadata.CapabilitiesSet {
 		t.Fatalf("known model received fallback metadata = %+v", metadata)
 	}
+	visionSelection, _, err := resolveWebSetup(webhost.SetupRequest{
+		Provider: "deepseek", Model: "deepseek-v4-flash-vision-exp",
+		APIKey: "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	visionRoute, err := model.NewResolver(model.DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedVision, err := visionRoute.Resolve(model.RouteRequest{
+		ProviderID: setupRuntimeProviderID(visionSelection),
+		ModelID:    visionSelection.Model,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if visionSelection.BaseURL != "" ||
+		visionSelection.Protocol != string(model.ProtocolOpenAIResponses) ||
+		!resolvedVision.Model().Capabilities.ImageInput {
+		t.Fatalf(
+			"resolved vision selection=%+v model=%+v",
+			visionSelection,
+			resolvedVision.Model(),
+		)
+	}
 
 	resolver, err := model.NewResolver(model.DefaultCatalog())
 	if err != nil {

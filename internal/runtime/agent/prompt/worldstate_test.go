@@ -12,6 +12,7 @@ import (
 func TestWorldTextAssemblyLeavesDiffingToContextStore(t *testing.T) {
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto)
 	runtime.Granular.MCP = policy.SurfaceAsk
+	runtime.ConfigurePlanning(policy.PlanningRequired, policy.PlanApprovalManual)
 	section := promptcontext.NewPolicySection(runtime)
 	messages, receipt := promptcontext.AssembleWorldText(
 		section.ID(),
@@ -22,6 +23,8 @@ func TestWorldTextAssemblyLeavesDiffingToContextStore(t *testing.T) {
 	if len(messages) != 1 ||
 		!strings.Contains(messages[0].Text(), "granular:") ||
 		!strings.Contains(messages[0].Text(), "mcp=ask") ||
+		!strings.Contains(messages[0].Text(), "submit_plan is required") ||
+		!strings.Contains(messages[0].Text(), "wait for approval") ||
 		receipt.Kind != promptcontext.PartitionPolicy ||
 		receipt.RetainedBytes == 0 {
 		t.Fatalf("messages=%+v receipt=%+v", messages, receipt)

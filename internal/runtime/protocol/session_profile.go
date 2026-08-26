@@ -13,6 +13,8 @@ type SessionProfile struct {
 	Version             int      `json:"version"`
 	Revision            uint64   `json:"revision"`
 	Mode                string   `json:"mode"`
+	PlanningPolicy      string   `json:"planning_policy,omitempty"`
+	PlanApproval        string   `json:"plan_approval,omitempty"`
 	Provider            string   `json:"provider"`
 	Model               string   `json:"model"`
 	ReasoningEffort     string   `json:"reasoning_effort,omitempty"`
@@ -25,6 +27,8 @@ type SessionProfile struct {
 
 type SessionProfilePatch struct {
 	Mode            *string   `json:"mode,omitempty"`
+	PlanningPolicy  *string   `json:"planning_policy,omitempty"`
+	PlanApproval    *string   `json:"plan_approval,omitempty"`
 	Provider        *string   `json:"provider,omitempty"`
 	Model           *string   `json:"model,omitempty"`
 	ReasoningEffort *string   `json:"reasoning_effort,omitempty"`
@@ -84,6 +88,12 @@ func (p SessionProfile) Validate() error {
 	default:
 		return errors.New("session profile mode must be plan, act, or operate")
 	}
+	if !slices.Contains([]string{"", "off", "adaptive", "required"}, p.PlanningPolicy) {
+		return errors.New("session profile planning_policy is invalid")
+	}
+	if !slices.Contains([]string{"", "manual", "auto"}, p.PlanApproval) {
+		return errors.New("session profile plan_approval is invalid")
+	}
 	if !validProfileIdentifier(p.Provider) || !validProfileIdentifier(p.Model) || strings.ContainsAny(p.Model, "\t ") {
 		return errors.New("session profile provider and model are invalid")
 	}
@@ -121,6 +131,7 @@ func (p SessionProfile) Validate() error {
 
 func (p SessionProfilePatch) Validate() error {
 	if p.Mode == nil && p.Provider == nil && p.Model == nil &&
+		p.PlanningPolicy == nil && p.PlanApproval == nil &&
 		p.ReasoningEffort == nil && p.EnabledToolIDs == nil &&
 		p.ApprovalPosture == nil && p.ExecutionTarget == nil &&
 		p.MaxSteps == nil {
@@ -146,22 +157,18 @@ func ApplySessionProfilePatch(
 			cacheReasons = append(cacheReasons, field)
 		}
 	}
-	if patch.Mode != nil {
-		setCacheReason(next.Mode != *patch.Mode, "mode")
-		next.Mode = *patch.Mode
+	applyCached := func(target *string, change *string, field string) {
+		if change != nil {
+			setCacheReason(*target != *change, field)
+			*target = *change
+		}
 	}
-	if patch.Provider != nil {
-		setCacheReason(next.Provider != *patch.Provider, "provider")
-		next.Provider = *patch.Provider
-	}
-	if patch.Model != nil {
-		setCacheReason(next.Model != *patch.Model, "model")
-		next.Model = *patch.Model
-	}
-	if patch.ReasoningEffort != nil {
-		setCacheReason(next.ReasoningEffort != *patch.ReasoningEffort, "reasoning_effort")
-		next.ReasoningEffort = *patch.ReasoningEffort
-	}
+	applyCached(&next.Mode, patch.Mode, "mode")
+	applyCached(&next.PlanningPolicy, patch.PlanningPolicy, "planning_policy")
+	applyCached(&next.PlanApproval, patch.PlanApproval, "plan_approval")
+	applyCached(&next.Provider, patch.Provider, "provider")
+	applyCached(&next.Model, patch.Model, "model")
+	applyCached(&next.ReasoningEffort, patch.ReasoningEffort, "reasoning_effort")
 	if patch.EnabledToolIDs != nil {
 		tools := append([]string(nil), (*patch.EnabledToolIDs)...)
 		slices.Sort(tools)
@@ -232,8 +239,8 @@ func (c SessionProfileCapabilities) Validate(profile SessionProfile) error {
 	}
 	for _, field := range c.MutableFields {
 		switch field {
-		case "mode", "provider", "model", "reasoning_effort",
-			"enabled_tool_ids", "approval_posture", "execution_target", "max_steps":
+		case "mode", "provider", "model", "reasoning_effort", "planning_policy",
+			"plan_approval", "enabled_tool_ids", "approval_posture", "execution_target", "max_steps":
 		default:
 			return fmt.Errorf("unknown mutable session profile field %q", field)
 		}
@@ -258,7 +265,8 @@ func validProfileIdentifier(value string) bool {
 func equalSessionProfile(left, right SessionProfile) bool {
 	return left.Version == right.Version &&
 		left.Revision == right.Revision &&
-		left.Mode == right.Mode &&
+		left.Mode == right.Mode && left.PlanningPolicy == right.PlanningPolicy &&
+		left.PlanApproval == right.PlanApproval &&
 		left.Provider == right.Provider &&
 		left.Model == right.Model &&
 		left.ReasoningEffort == right.ReasoningEffort &&

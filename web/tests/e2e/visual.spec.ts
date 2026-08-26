@@ -99,6 +99,7 @@ test("captures empty and settings states", async ({page}) => {
   await page.getByRole("button", {name: "Settings"}).click();
   await expect(page.getByRole("dialog", {name: "Settings"})).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-settings.png");
+
 });
 
 test("captures populated model, tool, and agent settings", async ({page}) => {
@@ -126,6 +127,34 @@ test("captures a blank session with the centered composer", async ({page}) => {
   await createSession(page);
   await expect(page.getByLabel("Session details")).toHaveCount(0);
   await expect(page).toHaveScreenshot("canonical-blank-session.png");
+});
+
+test("captures the Workspace branch control", async ({page}) => {
+  const workspace = page.locator(".workspaceGroup").first();
+  await expect(workspace.getByRole("combobox")).toBeVisible();
+  await expect(workspace).toHaveScreenshot("canonical-workspace-branch.png");
+});
+
+test("captures a concise branch conflict", async ({page}) => {
+  execFileSync("git", ["branch", "feature"], {cwd: workspaceDir});
+  execFileSync("git", ["switch", "feature"], {cwd: workspaceDir});
+  await writeFile(path.join(workspaceDir, "README.md"), "# Feature\n");
+  execFileSync("git", ["add", "README.md"], {cwd: workspaceDir});
+  execFileSync("git", [
+    "-c", "user.name=CodeHelper",
+    "-c", "user.email=fixture@codehelper.invalid",
+    "commit", "-qm", "feature change"
+  ], {cwd: workspaceDir});
+  execFileSync("git", ["switch", "-"], {cwd: workspaceDir});
+  await writeFile(path.join(workspaceDir, "README.md"), "# Local changes\n");
+  await page.reload();
+  await page.getByLabel(`Branch for ${path.basename(workspaceDir)}`)
+    .selectOption("feature");
+
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText("Branch not switched");
+  await expect(alert).toContainText("Commit or stash local changes");
+  await expect(page).toHaveScreenshot("canonical-error-notice.png");
 });
 
 test("captures the modal workspace context browser", async ({page}) => {
@@ -320,7 +349,7 @@ test("captures message actions, commands, context usage, and rich Markdown", asy
     approval: document.querySelector<HTMLSelectElement>('select[aria-label="Approval"]')
       ?.getBoundingClientRect().width ?? 0
   }));
-  expect(selectWidths.mode).toBeLessThan(72);
+  expect(selectWidths.mode).toBeLessThan(150);
   expect(selectWidths.approval).toBeLessThan(92);
   await expect(page).toHaveScreenshot("canonical-message-chrome.png");
 
@@ -496,6 +525,10 @@ test("navigates long conversations by stable semantic anchors", async ({page}) =
 
 test("captures the approval state", async ({page}) => {
   await createSession(page);
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/profile/update")),
+    page.getByLabel("Mode", {exact: true}).selectOption("act · off")
+  ]);
   await submitPrompt(page, "visual approval");
   await expect(page.getByText("exec_command requires approval")).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-approval.png");
@@ -503,6 +536,10 @@ test("captures the approval state", async ({page}) => {
 
 test("captures a complex edit and approval workflow", async ({page}) => {
   await createSession(page);
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/profile/update")),
+    page.getByLabel("Mode", {exact: true}).selectOption("act · off")
+  ]);
   await submitPrompt(page, "visual edit approval");
 
   await expect(page.getByText("Waiting for approval")).toBeVisible();
@@ -651,6 +688,10 @@ test("keeps background work visible and opens its completion notification", asyn
     .toContainText("Review complete. Runtime evidence is consistent.");
 
   await createSession(page);
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/profile/update")),
+    page.getByLabel("Mode", {exact: true}).selectOption("act · off")
+  ]);
   await submitPrompt(page, "visual background approval");
   await expect(page.getByText("Working", {exact: true})).toBeVisible();
   await createSession(page);

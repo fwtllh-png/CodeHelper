@@ -1103,6 +1103,16 @@ func validateWorkspaceLinks(ctx context.Context, workspace *Workspace) error {
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			resolved, err := filepath.EvalSymlinks(path)
+			if errors.Is(err, os.ErrNotExist) {
+				target, readErr := os.Readlink(path)
+				if readErr != nil {
+					return fmt.Errorf("read workspace symbolic link %q: %w", path, readErr)
+				}
+				if !filepath.IsAbs(target) {
+					target = filepath.Join(filepath.Dir(path), target)
+				}
+				resolved, err = evalSymlinksAllowMissing(target)
+			}
 			if err != nil {
 				return fmt.Errorf("workspace symbolic link %q is invalid: %w", path, err)
 			}
@@ -1158,4 +1168,27 @@ func validateWorkspaceLinks(ctx context.Context, workspace *Workspace) error {
 		}
 	}
 	return nil
+}
+
+func evalSymlinksAllowMissing(value string) (string, error) {
+	current := filepath.Clean(value)
+	var missing []string
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for index := len(missing) - 1; index >= 0; index-- {
+				resolved = filepath.Join(resolved, missing[index])
+			}
+			return filepath.Clean(resolved), nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
+		}
+		missing = append(missing, filepath.Base(current))
+		current = parent
+	}
 }

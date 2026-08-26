@@ -79,9 +79,7 @@ func (r *Router) Stream(ctx context.Context, request provider.ModelRequest) (pro
 	if err != nil {
 		return nil, err
 	}
-	request.Messages = provider.FilterReplayForAdapter(
-		request.Messages, adapter.ID(),
-	)
+	request.Messages = provider.FilterReplayForRoute(request.Messages, request.Route)
 	if validationErr := request.Validate(); validationErr != nil {
 		return nil, protocol.NewProblem(
 			protocol.CodeInvalidArgument,
