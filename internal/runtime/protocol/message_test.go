@@ -319,6 +319,51 @@ func TestEditorContextReceiptValidationFailsClosed(t *testing.T) {
 	}
 }
 
+func TestTurnStartedImageAttachmentsValidateAndRoundTrip(t *testing.T) {
+	image := EditorContextReference{
+		Kind: EditorContextImage, Source: EditorContextSourceNativePicker,
+		Label: "screen.png", MediaType: "image/png",
+		Content:  base64.StdEncoding.EncodeToString([]byte("image")),
+		Explicit: true,
+	}
+	sum := sha256.Sum256([]byte("image"))
+	image.Digest = hex.EncodeToString(sum[:])
+	event, err := NewEvent(EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &TurnStartedData{
+		Provider: "fixture", Model: "model",
+		DisplayPrompt: "Describe this image", Images: []EditorContextReference{image},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Event
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	data, ok := decoded.Data.(*TurnStartedData)
+	if !ok || len(data.Images) != 1 ||
+		data.Images[0].Label != image.Label ||
+		data.Images[0].Content != image.Content {
+		t.Fatalf("turn started images = %#v", decoded.Data)
+	}
+	image.Content = "not base64"
+	if _, err := NewEvent(EventMeta{
+		Sequence: 2, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &TurnStartedData{
+		Provider: "fixture", Model: "model",
+		Images: []EditorContextReference{image},
+	}); err == nil {
+		t.Fatal("invalid turn image attachment was accepted")
+	}
+}
+
 func TestToolStartRejectsMalformedArgumentsBeforeEncoding(t *testing.T) {
 	_, err := NewEvent(EventMeta{
 		Sequence: 1, OperationID: "op", ThreadID: "thread",

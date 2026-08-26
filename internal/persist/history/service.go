@@ -11,7 +11,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const maxPresentationSnapshotBytes = 2 << 20
+// A validated image input can occupy 5 MiB before base64 encoding. Keep one
+// complete user turn available so its durable chat preview survives hydration.
+const maxPresentationSnapshotBytes = 8 << 20
 
 type SessionHistoryQuery struct {
 	SessionID string

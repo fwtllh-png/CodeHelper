@@ -142,9 +142,30 @@ func BuildCompactionCandidate(
 	if err != nil {
 		return CompactionCandidate{}, err
 	}
-	authority := MandatoryCapsule(input.CurrentTruth)
+	current := input.CurrentTruth
+	currentHasGoal := false
+	for _, entity := range current.Entities {
+		currentHasGoal = currentHasGoal || entity.Kind == EntityGoal
+	}
+	if !currentHasGoal {
+		for index := len(previous) - 1; index >= 0 && !currentHasGoal; index-- {
+			for _, entity := range previous[index].Entities {
+				if entity.Kind != EntityGoal ||
+					entity.Retention != RetentionMandatory {
+					continue
+				}
+				current.Entities = append(current.Entities, entity)
+				currentHasGoal = true
+				break
+			}
+		}
+		if currentHasGoal {
+			current.Seal()
+		}
+	}
+	authority := MandatoryCapsule(current)
 	capsule, mergeReceipt, err := MergeTruthCapsules(
-		input.CurrentTruth,
+		current,
 		previous...,
 	)
 	if err != nil {

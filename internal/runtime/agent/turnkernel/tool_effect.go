@@ -100,10 +100,7 @@ func (s *RuntimeKernel) ExecuteToolEffect(
 	})
 	results := batch.Results
 	for index := range results {
-		results[index], _ = effect.Registry.AdmitResult(
-			effect.Calls[index].Name,
-			results[index],
-		)
+		results[index], _ = effect.Registry.AdmitResultWithin(effect.Calls[index].Name, results[index], tool.ResultTokenBudget(effect.Context))
 	}
 	batchMutated := false
 	for _, result := range results {
@@ -189,7 +186,7 @@ func (s *RuntimeKernel) abortPublishedTools(
 				"fatal":          true,
 			},
 		}
-		result, _ = effect.Registry.AdmitResult(call.Name, result)
+		result, _ = effect.Registry.AdmitResultWithin(call.Name, result, tool.ResultTokenBudget(effect.Context))
 		if effect.PublishAborted != nil {
 			resultErr = errors.Join(
 				resultErr,

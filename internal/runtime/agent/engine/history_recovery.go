@@ -36,44 +36,10 @@ func (e *Engine) runCompactGate(
 	if err != nil {
 		return tokenWindow{}, err
 	}
-	if !e.activeRoute().Model().Capabilities.IncrementalResponses {
-		originalMessages := len(*history)
-		originalBytes := agentcontext.HistoryBytes(*history)
-		originalTokens := window.active
-		pruned := e.pruneConsumedToolResultSurfaces(history)
-		if pruned.results != 0 {
-			input = input.WithHistory(*history)
-			window, err = e.measureTokenWindow(input, outputReserve)
-			if err != nil {
-				return tokenWindow{}, err
-			}
-			authority := e.buildTruthCapsule(e.buildCompactSummary(nil))
-			authorityDigest, digestErr := authority.AuthorityDigest()
-			if digestErr != nil {
-				return tokenWindow{}, digestErr
-			}
-			receipt := promptcontext.NewSurfaceBudgetReceipt(
-				originalMessages,
-				originalBytes,
-				agentcontext.HistoryBytes(*history),
-				originalTokens,
-				window.active,
-				pruned.results,
-				pruned.bytes,
-				authorityDigest,
-				e.contextReceipts(),
-			)
-			receipt.Phase = phase
-			if err := send(Compacting, Event{Compaction: receipt}); err != nil {
-				return tokenWindow{}, err
-			}
-		}
-	}
+	recentTailMaxTokens := e.recentTailMaxTokens()
 	forceTailBudget := phase == CompactionPhasePostTurn &&
 		allowCurrentTurn &&
-		e.options.Context.RecentTailMaxTokens != 0 &&
-		agentcontext.EstimateMessageTokens(*history) >
-			e.options.Context.RecentTailMaxTokens
+		agentcontext.EstimateMessageTokens(*history) > recentTailMaxTokens
 	receipt := e.compactHistoryWithPolicy(
 		history, forceTailBudget, allowCurrentTurn, input, outputReserve,
 	)
@@ -165,12 +131,16 @@ func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudget
 	}
 	input := agentcontext.NewMessageLedger(value).Snapshot()
 	window, _ := e.measureTokenWindow(input, e.maxOutputFor(e.activeRoute()))
+	capacity := e.contextCapacity()
 	return ContextBudgetSnapshot{
 		ActiveTokens: window.active, AutoCompactTokens: window.compactLimit,
 		PrepareTokens:   e.prepareCompactLimit(),
 		EmergencyTokens: e.emergencyCompactLimit(),
 		EstimatedTokens: window.estimated, MaxContextTokens: window.hardLimit,
-		WindowID: window.accounting.ID, WindowNumber: window.accounting.Number,
+		HardInputTokens: capacity.HardInputTokens,
+		LimitSource:     string(capacity.LimitSource),
+		OutputSource:    capacity.OutputSource,
+		WindowID:        window.accounting.ID, WindowNumber: window.accounting.Number,
 		Observed:             window.accounting.Observed,
 		FullActiveTokens:     window.accounting.FullActiveTokens,
 		PrefillTokens:        window.accounting.PrefillTokens,
@@ -253,7 +223,7 @@ func (e *Engine) compactHistoryWithPolicy(
 			AllowCurrentTurn: allowCurrentTurn,
 			Input:            input, OutputReserve: outputReserve,
 			RecentTailTurns:     e.options.Context.RecentTailTurns,
-			RecentTailMaxTokens: e.options.Context.RecentTailMaxTokens,
+			RecentTailMaxTokens: e.recentTailMaxTokens(),
 			WindowScope:         e.options.Context.Window.Scope,
 			EmergencyLimit:      e.emergencyCompactLimit(),
 			AuthorityDigest:     authorityDigest,

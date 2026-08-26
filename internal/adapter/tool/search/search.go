@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -336,11 +337,20 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	}
 	input.Before = min(input.Before, 20)
 	input.After = min(input.After, 20)
-	if input.MaxFileBytes <= 0 {
-		input.MaxFileBytes = 1 << 20
+	if budget := tool.ResultTokenBudget(ctx); budget != 0 {
+		maxResults := int(min(budget, uint64(math.MaxInt)))
+		maxFileBytes := int64(min(budget, uint64(math.MaxInt64/4)) * 4)
+		if input.MaxResults <= 0 || input.MaxResults > maxResults {
+			input.MaxResults = maxResults
+		}
+		if input.MaxFileBytes <= 0 || input.MaxFileBytes > maxFileBytes {
+			input.MaxFileBytes = maxFileBytes
+		}
 	}
-	if input.MaxResults <= 0 {
-		input.MaxResults = 1000
+	if input.MaxFileBytes <= 0 || input.MaxResults <= 0 {
+		return tool.Result{}, fmt.Errorf(
+			"search requires runtime result budget or explicit max_file_bytes and max_results",
+		)
 	}
 	textMatches := make([]textMatch, 0)
 	fileMatches := make([]fileMatch, 0)

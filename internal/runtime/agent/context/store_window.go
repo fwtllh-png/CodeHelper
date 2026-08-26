@@ -43,10 +43,8 @@ type WindowProjection struct {
 }
 
 type WindowPolicy struct {
-	PrepareTokens   uint64
-	AutoTokens      uint64
-	EmergencyTokens uint64
-	Scope           string
+	PrepareTokens, AutoTokens, EmergencyTokens uint64
+	Scope                                      string
 }
 
 type BudgetSnapshot struct {
@@ -60,6 +58,9 @@ type BudgetSnapshot struct {
 	ToolDefinitionTokens uint64 `json:"tool_definition_tokens,omitempty"`
 	PendingTokens        uint64 `json:"pending_tokens,omitempty"`
 	OutputReserve        uint64 `json:"output_reserve,omitempty"`
+	HardInputTokens      uint64 `json:"hard_input_tokens,omitempty"`
+	LimitSource          string `json:"limit_source,omitempty"`
+	OutputSource         string `json:"output_source,omitempty"`
 	AutoCompactTokens    uint64 `json:"auto_compact_tokens"`
 	PrepareTokens        uint64 `json:"prepare_tokens,omitempty"`
 	EmergencyTokens      uint64 `json:"emergency_tokens,omitempty"`
@@ -68,23 +69,20 @@ type BudgetSnapshot struct {
 	Compactions          int    `json:"compactions"`
 }
 
-func WindowThresholds(
-	policy WindowPolicy,
-	limit uint64,
-) (uint64, uint64, uint64) {
-	compact := policy.AutoTokens
-	if compact == 0 {
-		compact = limit * 65 / 100
+func WindowThresholds(policy WindowPolicy, hardInputCapacity uint64) (uint64, uint64, uint64) {
+	compact := hardInputCapacity
+	if policy.AutoTokens != 0 {
+		compact = min(policy.AutoTokens, hardInputCapacity)
 	}
-	prepare := policy.PrepareTokens
-	if prepare == 0 {
-		prepare = min(limit*55/100, compact*55/65)
+	prepare := compact
+	if policy.PrepareTokens != 0 {
+		prepare = min(policy.PrepareTokens, compact)
 	}
-	emergency := policy.EmergencyTokens
-	if emergency == 0 {
-		emergency = max(limit*85/100, compact+1)
+	emergency := hardInputCapacity
+	if policy.EmergencyTokens != 0 {
+		emergency = min(policy.EmergencyTokens, hardInputCapacity)
 	}
-	return min(prepare, limit), min(compact, limit), min(emergency, limit)
+	return prepare, compact, emergency
 }
 
 func NewWindowLedger(id string, number uint64) (WindowLedger, error) {

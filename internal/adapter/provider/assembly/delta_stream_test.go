@@ -81,6 +81,7 @@ func TestDeltaCoalescingStreamFlushesBeforeEventBoundaries(t *testing.T) {
 	}
 	want := []provider.StreamEventType{
 		provider.EventReasoningDelta,
+		provider.EventReasoningDelta,
 		provider.EventToolCallDelta,
 		provider.EventToolCallDelta,
 		provider.EventTextDelta,
@@ -95,17 +96,18 @@ func TestDeltaCoalescingStreamFlushesBeforeEventBoundaries(t *testing.T) {
 			t.Fatalf("event types = %v, want %v", got, want)
 		}
 	}
-	if events[0].Text != "ab" || events[3].Text != "cd" {
+	if events[0].Text != "a" || events[1].Text != "b" ||
+		events[4].Text != "cd" {
 		t.Fatalf("boundary text = %+v", events)
 	}
-	if events[1].ToolCall == nil ||
-		events[1].ToolCall.ID != "call_1" ||
-		events[1].ToolCall.Name != "read" ||
-		events[1].ToolCall.Arguments != `{"path":"one"}` {
-		t.Fatalf("coalesced Tool Call = %+v", events[1].ToolCall)
+	if events[2].ToolCall == nil ||
+		events[2].ToolCall.ID != "call_1" ||
+		events[2].ToolCall.Name != "read" ||
+		events[2].ToolCall.Arguments != `{"path":"one"}` {
+		t.Fatalf("coalesced Tool Call = %+v", events[2].ToolCall)
 	}
-	if events[2].ToolCall == nil || events[2].ToolCall.ID != "call_2" {
-		t.Fatalf("parallel Tool Call boundary = %+v", events[2].ToolCall)
+	if events[3].ToolCall == nil || events[3].ToolCall.ID != "call_2" {
+		t.Fatalf("parallel Tool Call boundary = %+v", events[3].ToolCall)
 	}
 }
 
@@ -123,8 +125,11 @@ func TestDeltaCoalescingStreamFlushesWhenProviderPauses(t *testing.T) {
 		event.Text != "confirmed" {
 		t.Fatalf("event = %+v", event)
 	}
-	if elapsed := time.Since(started); elapsed > 10*deltaFlushWindow {
-		t.Fatalf("flush took %v, want <= %v", elapsed, 10*deltaFlushWindow)
+	if source.calls != 1 {
+		t.Fatalf("source calls = %d, first delta was not emitted immediately", source.calls)
+	}
+	if elapsed := time.Since(started); elapsed >= deltaFlushWindow {
+		t.Fatalf("first delta took %v, batching window is %v", elapsed, deltaFlushWindow)
 	}
 }
 

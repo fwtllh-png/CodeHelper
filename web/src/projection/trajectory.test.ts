@@ -72,6 +72,38 @@ describe("projectTrajectory", () => {
     expect(projection.spans.every((span) => span.durationMS === undefined)).toBe(true);
   });
 
+  it("distinguishes pruning from history replacement and hides lifecycle duplicates", () => {
+    const projection = projectTrajectory([
+      event(1, "turn.compaction", {
+        phase: "mid_turn",
+        summary: "pruned tool results",
+        pruned_tool_results: 2,
+        pruned_bytes: 4096
+      }),
+      event(2, "turn.compaction", {
+        compaction_id: "compact-1",
+        phase: "mid_turn",
+        summary: "replaced history",
+        removed_messages: 8,
+        original_bytes: 32000,
+        retained_bytes: 12000
+      }),
+      event(3, "turn.compaction", {
+        compaction_id: "compact-1",
+        phase: "post_turn",
+        status: "completed",
+        summary: "compaction completed"
+      })
+    ]);
+
+    expect(projection.records.map((record) => record.label)).toEqual([
+      "PRUNE", "COMPACT"
+    ]);
+    expect(projection.records.map((record) => record.summary)).toEqual([
+      "pruned tool results", "replaced history"
+    ]);
+  });
+
   it("uses event pairs when trace only exposes aggregate tool timing", () => {
     const events = [
       event(1, "turn.started", {display_prompt: "Inspect files"}),

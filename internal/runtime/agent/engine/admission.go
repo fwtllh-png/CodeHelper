@@ -38,7 +38,7 @@ func (e *Engine) admitToolResultHistory(
 				block.ToolResult.Admission,
 			)
 			name := names[block.ToolResult.CallID]
-			value, _ = e.options.Tools.AdmitResult(name, value)
+			value, _ = e.options.Tools.AdmitResultWithin(name, value, e.autoCompactLimit())
 			encoded, err := json.Marshal(tool.ModelResult(name, value))
 			if err != nil {
 				return nil, fmt.Errorf(

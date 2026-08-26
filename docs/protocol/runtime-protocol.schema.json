@@ -8358,6 +8358,240 @@
             "additionalProperties": false
           }
         },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string"
+              },
+              "diagnostics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "range": {
+                      "type": "object",
+                      "properties": {
+                        "end": {
+                          "type": "object",
+                          "properties": {
+                            "character": {
+                              "type": "integer"
+                            },
+                            "line": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "character",
+                            "line"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "start": {
+                          "type": "object",
+                          "properties": {
+                            "character": {
+                              "type": "integer"
+                            },
+                            "line": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "character",
+                            "line"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "end",
+                        "start"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "severity": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "range",
+                    "severity"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "digest": {
+                "type": "string"
+              },
+              "document_version": {
+                "type": "integer"
+              },
+              "explicit": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "file",
+                  "selection",
+                  "symbol",
+                  "diagnostics",
+                  "image",
+                  "attachment",
+                  "terminal",
+                  "git_diff"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "media_type": {
+                "type": "string"
+              },
+              "omitted_diagnostics": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              },
+              "range": {
+                "type": "object",
+                "properties": {
+                  "end": {
+                    "type": "object",
+                    "properties": {
+                      "character": {
+                        "type": "integer"
+                      },
+                      "line": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "character",
+                      "line"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "start": {
+                    "type": "object",
+                    "properties": {
+                      "character": {
+                        "type": "integer"
+                      },
+                      "line": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "character",
+                      "line"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "end",
+                  "start"
+                ],
+                "additionalProperties": false
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "composer",
+                  "selection_command",
+                  "code_action",
+                  "native_picker"
+                ]
+              },
+              "symbol": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "selection_range": {
+                    "type": "object",
+                    "properties": {
+                      "end": {
+                        "type": "object",
+                        "properties": {
+                          "character": {
+                            "type": "integer"
+                          },
+                          "line": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "character",
+                          "line"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "start": {
+                        "type": "object",
+                        "properties": {
+                          "character": {
+                            "type": "integer"
+                          },
+                          "line": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "character",
+                          "line"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "end",
+                      "start"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "additionalProperties": false
+              },
+              "uri": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "digest",
+              "document_version",
+              "explicit",
+              "kind",
+              "path",
+              "uri"
+            ],
+            "additionalProperties": false
+          }
+        },
         "intent": {
           "type": "string"
         },
@@ -8686,6 +8920,9 @@
             "window_full_active_tokens": {
               "type": "integer"
             },
+            "window_hard_input_tokens": {
+              "type": "integer"
+            },
             "window_id": {
               "type": "string"
             },
@@ -8697,6 +8934,9 @@
             },
             "window_output_reserve": {
               "type": "integer"
+            },
+            "window_output_source": {
+              "type": "string"
             },
             "window_pending_tokens": {
               "type": "integer"

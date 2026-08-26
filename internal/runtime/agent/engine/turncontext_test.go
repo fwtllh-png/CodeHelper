@@ -39,6 +39,15 @@ func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	if snapshot.Provider == "" || snapshot.Model == "" {
 		t.Fatalf("snapshot = %+v", snapshot)
 	}
+	if snapshot.Limits.Context.ContextTokens !=
+		snapshot.Route.Model().Limits.ContextTokens ||
+		snapshot.Limits.Context.OutputCeiling !=
+			snapshot.Route.Model().Limits.MaxOutputTokens ||
+		snapshot.Limits.Context.HardInputTokens !=
+			snapshot.Route.Model().Limits.ContextTokens-
+				snapshot.Route.Model().Limits.MaxOutputTokens {
+		t.Fatalf("context capacity snapshot = %+v", snapshot.Limits.Context)
+	}
 	if snapshot.Identity.TurnID != "turn-1" ||
 		snapshot.Identity.ProfileRevision != 7 ||
 		snapshot.Request.Prompt != "inspect" ||

@@ -91,23 +91,7 @@ func ProjectWorldState(
 	var sections []agentcontext.WorldSection
 	var receipts []Receipt
 	budget := func(kind string) Budget {
-		if value, ok := input.Budgets[kind]; ok {
-			return value
-		}
-		switch kind {
-		case PartitionMode:
-			return Budget{MaxBytes: 1 << 10, MaxTokens: 256}
-		case PartitionPolicy, PartitionCodingPolicy:
-			return Budget{MaxBytes: 2 << 10, MaxTokens: 512}
-		case PartitionSkills:
-			return Budget{
-				MaxBytes: MaxSkillsPromptBytes, MaxTokens: MaxFragmentTokens,
-			}
-		case PartitionUserMemory, PartitionToolCatalog:
-			return Budget{MaxBytes: 16 << 10, MaxTokens: 4 << 10}
-		default:
-			return Budget{}
-		}
+		return input.Budgets[kind]
 	}
 	appendSection := func(id, source, body, digest string) {
 		messages, receipt := AssembleWorldText(

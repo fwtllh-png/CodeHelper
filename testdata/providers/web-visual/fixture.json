@@ -34,11 +34,16 @@
     },
     {
       "match": ["visual approval"],
-      "streams": ["approval-request.sse", "approval-complete.sse"]
+      "streams": [
+        "plan-submit.sse",
+        "approval-request.sse",
+        "approval-complete.sse"
+      ]
     },
     {
       "match": ["visual background approval"],
       "streams": [
+        "plan-submit.sse",
         "background-approval.sse",
         "background-verify.sse",
         "approval-complete.sse"
@@ -48,6 +53,7 @@
       "match": ["visual edit approval"],
       "streams": [
         "diff-read.sse",
+        "plan-submit.sse",
         "edit-request.sse",
         "approval-request.sse",
         "edit-verify.sse",

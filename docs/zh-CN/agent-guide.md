@@ -52,6 +52,22 @@
 - 不静默接受未知 Config Field 或 Protocol Variant。
 - 未实际执行验证时，不声称“验证通过”。
 - 没有明确需求时，不为未发布开发状态增加兼容 Migration。
+- 禁止在业务逻辑中私自引入没有契约来源的固定阈值、模型档位或经验常量来决定
+  Context、Capacity、Latency 或资源策略。
+
+### 阈值与容量规范
+
+- 默认阈值必须从当前模型和 Provider 的权威 Capability、实际 Output Reserve、
+  协议协商限制以及运行时观测值动态推导，不能按模型名称、是否为某类 Transport
+  或经验档位硬编码。
+- 用户显式配置可以覆盖动态默认值，但必须经过范围校验并保留 Provenance；不得用
+  隐藏常量二次收紧用户配置。
+- 必要的绝对安全上限必须定义为公开 Protocol 或 Config Contract，同时提供
+  Validation、中文文档和边界测试。仅在实现文件中声明常量不构成合法来源。
+- 性能优化的软预算与正确性保护的硬边界必须分离。TTFT、成本或缓存优化不得通过
+  提前丢弃仍在模型有效上下文窗口内的用户语义来实现。
+- 动态策略必须覆盖不同 Context Window、Output Reserve、Provider Projection Mode
+  和缓存状态的参数化测试，禁止只针对某个模型规格编写固定期望值测试。
 
 ## 工作方法
 

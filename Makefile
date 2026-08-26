@@ -17,6 +17,7 @@ LDFLAGS := -s -w \
 .PHONY: start install uninstall fmt verify test test-hermetic test-platform-capability reliability-gate test-integration \
 	test-release release-baseline-check integration-gate release-gate race build cross-build smoke \
 	agent-preflight agent-ratchet-test ratchet-fast \
+	capacity-policy-check \
 	docs-check book-check web-experience-check \
 	host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
@@ -152,7 +153,10 @@ agent-preflight:
 		--web-policy testdata/contracts/web-supply-chain-policy.json \
 		--output '$(AGENT_PREFLIGHT_SNAPSHOT)'
 
-ratchet-fast:
+capacity-policy-check:
+	$(GO) test ./scripts -run '^TestCapacityPathsDoNotReintroduceLegacyTiers$$'
+
+ratchet-fast: capacity-policy-check
 	@test -s '$(AGENT_PREFLIGHT_SNAPSHOT)' || { \
 		printf '%s\n' 'agent preflight is missing; run make agent-preflight first'; \
 		exit 1; \

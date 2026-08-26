@@ -56,20 +56,24 @@ Interaction、未验证 Change 和开放 Diagnostic 等 Mandatory Fact 不能由
 - `execution.subagent.max_tokens`：可选的整棵 Child Tree 上限；`0` 时从 Turn 上限和
   `max_parallel` 派生；
 - `max_output_tokens`：正值是操作员上限，实际值仍受模型能力和剩余输入空间约束；
-- Context Compaction 阈值从当前 Route 的窗口派生，显式值只覆盖对应边界。
+- 默认 Context Compaction 边界是
+  `ContextTokens - 当前 Output Reserve`；显式值只用于 Operator 主动设置更小的成本
+  或延迟 Ceiling。
 
 预算检查使用已提交 Usage、当前 Turn Usage、当前 Step Usage、估算输入和输出预留。
 耗尽时返回带 Scope、Used、Limit 和 Resource 的结构化 `resource_exhausted`，并保留
 可恢复状态；它不是一个由模型无关固定值触发的永久失败。
 
-`recent_tail_turns` 是保留偏好，`recent_tail_max_tokens` 是原始 Tail 的容量上限。两者
-冲突时以 Token 上限为准，并只在安全 Tool Pair 边界切分。
+`recent_tail_turns` 是保留偏好，`recent_tail_max_tokens` 是原始 Tail 的显式容量
+上限。未显式配置时，Tail 容量跟随当前 Turn 冻结的硬输入容量；两者
+冲突时以有效 Token 上限为准，并只在安全 Tool Pair 边界切分。
 
 ## Compaction 流程
 
 每次投影后都重新测量 Active、Total、Compact Limit 与 Hard Limit：
 
-1. 先把已闭合且已消费的旧 Tool Result 缩减为带 Handle/Digest 的模型投影；
+1. 当 `输入 + Output Reserve` 超过硬窗口，先把可重新获取的 Tool Result 缩减为带
+   Handle/Digest 的模型投影；
 2. 若 Surface Pruning 已恢复容量，跳过 Summary Replacement；
 3. 计算保持 Tool Pair 闭合的可切分位置；
 4. 从当前 Owner Snapshot 生成 Truth Capsule，而不是永久合并旧 Capsule；

@@ -2593,6 +2593,7 @@ func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
 	engine.options.Context.Window.AutoTokens = 700
+	engine.options.Context.RecentTailMaxTokens = 128
 	engine.options.SummaryMaxBytes = 2 << 10
 	engine.history = []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("old request ", 60), 1),

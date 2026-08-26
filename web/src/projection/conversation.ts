@@ -36,6 +36,12 @@ export interface ProjectedDeliverable {
   readonly stale: boolean;
 }
 
+export interface ProjectedUserImage {
+  readonly label: string;
+  readonly mediaType: string;
+  readonly content: string;
+}
+
 export type ConversationNode =
   | {
       readonly id: string;
@@ -43,6 +49,7 @@ export type ConversationNode =
       readonly turnID: string;
       readonly sequence: number;
       readonly text: string;
+      readonly images: readonly ProjectedUserImage[];
       readonly steering?: boolean;
     }
   | {
@@ -188,7 +195,8 @@ export class ConversationProjection {
           kind: "user",
           turnID: event.turn_id,
           sequence: event.sequence,
-          text: stringValue(data.display_prompt ?? data.prompt)
+          text: stringValue(data.display_prompt ?? data.prompt),
+          images: userImages(data.images)
         });
         break;
       case "turn.steered":
@@ -205,6 +213,7 @@ export class ConversationProjection {
           turnID: event.turn_id,
           sequence: event.sequence,
           text: stringValue(data.prompt),
+          images: [],
           steering: true
         });
         this.outputByTurn.set(
@@ -656,6 +665,20 @@ function deliverablePathKey(threadID: string, path: string): string {
 
 function stringValue(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
+}
+
+function userImages(value: unknown): readonly ProjectedUserImage[] {
+  if (!Array.isArray(value)) return [];
+  return Object.freeze(value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const label = stringValue(item.label);
+    const mediaType = stringValue(item.media_type);
+    const content = stringValue(item.content);
+    if (!label || !/^image\/(png|jpeg|gif|webp)$/.test(mediaType) || !content) {
+      return [];
+    }
+    return [Object.freeze({label, mediaType, content})];
+  }));
 }
 
 function numberValue(value: unknown): number | undefined {

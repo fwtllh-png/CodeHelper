@@ -245,13 +245,14 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 	}
 }
 
-func TestTokenWindowFinishOnlyRetainsCompletionToolsAtEightyFivePercent(t *testing.T) {
+func TestTokenWindowFinishOnlyRetainsCompletionToolsAtOperatorEmergencyLimit(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{textStream("done")}}
 	registry := declarationRegistry(t, true)
 	if err := registry.Register(finishProcessTool{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
+	engine.options.Context.Window.EmergencyTokens = 2_500
 	engine.options.StaticContext = []provider.Message{
 		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 11_000)),
 	}
@@ -285,6 +286,7 @@ func TestTokenWindowFinishOnlyExecutesCompletionMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
+	engine.options.Context.Window.EmergencyTokens = 2_500
 	engine.options.StaticContext = []provider.Message{
 		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 11_000)),
 	}
@@ -308,6 +310,7 @@ func TestTokenWindowFinishOnlyReturnsUnadvertisedToolAsRecoverableFailure(t *tes
 		textStream("bounded final answer"),
 	}}
 	engine := newEngine(t, runtime, declarationRegistry(t, true))
+	engine.options.Context.Window.EmergencyTokens = 2_500
 	engine.options.StaticContext = []provider.Message{
 		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 10_700)),
 	}

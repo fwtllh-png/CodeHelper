@@ -5,11 +5,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 )
 
-// maxEvidenceHits bounds the hits one call contributes to the caller's ledger. A
-// grep can legitimately return hundreds of lines; the ledger exists to remember
-// where the answer was, not to mirror the result.
-const maxEvidenceHits = 32
-
 // classifyPath labels a hit that carries no better information than its path.
 // The classification is lexical, so it can only recognize what naming
 // conventions reveal; anything else is a plain text match.
@@ -26,16 +21,13 @@ func classifyPath(path string) string {
 
 // pathHits classifies whole-file hits, one entry per path.
 func pathHits(paths []string) []tool.EvidenceHit {
-	hits := make([]tool.EvidenceHit, 0, min(len(paths), maxEvidenceHits))
+	hits := make([]tool.EvidenceHit, 0, len(paths))
 	seen := make(map[string]struct{}, len(paths))
 	for _, path := range paths {
 		if _, found := seen[path]; found {
 			continue
 		}
 		seen[path] = struct{}{}
-		if len(hits) == maxEvidenceHits {
-			break
-		}
 		hits = append(hits, tool.EvidenceHit{Kind: classifyPath(path), Path: path})
 	}
 	return hits
@@ -45,16 +37,13 @@ func pathHits(paths []string) []tool.EvidenceHit {
 // matching line. A second hit in the same file would add a line number that says
 // no more about where the answer lives.
 func textHits(matches []textMatch) []tool.EvidenceHit {
-	hits := make([]tool.EvidenceHit, 0, min(len(matches), maxEvidenceHits))
+	hits := make([]tool.EvidenceHit, 0, len(matches))
 	seen := make(map[string]struct{}, len(matches))
 	for _, match := range matches {
 		if _, found := seen[match.File]; found {
 			continue
 		}
 		seen[match.File] = struct{}{}
-		if len(hits) == maxEvidenceHits {
-			break
-		}
 		hits = append(hits, tool.EvidenceHit{
 			Kind: classifyPath(match.File), Path: match.File, Line: match.Line,
 		})

@@ -99,9 +99,6 @@
         "production_lines": 814,
         "options_fields": 0,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "Map retained reasoning completion events into the terminal event codec."
       }
     },
     {
@@ -198,9 +195,12 @@
       "path": "internal/adapter/model",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 954,
+        "production_lines": 966,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Represent authoritative model capability provenance used by Runtime capacity admission."
       }
     },
     {
@@ -523,9 +523,6 @@
         "production_lines": 725,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "internal_fanout": "Construct the Agent Preset repository inside the durable persistence assembly boundary."
       }
     },
     {
@@ -568,9 +565,6 @@
         "production_lines": 7756,
         "options_fields": 6,
         "mutex_fields": 4
-      },
-      "relaxations": {
-        "production_lines": "Publish sample-bound reasoning completion facts for stable Web transcript reconstruction."
       }
     },
     {
@@ -593,10 +587,6 @@
         "production_lines": 6728,
         "options_fields": 23,
         "mutex_fields": 10
-      },
-      "relaxations": {
-        "production_lines": "Add Runtime-owned Agent Preset validation, persistence control, and Session application.",
-        "options_fields": "Inject the Agent Preset store through an explicit Runtime option."
       }
     },
     {
@@ -628,9 +618,6 @@
         "production_lines": 6992,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Define typed, versioned Agent Preset profiles and mutation contracts."
       }
     },
     {
@@ -640,9 +627,6 @@
       "limits": {
         "lines": 2202,
         "max_function_lines": 119
-      },
-      "relaxations": {
-        "lines": "Expose the narrow Agent Preset store interface and service facade from Runtime."
       }
     },
     {
@@ -715,10 +699,6 @@
       "limits": {
         "lines": 156,
         "max_function_lines": 71
-      },
-      "relaxations": {
-        "lines": "Install the injected Agent Preset store during Runtime construction.",
-        "max_function_lines": "Install the injected Agent Preset store during Runtime construction."
       }
     },
     {
@@ -844,7 +824,7 @@
       "path": "internal/runtime/agent/engine/engine.go",
       "limits": {
         "lines": 423,
-        "max_function_lines": 128
+        "max_function_lines": 122
       }
     },
     {
@@ -975,9 +955,6 @@
         "runtime_agent_unexpected_packages": 0,
         "runtime_app_package_dirs": 4,
         "runtime_app_unexpected_packages": 0
-      },
-      "relaxations": {
-        "event_switch_sites": "Project retained Queue transition events into one Runtime-owned pending Queue."
       }
     },
     {
@@ -986,9 +963,12 @@
       "path": "internal/runtime/agent/context",
       "limits": {
         "internal_fanout": 7,
-        "production_lines": 8974,
+        "production_lines": 9037,
         "options_fields": 0,
         "mutex_fields": 3
+      },
+      "relaxations": {
+        "production_lines": "Centralize model-derived input capacity, output reserve, and budget-aware admission."
       }
     },
     {
@@ -1000,9 +980,6 @@
         "production_lines": 2502,
         "options_fields": 22,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Resolve verified inline text and native image attachments into model context."
       }
     },
     {
@@ -1026,7 +1003,5 @@
       "kind": "file"
     }
   ],
-  "retirements": {
-    "tui_package": "The TUI host was removed in favor of the single Web product entry."
-  }
+  "retirements": {}
 }

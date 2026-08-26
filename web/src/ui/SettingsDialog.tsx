@@ -60,7 +60,6 @@ export type SettingsSection =
 
 interface ProfileDraft {
   mode: SessionProfile["mode"];
-  planningPolicy: NonNullable<SessionProfile["planning_policy"]>;
   planApproval: NonNullable<SessionProfile["plan_approval"]>;
   provider: string;
   model: string;
@@ -1324,20 +1323,6 @@ function AgentSettings({
         />
       </SettingRow>
       <SettingRow
-        title="Planning"
-        description="Require a structured plan for complex or all consequential actions."
-      >
-        <SelectControl
-          label="Planning policy"
-          value={draft.planningPolicy}
-          values={["adaptive", "required", "off"]}
-          disabled={!mutable(snapshot, "planning_policy")}
-          onChange={(planningPolicy) => onDraftChange({
-            planningPolicy: planningPolicy as ProfileDraft["planningPolicy"]
-          })}
-        />
-      </SettingRow>
-      <SettingRow
         title="Plan approval"
         description="Continue automatically or wait before executing a submitted plan."
       >
@@ -1736,7 +1721,6 @@ function settingsProfileDraftFromProfile(
     : tools.filter((tool) => tool.enabled).map((tool) => tool.id);
   return {
     mode: profile.mode,
-    planningPolicy: profile.planning_policy ?? "adaptive",
     planApproval: profile.plan_approval ?? "manual",
     provider: profile.provider,
     model: profile.model,
@@ -1753,7 +1737,6 @@ function equalProfileDraft(
   right: ProfileDraft
 ): boolean {
   return left.mode === right.mode &&
-    left.planningPolicy === right.planningPolicy &&
     left.planApproval === right.planApproval &&
     left.provider === right.provider &&
     left.model === right.model &&
@@ -1777,9 +1760,9 @@ function changedProfileFields(
   draft: ProfileDraft
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
-  if (draft.mode !== baseline.mode) patch.mode = draft.mode;
-  if (draft.planningPolicy !== baseline.planningPolicy) {
-    patch.planning_policy = draft.planningPolicy;
+  if (draft.mode !== baseline.mode) {
+    patch.mode = draft.mode;
+    patch.planning_policy = "adaptive";
   }
   if (draft.planApproval !== baseline.planApproval) {
     patch.plan_approval = draft.planApproval;
@@ -1808,7 +1791,7 @@ function changedProfileFields(
 function agentPresetProfile(draft: ProfileDraft): AgentPresetProfile {
   return {
     mode: draft.mode,
-    planning_policy: draft.planningPolicy,
+    planning_policy: "adaptive",
     plan_approval: draft.planApproval,
     provider: draft.provider,
     model: draft.model,
@@ -1826,7 +1809,6 @@ function profileDraftFromPreset(
 ): ProfileDraft {
   return {
     mode: profile.mode,
-    planningPolicy: profile.planning_policy ?? "adaptive",
     planApproval: profile.plan_approval ?? "manual",
     provider: profile.provider,
     model: profile.model,
@@ -1848,8 +1830,6 @@ function profileApplyNotice(
   const changes = before && after ? [
     before.model !== after.model && `Model ${before.model} → ${after.model}`,
     before.mode !== after.mode && `Mode ${before.mode} → ${after.mode}`,
-    before.planningPolicy !== after.planningPolicy &&
-      `Planning ${before.planningPolicy} → ${after.planningPolicy}`,
     before.planApproval !== after.planApproval &&
       `Plan approval ${before.planApproval} → ${after.planApproval}`,
     before.reasoningEffort !== after.reasoningEffort &&

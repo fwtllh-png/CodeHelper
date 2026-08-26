@@ -201,3 +201,24 @@ func TestAssembleUserMemoryInjectsOnlyWhenEnabled(t *testing.T) {
 		t.Fatalf("messages = %+v", context.Messages)
 	}
 }
+
+func TestAssembleSharesCapacityAcrossPartitions(t *testing.T) {
+	context, err := Assemble(Options{
+		Workspace:  t.TempDir(),
+		BaseSystem: "12345678",
+		ToolPrefix: "abcdefgh",
+		Budgets: map[string]Budget{
+			PartitionTotal: {MaxTokens: 3},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var retained uint64
+	for _, receipt := range context.Receipts {
+		retained += receipt.RetainedTokens
+	}
+	if retained > 3 {
+		t.Fatalf("retained tokens = %d, want shared ceiling 3", retained)
+	}
+}

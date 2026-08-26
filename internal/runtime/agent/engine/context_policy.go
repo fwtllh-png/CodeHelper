@@ -30,38 +30,34 @@ type ContextPolicy struct {
 	) error
 }
 
-const (
-	statelessPrepareTokens   = 16 << 10
-	statelessCompactTokens   = 24 << 10
-	statelessEmergencyTokens = 48 << 10
-)
-
-func (e *Engine) effectiveWindowPolicy() agentcontext.WindowPolicy {
-	policy := e.options.Context.Window
-	if e.activeRoute().Model().Capabilities.IncrementalResponses {
-		return policy
+func (e *Engine) contextCapacity() agentcontext.Capacity {
+	if scope := e.runningScope(); scope != nil &&
+		scope.spec.Limits.Context.ContextTokens != 0 {
+		return scope.spec.Limits.Context
 	}
-	limit := e.activeRoute().Model().Limits.ContextTokens
-	if policy.PrepareTokens == 0 {
-		policy.PrepareTokens = min(limit*55/100, statelessPrepareTokens)
-	}
-	if policy.AutoTokens == 0 {
-		policy.AutoTokens = min(limit*65/100, statelessCompactTokens)
-	}
-	if policy.EmergencyTokens == 0 {
-		policy.EmergencyTokens = min(limit*85/100, statelessEmergencyTokens)
-	}
-	return policy
+	return agentcontext.ResolveCapacity(
+		e.activeRoute(), e.options.MaxOutputTokens,
+		e.options.Budget.MaxTurnTokens, e.options.Budget.MaxTokens,
+	)
 }
 
 func (e *Engine) prepareCompactLimit() uint64 {
-	limit := e.activeRoute().Model().Limits.ContextTokens
-	prepare, _, _ := agentcontext.WindowThresholds(e.effectiveWindowPolicy(), limit)
+	prepare, _, _ := agentcontext.WindowThresholds(
+		e.options.Context.Window, e.contextCapacity().HardInputTokens,
+	)
 	return prepare
 }
 
 func (e *Engine) emergencyCompactLimit() uint64 {
-	limit := e.activeRoute().Model().Limits.ContextTokens
-	_, _, emergency := agentcontext.WindowThresholds(e.effectiveWindowPolicy(), limit)
+	_, _, emergency := agentcontext.WindowThresholds(
+		e.options.Context.Window, e.contextCapacity().HardInputTokens,
+	)
 	return emergency
+}
+
+func (e *Engine) recentTailMaxTokens() uint64 {
+	if configured := e.options.Context.RecentTailMaxTokens; configured != 0 {
+		return configured
+	}
+	return e.autoCompactLimit()
 }

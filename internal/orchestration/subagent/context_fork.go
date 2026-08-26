@@ -42,20 +42,12 @@ type ContextPolicy struct {
 
 func DefaultContextPolicy() ContextPolicy {
 	return ContextPolicy{
-		MaxBytes: 24 << 10, MaxTokens: 6 << 10,
 		DefaultTurns: 2, MaxTurns: 8, MaxFiles: 16, MaxEvidence: 16,
-		MaxToolResultBytes: 2 << 10,
 	}
 }
 
 func (p ContextPolicy) withDefaults() ContextPolicy {
 	defaults := DefaultContextPolicy()
-	if p.MaxBytes <= 0 {
-		p.MaxBytes = defaults.MaxBytes
-	}
-	if p.MaxTokens == 0 {
-		p.MaxTokens = defaults.MaxTokens
-	}
 	if p.DefaultTurns <= 0 {
 		p.DefaultTurns = defaults.DefaultTurns
 	}
@@ -67,9 +59,6 @@ func (p ContextPolicy) withDefaults() ContextPolicy {
 	}
 	if p.MaxEvidence <= 0 {
 		p.MaxEvidence = defaults.MaxEvidence
-	}
-	if p.MaxToolResultBytes <= 0 {
-		p.MaxToolResultBytes = defaults.MaxToolResultBytes
 	}
 	return p
 }
@@ -275,6 +264,28 @@ func (f *ContextForker) Fork(
 	}
 	if request.Agent.Budget.MaxCostUSD > 0 {
 		budget.MaxCostUSD = request.Agent.Budget.MaxCostUSD
+	}
+	if policy.MaxTokens == 0 {
+		policy.MaxTokens = snapshot.AvailableTokens
+		if budget.MaxTokens != 0 {
+			if policy.MaxTokens == 0 {
+				policy.MaxTokens = budget.MaxTokens
+			} else {
+				policy.MaxTokens = min(policy.MaxTokens, budget.MaxTokens)
+			}
+		}
+	}
+	if policy.MaxBytes <= 0 && policy.MaxTokens != 0 {
+		const bytesPerEstimatedToken = 4
+		maxInt := uint64(^uint(0) >> 1)
+		bytes := maxInt
+		if policy.MaxTokens <= maxInt/bytesPerEstimatedToken {
+			bytes = policy.MaxTokens * bytesPerEstimatedToken
+		}
+		policy.MaxBytes = int(bytes)
+	}
+	if policy.MaxToolResultBytes <= 0 {
+		policy.MaxToolResultBytes = policy.MaxBytes
 	}
 	capsule := TaskCapsule{
 		Version: TaskCapsuleVersion, Mode: mode,
@@ -549,6 +560,10 @@ func fitCapsule(
 	policy ContextPolicy,
 ) (string, TaskCapsule, []ContextItem, error) {
 	limit := effectiveMaxBytes(policy)
+	if limit <= 0 {
+		prompt, err := renderCapsule(capsule)
+		return prompt, capsule, excluded, err
+	}
 	for {
 		prompt, err := renderCapsule(capsule)
 		if err != nil {

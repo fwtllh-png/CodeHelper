@@ -183,6 +183,8 @@ Cursor；只有对应 Runtime 明确报告 Retention Gap 时才进入 Desync。
 浏览器 Conversation Projection 对高频 Delta 按动画帧合并发布，并保持未变化业务节点
 的引用稳定。Trajectory Event Ledger 与 Chat 复用该事件窗口；`trace/query` 只补充
 经过 Session/Turn 归属校验和字段白名单投影的时序，不返回任意 Span Attribute。
+Runtime 已验证并实际传给模型的图片输入会编码进 `turn.started`，使用户消息图片能够从
+持久化 Event 恢复；Presentation Snapshot 预算覆盖一个完整的最大图片输入。
 
 Workspace Runtime 固定 Provider Connection、Endpoint、Credential Reference 与 Egress
 边界，Session Profile 则独立持久化 Model ID。Engine 只允许在同一 Provider
@@ -290,18 +292,18 @@ Composition Root 安装专用 OpenAI、DeepSeek、Anthropic Adapter，以及一�
 OpenAI-compatible Adapter。DeepSeek 不广告 Incremental Responses，因此其 Chat 与
 Responses Route 始终使用完整 HTTP/SSE 请求，不发送 `previous_response_id`。
 
-Token Window Gate 在 Summary Replacement 前，按从旧到新的确定顺序缩减已闭合 Tool
-Result 的 Model-visible Surface。Tool 层把完整原文保存在 Durable Content Store，
-并返回稳定的 `result_get` Handle 与有界 Head/Tail 摘要；Call/Result 配对保持不变。
-Engine 在每次投影后重新测量，若 Surface Pruning 已恢复窗口，则跳过 Summary
-Replacement。
+Turn 开始时冻结 `ContextCapacity`：模型 Context Window 扣除模型能力、Operator
+Ceiling 和 Turn/Session Budget 共同确定的 Output Reserve 后，得到硬输入容量。
+默认 Prepare、Auto Compact 与 Emergency 都等于该容量，不再按百分比提前触发；
+Operator 可显式配置更小的成本或延迟 Ceiling。Transport 类型不得暗中套用固定档位。
 
-完整传输 Route 还使用独立的滚动 Surface Budget：最新 Tool Batch 保持完整，已经被
-后续 Sample 消费的旧结果缩减为稳定 Handle 投影，不必等待全局 Compaction。累计和
-单项保留值是可配置的模型可见容量边界，不是 Turn 执行预算；完整原文仍在 Content
-Store。Provider 请求只物化每个 World Section 的最新版本，并移除已闭合 Tool Round
-中的旧状态文本和 Reasoning；Durable History、World Patch 链和原始 Tool Result
-不被改写。
+Tool Result 在执行边界按硬输入容量、并行 Batch 大小与 ResultStore Capacity 取得
+本次 Token Budget；完整原文保存在 Durable Content Store，模型只接收带稳定
+`result_get` Handle 的有界投影。若 `输入 + Output Reserve` 仍超出模型窗口，Gate
+先进一步缩减可重新获取的 Surface，再选择保持 Goal 和 Tool Pair 闭合的最小 History
+Replacement。Provider 请求只物化每个 World Section 的最新版本，并移除已闭合 Tool
+Round 中的旧状态文本和 Reasoning；Durable History、World Patch 链和原始 Tool
+Result 不被改写。
 增量 Route 保持严格追加投影，不执行这些会破坏 Response Chain 前缀的转换。
 
 `TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，
@@ -349,13 +351,12 @@ Runtime 在 Dispatch 时重新校验 Session/Thread/Profile 和文件摘要，�
 及 Turn-scoped Act/Autopilot Policy 注入 Engine。Host 不先修改 Profile，因此不存在
 “Profile 已切换但 Turn 未接受”的两阶段窗口；重启恢复仍重放同一 Accepted Operation。
 
-Act Mode 额外接受 Session Profile 中的 `planning_policy=off|adaptive|required` 与
-`plan_approval=manual|auto`。Guard 在 Capability、Resource、Effect 和 Risk 已规范化
-后执行 Planning Gate：`required` 拦截全部有后果的 Effect，`adaptive` 至少拦截高风险、
-网络写、外部写、Agent Lifecycle 和同次调用中的多文件写。成功的 `submit_plan` Tool
-Result 才能推进 Turn-scoped `submitted/approved` 状态；文本声明不能解锁工具。`auto`
-只解锁当前 Turn，`manual` 必须通过已有的 Durable Plan Execution 启动批准后的新 Turn。
-每个 Turn 结束时状态归零。
+产品只暴露 `plan`、`act`、`operate` 三种 Mode。`act` 与 `operate` 固定采用
+`adaptive` Planning Policy；Guard 在 Capability、Resource、Effect 和 Risk 已规范化后，
+至少拦截高风险、网络写、外部写、Agent Lifecycle 和同次调用中的多文件写。成功的
+`submit_plan` Tool Result 才能推进 Turn-scoped `submitted/approved` 状态；文本声明不能
+解锁工具。`plan_approval=auto` 只解锁当前 Turn，`manual` 必须通过已有的 Durable Plan
+Execution 启动批准后的新 Turn。每个 Turn 结束时状态归零。
 
 Turn 的 Model Route 继续在 Scope 创建时冻结。独立 Plan Mode 选择 `PurposePlan`；
 Act 内规划选择 `PurposeAct`，因此 Auto 流程可以在同一 Turn 中从规划继续执行，而不会

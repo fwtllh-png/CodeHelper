@@ -30,6 +30,12 @@ Web and shared by workers and orchestration.
   `deepseek-*` Make targets when operating the owner's local environment.
 - Do not overwrite unrelated worktree changes.
 - Do not add pre-release compatibility migrations without an explicit need.
+- Do not introduce undocumented fixed thresholds, model tiers, or heuristic
+  constants for context, capacity, latency, or resource decisions. Derive
+  defaults from authoritative model/provider capabilities, explicit
+  configuration, negotiated protocol limits, and observed runtime state.
+  Necessary absolute safety limits must be public contract or configuration
+  fields with provenance, validation, documentation, and boundary tests.
 - Product documentation and book chapters are maintained in Chinese only under
   `docs/zh-CN` and `docs/book/zh-CN`.
 - Treat `docs/book/catalog.json` as the book structure and status source of

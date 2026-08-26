@@ -19,36 +19,35 @@ func (e *Engine) projectTokenWindow(
 	outputReserve uint64,
 ) agentcontext.WindowProjection {
 	window := e.currentWindowLedger()
-	return window.Prepare(
-		context,
-		outputReserve,
-		e.autoCompactLimit(),
-		e.activeRoute().Model().Limits.ContextTokens,
-	)
+	capacity := e.contextCapacity()
+	return window.Prepare(context, outputReserve, e.autoCompactLimit(), capacity.ContextTokens)
 }
 
 func (e *Engine) prepareTokenWindow(
 	context *protocol.SampleContextData,
 	outputReserve uint64,
 ) agentcontext.WindowProjection {
+	capacity := e.contextCapacity()
 	scope := e.runningScope()
 	if scope == nil {
 		window := e.context.Window()
 		projection := window.Prepare(
 			context, outputReserve, e.autoCompactLimit(),
-			e.activeRoute().Model().Limits.ContextTokens,
+			capacity.ContextTokens,
 		)
 		agentcontext.ApplyWindowProjection(context, projection)
+		agentcontext.ApplyCapacity(context, capacity)
 		return projection
 	}
 	scope.mu.Lock()
 	window := scope.state.context.Window()
 	projection := window.Prepare(
 		context, outputReserve, e.autoCompactLimit(),
-		e.activeRoute().Model().Limits.ContextTokens,
+		capacity.ContextTokens,
 	)
 	scope.mu.Unlock()
 	agentcontext.ApplyWindowProjection(context, projection)
+	agentcontext.ApplyCapacity(context, capacity)
 	return projection
 }
 
@@ -60,7 +59,7 @@ func (e *Engine) observeTokenWindow(
 	if context == nil {
 		return
 	}
-	hardLimit := e.activeRoute().Model().Limits.ContextTokens
+	hardLimit := e.contextCapacity().ContextTokens
 	if hardLimit != 0 && inputTokens > hardLimit {
 		return
 	}
@@ -142,7 +141,8 @@ func (e *Engine) RestoreTokenWindow(id string, number uint64) error {
 }
 
 func (e *Engine) autoCompactLimit() uint64 {
-	limit := e.activeRoute().Model().Limits.ContextTokens
-	_, compact, _ := agentcontext.WindowThresholds(e.effectiveWindowPolicy(), limit)
+	_, compact, _ := agentcontext.WindowThresholds(
+		e.options.Context.Window, e.contextCapacity().HardInputTokens,
+	)
 	return compact
 }

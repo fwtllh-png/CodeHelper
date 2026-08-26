@@ -324,18 +324,20 @@ describe("projectTranscript", () => {
     expect(screen.getByRole("heading", {name: "Models"})).toBeTruthy();
   });
 
-  it("changes mode and planning policy from one composer control", async () => {
+  it("offers three modes and keeps planning adaptive", async () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
 
-    expect(screen.queryByLabelText("Planning")).toBeNull();
+    expect(Array.from(
+      (screen.getByLabelText("Mode") as HTMLSelectElement).options
+    ).map((option) => option.value)).toEqual(["plan", "act", "operate"]);
     fireEvent.change(screen.getByLabelText("Mode"), {
-      target: {value: "act · required"}
+      target: {value: "operate"}
     });
     await waitFor(() => {
       expect(client.updateProfile).toHaveBeenCalledWith({
-        mode: "act",
-        planning_policy: "required"
+        mode: "operate",
+        planning_policy: "adaptive"
       });
     });
   });
@@ -821,9 +823,7 @@ describe("projectTranscript", () => {
     fireEvent.change(screen.getByLabelText("Agent mode"), {
       target: {value: "plan"}
     });
-    fireEvent.change(screen.getByLabelText("Planning policy"), {
-      target: {value: "required"}
-    });
+    expect(screen.queryByLabelText("Planning policy")).toBeNull();
     fireEvent.change(screen.getByLabelText("Plan approval"), {
       target: {value: "auto"}
     });
@@ -841,7 +841,7 @@ describe("projectTranscript", () => {
     await waitFor(() => {
       expect(client.updateProfile).toHaveBeenCalledWith({
         mode: "plan",
-        planning_policy: "required",
+        planning_policy: "adaptive",
         plan_approval: "auto",
         max_steps: 16
       });
@@ -1427,6 +1427,24 @@ describe("projectTranscript", () => {
 
     expect(screen.getByPlaceholderText("Ask CodeHelper")).toBe(textarea);
     expect(screen.getByRole("button", {name: "Chat"})).toBeTruthy();
+  });
+
+  it("renders durable image inputs with the user message", () => {
+    const value = snapshot([
+      event(1, "turn.started", {
+        display_prompt: "Describe this image",
+        images: [{
+          label: "lake.png",
+          media_type: "image/png",
+          content: "aW1hZ2U="
+        }]
+      })
+    ]);
+    render(<App client={mockClient(value)} />);
+
+    const image = screen.getByRole("img", {name: "lake.png"});
+    expect(image.getAttribute("src")).toBe("data:image/png;base64,aW1hZ2U=");
+    expect(screen.getByText("Describe this image")).toBeTruthy();
   });
 
   it("steers an active turn from the composer while keeping stop available", async () => {

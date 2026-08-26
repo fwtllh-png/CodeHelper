@@ -62,14 +62,3 @@ func TestAssembleConstitutionIsMarkedFragment(t *testing.T) {
 		t.Fatalf("constitution fragment missing: messages=%+v", context.Messages)
 	}
 }
-
-func TestApplyFragmentTokenCeiling(t *testing.T) {
-	budget := ApplyFragmentTokenCeiling(Budget{MaxTokens: MaxFragmentTokens * 2})
-	if budget.MaxTokens != MaxFragmentTokens {
-		t.Fatalf("ceiling = %d", budget.MaxTokens)
-	}
-	budget = ApplyFragmentTokenCeiling(Budget{MaxTokens: 100})
-	if budget.MaxTokens != 100 {
-		t.Fatalf("small budget raised = %d", budget.MaxTokens)
-	}
-}

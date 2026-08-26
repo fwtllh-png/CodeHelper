@@ -292,13 +292,13 @@ test("adds a second Workspace and keeps its Sessions isolated", async ({page}) =
       hasText: path.basename(secondary)
     });
     await expect(page.locator(".workspaceGroup")).toHaveCount(2);
-    await expect(secondaryGroup.locator(".workspaceRow"))
+    await expect(secondaryGroup.locator(".workspaceHeader"))
       .toHaveAttribute("data-active", "true");
     await page.getByRole("button", {name: "Create session"}).click();
     await expect(secondaryGroup.locator(".sessionRow")).toHaveCount(1);
 
     await primaryGroup.locator(".workspaceRow").click();
-    await expect(primaryGroup.locator(".workspaceRow"))
+    await expect(primaryGroup.locator(".workspaceHeader"))
       .toHaveAttribute("data-active", "true");
     await page.getByRole("button", {name: "Create session"}).click();
     await expect(primaryGroup.locator(".sessionRow")).toHaveCount(1);
@@ -345,17 +345,23 @@ test("submits local attachments as verified Runtime context", async ({page}) => 
   await page.goto(baseURL);
   await page.getByRole("button", {name: "Create session"}).click();
 
+  const imagePath = path.join(workspaceDir, "pixel.png");
+  await writeFile(imagePath, Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64"
+  ));
   const picker = page.locator('input[type="file"][aria-label="Attach files"]');
   await expect(page.locator(
     '.composerControls button[aria-label="Attach files"]'
   )).toBeEnabled();
-  await picker.setInputFiles(path.join(workspaceDir, "README.md"));
+  await picker.setInputFiles([path.join(workspaceDir, "README.md"), imagePath]);
   await expect(page.getByLabel("Composer attachments")).toContainText(
     "Text"
   );
   await expect(page.getByLabel("Composer attachments")).toContainText(
     "picker"
   );
+  await expect(page.getByLabel("Composer attachments")).toContainText("PNG");
 
   const operation = page.waitForRequest((request) =>
     request.url().endsWith("/api/v1/operation/submit") &&
@@ -373,10 +379,19 @@ test("submits local attachments as verified Runtime context", async ({page}) => 
         label: "README.md",
         media_type: "text/plain",
         explicit: true
+      }, {
+        kind: "image",
+        source: "native_picker",
+        label: "pixel.png",
+        media_type: "image/png",
+        explicit: true
       }]
     }
   });
   await expect(page.getByLabel("Composer attachments")).toHaveCount(0);
+  await expect(page.getByRole("img", {name: "pixel.png"})).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("img", {name: "pixel.png"})).toBeVisible();
 });
 
 test("searches and invokes slash commands entirely from the keyboard", async ({page}) => {

@@ -52,7 +52,6 @@ import {
 import type {
   RuntimeEvent,
   SessionCheckpoint,
-  SessionProfile,
   SessionSummary,
   SetupCatalog,
   SetupRequest
@@ -332,6 +331,15 @@ export function App({client}: Props) {
   const pendingApprovalKey = pendingRequestKey(snapshot.selectedSessionID, pendingApproval);
   const pendingInputKey = pendingRequestKey(snapshot.selectedSessionID, pendingInput);
   const activeTurn = snapshot.conversation.activeTurnID;
+  const traceRefreshSequence = snapshot.events.reduce(
+    (sequence, event) =>
+        event.kind !== "output.delta" &&
+        event.kind !== "reasoning.delta" &&
+        event.kind !== "tool.output"
+        ? event.sequence
+        : sequence,
+    0
+  );
   const selectedProvider = snapshot.profile?.profile.provider ?? "";
   const selectedModel = snapshot.profile?.profile.model ?? "";
   const selectedModelEntry = snapshot.models.find(
@@ -694,19 +702,15 @@ export function App({client}: Props) {
 
   useEffect(() => {
     if (snapshot.phase !== "ready") return;
-    let refreshing = false;
     const refresh = () => {
-      if (refreshing || document.visibilityState === "hidden") return;
-      refreshing = true;
-      void client.refreshWorkspaces()
-        .then(() => client.refreshSessions("", false))
-        .catch(() => undefined)
-        .finally(() => {
-          refreshing = false;
-        });
+      if (document.visibilityState === "hidden") return;
+      void Promise.all([
+        client.refreshWorkspaces(),
+        client.refreshSessions("", false)
+      ]).catch(() => undefined);
     };
-    const interval = window.setInterval(refresh, 3_000);
-    return () => window.clearInterval(interval);
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
   }, [client, snapshot.phase]);
 
   useEffect(() => {
@@ -886,11 +890,8 @@ export function App({client}: Props) {
 
   useEffect(() => {
     if (activeView !== "trajectory" || !activeTurn) return;
-    const interval = window.setInterval(() => {
-      void client.refreshTrace();
-    }, 1_000);
-    return () => window.clearInterval(interval);
-  }, [activeTurn, activeView, client]);
+    void client.refreshTrace();
+  }, [activeTurn, activeView, client, traceRefreshSequence]);
 
   useEffect(() => {
     const media = typeof window.matchMedia === "function"
@@ -1913,13 +1914,13 @@ export function App({client}: Props) {
                     </Suspense>
                     <CompactSelect
                       label="Mode"
-                      value={composerModeValue(snapshot.profile?.profile)}
-                      values={composerModeOptions}
+                      value={snapshot.profile?.profile.mode ?? "act"}
+                      values={["plan", "act", "operate"]}
                       disabled={!profileMutable(snapshot, "mode") ||
                         !profileMutable(snapshot, "planning_policy") ||
                         Boolean(profilePending)}
                       onChange={(value) => void updateComposerProfile(
-                        composerModePatch(value),
+                        {mode: value, planning_policy: "adaptive"},
                         "Updating mode"
                       )}
                     />
@@ -2340,7 +2341,19 @@ const TranscriptItem = memo(function TranscriptItem({
         data-steering={entry.steering || undefined}
       >
         {entry.steering && <small>Steered</small>}
-        {entry.text}
+        {entry.images.length > 0 && (
+          <div className="userMessageImages">
+            {entry.images.map((image, index) => (
+              <img
+                src={`data:${image.mediaType};base64,${image.content}`}
+                alt={image.label}
+                loading="lazy"
+                key={`${image.label}:${index}`}
+              />
+            ))}
+          </div>
+        )}
+        {entry.text && <span>{entry.text}</span>}
       </div>
     );
   }
@@ -3159,27 +3172,6 @@ function CompactSelect({
       <ChevronDown size={13} aria-hidden="true" />
     </label>
   );
-}
-
-const composerModeOptions = [
-  "plan",
-  "act · adaptive",
-  "act · required",
-  "act · off",
-  "operate · adaptive",
-  "operate · required",
-  "operate · off"
-];
-
-function composerModeValue(profile?: SessionProfile): string {
-  if (!profile || profile.mode === "plan") return profile?.mode ?? "act · adaptive";
-  return `${profile.mode} · ${profile.planning_policy ?? "adaptive"}`;
-}
-
-function composerModePatch(value: string): Record<string, unknown> {
-  if (value === "plan") return {mode: "plan"};
-  const [mode, planningPolicy] = value.split(" · ");
-  return {mode, planning_policy: planningPolicy};
 }
 
 function CompactCatalogSelect({

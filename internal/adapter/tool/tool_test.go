@@ -94,7 +94,7 @@ func TestResultStoreReturnsTruncationHandle(t *testing.T) {
 	if !strings.Contains(result.Content, "Warning: truncated output") {
 		t.Fatalf("missing truncation warning: %q", result.Content)
 	}
-	if !strings.Contains(result.Content, "abcd") || !strings.Contains(result.Content, result.Handle) {
+	if !strings.Contains(result.Content, result.Handle) {
 		t.Fatalf("result = %+v", result)
 	}
 	if full, ok := store.Get(result.Handle); !ok || full != "abcdefgh" {
@@ -102,22 +102,26 @@ func TestResultStoreReturnsTruncationHandle(t *testing.T) {
 	}
 }
 
-func TestResultStoreAppliesTypedTokenBudgetsAndKeepsFullHandle(t *testing.T) {
+func TestResultStoreAppliesCallerTokenBudgetAndKeepsTypedHandle(t *testing.T) {
 	store := NewResultStore(32 << 10)
 	payload := strings.Repeat("build output line\n", 7000)
 	for _, test := range []struct {
 		name string
-		max  int
 		kind string
 	}{
-		{name: "file_read", max: 17 << 10, kind: "read"},
-		{name: "quality_test", max: 13 << 10, kind: "test"},
-		{name: "exec_command", max: 13 << 10, kind: "build"},
-		{name: "custom_tool", max: 9 << 10, kind: "generic"},
+		{name: "file_read", kind: "read"},
+		{name: "quality_test", kind: "test"},
+		{name: "exec_command", kind: "build"},
+		{name: "custom_tool", kind: "generic"},
 	} {
-		result := store.RouteFor(test.name, Result{Content: payload})
+		result, receipt := store.AdmitWithin(
+			test.name,
+			Result{Content: payload},
+			2_048,
+		)
 		if !result.Truncated || result.Handle == "" ||
-			len(result.Content) > test.max ||
+			receipt.TokenLimit != 2_048 ||
+			receipt.RetainedTokens > receipt.TokenLimit ||
 			len(result.Content)*10 > len(payload)*3 ||
 			result.Metadata["projection_kind"] != test.kind {
 			t.Fatalf("%s projection = %+v bytes=%d", test.name, result, len(result.Content))
@@ -136,8 +140,8 @@ func TestResultAdmissionShrinksHundredKiBAndRetainsOriginalByHandle(t *testing.T
 		receipt.Handle != admitted.Handle ||
 		receipt.OriginalBytes != 100<<10 ||
 		receipt.RetainedBytes != len(admitted.Content) ||
-		receipt.RetainedBytes*5 > receipt.OriginalBytes ||
-		receipt.RetainedTokens > 10_000 ||
+		receipt.RetainedBytes > 32<<10 ||
+		receipt.RetainedTokens > 8_192 ||
 		receipt.Reason != "token_limit" ||
 		receipt.Digest == "" {
 		t.Fatalf("admitted=%+v receipt=%+v", admitted, receipt)

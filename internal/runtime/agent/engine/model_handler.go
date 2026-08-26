@@ -166,6 +166,7 @@ func (e *Engine) modelStep(
 			turnContext = append(turnContext, budgetMessage)
 		}
 		route := e.activeRoute()
+		maxOutputTokens := e.maxOutputFor(route)
 		requestTools := definitions
 		reasoningEffort := baseReasoningEffort
 		nativeSearch := e.options.NativeSearch
@@ -196,7 +197,7 @@ func (e *Engine) modelStep(
 		gateSend := deduplicateCompactionReceipts(send)
 		window, err := e.runCompactGate(
 			ctx,
-			history, snapshot, 0, phase, true, gateSend,
+			history, snapshot, maxOutputTokens, phase, true, gateSend,
 		)
 		if err != nil {
 			return nil, nil, totalUsage, window.estimated, err
@@ -210,7 +211,7 @@ func (e *Engine) modelStep(
 			snapshot = project()
 			window, err = e.runCompactGate(
 				ctx,
-				history, snapshot, 0, phase, true, gateSend,
+				history, snapshot, maxOutputTokens, phase, true, gateSend,
 			)
 			if err != nil {
 				return nil, nil, totalUsage, window.estimated, err
@@ -230,7 +231,6 @@ func (e *Engine) modelStep(
 				})
 			reasoningEffort, nativeSearch = "low", false
 		}
-		maxOutputTokens := e.maxOutputFor(route)
 		snapshot = project()
 		snapshot, normalization, normalizationErr := snapshot.Normalize(
 			route.Model().Capabilities,
@@ -734,14 +734,19 @@ func (e *Engine) recordSampledTools(
 	scope.mu.Unlock()
 }
 
-// maxOutputFor clamps the session ceiling to the active route.
+// maxOutputFor returns the frozen Turn ceiling. Actual input, token, and cost
+// budgets may reduce it immediately before the provider call.
 func (e *Engine) maxOutputFor(route model.ReadyRoute) uint64 {
 	modelLimit := route.Model().Limits.MaxOutputTokens
-	if e.options.MaxOutputTokens == 0 {
-		return min(modelLimit, 16_384)
+	configured := e.options.MaxOutputTokens
+	if scope := e.runningScope(); scope != nil {
+		if ceiling := scope.spec.Limits.Context.OutputCeiling; ceiling != 0 {
+			return min(modelLimit, ceiling)
+		}
+		configured = scope.spec.Limits.MaxOutputTokens
 	}
-	if e.options.MaxOutputTokens > modelLimit {
-		return modelLimit
+	if configured != 0 {
+		return min(configured, modelLimit)
 	}
-	return e.options.MaxOutputTokens
+	return modelLimit
 }

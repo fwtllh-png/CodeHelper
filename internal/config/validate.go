@@ -131,15 +131,17 @@ func (s Snapshot) Validate() error {
 			"must be total or body_after_prefix")
 	}
 
-	if compaction.SummaryMaxBytes < 256 || compaction.SummaryMaxBytes > 1<<20 {
+	if compaction.SummaryMaxBytes != 0 &&
+		(compaction.SummaryMaxBytes < 256 || compaction.SummaryMaxBytes > 1<<20) {
 		return fieldError(fieldCompactSummaryMax, s.Provenance,
-			"must be between 256 and 1048576")
+			"must be zero or between 256 and 1048576")
 	}
 	if err := checkRange(fieldCompactMaxDigest, compaction.MaxDigestEntries, 4096); err != nil {
 		return err
 	}
 	if compaction.TruthMaxBytes < 256 ||
-		compaction.TruthMaxBytes >= compaction.SummaryMaxBytes-256 {
+		compaction.SummaryMaxBytes != 0 &&
+			compaction.TruthMaxBytes >= compaction.SummaryMaxBytes-256 {
 		return fieldError(fieldCompactTruthMaxBytes, s.Provenance,
 			"must leave at least 256 bytes inside summary_max_bytes")
 	}
@@ -168,10 +170,11 @@ func (s Snapshot) Validate() error {
 	if err := checkRange(fieldCompactRecentTailTurns, compaction.RecentTailTurns, 128); err != nil {
 		return err
 	}
-	if compaction.RecentTailMaxTokens < 256 ||
+	if compaction.RecentTailMaxTokens != 0 &&
+		compaction.RecentTailMaxTokens < 256 ||
 		compaction.RecentTailMaxTokens > 64<<20 {
 		return fieldError(fieldCompactRecentTailMaxTokens, s.Provenance,
-			"must be between 256 and 67108864")
+			"must be zero or between 256 and 67108864")
 	}
 	switch compaction.SemanticNarrative {
 	case "off", "post_turn", "inline":

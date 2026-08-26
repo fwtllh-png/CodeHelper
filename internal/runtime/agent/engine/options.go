@@ -12,14 +12,15 @@ import (
 
 func normalizeEngineOptions(options *Options) error {
 	summaryBytes := options.SummaryMaxBytes
-	if summaryBytes <= 0 {
-		summaryBytes = defaultSummaryMaxBytes
-	}
 	if options.Context.TruthRetention.TruthMaxBytes <= 0 {
-		options.Context.TruthRetention.TruthMaxBytes = min(
-			agentcontext.DefaultRetentionPolicy().TruthMaxBytes,
-			max(256, summaryBytes-256),
-		)
+		options.Context.TruthRetention.TruthMaxBytes =
+			agentcontext.DefaultRetentionPolicy().TruthMaxBytes
+		if summaryBytes > 0 {
+			options.Context.TruthRetention.TruthMaxBytes = min(
+				options.Context.TruthRetention.TruthMaxBytes,
+				max(256, summaryBytes-256),
+			)
+		}
 	}
 	options.Context.TruthRetention =
 		options.Context.TruthRetention.Normalized()
@@ -53,14 +54,19 @@ func normalizeEngineOptions(options *Options) error {
 		options.Context.OwnerDeltaMaxBytes =
 			manifestDefaults.OwnerDeltaMaxBytes
 	}
-	contextLimit := options.Route.Model().Limits.ContextTokens
+	capacity := agentcontext.ResolveCapacity(
+		options.Route,
+		options.MaxOutputTokens,
+		options.Budget.MaxTurnTokens,
+		options.Budget.MaxTokens,
+	)
 	prepareLimit, compactLimit, emergencyLimit := agentcontext.WindowThresholds(
 		options.Context.Window,
-		contextLimit,
+		capacity.HardInputTokens,
 	)
-	if prepareLimit >= compactLimit || compactLimit >= emergencyLimit {
+	if prepareLimit > compactLimit || compactLimit > emergencyLimit {
 		return errors.New(
-			"context compaction thresholds must satisfy prepare < compact < emergency",
+			"context compaction thresholds must satisfy prepare <= compact <= emergency",
 		)
 	}
 	if err := validateReasoningEffort(

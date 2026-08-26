@@ -840,6 +840,37 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
+  it("keeps live trace queries on the last acknowledged watermark", async () => {
+    snapshotSequence = 2;
+    snapshotEvents = [
+      runtimeEvent(1, "turn.started"),
+      runtimeEvent(2, "turn.completed")
+    ];
+    const client = new RuntimeClient();
+    const socket = await startClient(client);
+
+    socket.emit("message", {
+      type: "event",
+      protocol_version: 1,
+      session_id: "session",
+      sequence: 3,
+      event: runtimeEvent(3, "tool.start")
+    });
+    await vi.waitFor(() => {
+      expect(client.getSnapshot().events.at(-1)?.sequence).toBe(3);
+    });
+    await client.refreshTrace();
+
+    const traceRequests = requests.filter(
+      (request) => request.route.endsWith("/trace/query")
+    );
+    expect(traceRequests.at(-1)?.body).toMatchObject({
+      session_id: "session",
+      through_sequence: 2
+    });
+    client.stop();
+  });
+
   it("restores scoped cursor, selection, and drafts without persisting tokens", async () => {
     const storage = new MemoryBrowserStorage();
     storage.values.set("v1:build:workspace-id", {

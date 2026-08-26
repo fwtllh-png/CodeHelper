@@ -47,9 +47,10 @@ func (e *Engine) runToolsWithCache(
 	if identity.TurnID == "" {
 		identity.TurnID = turnID
 	}
-	toolCtx, cancel := context.WithCancelCause(ctx)
-	toolCtx = tool.WithInvocationIdentity(toolCtx, identity)
+	toolCtx, cancel := context.WithCancelCause(tool.WithInvocationIdentity(ctx, identity))
 	toolCtx = tool.WithInvocationSource(toolCtx, tool.InvocationSourceModel)
+	resultBudget := max(uint64(1), e.autoCompactLimit()/uint64(max(1, len(calls))))
+	toolCtx = tool.WithResultTokenBudget(toolCtx, min(e.options.Tools.ResultTokenCapacity(), resultBudget))
 
 	toolCtx = withToolAccount(toolCtx, &toolAccount{
 		engine: e,

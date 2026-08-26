@@ -203,12 +203,6 @@ func New(options Options) (*Engine, error) {
 	if options.EvidenceLimit <= 0 {
 		options.EvidenceLimit = 24
 	}
-	if options.MaxToolResultHistoryBytes <= 0 {
-		options.MaxToolResultHistoryBytes = 16 << 10
-	}
-	if options.MaxConsumedToolResultBytes <= 0 {
-		options.MaxConsumedToolResultBytes = 384
-	}
 	if options.MaxToolDefinitions <= 0 {
 		options.MaxToolDefinitions = 128
 	}

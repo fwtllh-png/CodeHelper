@@ -114,6 +114,7 @@ func execute(t *testing.T, registry *tool.Registry, name, arguments string) tool
 		t.Context(),
 		tool.InvocationIdentity{ThreadID: "thread-builtin-test"},
 	)
+	ctx = tool.WithResultTokenBudget(ctx, registry.ResultTokenCapacity())
 	result, err := registry.Execute(ctx, tool.Call{
 		Name: name, Arguments: json.RawMessage(arguments), Authorized: true,
 	})

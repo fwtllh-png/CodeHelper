@@ -61,9 +61,10 @@ Session 侧栏按 Workspace 分组，并将搜索、归档与行级操作渐进�
 路径、持久化 Registry，并为该目录构造独立 Runtime。HTTP RPC 和内容下载通过
 `X-CodeHelper-Workspace-ID` 路由，WebSocket 在鉴权帧中携带 `workspace_id`；未知
 Workspace、跨 Workspace Session 和内容句柄均拒绝访问。浏览器为每个 Workspace
-分别保存事件 Cursor、选中 Session、草稿和反馈，后台 Workspace 的 Session 摘要以
-低频轮询更新，当前 Workspace 使用实时事件流。裸 Supervisor URL 不隐式选择默认
-Workspace；用户必须先选择一个 Ready Workspace，页面和 Host 才允许创建 Session。
+分别保存事件 Cursor、选中 Session、草稿和反馈。当前 Workspace 使用实时事件流；
+Workspace Catalog 和 Session 摘要在页面重新可见时刷新，不持续轮询 Git 状态。
+Trajectory 也由新 Runtime Event 驱动增量 Trace 查询。裸 Supervisor URL 不隐式选择
+默认 Workspace；用户必须先选择一个 Ready Workspace，页面和 Host 才允许创建 Session。
 从项目目录执行 `codehelper` 时，启动器会把该目录作为显式 Workspace 参数打开。
 Git Workspace 会在侧栏显示当前本地分支，并可从本地分支列表直接切换。切换在沙箱内
 执行，活动 Turn 或待处理 Operation 存在时拒绝；Git 自身仍负责拒绝会覆盖本地修改的
@@ -79,11 +80,9 @@ Artifact 不接受 Markdown 或 XML 标签输出。计划显示在 Composer 上�
 Autopilot 的 `auto` Posture 只对该执行 Turn 生效，不修改 Session 默认值。提交计划时
 会记录受影响文件摘要，执行前若文件已变化，Runtime 拒绝旧 Revision 并要求重新规划。
 
-Act 模式可通过 `planning_policy` 将规划纳入同一工作流：
-
-- `adaptive`（默认）允许简单、低风险的单文件操作直接执行；复杂或高风险操作先提交计划；
-- `required` 要求所有有后果的操作先提交计划；
-- `off` 关闭 Act 内的规划门，保留普通权限与审批检查。
+Mode 只提供 `plan`、`act`、`operate` 三项。`act` 与 `operate` 固定使用自适应规划：
+简单、低风险操作直接执行，复杂或高风险操作先提交计划。界面不再暴露独立的
+Planning Policy，避免用户同时选择模式和规划策略。
 
 `plan_approval=manual` 在提交计划后停止执行，由用户在对话中的 Plan 面板批准；
 `plan_approval=auto` 允许当前 Turn 在 `submit_plan` 成功后继续。提交与批准状态只属于
@@ -95,7 +94,9 @@ Act 模式可通过 `planning_policy` 将规划纳入同一工作流：
 
 内置 `deepseek-v4-flash-vision-exp` 模型声明 Image Input 与 Vision 能力，并通过
 DeepSeek Responses 协议发送图片。支持图片的 Session 会在模型上下文中明确声明该能力，
-避免模型仅凭通用身份说明误判为纯文本环境。
+避免模型仅凭通用身份说明误判为纯文本环境。实际交给模型的图片同时随
+`turn.started` 持久化为用户消息附件，因此发送后、刷新页面或重新进入 Session 时仍可
+在对话中查看。
 
 模型推理在 Chat 中显示为可折叠的 `Think` 行。运行时摘要跟随最新内容，每次模型
 Sample 完成后持久化完整推理，因此重载页面或切换 Session 后仍可恢复多个独立 Think

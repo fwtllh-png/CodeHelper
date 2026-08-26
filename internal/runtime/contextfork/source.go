@@ -54,6 +54,9 @@ func (s *Source) Snapshot(
 	}
 	contextSnapshot := engine.ContextSnapshot()
 	history := contextSnapshot.Partition(agentcontext.KindHistory)
+	usedTokens := agentcontext.EstimateMessageTokens(contextSnapshot.Messages())
+	availableTokens := spec.Limits.Context.HardInputTokens -
+		min(spec.Limits.Context.HardInputTokens, usedTokens)
 	workspaceRules := promptcontext.PartitionTexts(
 		contextSnapshot.Partition(agentcontext.KindStable),
 		engine.ContextReceipts(),
@@ -76,11 +79,12 @@ func (s *Source) Snapshot(
 		}
 	}
 	snapshot := ParentContextSnapshot{
-		SourceThread:   ref.ThreadID,
-		SourceTurn:     spec.Identity.TurnID,
-		UserRequest:    spec.Request.Prompt,
-		Messages:       projectMessages(history),
-		WorkspaceRules: workspaceRules,
+		SourceThread:    ref.ThreadID,
+		SourceTurn:      spec.Identity.TurnID,
+		AvailableTokens: availableTokens,
+		UserRequest:     spec.Request.Prompt,
+		Messages:        projectMessages(history),
+		WorkspaceRules:  workspaceRules,
 	}
 	snapshot.ParentGoal = parentGoal(snapshot.Messages, snapshot.UserRequest)
 	for _, entry := range engine.WorkingSetEntries(turn, 32) {

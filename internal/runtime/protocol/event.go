@@ -126,28 +126,26 @@ type TurnStartedData struct {
 	DisplayPrompt string `json:"display_prompt,omitempty"`
 	// EditorContext is the Runtime-validated, model-visible context audit.
 	EditorContext []EditorContextReceipt `json:"editor_context,omitempty"`
+	// Images are the validated image inputs shown with the durable user message.
+	Images []EditorContextReference `json:"images,omitempty"`
 }
 
 func (*TurnStartedData) eventKind() EventKind { return EventTurnStarted }
 
 func (d *TurnStartedData) validate() error {
-	if d.Provider == "" || d.Model == "" {
-		return errors.New("turn started provider and model are required")
-	}
+	var orchestrationErr error
 	if d.Orchestration != nil {
-		if err := d.Orchestration.Validate(); err != nil {
-			return err
-		}
+		orchestrationErr = d.Orchestration.Validate()
 	}
-	if !NormalizeTurnIntent(d.Intent).Valid() {
-		return errors.New("turn started intent is invalid")
-	}
-	if d.WorkspaceIsolation != "" &&
-		d.WorkspaceIsolation != "shared" &&
-		d.WorkspaceIsolation != "worktree" {
-		return errors.New("turn started workspace isolation is invalid")
-	}
-	return validateEditorContextReceipts(d.EditorContext)
+	return errors.Join(
+		require(d.Provider != "" && d.Model != "", "turn started provider and model are required"),
+		orchestrationErr,
+		require(NormalizeTurnIntent(d.Intent).Valid(), "turn started intent is invalid"),
+		require(slices.Contains([]string{"", "shared", "worktree"}, d.WorkspaceIsolation), "turn started workspace isolation is invalid"),
+		require(!slices.ContainsFunc(d.Images, func(value EditorContextReference) bool { return value.Kind != EditorContextImage }), "turn images must contain only image context"),
+		validateEditorContextReceipts(d.EditorContext),
+		validateEditorContextReferences(d.Images, "turn images"),
+	)
 }
 
 type TextDeltaData struct {
@@ -283,6 +281,8 @@ type SampleContextData struct {
 	WindowBodyTokens        uint64                  `json:"window_body_tokens,omitempty"`
 	WindowPendingTokens     uint64                  `json:"window_pending_tokens,omitempty"`
 	WindowOutputReserve     uint64                  `json:"window_output_reserve,omitempty"`
+	WindowHardInputTokens   uint64                  `json:"window_hard_input_tokens,omitempty"`
+	WindowOutputSource      string                  `json:"window_output_source,omitempty"`
 	PairingCalls            int                     `json:"pairing_calls,omitempty"`
 	PairingResults          int                     `json:"pairing_results,omitempty"`
 	PairingPairs            int                     `json:"pairing_pairs,omitempty"`

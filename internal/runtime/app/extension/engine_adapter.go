@@ -2,6 +2,9 @@ package extension
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -335,6 +338,7 @@ func (a *EngineAdapter) StartTurn(
 				Sandbox:            event.Sandbox,
 				Prompt:             modelPrompt, DisplayPrompt: displayPrompt,
 				EditorContext: editorContext,
+				Images:        turnImageAttachments(attachments),
 			})
 		case agentengine.Completed:
 			receipt.SetOutcome(protocol.OutcomeForIntent(intent))
@@ -602,6 +606,25 @@ func (a *EngineAdapter) StartTurn(
 		emit,
 	)
 	return runErr
+}
+
+func turnImageAttachments(
+	attachments []provider.Attachment,
+) []protocol.EditorContextReference {
+	if len(attachments) == 0 {
+		return nil
+	}
+	result := make([]protocol.EditorContextReference, 0, len(attachments))
+	for _, attachment := range attachments {
+		digest := sha256.Sum256(attachment.Data)
+		result = append(result, protocol.EditorContextReference{
+			Kind: protocol.EditorContextImage, Source: protocol.EditorContextSourceNativePicker,
+			Label: attachment.Name, MediaType: attachment.MediaType,
+			Digest:  hex.EncodeToString(digest[:]),
+			Content: base64.StdEncoding.EncodeToString(attachment.Data), Explicit: true,
+		})
+	}
+	return result
 }
 
 func (a *EngineAdapter) buildReceipt(

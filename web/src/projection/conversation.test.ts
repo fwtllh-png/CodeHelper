@@ -230,11 +230,34 @@ describe("ConversationProjection", () => {
     ]);
 
     expect(snapshot.order.map((id) => snapshot.nodes.get(id))).toMatchObject([
-      {kind: "user", text: "Inspect"},
+      {kind: "user", text: "Inspect", images: []},
       {kind: "assistant", text: "Initial direction", superseded: true},
-      {kind: "user", text: "Focus on the parser", steering: true},
+      {kind: "user", text: "Focus on the parser", images: [], steering: true},
       {kind: "assistant", text: "Done"}
     ]);
+  });
+
+  it("projects durable image inputs onto the user message", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.started", {
+        display_prompt: "Describe this image",
+        images: [{
+          label: "lake.png",
+          media_type: "image/png",
+          content: "aW1hZ2U="
+        }]
+      })
+    ]);
+
+    expect(snapshot.nodes.get(snapshot.order[0])).toMatchObject({
+      kind: "user",
+      text: "Describe this image",
+      images: [{
+        label: "lake.png",
+        mediaType: "image/png",
+        content: "aW1hZ2U="
+      }]
+    });
   });
 
   it("retains an approval edit plan on the associated tool result", () => {

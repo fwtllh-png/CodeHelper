@@ -129,6 +129,21 @@ test("captures a blank session with the centered composer", async ({page}) => {
   await expect(page).toHaveScreenshot("canonical-blank-session.png");
 });
 
+test("captures a durable image in the user message", async ({page}) => {
+  await createSession(page);
+  await page.locator('input[type="file"][aria-label="Attach files"]')
+    .setInputFiles(path.join(repositoryRoot, "web/public/icon-192.png"));
+  await expect(page.getByLabel("Composer attachments")).toContainText("PNG");
+  await submitPrompt(page, "Describe this image");
+
+  const image = page.getByRole("img", {name: "icon-192.png"});
+  await expect(image).toBeVisible();
+  await expect(page.locator(".userMessage").first())
+    .toHaveScreenshot("canonical-user-image.png");
+  await page.reload();
+  await expect(page.getByRole("img", {name: "icon-192.png"})).toBeVisible();
+});
+
 test("captures the Workspace branch control", async ({page}) => {
   const workspace = page.locator(".workspaceGroup").first();
   await expect(workspace.getByRole("combobox")).toBeVisible();
@@ -525,10 +540,7 @@ test("navigates long conversations by stable semantic anchors", async ({page}) =
 
 test("captures the approval state", async ({page}) => {
   await createSession(page);
-  await Promise.all([
-    page.waitForResponse((response) => response.url().endsWith("/profile/update")),
-    page.getByLabel("Mode", {exact: true}).selectOption("act · off")
-  ]);
+  await enableAutomaticPlanApproval(page);
   await submitPrompt(page, "visual approval");
   await expect(page.getByText("exec_command requires approval")).toBeVisible();
   await expect(page).toHaveScreenshot("canonical-approval.png");
@@ -536,10 +548,7 @@ test("captures the approval state", async ({page}) => {
 
 test("captures a complex edit and approval workflow", async ({page}) => {
   await createSession(page);
-  await Promise.all([
-    page.waitForResponse((response) => response.url().endsWith("/profile/update")),
-    page.getByLabel("Mode", {exact: true}).selectOption("act · off")
-  ]);
+  await enableAutomaticPlanApproval(page);
   await submitPrompt(page, "visual edit approval");
 
   await expect(page.getByText("Waiting for approval")).toBeVisible();
@@ -688,10 +697,7 @@ test("keeps background work visible and opens its completion notification", asyn
     .toContainText("Review complete. Runtime evidence is consistent.");
 
   await createSession(page);
-  await Promise.all([
-    page.waitForResponse((response) => response.url().endsWith("/profile/update")),
-    page.getByLabel("Mode", {exact: true}).selectOption("act · off")
-  ]);
+  await enableAutomaticPlanApproval(page);
   await submitPrompt(page, "visual background approval");
   await expect(page.getByText("Working", {exact: true})).toBeVisible();
   await createSession(page);
@@ -785,6 +791,15 @@ async function createSession(page: Page): Promise<void> {
   await page.locator('button[aria-label="New chat"]').click();
   await expect(sessions).toHaveCount(count + 1);
   await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+}
+
+async function enableAutomaticPlanApproval(page: Page): Promise<void> {
+  await page.getByRole("button", {name: "Settings"}).click();
+  await page.getByRole("button", {name: "Agent preset"}).click();
+  await page.getByLabel("Plan approval").selectOption("auto");
+  await page.getByRole("button", {name: "Apply changes"}).click();
+  await expect(page.getByText("Applied", {exact: true})).toBeVisible();
+  await page.getByRole("button", {name: "Close settings"}).click();
 }
 
 async function submitPrompt(page: Page, prompt: string): Promise<void> {

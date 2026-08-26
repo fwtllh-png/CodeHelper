@@ -1230,6 +1230,21 @@ textarea:disabled {
   line-height: 14px;
 }
 
+.userMessageImages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.userMessageImages img {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
 .assistantMessage {
   margin: 0;
   overflow-wrap: anywhere;

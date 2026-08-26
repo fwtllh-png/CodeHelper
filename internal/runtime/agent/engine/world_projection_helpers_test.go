@@ -181,19 +181,5 @@ func (e *Engine) contextBudget(kind string) promptcontext.Budget {
 	if budget, ok := e.options.ContextBudgets[kind]; ok {
 		return budget
 	}
-	switch kind {
-	case promptcontext.PartitionMode:
-		return promptcontext.Budget{MaxBytes: 1 << 10, MaxTokens: 256}
-	case promptcontext.PartitionPolicy, promptcontext.PartitionCodingPolicy:
-		return promptcontext.Budget{MaxBytes: 2 << 10, MaxTokens: 512}
-	case promptcontext.PartitionSkills:
-		return promptcontext.Budget{
-			MaxBytes:  promptcontext.MaxSkillsPromptBytes,
-			MaxTokens: promptcontext.MaxFragmentTokens,
-		}
-	case promptcontext.PartitionUserMemory, promptcontext.PartitionToolCatalog:
-		return promptcontext.Budget{MaxBytes: 16 << 10, MaxTokens: 4 << 10}
-	default:
-		return promptcontext.Budget{}
-	}
+	return promptcontext.Budget{}
 }

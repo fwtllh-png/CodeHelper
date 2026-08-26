@@ -46,13 +46,14 @@ CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景�
 4. [Web 主入口架构](./web-primary-entry-plan.md)
 5. [Web 体验对齐 DeepSeek Harness 实施方案](./deepseek-harness-web-parity-plan.md)
 6. [Session Context、Memory 与持久化](./session-context-optimization.md)
-7. [安全模型](./security.md)
-8. [本地开发与脚本](./development.md)
-9. [源码阅读路线指南](./reading-guide.md)
-10. [Agent 指南](./agent-guide.md)
-11. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-12. [文档治理](./documentation-governance.md)
-13. [后续规划](./roadmap.md)
+7. [固定阈值审计与动态容量治理](./fixed-threshold-audit.md)
+8. [安全模型](./security.md)
+9. [本地开发与脚本](./development.md)
+10. [源码阅读路线指南](./reading-guide.md)
+11. [Agent 指南](./agent-guide.md)
+12. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+13. [文档治理](./documentation-governance.md)
+14. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 

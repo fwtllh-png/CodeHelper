@@ -34,7 +34,7 @@ func Defaults() Config {
 			CodingPolicy: CodingPolicy{Enabled: true},
 
 			Compact: Compact{
-				Scope: "total", SummaryMaxBytes: 8 << 10, MaxDigestEntries: 120,
+				Scope: "total", SummaryMaxBytes: 0, MaxDigestEntries: 120,
 				TruthMaxBytes: 5632, TruthMaxEntities: 256,
 				MandatoryMaxEntities: 128, FactMaxEntities: 96,
 				VerifiedChangeRetentionTurns:     32,
@@ -42,7 +42,7 @@ func Defaults() Config {
 				HandleMaxEntities:                32,
 				OmissionSampleMaxEntities:        8,
 				RecentTailTurns:                  2,
-				RecentTailMaxTokens:              8192,
+				RecentTailMaxTokens:              0,
 				SemanticNarrative:                "off",
 				SemanticNarrativeMaxInputTokens:  4096,
 				SemanticNarrativeMaxOutputTokens: 512,

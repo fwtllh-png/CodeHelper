@@ -58,7 +58,7 @@ func TestOutputCapacityIsIndependentOfReasoningEffort(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.MaxOutputTokens = 0
 	route := reasoningRoute(t)
-	if got := engine.maxOutputFor(route); got != 16_384 {
+	if got := engine.maxOutputFor(route); got != route.Model().Limits.MaxOutputTokens {
 		t.Fatalf("automatic output limit = %d", got)
 	}
 	engine.options.MaxOutputTokens = 12_000
@@ -79,7 +79,8 @@ func TestEngineUsesModelOutputCapacityWithAdaptiveMedium(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(runtime.requests) != 1 ||
-		runtime.requests[0].MaxOutputTokens != 16_384 ||
+		runtime.requests[0].MaxOutputTokens !=
+			engine.activeRoute().Model().Limits.MaxOutputTokens ||
 		runtime.requests[0].ReasoningEffort != "medium" {
 		t.Fatalf("request = %+v", runtime.requests)
 	}

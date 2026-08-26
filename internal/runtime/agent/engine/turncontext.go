@@ -38,6 +38,7 @@ type TurnLimits struct {
 	MaxSteps        int
 	MaxOutputTokens uint64
 	Budget          Budget
+	Context         agentcontext.Capacity
 }
 
 type TurnSnapshotSources struct {
@@ -163,6 +164,12 @@ func SnapshotTurnSpec(
 	kernelPolicy.ExecutionStepLimit = uint32(max(options.MaxSteps, 0))
 	kernelPolicy.JournalRequired = options.Journal != nil
 	planning := security.PlanningSnapshot()
+	capacity := agentcontext.ResolveCapacity(
+		route,
+		options.MaxOutputTokens,
+		options.Budget.MaxTurnTokens,
+		options.Budget.MaxTokens,
+	)
 	spec := TurnSpec{
 		Identity: identity,
 		Request:  request,
@@ -171,7 +178,7 @@ func SnapshotTurnSpec(
 			Revision: identity.ProfileRevision,
 			Mode:     string(security.Mode), Provider: route.ProviderID(),
 			PlanningPolicy: planning.Planning, PlanApproval: planning.PlanApproval,
-			Model:          route.Model().ID, ReasoningEffort: options.ReasoningEffort,
+			Model: route.Model().ID, ReasoningEffort: options.ReasoningEffort,
 			ApprovalPosture: string(security.Permission),
 			ExecutionTarget: "local", MaxSteps: options.MaxSteps,
 			PromptCacheRevision: identity.ProfileRevision,
@@ -187,6 +194,7 @@ func SnapshotTurnSpec(
 			MaxSteps:        options.MaxSteps,
 			MaxOutputTokens: options.MaxOutputTokens,
 			Budget:          options.Budget,
+			Context:         capacity,
 		},
 		Catalog: catalog,
 	}

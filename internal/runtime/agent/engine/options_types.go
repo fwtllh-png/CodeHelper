@@ -63,8 +63,6 @@ type ToolConfig struct {
 	RequireCompletionDeclaration bool
 	MaxToolConcurrent            int
 	MaxToolStreamBytes           int
-	MaxToolResultHistoryBytes    int
-	MaxConsumedToolResultBytes   int
 	MaxToolDefinitions           int
 	MaxToolSchemaBytes           int
 	ToolCatalogSync              func() error

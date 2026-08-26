@@ -86,6 +86,30 @@ func TestTaskCapsuleReportsNormalizedAgentBudget(t *testing.T) {
 	}
 }
 
+func TestTaskCapsuleUsesParentRemainingCapacityAndChildBudget(t *testing.T) {
+	forker := subagent.NewContextForker(subagent.DefaultContextPolicy())
+	forker.BindSource(contextFixtureSource{snapshot: subagent.ParentContextSnapshot{
+		SourceThread: "thread-parent", SourceTurn: "turn-parent",
+		AvailableTokens: 600,
+	}})
+	request := contextRequest(subagent.ContextTaskCapsule)
+	fork, err := forker.Fork(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.Receipt.MaxTokens != 600 || fork.Receipt.MaxBytes != 2400 {
+		t.Fatalf("parent-derived receipt = %+v", fork.Receipt)
+	}
+	request.Agent.Budget.MaxTokens = 400
+	fork, err = forker.Fork(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.Receipt.MaxTokens != 400 || fork.Receipt.MaxBytes != 1600 {
+		t.Fatalf("child-bounded receipt = %+v", fork.Receipt)
+	}
+}
+
 func TestLastNTurnsKeepsOnlyCompleteToolPairs(t *testing.T) {
 	forker := subagent.NewContextForker(subagent.DefaultContextPolicy())
 	forker.BindSource(contextFixtureSource{

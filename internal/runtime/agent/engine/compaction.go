@@ -5,11 +5,7 @@ import (
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
-// Compaction defaults. The history threshold lives in Options because a provider
-// window is the thing it has to fit; these two are about the summary itself.
 const (
-	// defaultSummaryMaxBytes caps a rendered summary when nothing configures it.
-	defaultSummaryMaxBytes = 8 << 10
 	// defaultMaxDigestEntries bounds the per-message running record. Past a
 	// hundred-odd lines the record stops being read and starts being scrolled.
 	defaultMaxDigestEntries = agentcontext.DefaultMaxDigestEntries
@@ -45,5 +41,8 @@ func (e *Engine) summaryBudget() int {
 	if e.options.SummaryMaxBytes > 0 {
 		return e.options.SummaryMaxBytes
 	}
-	return defaultSummaryMaxBytes
+	return int(min(
+		e.contextCapacity().HardInputTokens,
+		uint64(^uint(0)>>1)/4,
+	) * 4)
 }

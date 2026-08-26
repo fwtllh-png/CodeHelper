@@ -1,0 +1,3 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_visual_plan","function":{"name":"submit_plan","arguments":"{\"version\":1,\"title\":\"Visual fixture change\",\"steps\":[{\"id\":\"apply\",\"title\":\"Apply and verify the requested fixture change\",\"expected_evidence\":\"The requested fixture operation completes\",\"affected_files\":[\"README.md\"]}]}"}}]},"finish_reason":"tool_calls"}]}
+
+data: [DONE]

@@ -1764,15 +1764,15 @@ export class RuntimeClient {
     }
     this.update({tracePhase: "loading", traceProblem: undefined});
     try {
+      const throughSequence = this.state.trace?.through_sequence ?? 0;
       const trace = await this.call<TraceSnapshot>("trace/query", {
         session_id: sessionID,
         turn_ids: ids,
-        through_sequence: events.at(-1)?.sequence ?? 0
+        through_sequence: throughSequence
       });
       if (
         generation !== this.selectionGeneration ||
-        sessionID !== this.state.selectedSessionID ||
-        trace.through_sequence < (this.state.events.at(-1)?.sequence ?? 0)
+        sessionID !== this.state.selectedSessionID
       ) {
         return;
       }

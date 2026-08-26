@@ -27,15 +27,17 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	session := state.session
 	execution := state.config.execution
 	snapshot := state.config.snapshot
+	route := state.provider.route
 	delegation := ""
 	if state.orchestration.subagents != nil {
 		delegation = state.orchestration.subagents.Policy().Instructions()
 	}
 	toolPrefix := promptcontext.ToolInstructions(execution.Tools, delegation)
-	budgets := state.options.PromptBudgets
-	if budgets == nil {
-		budgets = defaultPromptBudgets()
-	}
+	budgets := routePromptBudgets(
+		state.options.PromptBudgets, route, execution.MaxOutputTokens,
+		effectiveTurnTokenBudget(execution.TurnBudgetTokens, route.Model().Limits.ContextTokens),
+		execution.BudgetTokens,
+	)
 	prompt, err := promptcontext.Assemble(promptcontext.Options{
 		BaseSystem: "You are a software engineering agent.",
 
@@ -62,7 +64,6 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		budgets,
 	)
 	workspaceTurnGate, approvalPosture := engineSecurityPolicy(state)
-	route := state.provider.route
 	reasoningEffort := effectiveReasoningEffort(route, execution.ReasoningEffort)
 	if err := validateRouteReasoning(route, reasoningEffort); err != nil {
 		return err

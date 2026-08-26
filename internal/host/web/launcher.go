@@ -779,7 +779,7 @@ func prepareWebRuntime(
 			DefaultProfile:    application.DefaultProfile(),
 			ProviderCatalog:   application.ProviderCatalog(),
 			ModelCatalog:      application.ModelCatalog(), Connection: connection,
-			MCPHealth:         application.MCPHealth,
+			MCPHealth:   application.MCPHealth,
 			Diagnostics: stderr, Tasks: repositories.Tasks, Usage: repositories.Usage,
 			Agents: application.Subagents(), Extensions: extensions.Plane,
 			SessionWorkspaces: application.SessionWorkspaces(),

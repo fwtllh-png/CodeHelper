@@ -20,16 +20,13 @@ var repositoryInstructionNames = []string{
 }
 
 type Options struct {
-	BaseSystem    string
-	Workspace     string
-	ToolPrefix    string
-	Constitution  string
-	Budgets       map[string]Budget
-	WorkingSet    []FileContext
-	MemoryEnabled bool
-	Memory        *memory.Store
-	Loader        FileLoader
-	Tokens        TokenCounter
+	BaseSystem, Workspace, ToolPrefix, Constitution string
+	Budgets                                         map[string]Budget
+	WorkingSet                                      []FileContext
+	MemoryEnabled                                   bool
+	Memory                                          *memory.Store
+	Loader                                          FileLoader
+	Tokens                                          TokenCounter
 }
 
 const (
@@ -42,7 +39,7 @@ const (
 	PartitionToolPrefix   = "tool_prefix"
 	PartitionPlan         = "plan"
 	PartitionConstitution = "constitution"
-	MaxSkillsPromptBytes  = 12 << 10
+	PartitionTotal        = "total"
 )
 
 type Budget struct {
@@ -125,29 +122,61 @@ func Assemble(options Options) (Context, error) {
 		budgets[name] = budget
 	}
 	used := make(map[string]usage)
+	var total usage
 	var result Context
-	appendSection := func(kind, text, sourcePath string) {
+	totalBudget := budgets[PartitionTotal]
+	budgetFor := func(kind string) (Budget, bool) {
 		budget := budgets[kind]
+		available := true
+		if totalBudget.MaxBytes > 0 {
+			remaining := max(0, totalBudget.MaxBytes-total.bytes)
+			available = available && remaining > 0
+			if budget.MaxBytes <= 0 || budget.MaxBytes > remaining {
+				budget.MaxBytes = remaining
+			}
+		}
+		if totalBudget.MaxTokens > 0 {
+			remaining := totalBudget.MaxTokens -
+				min(totalBudget.MaxTokens, total.tokens)
+			available = available && remaining > 0
+			if budget.MaxTokens == 0 || budget.MaxTokens > remaining {
+				budget.MaxTokens = remaining
+			}
+		}
+		return budget, available
+	}
+	appendSection := func(kind, text, sourcePath string) {
+		budget, available := budgetFor(kind)
 		current := used[kind]
-		retained, reason := retain(text, budget, current.bytes, current.tokens, tokens)
+		retained, reason := "", "shared_budget"
+		if available {
+			retained, reason = retain(text, budget, current.bytes, current.tokens, tokens)
+		}
 		receipt := newReceipt(kind, sourcePath, text, retained, reason, tokens)
 		result.Receipts = append(result.Receipts, receipt)
 		current.bytes += receipt.RetainedBytes
 		current.tokens += receipt.RetainedTokens
 		used[kind] = current
+		total.bytes += receipt.RetainedBytes
+		total.tokens += receipt.RetainedTokens
 		if strings.TrimSpace(retained) != "" {
 			result.Messages = append(result.Messages, provider.TextMessage(provider.RoleSystem, retained))
 		}
 	}
 	appendFragmentSection := func(fragment FragmentKind, kind, text, sourcePath string) {
-		budget := budgets[kind]
+		budget, available := budgetFor(kind)
 		current := used[kind]
-		retained, reason := retain(text, budget, current.bytes, current.tokens, tokens)
+		retained, reason := "", "shared_budget"
+		if available {
+			retained, reason = retain(text, budget, current.bytes, current.tokens, tokens)
+		}
 		receipt := newReceipt(kind, sourcePath, text, retained, reason, tokens)
 		result.Receipts = append(result.Receipts, receipt)
 		current.bytes += receipt.RetainedBytes
 		current.tokens += receipt.RetainedTokens
 		used[kind] = current
+		total.bytes += receipt.RetainedBytes
+		total.tokens += receipt.RetainedTokens
 		if wrapped := WrapFragment(fragment, retained); wrapped != "" {
 			result.Messages = append(result.Messages, provider.TextMessage(provider.RoleSystem, wrapped))
 		}
@@ -219,8 +248,6 @@ func Assemble(options Options) (Context, error) {
 		}
 	}
 	if strings.TrimSpace(options.Constitution) != "" {
-		budget := ApplyFragmentTokenCeiling(budgets[PartitionConstitution])
-		budgets[PartitionConstitution] = budget
 		appendFragmentSection(
 			FragmentConstitution, PartitionConstitution, options.Constitution, "session://constitution",
 		)

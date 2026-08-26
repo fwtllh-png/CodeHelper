@@ -238,7 +238,8 @@ func (searchTestBackend) Prepare(_ context.Context, command sandbox.Command) (sa
 func execute(t *testing.T, registry *tool.Registry, name string, input map[string]any) tool.Result {
 	t.Helper()
 	data, _ := json.Marshal(input)
-	result, err := registry.Execute(t.Context(), tool.Call{
+	ctx := tool.WithResultTokenBudget(t.Context(), 10_000)
+	result, err := registry.Execute(ctx, tool.Call{
 		Name: name, Arguments: data, Authorized: true,
 	})
 	if err != nil {

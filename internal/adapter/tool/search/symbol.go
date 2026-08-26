@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -32,14 +33,6 @@ type symbolTool struct {
 	walker   *repowalk.Walker
 	semantic symbols.Provider
 }
-
-// defaultSymbolResults and defaultReferenceResults bound a reply the caller did
-// not bound itself.
-const (
-	defaultSymbolResults    = 50
-	defaultReferenceResults = 200
-	maxReferenceFileBytes   = 1 << 20
-)
 
 func (t *symbolTool) Descriptor() tool.Descriptor {
 	descriptor := tool.Descriptor{
@@ -155,6 +148,16 @@ func (t *symbolTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Res
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
 	}
+	limit := input.MaxResults
+	if budget := tool.ResultTokenBudget(ctx); budget != 0 &&
+		(limit <= 0 || uint64(limit) > budget) {
+		limit = int(min(budget, uint64(math.MaxInt)))
+	}
+	if limit <= 0 && t.kind != KindRelatedTests {
+		return tool.Result{}, errors.New(
+			"symbol search requires runtime result budget or explicit max_results",
+		)
+	}
 	snapshot, err := t.index.Ensure(ctx)
 	if err != nil {
 		return tool.Result{}, err
@@ -168,17 +171,17 @@ func (t *symbolTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Res
 			t.semantic != nil {
 			found, semanticErr := t.semantic.Definition(ctx, query)
 			if semanticErr == nil {
-				return semanticDefinitions(found, input.Name)
+				return semanticDefinitions(found, input.Name, limit)
 			}
 			result, err := t.declarations(ctx, snapshot, repoindex.Query{
 				Name: input.Name, Exact: true, Kinds: input.Kinds,
-				Limit: results(input.MaxResults, defaultSymbolResults),
+				Limit: limit,
 			}, "", false)
 			return semanticFallback(result, semanticErr), err
 		}
 		return t.declarations(ctx, snapshot, repoindex.Query{
 			Name: input.Name, Exact: true, Kinds: input.Kinds,
-			Limit: results(input.MaxResults, defaultSymbolResults),
+			Limit: limit,
 		}, "", false)
 	case KindReferences:
 		if query, ok := semanticQuery(input.Path, input.Line, input.Character); ok &&
@@ -187,22 +190,22 @@ func (t *symbolTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Res
 				ctx, query, input.IncludeDefinitions,
 			)
 			if semanticErr == nil {
-				return semanticReferences(found, input.Name)
+				return semanticReferences(found, input.Name, limit)
 			}
 			result, err := t.references(
 				ctx, snapshot, input.Name, input.PathPrefix,
-				input.IncludeDefinitions, results(input.MaxResults, defaultReferenceResults),
+				input.IncludeDefinitions, limit,
 			)
 			return semanticFallback(result, semanticErr), err
 		}
 		return t.references(ctx, snapshot, input.Name, input.PathPrefix,
-			input.IncludeDefinitions, results(input.MaxResults, defaultReferenceResults))
+			input.IncludeDefinitions, limit)
 	case KindRelatedTests:
 		return t.relatedTests(ctx, snapshot, input.Paths)
 	default:
 		return t.declarations(ctx, snapshot, repoindex.Query{
 			Name: input.Query, Kinds: input.Kinds,
-			Limit: results(input.MaxResults, defaultSymbolResults),
+			Limit: limit,
 		}, input.PathPrefix, input.ExportedOnly)
 	}
 }
@@ -262,11 +265,8 @@ func (t *symbolTool) declarations(
 		})
 	}
 	truncated := total > len(matches)
-	hits := make([]tool.EvidenceHit, 0, min(len(matches), maxEvidenceHits))
+	hits := make([]tool.EvidenceHit, 0, len(matches))
 	for _, match := range matches {
-		if len(hits) == maxEvidenceHits {
-			break
-		}
 		hits = append(hits, tool.EvidenceHit{
 			Kind: tool.EvidenceDefinition, Path: match.File,
 			Line: match.Line, Symbol: match.Name,
@@ -331,7 +331,9 @@ func (t *symbolTool) references(
 		if pathPrefix != "" && !strings.HasPrefix(path, pathPrefix) {
 			continue
 		}
-		content, reason, err := t.walker.Read(repowalk.Entry{Path: path}, maxReferenceFileBytes)
+		budget := tool.ResultTokenBudget(ctx)
+		maxBytes := int64(min(budget, uint64(math.MaxInt64/4)) * 4)
+		content, reason, err := t.walker.Read(repowalk.Entry{Path: path}, maxBytes)
 		if err != nil {
 			return tool.Result{}, err
 		}
@@ -355,7 +357,7 @@ func (t *symbolTool) references(
 		}
 	}
 	truncated := total > len(matches)
-	hits := make([]tool.EvidenceHit, 0, min(len(matches), maxEvidenceHits))
+	hits := make([]tool.EvidenceHit, 0, len(matches))
 	seen := make(map[string]struct{}, len(matches))
 	for _, match := range matches {
 		// One entry per file: a symbol used forty times in one file is one place
@@ -364,9 +366,6 @@ func (t *symbolTool) references(
 			continue
 		}
 		seen[match.File] = struct{}{}
-		if len(hits) == maxEvidenceHits {
-			break
-		}
 		hits = append(hits, tool.EvidenceHit{
 			Kind: tool.EvidenceReference, Path: match.File, Line: match.Line, Symbol: name,
 		})
@@ -393,60 +392,70 @@ func semanticQuery(path string, line, character int) (symbols.SemanticQuery, boo
 }
 
 func semanticDefinitions(
-	found symbols.SemanticResult, name string,
+	found symbols.SemanticResult, name string, limit int,
 ) (tool.Result, error) {
-	matches := make([]symbolMatch, 0, len(found.Locations))
-	hits := make([]tool.EvidenceHit, 0, min(len(found.Locations), maxEvidenceHits))
-	for _, location := range found.Locations {
+	locations := found.Locations
+	if len(locations) > limit {
+		locations = locations[:limit]
+	}
+	matches := make([]symbolMatch, 0, len(locations))
+	hits := make([]tool.EvidenceHit, 0, len(locations))
+	for _, location := range locations {
 		matches = append(matches, symbolMatch{
 			Name: name, Kind: "semantic", File: location.Path,
 			Line: location.Line, Character: location.Character,
 		})
-		if len(hits) < maxEvidenceHits {
-			hits = append(hits, tool.EvidenceHit{
-				Kind: tool.EvidenceDefinition, Path: location.Path,
-				Line: location.Line, Symbol: name,
-			})
-		}
+		hits = append(hits, tool.EvidenceHit{
+			Kind: tool.EvidenceDefinition, Path: location.Path,
+			Line: location.Line, Symbol: name,
+		})
 	}
 	provenance := semanticProvenance(found)
 	payload := map[string]any{
-		"matches": matches, "total": len(matches), "truncated": false,
+		"matches": matches, "total": len(found.Locations),
+		"truncated": len(locations) != len(found.Locations),
 	}
 	for key, value := range provenance {
 		payload[key] = value
 	}
 	provenance["matches"] = len(matches)
 	provenance["returned"] = len(matches)
-	return marshalResult(payload, false, attach(provenance, hits))
+	return marshalResult(
+		payload, len(locations) != len(found.Locations), attach(provenance, hits),
+	)
 }
 
 func semanticReferences(
-	found symbols.SemanticResult, name string,
+	found symbols.SemanticResult, name string, limit int,
 ) (tool.Result, error) {
-	matches := make([]referenceMatch, 0, len(found.Locations))
-	hits := make([]tool.EvidenceHit, 0, min(len(found.Locations), maxEvidenceHits))
-	for _, location := range found.Locations {
+	locations := found.Locations
+	if len(locations) > limit {
+		locations = locations[:limit]
+	}
+	matches := make([]referenceMatch, 0, len(locations))
+	hits := make([]tool.EvidenceHit, 0, len(locations))
+	for _, location := range locations {
 		matches = append(matches, referenceMatch{
 			File: location.Path, Line: location.Line, Character: location.Character,
 		})
-		if len(hits) < maxEvidenceHits {
-			hits = append(hits, tool.EvidenceHit{
-				Kind: tool.EvidenceReference, Path: location.Path,
-				Line: location.Line, Symbol: name,
-			})
-		}
+		hits = append(hits, tool.EvidenceHit{
+			Kind: tool.EvidenceReference, Path: location.Path,
+			Line: location.Line, Symbol: name,
+		})
 	}
 	provenance := semanticProvenance(found)
 	payload := map[string]any{
-		"matches": matches, "total": len(matches), "truncated": false,
+		"matches": matches, "total": len(found.Locations),
+		"truncated": len(locations) != len(found.Locations),
 	}
 	for key, value := range provenance {
 		payload[key] = value
 	}
 	provenance["matches"] = len(matches)
 	provenance["returned"] = len(matches)
-	return marshalResult(payload, false, attach(provenance, hits))
+	return marshalResult(
+		payload, len(locations) != len(found.Locations), attach(provenance, hits),
+	)
 }
 
 func semanticProvenance(found symbols.SemanticResult) map[string]any {
@@ -505,12 +514,9 @@ func (t *symbolTool) relatedTests(
 			unmapped = append(unmapped, source)
 		}
 	}
-	hits := make([]tool.EvidenceHit, 0, min(tests, maxEvidenceHits))
+	hits := make([]tool.EvidenceHit, 0, tests)
 	for _, entry := range entries {
 		for _, test := range entry.Tests {
-			if len(hits) == maxEvidenceHits {
-				break
-			}
 			hits = append(hits, tool.EvidenceHit{Kind: tool.EvidenceTest, Path: test})
 		}
 	}
@@ -586,11 +592,4 @@ func normalizePaths(paths []string) []string {
 		}
 	}
 	return result
-}
-
-func results(requested, fallback int) int {
-	if requested <= 0 {
-		return fallback
-	}
-	return min(requested, 1000)
 }

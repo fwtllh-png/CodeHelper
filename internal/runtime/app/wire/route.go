@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 )
 
@@ -119,26 +120,53 @@ func resolveFixturePath(path string) (string, error) {
 	return repositoryPath, nil
 }
 
-func defaultPromptBudgets() map[string]promptcontext.Budget {
-	return map[string]promptcontext.Budget{
-		promptcontext.PartitionBase:         {MaxBytes: 32 << 10, MaxTokens: 8 << 10},
-		promptcontext.PartitionMode:         {MaxBytes: 1 << 10, MaxTokens: 256},
-		promptcontext.PartitionRepository:   {MaxBytes: 128 << 10, MaxTokens: 32 << 10},
-		promptcontext.PartitionWorkingSet:   {MaxBytes: 256 << 10, MaxTokens: 64 << 10},
-		promptcontext.PartitionSkills:       {MaxBytes: promptcontext.MaxSkillsPromptBytes, MaxTokens: promptcontext.MaxFragmentTokens},
-		promptcontext.PartitionConstitution: {MaxBytes: 8 << 10, MaxTokens: promptcontext.MaxFragmentTokens},
-		promptcontext.PartitionToolPrefix:   {MaxBytes: 16 << 10, MaxTokens: 4 << 10},
-		// The catalog grows with every registered tool, including the MCP and
-		// plugin ones a session discovers, so it needs a ceiling of its own.
-		promptcontext.PartitionToolCatalog: {MaxBytes: 16 << 10, MaxTokens: 4 << 10},
-		// The volatile partitions are sent on every sample rather than once per
-		// session, so their ceilings are the tightest of the lot. Configuration
-		// overrides them; these are only the fallback when none is supplied.
-		promptcontext.PartitionRepoMap:          {MaxBytes: 8 << 10, MaxTokens: 2 << 10},
-		promptcontext.PartitionWorkingSetLedger: {MaxBytes: 8 << 10, MaxTokens: 2 << 10},
-		promptcontext.PartitionEvidence:         {MaxBytes: 4 << 10, MaxTokens: 1 << 10},
-		// The method is a constant in the stable prefix, so its ceiling only has to
-		// be larger than the text it carries.
-		promptcontext.PartitionCodingPolicy: {MaxBytes: 2 << 10, MaxTokens: 512},
+func defaultPromptBudgets(maxTokens uint64) map[string]promptcontext.Budget {
+	maxInt := uint64(^uint(0) >> 1)
+	maxBytes := maxInt
+	if maxTokens <= maxInt/4 {
+		maxBytes = maxTokens * 4
 	}
+	budget := promptcontext.Budget{MaxBytes: int(maxBytes), MaxTokens: maxTokens}
+	result := map[string]promptcontext.Budget{
+		promptcontext.PartitionTotal: budget,
+	}
+	for _, partition := range []string{
+		promptcontext.PartitionBase, promptcontext.PartitionMode,
+		promptcontext.PartitionRepository, promptcontext.PartitionWorkingSet,
+		promptcontext.PartitionSkills, promptcontext.PartitionUserMemory,
+		promptcontext.PartitionConstitution, promptcontext.PartitionToolPrefix,
+		promptcontext.PartitionToolCatalog, promptcontext.PartitionRepoMap,
+		promptcontext.PartitionWorkingSetLedger, promptcontext.PartitionEvidence,
+		promptcontext.PartitionCodingPolicy,
+	} {
+		result[partition] = budget
+	}
+	return result
+}
+
+func promptBudgets(
+	configured map[string]promptcontext.Budget,
+	maxTokens uint64,
+) map[string]promptcontext.Budget {
+	if configured == nil {
+		return defaultPromptBudgets(maxTokens)
+	}
+	result := make(map[string]promptcontext.Budget, len(configured)+1)
+	for partition, budget := range configured {
+		result[partition] = budget
+	}
+	result[promptcontext.PartitionTotal] =
+		defaultPromptBudgets(maxTokens)[promptcontext.PartitionTotal]
+	return result
+}
+
+func routePromptBudgets(
+	configured map[string]promptcontext.Budget,
+	route model.ReadyRoute,
+	maxOutputTokens, maxTurnTokens, maxSessionTokens uint64,
+) map[string]promptcontext.Budget {
+	capacity := agentcontext.ResolveCapacity(
+		route, maxOutputTokens, maxTurnTokens, maxSessionTokens,
+	)
+	return promptBudgets(configured, capacity.HardInputTokens)
 }

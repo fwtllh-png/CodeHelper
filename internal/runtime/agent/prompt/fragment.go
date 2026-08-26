@@ -6,10 +6,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 )
 
-// MaxFragmentTokens is the hard per-fragment token ceiling. Each contextual
-// injection is limited to approximately 10K tokens.
-const MaxFragmentTokens = 10_000
-
 // FragmentKind identifies a marked contextual injection that can be filtered
 // and reinjected after compaction.
 type FragmentKind string
@@ -83,12 +79,4 @@ func StripContextualFragments(messages []provider.Message) []provider.Message {
 		result = append(result, message)
 	}
 	return result
-}
-
-// ApplyFragmentTokenCeiling clamps MaxTokens for fragment partitions.
-func ApplyFragmentTokenCeiling(budget Budget) Budget {
-	if budget.MaxTokens == 0 || budget.MaxTokens > MaxFragmentTokens {
-		budget.MaxTokens = MaxFragmentTokens
-	}
-	return budget
 }

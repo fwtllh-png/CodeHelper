@@ -16,7 +16,8 @@ describe("conversation navigation", () => {
       kind: "user",
       turnID: "turn-a",
       sequence: 1,
-      text: "Inspect the parser"
+      text: "Inspect the parser",
+      images: []
     },
     {
       id: "tool-1",
@@ -40,7 +41,8 @@ describe("conversation navigation", () => {
       kind: "user",
       turnID: "turn-b",
       sequence: 3,
-      text: "Update the tests"
+      text: "Update the tests",
+      images: []
     },
     {
       id: "files-2",
@@ -116,7 +118,8 @@ describe("conversation navigation", () => {
       kind: "user",
       turnID: `turn-${index}`,
       sequence: index,
-      text: `Question ${index}`
+      text: `Question ${index}`,
+      images: []
     }));
 
     expect(transcriptPageForEntry(longEntries, "user-499", 200, 168)).toBe(0);

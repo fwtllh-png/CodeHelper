@@ -46,6 +46,17 @@ func (r ToolRef) Binding() CatalogBinding {
 
 type InvocationSource string
 
+type resultTokenBudgetKey struct{}
+
+func WithResultTokenBudget(ctx context.Context, tokens uint64) context.Context {
+	return context.WithValue(ctx, resultTokenBudgetKey{}, tokens)
+}
+
+func ResultTokenBudget(ctx context.Context) uint64 {
+	tokens, _ := ctx.Value(resultTokenBudgetKey{}).(uint64)
+	return tokens
+}
+
 const (
 	InvocationSourceUnknown  InvocationSource = "unknown"
 	InvocationSourceModel    InvocationSource = "model"

@@ -51,7 +51,7 @@ protocol = "openai_chat"
 mode = "act"                 # plan | act | operate
 workspace = "."
 tools = true
-max_output_tokens = 0           # 0 = 自动值，当前上限为 16384
+max_output_tokens = 0           # 0 = 使用当前模型声明的 MaxOutputTokens
 max_steps = 32                  # 0 = 显式取消普通 Step Budget
 timeout = "2m"                  # 连接、TLS 和响应头阶段
 connection_timeout = "0s"       # 0 表示继承 timeout
@@ -126,11 +126,11 @@ max_bytes = 4096
 enabled = true
 
 [context.compact]
-prepare_tokens = 0 # 增量路由为窗口 55%；完整传输路由不超过 49152
-auto_compact_tokens = 0 # 增量路由为窗口 65%；完整传输路由不超过 65536
-emergency_tokens = 0 # 增量路由为窗口 85%；完整传输路由不超过 98304
+prepare_tokens = 0 # 0 表示根据当前模型 Context Window 动态计算
+auto_compact_tokens = 0 # 0 表示根据当前模型 Context Window 动态计算
+emergency_tokens = 0 # 0 表示根据当前模型 Context Window 动态计算
 scope = "total" # 或 "body_after_prefix"
-summary_max_bytes = 8192
+summary_max_bytes = 0 # 0 表示使用当前 Turn 的硬输入容量作为渲染 Ceiling
 max_digest_entries = 120
 truth_max_bytes = 5632
 truth_max_entities = 256
@@ -141,7 +141,7 @@ failure_max_entities = 24
 handle_max_entities = 32
 omission_sample_max_entities = 8
 recent_tail_turns = 2
-recent_tail_max_tokens = 8192
+recent_tail_max_tokens = 0 # 0 表示跟随当前 Route 的动态 Auto Compact 容量
 semantic_narrative = "off" # off | post_turn | inline
 semantic_narrative_max_input_tokens = 4096
 semantic_narrative_max_output_tokens = 512
@@ -152,9 +152,14 @@ semantic_narrative_retry_limit = 1
 owner_delta_max_segments = 16
 owner_delta_max_bytes = 65536
 
+三个窗口阈值为 `0` 时，Runtime 不设置提前压缩档位，而是按当前 Route 的
+`ContextTokens - OutputReserve` 得到硬输入容量；只有本次请求无法同时容纳输入和输出
+保留时才触发 Tool Result Handle 化与 History Replacement。显式非零值属于 Operator
+成本或 SLA Ceiling，仍须满足顺序和模型窗口范围校验。
 
 `recent_tail_turns` 是压缩时优先完整保留的最近 Turn 数；
-`recent_tail_max_tokens` 是这些原始消息的硬上限。若最近 Turn 本身超过该上限，
+`recent_tail_max_tokens` 是这些原始消息的显式硬上限；为 `0` 时使用当前 Turn
+冻结的硬输入容量。若最近 Turn 本身超过有效上限，
 终态维护会在安全的 Tool Call/Result 边界内继续压缩当前 Turn，并通过 Truth Capsule
 和 durable rebase 保留目标、事实与变更，而不是把超大的原始 transcript 带入下一 Turn。
 [route]
@@ -188,8 +193,9 @@ DeepSeek 的默认值为 High，可选档位为 Off、Low、High、Max。未声�
 在 Provider I/O 前失败。Reasoning Effort 不再改变输出容量。
 
 `max_output_tokens = 0` 会根据当前 Model Catalog 能力和输入投影后剩余的 Context
-空间，为每次请求动态计算上限，默认不超过 16384。正值表示 Operator 显式上限，
-并且仍受这两个模型边界约束。
+空间，为每次请求动态计算上限。初始 Ceiling 来自模型声明的 `MaxOutputTokens`；
+正值表示 Operator 显式上限。实际请求还会被 Turn/Session Token Budget、USD Budget
+和本次输入后的剩余窗口继续收窄。
 
 `delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
 `spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。
@@ -200,6 +206,8 @@ DeepSeek 的默认值为 High，可选档位为 Off、Low、High、Max。未声�
 `context_turns` 个包含完整 Tool Call/Result 配对的最近 Turn，`full` 需要明确授权或
 Role Policy。Tool 返回 `context_receipt`，记录来源、包含/排除原因、字节和 Token
 预算及 SHA-256 Digest。旧的 `fork_context` 和 `parent_context` 参数不再接受。
+Capsule 未显式配置容量时，使用父 Turn 硬输入容量扣除当前模型可见 Context 后的余量，
+再由 Child Agent Token Budget 收窄；不再套用固定的字节或 Token 档位。
 
 Agent Tree、Mailbox、Result 和 Budget Ledger 持久化在 Workspace State Store。
 每个 Agent 具有 Canonical Path 和 CAS Revision；终态 Result 与 Completion Outbox
@@ -289,10 +297,10 @@ Protected/Refreshable Truth、Raw Tail 和可选 Narrative。新增计划、Pend
 `resource_exhausted`。`post_turn` Narrative 在业务终态提交后维护 Context；
 `inline` 在安全 Tool Pair 边界提交独立 Context Rebase。两种模式都使用
 `route.summary`，禁用工具和原生搜索，失败时保留确定性的 Truth + Tail。
-不支持 Incremental Responses 的路由还会在每次 Sample 前执行滚动 Tool Surface
-预算：最新 Tool Batch 保留原文，已被模型消费的旧结果替换为带 Handle 与 Digest 的
-小型投影，完整原文仍由 Content Store 持有。默认累计预算为 64 KiB，单个已消费
-结果保留最多 384 Bytes；该预算独立于全局 Compaction。
+Tool 执行前从当前 Turn 的硬输入容量申请 Result Budget，并按并行 Batch 数量分配，
+同时受 ResultStore Capacity 收窄。超过预算的模型可见内容替换为带 Handle 与 Digest
+的投影，完整原文仍由 Content Store 持有。后续 Sample 只有在
+`输入 + Output Reserve` 超过硬窗口时才进一步缩减可重新获取的 Tool Surface。
 
 Memory 使用带稳定 ID 和 Generation 的记录存储。`user`、`workspace` 和
 `repository` Scope 按规范化身份隔离；`remember`、`memory_list`、`memory_get`、

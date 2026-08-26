@@ -67,6 +67,51 @@ type BudgetRequest struct {
 	Scope          string
 }
 
+type Capacity struct {
+	ContextTokens   uint64
+	OutputCeiling   uint64
+	HardInputTokens uint64
+	LimitSource     model.Provenance
+	OutputSource    string
+}
+
+func ResolveCapacity(
+	route model.ReadyRoute,
+	configuredOutput uint64,
+	maxTurnTokens uint64,
+	maxSessionTokens uint64,
+) Capacity {
+	descriptor := route.Model()
+	output := descriptor.Limits.MaxOutputTokens
+	source := "model_capability"
+	if configuredOutput != 0 {
+		output = min(output, configuredOutput)
+		source = "operator_config"
+	}
+	for _, limit := range []uint64{maxTurnTokens, maxSessionTokens} {
+		if limit != 0 && limit < output {
+			output = limit
+			source = "operator_token_budget"
+		}
+	}
+	return Capacity{
+		ContextTokens: descriptor.Limits.ContextTokens,
+		OutputCeiling: output,
+		HardInputTokens: descriptor.Limits.ContextTokens -
+			min(descriptor.Limits.ContextTokens, output),
+		LimitSource:  descriptor.MetadataProvenance.Limits,
+		OutputSource: source,
+	}
+}
+
+func ApplyCapacity(context *protocol.SampleContextData, capacity Capacity) {
+	if context == nil {
+		return
+	}
+	context.WindowHardInputTokens = capacity.HardInputTokens
+	context.WindowOutputSource = capacity.OutputSource
+}
+
 func CheckBudget(request BudgetRequest) (uint64, error) {
 	if request.EstimatedInput >= request.ContextTokens {
 		return 0, protocol.NewProblem(

@@ -32,12 +32,13 @@ type ContextEvidence struct {
 }
 
 type ParentContextSnapshot struct {
-	SourceThread   string                `json:"source_thread"`
-	SourceTurn     string                `json:"source_turn"`
-	ParentGoal     string                `json:"parent_goal,omitempty"`
-	UserRequest    string                `json:"user_request,omitempty"`
-	Messages       []ContextMessage      `json:"messages,omitempty"`
-	RelevantFiles  []ContextRelevantFile `json:"relevant_files,omitempty"`
-	Evidence       []ContextEvidence     `json:"evidence,omitempty"`
-	WorkspaceRules []string              `json:"workspace_rules,omitempty"`
+	SourceThread    string                `json:"source_thread"`
+	SourceTurn      string                `json:"source_turn"`
+	AvailableTokens uint64                `json:"available_tokens,omitempty"`
+	ParentGoal      string                `json:"parent_goal,omitempty"`
+	UserRequest     string                `json:"user_request,omitempty"`
+	Messages        []ContextMessage      `json:"messages,omitempty"`
+	RelevantFiles   []ContextRelevantFile `json:"relevant_files,omitempty"`
+	Evidence        []ContextEvidence     `json:"evidence,omitempty"`
+	WorkspaceRules  []string              `json:"workspace_rules,omitempty"`
 }

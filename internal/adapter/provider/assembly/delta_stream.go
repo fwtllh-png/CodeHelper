@@ -34,6 +34,7 @@ type DeltaCoalescingStream struct {
 	timer     *time.Timer
 	runType   provider.StreamEventType
 	runIndex  int
+	emitted   bool
 }
 
 func NewDeltaCoalescingStream(
@@ -66,6 +67,10 @@ func (s *DeltaCoalescingStream) Recv() (provider.StreamEvent, error) {
 				return result.event, result.err
 			}
 			s.startBuffer(result.event)
+			if !s.emitted {
+				s.emitted = true
+				return s.takeBuffered(), nil
+			}
 			if deltaSize(*s.buffered) >= deltaFlushBytes {
 				return s.takeBuffered(), nil
 			}

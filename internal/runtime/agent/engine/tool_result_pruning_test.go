@@ -85,6 +85,7 @@ func TestCompactGatePrunesToolResultBeforeSummaryReplacement(t *testing.T) {
 func TestStatelessDefaultCompactsLargeHistoryIntoTruthCapsule(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.Route = reasoningRoute(t)
+	engine.options.Context.Window.AutoTokens = 24 << 10
 	history := []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("first context ", 5000), 1),
 		messageWithText(provider.RoleAssistant, "first answer", 1),
@@ -111,11 +112,11 @@ func TestStatelessDefaultCompactsLargeHistoryIntoTruthCapsule(t *testing.T) {
 	if receipt == nil || receipt.RemovedMessages == 0 {
 		t.Fatalf("large stateless history was not replaced: %+v", receipt)
 	}
-	if window.active > statelessCompactTokens {
+	if window.active > engine.autoCompactLimit() {
 		t.Fatalf(
 			"compacted active tokens = %d, want <= %d",
 			window.active,
-			statelessCompactTokens,
+			engine.autoCompactLimit(),
 		)
 	}
 	if !strings.Contains(history[0].Text(), "<codehelper_truth_capsule>") {
@@ -158,7 +159,7 @@ func TestToolResultPruningSkipsMalformedAndRetrievalResults(t *testing.T) {
 	}
 }
 
-func TestCompactGatePrunesConsumedResultsBelowWindowThreshold(t *testing.T) {
+func TestCompactGateKeepsConsumedResultsBelowDynamicPressureThreshold(t *testing.T) {
 	results := tool.NewResultStore(32 << 10)
 	engine := newEngine(
 		t,
@@ -166,8 +167,6 @@ func TestCompactGatePrunesConsumedResultsBelowWindowThreshold(t *testing.T) {
 		tool.NewRegistry(nil, results),
 	)
 	engine.options.Context.Window.AutoTokens = 3500
-	engine.options.MaxToolResultHistoryBytes = 1600
-	engine.options.MaxConsumedToolResultBytes = 128
 	large := strings.Repeat("result ", 160)
 	encoded, err := json.Marshal(tool.Result{Content: large})
 	if err != nil {
@@ -182,6 +181,7 @@ func TestCompactGatePrunesConsumedResultsBelowWindowThreshold(t *testing.T) {
 		toolResultMessage(1, "latest", string(encoded)),
 	}
 	latest := history[len(history)-1].Blocks[0].ToolResult.Content
+	before := cloneMessages(history)
 	var receipt *CompactionReceipt
 	_, err = engine.runCompactGate(
 		t.Context(),
@@ -198,28 +198,10 @@ func TestCompactGatePrunesConsumedResultsBelowWindowThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt == nil ||
-		receipt.TruncationReason != "tool_result_surface_budget" ||
-		receipt.PrunedToolResults != 2 ||
-		!receipt.AuthorityEquivalent ||
-		receipt.AuthorityDigest == "" {
-		t.Fatalf("receipt = %+v", receipt)
-	}
-	if history[len(history)-1].Blocks[0].ToolResult.Content != latest {
-		t.Fatal("latest batch changed")
-	}
-	if !agentcontext.ToolPairIdentityEquivalent(
-		[]provider.Message{
-			toolCallMessage(1, "old-1", "file_read", `{}`),
-			toolResultMessage(1, "old-1", string(encoded)),
-			toolCallMessage(1, "old-2", "file_read", `{}`),
-			toolResultMessage(1, "old-2", string(encoded)),
-			toolCallMessage(1, "latest", "file_read", `{}`),
-			toolResultMessage(1, "latest", string(encoded)),
-		},
-		history,
-	) {
-		t.Fatal("tool pairing changed")
+	if receipt != nil || agentcontext.HistoryBytes(history) !=
+		agentcontext.HistoryBytes(before) ||
+		history[len(history)-1].Blocks[0].ToolResult.Content != latest {
+		t.Fatalf("below-pressure history changed: receipt=%+v history=%+v", receipt, history)
 	}
 }
 

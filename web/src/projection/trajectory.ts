@@ -202,8 +202,16 @@ export function projectTrajectory(
           changes: Array.isArray(data.changes) ? data.changes : undefined
         }));
         break;
+      case "turn.compaction": {
+        const removedMessages = finiteNumber(data.removed_messages) ?? 0;
+        const prunedResults = finiteNumber(data.pruned_tool_results) ?? 0;
+        if (removedMessages === 0 && prunedResults === 0) break;
+        put(record(event, "context", removedMessages > 0 ? "COMPACT" : "PRUNE", summary(
+          data.summary ?? data.reason ?? event.kind
+        ), {output: data}));
+        break;
+      }
       case "thread.compacted":
-      case "turn.compaction":
       case "thread.forked":
       case "checkpoint.created":
       case "checkpoint.restored":

@@ -21,10 +21,10 @@ func TestRepoContextCarriesEvidenceAndItsBudget(t *testing.T) {
 		t.Fatal("all three sections off still produced a tail provider")
 	}
 
-	if budget := defaultPromptBudgets()[promptcontext.PartitionEvidence]; budget.MaxBytes == 0 {
+	if budget := defaultPromptBudgets(128_000)[promptcontext.PartitionEvidence]; budget.MaxBytes == 0 {
 		t.Fatal("the evidence partition has no default ceiling")
 	}
-	if budget := defaultPromptBudgets()[promptcontext.PartitionCodingPolicy]; budget.MaxBytes <
+	if budget := defaultPromptBudgets(128_000)[promptcontext.PartitionCodingPolicy]; budget.MaxBytes <
 		len(promptcontext.NewCodingPolicySection().Render()) {
 		t.Fatalf("the coding method does not fit its own ceiling: %+v", budget)
 	}

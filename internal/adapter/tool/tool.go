@@ -749,6 +749,18 @@ func (r *Registry) AdmitResult(
 	return r.results.Admit(name, result)
 }
 
+func (r *Registry) AdmitResultWithin(
+	name string,
+	result Result,
+	maxTokens uint64,
+) (Result, adaptercontent.AdmissionReceipt) {
+	return r.results.AdmitWithin(name, result, maxTokens)
+}
+
+func (r *Registry) ResultTokenCapacity() uint64 {
+	return r.results.TokenCapacity()
+}
+
 func RepairArguments(raw json.RawMessage) json.RawMessage {
 	value := strings.TrimSpace(string(raw))
 	if value == "" {
@@ -956,6 +968,10 @@ func (s *ResultStore) Route(result Result) Result {
 	return s.RouteFor("", result)
 }
 
+func (s *ResultStore) TokenCapacity() uint64 {
+	return uint64((s.maxInline + 3) / 4)
+}
+
 func (s *ResultStore) RouteFor(name string, result Result) Result {
 	admitted, _ := s.Admit(name, result)
 	return admitted
@@ -964,6 +980,14 @@ func (s *ResultStore) RouteFor(name string, result Result) Result {
 func (s *ResultStore) Admit(
 	name string,
 	result Result,
+) (Result, adaptercontent.AdmissionReceipt) {
+	return s.AdmitWithin(name, result, 0)
+}
+
+func (s *ResultStore) AdmitWithin(
+	name string,
+	result Result,
+	maxTokens uint64,
 ) (Result, adaptercontent.AdmissionReceipt) {
 	if s.validAdmission(result) {
 		result.Admission = adaptercontent.CloneAdmissionReceipt(result.Admission)
@@ -984,15 +1008,15 @@ func (s *ResultStore) Admit(
 	original := result.Content
 	originalBytes := len(original)
 	originalTokens := estimateResultTokens(original)
-	limit, kind, tokens := s.projectionLimit(name, original)
+	limit, kind, tokens := s.projectionLimit(name, original, maxTokens)
 	receipt := adaptercontent.AdmissionReceipt{
 		Kind: kind, Reason: "inline", Digest: resultDigest(original),
 		OriginalBytes: originalBytes, RetainedBytes: originalBytes,
 		OriginalTokens: originalTokens, RetainedTokens: originalTokens,
-		TokenLimit: uint64(tokens),
+		TokenLimit: tokens,
 	}
 	result.OriginalBytes = originalBytes
-	if originalTokens <= uint64(tokens) && len(original) <= limit {
+	if originalTokens <= tokens && len(original) <= limit {
 		result.Admission = &receipt
 		return result, receipt
 	}
@@ -1022,7 +1046,7 @@ func (s *ResultStore) Admit(
 		result.Admission = &receipt
 		return result, receipt
 	}
-	result.Content = fitTruncationNotice(original, handle, limit, uint64(tokens))
+	result.Content = fitTruncationNotice(original, handle, limit, tokens)
 	result.Truncated = true
 	result.Handle = handle
 	EnsureOutcomeFacts(&result).ResultHandle = handle
@@ -1120,26 +1144,33 @@ func (s *ResultStore) PruneSurface(
 	return result, true
 }
 
-func (s *ResultStore) projectionLimit(name, content string) (int, string, int) {
-	kind, tokens := "generic", 2048
+func (s *ResultStore) projectionLimit(
+	name, content string,
+	maxTokens uint64,
+) (int, string, uint64) {
+	kind := "generic"
 	switch {
 	case name == "result_get" || name == "handle_read":
-		kind, tokens = "retrieval", 10_000
+		kind = "retrieval"
 	case name == "spawn_agent" || name == "send_input" ||
 		name == "wait_agent" || name == "close_agent":
-		kind, tokens = "structured", 8192
+		kind = "structured"
 	case name == "file_read" || name == "file_list" || name == "shell_read" ||
 		strings.HasPrefix(name, "search_") || strings.HasPrefix(name, "git_"):
-		kind, tokens = "read", 4096
+		kind = "read"
 	case name == "skills.read" || name == "skills.list" ||
 		name == "skills_read" || name == "skills_list":
-		kind, tokens = "skill", 10_000
+		kind = "skill"
 	case strings.HasPrefix(name, "quality_"):
-		kind, tokens = "test", 3072
+		kind = "test"
 	case name == "exec_command" || name == "write_stdin":
-		kind, tokens = "build", 3072
+		kind = "build"
 	}
-	return min(s.maxInline, len(content), tokens*4), kind, tokens
+	storeTokens := s.TokenCapacity()
+	if maxTokens == 0 || maxTokens > storeTokens {
+		maxTokens = storeTokens
+	}
+	return min(s.maxInline, len(content), int(maxTokens*4)), kind, maxTokens
 }
 
 func estimateResultTokens(value string) uint64 {
@@ -1152,7 +1183,7 @@ func estimateResultTokens(value string) uint64 {
 func (s *ResultStore) validAdmission(result Result) bool {
 	receipt := result.Admission
 	if receipt == nil || receipt.TokenLimit == 0 ||
-		receipt.TokenLimit > 10_000 ||
+		receipt.TokenLimit > uint64((s.maxInline+3)/4) ||
 		receipt.RetainedBytes != len(result.Content) ||
 		receipt.RetainedTokens != estimateResultTokens(result.Content) ||
 		receipt.RetainedTokens > receipt.TokenLimit {
