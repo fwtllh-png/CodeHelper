@@ -60,7 +60,7 @@ name = "DEEPSEEK_API_KEY"
 
 ## Web 控制
 
-默认 Workspace 是 CodeHelper 仓库。操作其他仓库时：
+初始 Workspace 是 CodeHelper 仓库。操作其他仓库时：
 
 ```bash
 CODEHELPER_LOCAL_WORKSPACE=/path/to/project make deepseek-web

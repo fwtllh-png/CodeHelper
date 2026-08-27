@@ -212,8 +212,7 @@ func TestRunContextStartsAndStopsWebHost(t *testing.T) {
 		restartURL,
 		fetchSupervisorToken(t, restartURL),
 	)
-	if len(removedCatalog.Workspaces) != 1 ||
-		removedCatalog.Workspaces[0].ID != removedCatalog.DefaultWorkspaceID {
+	if len(removedCatalog.Workspaces) != 1 {
 		t.Fatalf("Workspace catalog after removal = %+v", removedCatalog)
 	}
 	stopRestart()

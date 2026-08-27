@@ -147,7 +147,7 @@ describe("RuntimeClient", () => {
           root: "/workspace",
           label: "workspace",
           ready: true,
-          removable: false,
+          removable: true,
           session_count: emptyPrimaryWorkspace ? 0 : 1
         }];
         if (multipleWorkspaces) {
@@ -176,7 +176,6 @@ describe("RuntimeClient", () => {
           },
           workspace_catalog: {
             version: 1,
-            default_workspace_id: "workspace-id",
             workspaces
           }
         });
@@ -605,17 +604,29 @@ describe("RuntimeClient", () => {
         return envelope({path: "/workspace/selected"});
       }
       if (route.endsWith("/workspace/remove")) {
+        const workspaces = [{
+          id: "workspace-id",
+          root: "/workspace",
+          label: "workspace",
+          ready: true,
+          removable: true,
+          session_count: 1
+        }];
+        if (multipleWorkspaces) {
+          workspaces.push({
+            id: "workspace-b-id",
+            root: "/workspace-b",
+            label: "workspace-b",
+            ready: true,
+            removable: true,
+            session_count: 1
+          });
+        }
         return envelope({
           version: 1,
-          default_workspace_id: "workspace-id",
-          workspaces: [{
-            id: "workspace-id",
-            root: "/workspace",
-            label: "workspace",
-            ready: true,
-            removable: false,
-            session_count: 1
-          }]
+          workspaces: workspaces.filter(
+            (workspace) => workspace.id !== body.workspace_id
+          )
         });
       }
       if (route.endsWith("/workspace/image")) {
@@ -1486,6 +1497,54 @@ describe("RuntimeClient", () => {
     expect(client.getSnapshot().workspaces.map((workspace) => workspace.id))
       .toEqual(["workspace-id"]);
     expect(client.getSnapshot().selectedWorkspaceID).toBe("workspace-id");
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    client.stop();
+  });
+
+  it("switches to another ready Workspace after removing the selected one", async () => {
+    multipleWorkspaces = true;
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    const removal = client.removeWorkspace("workspace-id");
+    await vi.waitFor(() => {
+      expect(FakeWebSocket.instances).toHaveLength(2);
+    });
+    const fallbackSocket = FakeWebSocket.instances[1]!;
+    fallbackSocket.emit("open");
+    fallbackSocket.emit("message", {
+      type: "hello",
+      protocol_version: 1,
+      sequence: 0
+    });
+    await removal;
+
+    expect(client.getSnapshot()).toMatchObject({
+      selectedWorkspaceID: "workspace-b-id",
+      workspaceRoot: "/workspace-b",
+      socketConnected: true
+    });
+    expect(client.getSnapshot().workspaces.map((workspace) => workspace.id))
+      .toEqual(["workspace-b-id"]);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    client.stop();
+  });
+
+  it("enters the empty Workspace state after removing the last one", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.removeWorkspace("workspace-id");
+
+    expect(client.getSnapshot()).toMatchObject({
+      phase: "ready",
+      workspaceRoot: "",
+      workspaces: [],
+      selectedWorkspaceID: "",
+      sessions: [],
+      selectedSessionID: "",
+      socketConnected: false
+    });
     expect(FakeWebSocket.instances).toHaveLength(1);
     client.stop();
   });

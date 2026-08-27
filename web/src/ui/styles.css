@@ -993,6 +993,45 @@ textarea:disabled {
   height: auto;
 }
 
+.workspaceRemovalDialog {
+  width: min(420px, calc(100vw - 48px));
+  height: auto;
+}
+
+.workspaceRemovalMessage {
+  margin: 0;
+  padding: 0 20px 20px;
+  color: var(--ch-text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.workspaceRemovalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px 20px;
+  border-top: 1px solid var(--ch-border);
+}
+
+.workspaceRemovalActions button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  background: var(--ch-panel-subtle);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius);
+  font-size: 12px;
+}
+
+.workspaceRemovalActions .workspaceRemovalConfirm {
+  color: var(--ch-on-accent);
+  background: var(--ch-danger);
+  border-color: var(--ch-danger);
+}
+
 .workspaceChoices {
   padding: 0 20px;
 }

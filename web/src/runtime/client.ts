@@ -457,10 +457,56 @@ export class RuntimeClient {
   }
 
   async removeWorkspace(workspaceID: string): Promise<void> {
-    this.update({workspaces: (await this.call<WorkspaceCatalog>(
+    const removingSelected = workspaceID === this.state.selectedWorkspaceID;
+    const catalog = await this.call<WorkspaceCatalog>(
       "workspace/remove", {workspace_id: workspaceID},
       {idempotencyKey: crypto.randomUUID(), retryNetwork: true}
-    )).workspaces});
+    );
+    this.update({workspaces: catalog.workspaces});
+    if (!removingSelected) return;
+
+    const fallback = catalog.workspaces.find((workspace) => workspace.ready);
+    if (fallback) {
+      await this.switchWorkspace(fallback.id, true);
+      return;
+    }
+    this.eventNotifier.cancel();
+    this.pendingSelectedEvents = [];
+    this.hydration = undefined;
+    this.selectionGeneration += 1;
+    this.generation += 1;
+    this.socket?.close(1000, "last workspace removed");
+    this.socket = undefined;
+    this.update({
+      phase: "ready",
+      workspaceRoot: "",
+      selectedWorkspaceID: "",
+      sessions: [],
+      selectedSessionID: "",
+      hydratingSessionID: "",
+      events: [],
+      conversation: this.replaceConversation([]),
+      historyMoreBefore: false,
+      queuedTurns: [],
+      profile: undefined,
+      providers: [],
+      models: [],
+      tools: [],
+      checkpoints: [],
+      plan: undefined,
+      tasks: [],
+      agents: [],
+      usage: undefined,
+      trace: undefined,
+      tracePhase: "idle",
+      traceProblem: undefined,
+      extensions: [],
+      mergePlan: undefined,
+      contextResources: [],
+      messageFeedback: {},
+      socketConnected: false,
+      problem: undefined
+    });
   }
 
   async switchWorkspaceBranch(
@@ -2069,18 +2115,17 @@ function workspaceCatalogFromBootstrap(bootstrap: Bootstrap): WorkspaceCatalog {
   }
   const workspace = bootstrap.workspace;
   if (!workspace || !bootstrap.workspace_root) {
-    return {version: 1, default_workspace_id: "", workspaces: []};
+    return {version: 1, workspaces: []};
   }
   return {
     version: 1,
-    default_workspace_id: workspace.root_id,
     workspaces: [{
       id: workspace.root_id,
       root: bootstrap.workspace_root,
       label: bootstrap.workspace_root.split(/[\\/]/).filter(Boolean).at(-1) ||
         bootstrap.workspace_root,
       ready: bootstrap.ready,
-      removable: false,
+      removable: true,
       session_count: 0
     }]
   };

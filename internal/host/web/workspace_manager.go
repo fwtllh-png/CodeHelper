@@ -42,7 +42,6 @@ type workspaceRuntimeManager struct {
 	selection webSetupSelection
 	reference credential.Reference
 	roots     []string
-	defaultID string
 	active    map[string]*preparedWebRuntime
 	problems  map[string]string
 	loading   map[string]chan struct{}
@@ -58,13 +57,13 @@ func newWorkspaceRuntimeManager(
 	if err != nil {
 		return nil, err
 	}
-	initialRoot, identity, err := normalizeWorkspaceRoot(initialRoot)
+	initialRoot, _, err = normalizeWorkspaceRoot(initialRoot)
 	if err != nil {
 		return nil, err
 	}
 	roots = prependUniqueRoot(roots, initialRoot)
 	return &workspaceRuntimeManager{
-		dataDir: dataDir, roots: roots, defaultID: identity.RootID,
+		dataDir: dataDir, roots: roots,
 		active:   make(map[string]*preparedWebRuntime),
 		problems: make(map[string]string),
 		loading:  make(map[string]chan struct{}),
@@ -130,11 +129,10 @@ func (m *workspaceRuntimeManager) List(
 	roots := append([]string(nil), m.roots...)
 	active := maps.Clone(m.active)
 	problems := maps.Clone(m.problems)
-	defaultID := m.defaultID
 	m.mu.Unlock()
 
 	result := webhost.WorkspaceCatalog{
-		Version: workspaceRegistryVersion, DefaultWorkspaceID: defaultID,
+		Version:    workspaceRegistryVersion,
 		Workspaces: make([]webhost.WorkspaceDescriptor, 0, len(roots)),
 	}
 	for _, root := range roots {
@@ -146,7 +144,7 @@ func (m *workspaceRuntimeManager) List(
 			}
 			if identityErr == nil {
 				descriptor.ID = storedIdentity.RootID
-				descriptor.Removable = storedIdentity.RootID != defaultID
+				descriptor.Removable = true
 			}
 			result.Workspaces = append(result.Workspaces, descriptor)
 			continue
@@ -154,7 +152,7 @@ func (m *workspaceRuntimeManager) List(
 		descriptor := webhost.WorkspaceDescriptor{
 			ID: identity.RootID, Root: identity.RuntimePath,
 			Label:     filepath.Base(identity.RuntimePath),
-			Removable: identity.RootID != defaultID,
+			Removable: true,
 			Problem:   problems[identity.RootID],
 		}
 		if runtime := active[identity.RootID]; runtime != nil {
@@ -217,7 +215,7 @@ func (m *workspaceRuntimeManager) Add(
 			}
 			return webhost.WorkspaceDescriptor{
 				ID: identity.RootID, Root: root, Label: filepath.Base(root),
-				Removable: identity.RootID != m.defaultID,
+				Removable: true,
 			}, nil
 		}
 		loading := make(chan struct{})
@@ -287,15 +285,6 @@ func (m *workspaceRuntimeManager) Remove(
 	if m.closing {
 		m.mu.Unlock()
 		return webhost.WorkspaceCatalog{}, errors.New("Web Host is shutting down")
-	}
-	if workspaceID == m.defaultID {
-		m.mu.Unlock()
-		return webhost.WorkspaceCatalog{}, protocol.NewProblem(
-			protocol.CodeConflict,
-			"the default Workspace cannot be removed",
-			false,
-			nil,
-		)
 	}
 	if m.loading[workspaceID] != nil {
 		m.mu.Unlock()
@@ -370,7 +359,7 @@ func (m *workspaceRuntimeManager) descriptor(
 	descriptor := webhost.WorkspaceDescriptor{
 		ID: identity.RootID, Root: identity.RuntimePath,
 		Label: filepath.Base(identity.RuntimePath), Ready: true,
-		Removable: identity.RootID != m.defaultID,
+		Removable: true,
 	}
 	if workspace := runtime.application.WorkspaceQuery(); workspace != nil {
 		if git, err := workspace.GitState(ctx); err == nil {

@@ -309,7 +309,7 @@ start:
 	$(MAKE) web-install
 	$(MAKE) web-build
 	$(MAKE) build
-	./$(BINARY) --workspace '$(START_WORKSPACE)' --enable-tools --posture suggest --open
+	./$(BINARY) --workspace '$(START_WORKSPACE)' --enable-tools --posture suggest --replace-owner --open
 
 install:
 	$(MAKE) web-install

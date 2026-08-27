@@ -119,19 +119,18 @@ type Server struct {
 	pickDirectory directoryPicker
 	handler       http.Handler
 
-	mu                 sync.RWMutex
-	directoryPickerMu  sync.Mutex
-	sessionMu          sync.Mutex
-	setupMu            sync.Mutex
-	dependencies       Dependencies
-	setup              *SetupOptions
-	workspaceControl   WorkspaceController
-	workspaces         map[string]Dependencies
-	defaultWorkspaceID string
-	bootProblem        *protocol.Problem
-	ready              atomic.Bool
-	draining           atomic.Bool
-	connections        atomic.Int32
+	mu                sync.RWMutex
+	directoryPickerMu sync.Mutex
+	sessionMu         sync.Mutex
+	setupMu           sync.Mutex
+	dependencies      Dependencies
+	setup             *SetupOptions
+	workspaceControl  WorkspaceController
+	workspaces        map[string]Dependencies
+	bootProblem       *protocol.Problem
+	ready             atomic.Bool
+	draining          atomic.Bool
+	connections       atomic.Int32
 }
 
 type responseEnvelope struct {
@@ -217,12 +216,6 @@ func (s *Server) Handler() http.Handler { return s.handler }
 
 func (s *Server) CapabilityToken() string { return s.token }
 
-func (s *Server) DefaultWorkspaceID() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.defaultWorkspaceID
-}
-
 func (s *Server) Activate(dependencies Dependencies) error {
 	if err := s.activateWorkspace(dependencies, true); err != nil {
 		return err
@@ -242,15 +235,19 @@ func (s *Server) RemoveWorkspace(workspaceID string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if workspaceID == s.defaultWorkspaceID {
-		return protocol.NewProblem(
-			protocol.CodeConflict,
-			"the default workspace cannot be removed",
-			false,
-			nil,
-		)
-	}
 	delete(s.workspaces, workspaceID)
+	if s.dependencies.WorkspaceIdentity.RootID == workspaceID {
+		s.dependencies = Dependencies{}
+		replacementID := ""
+		for id := range s.workspaces {
+			if replacementID == "" || id < replacementID {
+				replacementID = id
+			}
+		}
+		if replacementID != "" {
+			s.dependencies = s.workspaces[replacementID]
+		}
+	}
 	return nil
 }
 
@@ -270,8 +267,7 @@ func (s *Server) activateWorkspace(
 	s.mu.Lock()
 	workspaceID := dependencies.WorkspaceIdentity.RootID
 	s.workspaces[workspaceID] = dependencies
-	if makeDefault || s.defaultWorkspaceID == "" {
-		s.defaultWorkspaceID = workspaceID
+	if makeDefault || s.dependencies.Runtime == nil {
 		s.dependencies = dependencies
 	}
 	s.bootProblem = nil
@@ -440,10 +436,10 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 	dependencies, _ := s.snapshot()
 	if contract.RequiresRuntime {
 		workspaceID := strings.TrimSpace(r.Header.Get(workspaceHeader))
-		if route == "session/create" && workspaceID == "" {
+		if workspaceID == "" {
 			writeProblem(w, r, http.StatusBadRequest, protocol.NewProblem(
 				protocol.CodeInvalidArgument,
-				"select a ready workspace before creating a session",
+				"select a ready workspace before using the Runtime",
 				false,
 				nil,
 			))

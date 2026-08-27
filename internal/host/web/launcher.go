@@ -42,6 +42,7 @@ type webCommandOptions struct {
 	port            int
 	open            bool
 	noOpen          bool
+	replaceOwner    bool
 	enableTools     bool
 	posture         string
 	mcpConfig       string
@@ -79,6 +80,12 @@ func RunContext(
 	flags.IntVar(&options.port, "port", 0, "listen port (0 selects an available port)")
 	flags.BoolVar(&options.open, "open", false, "open the Web workspace in a browser")
 	flags.BoolVar(&options.noOpen, "no-open", false, "do not open a browser")
+	flags.BoolVar(
+		&options.replaceOwner,
+		"replace-owner",
+		false,
+		"restart an older Web owner instead of reusing it",
+	)
 	flags.BoolVar(&options.enableTools, "enable-tools", false, "enable built-in workspace tools")
 	flags.StringVar(&options.posture, "posture", "suggest", "tool permission posture")
 	flags.StringVar(&options.mcpConfig, "mcp-config", "", "versioned MCP stdio server config JSON")
@@ -231,13 +238,12 @@ func runWeb(
 	var lease *ownerlease.Lease
 	if configErr == nil {
 		info := buildinfo.Current()
-		lease, err = ownerlease.Acquire(
-			ownerlease.Path(dataDir, webSupervisorScope),
-			ownerlease.Metadata{
-				OwnerKind: "web",
-				Build:     info.Version + "+" + info.Commit,
-			},
-		)
+		leasePath := ownerlease.Path(dataDir, webSupervisorScope)
+		ownerMetadata := ownerlease.Metadata{
+			OwnerKind: webOwnerKind(options.replaceOwner),
+			Build:     webOwnerBuild(info),
+		}
+		lease, err = ownerlease.Acquire(leasePath, ownerMetadata)
 		if err != nil {
 			var held *ownerlease.HeldError
 			if errors.As(err, &held) && held.Metadata.PublicURL != "" {
@@ -245,42 +251,67 @@ func runWeb(
 					ctx,
 					held.Metadata.PublicURL,
 				); probeErr == nil {
-					targetURL := held.Metadata.PublicURL
-					if held.Metadata.CapabilityToken != "" {
-						workspaceID, registerErr := registerWorkspaceWithOwner(
-							ctx,
-							held.Metadata.PublicURL,
-							held.Metadata.CapabilityToken,
-							workspaceRoot,
+					if options.replaceOwner &&
+						held.Metadata.Build != ownerMetadata.Build {
+						_, _ = fmt.Fprintf(
+							stdout,
+							"CodeHelper Dev Restart: stopping build %s (pid %d)\n",
+							held.Metadata.Build,
+							held.Metadata.PID,
 						)
-						if registerErr != nil {
+						lease, err = replaceWebOwner(
+							ctx,
+							leasePath,
+							ownerMetadata,
+							held.Metadata,
+							signalWebOwner,
+						)
+						if err != nil {
 							_, _ = fmt.Fprintf(
 								stderr,
-								"codehelper: register Workspace: %v\n",
-								registerErr,
+								"codehelper: replace Web owner: %v\n",
+								err,
 							)
 							return 1
 						}
-						if workspaceID != "" {
-							targetURL += "?workspace=" + url.QueryEscape(workspaceID)
+					} else {
+						targetURL := held.Metadata.PublicURL
+						if held.Metadata.CapabilityToken != "" {
+							workspaceID, registerErr := registerWorkspaceWithOwner(
+								ctx,
+								held.Metadata.PublicURL,
+								held.Metadata.CapabilityToken,
+								workspaceRoot,
+							)
+							if registerErr != nil {
+								_, _ = fmt.Fprintf(
+									stderr,
+									"codehelper: register Workspace: %v\n",
+									registerErr,
+								)
+								return 1
+							}
+							if workspaceID != "" {
+								targetURL += "?workspace=" + url.QueryEscape(workspaceID)
+							}
 						}
-					}
-					readyLabel := "Runtime Ready"
-					if status == "setup_required" {
-						readyLabel = "Setup Ready"
-					}
-					_, _ = fmt.Fprintf(
-						stdout,
-						"CodeHelper %s: %s\n",
-						readyLabel,
-						targetURL,
-					)
-					if options.open && !options.noOpen {
-						if openErr := openWebBrowser(targetURL); openErr != nil {
-							_, _ = fmt.Fprintf(stderr, "codehelper: open browser: %v\n", openErr)
+						readyLabel := "Runtime Ready"
+						if status == "setup_required" {
+							readyLabel = "Setup Ready"
 						}
+						_, _ = fmt.Fprintf(
+							stdout,
+							"CodeHelper %s: %s\n",
+							readyLabel,
+							targetURL,
+						)
+						if options.open && !options.noOpen {
+							if openErr := openWebBrowser(targetURL); openErr != nil {
+								_, _ = fmt.Fprintf(stderr, "codehelper: open browser: %v\n", openErr)
+							}
+						}
+						return 0
 					}
-					return 0
 				} else {
 					_, _ = fmt.Fprintf(
 						stderr,
@@ -291,7 +322,9 @@ func runWeb(
 			} else {
 				_, _ = fmt.Fprintf(stderr, "codehelper: owner lease: %v\n", err)
 			}
-			return 1
+			if lease == nil {
+				return 1
+			}
 		}
 		defer lease.Close()
 	}
@@ -366,8 +399,8 @@ func runWeb(
 	_, _ = fmt.Fprintf(stdout, "CodeHelper Web Listening: %s\n", publicURL)
 	if lease != nil {
 		metadata := ownerlease.Metadata{
-			OwnerKind:       "web",
-			Build:           buildinfo.Version + "+" + buildinfo.Commit,
+			OwnerKind:       webOwnerKind(options.replaceOwner),
+			Build:           webOwnerBuild(buildinfo.Current()),
 			PublicURL:       publicURL,
 			CapabilityToken: server.CapabilityToken(),
 		}

@@ -203,6 +203,8 @@ export function App({client}: Props) {
   const [collapsedWorkspaceIDs, setCollapsedWorkspaceIDs] =
     useState<ReadonlySet<string>>(() => new Set());
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
+  const [workspaceRemovalID, setWorkspaceRemovalID] = useState("");
+  const [workspaceRemoving, setWorkspaceRemoving] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftOwner, setDraftOwner] = useState("");
   const [contextOpen, setContextOpen] = useState(false);
@@ -274,6 +276,9 @@ export function App({client}: Props) {
   const selectedWorkspace = snapshot.workspaces.find(
     (workspace) =>
       workspace.id === snapshot.selectedWorkspaceID && workspace.ready
+  );
+  const workspaceRemoval = snapshot.workspaces.find(
+    (workspace) => workspace.id === workspaceRemovalID && workspace.removable
   );
   const projectedEntries = useMemo(
     () => snapshot.conversation.order.flatMap((id) => {
@@ -951,6 +956,20 @@ export function App({client}: Props) {
     }
   };
 
+  const removeWorkspace = async (workspaceID: string) => {
+    const workspace = snapshot.workspaces.find((item) => item.id === workspaceID);
+    if (!workspace?.removable || workspaceRemoving) return;
+    setWorkspaceRemoving(true);
+    try {
+      await client.removeWorkspace(workspaceID);
+      setWorkspaceRemovalID("");
+    } catch (error) {
+      reportLocalError(error);
+    } finally {
+      setWorkspaceRemoving(false);
+    }
+  };
+
   const exportSession = async () => {
     try {
       const value = await client.exportSession();
@@ -1325,6 +1344,12 @@ export function App({client}: Props) {
                         </select>
                       </label>
                     )}
+                    <WorkspaceRemovalButton
+                      id={workspace.id}
+                      label={workspace.label}
+                      removable={workspace.removable}
+                      onRemove={setWorkspaceRemovalID}
+                    />
                   </div>
                   {expanded && (
                     <div className="sessionGroup">
@@ -2041,8 +2066,17 @@ export function App({client}: Props) {
         <WorkspaceDialog
           snapshot={snapshot}
           client={client}
+          onRemove={setWorkspaceRemovalID}
           onClose={() => setWorkspaceDialogOpen(false)}
           onError={reportLocalError}
+        />
+      )}
+      {workspaceRemoval && (
+        <WorkspaceRemovalDialog
+          label={workspaceRemoval.label}
+          busy={workspaceRemoving}
+          onCancel={() => setWorkspaceRemovalID("")}
+          onConfirm={() => void removeWorkspace(workspaceRemoval.id)}
         />
       )}
       {settingsOpen && (
@@ -2792,11 +2826,13 @@ function InputComposer({
 function WorkspaceDialog({
   snapshot,
   client,
+  onRemove,
   onClose,
   onError
 }: {
   snapshot: RuntimeSnapshot;
   client: RuntimeClient;
+  onRemove: (workspaceID: string) => void;
   onClose: () => void;
   onError: (error: unknown) => void;
 }) {
@@ -2867,20 +2903,13 @@ function WorkspaceDialog({
                   ? `${workspace.session_count} sessions`
                   : workspace.problem || "Starting"}</small>
               </button>
-              {workspace.removable &&
-                workspace.id !== snapshot.selectedWorkspaceID && (
-                <IconButton
-                  label={`Remove ${workspace.label}`}
-                  icon={<Trash2 size={15} />}
-                  danger
-                  disabled={busy}
-                  onClick={() => {
-                    if (window.confirm("Remove?")) {
-                      void client.removeWorkspace(workspace.id).catch(onError);
-                    }
-                  }}
-                />
-              )}
+              <WorkspaceRemovalButton
+                id={workspace.id}
+                label={workspace.label}
+                removable={workspace.removable}
+                disabled={busy}
+                onRemove={onRemove}
+              />
             </div>
           ))}
         </div>
@@ -2904,6 +2933,80 @@ function WorkspaceDialog({
         )}
       </section>
     </div>
+  );
+}
+
+function WorkspaceRemovalDialog({
+  label,
+  busy,
+  onCancel,
+  onConfirm
+}: {
+  label: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="contextDialogOverlay">
+      <section
+        className="contextDialog workspaceRemovalDialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="workspace-removal-title"
+        aria-describedby="workspace-removal-description"
+      >
+        <header className="contextDialogHeader">
+          <div>
+            <h2 id="workspace-removal-title">Remove workspace?</h2>
+          </div>
+        </header>
+        <p id="workspace-removal-description" className="workspaceRemovalMessage">
+          <strong>{label}</strong> will be removed from CodeHelper. Files and
+          session data remain on disk.
+        </p>
+        <div className="workspaceRemovalActions">
+          <button type="button" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="workspaceRemovalConfirm"
+            disabled={busy}
+            onClick={onConfirm}
+          >
+            {busy ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />}
+            Remove workspace
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function WorkspaceRemovalButton({
+  id,
+  label,
+  removable,
+  disabled,
+  onRemove
+}: {
+  id: string;
+  label: string;
+  removable: boolean;
+  disabled?: boolean;
+  onRemove: (workspaceID: string) => void;
+}) {
+  return (
+    <IconButton
+      label={removable
+        ? `Remove ${label}`
+        : `Default workspace ${label} cannot be removed`}
+      icon={<Trash2 size={14} />}
+      danger={removable}
+      disabled={disabled || !removable}
+      onClick={() => onRemove(id)}
+    />
   );
 }
 

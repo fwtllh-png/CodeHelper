@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type workspaceControllerFixture struct {
@@ -36,7 +39,7 @@ func (f workspaceControllerFixture) Remove(
 	return f.catalog, nil
 }
 
-func TestWorkspaceRemoveRequiresIdentityAndDelegates(t *testing.T) {
+func TestWorkspaceRemoveAllowsSelectedWorkspaceAndDelegates(t *testing.T) {
 	const host = "127.0.0.1:43210"
 	var removedID string
 	server, err := New(Options{
@@ -49,7 +52,7 @@ func TestWorkspaceRemoveRequiresIdentityAndDelegates(t *testing.T) {
 		Token:        "token",
 		Workspaces: workspaceControllerFixture{
 			catalog: WorkspaceCatalog{
-				Version: 1, DefaultWorkspaceID: "default",
+				Version:    1,
 				Workspaces: []WorkspaceDescriptor{{ID: "default", Ready: true}},
 			},
 			removedID: &removedID,
@@ -70,34 +73,12 @@ func TestWorkspaceRemoveRequiresIdentityAndDelegates(t *testing.T) {
 	selectedRequest.Header.Set(workspaceHeader, "secondary")
 	selectedResponse := httptest.NewRecorder()
 	server.Handler().ServeHTTP(selectedResponse, selectedRequest)
-	if selectedResponse.Code != http.StatusConflict || removedID != "" {
+	if selectedResponse.Code != http.StatusOK || removedID != "secondary" {
 		t.Fatalf(
 			"selected removal status=%d removed=%q body=%s",
 			selectedResponse.Code,
 			removedID,
 			selectedResponse.Body.String(),
-		)
-	}
-
-	request := httptest.NewRequest(
-		http.MethodPost,
-		"http://"+host+"/api/v1/workspace/remove",
-		strings.NewReader(`{"workspace_id":"secondary"}`),
-	)
-	request.Host = host
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", "Bearer token")
-	request.Header.Set("Idempotency-Key", "remove-secondary")
-	response := httptest.NewRecorder()
-	server.Handler().ServeHTTP(response, request)
-	if response.Code != http.StatusOK ||
-		removedID != "secondary" ||
-		!strings.Contains(response.Body.String(), `"default_workspace_id":"default"`) {
-		t.Fatalf(
-			"status=%d removed=%q body=%s",
-			response.Code,
-			removedID,
-			response.Body.String(),
 		)
 	}
 
@@ -116,6 +97,74 @@ func TestWorkspaceRemoveRequiresIdentityAndDelegates(t *testing.T) {
 	}
 }
 
+func TestServerAllowsRemovingEveryWorkspace(t *testing.T) {
+	server, err := New(Options{
+		Assets: fstest.MapFS{
+			"index.html": &fstest.MapFile{
+				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+			},
+		},
+		ExpectedHost: "127.0.0.1:43210",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeA := app.NewRuntime(app.Options{})
+	runtimeB := app.NewRuntime(app.Options{})
+	t.Cleanup(func() {
+		_ = runtimeA.Close(context.Background())
+		_ = runtimeB.Close(context.Background())
+	})
+	identityA, err := protocol.NewWorkspaceIdentity(
+		"file:///workspace/a", "/workspace/a", "",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityB, err := protocol.NewWorkspaceIdentity(
+		"file:///workspace/b", "/workspace/b", "",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Activate(Dependencies{
+		Runtime: runtimeA, WorkspaceRoot: "/workspace/a",
+		WorkspaceIdentity: identityA,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.AddWorkspace(Dependencies{
+		Runtime: runtimeB, WorkspaceRoot: "/workspace/b",
+		WorkspaceIdentity: identityB,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, workspace := range server.workspaceCatalog().Workspaces {
+		if !workspace.Removable {
+			t.Fatalf("Workspace is not removable: %+v", workspace)
+		}
+	}
+
+	if err := server.RemoveWorkspace(identityA.RootID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, found := server.workspaceSnapshot(identityA.RootID); found {
+		t.Fatal("removed initial Workspace remained routable")
+	}
+	if dependencies, _, found := server.workspaceSnapshot(identityB.RootID); !found || dependencies.WorkspaceRoot != "/workspace/b" {
+		t.Fatalf("replacement Workspace = %+v, found=%v", dependencies, found)
+	}
+	if err := server.RemoveWorkspace(identityB.RootID); err != nil {
+		t.Fatal(err)
+	}
+	if catalog := server.workspaceCatalog(); len(catalog.Workspaces) != 0 {
+		t.Fatalf("Workspace catalog after final removal = %+v", catalog)
+	}
+	if _, _, found := server.workspaceSnapshot(""); found {
+		t.Fatal("empty Workspace identity resolved implicitly")
+	}
+}
+
 func TestWorkspaceSelectDirectoryUsesNativePicker(t *testing.T) {
 	const host = "127.0.0.1:43210"
 	var initialPath string
@@ -128,7 +177,7 @@ func TestWorkspaceSelectDirectoryUsesNativePicker(t *testing.T) {
 		ExpectedHost: host,
 		Token:        "token",
 		Workspaces: workspaceControllerFixture{catalog: WorkspaceCatalog{
-			Version: 1, DefaultWorkspaceID: "current",
+			Version: 1,
 			Workspaces: []WorkspaceDescriptor{{
 				ID: "current", Root: "/workspace/current", Ready: true,
 			}},

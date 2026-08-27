@@ -89,8 +89,12 @@ func TestWorkspaceRegistryRemovePersistsAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, initialIdentity, err := normalizeWorkspaceRoot(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(catalog.Workspaces) != 1 ||
-		catalog.Workspaces[0].ID != manager.defaultID {
+		catalog.Workspaces[0].ID != initialIdentity.RootID {
 		t.Fatalf("Workspace catalog after removal = %+v", catalog)
 	}
 	if _, removeErr := manager.Remove(t.Context(), otherDescriptor.ID); removeErr != nil {
@@ -105,16 +109,30 @@ func TestWorkspaceRegistryRemovePersistsAndIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestWorkspaceRegistryRejectsRemovingDefault(t *testing.T) {
-	manager, err := newWorkspaceRuntimeManager(t.TempDir(), t.TempDir())
+func TestWorkspaceRegistryAllowsRemovingLastWorkspace(t *testing.T) {
+	dataDir := t.TempDir()
+	initial := t.TempDir()
+	manager, err := newWorkspaceRuntimeManager(dataDir, initial)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, removeErr := manager.Remove(
-		t.Context(),
-		manager.defaultID,
-	); removeErr == nil {
-		t.Fatal("default Workspace removal was accepted")
+	_, identity, err := normalizeWorkspaceRoot(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := manager.Remove(t.Context(), identity.RootID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Workspaces) != 0 {
+		t.Fatalf("Workspace catalog after last removal = %+v", catalog)
+	}
+	roots, err := loadWorkspaceRoots(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(roots) != 0 {
+		t.Fatalf("persisted Workspace roots = %#v", roots)
 	}
 }
 

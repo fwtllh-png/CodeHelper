@@ -271,7 +271,8 @@ func (h *webContractHost) Live(
 		return nil, err
 	}
 	if err := wsjson.Write(ctx, connection, map[string]any{
-		"type": "authenticate", "token": h.token, "cursor": since,
+		"type": "authenticate", "token": h.token,
+		"workspace_id": h.workspaceID, "cursor": since,
 	}); err != nil {
 		_ = connection.CloseNow()
 		return nil, err

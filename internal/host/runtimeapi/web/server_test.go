@@ -697,11 +697,12 @@ func TestRoutesSessionsAndEventsByWorkspace(t *testing.T) {
 	}
 	assertWorkspaceSessions(identityA.RootID, "session-a", "session-b")
 	assertWorkspaceSessions(identityB.RootID, "session-b", "session-a")
-	unscopedCreate := postWeb(
+	unscopedCreate := postWebWorkspace(
 		t,
 		server,
 		host,
 		token,
+		"",
 		"session/create",
 		`{"session_id":"unscoped","title":"Unscoped"}`,
 	)
@@ -880,7 +881,8 @@ func TestWebSocketDownlinkConcurrencyAndShutdown(t *testing.T) {
 		t.Context(),
 		connection,
 		map[string]any{
-			"type": "authenticate", "token": token, "cursor": 0,
+			"type": "authenticate", "token": token,
+			"workspace_id": identity.RootID, "cursor": 0,
 		},
 	); err != nil {
 		t.Fatal(err)
@@ -932,6 +934,7 @@ func TestArtifactRouteUsesTypedValidation(t *testing.T) {
 	request.Host = host
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+bootstrapToken(t, server, host))
+	request.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusBadRequest ||
@@ -1005,6 +1008,7 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	branchRequest.Host = host
 	branchRequest.Header.Set("Content-Type", "application/json")
 	branchRequest.Header.Set("Authorization", "Bearer "+token)
+	branchRequest.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
 	branchRequest.Header.Set("Idempotency-Key", "switch-feature")
 	branchResponse := httptest.NewRecorder()
 	server.Handler().ServeHTTP(branchResponse, branchRequest)
@@ -1091,6 +1095,7 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	)
 	contentRequest.Host = host
 	contentRequest.Header.Set("Authorization", "Bearer "+token)
+	contentRequest.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
 	contentResponse := httptest.NewRecorder()
 	server.Handler().ServeHTTP(contentResponse, contentRequest)
 	if contentResponse.Code != http.StatusOK ||
@@ -1146,6 +1151,7 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	)
 	imageRequest.Host = host
 	imageRequest.Header.Set("Authorization", "Bearer "+token)
+	imageRequest.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
 	imageContent := httptest.NewRecorder()
 	server.Handler().ServeHTTP(imageContent, imageRequest)
 	if imageContent.Code != http.StatusOK ||
@@ -1327,7 +1333,39 @@ func postWeb(
 	server *webhost.Server,
 	host, token, route, body string,
 ) *httptest.ResponseRecorder {
-	return postWebWorkspace(t, server, host, token, "", route, body)
+	return postWebWorkspace(
+		t,
+		server,
+		host,
+		token,
+		bootstrapWorkspaceID(t, server, host),
+		route,
+		body,
+	)
+}
+
+func bootstrapWorkspaceID(
+	t *testing.T,
+	server *webhost.Server,
+	host string,
+) string {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodGet, "http://"+host+"/api/v1/bootstrap", nil)
+	request.Host = host
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	var value struct {
+		WorkspaceCatalog webhost.WorkspaceCatalog `json:"workspace_catalog"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &value); err != nil {
+		t.Fatal(err)
+	}
+	for _, workspace := range value.WorkspaceCatalog.Workspaces {
+		if workspace.Ready {
+			return workspace.ID
+		}
+	}
+	return ""
 }
 
 func postWebWorkspace(

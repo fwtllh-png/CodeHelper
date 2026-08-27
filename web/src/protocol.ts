@@ -84,7 +84,6 @@ export interface WorkspaceGitState {
 
 export interface WorkspaceCatalog {
   version: number;
-  default_workspace_id: string;
   workspaces: WorkspaceDescriptor[];
 }
 

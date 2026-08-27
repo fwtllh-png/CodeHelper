@@ -37,7 +37,9 @@ codehelper
 make install PREFIX=/usr/local
 ```
 
-源码开发和调试仍可使用 `make start START_WORKSPACE=/path/to/project`；卸载使用
+源码开发和调试仍可使用 `make start START_WORKSPACE=/path/to/project`。该命令完成
+Web 和二进制构建后，会比较 Owner Lease 中的构建身份；若已有 Supervisor 来自旧构建，
+先等待其安全退出再启动新进程，避免继续提供旧的嵌入式 Web 资源。卸载使用
 `make uninstall`，并可通过相同的 `PREFIX` 指定安装位置。
 
 ## 3. 首次引导

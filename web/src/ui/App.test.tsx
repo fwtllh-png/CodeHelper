@@ -1,4 +1,12 @@
-import {act, cleanup, fireEvent, render, screen, waitFor} from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from "@testing-library/react";
 import {afterEach, describe, expect, it, vi} from "vitest";
 import type {RuntimeEvent, SessionSummary} from "../protocol";
 import {projectConversation} from "../projection/conversation";
@@ -274,7 +282,7 @@ describe("projectTranscript", () => {
     expect(screen.getByRole("dialog", {name: "Workspaces"})).toBeTruthy();
   });
 
-  it("confirms removal of a non-default Workspace", async () => {
+  it("removes a Workspace from the sidebar after explicit confirmation", async () => {
     const value = snapshot();
     value.workspaces = [
       ...value.workspaces,
@@ -288,23 +296,78 @@ describe("projectTranscript", () => {
       }
     ];
     const client = mockClient(value);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(true);
     render(<App client={client} />);
 
-    fireEvent.click(screen.getByRole("button", {name: "Add workspace"}));
-    expect(screen.queryByRole(
-      "button",
-      {name: "Remove workspace"}
-    )).toBeNull();
     fireEvent.click(screen.getByRole(
       "button",
       {name: "Remove secondary"}
+    ));
+    expect(client.removeWorkspace).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog", {name: "Remove workspace?"}))
+      .toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+    expect(client.removeWorkspace).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole(
+      "button",
+      {name: "Remove secondary"}
+    ));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole(
+      "button",
+      {name: "Remove workspace"}
     ));
 
     await waitFor(() => {
       expect(client.removeWorkspace).toHaveBeenCalledWith("workspace-secondary");
     });
-    expect(confirm).toHaveBeenCalledWith("Remove?");
+  });
+
+  it("allows removing the only Workspace after explicit confirmation", async () => {
+    const client = mockClient(snapshot());
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Remove workspace"}));
+    expect(client.removeWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole(
+      "button",
+      {name: "Remove workspace"}
+    ));
+
+    await waitFor(() => {
+      expect(client.removeWorkspace).toHaveBeenCalledWith("workspace-id");
+    });
+  });
+
+  it("delegates removal of the selected Workspace after confirmation", async () => {
+    const value = snapshot();
+    value.workspaces = [
+      ...value.workspaces,
+      {
+        id: "workspace-secondary",
+        root: "/workspace/secondary",
+        label: "secondary",
+        ready: true,
+        removable: true,
+        session_count: 0
+      }
+    ];
+    value.selectedWorkspaceID = "workspace-secondary";
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getByRole(
+      "button",
+      {name: "Remove secondary"}
+    ));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole(
+      "button",
+      {name: "Remove workspace"}
+    ));
+
+    await waitFor(() => {
+      expect(client.removeWorkspace).toHaveBeenCalledWith("workspace-secondary");
+    });
   });
 
   it("shows and switches the current Git branch", async () => {
@@ -2244,7 +2307,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
 			root: "/workspace",
 			label: "workspace",
 			ready: true,
-			removable: false,
+			removable: true,
 			session_count: 1
 		}],
 		selectedWorkspaceID: "workspace-id",
@@ -2318,7 +2381,6 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
     refreshSessions: vi.fn(async () => {}),
 		refreshWorkspaces: vi.fn(async () => ({
 			version: 1,
-			default_workspace_id: "workspace-id",
 			workspaces: value.workspaces
 		})),
 		addWorkspace: vi.fn(async () => {}),

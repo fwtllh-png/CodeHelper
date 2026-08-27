@@ -16,12 +16,15 @@ codehelper
 当前目录自动成为 Workspace，并自动打开浏览器。服务只监听 `127.0.0.1`，默认选择
 可用端口。若 Web Supervisor 已运行，再次从其他目录执行 `codehelper` 会把当前目录
 注册到已有进程，并直接打开对应 Workspace。`make start` 仅作为源码开发入口保留。
+它会使用 `--replace-owner` 比较构建身份并重启旧的开发 Supervisor；直接执行已安装的
+`codehelper` 仍复用现有 Supervisor。
 
 ## 启动参数
 
 | 参数 | 说明 |
 | --- | --- |
 | `--workspace PATH` | Workspace 根目录；未设置时使用配置值 |
+| `--replace-owner` | 构建身份变化时重启已有 Web Owner；仅供源码开发启动使用 |
 | `--config PATH` | TOML 配置文件 |
 | `--data-dir PATH` | 持久状态目录 |
 | `--host 127.0.0.1` | 监听地址；只接受 Loopback |
@@ -67,10 +70,10 @@ Workspace Catalog 和 Session 摘要在页面重新可见时刷新，不持续�
 Trajectory 也由新 Runtime Event 驱动增量 Trace 查询。裸 Supervisor URL 不隐式选择
 默认 Workspace；用户必须先选择一个 Ready Workspace，页面和 Host 才允许创建 Session。
 从项目目录执行 `codehelper` 时，启动器会把该目录作为显式 Workspace 参数打开。
-Workspace 管理界面可以移除后来注册的 Workspace。移除只会注销并关闭对应 Runtime，
-不会删除本机目录、Git 内容或持久化 Session；作为 Supervisor 启动根和恢复锚点的默认
-Workspace 不可移除。当前选中的 Workspace 也不能直接移除，需要先切换到其他
-Workspace，避免删除请求切断自身正在使用的 Runtime。
+Workspace 管理界面可以移除任意 Workspace。移除只会注销并关闭对应 Runtime，不会
+删除本机目录、Git 内容或持久化 Session。移除当前 Workspace 后，Web 自动切换到另一
+个 Ready Workspace；移除最后一个后进入 Workspace 选择空态。所有 Runtime HTTP RPC、
+内容下载和 WebSocket 鉴权都必须携带显式 Workspace ID，不存在默认 Workspace 回退。
 Git Workspace 会在侧栏显示当前本地分支，并可从本地分支列表直接切换。切换在沙箱内
 执行，活动 Turn 或待处理 Operation 存在时拒绝；Git 自身仍负责拒绝会覆盖本地修改的
 切换。

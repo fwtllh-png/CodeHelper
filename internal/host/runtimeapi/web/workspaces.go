@@ -29,9 +29,8 @@ type WorkspaceDescriptor struct {
 }
 
 type WorkspaceCatalog struct {
-	Version            int                   `json:"version"`
-	DefaultWorkspaceID string                `json:"default_workspace_id"`
-	Workspaces         []WorkspaceDescriptor `json:"workspaces"`
+	Version    int                   `json:"version"`
+	Workspaces []WorkspaceDescriptor `json:"workspaces"`
 }
 
 type WorkspaceController interface {
@@ -124,14 +123,6 @@ func (s *Server) workspaceRemove(r *http.Request) (any, error) {
 			nil,
 		)
 	}
-	if request.WorkspaceID == strings.TrimSpace(r.Header.Get(workspaceHeader)) {
-		return nil, protocol.NewProblem(
-			protocol.CodeConflict,
-			"select another Workspace before removing this one",
-			false,
-			nil,
-		)
-	}
 	catalog, err := s.workspaceControl.Remove(r.Context(), request.WorkspaceID)
 	if err != nil {
 		var problem *protocol.Problem
@@ -170,11 +161,8 @@ func (s *Server) workspacePickDirectory(r *http.Request) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, workspace := range catalog.Workspaces {
-			if workspace.ID == catalog.DefaultWorkspaceID {
-				initialPath = workspace.Root
-				break
-			}
+		if len(catalog.Workspaces) > 0 {
+			initialPath = catalog.Workspaces[0].Root
 		}
 	}
 	selected, cancelled, err := s.pickDirectory(r.Context(), initialPath)
@@ -195,15 +183,14 @@ func (s *Server) workspaceCatalog() WorkspaceCatalog {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result := WorkspaceCatalog{
-		Version:            WorkspaceCatalogVersion,
-		DefaultWorkspaceID: s.defaultWorkspaceID,
-		Workspaces:         make([]WorkspaceDescriptor, 0, len(s.workspaces)),
+		Version:    WorkspaceCatalogVersion,
+		Workspaces: make([]WorkspaceDescriptor, 0, len(s.workspaces)),
 	}
 	for id, dependencies := range s.workspaces {
 		result.Workspaces = append(result.Workspaces, WorkspaceDescriptor{
 			ID: id, Root: dependencies.WorkspaceRoot,
 			Label: filepath.Base(dependencies.WorkspaceRoot), Ready: true,
-			Removable: id != s.defaultWorkspaceID,
+			Removable: true,
 		})
 	}
 	sort.Slice(result.Workspaces, func(i, j int) bool {
@@ -219,10 +206,7 @@ func (s *Server) workspaceSnapshot(
 	defer s.mu.RUnlock()
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
-		workspaceID = s.defaultWorkspaceID
-	}
-	if workspaceID == "" {
-		return s.dependencies, s.bootProblem, false
+		return Dependencies{}, s.bootProblem, false
 	}
 	dependencies, found := s.workspaces[workspaceID]
 	return dependencies, s.bootProblem, found

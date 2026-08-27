@@ -466,6 +466,19 @@ func openWebSocket(
 	cursor protocol.Cursor,
 ) *websocket.Conn {
 	t.Helper()
+	response, err := http.Get(origin + "/api/v1/bootstrap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bootstrap bootstrapResponse
+	if err := decodeJSON(response.Body, &bootstrap); err != nil {
+		_ = response.Body.Close()
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if bootstrap.Workspace == nil {
+		t.Fatal("bootstrap omitted Workspace identity")
+	}
 	connection, _, err := websocket.Dial(
 		t.Context(),
 		"ws"+origin[len("http"):]+"/api/v1/events",
@@ -475,7 +488,8 @@ func openWebSocket(
 		t.Fatal(err)
 	}
 	if err := wsjson.Write(t.Context(), connection, authFrame{
-		Type: "authenticate", Token: token, Cursor: cursor,
+		Type: "authenticate", Token: token,
+		WorkspaceID: bootstrap.Workspace.RootID, Cursor: cursor,
 	}); err != nil {
 		_ = connection.CloseNow()
 		t.Fatal(err)
