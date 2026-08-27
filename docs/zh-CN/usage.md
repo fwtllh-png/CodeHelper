@@ -57,8 +57,9 @@ Session 侧栏按 Workspace 分组，并将搜索、归档与行级操作渐进�
 `turn.start` 被接受后，从用户可见 Prompt 生成单行、UTF-8 安全的短标题；已有
 `New Chat` 会话在首次激活时按同一规则回填。显式重命名的标题不会被后续 Prompt 覆盖。
 
-侧栏的文件夹加号打开 Workspace 管理界面。输入本机目录后，Supervisor 会规范化物理
-路径、持久化 Registry，并为该目录构造独立 Runtime。HTTP RPC 和内容下载通过
+侧栏的文件夹加号打开 Workspace 管理界面。点击 `Choose folder` 后由本地 Host 打开
+操作系统目录选择器；用户选中的目录由 Supervisor 规范化物理路径、持久化 Registry，
+并为该目录构造独立 Runtime，不需要在浏览器中手工输入路径。HTTP RPC 和内容下载通过
 `X-CodeHelper-Workspace-ID` 路由，WebSocket 在鉴权帧中携带 `workspace_id`；未知
 Workspace、跨 Workspace Session 和内容句柄均拒绝访问。浏览器为每个 Workspace
 分别保存事件 Cursor、选中 Session、草稿和反馈。当前 Workspace 使用实时事件流；
@@ -66,6 +67,10 @@ Workspace Catalog 和 Session 摘要在页面重新可见时刷新，不持续�
 Trajectory 也由新 Runtime Event 驱动增量 Trace 查询。裸 Supervisor URL 不隐式选择
 默认 Workspace；用户必须先选择一个 Ready Workspace，页面和 Host 才允许创建 Session。
 从项目目录执行 `codehelper` 时，启动器会把该目录作为显式 Workspace 参数打开。
+Workspace 管理界面可以移除后来注册的 Workspace。移除只会注销并关闭对应 Runtime，
+不会删除本机目录、Git 内容或持久化 Session；作为 Supervisor 启动根和恢复锚点的默认
+Workspace 不可移除。当前选中的 Workspace 也不能直接移除，需要先切换到其他
+Workspace，避免删除请求切断自身正在使用的 Runtime。
 Git Workspace 会在侧栏显示当前本地分支，并可从本地分支列表直接切换。切换在沙箱内
 执行，活动 Turn 或待处理 Operation 存在时拒绝；Git 自身仍负责拒绝会覆盖本地修改的
 切换。

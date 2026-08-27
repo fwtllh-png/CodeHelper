@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -21,6 +22,7 @@ type WorkspaceDescriptor struct {
 	Root         string                   `json:"root"`
 	Label        string                   `json:"label"`
 	Ready        bool                     `json:"ready"`
+	Removable    bool                     `json:"removable"`
 	SessionCount int                      `json:"session_count"`
 	Problem      string                   `json:"problem,omitempty"`
 	Git          *workspacequery.GitState `json:"git,omitempty"`
@@ -35,6 +37,7 @@ type WorkspaceCatalog struct {
 type WorkspaceController interface {
 	List(context.Context) (WorkspaceCatalog, error)
 	Add(context.Context, string) (WorkspaceDescriptor, error)
+	Remove(context.Context, string) (WorkspaceCatalog, error)
 }
 
 type WorkspaceAddRequest struct {
@@ -43,6 +46,15 @@ type WorkspaceAddRequest struct {
 
 type WorkspaceAddResult struct {
 	Workspace WorkspaceDescriptor `json:"workspace"`
+}
+
+type WorkspaceRemoveRequest struct {
+	WorkspaceID string `json:"workspace_id"`
+}
+
+type WorkspaceDirectoryResult struct {
+	Path      string `json:"path,omitempty"`
+	Cancelled bool   `json:"cancelled,omitempty"`
 }
 
 func (s *Server) workspaceList(r *http.Request) (any, error) {
@@ -87,6 +99,98 @@ func (s *Server) workspaceAdd(r *http.Request) (any, error) {
 	return WorkspaceAddResult{Workspace: workspace}, nil
 }
 
+func (s *Server) workspaceRemove(r *http.Request) (any, error) {
+	if s.workspaceControl == nil {
+		return nil, unavailable("workspace management is unavailable")
+	}
+	if strings.TrimSpace(r.Header.Get("Idempotency-Key")) == "" {
+		return nil, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			"Idempotency-Key header is required",
+			false,
+			nil,
+		)
+	}
+	var request WorkspaceRemoveRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	request.WorkspaceID = strings.TrimSpace(request.WorkspaceID)
+	if request.WorkspaceID == "" {
+		return nil, protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			"workspace_id is required",
+			false,
+			nil,
+		)
+	}
+	if request.WorkspaceID == strings.TrimSpace(r.Header.Get(workspaceHeader)) {
+		return nil, protocol.NewProblem(
+			protocol.CodeConflict,
+			"select another Workspace before removing this one",
+			false,
+			nil,
+		)
+	}
+	catalog, err := s.workspaceControl.Remove(r.Context(), request.WorkspaceID)
+	if err != nil {
+		var problem *protocol.Problem
+		if errors.As(err, &problem) {
+			return nil, err
+		}
+		return nil, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			err.Error(),
+			true,
+			err,
+		)
+	}
+	return catalog, nil
+}
+
+func (s *Server) workspacePickDirectory(r *http.Request) (any, error) {
+	if err := s.decodeRequest(r, &struct{}{}); err != nil {
+		return nil, err
+	}
+	if s.pickDirectory == nil {
+		return nil, unavailable("native directory selection is unavailable")
+	}
+	if !s.directoryPickerMu.TryLock() {
+		return nil, protocol.NewProblem(
+			protocol.CodeConflict,
+			"a directory selection is already open",
+			false,
+			nil,
+		)
+	}
+	defer s.directoryPickerMu.Unlock()
+	initialPath, _ := os.UserHomeDir()
+	if s.workspaceControl != nil {
+		catalog, err := s.workspaceControl.List(r.Context())
+		if err != nil {
+			return nil, err
+		}
+		for _, workspace := range catalog.Workspaces {
+			if workspace.ID == catalog.DefaultWorkspaceID {
+				initialPath = workspace.Root
+				break
+			}
+		}
+	}
+	selected, cancelled, err := s.pickDirectory(r.Context(), initialPath)
+	if err != nil {
+		return nil, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			err.Error(),
+			true,
+			err,
+		)
+	}
+	return WorkspaceDirectoryResult{
+		Path: selected, Cancelled: cancelled,
+	}, nil
+}
+
 func (s *Server) workspaceCatalog() WorkspaceCatalog {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -99,6 +203,7 @@ func (s *Server) workspaceCatalog() WorkspaceCatalog {
 		result.Workspaces = append(result.Workspaces, WorkspaceDescriptor{
 			ID: id, Root: dependencies.WorkspaceRoot,
 			Label: filepath.Base(dependencies.WorkspaceRoot), Ready: true,
+			Removable: id != s.defaultWorkspaceID,
 		})
 	}
 	sort.Slice(result.Workspaces, func(i, j int) bool {

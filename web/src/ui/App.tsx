@@ -2779,16 +2779,17 @@ function WorkspaceDialog({
   onClose: () => void;
   onError: (error: unknown) => void;
 }) {
-  const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const add = async () => {
-    const value = path.trim();
-    if (!value || busy) return;
+  const choose = async () => {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
-      await client.addWorkspace(value);
+      const selection = await client.pickWorkspaceDirectory();
+      if (selection.cancelled) return;
+      if (!selection.path) throw new Error("No folder was selected");
+      await client.addWorkspace(selection.path);
       onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -2822,59 +2823,59 @@ function WorkspaceDialog({
         </header>
         <div className="contextResults workspaceChoices">
           {snapshot.workspaces.map((workspace) => (
-            <button
-              type="button"
+            <div
+              className="workspaceHeader"
               key={workspace.id}
               data-active={
                 workspace.id === snapshot.selectedWorkspaceID || undefined
               }
-              disabled={!workspace.ready}
-              onClick={() => void client.selectWorkspace(workspace.id)
-                .then(onClose)
-                .catch((reason) => {
-                  setError(reason instanceof Error ? reason.message : String(reason));
-                  onError(reason);
-                })}
             >
-              <FolderOpen size={16} />
-              <span>
-                <strong>{workspace.label}</strong>
-                <small>{workspace.root}</small>
-              </span>
-              <small>{workspace.ready
-                ? `${workspace.session_count} sessions`
-                : workspace.problem || "Starting"}</small>
-            </button>
+              <button
+                className="workspaceRow"
+                disabled={!workspace.ready || busy}
+                onClick={() => void client.selectWorkspace(workspace.id)
+                  .then(onClose)
+                  .catch((reason) => {
+                    setError(reason instanceof Error ? reason.message : String(reason));
+                    onError(reason);
+                  })}
+              >
+                <FolderOpen size={16} />
+                <span className="sessionTitle">{workspace.label}</span>
+                <small>{workspace.ready
+                  ? `${workspace.session_count} sessions`
+                  : workspace.problem || "Starting"}</small>
+              </button>
+              {workspace.removable &&
+                workspace.id !== snapshot.selectedWorkspaceID && (
+                <IconButton
+                  label={`Remove ${workspace.label}`}
+                  icon={<Trash2 size={15} />}
+                  danger
+                  disabled={busy}
+                  onClick={() => {
+                    if (window.confirm("Remove?")) {
+                      void client.removeWorkspace(workspace.id).catch(onError);
+                    }
+                  }}
+                />
+              )}
+            </div>
           ))}
         </div>
-        <form
-          className="startupFields workspaceAdd"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void add();
-          }}
-        >
-          <label className="selectField">
-            <span>Local folder path</span>
-            <input
-              value={path}
-              autoFocus
-              placeholder="/path/to/project"
-              disabled={busy}
-              onChange={(event) => setPath(event.target.value)}
-            />
-          </label>
+        <div className="workspaceAdd">
           <button
             className="startupCreate"
-            type="submit"
-            disabled={!path.trim() || busy}
+            type="button"
+            disabled={busy}
+            onClick={() => void choose()}
           >
             {busy
               ? <LoaderCircle className="spin" size={16} />
               : <FolderPlus size={16} />}
-            <span>{busy ? "Opening..." : "Open workspace"}</span>
+            <span>{busy ? "Working..." : "Choose folder"}</span>
           </button>
-        </form>
+        </div>
         {error && (
           <p className="startupError workspaceDialogError" role="alert">
             {error}

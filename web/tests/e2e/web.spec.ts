@@ -278,12 +278,17 @@ test("adds a second Workspace and keeps its Sessions isolated", async ({page}) =
     );
     execFileSync("git", ["init", "-q"], {cwd: secondary});
     execFileSync("git", ["add", "README.md"], {cwd: secondary});
+    execFileSync(path.join(repositoryRoot, "bin/codehelper"), [
+      "--workspace", secondary,
+      "--data-dir", dataDir,
+      "--provider-fixture", path.join(repositoryRoot, "testdata/providers/openai"),
+      "--provider", "openai",
+      "--model", "fixture-model",
+      "--enable-tools=false",
+      "--port", "0",
+      "--no-open"
+    ], {cwd: repositoryRoot});
     await page.goto(baseURL);
-
-    await page.getByRole("button", {name: "Add workspace"}).click();
-    await expect(page.getByRole("dialog", {name: "Workspaces"})).toBeVisible();
-    await page.getByLabel("Local folder path").fill(secondary);
-    await page.getByRole("button", {name: "Open workspace"}).click();
 
     const primaryGroup = page.locator(".workspaceGroup").filter({
       hasText: path.basename(workspaceDir)
@@ -292,6 +297,7 @@ test("adds a second Workspace and keeps its Sessions isolated", async ({page}) =
       hasText: path.basename(secondary)
     });
     await expect(page.locator(".workspaceGroup")).toHaveCount(2);
+    await secondaryGroup.locator(".workspaceRow").click();
     await expect(secondaryGroup.locator(".workspaceHeader"))
       .toHaveAttribute("data-active", "true");
     await page.getByRole("button", {name: "Create session"}).click();
@@ -303,6 +309,17 @@ test("adds a second Workspace and keeps its Sessions isolated", async ({page}) =
     await page.getByRole("button", {name: "Create session"}).click();
     await expect(primaryGroup.locator(".sessionRow")).toHaveCount(1);
     await expect(secondaryGroup.locator(".sessionRow")).toHaveCount(1);
+
+    await page.getByRole("button", {name: "Add workspace"}).click();
+    await expect(page.getByRole("dialog", {name: "Workspaces"})).toBeVisible();
+    await expect(page.getByRole("button", {
+      name: `Remove ${path.basename(workspaceDir)}`
+    })).toHaveCount(0);
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", {
+      name: `Remove ${path.basename(secondary)}`
+    }).click();
+    await expect(page.locator(".workspaceGroup")).toHaveCount(1);
 
     await page.setViewportSize({width: 390, height: 844});
     await expect.poll(() => page.evaluate(

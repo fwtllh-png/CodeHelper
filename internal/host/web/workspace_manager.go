@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -41,6 +42,7 @@ type workspaceRuntimeManager struct {
 	selection webSetupSelection
 	reference credential.Reference
 	roots     []string
+	defaultID string
 	active    map[string]*preparedWebRuntime
 	problems  map[string]string
 	loading   map[string]chan struct{}
@@ -56,13 +58,13 @@ func newWorkspaceRuntimeManager(
 	if err != nil {
 		return nil, err
 	}
-	initialRoot, _, err = normalizeWorkspaceRoot(initialRoot)
+	initialRoot, identity, err := normalizeWorkspaceRoot(initialRoot)
 	if err != nil {
 		return nil, err
 	}
 	roots = prependUniqueRoot(roots, initialRoot)
 	return &workspaceRuntimeManager{
-		dataDir: dataDir, roots: roots,
+		dataDir: dataDir, roots: roots, defaultID: identity.RootID,
 		active:   make(map[string]*preparedWebRuntime),
 		problems: make(map[string]string),
 		loading:  make(map[string]chan struct{}),
@@ -126,18 +128,9 @@ func (m *workspaceRuntimeManager) List(
 ) (webhost.WorkspaceCatalog, error) {
 	m.mu.Lock()
 	roots := append([]string(nil), m.roots...)
-	active := make(map[string]*preparedWebRuntime, len(m.active))
-	for id, runtime := range m.active {
-		active[id] = runtime
-	}
-	problems := make(map[string]string, len(m.problems))
-	for id, problem := range m.problems {
-		problems[id] = problem
-	}
-	defaultID := ""
-	if m.server != nil {
-		defaultID = m.server.DefaultWorkspaceID()
-	}
+	active := maps.Clone(m.active)
+	problems := maps.Clone(m.problems)
+	defaultID := m.defaultID
 	m.mu.Unlock()
 
 	result := webhost.WorkspaceCatalog{
@@ -147,15 +140,22 @@ func (m *workspaceRuntimeManager) List(
 	for _, root := range roots {
 		_, identity, err := normalizeWorkspaceRoot(root)
 		if err != nil {
-			result.Workspaces = append(result.Workspaces, webhost.WorkspaceDescriptor{
+			storedIdentity, identityErr := workspaceIdentityForStoredRoot(root)
+			descriptor := webhost.WorkspaceDescriptor{
 				Root: root, Label: filepath.Base(root), Problem: err.Error(),
-			})
+			}
+			if identityErr == nil {
+				descriptor.ID = storedIdentity.RootID
+				descriptor.Removable = storedIdentity.RootID != defaultID
+			}
+			result.Workspaces = append(result.Workspaces, descriptor)
 			continue
 		}
 		descriptor := webhost.WorkspaceDescriptor{
 			ID: identity.RootID, Root: identity.RuntimePath,
-			Label:   filepath.Base(identity.RuntimePath),
-			Problem: problems[identity.RootID],
+			Label:     filepath.Base(identity.RuntimePath),
+			Removable: identity.RootID != defaultID,
+			Problem:   problems[identity.RootID],
 		}
 		if runtime := active[identity.RootID]; runtime != nil {
 			descriptor.Ready = true
@@ -217,6 +217,7 @@ func (m *workspaceRuntimeManager) Add(
 			}
 			return webhost.WorkspaceDescriptor{
 				ID: identity.RootID, Root: root, Label: filepath.Base(root),
+				Removable: identity.RootID != m.defaultID,
 			}, nil
 		}
 		loading := make(chan struct{})
@@ -274,6 +275,93 @@ func (m *workspaceRuntimeManager) Add(
 	}
 }
 
+func (m *workspaceRuntimeManager) Remove(
+	ctx context.Context,
+	workspaceID string,
+) (webhost.WorkspaceCatalog, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return webhost.WorkspaceCatalog{}, invalidSetup("Workspace ID is required")
+	}
+	m.mu.Lock()
+	if m.closing {
+		m.mu.Unlock()
+		return webhost.WorkspaceCatalog{}, errors.New("Web Host is shutting down")
+	}
+	if workspaceID == m.defaultID {
+		m.mu.Unlock()
+		return webhost.WorkspaceCatalog{}, protocol.NewProblem(
+			protocol.CodeConflict,
+			"the default Workspace cannot be removed",
+			false,
+			nil,
+		)
+	}
+	if m.loading[workspaceID] != nil {
+		m.mu.Unlock()
+		return webhost.WorkspaceCatalog{}, protocol.NewProblem(
+			protocol.CodeConflict,
+			"Workspace Runtime is still starting",
+			true,
+			nil,
+		)
+	}
+	rootIndex := -1
+	for index, root := range m.roots {
+		identity, identityErr := workspaceIdentityForStoredRoot(root)
+		if identityErr == nil && identity.RootID == workspaceID {
+			rootIndex = index
+			break
+		}
+	}
+	if rootIndex < 0 {
+		m.mu.Unlock()
+		return m.List(ctx)
+	}
+	previousRoots := append([]string(nil), m.roots...)
+	nextRoots := append([]string(nil), m.roots[:rootIndex]...)
+	nextRoots = append(nextRoots, m.roots[rootIndex+1:]...)
+	runtime := m.active[workspaceID]
+	if runtime != nil && runtime.application != nil &&
+		runtime.application.Runtime != nil {
+		activity := runtime.application.Runtime.Snapshot(ctx)
+		if activity.ActiveTurns != 0 ||
+			activity.ActiveProviderCalls != 0 ||
+			activity.ActiveToolExecutions != 0 ||
+			activity.PendingApprovals != 0 ||
+			activity.PendingInputs != 0 ||
+			activity.PendingOperations != 0 {
+			m.mu.Unlock()
+			return webhost.WorkspaceCatalog{}, protocol.NewProblem(
+				protocol.CodeConflict,
+				"Workspace has active or pending work",
+				true,
+				nil,
+			)
+		}
+	}
+	if err := saveWorkspaceRoots(m.dataDir, nextRoots); err != nil {
+		m.mu.Unlock()
+		return webhost.WorkspaceCatalog{}, err
+	}
+	if runtime != nil && m.server != nil {
+		if err := m.server.RemoveWorkspace(workspaceID); err != nil {
+			rollbackErr := saveWorkspaceRoots(m.dataDir, previousRoots)
+			m.mu.Unlock()
+			return webhost.WorkspaceCatalog{}, errors.Join(err, rollbackErr)
+		}
+	}
+	m.roots = nextRoots
+	delete(m.active, workspaceID)
+	delete(m.problems, workspaceID)
+	m.mu.Unlock()
+
+	if runtime != nil {
+		runtime.close()
+	}
+	return m.List(ctx)
+}
+
 func (m *workspaceRuntimeManager) descriptor(
 	ctx context.Context,
 	identity protocol.WorkspaceIdentity,
@@ -282,6 +370,7 @@ func (m *workspaceRuntimeManager) descriptor(
 	descriptor := webhost.WorkspaceDescriptor{
 		ID: identity.RootID, Root: identity.RuntimePath,
 		Label: filepath.Base(identity.RuntimePath), Ready: true,
+		Removable: identity.RootID != m.defaultID,
 	}
 	if workspace := runtime.application.WorkspaceQuery(); workspace != nil {
 		if git, err := workspace.GitState(ctx); err == nil {
@@ -386,15 +475,23 @@ func normalizeWorkspaceRoot(
 	if !info.IsDir() {
 		return "", protocol.WorkspaceIdentity{}, errors.New("Workspace path is not a directory")
 	}
-	identity, err := protocol.NewWorkspaceIdentity(
-		(&url.URL{Scheme: "file", Path: root}).String(),
-		root,
-		"",
-	)
+	identity, err := workspaceIdentityForStoredRoot(root)
 	if err != nil {
 		return "", protocol.WorkspaceIdentity{}, err
 	}
 	return root, identity, nil
+}
+
+func workspaceIdentityForStoredRoot(root string) (protocol.WorkspaceIdentity, error) {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" || root == "." || !filepath.IsAbs(root) {
+		return protocol.WorkspaceIdentity{}, errors.New("Workspace root is invalid")
+	}
+	return protocol.NewWorkspaceIdentity(
+		(&url.URL{Scheme: "file", Path: root}).String(),
+		root,
+		"",
+	)
 }
 
 func prependUniqueRoot(roots []string, root string) []string {

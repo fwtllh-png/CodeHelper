@@ -201,6 +201,21 @@ func TestRunContextStartsAndStopsWebHost(t *testing.T) {
 			t.Fatalf("restored Workspace is not ready: %+v", descriptor)
 		}
 	}
+	removeWorkspace(
+		t,
+		restartURL,
+		fetchSupervisorToken(t, restartURL),
+		secondIdentity.RootID,
+	)
+	removedCatalog := fetchWorkspaceCatalog(
+		t,
+		restartURL,
+		fetchSupervisorToken(t, restartURL),
+	)
+	if len(removedCatalog.Workspaces) != 1 ||
+		removedCatalog.Workspaces[0].ID != removedCatalog.DefaultWorkspaceID {
+		t.Fatalf("Workspace catalog after removal = %+v", removedCatalog)
+	}
 	stopRestart()
 	select {
 	case code := <-restartExit:
@@ -382,6 +397,41 @@ func fetchWorkspaceCatalog(
 		t.Fatal(err)
 	}
 	return envelope.Result
+}
+
+func removeWorkspace(
+	t *testing.T,
+	rawURL string,
+	token string,
+	workspaceID string,
+) {
+	t.Helper()
+	body, err := json.Marshal(webhost.WorkspaceRemoveRequest{
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := http.NewRequest(
+		http.MethodPost,
+		strings.TrimSuffix(rawURL, "/")+"/api/v1/workspace/remove",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Idempotency-Key", "remove-"+workspaceID)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		payload, _ := io.ReadAll(response.Body)
+		t.Fatalf("Workspace remove status = %d body=%s", response.StatusCode, payload)
+	}
 }
 
 func waitForReadyURL(t *testing.T, reader io.Reader) string {

@@ -247,15 +247,64 @@ describe("projectTranscript", () => {
     render(<App client={client} />);
 
     fireEvent.click(screen.getByRole("button", {name: "Add workspace"}));
-    expect(screen.getByRole("dialog", {name: "Workspaces"})).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Local folder path"), {
-      target: {value: "/workspace/secondary"}
-    });
-    fireEvent.click(screen.getByRole("button", {name: "Open workspace"}));
+    const dialog = screen.getByRole("dialog", {name: "Workspaces"});
+    expect(dialog.querySelector("input")).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Choose folder"}));
 
     await waitFor(() => {
+      expect(client.pickWorkspaceDirectory).toHaveBeenCalledTimes(1);
       expect(client.addWorkspace).toHaveBeenCalledWith("/workspace/secondary");
     });
+  });
+
+  it("keeps the Workspace selector open when native selection is cancelled", async () => {
+    const client = mockClient(snapshot());
+    vi.mocked(client.pickWorkspaceDirectory).mockResolvedValueOnce({
+      cancelled: true
+    });
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Add workspace"}));
+    fireEvent.click(screen.getByRole("button", {name: "Choose folder"}));
+
+    await waitFor(() => {
+      expect(client.pickWorkspaceDirectory).toHaveBeenCalledTimes(1);
+    });
+    expect(client.addWorkspace).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", {name: "Workspaces"})).toBeTruthy();
+  });
+
+  it("confirms removal of a non-default Workspace", async () => {
+    const value = snapshot();
+    value.workspaces = [
+      ...value.workspaces,
+      {
+        id: "workspace-secondary",
+        root: "/workspace/secondary",
+        label: "secondary",
+        ready: true,
+        removable: true,
+        session_count: 0
+      }
+    ];
+    const client = mockClient(value);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(true);
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Add workspace"}));
+    expect(screen.queryByRole(
+      "button",
+      {name: "Remove workspace"}
+    )).toBeNull();
+    fireEvent.click(screen.getByRole(
+      "button",
+      {name: "Remove secondary"}
+    ));
+
+    await waitFor(() => {
+      expect(client.removeWorkspace).toHaveBeenCalledWith("workspace-secondary");
+    });
+    expect(confirm).toHaveBeenCalledWith("Remove?");
   });
 
   it("shows and switches the current Git branch", async () => {
@@ -2195,6 +2244,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
 			root: "/workspace",
 			label: "workspace",
 			ready: true,
+			removable: false,
 			session_count: 1
 		}],
 		selectedWorkspaceID: "workspace-id",
@@ -2272,6 +2322,10 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
 			workspaces: value.workspaces
 		})),
 		addWorkspace: vi.fn(async () => {}),
+		removeWorkspace: vi.fn(async () => {}),
+		pickWorkspaceDirectory: vi.fn(async () => ({
+			path: "/workspace/secondary"
+		})),
 		selectWorkspace: vi.fn(async () => {}),
     switchWorkspaceBranch: vi.fn(async () => {}),
     setArchivedVisible: vi.fn(async () => {}),

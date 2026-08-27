@@ -28,7 +28,21 @@ type HostContract struct {
 var unaryRouteContracts = []RouteContract{
 	setupRPC("setup/apply", "setup_request", "setup_result", true, true),
 	setupRPC("workspace/list", "empty", "workspace_catalog", false, false),
+	setupRPC(
+		"workspace/select-directory",
+		"empty",
+		"workspace_directory",
+		false,
+		false,
+	),
 	setupRPC("workspace/add", "workspace_add", "workspace_add_result", true, true),
+	setupRPC(
+		"workspace/remove",
+		"workspace_remove",
+		"workspace_catalog",
+		true,
+		true,
+	),
 	rpc("system/describe", "empty", "system_description", false, false),
 	rpc("system/readiness", "empty", "runtime_readiness", false, false),
 	rpc("system/diagnostics", "empty", "system_diagnostics", false, false),

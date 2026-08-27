@@ -68,6 +68,7 @@ export interface WorkspaceDescriptor {
   root: string;
   label: string;
   ready: boolean;
+  removable: boolean;
   session_count: number;
   problem?: string;
   git?: WorkspaceGitState;
@@ -89,6 +90,11 @@ export interface WorkspaceCatalog {
 
 export interface WorkspaceAddResult {
   workspace: WorkspaceDescriptor;
+}
+
+export interface WorkspaceDirectoryResult {
+  path?: string;
+  cancelled?: boolean;
 }
 
 export interface SessionSummary {

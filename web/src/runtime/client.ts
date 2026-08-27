@@ -54,6 +54,7 @@ import type {
   WorkspaceAddResult,
   WorkspaceCatalog,
   WorkspaceConnection,
+  WorkspaceDirectoryResult,
   WorkspaceDescriptor,
   WorkspaceDiagnosticContext,
   WorkspaceDiagnostics,
@@ -446,6 +447,20 @@ export class RuntimeClient {
       );
     }
     await this.selectWorkspace(result.workspace.id);
+  }
+
+  async pickWorkspaceDirectory(): Promise<WorkspaceDirectoryResult> {
+    return this.call<WorkspaceDirectoryResult>(
+      "workspace/select-directory",
+      {}
+    );
+  }
+
+  async removeWorkspace(workspaceID: string): Promise<void> {
+    this.update({workspaces: (await this.call<WorkspaceCatalog>(
+      "workspace/remove", {workspace_id: workspaceID},
+      {idempotencyKey: crypto.randomUUID(), retryNetwork: true}
+    )).workspaces});
   }
 
   async switchWorkspaceBranch(
@@ -2036,6 +2051,7 @@ function workspaceCatalogFromBootstrap(bootstrap: Bootstrap): WorkspaceCatalog {
       label: bootstrap.workspace_root.split(/[\\/]/).filter(Boolean).at(-1) ||
         bootstrap.workspace_root,
       ready: bootstrap.ready,
+      removable: false,
       session_count: 0
     }]
   };

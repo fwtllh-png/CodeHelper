@@ -43,15 +43,16 @@ const (
 )
 
 type Options struct {
-	Assets       fs.FS
-	ExpectedHost string
-	Origin       string
-	Token        string
-	Build        string
-	Capacity     Capacity
-	OpenPath     func(context.Context, string) error
-	Setup        *SetupOptions
-	Workspaces   WorkspaceController
+	Assets        fs.FS
+	ExpectedHost  string
+	Origin        string
+	Token         string
+	Build         string
+	Capacity      Capacity
+	OpenPath      func(context.Context, string) error
+	PickDirectory func(context.Context, string) (string, bool, error)
+	Setup         *SetupOptions
+	Workspaces    WorkspaceController
 }
 
 type TaskQuery interface {
@@ -107,17 +108,19 @@ type Dependencies struct {
 }
 
 type Server struct {
-	assets       fs.FS
-	expectedHost string
-	origin       string
-	token        string
-	build        string
-	index        []byte
-	capacity     Capacity
-	openPath     func(context.Context, string) error
-	handler      http.Handler
+	assets        fs.FS
+	expectedHost  string
+	origin        string
+	token         string
+	build         string
+	index         []byte
+	capacity      Capacity
+	openPath      func(context.Context, string) error
+	pickDirectory directoryPicker
+	handler       http.Handler
 
 	mu                 sync.RWMutex
+	directoryPickerMu  sync.Mutex
 	sessionMu          sync.Mutex
 	setupMu            sync.Mutex
 	dependencies       Dependencies
@@ -191,7 +194,8 @@ func New(options Options) (*Server, error) {
 		assets: options.Assets, expectedHost: options.ExpectedHost,
 		origin: options.Origin, token: token, build: options.Build, index: index,
 		capacity: options.Capacity.normalized(), openPath: options.OpenPath,
-		setup: options.Setup, workspaceControl: options.Workspaces,
+		pickDirectory: options.PickDirectory,
+		setup:         options.Setup, workspaceControl: options.Workspaces,
 		workspaces: make(map[string]Dependencies),
 	}
 	if server.setup != nil {
@@ -201,6 +205,9 @@ func New(options Options) (*Server, error) {
 	}
 	if server.openPath == nil {
 		server.openPath = nativeTextPathOpener()
+	}
+	if server.pickDirectory == nil {
+		server.pickDirectory = nativeDirectoryPicker()
 	}
 	server.handler = server.routes()
 	return server, nil
@@ -226,6 +233,25 @@ func (s *Server) Activate(dependencies Dependencies) error {
 
 func (s *Server) AddWorkspace(dependencies Dependencies) error {
 	return s.activateWorkspace(dependencies, false)
+}
+
+func (s *Server) RemoveWorkspace(workspaceID string) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return errors.New("workspace id is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if workspaceID == s.defaultWorkspaceID {
+		return protocol.NewProblem(
+			protocol.CodeConflict,
+			"the default workspace cannot be removed",
+			false,
+			nil,
+		)
+	}
+	delete(s.workspaces, workspaceID)
+	return nil
 }
 
 func (s *Server) activateWorkspace(
@@ -441,8 +467,12 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.setupApply(r)
 	case "workspace/list":
 		result, err = s.workspaceList(r)
+	case "workspace/select-directory":
+		result, err = s.workspacePickDirectory(r)
 	case "workspace/add":
 		result, err = s.workspaceAdd(r)
+	case "workspace/remove":
+		result, err = s.workspaceRemove(r)
 	case "system/describe":
 		if err = s.decodeRequest(r, &struct{}{}); err == nil {
 			result = s.describe(dependencies)

@@ -72,3 +72,72 @@ func TestWorkspaceRegistryRejectsFiles(t *testing.T) {
 		t.Fatal("file path was accepted as a Workspace")
 	}
 }
+
+func TestWorkspaceRegistryRemovePersistsAndIsIdempotent(t *testing.T) {
+	dataDir := t.TempDir()
+	initial := t.TempDir()
+	other := t.TempDir()
+	manager, err := newWorkspaceRuntimeManager(dataDir, initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherDescriptor, err := manager.Add(t.Context(), other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := manager.Remove(t.Context(), otherDescriptor.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Workspaces) != 1 ||
+		catalog.Workspaces[0].ID != manager.defaultID {
+		t.Fatalf("Workspace catalog after removal = %+v", catalog)
+	}
+	if _, removeErr := manager.Remove(t.Context(), otherDescriptor.ID); removeErr != nil {
+		t.Fatalf("idempotent Workspace removal: %v", removeErr)
+	}
+	reopened, err := newWorkspaceRuntimeManager(dataDir, initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reopened.roots) != 1 {
+		t.Fatalf("reopened Workspace roots = %#v", reopened.roots)
+	}
+}
+
+func TestWorkspaceRegistryRejectsRemovingDefault(t *testing.T) {
+	manager, err := newWorkspaceRuntimeManager(t.TempDir(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, removeErr := manager.Remove(
+		t.Context(),
+		manager.defaultID,
+	); removeErr == nil {
+		t.Fatal("default Workspace removal was accepted")
+	}
+}
+
+func TestWorkspaceRegistryRemovesMissingDirectory(t *testing.T) {
+	dataDir := t.TempDir()
+	initial := t.TempDir()
+	other := t.TempDir()
+	manager, err := newWorkspaceRuntimeManager(dataDir, initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherDescriptor, err := manager.Add(t.Context(), other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removeErr := os.RemoveAll(other); removeErr != nil {
+		t.Fatal(removeErr)
+	}
+	catalog, err := manager.Remove(t.Context(), otherDescriptor.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog.Workspaces) != 1 {
+		t.Fatalf("Workspace catalog after stale removal = %+v", catalog)
+	}
+}

@@ -997,22 +997,9 @@ textarea:disabled {
   padding: 0 20px;
 }
 
-.workspaceChoices > button {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-}
-
-.workspaceChoices > button[data-active] {
-  color: var(--ch-text);
-  background: var(--ch-business-soft);
-}
-
-.workspaceChoices > button > span {
-  display: grid;
-}
-
 .workspaceAdd {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
+  display: flex;
+  justify-content: flex-end;
   padding: 14px 20px 20px;
   border-top: 1px solid var(--ch-border);
 }
@@ -3408,11 +3395,8 @@ textarea:disabled {
     padding: 24px 18px;
   }
 
-  .workspaceAdd {
-    grid-template-columns: 1fr;
-  }
-
   .workspaceAdd button {
+    width: 100%;
     justify-content: center;
   }
 

@@ -56,8 +56,10 @@ export const webRPCRoutes = [
   "workspace/image",
   "workspace/list",
   "workspace/open",
+  "workspace/remove",
   "workspace/resource",
   "workspace/search",
+  "workspace/select-directory",
   "workspace/symbols",
 ] as const;
 

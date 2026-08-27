@@ -147,6 +147,7 @@ describe("RuntimeClient", () => {
           root: "/workspace",
           label: "workspace",
           ready: true,
+          removable: false,
           session_count: emptyPrimaryWorkspace ? 0 : 1
         }];
         if (multipleWorkspaces) {
@@ -155,6 +156,7 @@ describe("RuntimeClient", () => {
             root: "/workspace-b",
             label: "workspace-b",
             ready: true,
+            removable: true,
             session_count: 1
           });
         }
@@ -590,6 +592,23 @@ describe("RuntimeClient", () => {
       }
       if (route.endsWith("/workspace/open")) {
         return envelope({opened: true, path: "src/main.go"});
+      }
+      if (route.endsWith("/workspace/select-directory")) {
+        return envelope({path: "/workspace/selected"});
+      }
+      if (route.endsWith("/workspace/remove")) {
+        return envelope({
+          version: 1,
+          default_workspace_id: "workspace-id",
+          workspaces: [{
+            id: "workspace-id",
+            root: "/workspace",
+            label: "workspace",
+            ready: true,
+            removable: false,
+            session_count: 1
+          }]
+        });
       }
       if (route.endsWith("/workspace/image")) {
         return envelope({
@@ -1430,6 +1449,36 @@ describe("RuntimeClient", () => {
     expect(requests.find(
       (request) => request.route.endsWith("/workspace/open")
     )?.body).toEqual({path: "src/main.go"});
+    client.stop();
+  });
+
+  it("selects a workspace directory through the authenticated Host route", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await expect(client.pickWorkspaceDirectory()).resolves.toEqual({
+      path: "/workspace/selected"
+    });
+    expect(requests.find(
+      (request) => request.route.endsWith("/workspace/select-directory")
+    )?.body).toEqual({});
+    client.stop();
+  });
+
+  it("removes a non-selected Workspace without reconnecting", async () => {
+    multipleWorkspaces = true;
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.removeWorkspace("workspace-b-id");
+
+    expect(requests.find(
+      (request) => request.route.endsWith("/workspace/remove")
+    )?.body).toEqual({workspace_id: "workspace-b-id"});
+    expect(client.getSnapshot().workspaces.map((workspace) => workspace.id))
+      .toEqual(["workspace-id"]);
+    expect(client.getSnapshot().selectedWorkspaceID).toBe("workspace-id");
+    expect(FakeWebSocket.instances).toHaveLength(1);
     client.stop();
   });
 
