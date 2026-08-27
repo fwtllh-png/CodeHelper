@@ -163,6 +163,15 @@ func TestPresentationReadFenceBindsLifecycleThreadsAndEventWatermark(t *testing.
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if _, err := store.DB().ExecContext(t.Context(), `
+		INSERT INTO turns(
+			id, thread_id, ordinal, status, created_at, updated_at
+		) VALUES ('turn-fence', 'thread-fence', 1, 'completed', ?, ?)`,
+		now,
+		now,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().ExecContext(t.Context(), `
 		INSERT INTO event_reservations(
 			sequence, event_id, status, created_at, updated_at
 		) VALUES (7, 'event-fence', 'abandoned', ?, ?)`,
@@ -185,6 +194,13 @@ func TestPresentationReadFenceBindsLifecycleThreadsAndEventWatermark(t *testing.
 		len(fence.ThreadIDs) != 1 ||
 		fence.ThreadIDs[0] != "thread-fence" {
 		t.Fatalf("presentation read fence = %+v", fence)
+	}
+	turnIDs, err := repository.TurnIDs(t.Context(), "session-fence")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turnIDs) != 1 || turnIDs[0] != "turn-fence" {
+		t.Fatalf("turn ids = %v", turnIDs)
 	}
 }
 

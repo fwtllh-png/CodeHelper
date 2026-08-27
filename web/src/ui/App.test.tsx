@@ -2436,6 +2436,7 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
       throw new Error("image not configured");
     }),
     downloadWorkspaceContent: vi.fn(async () => new Blob()),
+    exportTrace: vi.fn(async () => new Blob()),
     workspaceDiff: vi.fn(async () => ({
       session_id: "session",
       thread_id: "thread",

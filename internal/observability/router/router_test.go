@@ -573,6 +573,28 @@ func TestCloseReleasesJournalAfterSyncFailure(t *testing.T) {
 	}
 }
 
+func TestSnapshotReturnsCommittedObservationView(t *testing.T) {
+	writer := &fakeJournal{}
+	router, err := New(writer, nil, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = router.Close(context.Background()) })
+	if receipt := router.Record(
+		t.Context(),
+		turnRecord(observation.KindTurnStarted),
+	); receipt.Status != observation.AdmissionAccepted {
+		t.Fatalf("receipt = %+v", receipt)
+	}
+	snapshot, err := router.Snapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot) != 1 || snapshot[0].Sequence != 1 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
 type fakeJournal struct {
 	mu           sync.Mutex
 	sequence     uint64
@@ -604,6 +626,11 @@ func (j *fakeJournal) Append(
 }
 
 func (j *fakeJournal) Sync(context.Context) error { return j.syncErr }
+func (j *fakeJournal) Snapshot(
+	context.Context,
+) ([]observation.Envelope, error) {
+	return j.snapshot(), nil
+}
 func (j *fakeJournal) Close(context.Context) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()

@@ -407,7 +407,7 @@ Suite。每个 `turn.verification` Check 都包含命令推导原因。无法识
 `metadata` 只保留脱敏 Summary，并丢弃 Raw Payload。`failure` 仅为 Failure-like
 Observation 保留符合条件的脱敏 Payload。即使使用 `full`，Credential 与 Restricted
 Payload 仍会被拒绝；配置 Secret、State Path 与 Config Path 会在任何 Journal/CAS
-写入前脱敏。
+写入前脱敏，Workspace Root 也作为受限路径处理。
 
 Observation Payload Retention 与 `[state].event_retention` 不同。
 `event_retention` 按条数限制 Runtime Event History；Observation Payload Reference

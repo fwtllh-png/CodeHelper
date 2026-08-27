@@ -102,7 +102,10 @@ func TestUnsigned32RejectsOverflowAndFractions(t *testing.T) {
 	}
 }
 
-type sessionReader struct{ sessionID string }
+type sessionReader struct {
+	sessionID     string
+	workspaceRoot string
+}
 
 func (s sessionReader) GetLifecycle(
 	_ context.Context,
@@ -111,7 +114,10 @@ func (s sessionReader) GetLifecycle(
 	if sessionID != s.sessionID {
 		return protocol.SessionSummary{}, errors.New("session not found")
 	}
-	return protocol.SessionSummary{SessionID: sessionID, LatestSequence: 10}, nil
+	return protocol.SessionSummary{
+		SessionID: sessionID, WorkspaceRoot: s.workspaceRoot,
+		LatestSequence: 10,
+	}, nil
 }
 
 type queryStore struct {

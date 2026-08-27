@@ -383,6 +383,36 @@ func (r *Repository) ThreadIDs(
 	return threadIDs(ctx, r.db, sessionID)
 }
 
+func (r *Repository) TurnIDs(
+	ctx context.Context,
+	sessionID string,
+) ([]protocol.TurnID, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("session repository database is required")
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT turn.id
+		FROM turns AS turn
+		JOIN threads AS thread ON thread.id = turn.thread_id
+		WHERE thread.session_id = ?
+		ORDER BY turn.created_at, turn.id`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []protocol.TurnID
+	for rows.Next() {
+		var id protocol.TurnID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		result = append(result, id)
+	}
+	return result, rows.Err()
+}
+
 func threadIDs(
 	ctx context.Context,
 	queryer lifecycleQueryer,

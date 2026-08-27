@@ -66,6 +66,12 @@ func PreparePersistentRuntime(
 		repositories.Trace,
 		options.Observability.Runtime,
 	)
+	options.Observability.TraceExport = tracestate.NewExportService(
+		repositories.Sessions,
+		options.Observability.ObservationSnapshot,
+		repositories.Usage,
+		options.WorkspaceRoot,
+	)
 	runtimeOptions := app.Options{
 		Engine:              options.Engine,
 		WorkspaceRoot:       options.WorkspaceRoot,

@@ -24,6 +24,7 @@ type PayloadStore interface {
 type ObservationRouter interface {
 	observation.Recorder
 	Flush(context.Context) error
+	Snapshot(context.Context) ([]observation.Envelope, error)
 	Close(context.Context) error
 }
 

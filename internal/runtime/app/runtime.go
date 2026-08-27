@@ -225,7 +225,8 @@ type Runtime struct {
 	*AgentPresetService
 	*TurnService
 	*TurnQueueService
-	TraceQuery RuntimeTraceQuery
+	TraceQuery  RuntimeTraceQuery
+	TraceExport RuntimeTraceExport
 
 	done      chan struct{}
 	startOnce sync.Once

@@ -305,6 +305,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/bootstrap", s.bootstrap)
 	mux.HandleFunc("/api/v1/events", s.events)
 	mux.HandleFunc("/api/v1/content/", s.content)
+	mux.HandleFunc("/api/v1/trace/export", s.traceExport)
 	mux.HandleFunc("/api/v1/", s.unary)
 	mux.HandleFunc("/", s.static)
 	return s.recoverPanics(s.securityHeaders(s.browserFence(mux)))

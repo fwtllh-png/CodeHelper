@@ -146,6 +146,11 @@ func Contract() HostContract {
 			Path: "/api/v1/content/{handle}", Method: "GET", Request: "content_handle",
 			Response: "content_download", RequiresRuntime: true, RequiresCapability: true,
 		},
+		{
+			Path: "/api/v1/trace/export", Method: "POST", Request: "trace_export",
+			Response: "trace_export_download", RequiresRuntime: true,
+			RequiresCapability: true,
+		},
 	}
 	for _, route := range unaryRouteContracts {
 		copy := route

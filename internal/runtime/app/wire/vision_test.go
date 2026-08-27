@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -206,5 +207,28 @@ model = "fixture-model"
 		if kinds[kind] == 0 {
 			t.Fatalf("observation %q is missing: %+v", kind, kinds)
 		}
+	}
+	exported, err := session.Runtime.TraceExport.Export(
+		t.Context(),
+		trace.ExportRequest{
+			SessionID: "session-vision", ProducerVersion: "test",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exported.Manifest.EventCount == 0 ||
+		exported.Manifest.UsageCount == 0 ||
+		exported.Manifest.ThroughSequence == 0 ||
+		!strings.HasPrefix(
+			string(exported.Content),
+			`{"record_type":"manifest","format":"codehelper.observation-jsonl"`,
+		) ||
+		strings.Contains(string(exported.Content), workspace) {
+		t.Fatalf(
+			"trace export manifest=%+v content=%s",
+			exported.Manifest,
+			exported.Content,
+		)
 	}
 }

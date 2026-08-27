@@ -968,6 +968,20 @@ export function App({client}: Props) {
     }
   };
 
+  const exportTrace = async () => {
+    try {
+      const blob = await client.exportTrace();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${safeFilename(selected?.title ?? "session")}.trace.ndjson`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      reportLocalError(error);
+    }
+  };
+
   const composerCommands: ComposerCommand[] = [
     {
       id: "attach",
@@ -1005,6 +1019,13 @@ export function App({client}: Props) {
       description: "Download this Session log as JSON",
       icon: Download,
       run: exportSession
+    },
+    {
+      id: "trace",
+      label: "trace",
+      description: "Download the redacted Observation trace as NDJSON",
+      icon: Download,
+      run: exportTrace
     },
     {
       id: "plan",

@@ -187,6 +187,33 @@ func TestJournalSecuresFiles(t *testing.T) {
 	}
 }
 
+func TestJournalSnapshotReturnsOnlyCommittedEnvelopes(t *testing.T) {
+	writer, err := Open(t.TempDir(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = writer.Close(context.Background()) })
+	first := testEnvelope()
+	if _, err := writer.Append(t.Context(), first); err != nil {
+		t.Fatal(err)
+	}
+	second := testEnvelope()
+	second.ID = observation.ObservationID("obs_" + strings.Repeat("2", 32))
+	if _, err := writer.Append(t.Context(), second); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := writer.Snapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot) != 2 ||
+		snapshot[0].Sequence != 1 ||
+		snapshot[1].Sequence != 2 {
+		t.Fatalf("snapshot = %+v", snapshot)
+	}
+}
+
 func testEnvelope() observation.Envelope {
 	return observation.Envelope{
 		SchemaVersion:    observation.SchemaVersion,

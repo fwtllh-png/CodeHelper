@@ -230,7 +230,39 @@ func ReadAll(root string) ([]Record, error) {
 	if err != nil {
 		return nil, err
 	}
-	files, err := segmentFiles(absolute)
+	return readAll(absolute)
+}
+
+// Snapshot returns a fully committed, digest-verified view while preventing
+// concurrent Append calls from exposing a partial final record.
+func (w *Writer) Snapshot(ctx context.Context) ([]observation.Envelope, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed || w.file == nil {
+		return nil, ErrClosed
+	}
+	if w.poisoned != nil {
+		return nil, errors.Join(ErrCorrupt, w.poisoned)
+	}
+	if err := w.file.Sync(); err != nil {
+		return nil, err
+	}
+	records, err := readAll(w.root)
+	if err != nil {
+		return nil, err
+	}
+	envelopes := make([]observation.Envelope, 0, len(records))
+	for _, record := range records {
+		envelopes = append(envelopes, record.Envelope)
+	}
+	return envelopes, nil
+}
+
+func readAll(root string) ([]Record, error) {
+	files, err := segmentFiles(root)
 	if err != nil {
 		return nil, err
 	}

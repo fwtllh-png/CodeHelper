@@ -1466,6 +1466,35 @@ export class RuntimeClient {
     });
   }
 
+  async exportTrace(): Promise<Blob> {
+    const response = await fetch("/api/v1/trace/export", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${this.token}`,
+        "Accept": "application/x-ndjson",
+        "Content-Type": "application/json",
+        "X-CodeHelper-Request-ID": crypto.randomUUID(),
+        "X-CodeHelper-Workspace-ID": this.state.selectedWorkspaceID
+      },
+      credentials: "same-origin",
+      body: JSON.stringify({session_id: this.requireSession()})
+    });
+    if (!response.ok) {
+      const envelope = await response.json().catch(() => undefined) as
+        | Envelope<never>
+        | undefined;
+      throw new RuntimeProblem(
+        envelope?.problem ?? {
+          version: 1,
+          code: "internal",
+          message: `Trace export failed (${response.status})`,
+          retryable: false
+        }
+      );
+    }
+    return response.blob();
+  }
+
   async diagnostics(): Promise<Record<string, unknown>> {
     return this.call<Record<string, unknown>>("system/diagnostics", {});
   }

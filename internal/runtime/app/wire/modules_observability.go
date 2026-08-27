@@ -40,7 +40,10 @@ func (observabilityModule) Build(
 			secrets = append(secrets, value)
 		}
 	}
-	restrictedPaths := []string{store.Root()}
+	restrictedPaths := []string{
+		store.Root(),
+		state.config.execution.Workspace,
+	}
 	if state.options.ConfigPath != "" {
 		restrictedPaths = append(restrictedPaths, state.options.ConfigPath)
 	}
@@ -69,8 +72,9 @@ func engineObservability(state *buildState) trace.Runtime {
 
 func runtimeObservability(state *buildState) app.RuntimeObservability {
 	return app.RuntimeObservability{
-		Metrics: state.session.metrics,
-		Logger:  state.session.logger,
-		Runtime: state.session.observability.runtime,
+		Metrics:             state.session.metrics,
+		Logger:              state.session.logger,
+		Runtime:             state.session.observability.runtime,
+		ObservationSnapshot: state.session.observability.router,
 	}
 }

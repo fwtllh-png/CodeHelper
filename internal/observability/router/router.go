@@ -26,6 +26,10 @@ type Journal interface {
 	Close(context.Context) error
 }
 
+type snapshotJournal interface {
+	Snapshot(context.Context) ([]observation.Envelope, error)
+}
+
 type PayloadStore interface {
 	Put(context.Context, string, []byte) error
 	Release(context.Context, string) error
@@ -232,6 +236,25 @@ func (r *Router) Flush(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+// Snapshot serializes with persistence and returns the committed observation
+// watermark. Records accepted after the lock is acquired belong to a later
+// snapshot.
+func (r *Router) Snapshot(ctx context.Context) ([]observation.Envelope, error) {
+	if r == nil {
+		return nil, errors.New("observation router is unavailable")
+	}
+	journal, ok := r.journal.(snapshotJournal)
+	if !ok {
+		return nil, errors.New("observation journal does not support snapshots")
+	}
+	if err := r.Flush(ctx); err != nil {
+		return nil, err
+	}
+	r.persistMu.Lock()
+	defer r.persistMu.Unlock()
+	return journal.Snapshot(ctx)
 }
 
 func (r *Router) Close(ctx context.Context) error {
