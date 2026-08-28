@@ -194,6 +194,7 @@ func TestQualityEvidenceRejectsSameBatchMutationAndGenericShell(t *testing.T) {
 		t.Fatalf("same-batch evidence was accepted: %#v", result.Metadata)
 	}
 	shellResult := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
+	shellResult.Execution.VerificationEvidenceAuthorized = false
 	engine.bindVerificationEvidence(provider.ToolCall{
 		ID: "shell-1", Name: "exec_command",
 	}, &shellResult, false, 1)
@@ -348,10 +349,15 @@ func TestStrictVerifyGateDoesNotReportFailedVerification(t *testing.T) {
 }
 
 func qualityEvidenceResult(status string, paths []string) tool.Result {
-	return tool.Result{Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
-		Verification: &verify.Evidence{
-			SchemaVersion: 1, Kind: "verify", Status: status,
-			CoveredPaths: paths, CommandDigest: "sha256:test",
+	return tool.Result{
+		Execution: &tool.ExecutionReceipt{
+			VerificationEvidenceAuthorized: true,
 		},
-	}}}
+		Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+			Verification: &verify.Evidence{
+				SchemaVersion: 1, Kind: "verify", Status: status,
+				CoveredPaths: paths, CommandDigest: "sha256:test",
+			},
+		}},
+	}
 }

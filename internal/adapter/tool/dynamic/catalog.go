@@ -178,11 +178,17 @@ func (c *Catalog) registration(
 	}
 	var registration tool.Registration
 	if spec.DeferLoading {
-		registration = tool.NewDeferredRegistration(executor.Descriptor(), func() (tool.Executor, error) {
-			return executor, nil
-		})
+		registration = tool.NewExternalDeferredRegistration(
+			tool.ExternalFromDescriptor(executor.Descriptor()),
+			trustedBinding(policy),
+			func() (tool.Executor, error) { return executor, nil },
+		)
 	} else {
-		registration = tool.NewRegistration(executor)
+		registration = tool.NewExternalRegistration(
+			tool.ExternalFromDescriptor(executor.Descriptor()),
+			trustedBinding(policy),
+			executor,
+		)
 	}
 	return registration.WithPayload(definition{spec: spec}), nil
 }
@@ -240,6 +246,33 @@ func (e *Executor) Descriptor() tool.Descriptor {
 		DeferredLoading:    tool.DeferredLoading{Enabled: e.spec.DeferLoading},
 		Availability:       tool.AvailabilityAvailable,
 	}
+}
+
+func (e *Executor) TrustedBinding() tool.TrustedBinding {
+	return trustedBinding(e.policy)
+}
+
+func trustedBinding(policy RegistrationPolicy) tool.TrustedBinding {
+	binding := tool.TrustedBinding{
+		Capability:         policy.Capability,
+		ResourceResolver:   policy.ResourceResolver,
+		AccessMode:         policy.AccessMode,
+		ParallelPolicy:     policy.ParallelPolicy,
+		RepeatPolicy:       tool.RepeatExecute,
+		SandboxRequirement: policy.SandboxRequirement,
+		Effect: tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: tool.EffectExternalMutation,
+			Risk: tool.RiskHigh, Reversibility: tool.Irreversible,
+			WorkspaceTransaction: tool.TransactionNone,
+			Approval:             tool.ApprovalPolicyDefault,
+		},
+	}
+	if policy.SandboxRequirement == tool.SandboxStrong {
+		binding.Required = tool.RequiredControls{
+			FilesystemRead: true, Network: true, ProcessTree: true,
+		}
+	}
+	return binding
 }
 
 func (e *Executor) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {

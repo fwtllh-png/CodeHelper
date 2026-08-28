@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -265,6 +266,72 @@ func TestDisabledMemoryContributorPublishesTypedSkip(t *testing.T) {
 		output.memory != nil {
 		t.Fatalf("disabled memory contribution = %+v, store=%v", receipt, output.memory)
 	}
+}
+
+func TestTypedToolContributorPreservesExternalAndTrustedContracts(t *testing.T) {
+	descriptor := (&guardProbe{executions: &atomic.Int32{}}).Descriptor()
+	external := tool.ExternalFromDescriptor(descriptor)
+	external.Requested.Capability = tool.CapabilityProcess
+	external.Requested.SandboxRequirement = tool.SandboxNone
+	binding := tool.TrustedBindingFromDescriptor(descriptor)
+	binding.SandboxRequirement = tool.SandboxStrong
+	binding.Required.FilesystemRead = true
+	binding.Required.Network = true
+	extension := explicitToolExtension{registration: tool.NewExternalRegistration(
+		external,
+		binding,
+		&guardProbe{executions: &atomic.Int32{}},
+	)}
+	builder := runtimeextension.NewBuilder()
+	if err := builder.Register(extension); err != nil {
+		t.Fatal(err)
+	}
+	extensions, err := builder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contributor := typedToolContributor{
+		id:      "explicit-contract",
+		binding: extensions.ToolContributors()[0],
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if _, err := contributor.Contribute(t.Context(), registry); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := snapshot.Lookup("extension_probe")
+	if !ok || entry.Source != "extension:explicit-contract" ||
+		entry.External.Requested.Capability != tool.CapabilityProcess ||
+		entry.Descriptor.Capability != tool.CapabilityRead ||
+		entry.Descriptor.SandboxRequirement != tool.SandboxStrong {
+		t.Fatalf("typed contribution lost contract separation: %+v", entry)
+	}
+}
+
+type explicitToolExtension struct {
+	registration tool.Registration
+}
+
+func (explicitToolExtension) Descriptor() runtimeextension.Descriptor {
+	return runtimeextension.Descriptor{
+		ID: "explicit-contract", Version: "v1",
+		FailurePolicy: runtimeextension.FailureFailClosed,
+		Budget: runtimeextension.Budget{
+			Timeout: time.Second, MaxOutputs: 1,
+		},
+	}
+}
+
+func (e explicitToolExtension) ContributeTools(
+	context.Context,
+	runtimeextension.ToolInput,
+) (runtimeextension.ToolContribution, runtimeextension.Outcome) {
+	return runtimeextension.ToolContribution{
+		Registrations: []tool.Registration{e.registration},
+	}, runtimeextension.Success()
 }
 
 type guardProbe struct {

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -148,9 +147,14 @@ func (a *Adapter) syncLocked() error {
 			continue
 		}
 		helper := newHelperExecutor(name, a.pool)
+		descriptor := helper.Descriptor()
 		helperRegistrations = append(
 			helperRegistrations,
-			tool.NewRegistration(helper).WithPayload(registrationIdentity{Key: name}),
+			tool.NewExternalRegistration(
+				tool.ExternalFromDescriptor(descriptor),
+				tool.TrustedBindingFromDescriptor(descriptor),
+				helper,
+			).WithPayload(registrationIdentity{Key: name}),
 		)
 	}
 	if err := reconcileSource(a.registry, "mcp:helpers", helperRegistrations); err != nil {
@@ -185,15 +189,16 @@ func (a *Adapter) registrationsFor(
 		key := catalogEntryKey(entry)
 		existing, ok := byKey[key]
 		identity, _ := existing.Payload().(registrationIdentity)
-		if ok && identity.Connection == entry.Connection &&
-			registrationMatchesDescriptor(existing, descriptor) {
+		if ok && identity.Connection == entry.Connection {
 			registrations = append(registrations, existing)
 			continue
 		}
 		catalogEntry := entry
 		frozenDescriptor := descriptor
-		registrations = append(registrations, tool.NewDeferredRegistration(
-			frozenDescriptor,
+		binding := trustedBindingFor(frozenDescriptor)
+		registrations = append(registrations, tool.NewExternalDeferredRegistration(
+			externalDescriptorFor(frozenDescriptor),
+			binding,
 			func() (tool.Executor, error) {
 				return &executor{
 					entry: catalogEntry, descriptor: frozenDescriptor,
@@ -204,21 +209,23 @@ func (a *Adapter) registrationsFor(
 	return registrations, nil
 }
 
-func registrationMatchesDescriptor(
-	existing tool.Registration,
-	available tool.Descriptor,
-) bool {
-	switch existing.State() {
-	case tool.CatalogEntryMaterialized, tool.CatalogEntryEager:
-		return reflect.DeepEqual(existing.Descriptor(), available)
-	case tool.CatalogEntryDeferred:
-		deferred := available
-		deferred.Availability = tool.AvailabilityDeferred
-		deferred.DeferredLoading.Enabled = true
-		return reflect.DeepEqual(existing.Descriptor(), deferred)
-	default:
-		return false
+func externalDescriptorFor(
+	descriptor tool.Descriptor,
+) tool.ExternalDescriptor {
+	external := tool.ExternalFromDescriptor(descriptor)
+	return external
+}
+
+func trustedBindingFor(
+	descriptor tool.Descriptor,
+) tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(descriptor)
+	binding.Effect = tool.EffectContract{
+		Mode:                 tool.EffectDerived,
+		WorkspaceTransaction: tool.TransactionNone,
+		Approval:             tool.ApprovalPolicyDefault,
 	}
+	return binding
 }
 
 func sourceForServer(server string) string {
@@ -298,6 +305,10 @@ func descriptorFor(entry mcpruntime.CatalogEntry) (tool.Descriptor, error) {
 
 func (e *executor) Descriptor() tool.Descriptor {
 	return e.descriptor
+}
+
+func (e *executor) TrustedBinding() tool.TrustedBinding {
+	return trustedBindingFor(e.descriptor)
 }
 
 func (e *executor) Execute(

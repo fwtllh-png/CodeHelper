@@ -55,6 +55,7 @@ type Invocation struct {
 	Capability   tool.Capability
 	Access       tool.AccessMode
 	Sandbox      tool.SandboxRequirement
+	Effect       tool.EffectContract
 	Journaled    bool
 	Validated    bool
 }

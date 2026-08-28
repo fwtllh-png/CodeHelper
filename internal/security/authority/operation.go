@@ -219,7 +219,7 @@ func BuildExecutionOperation(input OperationInput) (ExecutionOperation, error) {
 	if err != nil {
 		return ExecutionOperation{}, fmt.Errorf("digest operation arguments: %w", err)
 	}
-	switch input.Invocation.Descriptor.Capability {
+	switch input.Invocation.Binding.Capability {
 	case tool.CapabilityProcess, tool.CapabilityPlugin:
 		operation.Process = &ProcessIntent{
 			Kind: "tool", Tool: input.Invocation.Tool,

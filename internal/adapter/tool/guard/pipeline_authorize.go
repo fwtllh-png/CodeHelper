@@ -52,13 +52,14 @@ func (g *Guard) authorize(
 		runtime := g.Policy().CloneSampling()
 		decision := runtime.Evaluate(policyInvocation)
 		reviewLatency := g.now().Sub(started)
-		if g.forceEditPlanApproval && mediatedFileWriter(invocation.Tool) &&
+		if g.forceEditPlanApproval && invocation.Binding.Journaled() &&
 			decision.Action == policy.ActionAllow {
 			decision.Action = policy.ActionAsk
 			decision.Code = "edit_plan_required"
 			decision.Reason = "workspace writes require a fresh edit plan approval"
 		}
-		hostProcessApproval := invocation.Tool == "quality_process_smoke"
+		hostProcessApproval :=
+			invocation.Binding.Effect.Approval == tool.ApprovalPolicyOnce
 		if hostProcessApproval &&
 			decision.Action != policy.ActionDeny &&
 			decision.Action != policy.ActionHold {
@@ -167,7 +168,8 @@ func (g *Guard) authorizeAsk(
 	reviewLatency time.Duration,
 ) (authorized bool, replacement json.RawMessage, waited time.Duration, err error) {
 	now := g.now()
-	hostProcessApproval := invocation.Tool == "quality_process_smoke"
+	hostProcessApproval :=
+		invocation.Binding.Effect.Approval == tool.ApprovalPolicyOnce
 	if !g.forceEditPlanApproval && !hostProcessApproval &&
 		g.policy.Approvals != nil &&
 		g.policy.Approvals.MatchInvocation(policyInvocation, now) {
@@ -181,7 +183,7 @@ func (g *Guard) authorizeAsk(
 	if err != nil {
 		return false, nil, 0, err
 	}
-	ask := networkApprovalAsk(policyInvocation, invocation.Descriptor.Capability)
+	ask := networkApprovalAsk(policyInvocation, invocation.Binding.Capability)
 	if ask.Code == "" {
 		ask.Code = decision.Code
 	}
@@ -245,7 +247,7 @@ func (g *Guard) planApprovalEdit(
 	invocation Invocation,
 	executor tool.Executor,
 ) (*tool.EditPlan, error) {
-	if !mediatedFileWriter(invocation.Tool) {
+	if !invocation.Binding.Journaled() {
 		return nil, nil
 	}
 	planner, ok := executor.(tool.EditPlanner)

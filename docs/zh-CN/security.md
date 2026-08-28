@@ -62,6 +62,13 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - Workspace State 分为互不重叠的 `control`、`sandbox-home` 和 `artifacts`；
   在这三个状态域中，Sandbox 只获得 `sandbox-home` 写权限。
 - Tool Contract 要求时先读后写。
+- Tool Catalog 将模型可见的 `ExternalDescriptor` 与 Registry 可信的
+  `TrustedBinding` 分开冻结。MCP、Plugin、Dynamic Tool 等外部来源只能提交
+  Requested Effects；Capability、Resource Resolver、Access、Sandbox、Effect、
+  Required Controls、Journal 和验证证据资格由可信 Binding 决定。
+- Guard、Policy 和 Authority 不从工具名或 External Requested Effects 推导授权。
+  Deferred Loader 改变 Trusted Binding、Schema 或 Alias 会 Fail Closed；替换 Binding
+  会更换 Revision/Authority，使采样时的旧 Catalog Binding 失效。
 - `file_write`、`file_edit`、`file_apply`、`file_patch`、`integrate_agent`、隔离
   Chat Merge 和 `document_convert` 的最终 Workspace 输出统一生成不可变 File Plan。
   Guard 或 Runtime Authority 签发绑定 Plan Digest、Workspace Generation 和精确
@@ -307,7 +314,8 @@ Workspace Integrity 不确定时，应停止执行，保留 State 与 Journal，
 公开报告中不能包含 Secret 或私有源码。应提供 Version、Platform、Command Shape、
 Sanitized Config Provenance、预期/实际 Security Decision，以及可行时的可复现 Fixture。
 
-[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-4
+[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-5
 已交付 State Domain、Operation/Lease、Artifact/Process/File/VCS Broker、Process
-Smoke、Hook、stdio MCP Lifecycle、Workspace Write 与 Git Metadata Mutation 收口。
-后续阶段继续收紧 Trusted Descriptor Binding、Network 和其他进程入口。
+Smoke、Hook、stdio MCP Lifecycle、Workspace Write、Git Metadata Mutation 收口，以及
+External Descriptor/Trusted Binding 分离。后续阶段继续交付 Required Controls
+能力矩阵，并收紧 Network 和其他进程入口。

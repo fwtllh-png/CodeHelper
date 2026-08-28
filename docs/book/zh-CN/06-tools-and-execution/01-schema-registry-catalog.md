@@ -37,34 +37,38 @@ Materialization 与 Catalog-bound Execution。
 
 ## Tool 不只是函数
 
-`Descriptor` 声明 Name、Description、JSON Input Schema、Visibility、Capability、
-Resource Resolver、Access Mode、Parallel Policy、Sandbox Requirement、Alias、
-Availability 与 Deferred State。
+Tool Contract 分为两层：`ExternalDescriptor` 声明 Name、Description、JSON Input
+Schema、Visibility、Alias 与 Requested Effects；`TrustedBinding` 声明 Capability、
+Resource Resolver、Access Mode、Parallel/Repeat Policy、Sandbox Requirement、
+Effect Contract 与 Required Controls。
 
 ```mermaid
 flowchart LR
-    S[Source Registration] --> R[Registry]
-    R --> C[CatalogSnapshot]
+    E[External Descriptor] --> R[Registry]
+    T[Trusted Binding] --> R
+    R --> C[Catalog Snapshot]
     C --> M[Model Sampling]
     M --> B[CatalogBinding]
     B --> G[Guard Resolution]
     G --> X[Executor]
 ```
 
-Schema 规定调用形状，Capability/Resource Resolver 规定安全语义；Registry 注册时校验两者。
+Schema 规定调用形状，Trusted Binding 规定安全语义。外部 Requested Effects 保留用于
+审计，但不能授予 Capability。
 
 ## 一个 Descriptor 中的四类 Contract
 
 | Contract | Field | Consumer |
 | --- | --- | --- |
-| Model Interface | Name、Description、Schema、Alias、Visibility | Provider/Context |
-| Authority | Capability、Access、Resource Resolver、Sandbox | Guard/Policy |
-| Scheduling | Parallel Policy、Resolved Resource | Claims/Scheduler |
+| Model Interface | External Name、Description、Schema、Alias、Visibility | Provider/Context |
+| Authority | Trusted Capability、Effect、Resource Resolver、Sandbox、Controls | Guard/Policy/Authority |
+| Scheduling | Trusted Parallel Policy、Resolved Resource | Claims/Scheduler |
 | Lifecycle | Availability、Deferred、Source/Revision | Catalog/Host |
 
-这些 Contract 必须一致。Write Schema 配 Read Access Metadata 不是“基本正确”，而是可能
-使 Call 在错误假设下授权或调度。Registration 会校验 Closed Enum、Schema Compile、
-Alias、Resource Template 与 Availability Consistency。
+Registry 校验跨字段不变量，例如 Process Resource 必须绑定 Process/Plugin Capability、
+Write Resource 不能绑定 Read Capability、Before-image Transaction 必须是 Workspace
+Edit。MCP、Plugin、Dynamic 等外部 Source 必须显式提供可信 Binding；Legacy
+Registration 会 Fail Closed。
 
 Model 只看到 Public Tool Definition；Private Catalog Authority/Execution Metadata 不进入
 Provider Request。
@@ -72,8 +76,9 @@ Provider Request。
 ## Dynamic Catalog
 
 Registry 有 Catalog ID/Generation；Entry 有 Source、Revision、Private Authority Token、
-Lifecycle State 和 Frozen Descriptor。`Reconcile` 以可选 Generation CAS 原子更新一个
-Source 的 Desired State。Replace/Revoke 更换 Authority，并留下 Tombstone 用于稳定分类。
+Lifecycle State、Frozen External Descriptor 和 Trusted Binding Digest。`Reconcile`
+以可选 Generation CAS 原子更新一个 Source 的 Desired State。Replace/Revoke 更换
+Authority，并留下 Tombstone 用于稳定分类。
 
 `CatalogSnapshot` 深拷贝且排序。Sampled Tool Call 携带 ID、Generation、Revision 与
 进程内 Authority。`ResolveBound` 拒绝未广告或 Sampling 后发生变化的 Entry。
@@ -89,9 +94,9 @@ Source 的 Desired State。Replace/Revoke 更换 Authority，并留下 Tombstone
 
 ## Deferred Tools 与 Search
 
-Deferred Entry 在 Executor 加载前公开 Descriptor。`tool_search` 搜索、排序并
+Deferred Entry 在 Executor 加载前公开 External Presentation。`tool_search` 搜索、排序并
 Materialize 匹配 Tool；Entry Count/Schema Byte Limit 控制增长。并发加载合并，加载时
-Schema/Authority Drift 失败。
+Schema/Alias/Trusted Binding Drift 失败。Executor 只能动态收紧 Availability。
 
 Large Result 也受 Catalog 约束：Registry 对 Inline Content 设置界限，超限时返回 Handle；
 `result_get` 提供 Bounded Retrieval，Handle 不能绕过 Hard Cap。
@@ -100,8 +105,8 @@ Large Result 也受 Catalog 约束：Registry 对 Inline Content 设置界限，
 
 `internal/adapter/tool/typed` 与 `internal/adapter/tool/result` 是受治理 Tool 的标准
 构造 Kit。`tool.ValidateDescriptor` 在不注册 Executor 的前提下校验稳定 Registry
-Contract；`typed.Define[I, O]` 将 Typed `Spec{Descriptor, Decode, Validate, Run,
-Encode, Metadata}` 包装为 `tool.Executor`：
+Contract；`typed.Define[I, O]` 将 Typed `Spec{Descriptor, TrustedBinding, Decode,
+Validate, Run, Encode, Metadata}` 包装为 `tool.Executor`：
 
 - 在接入 Catalog 之前完成校验；
 - Strict Decode 拒绝 Unknown Field、`null` 与 Trailing JSON Value；
@@ -135,6 +140,7 @@ JSON-compatibility，以及保持 Catalog Identity 的 Deferred Materialization�
 
 | 关注点 | 源码 |
 | --- | --- |
+| External/Trusted Contract | `adapter/tool/contract.go` |
 | Descriptor/Registry | `adapter/tool/tool.go` |
 | Snapshot/Reconcile | `adapter/tool/catalog.go` |
 | Deferred Discovery | `adapter/tool/toolsearch` |
@@ -153,7 +159,8 @@ JSON-compatibility，以及保持 Catalog Identity 的 Deferred Materialization�
 - Alias Conflict 使 Reconcile 原子失败。
 - Revoked 与 Stale 有独立错误类别。
 - Unadvertised Tool Call 不可执行。
-- Deferred Loader 不得改变 Frozen Schema/Alias。
+- Deferred Loader 不得改变 Frozen Schema/Alias/Trusted Binding。
+- External Requested Effects 不得覆盖 Trusted Binding。
 - Materialization Limit 失败不产生部分 Catalog Change。
 
 ## 测试与验证

@@ -1,6 +1,6 @@
 # 安全执行边界重构方案
 
-> 状态：阶段 0-4 已交付；阶段 5-6 为提案。
+> 状态：阶段 0-5 已交付；阶段 6 为提案。
 >
 > 本文描述 CodeHelper 对副作用执行边界的目标设计和渐进迁移方案，不代表当前实现已经
 > 完成这些约束。当前已交付行为以[安全模型](./security.md)、源码和测试为准。
@@ -865,12 +865,39 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 
 ### 阶段 5：替换 Descriptor 自报
 
+当前状态：已完成。
+
 目标：
 
 - ExternalDescriptor 与 TrustedBinding 分离；
 - 删除按工具名判断安全语义的逻辑；
 - Journal、Read-before-write 和 Sandbox Requirement 来自 EffectContract；
 - 外部扩展只能请求权限，不能定义最终 Capability。
+
+交付边界：
+
+- Registry 分别冻结 Model-facing `ExternalDescriptor` 与 Authority-facing
+  `TrustedBinding`；Catalog Snapshot 同时绑定 External Presentation、Binding Digest、
+  Source、Revision 和私有 Authority Token；
+- MCP、Plugin、Dynamic Tool 与 Typed Extension 必须由可信 Host Policy 显式注册
+  Binding，外部 Source 走 Legacy Registration 会 Fail Closed；
+- Guard、Policy、Authority、Journal、Read-before-write、一次性审批、验证证据接纳和
+  缺失写目标 Preflight 只消费 Trusted Binding，不消费 Requested Effects 或工具名；
+- Deferred Loader 只能收紧 Availability，改变 Schema、Alias 或 Trusted Binding
+  会拒绝 Materialization；Source Reconcile 更换 Binding 会递增 Revision 并使旧
+  Catalog Binding 失效；
+- External Requested Effects 保留用于审计和诊断，但不能覆盖 Capability、Resource
+  Resolver、Access、Sandbox、Effect 或 Required Controls。
+
+实现落点：
+
+| 能力 | 当前实现 |
+| --- | --- |
+| External/Trusted Contract | `internal/adapter/tool/contract.go` |
+| Registry Freeze 与 Binding Digest | `internal/adapter/tool/catalog.go`、`tool.go` |
+| Guard/Policy/Authority 消费 | `internal/adapter/tool/guard`、`internal/security` |
+| 外部 Source Binding Factory | `internal/adapter/tool/mcp`、`plugin`、`dynamic` |
+| Typed Extension 保真注册 | `internal/runtime/app/wire/typed_extensions.go` |
 
 ### 阶段 6：控制矩阵替代 Strong
 

@@ -18,6 +18,37 @@ type operation struct {
 	kind  string
 }
 
+func (o *operation) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(o.Descriptor())
+	fixed := func(
+		kind tool.EffectKind,
+		risk tool.RiskLevel,
+		reversibility tool.Reversibility,
+	) {
+		binding.Effect = tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: kind, Risk: risk,
+			Reversibility:        reversibility,
+			WorkspaceTransaction: tool.TransactionNone,
+			Approval:             tool.ApprovalPolicyDefault,
+		}
+	}
+	switch o.kind {
+	case "send_message":
+		fixed(tool.EffectAgentMessage, tool.RiskLow, tool.Reversible)
+	case "spawn_agent", "followup_task":
+		fixed(tool.EffectAgentLifecycle, tool.RiskMedium, tool.Bounded)
+	case "integrate_agent":
+		binding.Capability = tool.CapabilityProcess
+		binding.Required.ProcessTree = true
+		fixed(tool.EffectWorkspaceEdit, tool.RiskLow, tool.Reversible)
+		binding.Effect.WorkspaceTransaction = tool.TransactionBeforeImage
+		binding.Effect.RequireReadBeforeWrite = true
+	case "interrupt_agent", "close_agent":
+		fixed(tool.EffectAgentLifecycle, tool.RiskHigh, tool.Bounded)
+	}
+	return binding
+}
+
 func (o *operation) Descriptor() tool.Descriptor {
 	switch o.kind {
 	case "wait_agent":

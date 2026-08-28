@@ -130,7 +130,10 @@ func (a *Adapter) Sync() error {
 		executor := &Tool{
 			plugin: loaded, toolName: NamespacedName(snapshot.Name),
 		}
-		registrations = append(registrations, tool.NewRegistration(
+		descriptor := executor.Descriptor()
+		registrations = append(registrations, tool.NewExternalRegistration(
+			tool.ExternalFromDescriptor(descriptor),
+			executor.TrustedBinding(),
 			executor,
 		).WithPayload(identity))
 		nextActive[snapshot.Name] = managedHandle{
@@ -217,9 +220,17 @@ func register(registry *tool.Registry, loaded *pluginruntime.Loaded, toolName st
 	if registry == nil || loaded == nil {
 		return errors.New("plugin registry and loaded plugin are required")
 	}
-	return registry.Register(&Tool{
+	executor := &Tool{
 		plugin: loaded, toolName: toolName,
-	}, nil)
+	}
+	return registry.RegisterTrusted(
+		"plugin:direct",
+		tool.NewExternalRegistration(
+			tool.ExternalFromDescriptor(executor.Descriptor()),
+			executor.TrustedBinding(),
+			executor,
+		),
+	)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {
@@ -243,6 +254,17 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"additionalProperties": false,
 		},
 	}
+}
+
+func (t *Tool) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(t.Descriptor())
+	binding.Effect = tool.EffectContract{
+		Mode: tool.EffectFixed, Kind: tool.EffectExternalMutation,
+		Risk: tool.RiskHigh, Reversibility: tool.Irreversible,
+		WorkspaceTransaction: tool.TransactionNone,
+		Approval:             tool.ApprovalPolicyDefault,
+	}
+	return binding
 }
 
 var unsafeToolName = regexp.MustCompile(`[^A-Za-z0-9_-]+`)

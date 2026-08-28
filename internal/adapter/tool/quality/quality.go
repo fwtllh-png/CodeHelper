@@ -28,6 +28,27 @@ type Tool struct {
 	sandbox sandbox.Backend
 }
 
+type trustedExecutor struct {
+	tool.OutcomeExecutor
+	disposition tool.ExecutionDisposition
+	binding     tool.TrustedBinding
+}
+
+func (e *trustedExecutor) ExecutionDisposition() tool.ExecutionDisposition {
+	return e.disposition
+}
+
+func (e *trustedExecutor) TrustedBinding() tool.TrustedBinding {
+	return e.binding
+}
+
+func (t *Tool) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(t.Descriptor())
+	binding.ProducesVerificationEvidence =
+		t.kind == "quality_test" || t.kind == "quality_verify"
+	return binding
+}
+
 type input struct {
 	Command        string                       `json:"command"`
 	CoveredPaths   []string                     `json:"covered_paths"`
@@ -144,7 +165,8 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 }
 
 func (t *Tool) typedExecutor() (tool.Executor, error) {
-	return typed.Define(typed.Spec[input, tool.Result]{
+	binding := t.TrustedBinding()
+	executor, err := typed.Define(typed.Spec[input, tool.Result]{
 		Descriptor:  t.Descriptor(),
 		Disposition: tool.DispositionWaitForTeardown,
 		Run:         t.runTyped,
@@ -153,6 +175,18 @@ func (t *Tool) typedExecutor() (tool.Executor, error) {
 		},
 		Outcome: verificationOutcome,
 	})
+	if err != nil {
+		return nil, err
+	}
+	runtime, ok := executor.(tool.OutcomeExecutor)
+	if !ok {
+		return nil, errors.New("quality typed runtime is incomplete")
+	}
+	return &trustedExecutor{
+		OutcomeExecutor: runtime,
+		disposition:     tool.DispositionFor(executor),
+		binding:         binding,
+	}, nil
 }
 
 func verificationOutcome(value tool.Result) tool.Outcome {

@@ -91,6 +91,11 @@ Dynamic Tool、Hook 与 MCP Contributor 只接收其显式构造能力和共享 
 Identity 与命名输出。Task/Automation 注册归 Orchestration，而非 Extension
 Contributor Chain。
 
+Registry 分别冻结模型可见的 `ExternalDescriptor` 与执行权威
+`TrustedBinding`。External Requested Effects 只用于呈现和审计；Guard、Policy、
+Authority、Journal、Sandbox 和验证证据接纳只消费 Trusted Binding。外部 Source 必须
+由可信 Host Policy 显式绑定权限，Deferred Loader 不能改变冻结的 Binding。
+
 Runtime 构造具有 Prepared 状态。`RuntimeModule` 只构造 Facade 并恢复静态 Durable
 State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh、启动 Runtime
 的 Terminal Outbox/Pending Turn Recovery、启动 MCP Prewarm、协调 Automation，最后

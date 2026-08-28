@@ -209,6 +209,7 @@ func newFixture(t *testing.T) brokerFixture {
 		Descriptor: descriptor, Source: tool.InvocationSourceModel,
 		Disposition: tool.DispositionWaitForTeardown,
 	}
+	invocation.Binding = tool.TrustedBindingFromDescriptor(descriptor)
 	runtimePolicy := policy.DefaultRuntime(
 		policy.ModeAct,
 		policy.PermissionBypass,

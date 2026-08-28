@@ -97,6 +97,29 @@ type preparedFileMutation struct {
 	kind       string
 }
 
+func (o *operation) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(o.Descriptor())
+	switch o.kind {
+	case "file_read", "file_list":
+		binding.Effect = tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: tool.EffectWorkspaceRead,
+			Risk: tool.RiskLow, Reversibility: tool.Reversible,
+			WorkspaceTransaction: tool.TransactionNone,
+			Approval:             tool.ApprovalPolicyDefault,
+		}
+		binding.RecordsWorkspaceRead = o.kind == "file_read"
+	case "file_write", "file_edit", "file_apply", "file_patch":
+		binding.Effect = tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: tool.EffectWorkspaceEdit,
+			Risk: tool.RiskLow, Reversibility: tool.Reversible,
+			WorkspaceTransaction:   tool.TransactionBeforeImage,
+			RequireReadBeforeWrite: true,
+			Approval:               tool.ApprovalPolicyDefault,
+		}
+	}
+	return binding
+}
+
 func (o *operation) IsAuthorizedFileMutation(
 	_ tool.PreparedInvocation,
 ) bool {

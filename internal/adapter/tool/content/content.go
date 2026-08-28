@@ -42,6 +42,19 @@ type input struct {
 	Format     string `json:"format"`
 }
 
+func (t *Tool) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(t.Descriptor())
+	if t.kind == "document_convert" {
+		binding.Effect = tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: tool.EffectProcessMutating,
+			Risk: tool.RiskHigh, Reversibility: tool.Bounded,
+			WorkspaceTransaction: tool.TransactionBrokerOwned,
+			Approval:             tool.ApprovalPolicyDefault,
+		}
+	}
+	return binding
+}
+
 func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.Backend) error {
 	return RegisterWithBackendAndRuntime(registry, root, backend, nil)
 }

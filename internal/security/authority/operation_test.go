@@ -144,7 +144,7 @@ func TestExecutionOperationCanonicalizesNetworkTarget(t *testing.T) {
 }
 
 func fixturePreparedInvocation(root string) tool.PreparedInvocation {
-	return tool.PreparedInvocation{
+	invocation := tool.PreparedInvocation{
 		CallID: "call-1", Tool: "exec_command",
 		Ref: tool.ToolRef{
 			Name: "exec_command", Source: "builtin:exec_command",
@@ -164,4 +164,8 @@ func fixturePreparedInvocation(root string) tool.PreparedInvocation {
 		},
 		Source: tool.InvocationSourceModel,
 	}
+	invocation.Binding = tool.TrustedBindingFromDescriptor(
+		invocation.Descriptor,
+	)
+	return invocation
 }

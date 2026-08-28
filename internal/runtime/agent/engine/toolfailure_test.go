@@ -444,7 +444,7 @@ func TestRunToolsCategorizesRevokedCatalogEntry(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	change, err := registry.Reconcile(
 		"dynamic:test", 0,
-		[]tool.Registration{tool.NewRegistration(&echoTool{})},
+		[]tool.Registration{trustedExternalRegistration(&echoTool{})},
 	)
 	if err != nil {
 		t.Fatal(err)

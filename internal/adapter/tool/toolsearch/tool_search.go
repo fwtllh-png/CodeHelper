@@ -113,7 +113,7 @@ func (t *Tool) run(_ context.Context, input input) (tool.Result, error) {
 	}
 	var matches []match
 	for _, entry := range snapshot.Entries() {
-		descriptor := entry.Descriptor
+		descriptor := entry.PresentationDescriptor()
 		if descriptor.Visibility != tool.VisibleModel {
 			continue
 		}

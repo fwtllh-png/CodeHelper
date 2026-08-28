@@ -217,22 +217,26 @@ func leaseValidation(
 }
 
 func requiredControls(invocation Invocation) authority.RequiredControls {
-	if invocation.Descriptor.SandboxRequirement != tool.SandboxStrong {
-		return authority.RequiredControls{}
-	}
-	required := authority.RequiredControls{
-		FilesystemRead: true,
-		Network:        true,
-		ProcessTree: invocation.Descriptor.Capability == tool.CapabilityProcess ||
-			invocation.Descriptor.Capability == tool.CapabilityPlugin,
-	}
-	for _, resource := range invocation.Resources {
-		if resource.Access == tool.AccessWrite && isPathKind(resource.Kind) {
-			required.FilesystemWrite = true
-			required.SymlinkSafety = true
+	required := invocation.Binding.Required
+	if invocation.Binding.SandboxRequirement == tool.SandboxStrong {
+		for _, resource := range invocation.Resources {
+			if resource.Access == tool.AccessWrite &&
+				isPathKind(resource.Kind) {
+				required.FilesystemWrite = true
+				required.SymlinkSafety = true
+			}
 		}
 	}
-	return required
+	return authority.RequiredControls{
+		FilesystemRead:  required.FilesystemRead,
+		FilesystemWrite: required.FilesystemWrite,
+		Network:         required.Network,
+		ProcessTree:     required.ProcessTree,
+		CrossProcess:    required.CrossProcess,
+		Syscall:         required.Syscall,
+		IPC:             required.IPC,
+		SymlinkSafety:   required.SymlinkSafety,
+	}
 }
 
 func settleExecutionLease(

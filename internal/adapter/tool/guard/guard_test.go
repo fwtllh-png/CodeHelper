@@ -63,7 +63,12 @@ func TestExecCommandWritePathPreflightRunsBeforeApproval(t *testing.T) {
 				"required": []string{"write_paths"}, "additionalProperties": false,
 			}
 			registry := tool.NewRegistry(nil, nil)
-			executor := &testExecutor{descriptor: descriptor}
+			binding := tool.TrustedBindingFromDescriptor(descriptor)
+			binding.ValidateMissingWriteParent = true
+			executor := &testExecutor{
+				descriptor: descriptor,
+				binding:    binding,
+			}
 			if err := registry.Register(executor, nil); err != nil {
 				t.Fatal(err)
 			}
@@ -383,7 +388,10 @@ func TestActAutoReadOnlyShellDoesNotAsk(t *testing.T) {
 	if approvals.Load() != 0 {
 		t.Fatalf("read-only shell requested %d approvals", approvals.Load())
 	}
-	if !guard.canEscalate(Invocation{Descriptor: descriptor}) {
+	if !guard.canEscalate(Invocation{
+		Descriptor: descriptor,
+		Binding:    tool.TrustedBindingFromDescriptor(descriptor),
+	}) {
 		t.Fatal("read-only shell must support bounded path-read amendments")
 	}
 }
@@ -797,6 +805,7 @@ func TestPatchRenameAndSymlinkTargetsCanonicalizeIdentically(t *testing.T) {
 
 type testExecutor struct {
 	descriptor tool.Descriptor
+	binding    tool.TrustedBinding
 	calls      atomic.Int32
 	mu         sync.Mutex
 	profiles   []authority.EffectivePermissionProfile
@@ -847,6 +856,12 @@ func (*failingExpanderExecutor) ExpandArguments(
 }
 
 func (e *testExecutor) Descriptor() tool.Descriptor { return e.descriptor }
+func (e *testExecutor) TrustedBinding() tool.TrustedBinding {
+	if e.binding.Capability != "" {
+		return e.binding
+	}
+	return tool.TrustedBindingFromDescriptor(e.descriptor)
+}
 func (e *testExecutor) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
 	e.calls.Add(1)
 	if profile, ok := authority.ProfileFromContext(ctx); ok {

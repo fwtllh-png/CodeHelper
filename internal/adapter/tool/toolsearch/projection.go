@@ -36,12 +36,13 @@ func ProjectDefinitions(
 	var descriptors []tool.Descriptor
 	var entries []tool.CatalogEntrySnapshot
 	for _, entry := range request.Catalog.Entries() {
+		presentation := entry.PresentationDescriptor()
 		enabled := request.Enabled == nil || request.Enabled(entry)
-		if entry.Descriptor.Visibility == tool.VisibleModel &&
+		if presentation.Visibility == tool.VisibleModel &&
 			entry.Descriptor.Availability != tool.AvailabilityUnavailable &&
 			enabled {
 			entries = append(entries, entry)
-			descriptors = append(descriptors, entry.Descriptor)
+			descriptors = append(descriptors, presentation)
 		}
 	}
 	if onlyRetrievalHelpers(descriptors) {
@@ -52,7 +53,7 @@ func ProjectDefinitions(
 	relevant := 0
 	for index := range entries {
 		entry := entries[index]
-		if entry.Descriptor.Name == ToolName {
+		if entry.Name == ToolName {
 			search = &entry
 			continue
 		}
@@ -68,7 +69,7 @@ func ProjectDefinitions(
 			continue
 		}
 		if relevant < maxRelevantTools &&
-			ScoreDescriptor(entry.Descriptor, request.Prompt) > 0 {
+			ScoreDescriptor(entry.PresentationDescriptor(), request.Prompt) > 0 {
 			selected[entry.Name] = true
 			relevant++
 		}
@@ -86,7 +87,7 @@ func ProjectDefinitions(
 	advertised := make(map[string]bool)
 	schemaBytes := 0
 	add := func(entry tool.CatalogEntrySnapshot, required bool) error {
-		descriptor := entry.Descriptor
+		descriptor := entry.PresentationDescriptor()
 		data, _ := json.Marshal(descriptor.InputSchema)
 		if len(result)+1 > request.MaxDefinitions ||
 			schemaBytes+len(data) > request.MaxSchemaBytes {

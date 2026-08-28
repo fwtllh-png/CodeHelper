@@ -62,6 +62,14 @@ type protocolExecutor struct {
 	expand   bool
 }
 
+func (e *protocolExecutor) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(e.runtime.Descriptor())
+	binding.Capability = tool.CapabilityProcess
+	binding.ValidateMissingWriteParent = e.Descriptor().Name == "exec_command"
+	binding.Required.ProcessTree = true
+	return binding
+}
+
 type outcomeRuntime interface {
 	tool.OutcomeExecutor
 	tool.DispositionProvider

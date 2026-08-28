@@ -107,6 +107,7 @@ type PreparedInvocation struct {
 	Arguments   json.RawMessage      `json:"arguments"`
 	Resources   []Resource           `json:"resources"`
 	Descriptor  Descriptor           `json:"descriptor"`
+	Binding     TrustedBinding       `json:"trusted_binding"`
 	Source      InvocationSource     `json:"source"`
 	Disposition ExecutionDisposition `json:"disposition"`
 }
@@ -393,18 +394,19 @@ type AttemptReceipt struct {
 }
 
 type ExecutionReceipt struct {
-	Tool             ToolRef              `json:"tool"`
-	Source           InvocationSource     `json:"source"`
-	Disposition      ExecutionDisposition `json:"disposition"`
-	Attempts         []AttemptReceipt     `json:"attempts"`
-	ApprovalWait     time.Duration        `json:"approval_wait,omitempty"`
-	DispatchWait     time.Duration        `json:"dispatch_wait,omitempty"`
-	ClaimWait        time.Duration        `json:"claim_wait,omitempty"`
-	TerminalStatus   OutcomeStatus        `json:"terminal_status"`
-	TerminalOwner    TerminalOwner        `json:"terminal_owner"`
-	Teardown         time.Duration        `json:"teardown,omitempty"`
-	TeardownMS       int64                `json:"teardown_ms,omitempty"`
-	TeardownTimedOut bool                 `json:"teardown_timed_out,omitempty"`
+	Tool                           ToolRef              `json:"tool"`
+	Source                         InvocationSource     `json:"source"`
+	Disposition                    ExecutionDisposition `json:"disposition"`
+	VerificationEvidenceAuthorized bool                 `json:"verification_evidence_authorized,omitempty"`
+	Attempts                       []AttemptReceipt     `json:"attempts"`
+	ApprovalWait                   time.Duration        `json:"approval_wait,omitempty"`
+	DispatchWait                   time.Duration        `json:"dispatch_wait,omitempty"`
+	ClaimWait                      time.Duration        `json:"claim_wait,omitempty"`
+	TerminalStatus                 OutcomeStatus        `json:"terminal_status"`
+	TerminalOwner                  TerminalOwner        `json:"terminal_owner"`
+	Teardown                       time.Duration        `json:"teardown,omitempty"`
+	TeardownMS                     int64                `json:"teardown_ms,omitempty"`
+	TeardownTimedOut               bool                 `json:"teardown_timed_out,omitempty"`
 }
 
 func CloneExecutionReceipt(source *ExecutionReceipt) *ExecutionReceipt {

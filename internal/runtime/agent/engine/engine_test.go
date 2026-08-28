@@ -1626,7 +1626,8 @@ func TestTurnCatalogSnapshotRejectsReplacementAndRemainsFrozen(t *testing.T) {
 	oldExecutor := &countingCatalogExecutor{descriptor: echoDescriptor()}
 	oldExecutor.descriptor.Description = "catalog v1"
 	if _, err := registry.Reconcile(
-		"dynamic:sampling", 0, []tool.Registration{tool.NewRegistration(oldExecutor)},
+		"dynamic:sampling", 0,
+		[]tool.Registration{trustedExternalRegistration(oldExecutor)},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -1649,7 +1650,8 @@ func TestTurnCatalogSnapshotRejectsReplacementAndRemainsFrozen(t *testing.T) {
 		},
 		mutate: func() error {
 			_, err := registry.Replace(
-				"dynamic:sampling", registry.Generation(), tool.NewRegistration(newExecutor),
+				"dynamic:sampling", registry.Generation(),
+				trustedExternalRegistration(newExecutor),
 			)
 			return err
 		},
@@ -1677,7 +1679,8 @@ func TestProviderRetryReusesCatalogSnapshot(t *testing.T) {
 	oldExecutor := &countingCatalogExecutor{descriptor: echoDescriptor()}
 	oldExecutor.descriptor.Description = "retry v1"
 	if _, err := registry.Reconcile(
-		"dynamic:retry", 0, []tool.Registration{tool.NewRegistration(oldExecutor)},
+		"dynamic:retry", 0,
+		[]tool.Registration{trustedExternalRegistration(oldExecutor)},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -1702,7 +1705,8 @@ func TestProviderRetryReusesCatalogSnapshot(t *testing.T) {
 		},
 		mutate: func() error {
 			_, err := registry.Replace(
-				"dynamic:retry", registry.Generation(), tool.NewRegistration(newExecutor),
+				"dynamic:retry", registry.Generation(),
+				trustedExternalRegistration(newExecutor),
 			)
 			return err
 		},
@@ -3489,6 +3493,15 @@ func (processSessionTool) ExecuteOutcome(
 type countingCatalogExecutor struct {
 	descriptor tool.Descriptor
 	calls      atomic.Int32
+}
+
+func trustedExternalRegistration(executor tool.Executor) tool.Registration {
+	descriptor := executor.Descriptor()
+	return tool.NewExternalRegistration(
+		tool.ExternalFromDescriptor(descriptor),
+		tool.TrustedBindingFromDescriptor(descriptor),
+		executor,
+	)
 }
 
 func echoDescriptor() tool.Descriptor {

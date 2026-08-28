@@ -298,16 +298,17 @@ func (g *Guard) ExecuteBound(
 
 func (g *Guard) canEscalate(invocation Invocation) bool {
 	return g.escalation.EscalateOnFailure &&
-		invocation.Descriptor.SandboxRequirement == tool.SandboxStrong
+		invocation.Binding.SandboxRequirement == tool.SandboxStrong
 }
 
 func policyInput(callID string, invocation Invocation) policy.Invocation {
 	return policy.Invocation{
 		CallID: callID, Tool: invocation.Tool, Arguments: invocation.Arguments,
-		Resources: invocation.Resources, Capability: invocation.Descriptor.Capability,
-		Access:    invocation.Descriptor.AccessMode,
-		Sandbox:   invocation.Descriptor.SandboxRequirement,
-		Journaled: mediatedFileWriter(invocation.Tool), Validated: true,
+		Resources: invocation.Resources, Capability: invocation.Binding.Capability,
+		Access:    invocation.Binding.AccessMode,
+		Sandbox:   invocation.Binding.SandboxRequirement,
+		Effect:    invocation.Binding.Effect,
+		Journaled: invocation.Binding.Journaled(), Validated: true,
 	}
 }
 
@@ -503,7 +504,7 @@ func (g *Guard) preflightFileWrites(invocation Invocation) error {
 				err,
 			))
 		}
-		if fingerprint.Exists || invocation.Tool != "exec_command" {
+		if fingerprint.Exists || !invocation.Binding.ValidateMissingWriteParent {
 			continue
 		}
 		parent, err := os.Stat(filepath.Dir(path))
@@ -735,15 +736,6 @@ func (g *Guard) countLines(
 	return stats, true, nil
 }
 
-func mediatedFileWriter(name string) bool {
-	switch name {
-	case "file_write", "file_edit", "file_apply", "file_patch", "integrate_agent":
-		return true
-	default:
-		return false
-	}
-}
-
 func (g *Guard) prepare(
 	ctx context.Context, name, callID string, raw json.RawMessage, binding tool.CatalogBinding,
 ) (Invocation, tool.Executor, error) {
@@ -751,6 +743,11 @@ func (g *Guard) prepare(
 	if err != nil {
 		return Invocation{}, nil, err
 	}
+	trusted, err := g.registry.ResolveTrustedBinding(ref)
+	if err != nil {
+		return Invocation{}, nil, err
+	}
+	descriptor = tool.ApplyTrustedBinding(descriptor, trusted)
 	canonical := ref.Name
 	repaired := tool.RepairArguments(raw)
 	arguments, err := tool.NormalizeArguments(descriptor.InputSchema, repaired)
@@ -800,7 +797,8 @@ func (g *Guard) prepare(
 	return Invocation{
 		Identity: identity, CallID: callID, Tool: canonical, Ref: ref,
 		Arguments: arguments, Resources: resources, Descriptor: descriptor,
-		Source: tool.InvocationSourceFrom(ctx), Disposition: disposition,
+		Binding: trusted,
+		Source:  tool.InvocationSourceFrom(ctx), Disposition: disposition,
 	}, executor, nil
 }
 

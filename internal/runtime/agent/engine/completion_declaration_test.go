@@ -69,6 +69,14 @@ func (declarationQualityTool) Descriptor() tool.Descriptor {
 	}
 }
 
+func (declarationQualityTool) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(
+		declarationQualityTool{}.Descriptor(),
+	)
+	binding.ProducesVerificationEvidence = true
+	return binding
+}
+
 func (declarationQualityTool) Execute(
 	_ context.Context, raw json.RawMessage,
 ) (tool.Result, error) {

@@ -16,6 +16,35 @@ type catalogExecutor struct {
 	content    string
 }
 
+type boundCatalogExecutor struct {
+	*catalogExecutor
+	binding TrustedBinding
+}
+
+func (e *boundCatalogExecutor) TrustedBinding() TrustedBinding {
+	return e.binding
+}
+
+func trustedCatalogRegistration(executor Executor) Registration {
+	descriptor := executor.Descriptor()
+	return NewExternalRegistration(
+		ExternalFromDescriptor(descriptor),
+		TrustedBindingFromDescriptor(descriptor),
+		executor,
+	)
+}
+
+func trustedDeferredCatalogRegistration(
+	descriptor Descriptor,
+	loader func() (Executor, error),
+) Registration {
+	return NewExternalDeferredRegistration(
+		ExternalFromDescriptor(descriptor),
+		TrustedBindingFromDescriptor(descriptor),
+		loader,
+	)
+}
+
 func (e *catalogExecutor) Descriptor() Descriptor { return e.descriptor }
 
 func (e *catalogExecutor) Execute(
@@ -93,7 +122,7 @@ func TestRegistryRevokeTombstoneAndReregister(t *testing.T) {
 	descriptor.Aliases = []Alias{{Name: "echo_compat", Hidden: true}}
 	first, err := registry.Reconcile(
 		"dynamic:test", 0,
-		[]Registration{NewRegistration(&catalogExecutor{
+		[]Registration{trustedCatalogRegistration(&catalogExecutor{
 			descriptor: descriptor, content: "v1",
 		})},
 	)
@@ -131,7 +160,7 @@ func TestRegistryRevokeTombstoneAndReregister(t *testing.T) {
 
 	second, err := registry.Reconcile(
 		"dynamic:test", revoked.Generation,
-		[]Registration{NewRegistration(&catalogExecutor{
+		[]Registration{trustedCatalogRegistration(&catalogExecutor{
 			descriptor: descriptor, content: "v2",
 		})},
 	)
@@ -153,7 +182,7 @@ func TestRegistryReplaceUpdatesDeferredLoader(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	descriptor := catalogTestDescriptor("deferred")
 	var oldLoads, newLoads atomic.Int64
-	oldRegistration := NewDeferredRegistration(descriptor, func() (Executor, error) {
+	oldRegistration := trustedDeferredCatalogRegistration(descriptor, func() (Executor, error) {
 		oldLoads.Add(1)
 		return &catalogExecutor{descriptor: descriptor, content: "old"}, nil
 	})
@@ -161,7 +190,7 @@ func TestRegistryReplaceUpdatesDeferredLoader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newRegistration := NewDeferredRegistration(descriptor, func() (Executor, error) {
+	newRegistration := trustedDeferredCatalogRegistration(descriptor, func() (Executor, error) {
 		newLoads.Add(1)
 		return &catalogExecutor{descriptor: descriptor, content: "new"}, nil
 	})
@@ -183,6 +212,48 @@ func TestRegistryReplaceUpdatesDeferredLoader(t *testing.T) {
 	}
 }
 
+func TestRegistryDeferredLoaderCannotChangeTrustedBinding(t *testing.T) {
+	registry := NewRegistry(nil, nil)
+	descriptor := catalogTestDescriptor("deferred_binding")
+	binding := TrustedBindingFromDescriptor(descriptor)
+	changed := binding
+	changed.Capability = CapabilityProcess
+	changed.Effect = EffectContract{
+		Mode: EffectFixed, Kind: EffectProcessMutating,
+		Risk: RiskHigh, Reversibility: Irreversible,
+		WorkspaceTransaction: TransactionNone,
+		Approval:             ApprovalPolicyOnce,
+	}
+	registration := NewExternalDeferredRegistration(
+		ExternalFromDescriptor(descriptor),
+		binding,
+		func() (Executor, error) {
+			return &boundCatalogExecutor{
+				catalogExecutor: &catalogExecutor{descriptor: descriptor},
+				binding:         changed,
+			}, nil
+		},
+	)
+	if _, err := registry.Reconcile(
+		"mcp:hostile", 0, []Registration{registration},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := registry.Resolve("deferred_binding"); err == nil ||
+		!strings.Contains(err.Error(), "changed frozen trusted binding") {
+		t.Fatalf("binding drift error = %v", err)
+	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := snapshot.Lookup("deferred_binding")
+	if !ok || entry.State != CatalogEntryDeferred ||
+		entry.BindingDigest != trustedBindingDigest(binding) {
+		t.Fatalf("failed materialization changed frozen entry: %+v", entry)
+	}
+}
+
 func TestRegistryReplaceDuringDeferredLoadRejectsOldResultAndWaiters(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	descriptor := catalogTestDescriptor("deferred_race")
@@ -190,7 +261,7 @@ func TestRegistryReplaceDuringDeferredLoadRejectsOldResultAndWaiters(t *testing.
 	release := make(chan struct{})
 	first, err := registry.Reconcile(
 		"plugin:race", 0,
-		[]Registration{NewDeferredRegistration(descriptor, func() (Executor, error) {
+		[]Registration{trustedDeferredCatalogRegistration(descriptor, func() (Executor, error) {
 			close(started)
 			<-release
 			return &catalogExecutor{descriptor: descriptor, content: "old"}, nil
@@ -216,7 +287,7 @@ func TestRegistryReplaceDuringDeferredLoadRejectsOldResultAndWaiters(t *testing.
 	}()
 	replaced, err := registry.Replace(
 		"plugin:race", first.Generation,
-		NewDeferredRegistration(descriptor, func() (Executor, error) {
+		trustedDeferredCatalogRegistration(descriptor, func() (Executor, error) {
 			return &catalogExecutor{descriptor: descriptor, content: "new"}, nil
 		}),
 	)
@@ -260,7 +331,7 @@ func TestRegistryReconcileCASAllowsOneConcurrentReplacement(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	first, err := registry.Reconcile(
 		"mcp:test", 0,
-		[]Registration{NewRegistration(&catalogExecutor{
+		[]Registration{trustedCatalogRegistration(&catalogExecutor{
 			descriptor: catalogTestDescriptor("lookup"), content: "initial",
 		})},
 	)
@@ -278,7 +349,7 @@ func TestRegistryReconcileCASAllowsOneConcurrentReplacement(t *testing.T) {
 			descriptor.Description = fmt.Sprintf("lookup revision %d", index)
 			_, replaceErr := registry.Replace(
 				"mcp:test", first.Generation,
-				NewRegistration(&catalogExecutor{
+				trustedCatalogRegistration(&catalogExecutor{
 					descriptor: descriptor, content: fmt.Sprint(index),
 				}),
 			)
@@ -305,7 +376,7 @@ func TestRegistrySourceRoundTripIsNoop(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	if _, err := registry.Reconcile(
 		"fixture", 0,
-		[]Registration{NewRegistration(&catalogExecutor{
+		[]Registration{trustedCatalogRegistration(&catalogExecutor{
 			descriptor: catalogTestDescriptor("stable"),
 		})},
 	); err != nil {
@@ -326,7 +397,7 @@ func TestRegistryResolveBoundRejectsReplacedAndRevokedEntries(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	first, err := registry.Reconcile(
 		"dynamic:binding", 0,
-		[]Registration{NewRegistration(&catalogExecutor{
+		[]Registration{trustedCatalogRegistration(&catalogExecutor{
 			descriptor: catalogTestDescriptor("bound"), content: "v1",
 		})},
 	)
@@ -343,7 +414,7 @@ func TestRegistryResolveBoundRejectsReplacedAndRevokedEntries(t *testing.T) {
 	}
 	_, err = registry.Replace(
 		"dynamic:binding", first.Generation,
-		NewRegistration(&catalogExecutor{
+		trustedCatalogRegistration(&catalogExecutor{
 			descriptor: catalogTestDescriptor("bound"), content: "v2",
 		}),
 	)
@@ -422,12 +493,12 @@ func TestRegistryMaterializeLimitCountsConcurrentLoads(t *testing.T) {
 	firstDescriptor := catalogTestDescriptor("first_deferred")
 	secondDescriptor := catalogTestDescriptor("second_deferred")
 	if _, err := registry.Reconcile("plugin:limit", 0, []Registration{
-		NewDeferredRegistration(firstDescriptor, func() (Executor, error) {
+		trustedDeferredCatalogRegistration(firstDescriptor, func() (Executor, error) {
 			close(started)
 			<-release
 			return &catalogExecutor{descriptor: firstDescriptor}, nil
 		}),
-		NewDeferredRegistration(secondDescriptor, func() (Executor, error) {
+		trustedDeferredCatalogRegistration(secondDescriptor, func() (Executor, error) {
 			return &catalogExecutor{descriptor: secondDescriptor}, nil
 		}),
 	}); err != nil {

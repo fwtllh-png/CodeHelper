@@ -65,6 +65,8 @@ func (g *Guard) executePipeline(
 					receipt.Tool = authorized.invocation.Ref
 					receipt.Source = authorized.invocation.Source
 					receipt.Disposition = authorized.invocation.Disposition
+					receipt.VerificationEvidenceAuthorized =
+						authorized.invocation.Binding.ProducesVerificationEvidence
 					setExecutionTerminal(
 						&receipt,
 						terminalStatus(err, result),
@@ -84,13 +86,15 @@ func (g *Guard) executePipeline(
 			}
 			hooksStarted = true
 		}
-		if prepared.invocation.Descriptor.SandboxRequirement == tool.SandboxNone {
+		if prepared.invocation.Binding.SandboxRequirement == tool.SandboxNone {
 			mode = SandboxModeNone
 		}
 		if receipt.Tool.Name == "" {
 			receipt.Tool = prepared.invocation.Ref
 			receipt.Source = prepared.invocation.Source
 			receipt.Disposition = prepared.invocation.Disposition
+			receipt.VerificationEvidenceAuthorized =
+				prepared.invocation.Binding.ProducesVerificationEvidence
 		}
 		attempt := g.runAttempt(
 			ctx,
@@ -373,7 +377,7 @@ func (g *Guard) runAttempt(
 		}
 	}()
 	dispatchStarted := g.now()
-	releaseAdmission, err := tool.AdmitExecution(ctx, invocation.Descriptor.ParallelPolicy)
+	releaseAdmission, err := tool.AdmitExecution(ctx, invocation.Binding.ParallelPolicy)
 	run.dispatchWait = g.now().Sub(dispatchStarted)
 	if err != nil {
 		run.err = err
@@ -398,7 +402,7 @@ func (g *Guard) runAttempt(
 		releaseAdmission()
 	}
 	writePaths := invocationWritePaths(invocation)
-	requireRead := mediatedFileWriter(invocation.Tool)
+	requireRead := invocation.Binding.Effect.RequireReadBeforeWrite
 	var expectedWrites map[string]workspacejournal.Fingerprint
 	if fileBrokerAware {
 		expectedWrites, err = g.validateFileWrites(writePaths, requireRead)
@@ -515,7 +519,7 @@ func (g *Guard) runAttempt(
 			prepared,
 		)
 	}
-	if invocation.Tool == "file_read" && run.err == nil {
+	if invocation.Binding.RecordsWorkspaceRead && run.err == nil {
 		if recordErr := g.recordFileRead(&run.result, invocation, readBefore); recordErr != nil {
 			run.err = recordErr
 		}
@@ -527,8 +531,8 @@ func (g *Guard) runAttempt(
 			expectedWrites,
 			&run.result,
 			run.err == nil,
-			mediatedFileWriter(invocation.Tool),
-			mediatedFileWriter(invocation.Tool),
+			invocation.Binding.Journaled(),
+			invocation.Binding.Journaled(),
 		); finishErr != nil && run.err == nil {
 			run.err = finishErr
 		}
@@ -610,14 +614,14 @@ func additionalPermissionAllowed(
 	case authority.AdditionalPathRead:
 		return true
 	case authority.AdditionalPathWrite:
-		return invocation.Descriptor.AccessMode != tool.AccessRead
+		return invocation.Binding.AccessMode != tool.AccessRead
 	case authority.AdditionalNetwork:
-		return invocation.Descriptor.Capability == tool.CapabilityNetwork ||
-			invocation.Descriptor.Capability == tool.CapabilityProcess ||
-			invocation.Descriptor.Capability == tool.CapabilityPlugin
+		return invocation.Binding.Capability == tool.CapabilityNetwork ||
+			invocation.Binding.Capability == tool.CapabilityProcess ||
+			invocation.Binding.Capability == tool.CapabilityPlugin
 	case authority.AdditionalProcess:
-		return invocation.Descriptor.Capability == tool.CapabilityProcess ||
-			invocation.Descriptor.Capability == tool.CapabilityPlugin
+		return invocation.Binding.Capability == tool.CapabilityProcess ||
+			invocation.Binding.Capability == tool.CapabilityPlugin
 	default:
 		return false
 	}
@@ -670,7 +674,7 @@ func (g *Guard) executePrepared(
 func (g *Guard) snapshotReadTarget(
 	invocation Invocation,
 ) (*workspacejournal.Fingerprint, error) {
-	if invocation.Tool != "file_read" {
+	if !invocation.Binding.RecordsWorkspaceRead {
 		return nil, nil
 	}
 	for _, resource := range invocation.Resources {

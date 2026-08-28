@@ -91,7 +91,12 @@ func TestApprovalWaitHoldsNeitherAdmissionNorClaims(t *testing.T) {
 		)
 		done <- executeErr
 	}()
-	request := <-requests
+	var request ApprovalRequest
+	select {
+	case request = <-requests:
+	case executeErr := <-done:
+		t.Fatalf("process smoke ended before approval: %v", executeErr)
+	}
 	assertApprovalResourcesReleased(t, registry, request, &active)
 	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
 	if err := <-done; err != nil {
@@ -107,7 +112,14 @@ func TestHostProcessApprovalIsFreshOnceAndSkipsPermissionHooks(t *testing.T) {
 	descriptor := readDescriptor("quality_process_smoke")
 	descriptor.Capability = tool.CapabilityProcess
 	descriptor.AccessMode = tool.AccessWrite
-	executor := &testExecutor{descriptor: descriptor}
+	binding := tool.TrustedBindingFromDescriptor(descriptor)
+	binding.Effect = tool.EffectContract{
+		Mode: tool.EffectFixed, Kind: tool.EffectProcessMutating,
+		Risk: tool.RiskHigh, Reversibility: tool.Bounded,
+		WorkspaceTransaction: tool.TransactionNone,
+		Approval:             tool.ApprovalPolicyOnce,
+	}
+	executor := &testExecutor{descriptor: descriptor, binding: binding}
 	if err := registry.Register(executor, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +157,12 @@ func TestHostProcessApprovalIsFreshOnceAndSkipsPermissionHooks(t *testing.T) {
 		)
 		done <- executeErr
 	}()
-	request := <-requests
+	var request ApprovalRequest
+	select {
+	case request = <-requests:
+	case executeErr := <-done:
+		t.Fatalf("process smoke ended before approval: %v", executeErr)
+	}
 	if request.ReasonCode != "host_process_approval_required" ||
 		request.ReplacementAllowed ||
 		len(request.AllowedScopes) != 1 ||

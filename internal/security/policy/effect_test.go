@@ -246,12 +246,41 @@ func effectInvocation(
 	if capability == tool.CapabilityProcess {
 		arguments = json.RawMessage(`{"command":"fixture"}`)
 	}
+	contract := tool.EffectContract{
+		Mode:                 tool.EffectDerived,
+		WorkspaceTransaction: tool.TransactionNone,
+		Approval:             tool.ApprovalPolicyDefault,
+	}
+	switch name {
+	case "send_message":
+		contract = tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: tool.EffectAgentMessage,
+			Risk: tool.RiskLow, Reversibility: tool.Reversible,
+			WorkspaceTransaction: tool.TransactionNone,
+			Approval:             tool.ApprovalPolicyDefault,
+		}
+	case "spawn_agent", "followup_task":
+		contract = tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: tool.EffectAgentLifecycle,
+			Risk: tool.RiskMedium, Reversibility: tool.Bounded,
+			WorkspaceTransaction: tool.TransactionNone,
+			Approval:             tool.ApprovalPolicyDefault,
+		}
+	case "file_write", "file_edit", "file_apply", "file_patch":
+		contract = tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: tool.EffectWorkspaceEdit,
+			Risk: tool.RiskLow, Reversibility: tool.Reversible,
+			WorkspaceTransaction:   tool.TransactionBeforeImage,
+			RequireReadBeforeWrite: true,
+			Approval:               tool.ApprovalPolicyDefault,
+		}
+	}
 	return Invocation{
 		CallID: name, Tool: name, Arguments: arguments,
 		Resources: resources, Capability: capability,
 		Access: access, Sandbox: sandbox,
-		Journaled: name == "file_write" || name == "file_edit" ||
-			name == "file_apply" || name == "file_patch",
+		Effect:    contract,
+		Journaled: contract.WorkspaceTransaction == tool.TransactionBeforeImage,
 		Validated: true,
 	}
 }

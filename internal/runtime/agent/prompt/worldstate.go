@@ -109,7 +109,8 @@ func NewToolCatalogSectionFromSnapshot(
 ) ToolCatalogSection {
 	var section ToolCatalogSection
 	for _, entry := range snapshot.Entries() {
-		if entry.Descriptor.Visibility != tool.VisibleModel ||
+		presentation := entry.PresentationDescriptor()
+		if presentation.Visibility != tool.VisibleModel ||
 			entry.Descriptor.Availability == tool.AvailabilityUnavailable {
 			continue
 		}
@@ -123,7 +124,7 @@ func NewToolCatalogSectionFromSnapshot(
 			section.Omitted++
 			continue
 		}
-		desc := strings.TrimSpace(entry.Descriptor.Description)
+		desc := strings.TrimSpace(presentation.Description)
 		if len(desc) > 120 {
 			desc = desc[:117] + "..."
 		}

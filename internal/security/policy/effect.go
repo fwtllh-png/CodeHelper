@@ -33,6 +33,13 @@ type Effect struct {
 }
 
 func NormalizeEffect(invocation Invocation) Effect {
+	if invocation.Effect.Mode == tool.EffectFixed {
+		return effect(
+			EffectKind(invocation.Effect.Kind),
+			RiskLevel(invocation.Effect.Risk),
+			string(invocation.Effect.Reversibility),
+		)
+	}
 	if invocation.Access == "" || invocation.Sandbox == "" {
 		switch invocation.Capability {
 		case tool.CapabilityRead:
@@ -62,14 +69,7 @@ func NormalizeEffect(invocation Invocation) Effect {
 	case resources == 16 && invocation.Capability == tool.CapabilityWrite:
 		return effect(EffectSessionMutation, RiskLow, "reversible")
 	case resources&8 != 0:
-		switch invocation.Tool {
-		case "send_message":
-			return effect(EffectAgentMessage, RiskLow, "reversible")
-		case "spawn_agent", "followup_task":
-			return effect(EffectAgentLifecycle, RiskMedium, "bounded")
-		default:
-			return effect(EffectAgentLifecycle, RiskHigh, "bounded")
-		}
+		return effect(EffectAgentLifecycle, RiskHigh, "bounded")
 	case strongProcessUsesOnlyLoopback(invocation):
 		// Local fixture servers stay inside the Strong Sandbox boundary. Treat
 		// their exact localhost grant like bounded network read so auto posture

@@ -308,6 +308,19 @@ func (e *foregroundExecutor) Descriptor() tool.Descriptor {
 	return e.runtime.Descriptor()
 }
 
+func (e *foregroundExecutor) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(e.runtime.Descriptor())
+	binding.Capability = tool.CapabilityProcess
+	binding.Effect = tool.EffectContract{
+		Mode: tool.EffectFixed, Kind: tool.EffectProcessReadOnly,
+		Risk: tool.RiskLow, Reversibility: tool.Reversible,
+		WorkspaceTransaction: tool.TransactionNone,
+		Approval:             tool.ApprovalPolicyDefault,
+	}
+	binding.Required.ProcessTree = true
+	return binding
+}
+
 func (e *foregroundExecutor) ExecutionDisposition() tool.ExecutionDisposition {
 	return e.runtime.ExecutionDisposition()
 }

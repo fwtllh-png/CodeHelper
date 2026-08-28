@@ -181,6 +181,9 @@ func (r *Registry) checkMaterializeLimitLocked(candidate *registered) error {
 // Registration is one source-owned desired entry.
 type Registration struct {
 	descriptor Descriptor
+	external   ExternalDescriptor
+	binding    TrustedBinding
+	explicit   bool
 	executor   Executor
 	deferred   func() (Executor, error)
 	state      CatalogEntryState
@@ -190,6 +193,16 @@ type Registration struct {
 
 func NewRegistration(executor Executor) Registration {
 	return Registration{executor: executor}
+}
+
+func NewExternalRegistration(
+	external ExternalDescriptor,
+	binding TrustedBinding,
+	executor Executor,
+) Registration {
+	return Registration{
+		external: external, binding: binding, executor: executor, explicit: true,
+	}
 }
 
 func NewDeferredRegistration(
@@ -203,6 +216,24 @@ func NewDeferredRegistration(
 	}
 }
 
+func NewExternalDeferredRegistration(
+	external ExternalDescriptor,
+	binding TrustedBinding,
+	loader func() (Executor, error),
+) Registration {
+	external.Deferred.Enabled = true
+	external.Availability = AvailabilityDeferred
+	return Registration{
+		external: external, binding: binding, deferred: loader,
+		state: CatalogEntryDeferred, explicit: true,
+	}
+}
+
+func (r Registration) WithTrustedBinding(binding TrustedBinding) Registration {
+	r.binding, r.explicit = binding, true
+	return r
+}
+
 func (r Registration) WithPayload(payload any) Registration {
 	r.payload = payload
 	return r
@@ -213,6 +244,21 @@ func (r Registration) Descriptor() Descriptor {
 		return cloneDescriptor(r.executor.Descriptor())
 	}
 	return cloneDescriptor(r.descriptor)
+}
+func (r Registration) ExternalDescriptor() ExternalDescriptor {
+	if r.external.Name != "" {
+		return cloneExternalDescriptor(r.external)
+	}
+	return ExternalFromDescriptor(r.Descriptor())
+}
+func (r Registration) TrustedBinding() TrustedBinding {
+	if r.explicit {
+		return cloneTrustedBinding(r.binding)
+	}
+	if provider, ok := r.executor.(TrustedBindingProvider); ok {
+		return cloneTrustedBinding(provider.TrustedBinding())
+	}
+	return TrustedBindingFromDescriptor(r.Descriptor())
 }
 func (r Registration) Executor() Executor { return r.executor }
 func (r Registration) Payload() any       { return r.payload }
@@ -293,12 +339,27 @@ const (
 
 // CatalogEntrySnapshot binds a descriptor to source and authority revision.
 type CatalogEntrySnapshot struct {
-	Name       string            `json:"name"`
-	Source     string            `json:"source"`
-	Revision   uint64            `json:"revision"`
-	State      CatalogEntryState `json:"state"`
-	Descriptor Descriptor        `json:"descriptor"`
-	authority  uint64
+	Name          string             `json:"name"`
+	Source        string             `json:"source"`
+	Revision      uint64             `json:"revision"`
+	State         CatalogEntryState  `json:"state"`
+	External      ExternalDescriptor `json:"external_descriptor"`
+	Descriptor    Descriptor         `json:"descriptor"`
+	BindingDigest string             `json:"binding_digest"`
+	authority     uint64
+}
+
+// PresentationDescriptor combines untrusted presentation fields with the
+// Registry-frozen authority projection. Requested effects are never applied.
+func (e CatalogEntrySnapshot) PresentationDescriptor() Descriptor {
+	descriptor := cloneDescriptor(e.Descriptor)
+	external := cloneExternalDescriptor(e.External)
+	descriptor.Name = external.Name
+	descriptor.Description = external.Description
+	descriptor.InputSchema = external.InputSchema
+	descriptor.Visibility = external.Visibility
+	descriptor.Aliases = external.Aliases
+	return descriptor
 }
 
 // CatalogSnapshot is an immutable, sorted sampling view.
@@ -337,6 +398,20 @@ func NewCatalogSnapshot(
 				"catalog entry %q descriptor name is %q", entry.Name, entry.Descriptor.Name,
 			)
 		}
+		if entry.External.Name == "" {
+			entry.External = ExternalFromDescriptor(entry.Descriptor)
+		}
+		if entry.BindingDigest == "" {
+			entry.BindingDigest = trustedBindingDigest(
+				TrustedBindingFromDescriptor(entry.Descriptor),
+			)
+		}
+		if entry.External.Name != entry.Name {
+			return CatalogSnapshot{}, fmt.Errorf(
+				"catalog entry %q external or binding identity is incomplete",
+				entry.Name,
+			)
+		}
 		if !validCatalogEntryState(entry.State) {
 			return CatalogSnapshot{}, fmt.Errorf(
 				"catalog entry %q has invalid state %q", entry.Name, entry.State,
@@ -350,6 +425,7 @@ func NewCatalogSnapshot(
 		}
 		seen[entry.Name] = struct{}{}
 		entry.Descriptor = cloneDescriptor(entry.Descriptor)
+		entry.External = cloneExternalDescriptor(entry.External)
 		cloned[index] = entry
 	}
 	sort.Slice(cloned, func(i, j int) bool { return cloned[i].Name < cloned[j].Name })
@@ -363,6 +439,7 @@ func (s CatalogSnapshot) Entries() []CatalogEntrySnapshot {
 	result := make([]CatalogEntrySnapshot, len(s.entries))
 	for index, entry := range s.entries {
 		entry.Descriptor = cloneDescriptor(entry.Descriptor)
+		entry.External = cloneExternalDescriptor(entry.External)
 		result[index] = entry
 	}
 	return result
@@ -377,6 +454,7 @@ func (s CatalogSnapshot) Lookup(name string) (CatalogEntrySnapshot, bool) {
 	}
 	entry := s.entries[index]
 	entry.Descriptor = cloneDescriptor(entry.Descriptor)
+	entry.External = cloneExternalDescriptor(entry.External)
 	return entry, true
 }
 
@@ -476,6 +554,12 @@ func (r *Registry) Reconcile(
 	}
 	normalized := make([]Registration, len(registrations))
 	for index, registration := range registrations {
+		if externalCatalogSource(source) && !registration.explicit {
+			return ChangeSet{}, fmt.Errorf(
+				"registration %d: external source %q requires a trusted binding",
+				index, source,
+			)
+		}
 		value, err := normalizeRegistration(registration)
 		if err != nil {
 			return ChangeSet{}, fmt.Errorf("registration %d: %w", index, err)
@@ -492,6 +576,12 @@ func (r *Registry) Reconcile(
 		)
 	}
 	return r.reconcileLocked(source, normalized)
+}
+
+func externalCatalogSource(source string) bool {
+	return strings.HasPrefix(source, "mcp:") ||
+		strings.HasPrefix(source, "plugin:") ||
+		strings.HasPrefix(source, "dynamic:")
 }
 
 // registerOne is the O(1) path for immutable startup sources.
@@ -514,6 +604,8 @@ func (r *Registry) registerOne(source string, registration Registration) error {
 	r.nextToken++
 	item := &registered{
 		descriptor: cloneDescriptor(normalized.descriptor),
+		external:   cloneExternalDescriptor(normalized.external),
+		binding:    cloneTrustedBinding(normalized.binding),
 		executor:   normalized.executor,
 		deferred:   normalized.deferred,
 		backend:    r.backend,
@@ -656,6 +748,8 @@ func (r *Registry) reconcileLocked(
 		r.nextToken++
 		item := &registered{
 			descriptor: cloneDescriptor(registration.descriptor),
+			external:   cloneExternalDescriptor(registration.external),
+			binding:    cloneTrustedBinding(registration.binding),
 			executor:   registration.executor,
 			deferred:   registration.deferred,
 			backend:    r.backend,
@@ -716,6 +810,25 @@ func (r *Registry) reconcileLocked(
 }
 
 func normalizeRegistration(registration Registration) (Registration, error) {
+	if registration.explicit {
+		if registration.external.Name == "" {
+			switch {
+			case registration.executor != nil:
+				registration.external = ExternalFromDescriptor(
+					registration.executor.Descriptor(),
+				)
+			case registration.descriptor.Name != "":
+				registration.external = ExternalFromDescriptor(
+					registration.descriptor,
+				)
+			}
+		}
+		if registration.descriptor.Name == "" {
+			registration.descriptor = registration.external.Descriptor(
+				registration.binding,
+			)
+		}
+	}
 	switch {
 	case registration.executor != nil && registration.deferred != nil:
 		return Registration{}, errors.New("tool registration cannot have both executor and loader")
@@ -724,9 +837,23 @@ func normalizeRegistration(registration Registration) (Registration, error) {
 	case registration.deferred != nil:
 		registration.descriptor.DeferredLoading.Enabled = true
 		registration.descriptor.Availability = AvailabilityDeferred
+		registration.external.Deferred.Enabled = true
+		registration.external.Availability = AvailabilityDeferred
 		registration.state = CatalogEntryDeferred
 	default:
-		registration.descriptor = registration.executor.Descriptor()
+		live := registration.executor.Descriptor()
+		if registration.explicit {
+			if registration.external.Name == "" {
+				registration.external = ExternalFromDescriptor(live)
+			}
+			if registration.state != CatalogEntryMaterialized {
+				registration.descriptor = registration.external.Descriptor(
+					registration.binding,
+				)
+			}
+		} else {
+			registration.descriptor = live
+		}
 		switch registration.descriptor.Availability {
 		case AvailabilityUnavailable:
 			registration.state = CatalogEntryUnavailable
@@ -741,7 +868,32 @@ func normalizeRegistration(registration Registration) (Registration, error) {
 	if err := validateDescriptor(registration.descriptor); err != nil {
 		return Registration{}, err
 	}
+	if !registration.explicit {
+		registration.external = ExternalFromDescriptor(registration.descriptor)
+		if provider, ok := registration.executor.(TrustedBindingProvider); ok {
+			registration.binding = provider.TrustedBinding()
+		} else {
+			registration.binding = TrustedBindingFromDescriptor(
+				registration.descriptor,
+			)
+		}
+	} else if registration.external.Name == "" {
+		registration.external = ExternalFromDescriptor(registration.descriptor)
+	}
+	if registration.external.Name != registration.descriptor.Name {
+		return Registration{}, errors.New(
+			"external descriptor and trusted binding name disagree",
+		)
+	}
+	if err := registration.binding.Validate(); err != nil {
+		return Registration{}, fmt.Errorf(
+			"tool %q trusted binding: %w",
+			registration.descriptor.Name, err,
+		)
+	}
 	registration.descriptor = cloneDescriptor(registration.descriptor)
+	registration.external = cloneExternalDescriptor(registration.external)
+	registration.binding = cloneTrustedBinding(registration.binding)
 	return registration, nil
 }
 
@@ -753,6 +905,9 @@ func (r *Registry) sourceRegistrationsLocked(source string) []Registration {
 		}
 		registration := Registration{
 			descriptor: cloneDescriptor(item.descriptor),
+			external:   cloneExternalDescriptor(item.external),
+			binding:    cloneTrustedBinding(item.binding),
+			explicit:   true,
 			state:      item.state,
 			payload:    item.payload,
 			token:      item.token,
@@ -776,7 +931,9 @@ func (r *Registry) snapshotEntriesLocked() []CatalogEntrySnapshot {
 		entries = append(entries, CatalogEntrySnapshot{
 			Name: name, Source: item.source, Revision: item.revision,
 			State: item.state, Descriptor: cloneDescriptor(item.descriptor),
-			authority: item.token,
+			External:      cloneExternalDescriptor(item.external),
+			BindingDigest: trustedBindingDigest(item.binding),
+			authority:     item.token,
 		})
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
@@ -806,6 +963,8 @@ func (r *Registry) refreshAvailabilityLocked(item *registered) error {
 		return err
 	}
 	item.descriptor = candidate
+	item.external.Availability = candidate.Availability
+	item.external.Unavailable = candidate.UnavailableReason
 	switch candidate.Availability {
 	case AvailabilityUnavailable:
 		item.state = CatalogEntryUnavailable
@@ -829,7 +988,9 @@ func catalogDigest(entries []CatalogEntrySnapshot) string {
 
 func sameRegistered(current *registered, desired Registration) bool {
 	if current.state != desired.state ||
-		!reflect.DeepEqual(current.descriptor, desired.descriptor) {
+		!reflect.DeepEqual(current.descriptor, desired.descriptor) ||
+		!reflect.DeepEqual(current.external, desired.external) ||
+		!reflect.DeepEqual(current.binding, desired.binding) {
 		return false
 	}
 	if current.deferred != nil || desired.deferred != nil {

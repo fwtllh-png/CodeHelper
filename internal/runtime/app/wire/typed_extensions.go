@@ -20,11 +20,8 @@ type ContributionReceipt struct {
 }
 
 func cloneContributionReceipt(value ContributionReceipt) ContributionReceipt {
-	result := ContributionReceipt{
-		Contributor: value.Contributor,
-		Tools:       append([]string(nil), value.Tools...),
-		Outputs:     append([]string(nil), value.Outputs...),
-	}
+	result := ContributionReceipt{Contributor: value.Contributor,
+		Tools: append([]string(nil), value.Tools...), Outputs: append([]string(nil), value.Outputs...)}
 	if value.Typed != nil {
 		receipt := *value.Typed
 		receipt.Outputs = append([]string(nil), value.Typed.Outputs...)
@@ -89,7 +86,8 @@ func (c typedToolContributor) Contribute(
 					c.id,
 				)
 			}
-			if err := registry.Register(registration.Executor(), nil); err != nil {
+			registration = registration.WithTrustedBinding(registration.TrustedBinding())
+			if err := registry.RegisterTrusted("extension:"+c.id, registration); err != nil {
 				return ContributionReceipt{}, err
 			}
 		}

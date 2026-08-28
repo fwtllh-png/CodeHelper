@@ -316,6 +316,8 @@ type ClaimFunc func(json.RawMessage) ([]string, error)
 
 type registered struct {
 	descriptor Descriptor
+	external   ExternalDescriptor
+	binding    TrustedBinding
 	executor   Executor
 	deferred   func() (Executor, error)
 	backend    sandbox.Backend
@@ -376,7 +378,9 @@ func NewRegistry(claims *Claims, results *ResultStore) *Registry {
 	retrieval := &resultRetrieval{store: results}
 	descriptor := retrieval.Descriptor()
 	item := &registered{
-		descriptor: descriptor, executor: retrieval, source: "builtin:result_get",
+		descriptor: descriptor, external: ExternalFromDescriptor(descriptor),
+		binding:  TrustedBindingFromDescriptor(descriptor),
+		executor: retrieval, source: "builtin:result_get",
 		revision: 1, state: CatalogEntryEager, token: 1,
 	}
 	registry.nextToken = 1
@@ -409,6 +413,20 @@ func (r *Registry) Register(executor Executor, _ ClaimFunc) error {
 	}
 	registration := NewRegistration(executor)
 	return r.registerOne(nextLegacySource(executor.Descriptor().Name), registration)
+}
+
+func (r *Registry) RegisterTrusted(
+	source string,
+	registration Registration,
+) error {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return errors.New("trusted tool source is required")
+	}
+	if !registration.explicit {
+		return errors.New("trusted registration requires an explicit binding")
+	}
+	return r.registerOne(source, registration)
 }
 
 func (r *Registry) RegisterDeferred(descriptor Descriptor, loader func() (Executor, error)) error {
@@ -482,6 +500,27 @@ func (r *Registry) ResolveBoundRef(
 		return ToolRef{}, Descriptor{}, nil, err
 	}
 	return ref, descriptor, executor, nil
+}
+
+func (r *Registry) ResolveTrustedBinding(
+	ref ToolRef,
+) (TrustedBinding, error) {
+	if err := ref.Validate(); err != nil {
+		return TrustedBinding{}, err
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	item := r.tools[ref.Name]
+	if item == nil || item.source != ref.Source ||
+		item.revision != ref.Revision ||
+		item.token != ref.Authority ||
+		r.catalogID != ref.CatalogID {
+		return TrustedBinding{}, fmt.Errorf(
+			"%w for tool %q: trusted binding changed",
+			ErrCatalogStale, ref.Name,
+		)
+	}
+	return cloneTrustedBinding(item.binding), nil
 }
 
 // ResolveCatalogToolID validates a sampled binding without materializing or
@@ -595,6 +634,16 @@ func (r *Registry) resolve(
 			return name, descriptor, nil, fmt.Errorf("deferred tool %q loaded a nil executor", name)
 		}
 		loaded := executor.Descriptor()
+		if provider, ok := executor.(TrustedBindingProvider); ok {
+			loadedBinding := provider.TrustedBinding()
+			if !reflect.DeepEqual(item.binding, loadedBinding) {
+				return name, descriptor, nil, fmt.Errorf(
+					"%w for %q: loader changed frozen trusted binding",
+					ErrToolLoadFailed, name,
+				)
+			}
+			loaded = ApplyTrustedBinding(loaded, loadedBinding)
+		}
 		if loaded.Name != name {
 			return name, descriptor, nil, fmt.Errorf("deferred tool %q loaded as %q", name, loaded.Name)
 		}

@@ -313,6 +313,9 @@ func testRequest(
 			AccessMode: tool.AccessWrite,
 		},
 	}
+	invocation.Binding = tool.TrustedBindingFromDescriptor(
+		invocation.Descriptor,
+	)
 	operation, err := authority.BuildExecutionOperation(authority.OperationInput{
 		WorkspaceRoot: root, WorkspaceID: workspaceID,
 		WorkspaceGeneration: 1, Invocation: invocation,

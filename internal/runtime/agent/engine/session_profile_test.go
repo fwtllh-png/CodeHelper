@@ -317,7 +317,7 @@ func TestSessionProfileToolAllowlistBindsSourceAcrossRevocation(t *testing.T) {
 	if _, err := registry.Reconcile(
 		"dynamic:replacement",
 		registry.Generation(),
-		[]tool.Registration{tool.NewRegistration(replacement)},
+		[]tool.Registration{trustedExternalRegistration(replacement)},
 	); err != nil {
 		t.Fatal(err)
 	}

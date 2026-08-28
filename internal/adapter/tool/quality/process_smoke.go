@@ -140,6 +140,18 @@ func (t *processSmokeTool) Descriptor() tool.Descriptor {
 	}
 }
 
+func (t *processSmokeTool) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(t.Descriptor())
+	binding.Effect = tool.EffectContract{
+		Mode: tool.EffectFixed, Kind: tool.EffectProcessMutating,
+		Risk: tool.RiskHigh, Reversibility: tool.Bounded,
+		WorkspaceTransaction: tool.TransactionNone,
+		Approval:             tool.ApprovalPolicyOnce,
+	}
+	binding.ProducesVerificationEvidence = true
+	return binding
+}
+
 func (t *processSmokeTool) typedExecutor() (tool.Executor, error) {
 	executor, err := typed.Define(typed.Spec[processSmokeInput, tool.Result]{
 		Descriptor:  t.Descriptor(),
