@@ -48,6 +48,44 @@ func TestProgressSignatureCountsResearchReadsOnlyForResearchTurns(
 	}
 }
 
+func TestProgressSignatureDoesNotRenewForMutationRevisionAlone(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentWorkspaceChange,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	before := engine.progressSignature(kernel)
+	for index := range 2 {
+		call := provider.ToolCall{
+			ID:   fmt.Sprintf("write-%d", index),
+			Name: "file_apply",
+		}
+		if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
+			t.Fatal(err)
+		}
+		if err := kernel.StartTool(call.ID); err != nil {
+			t.Fatal(err)
+		}
+		if err := kernel.CloseTool(call, tool.Result{
+			Outcome: &tool.Outcome{Facts: &tool.OutcomeFacts{
+				WorkspaceChanges: []tool.WorkspaceChange{{
+					Path: "same.go", Kind: tool.WorkspaceModified,
+				}},
+			}},
+		}, nil); err != nil {
+			t.Fatal(err)
+		}
+		if after := engine.progressSignature(kernel); after != before {
+			t.Fatalf("mutation %d renewed progress: before=%q after=%q",
+				index+1, before, after)
+		}
+	}
+}
+
 func TestProgressSignatureCountsSuccessfulAgentLifecycleCalls(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	kernel := newEngineTurnKernel(

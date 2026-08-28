@@ -15,20 +15,20 @@ func (e *Engine) projectWorldState(
 	history []provider.Message,
 	catalog tool.CatalogSnapshot,
 	advertised map[string]bool,
-) (
-	[]provider.Message,
-	[]provider.Message,
-	[]promptcontext.Receipt,
-	agentcontext.WorldProjection,
-	error,
-) {
+) ([]provider.Message, []provider.Message, []promptcontext.Receipt,
+	agentcontext.WorldProjection, error) {
 	scope := e.executionScope()
 	if scope == nil {
-		return nil, nil, nil, agentcontext.WorldProjection{},
-			errors.New("turn scope is not active")
+		return nil, nil, nil, agentcontext.WorldProjection{}, errors.New("turn scope is not active")
 	}
 	scope.mu.Lock()
 	baseline := scope.state.context.World()
+	if scope.state.contextLedger != nil &&
+		agentcontext.WorldBaselineValid(history, baseline) {
+		receipts := append([]promptcontext.Receipt(nil), scope.state.contextSeen...)
+		scope.mu.Unlock()
+		return promptcontext.FrozenWorld(e.promptMessages(), receipts, baseline)
+	}
 	scope.mu.Unlock()
 	evidence := e.evidenceSet().Snapshot(e.options.EvidenceLimit)
 	if e.options.RepoContext != nil {
@@ -53,11 +53,8 @@ func (e *Engine) projectWorldState(
 			Policy: scope.spec.Policy, CodingPolicy: e.options.CodingPolicy,
 			Memory: scope.spec.Memory, Skills: scope.spec.Skills,
 			Budgets: e.options.ContextBudgets, Repository: e.options.RepoContext,
-			WorkingSet: e.workingLedger().Select(
-				e.turn,
-				e.options.WorkingSetLimit,
-			),
-			Evidence: evidence, PlanText: plan, PlanReceipt: planReceipt,
+			WorkingSet: e.workingLedger().Select(e.turn, e.options.WorkingSetLimit),
+			Evidence:   evidence, PlanText: plan, PlanReceipt: planReceipt,
 		},
 	)
 	if err != nil {
@@ -71,6 +68,5 @@ func (e *Engine) projectWorldState(
 	)
 	scope.state.context.SetWorld(projected.Projection.Baseline)
 	scope.mu.Unlock()
-	return projected.Stable, projected.Delta, projected.Receipts,
-		projected.Projection, nil
+	return projected.Stable, projected.Delta, projected.Receipts, projected.Projection, nil
 }

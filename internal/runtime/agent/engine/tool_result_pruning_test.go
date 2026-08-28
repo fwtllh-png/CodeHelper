@@ -217,6 +217,60 @@ func TestCompactGateKeepsConsumedResultsBelowDynamicPressureThreshold(t *testing
 	}
 }
 
+func TestCompactGatePrunesConsumedHandleResultUsingDynamicSurfaceBudget(t *testing.T) {
+	results := tool.NewResultStore(32 << 10)
+	engine := newEngine(
+		t,
+		&scriptedProvider{},
+		tool.NewRegistry(nil, results),
+	)
+	scope := attachTestScope(t, engine)
+	scope.state.toolSurfaceItemBytes = 96
+	large := strings.Repeat("result ", 160)
+	encoded, err := json.Marshal(tool.Result{Content: large})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := []provider.Message{
+		toolCallMessage(1, "old", "file_read", `{}`),
+		toolResultMessage(1, "old", string(encoded)),
+		toolCallMessage(1, "latest", "file_read", `{}`),
+		toolResultMessage(1, "latest", string(encoded)),
+	}
+	latest := history[len(history)-1].Blocks[0].ToolResult.Content
+	var receipt *CompactionReceipt
+	if _, err := engine.runCompactGate(
+		t.Context(),
+		&history,
+		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
+		0,
+		CompactionPhaseMidTurn,
+		true,
+		func(_ State, event Event) error {
+			receipt = event.Compaction
+			return nil
+		},
+		0,
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if receipt == nil || receipt.PrunedToolResults != 1 ||
+		history[len(history)-1].Blocks[0].ToolResult.Content != latest {
+		t.Fatalf("receipt=%+v history=%+v", receipt, history)
+	}
+	var projected tool.Result
+	if err := json.Unmarshal(
+		[]byte(history[1].Blocks[0].ToolResult.Content),
+		&projected,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if projected.Handle == "" || len(projected.Content) >= len(large) {
+		t.Fatalf("projected result = %+v", projected)
+	}
+}
+
 func TestToolPairIdentityEquivalenceRejectsRewrittenCalls(t *testing.T) {
 	before := []provider.Message{
 		toolCallMessage(1, "call-stable", "file_read", `{}`),

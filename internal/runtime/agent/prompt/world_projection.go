@@ -85,6 +85,15 @@ type WorldProjectionResult struct {
 	Selections []Selection
 }
 
+func FrozenWorld(
+	stable []provider.Message,
+	receipts []Receipt,
+	baseline agentcontext.WorldBaseline,
+) ([]provider.Message, []provider.Message, []Receipt, agentcontext.WorldProjection, error) {
+	return agentcontext.CloneMessages(stable), nil, append([]Receipt(nil), receipts...),
+		agentcontext.WorldProjection{Mode: agentcontext.WorldPatch, Baseline: baseline}, nil
+}
+
 func ProjectWorldState(
 	input WorldProjectionInput,
 ) (WorldProjectionResult, error) {

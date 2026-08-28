@@ -99,6 +99,7 @@ func TestCompatibleChatThinkingToggleIsCapabilityGated(t *testing.T) {
 func TestCompatibleChatWireRequestIsStrictAppendOnly(t *testing.T) {
 	adapter := compatibleAdapter(t)
 	request := compatibleRequest(t)
+	request.PromptCacheKey = "session-append-only"
 	request.ReasoningEffort = "high"
 	request.Tools = []provider.ToolDefinition{{
 		Name: "read", Description: "Read a file",
@@ -153,6 +154,38 @@ func TestCompatibleChatWireRequestIsStrictAppendOnly(t *testing.T) {
 			)
 		}
 	}
+}
+
+func TestCompatibleChatWirePrefixReportsFirstSerializedDivergence(t *testing.T) {
+	adapter := compatibleAdapter(t)
+	request := compatibleRequest(t)
+	request.PromptCacheKey = "session-divergence"
+	request.Messages = []provider.Message{
+		provider.TextMessage(provider.RoleSystem, "stable"),
+		provider.TextMessage(provider.RoleUser, "first"),
+	}
+	first, err := adapter.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Messages[1] = provider.TextMessage(provider.RoleUser, "changed")
+	call, err := adapter.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstMessages, _ := chatWireParts(t, first.Body)
+	secondMessages, _ := chatWireParts(t, call.Body)
+	commonBytes := 0
+	for index := range firstMessages {
+		if !bytes.Equal(firstMessages[index], secondMessages[index]) {
+			if index != 1 || commonBytes == 0 {
+				t.Fatalf("wire divergence index=%d common_bytes=%d", index, commonBytes)
+			}
+			return
+		}
+		commonBytes += len(firstMessages[index])
+	}
+	t.Fatal("serialized message divergence was not detected")
 }
 
 func TestCompatibleChatStreamUsesNativeCacheAndAcceptsStandardEOF(t *testing.T) {

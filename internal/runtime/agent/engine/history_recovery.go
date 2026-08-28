@@ -248,6 +248,7 @@ func (e *Engine) compactHistoryWithPolicy(
 			AuthorityDigest:     authorityDigest,
 			EstimateMessages:    agentcontext.EstimateMessageTokens,
 			ProjectHistory:      projectHistory,
+			PruneBeforePressure: true,
 			Measure: func(
 				snapshot agentcontext.MessageSnapshot,
 				reserve uint64,

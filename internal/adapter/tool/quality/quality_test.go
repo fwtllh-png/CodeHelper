@@ -287,6 +287,69 @@ func TestQualityVerifierDetectsAndAuditsMixedEcosystems(t *testing.T) {
 	}
 }
 
+func TestQualityVerifierRerunsOnlyFailedDAGNodes(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"go.mod", "package.json", "changed.go"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runs := map[string]int{}
+	quality := &Tool{
+		root: root, kind: "quality_verify",
+		run: func(_ context.Context, options process.Options) (process.Result, error) {
+			runs[options.Command]++
+			if strings.Contains(options.Command, "npm") && runs[options.Command] == 1 {
+				return process.Result{ExitCode: 1}, nil
+			}
+			return process.Result{}, nil
+		},
+	}
+	raw := json.RawMessage(`{"covered_paths":["changed.go"]}`)
+	ctx := tool.WithInvocationIdentity(t.Context(), tool.InvocationIdentity{
+		TurnID: "turn-verification-dag",
+	})
+	first, err := quality.Execute(ctx, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.IsError {
+		t.Fatalf("first result = %+v, want node failure", first)
+	}
+	second, err := quality.Execute(ctx, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.IsError ||
+		runs["set -e\ngo test ./..."] != 1 ||
+		runs["set -e\nnpm test"] != 2 {
+		t.Fatalf("runs=%v second=%+v", runs, second)
+	}
+	var payload struct {
+		Checks []struct {
+			Name   string `json:"name"`
+			Reused bool   `json:"reused"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal([]byte(second.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Checks) != 2 || !payload.Checks[0].Reused ||
+		payload.Checks[1].Reused {
+		t.Fatalf("checks = %+v", payload.Checks)
+	}
+	nextTurn := tool.WithInvocationIdentity(t.Context(), tool.InvocationIdentity{
+		TurnID: "turn-verification-dag-next",
+	})
+	if _, err := quality.Execute(nextTurn, raw); err != nil {
+		t.Fatal(err)
+	}
+	if runs["set -e\ngo test ./..."] != 2 ||
+		runs["set -e\nnpm test"] != 3 {
+		t.Fatalf("cross-Turn verification was reused: %v", runs)
+	}
+}
+
 func TestQualityVerifierDoesNotInferFailureKindFromOutput(t *testing.T) {
 	quality := &Tool{
 		root: t.TempDir(), kind: "quality_verify",

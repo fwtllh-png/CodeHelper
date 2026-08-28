@@ -51,6 +51,47 @@ func TestWorldStatePersistsAcrossTurnsAndEmitsOnlyChanges(t *testing.T) {
 	}
 }
 
+func TestWorldStateFreezesWithinTurnAndRefreshesAtNextTurn(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("echo-1", "echo", `{"text":"one"}`),
+		textStream("done"),
+		textStream("next"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}); err != nil {
+		t.Fatal(err)
+	}
+	repository := &stubRepoContext{}
+	engine := newEngine(t, runtime, registry)
+	engine.options.RepoContext = repository
+
+	if _, err := engine.Run(t.Context(), "first", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.requests) != 2 {
+		t.Fatalf("first Turn requests = %d, want 2", len(runtime.requests))
+	}
+	if len(repository.evidence) != 1 {
+		t.Fatalf("World State builds = %d, want one per Turn", len(repository.evidence))
+	}
+	if countWorldMode(runtime.requests[1].Messages, "patch") != 0 {
+		t.Fatalf("second sample rewrote World State: %+v", runtime.requests[1].Messages)
+	}
+
+	engine.observePath(agentcontext.SourceRead, "deferred.go")
+	if _, err := engine.Run(t.Context(), "second", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(repository.evidence) != 2 {
+		t.Fatalf("World State builds = %d, want one for each Turn", len(repository.evidence))
+	}
+	if countWorldSection(runtime.requests[2].Messages, "working_set_ledger") != 2 ||
+		countWorldMode(runtime.requests[2].Messages, "patch") != 1 {
+		t.Fatalf("next Turn did not publish deferred World changes: %+v",
+			runtime.requests[2].Messages)
+	}
+}
+
 func TestWorldBaselineSurvivesSessionDeltaRestart(t *testing.T) {
 	sourceRuntime := &scriptedProvider{streams: []provider.Stream{textStream("one")}}
 	source := newEngine(t, sourceRuntime, tool.NewRegistry(nil, nil))

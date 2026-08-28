@@ -4,10 +4,14 @@ package verify
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
@@ -43,14 +47,18 @@ const (
 
 // Check is one verification command and, once run, its outcome.
 type Check struct {
-	Name     string `json:"name"`
-	Command  string `json:"command"`
-	Reason   string `json:"reason"`
-	Category string `json:"category,omitempty"`
-	Status   string `json:"status,omitempty"`
-	ExitCode int    `json:"exit_code,omitempty"`
-	Stdout   string `json:"stdout,omitempty"`
-	Stderr   string `json:"stderr,omitempty"`
+	Name              string `json:"name"`
+	Command           string `json:"command"`
+	Reason            string `json:"reason"`
+	Category          string `json:"category,omitempty"`
+	Status            string `json:"status,omitempty"`
+	ExitCode          int    `json:"exit_code,omitempty"`
+	Stdout            string `json:"stdout,omitempty"`
+	Stderr            string `json:"stderr,omitempty"`
+	InputDigest       string `json:"input_digest,omitempty"`
+	WorkspaceRevision uint64 `json:"workspace_revision,omitempty"`
+	MutationRevision  uint64 `json:"mutation_revision,omitempty"`
+	Reused            bool   `json:"reused,omitempty"`
 }
 
 // Receipt is the verdict of one verification pass.
@@ -97,9 +105,11 @@ func (r Receipt) Feedback(limit int) string {
 // Request describes one verification pass. Diagnostics carries the post-edit
 // receipts the turn already collected, so ScopeDiagnostics needs no new process.
 type Request struct {
-	Scope       Scope
-	Paths       []string
-	Diagnostics []diagnostics.Receipt
+	Scope             Scope
+	Paths             []string
+	Diagnostics       []diagnostics.Receipt
+	WorkspaceRevision uint64
+	MutationRevision  uint64
 }
 
 // Runner performs one verification pass.
@@ -188,7 +198,9 @@ type CommandRunner struct {
 	// it; the other scopes ignore it.
 	Tests TestMapper
 	// Run is a seam for tests; nil means run the real process.
-	Run func(context.Context, process.Options) (process.Result, error)
+	Run   func(context.Context, process.Options) (process.Result, error)
+	mu    sync.Mutex
+	cache map[string]Check
 }
 
 func (r *CommandRunner) Verify(ctx context.Context, request Request) (Receipt, error) {
@@ -205,7 +217,7 @@ func (r *CommandRunner) Verify(ctx context.Context, request Request) (Receipt, e
 		if len(commands) == 0 {
 			commands = Detect(r.Root)
 		}
-		return r.runCommands(ctx, ScopeRepository, commands)
+		return r.runCommands(ctx, request, commands)
 	case ScopeAffected:
 		return r.runAffected(ctx, request)
 	default:
@@ -227,7 +239,8 @@ func (r *CommandRunner) runAffected(ctx context.Context, request Request) (Recei
 	// A configured command overrides the mapping: the operator knows their suite,
 	// and the placeholders let them narrow it to the change.
 	if len(r.Commands) != 0 {
-		return r.runCommands(ctx, ScopeAffected, expandCommands(r.Commands, paths))
+		request.Paths = paths
+		return r.runCommands(ctx, request, expandCommands(r.Commands, paths))
 	}
 	related := map[string][]string{}
 	if r.Tests != nil {
@@ -248,7 +261,8 @@ func (r *CommandRunner) runAffected(ctx context.Context, request Request) (Recei
 				"; set execution.verify.command with {paths} or {packages}, or use the repository scope",
 		}, nil
 	}
-	receipt, err := r.runCommands(ctx, ScopeAffected, commands)
+	request.Paths = paths
+	receipt, err := r.runCommands(ctx, request, commands)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -259,10 +273,28 @@ func (r *CommandRunner) runAffected(ctx context.Context, request Request) (Recei
 }
 
 func (r *CommandRunner) runCommands(
-	ctx context.Context, scope Scope, commands []Command,
+	ctx context.Context, request Request, commands []Command,
 ) (Receipt, error) {
-	receipt := Receipt{Scope: scope, Status: StatusPassed}
+	receipt := Receipt{Scope: request.Scope, Status: StatusPassed}
+	inputDigest := r.inputDigest(request.Paths)
 	for _, command := range commands {
+		cacheKey := fmt.Sprintf(
+			"%s\x00%s\x00%d\x00%d",
+			command.Command, inputDigest,
+			request.WorkspaceRevision, request.MutationRevision,
+		)
+		if inputDigest != "" {
+			r.mu.Lock()
+			cached, ok := r.cache[cacheKey]
+			r.mu.Unlock()
+			if ok && cached.Status == StatusPassed {
+				cached.Reused = true
+				cached.WorkspaceRevision = request.WorkspaceRevision
+				cached.MutationRevision = request.MutationRevision
+				receipt.Checks = append(receipt.Checks, cached)
+				continue
+			}
+		}
 		result, err := r.runProcess(ctx, command.Command)
 		if err != nil {
 			return Receipt{}, fmt.Errorf("verify %s: %w", command.Name, err)
@@ -275,6 +307,9 @@ func (r *CommandRunner) runCommands(
 		check := Check{
 			Name: command.Name, Command: command.Command, Reason: derivation, Status: status,
 			ExitCode: result.ExitCode, Stdout: result.Stdout, Stderr: result.Stderr,
+			InputDigest:       inputDigest,
+			WorkspaceRevision: request.WorkspaceRevision,
+			MutationRevision:  request.MutationRevision,
 		}
 		switch status {
 		case StatusFailed:
@@ -291,8 +326,52 @@ func (r *CommandRunner) runCommands(
 			}
 		}
 		receipt.Checks = append(receipt.Checks, check)
+		if inputDigest != "" && status == StatusPassed {
+			r.mu.Lock()
+			if r.cache == nil {
+				r.cache = make(map[string]Check)
+			}
+			r.cache[cacheKey] = check
+			r.mu.Unlock()
+		}
 	}
 	return receipt, nil
+}
+
+func (r *CommandRunner) inputDigest(paths []string) string {
+	digest, _ := InputDigest(r.Root, paths)
+	return digest
+}
+
+// InputDigest binds a verification node to the exact bytes of its declared
+// workspace inputs. An empty path set deliberately disables reuse because the
+// runtime cannot prove which workspace content the command consumed.
+func InputDigest(root string, paths []string) (string, error) {
+	paths = relativePaths(root, paths)
+	if len(paths) == 0 {
+		return "", nil
+	}
+	sort.Strings(paths)
+	hash := sha256.New()
+	workspace, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		return "", err
+	}
+	for _, path := range paths {
+		full, err := workspace.Resolve(path, sandbox.MustExist)
+		if err != nil {
+			return "", err
+		}
+		data, err := os.ReadFile(full)
+		if err != nil {
+			return "", err
+		}
+		hash.Write([]byte(path))
+		hash.Write([]byte{0})
+		hash.Write(data)
+		hash.Write([]byte{0})
+	}
+	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func CommandResultStatus(_ string, result process.Result) (status, reason string) {

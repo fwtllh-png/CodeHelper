@@ -49,7 +49,7 @@ func (e *Engine) pruneToolResultSurfaces(
 	if err != nil {
 		return toolResultPruneStats{}, tokenWindow{}, err
 	}
-	surfaceBytes := dynamicToolResultSurfaceBytes(*history, measured)
+	surfaceBytes := e.dynamicToolResultSurfaceBytes(*history, measured)
 	if surfaceBytes == 0 {
 		return toolResultPruneStats{}, measured, nil
 	}
@@ -79,12 +79,20 @@ func (e *Engine) pruneToolResultSurfaces(
 		}, err
 }
 
-func dynamicToolResultSurfaceBytes(
+func (e *Engine) dynamicToolResultSurfaceBytes(
 	history []provider.Message,
 	window tokenWindow,
 ) int {
 	if window.active <= window.compactLimit &&
 		window.total <= window.hardLimit {
+		if scope := e.runningScope(); scope != nil {
+			scope.mu.Lock()
+			itemBytes := scope.state.toolSurfaceItemBytes
+			scope.mu.Unlock()
+			if itemBytes > 0 {
+				return itemBytes
+			}
+		}
 		return 0
 	}
 	var resultRunes, resultCount uint64

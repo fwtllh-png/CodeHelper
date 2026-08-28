@@ -443,6 +443,37 @@ func (m *SessionManager) WaitNext(
 	return wait, err
 }
 
+// WaitNextEvent advances the Runtime-owned delivery cursor after output arrives
+// or the process reaches a terminal state. Unlike WaitNext with a zero timeout,
+// it subscribes to the session notification channel instead of polling.
+func (m *SessionManager) WaitNextEvent(
+	ctx context.Context,
+	id string,
+	threadID string,
+) (SessionWait, error) {
+	session, err := m.getOwned(id, threadID)
+	if err != nil {
+		return SessionWait{}, err
+	}
+	session.deliveryMu.Lock()
+	defer session.deliveryMu.Unlock()
+	for {
+		read, readErr := m.Read(id, threadID, session.delivered)
+		if readErr != nil {
+			return SessionWait{}, readErr
+		}
+		if read.Data != "" || !read.Running {
+			session.delivered = read.Cursor
+			return SessionWait{SessionRead: read}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return SessionWait{}, ctx.Err()
+		case <-session.notify:
+		}
+	}
+}
+
 func (m *SessionManager) Resize(id, threadID string, rows, cols uint16) error {
 	session, err := m.getOwned(id, threadID)
 	if err != nil {

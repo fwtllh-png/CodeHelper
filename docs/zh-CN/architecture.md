@@ -274,8 +274,9 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
     Complete。Repair 与连续 No-progress 只会请求类型化 Kernel Convergence，不会由
     Engine 或 Provider 局部循环直接决定终态错误。Provider 输出不完整时没有默认累计
     Sample 上限，只要 Context 与显式 Token/Cost Budget 允许且持续产生结构化进展就继续。
-    非零 `MaxSteps` 是连续无进展的 Progress Lease：Plan 状态、Workspace Mutation、
-    新 Evidence、验证和 Completion 等进展会续期；约三分之一时提示收敛，约三分之二时
+    非零 `MaxSteps` 是连续无进展的 Progress Lease：Plan Step 完成、新 Evidence、
+    验证覆盖推进、Completion 接受或 Blocker 解除等单调进展会续期；单纯
+    Mutation Revision 增长、重复 Plan 更新和同类失败不会续期。约三分之一时提示收敛，约三分之二时
     收窄为完成相关能力，完整 Lease 耗尽后进入一次受限 Finalization。该策略完全由调用方
     显式预算按比例派生，不使用模型档位或绝对经验阈值。
     Tool Result 明确声明 `retry_original=false` 时，同一 Turn、同一 Workspace Revision
@@ -338,6 +339,21 @@ Tool Result 在执行边界按硬输入容量、并行 Batch 大小与 ResultSto
 Replacement。Provider 请求只物化每个 World Section 的最新版本，并移除已闭合 Tool
 Round 中的旧状态文本和 Reasoning；Durable History、World Patch 链和原始 Tool
 Result 不被改写。
+
+每个 Turn 在首次 Provider Sample 前冻结一份 Provider 可见的 World Snapshot。Turn
+内后续 Tool Result、Plan 更新、Evidence 与重复调用提醒仍写入权威状态和 Journal，
+但不重复生成 World Patch；它们在下一 Turn、恢复或 Compaction 边界重新投影。该冻结
+不改变 Authority、Workspace Binding、审批、Sandbox 或 Verification 事实。
+
+OpenAI-compatible Adapter 的回归测试在最终 JSON 序列化后逐消息进行字节比较；
+Observation 同时保留逻辑公共前缀指标和最终 Transport Payload Digest，不记录消息
+内容。非 TTY Process 在首次 yield 后由 Runtime 订阅 Session 通知直到终态；TTY
+仍通过 `write_stdin` 支持交互，Cancel 会终止等待并回收进程组。
+
+Verification Runner 将节点结果绑定到声明输入的内容摘要、Workspace Revision 与
+Mutation Revision。只复用输入摘要未变的通过节点；失败或 unavailable 节点必须重跑，
+完成门禁仍要求当前 Mutation 的完整覆盖。Tool Result 只有在已离开最新调用批次、完整
+内容已保存为可重取 Handle，且动态 Tool Surface 预算要求缩减时才提前裁剪。
 增量 Route 保持严格追加投影，不执行这些会破坏 Response Chain 前缀的转换。
 
 `TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，

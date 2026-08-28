@@ -102,6 +102,7 @@ func (g *verifyGate) evaluate(
 	})
 	receipt, err := options.Runner.Verify(verifyCtx, verify.Request{
 		Scope: scope, Paths: paths, Diagnostics: g.engine.turnDiagnostics(),
+		WorkspaceRevision: g.engine.sessionRevision, MutationRevision: g.kernel.MutationRevision(),
 	})
 	if err != nil {
 		span.Set("error", errorText(err))

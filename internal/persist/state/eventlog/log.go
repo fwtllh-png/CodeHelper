@@ -190,7 +190,7 @@ func scanAndRepair(path string, file *os.File) ([]Evidence, protocol.Cursor, int
 			}
 		}
 		var event protocol.Event
-		if decodeErr := json.Unmarshal(payload, &event); decodeErr != nil {
+		if decodeErr := decodePersistedEvent(payload, &event); decodeErr != nil {
 			return nil, 0, 0, &CorruptionError{Path: path, Offset: offset, Err: decodeErr}
 		}
 		expected := last + 1
@@ -394,7 +394,7 @@ func (l *Log) replayRecords(
 			}
 		}
 		var event protocol.Event
-		if err := json.Unmarshal(payload, &event); err != nil {
+		if err := decodePersistedEvent(payload, &event); err != nil {
 			return nil, false, &CorruptionError{Path: l.path, Offset: evidence.Offset, Err: err}
 		}
 		if event.Sequence != evidence.Sequence {

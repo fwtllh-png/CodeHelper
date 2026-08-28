@@ -428,7 +428,7 @@ func (p *commandProtocol) execCommand(
 	if err != nil {
 		return tool.Result{}, err
 	}
-	wait, omitted, err := p.waitInitial(
+	wait, output, err := p.waitInitial(
 		ctx,
 		id,
 		threadID,
@@ -443,8 +443,20 @@ func (p *commandProtocol) execCommand(
 		})
 		return tool.Result{}, errors.Join(err, closeErr)
 	}
+	if wait.Running && !input.TTY {
+		wait, err = p.waitTerminal(ctx, id, threadID, wait, output)
+		if err != nil {
+			teardownStarted := time.Now()
+			closeErr := p.manager.Close(id, threadID)
+			tool.ReportTeardown(ctx, tool.TeardownReport{
+				Duration: time.Since(teardownStarted),
+			})
+			return tool.Result{}, errors.Join(err, closeErr)
+		}
+	}
+	wait.Data = output.String()
 	result := sessionResult(id, wait, outputTokens)
-	if omitted > 0 {
+	if omitted := output.Omitted(); omitted > 0 {
 		result.Metadata["omitted_bytes"] = omitted
 	}
 	if input.Description != "" {
@@ -490,16 +502,21 @@ func (p *commandProtocol) waitInitial(
 	threadID string,
 	yield time.Duration,
 	outputLimit int,
-) (process.SessionWait, int, error) {
+) (process.SessionWait, *processOutputAccumulator, error) {
 	deadline := time.Now().Add(yield)
 	combined := newProcessOutputAccumulator(outputLimit)
 	var aggregate process.SessionWait
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			aggregate.Data = combined.String()
-			aggregate.TimedOut = aggregate.Running
-			return aggregate, combined.Omitted(), nil
+			wait, err := p.manager.WaitNext(ctx, id, threadID, 0)
+			if err != nil {
+				return process.SessionWait{}, combined, err
+			}
+			combined.WriteString(wait.Data)
+			aggregate = wait
+			aggregate.TimedOut = wait.Running
+			return aggregate, combined, nil
 		}
 		wait, err := p.manager.WaitNext(
 			ctx,
@@ -508,15 +525,32 @@ func (p *commandProtocol) waitInitial(
 			remaining,
 		)
 		if err != nil {
-			return process.SessionWait{}, 0, err
+			return process.SessionWait{}, combined, err
 		}
 		combined.WriteString(wait.Data)
 		aggregate = wait
 		if !wait.Running || wait.TimedOut {
-			aggregate.Data = combined.String()
-			return aggregate, combined.Omitted(), nil
+			return aggregate, combined, nil
 		}
 	}
+}
+
+func (p *commandProtocol) waitTerminal(
+	ctx context.Context,
+	id string,
+	threadID string,
+	wait process.SessionWait,
+	output *processOutputAccumulator,
+) (process.SessionWait, error) {
+	for wait.Running {
+		next, err := p.manager.WaitNextEvent(ctx, id, threadID)
+		if err != nil {
+			return process.SessionWait{}, err
+		}
+		output.WriteString(next.Data)
+		wait = next
+	}
+	return wait, nil
 }
 
 type processOutputAccumulator struct {

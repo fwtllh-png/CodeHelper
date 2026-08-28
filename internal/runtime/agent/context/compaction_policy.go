@@ -44,7 +44,10 @@ type CompactionSelectionRequest struct {
 	// Durable History remains the authority used to build compaction candidates.
 	ProjectHistory HistoryProjector
 	Measure        func(MessageSnapshot, uint64) (WindowMeasurement, error)
-	Prune          func(
+	// PruneBeforePressure shrinks already-consumed, handle-backed tool results
+	// using the caller's dynamic surface budget even when compaction is not due.
+	PruneBeforePressure bool
+	Prune               func(
 		*[]provider.Message,
 		MessageSnapshot,
 		uint64,
@@ -82,9 +85,10 @@ func SelectCompaction(
 		return CompactionSelection{}, err
 	}
 	result.OriginalWindow = original
-	if !request.Force &&
+	belowPressure := !request.Force &&
 		original.Active < original.CompactLimit &&
-		original.Total <= original.HardLimit {
+		original.Total <= original.HardLimit
+	if belowPressure && !request.PruneBeforePressure {
 		return result, nil
 	}
 	working := CloneMessages(request.History)
@@ -101,6 +105,12 @@ func SelectCompaction(
 	result.RetainedWindow = prunedWindow
 	if pruned.Results != 0 &&
 		!ToolPairIdentityEquivalent(request.History, working) {
+		return result, nil
+	}
+	if belowPressure {
+		if pruned.Results != 0 {
+			result.History = working
+		}
 		return result, nil
 	}
 	pruningEnough := pruned.Results != 0 &&

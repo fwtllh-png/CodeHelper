@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
@@ -22,10 +23,19 @@ import (
 )
 
 type Tool struct {
-	root    string
-	kind    string
-	run     func(context.Context, process.Options) (process.Result, error)
-	sandbox sandbox.Backend
+	root      string
+	kind      string
+	run       func(context.Context, process.Options) (process.Result, error)
+	sandbox   sandbox.Backend
+	cacheMu   sync.Mutex
+	cacheTurn string
+	cache     map[string]cachedVerificationNode
+}
+
+type cachedVerificationNode struct {
+	result process.Result
+	status string
+	reason string
 }
 
 type trustedExecutor struct {
@@ -251,9 +261,9 @@ func (t *Tool) executeSingle(
 	case "quality_review":
 		payload["findings"] = parseFindings(result.Stdout, result.Stderr)
 	}
-	return encodeResult(
-		payload, kind, status, result.ExitCode, command, coveredPaths,
-	)
+	inputDigest, _ := verify.InputDigest(t.root, coveredPaths)
+	return encodeResult(payload, kind, status, result.ExitCode, command,
+		coveredPaths, inputDigest)
 }
 
 func (t *Tool) executeVerifier(
@@ -270,12 +280,48 @@ func (t *Tool) executeVerifier(
 	exitCode := 0
 	var stdout, stderr strings.Builder
 	var unavailableReason string
-	for _, check := range checks {
-		result, err := t.runProcess(ctx, check.Command)
-		if err != nil {
-			return tool.Result{}, err
+	inputDigest, _ := verify.InputDigest(t.root, coveredPaths)
+	turnID := tool.InvocationIdentityFrom(ctx).TurnID
+	if turnID != "" {
+		t.cacheMu.Lock()
+		if t.cacheTurn != turnID {
+			t.cacheTurn = turnID
+			clear(t.cache)
 		}
-		checkStatus, reason := verify.CommandResultStatus(check.Command, result)
+		t.cacheMu.Unlock()
+	}
+	for _, check := range checks {
+		cacheKey := turnID + "\x00" + check.Name + "\x00" + check.Command + "\x00" + inputDigest
+		var result process.Result
+		var checkStatus, reason string
+		reused := false
+		if turnID != "" && inputDigest != "" {
+			t.cacheMu.Lock()
+			cached, ok := t.cache[cacheKey]
+			t.cacheMu.Unlock()
+			if ok && cached.status == verify.StatusPassed {
+				result, checkStatus, reason = cached.result, cached.status, cached.reason
+				reused = true
+			}
+		}
+		if !reused {
+			var err error
+			result, err = t.runProcess(ctx, check.Command)
+			if err != nil {
+				return tool.Result{}, err
+			}
+			checkStatus, reason = verify.CommandResultStatus(check.Command, result)
+			if turnID != "" && inputDigest != "" && checkStatus == verify.StatusPassed {
+				t.cacheMu.Lock()
+				if t.cache == nil {
+					t.cache = make(map[string]cachedVerificationNode)
+				}
+				t.cache[cacheKey] = cachedVerificationNode{
+					result: result, status: checkStatus, reason: reason,
+				}
+				t.cacheMu.Unlock()
+			}
+		}
 		switch checkStatus {
 		case verify.StatusFailed:
 			status = "failed"
@@ -293,6 +339,7 @@ func (t *Tool) executeVerifier(
 		checkResult := map[string]any{
 			"name": check.Name, "command": check.Command, "status": checkStatus,
 			"exit_code": result.ExitCode, "stdout": result.Stdout, "stderr": result.Stderr,
+			"input_digest": inputDigest, "reused": reused,
 		}
 		if reason != "" {
 			checkResult["message"] = reason
@@ -319,9 +366,8 @@ func (t *Tool) executeVerifier(
 	for _, check := range checks {
 		commands = append(commands, check.Command)
 	}
-	return encodeResult(
-		payload, "verify", status, exitCode, strings.Join(commands, "\n"), coveredPaths,
-	)
+	return encodeResult(payload, "verify", status, exitCode,
+		strings.Join(commands, "\n"), coveredPaths, inputDigest)
 }
 
 func (t *Tool) runProcess(ctx context.Context, command string) (process.Result, error) {
@@ -440,6 +486,7 @@ func encodeResult(
 	exitCode int,
 	command string,
 	coveredPaths []string,
+	inputDigest string,
 ) (tool.Result, error) {
 	if len(coveredPaths) != 0 {
 		payload["covered_paths"] = append([]string(nil), coveredPaths...)
@@ -461,6 +508,7 @@ func encodeResult(
 			Status:        status,
 			CoveredPaths:  append([]string(nil), coveredPaths...),
 			CommandDigest: fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(command))),
+			InputDigest:   inputDigest,
 			ExitCode:      exitCode,
 		}
 	}

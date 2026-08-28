@@ -112,6 +112,38 @@ func TestUnifiedProcessProtocolLifecycle(t *testing.T) {
 	}
 }
 
+func TestExecCommandWaitsForNonTTYProcessTerminalWithoutModelPolling(t *testing.T) {
+	manager := process.NewSessionManager(4096)
+	t.Cleanup(manager.CloseAll)
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithManagerAndBackend(
+		registry,
+		t.TempDir(),
+		manager,
+		passthroughBackend{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	result := executeProcessTool(
+		t,
+		registry,
+		processTestThread,
+		"exec_command",
+		map[string]any{
+			"command": "sleep 0.05; printf done", "yield_time_ms": 1,
+		},
+	)
+	if result.Content != "done" || result.IsError {
+		t.Fatalf("result = %+v", result)
+	}
+	if _, exists := result.Metadata["session_id"]; exists {
+		t.Fatalf("non-TTY terminal result exposed a polling session: %+v", result)
+	}
+	if manager.Count() != 0 {
+		t.Fatalf("terminal session count = %d", manager.Count())
+	}
+}
+
 func TestUnifiedProcessProtocolRejectsInvalidYieldBeforeSessionStart(t *testing.T) {
 	manager := process.NewSessionManager(4096)
 	t.Cleanup(manager.CloseAll)

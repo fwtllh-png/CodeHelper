@@ -926,10 +926,9 @@ func (s *RuntimeKernel) ProgressSignature(
 		}
 	}
 	return fmt.Sprintf(
-		"intent=%s;mutation=%d;plan_done=%d;verification=%s/%s/%d;"+
+		"intent=%s;plan_done=%d;verification=%s/%s/%d;"+
 			"completion=%t/%s;operation_calls=%d;lifecycle_calls=%d;evidence=%s",
 		s.state.Intent,
-		s.state.MutationRevision,
 		completedPlanSteps,
 		s.state.Verification.Status,
 		s.state.Verification.Action,

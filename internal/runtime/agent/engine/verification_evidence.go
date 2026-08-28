@@ -62,8 +62,7 @@ func (e *Engine) bindVerificationEvidence(
 	}
 	slices.Sort(covered)
 	evidence.CoveredPaths = covered
-	evidence.CallID = call.ID
-	evidence.MutationRevision = mutationRevision
+	evidence = evidence.Bind(call.ID, e.sessionRevision, mutationRevision)
 	result.Outcome.Facts.Verification = &evidence
 	result.Metadata["verification_evidence_accepted"] = true
 	scope := e.executionScope()

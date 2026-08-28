@@ -108,6 +108,56 @@ func TestAffectedScopeRunsOnlyTheChangedGoPackages(t *testing.T) {
 	}
 }
 
+func TestVerificationDAGReusesOnlyPassedNodesWithMatchingInputs(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "changed.go")
+	if err := os.WriteFile(path, []byte("package fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runs := 0
+	runner := &CommandRunner{
+		Root: root,
+		Commands: []Command{{
+			Name: "focused", Command: "verify changed.go",
+		}},
+		Run: func(context.Context, process.Options) (process.Result, error) {
+			runs++
+			return process.Result{}, nil
+		},
+	}
+	request := Request{
+		Scope: ScopeAffected, Paths: []string{"changed.go"},
+		WorkspaceRevision: 4, MutationRevision: 1,
+	}
+	first, err := runner.Verify(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := runner.Verify(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 || len(first.Checks) != 1 || len(second.Checks) != 1 ||
+		first.Checks[0].Reused || !second.Checks[0].Reused ||
+		first.Checks[0].InputDigest == "" ||
+		second.Checks[0].WorkspaceRevision != 4 {
+		t.Fatalf("runs=%d first=%+v second=%+v", runs, first, second)
+	}
+	if err := os.WriteFile(path, []byte("package fixture\n// changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	request.MutationRevision = 2
+	request.WorkspaceRevision = 5
+	third, err := runner.Verify(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runs != 2 || third.Checks[0].Reused ||
+		third.Checks[0].InputDigest == first.Checks[0].InputDigest {
+		t.Fatalf("runs=%d third=%+v", runs, third)
+	}
+}
+
 func TestAffectedScopeRunsTheMappedPythonTests(t *testing.T) {
 	mapper := &stubMapper{related: map[string][]string{
 		"app/service.py": {"app/tests/test_service.py"},

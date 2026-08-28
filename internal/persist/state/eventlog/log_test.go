@@ -1,6 +1,7 @@
 package eventlog
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -118,6 +119,44 @@ func TestOpenRepairsTornTailAndAllowsNextSequence(t *testing.T) {
 	}
 	if err := repaired.Append(t.Context(), testEvent(2)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOpenReadsRetiredSandboxReceiptFieldsWithoutRewritingLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+	record := []byte(`{"version":1,"id":"evt-1","sequence":1,` +
+		`"operation_id":"operation","thread_id":"thread","turn_id":"turn",` +
+		`"item_id":"item","kind":"tool.result",` +
+		`"created_at":"2026-08-28T00:00:01Z","data":{` +
+		`"tool":"echo","call_id":"call-1","output":"ok","is_error":false,` +
+		`"execution":{"tool":{"name":"echo","source":"builtin",` +
+		`"catalog_id":"catalog","generation":1,"revision":1},` +
+		`"source":"builtin","disposition":"executed","attempts":[{` +
+		`"sequence":1,"sandbox":"workspace","status":"completed",` +
+		`"terminal_owner":"runtime","sandbox_strength":"strong",` +
+		`"filesystem_unrestricted":false,"effective_controls":{},` +
+		`"started_at":"2026-08-28T00:00:00Z",` +
+		`"completed_at":"2026-08-28T00:00:01Z","duration_ms":1000}],` +
+		`"terminal_status":"completed","terminal_owner":"runtime"}}}`)
+	committed := append(append([]byte(nil), record...), '\n')
+	if err := os.WriteFile(path, committed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	log, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = log.Close(context.Background()) })
+	events, err := log.Replay(t.Context(), 0)
+	if err != nil || len(events) != 1 {
+		t.Fatalf("Replay() events=%d error=%v", len(events), err)
+	}
+	persisted, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(persisted, committed) {
+		t.Fatal("legacy event bytes were rewritten")
 	}
 }
 

@@ -12,14 +12,22 @@ const EvidenceMetadataKey = "verification_evidence"
 // the exact workspace paths it claims to cover. The engine adds CallID and
 // MutationRevision after execution; tool arguments cannot choose either value.
 type Evidence struct {
-	SchemaVersion    int      `json:"schema_version"`
-	Kind             string   `json:"kind"`
-	Status           string   `json:"status"`
-	CoveredPaths     []string `json:"covered_paths"`
-	CommandDigest    string   `json:"command_digest"`
-	CallID           string   `json:"call_id,omitempty"`
-	ExitCode         int      `json:"exit_code"`
-	MutationRevision uint64   `json:"mutation_revision,omitempty"`
+	SchemaVersion     int      `json:"schema_version"`
+	Kind              string   `json:"kind"`
+	Status            string   `json:"status"`
+	CoveredPaths      []string `json:"covered_paths"`
+	CommandDigest     string   `json:"command_digest"`
+	InputDigest       string   `json:"input_digest,omitempty"`
+	CallID            string   `json:"call_id,omitempty"`
+	ExitCode          int      `json:"exit_code"`
+	WorkspaceRevision uint64   `json:"workspace_revision,omitempty"`
+	MutationRevision  uint64   `json:"mutation_revision,omitempty"`
+}
+
+func (e Evidence) Bind(callID string, workspaceRevision, mutationRevision uint64) Evidence {
+	e.CallID, e.WorkspaceRevision, e.MutationRevision =
+		callID, workspaceRevision, mutationRevision
+	return e
 }
 
 // CanonicalEvidencePath normalizes one workspace-relative evidence path.
