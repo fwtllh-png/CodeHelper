@@ -24,14 +24,13 @@ import (
 )
 
 type Options struct {
-	Workspace            string
-	Sandbox              sandbox.Backend
-	RequireStrongSandbox bool
-	DefaultTimeout       time.Duration
-	MaxOutputBytes       int
-	Audit                AuditSink
-	Now                  func() time.Time
-	Runtime              *Runtime
+	Workspace      string
+	Sandbox        sandbox.Backend
+	DefaultTimeout time.Duration
+	MaxOutputBytes int
+	Audit          AuditSink
+	Now            func() time.Time
+	Runtime        *Runtime
 }
 
 type Runtime struct {
@@ -106,18 +105,10 @@ func newExecutor(options Options) *executor {
 	if options.Now == nil {
 		options.Now = time.Now
 	}
-	sum := sha256.Sum256([]byte(filepath.Clean(options.Workspace)))
-	workspaceID := hex.EncodeToString(sum[:])
-	if options.Runtime == nil {
-		options.Runtime, _ = NewRuntime(
-			workspaceID, 1,
-			authority.NewLeaseAuthority(
-				authority.LeaseAuthorityOptions{Now: options.Now},
-			),
-		)
-	} else if options.Runtime.WorkspaceID == "" {
+	if options.Runtime != nil && options.Runtime.WorkspaceID == "" {
+		sum := sha256.Sum256([]byte(filepath.Clean(options.Workspace)))
 		runtime := *options.Runtime
-		runtime.WorkspaceID = workspaceID
+		runtime.WorkspaceID = hex.EncodeToString(sum[:])
 		options.Runtime = &runtime
 	}
 	return &executor{
@@ -175,24 +166,24 @@ func (e *executor) run(ctx context.Context, event Event, hook HookConfig, input 
 		return result
 	}
 
-	var directory *os.File
-	if e.options.RequireStrongSandbox {
-		directory, err = process.OpenPinnedDirectory(e.options.Sandbox, hook.WorkingDirectory)
-		if err != nil {
-			result := execution{exitCode: -1, errCode: "pin_working_directory", err: err}
-			result.duration = e.options.Now().Sub(started)
-			return result
-		}
-		defer directory.Close()
+	directory, err := process.OpenPinnedDirectory(
+		e.options.Sandbox,
+		hook.WorkingDirectory,
+	)
+	if err != nil {
+		result := execution{exitCode: -1, errCode: "pin_working_directory", err: err}
+		result.duration = e.options.Now().Sub(started)
+		return result
 	}
+	defer directory.Close()
 	processOptions := process.Options{
 		Path: hook.Command, Args: hook.Args, Dir: hook.WorkingDirectory,
 		DirFile: directory, Env: hook.Env, Sandbox: e.options.Sandbox,
 		Stdin: bytes.NewReader(payload), OutputLimitBytes: limit,
-		RequireStrongSandbox: e.options.RequireStrongSandbox,
-		WorkspaceReadOnly:    e.options.RequireStrongSandbox,
+		RequireStrongSandbox: true,
+		WorkspaceReadOnly:    true,
 		WorkspaceHiddenPaths: append([]string(nil), e.hiddenPaths...),
-		DenyNetwork:          e.options.RequireStrongSandbox,
+		DenyNetwork:          true,
 	}
 	operation, lease, validation, err := e.authorizeProcess(
 		runCtx, event, hook, processOptions,
@@ -302,22 +293,16 @@ func (e *executor) authorizeProcess(
 		return authority.ExecutionOperation{}, authority.ExecutionLease{},
 			authority.LeaseValidation{}, err
 	}
-	enforcement := "none"
-	capability := sandbox.Capability{Backend: "host"}
-	required := authority.RequiredControls{}
-	if e.options.RequireStrongSandbox {
-		if e.options.Sandbox == nil {
-			return authority.ExecutionOperation{}, authority.ExecutionLease{},
-				authority.LeaseValidation{}, errors.New("hook strong Sandbox is unavailable")
-		}
-		enforcement = "strong"
-		capability = e.options.Sandbox.Capability()
-		required = authority.RequiredControls{
-			FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
-			Network:        controlmatrix.NetworkDenied,
-			ProcessTree:    controlmatrix.ProcessTreeGroupKill,
-			PathIdentity:   controlmatrix.PathIdentityDescriptorRelative,
-		}
+	if e.options.Sandbox == nil {
+		return authority.ExecutionOperation{}, authority.ExecutionLease{},
+			authority.LeaseValidation{}, errors.New("hook Sandbox is unavailable")
+	}
+	capability := e.options.Sandbox.Capability()
+	required := authority.RequiredControls{
+		FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+		Network:        controlmatrix.NetworkDenied,
+		ProcessTree:    controlmatrix.ProcessTreeGroupKill,
+		PathIdentity:   controlmatrix.PathIdentityDescriptorRelative,
 	}
 	operation, err := authority.BuildManagedProcessOperation(
 		authority.ManagedProcessInput{
@@ -345,17 +330,17 @@ func (e *executor) authorizeProcess(
 		authority.ManagedProfileInput{
 			Operation: operation, Revision: 1,
 			WorkspaceRoot:      e.options.Workspace,
-			WorkspaceBaseWrite: !e.options.RequireStrongSandbox,
-			AllowNetwork:       !e.options.RequireStrongSandbox,
+			WorkspaceBaseWrite: false,
+			AllowNetwork:       false,
 			ManagedProxyPort:   boundPolicy.ManagedProxyPort,
-			Enforcement:        enforcement, Backend: capability.Backend,
+			Enforcement:        "strong", Backend: capability.Backend,
 			Strength: string(capability.Strength),
 			Controls: sandbox.CommandControls(
 				capability,
 				boundPolicy,
 				sandbox.Command{
-					WorkspaceReadOnly: e.options.RequireStrongSandbox,
-					DenyNetwork:       e.options.RequireStrongSandbox,
+					WorkspaceReadOnly: true,
+					DenyNetwork:       true,
 				},
 			),
 		},

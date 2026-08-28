@@ -141,7 +141,7 @@ func (a *LeaseAuthority) Issue(request LeaseIssueRequest) (ExecutionLease, error
 	if request.Profile.Revision != request.Attempt {
 		return ExecutionLease{}, errors.New("lease attempt does not match permission revision")
 	}
-	if request.Profile.Tool != request.Operation.ProcessTool() {
+	if request.Profile.Tool != request.Operation.Tool {
 		return ExecutionLease{}, errors.New("lease operation does not match permission tool")
 	}
 	if request.Profile.Process.Enforcement == "strong" &&

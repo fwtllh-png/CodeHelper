@@ -92,7 +92,7 @@ func Register(registry *tool.Registry, options Options) error {
 		"request_user_input", "update_plan", "submit_plan", "project_map",
 		"code_execution", "image_analyze",
 	} {
-		if err := registry.Register(&executor{tools: tools, name: name}, nil); err != nil {
+		if err := registry.Register(&executor{tools: tools, name: name}); err != nil {
 			return err
 		}
 	}
@@ -212,7 +212,10 @@ func (e *executor) Descriptor() tool.Descriptor {
 		if e.tools.backend == nil || e.tools.rlm == nil || !e.tools.rlm.PythonAvailable() {
 			available = tool.AvailabilityUnavailable
 			reason = "strong sandboxed Python runner is unavailable"
-		} else if err := sandbox.RequireStrong(e.tools.backend); err != nil {
+		} else if err := sandbox.RequireControls(
+			e.tools.backend,
+			sandbox.StrongCompatibilityRequirements(),
+		); err != nil {
 			available = tool.AvailabilityUnavailable
 			reason = "strong sandbox is unavailable"
 		}
@@ -535,7 +538,10 @@ func (t *Tools) codeExecution(ctx context.Context, raw json.RawMessage) (tool.Re
 			Metadata: map[string]any{"error_category": "sandbox_unavailable"},
 		}, nil
 	}
-	if err := sandbox.RequireStrong(t.backend); err != nil {
+	if err := sandbox.RequireControls(
+		t.backend,
+		sandbox.StrongCompatibilityRequirements(),
+	); err != nil {
 		return tool.Result{
 			Content: err.Error(), IsError: true,
 			Metadata: map[string]any{"error_category": "sandbox_unavailable"},

@@ -32,6 +32,8 @@ func TestPermissionRequestDenyWinsAndOnlyBuiltinMayAllow(t *testing.T) {
 	writeHook(allowScript, "allow")
 	writeHook(askScript, "ask")
 
+	options := hookTestOptions(t, dir)
+	options.DefaultTimeout = budget
 	manager, err := New(Config{
 		Version: ConfigVersion,
 		Hooks: map[Event][]HookConfig{
@@ -41,7 +43,7 @@ func TestPermissionRequestDenyWinsAndOnlyBuiltinMayAllow(t *testing.T) {
 				{ID: "allow", Command: allowScript, Timeout: budget},
 			},
 		},
-	}, Options{Workspace: dir, DefaultTimeout: budget})
+	}, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +62,7 @@ func TestPermissionRequestDenyWinsAndOnlyBuiltinMayAllow(t *testing.T) {
 		Hooks: map[Event][]HookConfig{
 			PermissionRequest: {{ID: "allow", Command: allowScript, Timeout: budget}},
 		},
-	}, Options{Workspace: dir, DefaultTimeout: budget})
+	}, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +84,7 @@ func TestPermissionRequestDenyWinsAndOnlyBuiltinMayAllow(t *testing.T) {
 		Hooks: map[Event][]HookConfig{
 			PermissionRequest: {builtinHook},
 		},
-	}, Options{Workspace: dir, DefaultTimeout: budget})
+	}, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +100,7 @@ func TestPermissionRequestDenyWinsAndOnlyBuiltinMayAllow(t *testing.T) {
 
 	noHooks, err := New(
 		Config{Version: ConfigVersion},
-		Options{Workspace: dir, DefaultTimeout: budget},
+		options,
 	)
 	if err != nil {
 		t.Fatal(err)

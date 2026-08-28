@@ -594,7 +594,7 @@ func newTestShellCommandExecutor(
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(indexTestBackend{})
 	shell := &testShellTool{}
-	if err := registry.Register(shell, nil); err != nil {
+	if err := registry.Register(shell); err != nil {
 		t.Fatal(err)
 	}
 	executor, err := newShellCommandExecutor(

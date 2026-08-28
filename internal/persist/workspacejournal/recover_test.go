@@ -285,7 +285,11 @@ func TestReplayIgnoresATornFinalLine(t *testing.T) {
 	killed := openJournal(t, root)
 	killed.pid = deadPID(t)
 	mustRunTurn(t, killed, "turn-1", path, "half applied")
-	ledgerPath := killed.ledger.path
+	ledgerPath := filepath.Join(
+		filepath.Dir(root),
+		"."+filepath.Base(root)+"-journal",
+		ledgerName,
+	)
 	if err := killed.ledger.close(); err != nil {
 		t.Fatal(err)
 	}
@@ -413,7 +417,11 @@ func TestOpenResolvesRelativeExternalJournalDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = manager.Close(context.Background()) })
-	info, err := os.Stat(manager.ledger.path)
+	info, err := os.Stat(filepath.Join(
+		"..",
+		"."+filepath.Base(root)+"-journal",
+		ledgerName,
+	))
 	if err != nil {
 		t.Fatal(err)
 	}

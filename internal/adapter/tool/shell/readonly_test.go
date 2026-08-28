@@ -31,7 +31,7 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireStrong(backend); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
 		t.Skipf("strong sandbox unavailable: %v", err)
 	}
 	manager := process.NewSessionManager(4096)
@@ -210,7 +210,7 @@ func TestShellRunExactWriteScopeIsGuardedAndObserved(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireStrong(backend); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
 		t.Skipf("strong sandbox unavailable: %v", err)
 	}
 	manager := process.NewSessionManager(4096)
@@ -444,7 +444,7 @@ func TestShellRunWriteGlobsAreJournaledAsExactFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireStrong(backend); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
 		t.Skipf("strong sandbox unavailable: %v", err)
 	}
 	registry := tool.NewRegistry(nil, nil)

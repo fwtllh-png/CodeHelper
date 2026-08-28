@@ -76,10 +76,10 @@ func RegisterDiscovery(
 	if err != nil {
 		return err
 	}
-	if err := registry.Register(listExecutor, nil); err != nil {
+	if err := registry.Register(listExecutor); err != nil {
 		return err
 	}
-	return registry.Register(readExecutor, nil)
+	return registry.Register(readExecutor)
 }
 
 func listDescriptor() tool.Descriptor {

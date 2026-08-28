@@ -27,19 +27,16 @@ type Granular struct {
 	MCP     SurfacePosture `json:"mcp,omitempty"`
 }
 
-func ClassifySurface(toolName string, capability Capability) Surface {
-	name := strings.ToLower(strings.TrimSpace(toolName))
+func ClassifySurface(source string, capability Capability) Surface {
+	source = strings.ToLower(strings.TrimSpace(source))
 	switch {
-	case strings.HasPrefix(name, "mcp_") || strings.Contains(name, "__mcp__"):
+	case strings.HasPrefix(source, "mcp:"):
 		return SurfaceMCP
-	case name == "skill" ||
-		strings.HasPrefix(name, "skill_") ||
-		strings.HasPrefix(name, "skills_") ||
-		strings.HasPrefix(name, "skills."):
+	case strings.HasPrefix(source, "skill:") ||
+		strings.HasPrefix(source, "legacy:skills_read:") ||
+		strings.HasPrefix(source, "legacy:skills_list:"):
 		return SurfaceSkills
-	case name == "exec_command" || name == "write_stdin" ||
-		name == "shell_read" || name == "shell" ||
-		capability == CapabilityProcess:
+	case capability == CapabilityProcess:
 		return SurfaceSandbox
 	default:
 		return SurfaceRules

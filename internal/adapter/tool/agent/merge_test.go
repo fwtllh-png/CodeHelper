@@ -181,7 +181,6 @@ func (b mergeTestBackend) Prepare(
 ) (sandbox.Command, error) {
 	command.PreparedPolicyID = b.policy.ID
 	command.PreparedAuthorityDigest = command.AuthorityDigest
-	command.PreparedStrength = sandbox.StrengthStrong
 	command.PreparedControls = sandbox.CommandControls(
 		b.Capability(), b.policy, command,
 	)

@@ -658,14 +658,20 @@ func TestBackendsPreserveDescriptorRelativeWorkingDirectory(t *testing.T) {
 }
 
 func TestRequireStrongFailsClosedForMissingAndPartialBackends(t *testing.T) {
-	if err := RequireStrong(nil); !IsUnavailable(err) {
+	if err := RequireControls(
+		nil,
+		StrongCompatibilityRequirements(),
+	); !IsUnavailable(err) {
 		t.Fatalf("nil backend error = %v", err)
 	}
 	backend := &unavailableBackend{capability: Capability{
 		Platform: "fixture", Backend: "partial",
 		Strength: StrengthPartial, Available: true,
 	}}
-	if err := RequireStrong(backend); !IsUnavailable(err) {
+	if err := RequireControls(
+		backend,
+		StrongCompatibilityRequirements(),
+	); !IsUnavailable(err) {
 		t.Fatalf("partial backend error = %v", err)
 	}
 }
@@ -687,7 +693,10 @@ func TestRequiredControlsIgnoreClaimedStrength(t *testing.T) {
 			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 		},
 	}}
-	if err := RequireStrong(claimedStrong); !IsUnavailable(err) {
+	if err := RequireControls(
+		claimedStrong,
+		StrongCompatibilityRequirements(),
+	); !IsUnavailable(err) {
 		t.Fatalf("claimed strong backend error = %v", err)
 	}
 	partial := claimedStrong.capability

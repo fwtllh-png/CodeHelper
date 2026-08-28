@@ -374,7 +374,9 @@ func (t *Tool) merge(ctx context.Context, raw json.RawMessage) (tool.Result, err
 	case mergePreview, mergeRetry:
 		return t.previewMerge(ctx, op, agentID, strings.TrimSpace(input.PreviewDigest), input.Paths)
 	case mergeApply:
-		return t.applyMerge(ctx, agentID, strings.TrimSpace(input.PreviewDigest))
+		return tool.Result{}, errors.New(
+			"integrate_agent apply requires an authorized File Broker lease",
+		)
 	case mergeDiscard:
 		return t.discardMerge(ctx, agentID, strings.TrimSpace(input.PreviewDigest))
 	default:
@@ -424,62 +426,6 @@ func (t *Tool) previewMerge(
 	)
 	addIntegrationMetadata(&result, candidate)
 	result.Metadata["op"] = op
-	return result, nil
-}
-
-func (t *Tool) applyMerge(
-	ctx context.Context,
-	agentID, previewDigest string,
-) (tool.Result, error) {
-	candidate, err := t.loadMergeCandidate(
-		agentID, previewDigest, subagent.IntegrationPreviewed,
-	)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	plan, err := t.planMerge(ctx, agentID, candidate.Paths)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	if err := validateMergeCandidate(candidate, plan); err != nil {
-		return tool.Result{}, err
-	}
-	candidate.Status = subagent.IntegrationApplying
-	candidate.Message = "integration apply started"
-	if err := t.control.SaveIntegration(candidate); err != nil {
-		return tool.Result{}, err
-	}
-	if err := t.control.BeginIntegration(agentID); err != nil {
-		return tool.Result{}, t.failMergeCandidate(candidate, err, false)
-	}
-	applied, diff, err := t.files.Apply(ctx, plan.changes, false)
-	if err != nil {
-		return tool.Result{}, t.failMergeCandidate(candidate, err, true)
-	}
-	changedPaths := appliedPaths(applied)
-	verification, verifyMessage := t.verifyParent(ctx, changedPaths)
-	candidate.Status = subagent.IntegrationApplied
-	candidate.Verification = verification
-	candidate.Receipt = &subagent.IntegrationReceipt{
-		ChangedPaths: changedPaths,
-		Verification: verification,
-		AppliedAt:    time.Now().UTC(),
-	}
-	candidate.Message = verifyMessage
-	if err := t.control.SaveIntegration(candidate); err != nil {
-		_ = t.control.FinishIntegration(agentID, err)
-		return tool.Result{}, err
-	}
-	if err := t.control.FinishIntegration(agentID, nil); err != nil {
-		return tool.Result{}, err
-	}
-	result := filetool.ResultFromApply(applied, diff, false)
-	result.Content = fmt.Sprintf(
-		"%s\npreview_digest=%s\nparent_verification=%s",
-		result.Content, candidate.PreviewDigest, verification.Verify,
-	)
-	addIntegrationMetadata(&result, candidate)
-	result.Metadata["op"] = mergeApply
 	return result, nil
 }
 

@@ -34,7 +34,7 @@ func TestModelSamplesUseMonotonicContextLedgerSnapshots(t *testing.T) {
 		}},
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -194,7 +194,7 @@ func TestToolResultRequestRemainsPrefixOfNextTurn(t *testing.T) {
 		}},
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -287,7 +287,7 @@ func TestContextPartitionPurityKeepsWorldSectionsAfterStablePrefix(t *testing.T)
 		}},
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine, err := New(Options{

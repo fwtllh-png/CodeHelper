@@ -61,14 +61,6 @@ type wireMessage struct {
 	Error   *RPCError       `json:"error,omitempty"`
 }
 
-func NewStdioTransport(ctx context.Context, config ServerConfig) (*StdioTransport, error) {
-	runtime, err := localRuntimeAuthority(config)
-	if err != nil {
-		return nil, err
-	}
-	return NewAuthorizedStdioTransport(ctx, "", config, runtime)
-}
-
 func NewAuthorizedStdioTransport(
 	ctx context.Context,
 	name string,

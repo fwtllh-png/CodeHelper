@@ -9,6 +9,16 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 )
 
+func testRuntimeAuthority(t *testing.T, workspace string) *RuntimeAuthority {
+	t.Helper()
+	runtimeAuthority, err := NewRuntimeAuthority(workspace, "", 1, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeAuthority.RequireHostTrust = false
+	return runtimeAuthority
+}
+
 func TestStdioLifecycleBindsConfigGenerationAndTerminates(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses POSIX shell")

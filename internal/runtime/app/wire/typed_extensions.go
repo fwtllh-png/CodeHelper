@@ -14,14 +14,11 @@ import (
 // extension contributor. Typed is present for migrated contributors.
 type ContributionReceipt struct {
 	Contributor string
-	Tools       []string
-	Outputs     []string
 	Typed       *runtimeextension.Receipt
 }
 
 func cloneContributionReceipt(value ContributionReceipt) ContributionReceipt {
-	result := ContributionReceipt{Contributor: value.Contributor,
-		Tools: append([]string(nil), value.Tools...), Outputs: append([]string(nil), value.Outputs...)}
+	result := ContributionReceipt{Contributor: value.Contributor}
 	if value.Typed != nil {
 		receipt := *value.Typed
 		receipt.Outputs = append([]string(nil), value.Typed.Outputs...)
@@ -70,10 +67,6 @@ func (c typedToolContributor) Contribute(
 	if c.buildErr != nil {
 		return ContributionReceipt{}, c.buildErr
 	}
-	before, err := snapshotCatalog(registry)
-	if err != nil {
-		return ContributionReceipt{}, err
-	}
 	invocation, err := c.binding.Contribute(ctx, runtimeextension.ToolInput{})
 	if err != nil {
 		return ContributionReceipt{}, err
@@ -95,11 +88,7 @@ func (c typedToolContributor) Contribute(
 	if c.publish != nil {
 		c.publish()
 	}
-	after, err := snapshotCatalog(registry)
-	if err != nil {
-		return ContributionReceipt{}, err
-	}
-	receipt := contributionReceipt(c.id, before, after, "memory-store")
+	receipt := ContributionReceipt{Contributor: c.id}
 	typed := invocation.Receipt
 	typed.Outputs = append([]string(nil), invocation.Receipt.Outputs...)
 	receipt.Typed = &typed

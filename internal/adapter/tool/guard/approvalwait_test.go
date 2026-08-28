@@ -60,7 +60,7 @@ func TestApprovalWaitIsTheTimeSpentWaiting(t *testing.T) {
 	observer := &waitObserver{}
 	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor, nil); err != nil {
+	if err := registry.Register(&executor); err != nil {
 		t.Fatal(err)
 	}
 	requests := make(chan ApprovalRequest, 1)
@@ -115,7 +115,7 @@ func TestApprovalWaitIsReportedWhenNobodyAnswers(t *testing.T) {
 	observer := &waitObserver{}
 	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor, nil); err != nil {
+	if err := registry.Register(&executor); err != nil {
 		t.Fatal(err)
 	}
 	guard, err := New(Options{
@@ -145,7 +145,7 @@ func TestApprovalWaitIsReportedWhenNobodyAnswers(t *testing.T) {
 func TestC5GuardRestoresApprovalWaitWithoutDuplicateEmission(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor, nil); err != nil {
+	if err := registry.Register(&executor); err != nil {
 		t.Fatal(err)
 	}
 	var emissions int

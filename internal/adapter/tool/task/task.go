@@ -80,7 +80,7 @@ func Register(registry *tool.Registry, options Options) error {
 		"task_create", "task_list", "task_read", "task_cancel",
 		"work_update", "note", "task_gate_run",
 	} {
-		if err := registry.Register(&executor{tools: tools, name: name}, nil); err != nil {
+		if err := registry.Register(&executor{tools: tools, name: name}); err != nil {
 			return err
 		}
 	}

@@ -58,7 +58,6 @@ func (b engineSandboxBackend) Capability() sandbox.Capability {
 
 func (b engineSandboxBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
 	command.PreparedPolicyID = "engine-fixture"
-	command.PreparedStrength = sandbox.StrengthStrong
 	return command, nil
 }
 
@@ -79,7 +78,7 @@ func TestEngineExecutesToolAndFeedsResultOnce(t *testing.T) {
 	}}
 	executor := &echoTool{}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -129,7 +128,7 @@ func TestEnginePreservesProcessSessionForNextProviderSample(t *testing.T) {
 		textStream("done"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(processSessionTool{}, nil); err != nil {
+	if err := registry.Register(processSessionTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -194,7 +193,7 @@ func TestEngineReplaysCanonicalDuplicateToolCallsWithinTurn(t *testing.T) {
 		},
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -234,7 +233,7 @@ func TestEngineBlocksWhenCompletionRepairRemainsEmpty(t *testing.T) {
 		}`),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
+	if err := registry.Register(&completiontool.Tool{}); err != nil {
 		t.Fatal(err)
 	}
 	var terminal Event
@@ -295,7 +294,7 @@ func TestWorkspaceChangeIntentRejectsTextOnlyCompletion(t *testing.T) {
 		}`),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
+	if err := registry.Register(&completiontool.Tool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -337,7 +336,7 @@ func TestCompletionRepairHasIndependentStepBudget(t *testing.T) {
 		textStream("最终结论：验证完成。"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
@@ -397,7 +396,7 @@ func TestEngineDoesNotRepairCompletedPostToolContinuation(t *testing.T) {
 		textStream("第二部分已完整结束。"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -436,7 +435,7 @@ func TestEngineContinuesRepeatedReasoningLimitsAtSameEffort(t *testing.T) {
 	for _, executor := range []tool.Executor{
 		&echoTool{}, &completiontool.Tool{},
 	} {
-		if err := registry.Register(executor, nil); err != nil {
+		if err := registry.Register(executor); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -503,7 +502,7 @@ func TestEngineDoesNotUseFinishRouteForPartialToolCall(t *testing.T) {
 		textStream("recovered without replaying the partial call"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -562,7 +561,7 @@ func TestEngineConvergesRepeatedPartialToolCallsWithoutResourceExhaustion(
 		&echoTool{},
 		&completiontool.Tool{},
 	} {
-		if err := registry.Register(executor, nil); err != nil {
+		if err := registry.Register(executor); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -677,7 +676,7 @@ func TestEngineIncompleteContinuationCanResumeWithToolCall(t *testing.T) {
 	}}
 	executor := &echoTool{}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", nil)
@@ -711,7 +710,7 @@ func TestEngineRepairsInterruptedPostToolNarrationBeforeCompletion(t *testing.T)
 		textStream("最终结论：修改未执行，工作区保持不变。"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	var completedText string
@@ -764,10 +763,10 @@ func TestEngineRepairsNarrationAfterStructuredToolFailure(t *testing.T) {
 		textStream("最终结论：修正后的检查已通过。"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(resultErrorTool{}, nil); err != nil {
+	if err := registry.Register(resultErrorTool{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", nil)
@@ -812,7 +811,7 @@ func TestEngineDoesNotClearToolFailureWithTextOnlyPromises(t *testing.T) {
 	for _, executor := range []tool.Executor{
 		resultErrorTool{}, &completiontool.Tool{},
 	} {
-		if err := registry.Register(executor, nil); err != nil {
+		if err := registry.Register(executor); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -854,10 +853,10 @@ func TestEngineRetainsFailureUntilPostRecoveryCompletionCheck(t *testing.T) {
 		textStream("最终结论：恢复和核实均已完成。"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(resultErrorTool{}, nil); err != nil {
+	if err := registry.Register(resultErrorTool{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -916,10 +915,10 @@ func TestEngineResetsCompletionRepairBudgetAfterToolProgress(t *testing.T) {
 		textStream("Final result: both independent failures were recovered."),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(resultErrorTool{}, nil); err != nil {
+	if err := registry.Register(resultErrorTool{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -939,10 +938,10 @@ func TestEngineResetsCompletionRepairBudgetAfterToolProgress(t *testing.T) {
 
 func TestRunToolsReturnsReadFailureToModelAndClosesEveryStartedCall(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(failingTool{}, nil); err != nil {
+	if err := registry.Register(failingTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -994,7 +993,7 @@ func TestRunToolsReturnsReadFailureToModelAndClosesEveryStartedCall(t *testing.T
 
 func TestRunToolsEnforcesRecordedEconomicSurfaceBudget(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(largeResultTool{}, nil); err != nil {
+	if err := registry.Register(largeResultTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -1035,7 +1034,7 @@ func TestRunToolsEnforcesRecordedEconomicSurfaceBudget(t *testing.T) {
 func TestFinishOnlyClosesExplorationCallWithoutExecutingIt(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &echoTool{}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -1082,7 +1081,7 @@ func TestFinishOnlyClosesExplorationCallWithoutExecutingIt(t *testing.T) {
 func TestRunToolsRejectsDuplicateCallIdentityBeforeExecution(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &echoTool{}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -1131,7 +1130,7 @@ func TestRunToolsRejectsDuplicateCallIdentityBeforeExecution(t *testing.T) {
 func TestRunToolsDoesNotRepublishAlreadyClosedCall(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &echoTool{}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -1192,7 +1191,7 @@ func TestRunToolsDoesNotRepublishAlreadyClosedCall(t *testing.T) {
 func TestRunToolsClosesPublishedCallsWhenStartPublicationFails(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &echoTool{}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -1256,7 +1255,7 @@ func TestRunToolsClosesPublishedCallsWhenStartPublicationFails(t *testing.T) {
 func TestRunToolsContinuesResultPublicationAfterSinkFailure(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &echoTool{}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -1318,7 +1317,7 @@ func TestRunToolsContinuesResultPublicationAfterSinkFailure(t *testing.T) {
 func TestRunToolsCancellationClosesKernelLifecycle(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &echoTool{}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -1385,7 +1384,7 @@ func TestEngineReturnsReadToolPanicToModelAndContinues(t *testing.T) {
 		textStream("done"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(panickingTool{}, nil); err != nil {
+	if err := registry.Register(panickingTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -1481,7 +1480,7 @@ func TestEngineToolRoundTripAcrossProviderProtocols(t *testing.T) {
 
 			executor := &echoTool{}
 			registry := tool.NewRegistry(nil, nil)
-			if err := registry.Register(executor, nil); err != nil {
+			if err := registry.Register(executor); err != nil {
 				t.Fatal(err)
 			}
 			route := testRouteProtocol(t, server.URL, test.protocol)
@@ -2024,7 +2023,7 @@ func TestEngineUnauthorizedToolHasSingleFailedTerminal(t *testing.T) {
 		}},
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry}})
@@ -2552,7 +2551,7 @@ func TestWorkspaceChangeGetsOneRepairBeforeConvergenceFinalization(t *testing.T)
 		}`),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
+	if err := registry.Register(&completiontool.Tool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -2995,7 +2994,7 @@ func TestEngineUndoRemovesCompleteToolTurnAndForkIsIndependent(t *testing.T) {
 		}},
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)

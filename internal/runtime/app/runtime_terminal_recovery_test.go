@@ -651,7 +651,7 @@ func TestC5RuntimeResumesStartedToolEffectThroughAgentEngine(t *testing.T) {
 	}
 	registry := tool.NewRegistry(nil, nil)
 	executor := &runtimeWriteTool{}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	model := &runtimeApprovalProvider{calls: 1}

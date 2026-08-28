@@ -24,7 +24,7 @@ func TestSubmittedPlanUnlocksAutoApprovedActTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	write := &testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(write, nil); err != nil {
+	if err := registry.Register(write); err != nil {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
@@ -60,7 +60,7 @@ func TestApprovalWaitHoldsNeitherAdmissionNorClaims(t *testing.T) {
 	descriptor.AccessMode = tool.AccessWrite
 	descriptor.ParallelPolicy = tool.ParallelSerial
 	executor := &testExecutor{descriptor: descriptor}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
@@ -120,7 +120,7 @@ func TestHostProcessApprovalIsFreshOnceAndSkipsPermissionHooks(t *testing.T) {
 		Approval:             tool.ApprovalPolicyOnce,
 	}
 	executor := &testExecutor{descriptor: descriptor, binding: binding}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	requests := make(chan ApprovalRequest, 1)
@@ -183,7 +183,7 @@ func TestInitialApprovalDenialReturnsGuardTerminalReceipt(t *testing.T) {
 	descriptor := readDescriptor("approval_denied_receipt")
 	descriptor.Capability = tool.CapabilityProcess
 	descriptor.AccessMode = tool.AccessWrite
-	if err := registry.Register(&testExecutor{descriptor: descriptor}, nil); err != nil {
+	if err := registry.Register(&testExecutor{descriptor: descriptor}); err != nil {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
@@ -232,7 +232,7 @@ func TestAdditionalPermissionApprovalReleasesAdmissionAndClaims(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("retry_release")}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
@@ -328,7 +328,7 @@ func TestAdditionalPermissionRetryRejectsChangedAuthorization(t *testing.T) {
 	executor := &escalateExecutor{
 		descriptor: sandboxedDescriptor("retry_reauthorize"),
 	}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	requests := make(chan ApprovalRequest, 1)
@@ -403,7 +403,7 @@ func TestRejectedAdditionalPermissionRetainsAuthorityEvidence(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("retry_rejected")}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	requests := make(chan ApprovalRequest, 1)
@@ -454,7 +454,7 @@ func TestRejectedAdditionalPermissionRetainsAuthorityEvidence(t *testing.T) {
 func TestReplacementArgumentsRepeatPreparationAndAuthorization(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
@@ -509,14 +509,13 @@ func TestReplacementArgumentsRepeatPreparationAndAuthorization(t *testing.T) {
 	}
 	profiles := executor.profilesSnapshot()
 	if len(profiles) != 1 ||
-		len(profiles[0].Filesystem.WritePaths) != 1 ||
-		!strings.HasSuffix(profiles[0].Filesystem.WritePaths[0], "b.txt") {
+		len(profiles[0].WorkspaceWritePaths) != 1 ||
+		!strings.HasSuffix(profiles[0].WorkspaceWritePaths[0], "b.txt") {
 		t.Fatalf("replacement authority profiles = %+v", profiles)
 	}
 	if out.result.Execution == nil ||
 		len(out.result.Execution.Attempts) != 1 ||
-		out.result.Execution.Attempts[0].PermissionDigest != profiles[0].Digest ||
-		out.result.Execution.Attempts[0].PermissionRevision != profiles[0].Revision {
+		out.result.Execution.Attempts[0].PermissionDigest != profiles[0].Digest {
 		t.Fatalf(
 			"executed profile = %+v receipt = %+v",
 			profiles[0],

@@ -79,7 +79,7 @@ func registerProcessSmoke(
 	if err != nil {
 		return err
 	}
-	return registry.Register(executor, nil)
+	return registry.Register(executor)
 }
 
 func (t *processSmokeTool) Descriptor() tool.Descriptor {

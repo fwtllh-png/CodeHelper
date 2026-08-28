@@ -31,7 +31,7 @@ func TestGoModuleCacheWritableInSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireStrong(backend); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
 		t.Skip(err)
 	}
 	ws, err := sandbox.NewWorkspace(root)
@@ -88,7 +88,7 @@ func TestInstalledHostToolchainIsReusableInSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireStrong(backend); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
 		t.Skip(err)
 	}
 	policy, ok := sandbox.BackendPolicy(backend)
@@ -141,7 +141,7 @@ func TestInstalledHostNodeRuntimeIsReusableInSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireStrong(backend); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
 		t.Skip(err)
 	}
 	policy, ok := sandbox.BackendPolicy(backend)

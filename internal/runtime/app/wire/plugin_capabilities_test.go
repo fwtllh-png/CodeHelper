@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
+	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/extensionlifecycle"
@@ -134,13 +135,26 @@ func TestPluginV2ContributesToolSkillHookAndMCP(t *testing.T) {
 	}).Contribute(t.Context(), registry); err != nil {
 		t.Fatal(err)
 	}
+	hookRuntime, err := hooks.NewRuntime("", 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := (hookContributor{
 		path: paths.HooksConfigPath, workspace: workspace,
-		backend: indexTestBackend{}, output: output,
+		backend: indexTestBackend{}, runtime: hookRuntime, output: output,
 	}).Contribute(t.Context(), registry); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := (mcpContributor{output: output}).Contribute(
+	mcpRuntime, err := mcpruntime.NewRuntimeAuthority(
+		workspace, "", 1, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (mcpContributor{
+		runtimeAuthority: mcpRuntime,
+		output:           output,
+	}).Contribute(
 		t.Context(), registry,
 	); err != nil {
 		t.Fatal(err)

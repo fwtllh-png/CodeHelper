@@ -250,7 +250,6 @@ func (b *policyBinding) Prepare(ctx context.Context, command Command) (Command, 
 	prepared.PreparedPolicyID = b.policy.ID
 	prepared.PreparedAuthorityDigest = command.AuthorityDigest
 	capability := NormalizeCapability(b.Backend.Capability())
-	prepared.PreparedStrength = capability.Strength
 	prepared.PreparedControls = CommandControls(capability, b.policy, command)
 	return prepared, nil
 }

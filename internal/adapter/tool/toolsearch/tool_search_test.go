@@ -39,14 +39,22 @@ func TestToolSearchRanksDeferredMatches(t *testing.T) {
 	if err := toolsearch.Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(stubExec{name: "alpha_fetch", desc: "fetch remote alpha"}, nil); err != nil {
+	if err := registry.Register(stubExec{name: "alpha_fetch", desc: "fetch remote alpha"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.RegisterDeferred(stubExec{
+	deferred := stubExec{
 		name: "beta_plugin", desc: "plugin beta helper", deferred: true,
-	}.Descriptor(), func() (tool.Executor, error) {
-		return stubExec{name: "beta_plugin", desc: "plugin beta helper"}, nil
-	}); err != nil {
+	}.Descriptor()
+	if err := registry.RegisterTrusted(
+		"test:beta-plugin",
+		tool.NewExternalDeferredRegistration(
+			tool.ExternalFromDescriptor(deferred),
+			tool.TrustedBindingFromDescriptor(deferred),
+			func() (tool.Executor, error) {
+				return stubExec{name: "beta_plugin", desc: "plugin beta helper"}, nil
+			},
+		),
+	); err != nil {
 		t.Fatal(err)
 	}
 	result, err := registry.Execute(t.Context(), tool.Call{
@@ -86,11 +94,19 @@ func TestConcurrentToolSearchSharesMaterializationTransition(t *testing.T) {
 	if err := toolsearch.Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.RegisterDeferred(stubExec{
+	deferred := stubExec{
 		name: "workflow_create", desc: "create durable workflow", deferred: true,
-	}.Descriptor(), func() (tool.Executor, error) {
-		return stubExec{name: "workflow_create", desc: "create durable workflow"}, nil
-	}); err != nil {
+	}.Descriptor()
+	if err := registry.RegisterTrusted(
+		"test:workflow-create",
+		tool.NewExternalDeferredRegistration(
+			tool.ExternalFromDescriptor(deferred),
+			tool.TrustedBindingFromDescriptor(deferred),
+			func() (tool.Executor, error) {
+				return stubExec{name: "workflow_create", desc: "create durable workflow"}, nil
+			},
+		),
+	); err != nil {
 		t.Fatal(err)
 	}
 	const searches = 32

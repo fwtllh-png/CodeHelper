@@ -2,7 +2,6 @@
 package authority
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -77,26 +76,6 @@ type CompileInput struct {
 	SandboxPolicy sandbox.Policy
 }
 
-type profileKey struct{}
-
-func WithProfile(
-	ctx context.Context,
-	profile EffectivePermissionProfile,
-) (context.Context, error) {
-	if err := profile.Validate(); err != nil {
-		return nil, err
-	}
-	return context.WithValue(ctx, profileKey{}, profile), nil
-}
-
-func ProfileFromContext(ctx context.Context) (EffectivePermissionProfile, bool) {
-	if ctx == nil {
-		return EffectivePermissionProfile{}, false
-	}
-	profile, ok := ctx.Value(profileKey{}).(EffectivePermissionProfile)
-	return profile, ok
-}
-
 func Compile(input CompileInput) (EffectivePermissionProfile, error) {
 	if input.Runtime == nil || !input.Invocation.Validated || !input.Authorized {
 		return EffectivePermissionProfile{}, errors.New("authorized validated policy input is required")
@@ -161,13 +140,9 @@ func (p EffectivePermissionProfile) Validate() error {
 	return nil
 }
 
-func (p EffectivePermissionProfile) ExecutionAuthority(
-	required ...RequiredControls,
+func (p EffectivePermissionProfile) executionAuthority(
+	required RequiredControls,
 ) sandbox.ExecutionAuthority {
-	var controls RequiredControls
-	if len(required) != 0 {
-		controls = required[0]
-	}
 	return sandbox.ExecutionAuthority{
 		Digest:              p.Digest,
 		Enforcement:         p.Process.Enforcement,
@@ -180,7 +155,7 @@ func (p EffectivePermissionProfile) ExecutionAuthority(
 		AllowLoopback:       p.Network.Loopback,
 		AllowNetwork:        p.Network.Mode != "denied",
 		AllowProcess:        p.Process.Allowed,
-		RequiredControls:    controlmatrix.Requirements(controls),
+		RequiredControls:    controlmatrix.Requirements(required),
 		EffectiveControls:   p.Controls,
 	}
 }
@@ -188,7 +163,7 @@ func (p EffectivePermissionProfile) ExecutionAuthority(
 func (p EffectivePermissionProfile) ExecutionAuthorityFor(
 	operation ExecutionOperation,
 ) sandbox.ExecutionAuthority {
-	result := p.ExecutionAuthority(operation.Required)
+	result := p.executionAuthority(operation.Required)
 	result.EffectiveControls = effectiveControls(p, operation)
 	return result
 }

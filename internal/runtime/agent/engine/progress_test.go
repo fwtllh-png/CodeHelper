@@ -157,7 +157,7 @@ func TestWorkspaceTurnFinalizesAfterNoProgressBudget(t *testing.T) {
 	for _, executor := range []tool.Executor{
 		&echoTool{}, &completiontool.Tool{},
 	} {
-		if err := registry.Register(executor, nil); err != nil {
+		if err := registry.Register(executor); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -218,7 +218,7 @@ func TestReadOnlyTurnEntersFinishOnlyAtDerivedBudget(t *testing.T) {
 	streams = append(streams, textStream("bounded final answer"))
 	runtime := &scriptedProvider{streams: streams}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -260,7 +260,7 @@ func TestReadOnlyFinishOnlyCompletesCurrentProcess(t *testing.T) {
 	runtime := &scriptedProvider{streams: streams}
 	registry := tool.NewRegistry(nil, nil)
 	for _, executor := range []tool.Executor{&echoTool{}, finishProcessTool{}} {
-		if err := registry.Register(executor, nil); err != nil {
+		if err := registry.Register(executor); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -318,7 +318,7 @@ func TestAcceptedCompletionPublishesSummaryWithoutFinalAnswerSampleAtLimit(
 	)
 	runtime := &scriptedProvider{streams: streams}
 	registry := declarationRegistry(t, true)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)

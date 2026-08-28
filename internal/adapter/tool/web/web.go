@@ -100,7 +100,7 @@ func RegisterWithOptions(registry *tool.Registry, options Options) error {
 			tavilyURL: options.TavilyURL, tavilyAPIKey: options.TavilyAPIKey,
 			searxngURL: options.SearXNGURL, bochaURL: options.BochaURL, bochaAPIKey: options.BochaAPIKey,
 			browser: options.Browser, httpClient: options.HTTP,
-		}, nil); err != nil {
+		}); err != nil {
 			return err
 		}
 	}

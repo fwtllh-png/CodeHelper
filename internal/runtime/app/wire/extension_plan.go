@@ -33,17 +33,6 @@ func (s *extensionSession) SnapshotPlan(
 	return s.runtime.SnapshotPlan(ctx)
 }
 
-func (s *extensionSession) contributionReceipts() []ContributionReceipt {
-	if s == nil {
-		return nil
-	}
-	result := make([]ContributionReceipt, len(s.receipts))
-	for index, receipt := range s.receipts {
-		result[index] = cloneContributionReceipt(receipt)
-	}
-	return result
-}
-
 func (s *extensionSession) closePluginRegistry() error {
 	if s == nil {
 		return nil

@@ -17,7 +17,7 @@ import (
 func TestRegistryValidatesAndAuthorizesBeforeExecute(t *testing.T) {
 	executor := &countingTool{}
 	registry := NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	for _, call := range []Call{
@@ -43,10 +43,10 @@ func TestRegistryValidatesAndAuthorizesBeforeExecute(t *testing.T) {
 
 func TestRegistryRejectsConflictDeterministically(t *testing.T) {
 	registry := NewRegistry(nil, nil)
-	if err := registry.Register(&countingTool{}, nil); err != nil {
+	if err := registry.Register(&countingTool{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(&countingTool{}, nil); err == nil || err.Error() != `tool "count" is already registered` {
+	if err := registry.Register(&countingTool{}); err == nil || err.Error() != `tool "count" is already registered` {
 		t.Fatalf("duplicate error = %v", err)
 	}
 }
@@ -54,7 +54,7 @@ func TestRegistryRejectsConflictDeterministically(t *testing.T) {
 func TestRegistryRepairsFencedJSONArguments(t *testing.T) {
 	executor := &countingTool{}
 	registry := NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := registry.Execute(t.Context(), Call{

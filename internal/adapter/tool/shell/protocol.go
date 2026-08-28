@@ -58,15 +58,16 @@ type commandProtocol struct {
 }
 
 type protocolExecutor struct {
-	protocol *commandProtocol
-	runtime  outcomeRuntime
-	expand   bool
+	protocol                   *commandProtocol
+	runtime                    outcomeRuntime
+	expand                     bool
+	validateMissingWriteParent bool
 }
 
 func (e *protocolExecutor) TrustedBinding() tool.TrustedBinding {
 	binding := tool.TrustedBindingFromDescriptor(e.runtime.Descriptor())
 	binding.Capability = tool.CapabilityProcess
-	binding.ValidateMissingWriteParent = e.Descriptor().Name == "exec_command"
+	binding.ValidateMissingWriteParent = e.validateMissingWriteParent
 	binding.Required.ProcessTree = controlmatrix.ProcessTreeGroupKill
 	return binding
 }
@@ -112,12 +113,11 @@ func registerProcessProtocol(
 	}
 	if err := registry.Register(
 		&protocolExecutor{
-			protocol: protocol,
-			runtime:  execOutcome,
-			expand:   true,
-		},
-		nil,
-	); err != nil {
+			protocol:                   protocol,
+			runtime:                    execOutcome,
+			expand:                     true,
+			validateMissingWriteParent: true,
+		}); err != nil {
 		return err
 	}
 	writeRuntime, err := typed.Define(typed.Spec[writeStdinInput, tool.Result]{
@@ -142,9 +142,8 @@ func registerProcessProtocol(
 		return errors.New("write_stdin typed runtime is incomplete")
 	}
 	return registry.Register(
-		&protocolExecutor{protocol: protocol, runtime: writeOutcome},
-		nil,
-	)
+		&protocolExecutor{protocol: protocol, runtime: writeOutcome})
+
 }
 
 func identityResult(result tool.Result) (tool.Result, error) {

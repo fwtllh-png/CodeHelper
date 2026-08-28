@@ -312,8 +312,6 @@ type ArgumentExpander interface {
 	ExpandArguments(ctx context.Context, raw json.RawMessage) (json.RawMessage, error)
 }
 
-type ClaimFunc func(json.RawMessage) ([]string, error)
-
 type registered struct {
 	descriptor Descriptor
 	external   ExternalDescriptor
@@ -405,9 +403,7 @@ func (r *Registry) Claims() *Claims {
 	return r.claims
 }
 
-// Register retains the second parameter for source compatibility. Resource
-// derivation is exclusively defined by Descriptor.ResourceResolver.
-func (r *Registry) Register(executor Executor, _ ClaimFunc) error {
+func (r *Registry) Register(executor Executor) error {
 	if executor == nil {
 		return errors.New("tool executor is required")
 	}
@@ -427,14 +423,6 @@ func (r *Registry) RegisterTrusted(
 		return errors.New("trusted registration requires an explicit binding")
 	}
 	return r.registerOne(source, registration)
-}
-
-func (r *Registry) RegisterDeferred(descriptor Descriptor, loader func() (Executor, error)) error {
-	if loader == nil {
-		return errors.New("deferred tool loader is required")
-	}
-	registration := NewDeferredRegistration(descriptor, loader)
-	return r.registerOne(nextLegacySource(descriptor.Name), registration)
 }
 
 type descriptorExecutor struct{ descriptor Descriptor }

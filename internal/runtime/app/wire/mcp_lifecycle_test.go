@@ -41,7 +41,17 @@ func TestMCPContributorDefersAdapterUntilBackgroundRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool, prewarm, err := RegisterMCPConfig(registry, config)
+	runtimeAuthority, err := mcpruntime.NewRuntimeAuthority(
+		t.TempDir(), "", 1, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, prewarm, err := RegisterMCPConfig(
+		registry,
+		config,
+		runtimeAuthority,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,9 +100,16 @@ func TestMCPContributorRequiresConfigInsideTrustedStateRoot(t *testing.T) {
 	if err := os.WriteFile(inside, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	runtimeAuthority, err := mcpruntime.NewRuntimeAuthority(
+		t.TempDir(), "", 1, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	output := &extensionBuildState{}
 	if _, err := (mcpContributor{
-		configPath: inside, trustedConfigRoot: trustedRoot, output: output,
+		configPath: inside, trustedConfigRoot: trustedRoot,
+		runtimeAuthority: runtimeAuthority, output: output,
 	}).Contribute(t.Context(), tool.NewRegistry(nil, nil)); err != nil {
 		t.Fatal(err)
 	}

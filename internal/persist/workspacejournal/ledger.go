@@ -43,7 +43,6 @@ type entry struct {
 // replays what an earlier process left.
 type ledger struct {
 	mu   sync.Mutex
-	path string
 	name string
 	root *os.Root
 	file *os.File
@@ -81,7 +80,7 @@ func openLedger(path string) (*ledger, error) {
 		_ = root.Close()
 		return nil, fmt.Errorf("open workspace journal ledger: %w", err)
 	}
-	return &ledger{path: path, name: name, root: root, file: file}, nil
+	return &ledger{name: name, root: root, file: file}, nil
 }
 
 // append writes one line and flushes it. Buffering would defeat the point: the

@@ -69,7 +69,7 @@ func Register(registry *tool.Registry, options Options) error {
 		if err != nil {
 			return err
 		}
-		if err := registry.Register(typedExecutor, nil); err != nil {
+		if err := registry.Register(typedExecutor); err != nil {
 			return err
 		}
 	}

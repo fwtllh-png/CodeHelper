@@ -83,7 +83,7 @@ func RegisterWithBackendAndRuntime(
 		if err := registry.Register(&Tool{
 			root: workspace.Root(), kind: kind, workspace: workspace,
 			backend: backend, broker: broker,
-		}, nil); err != nil {
+		}); err != nil {
 			return err
 		}
 	}

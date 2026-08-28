@@ -53,7 +53,7 @@ func TestRegistryKeepsSchemaAuthorizationAndOutputRouting(t *testing.T) {
 	executor := fixtureExecutor(t, func(_ context.Context, input fixtureInput) (fixtureOutput, error) {
 		return fixtureOutput{Greeting: strings.Repeat(input.Name, 32)}, nil
 	})
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := registry.Execute(t.Context(), tool.Call{

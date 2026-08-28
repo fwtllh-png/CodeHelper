@@ -98,7 +98,7 @@ func Register(registry *tool.Registry, options Options) error {
 	for _, name := range []string{
 		"rlm_session_objects", "rlm_open", "rlm_eval", "rlm_configure", "rlm_close",
 	} {
-		if err := registry.Register(&executor{tools: tools, name: name}, nil); err != nil {
+		if err := registry.Register(&executor{tools: tools, name: name}); err != nil {
 			return err
 		}
 	}

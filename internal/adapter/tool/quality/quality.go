@@ -94,7 +94,7 @@ func RegisterWithBackendAndRuntime(
 		if err != nil {
 			return err
 		}
-		if err := registry.Register(executor, nil); err != nil {
+		if err := registry.Register(executor); err != nil {
 			return err
 		}
 	}

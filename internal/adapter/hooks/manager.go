@@ -41,6 +41,13 @@ func New(config Config, options Options) (*Manager, error) {
 	if options.MaxOutputBytes < 0 {
 		return nil, errors.New("default hook output limit must be positive")
 	}
+	if options.Runtime == nil || options.Runtime.LeaseAuthority == nil ||
+		options.Runtime.ProcessBroker == nil {
+		return nil, errors.New("hook runtime authority is required")
+	}
+	if options.Sandbox == nil {
+		return nil, errors.New("hook Sandbox is required")
+	}
 	workspace := options.Workspace
 	if strings.TrimSpace(workspace) == "" {
 		workspace = "."

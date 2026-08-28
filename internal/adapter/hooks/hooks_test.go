@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -414,9 +413,13 @@ func newTestManager(
 	audit AuditSink,
 ) *Manager {
 	t.Helper()
-	manager, err := New(Config{Version: ConfigVersion, Hooks: configured}, Options{
-		Workspace: t.TempDir(), Audit: audit,
-	})
+	workspace := t.TempDir()
+	options := hookTestOptions(t, workspace)
+	options.Audit = audit
+	manager, err := New(
+		Config{Version: ConfigVersion, Hooks: configured},
+		options,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,13 +452,4 @@ func (c *auditCollector) snapshot() []AuditRecord {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]AuditRecord(nil), c.records...)
-}
-
-func ExampleManager_ToolCallBefore() {
-	manager, _ := New(Config{Version: ConfigVersion}, Options{Workspace: "."})
-	result, err := manager.ToolCallBefore(context.Background(), ToolCallBeforeInput{
-		CallID: "call_1", Tool: "shell", Input: json.RawMessage(`{"command":"go test ./..."}`),
-	})
-	fmt.Println(result.Action, err)
-	// Output: allow <nil>
 }

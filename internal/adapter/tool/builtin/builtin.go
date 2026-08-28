@@ -26,13 +26,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
 )
 
-func NewWithSandboxBackend(root string, backend sandbox.Backend) (*tool.Registry, error) {
-	registry, _, err := NewWithDependencies(
-		root, backend, contentstore.NewMemory(contentstore.Options{}), process.NewSessionManager(0),
-	)
-	return registry, err
-}
-
 func NewWithDependencies(
 	root string,
 	backend sandbox.Backend,

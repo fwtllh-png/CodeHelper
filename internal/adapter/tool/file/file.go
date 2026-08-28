@@ -61,7 +61,7 @@ func (t *Tools) Register(registry *tool.Registry) error {
 		&operation{tools: t, kind: "file_patch"},
 		&operation{tools: t, kind: "file_list"},
 	} {
-		if err := registry.Register(executor, nil); err != nil {
+		if err := registry.Register(executor); err != nil {
 			return err
 		}
 	}

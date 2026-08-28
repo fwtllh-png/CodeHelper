@@ -205,17 +205,6 @@ func NewExternalRegistration(
 	}
 }
 
-func NewDeferredRegistration(
-	descriptor Descriptor,
-	loader func() (Executor, error),
-) Registration {
-	descriptor.DeferredLoading.Enabled = true
-	descriptor.Availability = AvailabilityDeferred
-	return Registration{
-		descriptor: descriptor, deferred: loader, state: CatalogEntryDeferred,
-	}
-}
-
 func NewExternalDeferredRegistration(
 	external ExternalDescriptor,
 	binding TrustedBinding,
@@ -244,12 +233,6 @@ func (r Registration) Descriptor() Descriptor {
 		return cloneDescriptor(r.executor.Descriptor())
 	}
 	return cloneDescriptor(r.descriptor)
-}
-func (r Registration) ExternalDescriptor() ExternalDescriptor {
-	if r.external.Name != "" {
-		return cloneExternalDescriptor(r.external)
-	}
-	return ExternalFromDescriptor(r.Descriptor())
 }
 func (r Registration) TrustedBinding() TrustedBinding {
 	if r.explicit {

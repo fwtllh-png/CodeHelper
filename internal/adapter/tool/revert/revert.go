@@ -43,7 +43,7 @@ func Register(registry *tool.Registry, options Options) error {
 	if err != nil {
 		return err
 	}
-	return registry.Register(executor, nil)
+	return registry.Register(executor)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {

@@ -47,7 +47,7 @@ func Register(registry *tool.Registry, store *memorystore.Store) error {
 		return err
 	}
 	for _, registration := range registrations {
-		if err := registry.Register(registration.Executor(), nil); err != nil {
+		if err := registry.Register(registration.Executor()); err != nil {
 			return err
 		}
 	}

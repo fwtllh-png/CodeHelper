@@ -41,12 +41,8 @@ func (b *Broker) RunCommand(
 	if err != nil {
 		return Result{}, err
 	}
-	runCtx, err := authority.WithProfile(ctx, leaseSnapshot.PermissionProfile)
-	if err != nil {
-		return Result{}, err
-	}
-	runCtx, err = sandbox.WithExecutionAuthority(
-		runCtx,
+	runCtx, err := sandbox.WithExecutionAuthority(
+		ctx,
 		leaseSnapshot.PermissionProfile.ExecutionAuthorityFor(
 			request.Validation.Operation,
 		),

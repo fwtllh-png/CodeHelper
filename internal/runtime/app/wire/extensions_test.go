@@ -19,7 +19,81 @@ import (
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
+
+type wireHookBackend struct {
+	policy sandbox.Policy
+}
+
+func (b wireHookBackend) Capability() sandbox.Capability {
+	return sandbox.Capability{
+		Platform: "test", Backend: "passthrough", Available: true,
+		Effective: controlmatrix.Matrix{
+			FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
+			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+			Network:         controlmatrix.NetworkDenied,
+			ProcessTree:     controlmatrix.ProcessTreeGroupKill,
+			CrossProcess:    controlmatrix.CrossProcessRestricted,
+			Syscall:         controlmatrix.SyscallDenyDangerous,
+			IPC:             controlmatrix.IPCUnixOnly,
+			PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+			ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
+		},
+	}
+}
+
+func (b wireHookBackend) Policy() sandbox.Policy { return b.policy }
+
+func (b wireHookBackend) Prepare(
+	_ context.Context,
+	command sandbox.Command,
+) (sandbox.Command, error) {
+	command.PreparedPolicyID = b.policy.ID
+	command.PreparedAuthorityDigest = command.AuthorityDigest
+	command.PreparedControls = sandbox.CommandControls(
+		b.Capability(),
+		b.policy,
+		command,
+	)
+	command.PreparedReadOnly = command.WorkspaceReadOnly
+	command.PreparedReadPaths = append(
+		[]string(nil),
+		command.AdditionalReadPaths...,
+	)
+	command.PreparedWritePaths = append(
+		[]string(nil),
+		command.WorkspaceWritePaths...,
+	)
+	command.PreparedHiddenPaths = append(
+		[]string(nil),
+		command.WorkspaceHiddenPaths...,
+	)
+	command.PreparedNetworkDenied = command.DenyNetwork
+	return command, nil
+}
+
+func wireHookOptions(t *testing.T, workspace string) hooks.Options {
+	t.Helper()
+	runtime, err := hooks.NewRuntime("", 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := sandbox.BuildPolicy(sandbox.Options{
+		WorkspaceRoot:     workspace,
+		PrivateTemp:       t.TempDir(),
+		SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hooks.Options{
+		Workspace: workspace,
+		Sandbox:   wireHookBackend{policy: policy},
+		Runtime:   runtime,
+	}
+}
 
 func TestResolveExtensionPathsUsesWorkspaceAndDataDefaults(t *testing.T) {
 	workspace := t.TempDir()
@@ -62,9 +136,13 @@ func TestRepositoryHooksRequireExplicitConfiguration(t *testing.T) {
 	}
 	output := &extensionBuildState{}
 	registry := tool.NewRegistry(nil, nil)
+	hookRuntime, err := hooks.NewRuntime("", 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := (hookContributor{
 		path: path, workspace: workspace,
-		backend: indexTestBackend{}, output: output,
+		backend: indexTestBackend{}, runtime: hookRuntime, output: output,
 	}).Contribute(t.Context(), registry); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +151,7 @@ func TestRepositoryHooksRequireExplicitConfiguration(t *testing.T) {
 	}
 	if _, err := (hookContributor{
 		path: path, explicit: true, workspace: workspace,
-		backend: indexTestBackend{}, output: output,
+		backend: indexTestBackend{}, runtime: hookRuntime, output: output,
 	}).Contribute(t.Context(), registry); err != nil {
 		t.Fatal(err)
 	}
@@ -131,13 +209,13 @@ func TestGuardFailsClosedOnHookAskAndUpdatedInput(t *testing.T) {
 						Args: []string{"-test.run=^TestBootstrapHookProcess$", "--", response},
 					}},
 				},
-			}, hooks.Options{Workspace: workspace})
+			}, wireHookOptions(t, workspace))
 			if err != nil {
 				t.Fatal(err)
 			}
 			var executions atomic.Int32
 			registry := tool.NewRegistry(nil, nil)
-			if err := registry.Register(&guardProbe{executions: &executions}, nil); err != nil {
+			if err := registry.Register(&guardProbe{executions: &executions}); err != nil {
 				t.Fatal(err)
 			}
 			guard, err := toolguard.New(toolguard.Options{
@@ -170,13 +248,13 @@ func TestEngineGuardFactoryRunsConfiguredHook(t *testing.T) {
 				Mode: hooks.ModeObserve, Command: "/usr/bin/true",
 			}},
 		},
-	}, hooks.Options{Workspace: workspace})
+	}, wireHookOptions(t, workspace))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var executions atomic.Int32
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&guardProbe{executions: &executions}, nil); err != nil {
+	if err := registry.Register(&guardProbe{executions: &executions}); err != nil {
 		t.Fatal(err)
 	}
 	security := policy.DefaultRuntime(
@@ -237,16 +315,24 @@ func TestMemoryContributorUsesTypedExtensionContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := snapshot.Entries()
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name)
+	}
 	if receipt.Contributor != "memory" ||
 		receipt.Typed == nil ||
 		receipt.Typed.Kind != runtimeextension.KindTool ||
 		receipt.Typed.Status != runtimeextension.OutcomeSucceeded ||
-		len(receipt.Tools) != 5 ||
-		!slices.Contains(receipt.Tools, "remember") ||
-		!slices.Contains(receipt.Tools, "memory_list") ||
-		!slices.Contains(receipt.Tools, "memory_get") ||
-		!slices.Contains(receipt.Tools, "memory_update") ||
-		!slices.Contains(receipt.Tools, "forget") ||
+		!slices.Contains(names, "remember") ||
+		!slices.Contains(names, "memory_list") ||
+		!slices.Contains(names, "memory_get") ||
+		!slices.Contains(names, "memory_update") ||
+		!slices.Contains(names, "forget") ||
 		output.memory == nil {
 		t.Fatalf("memory contribution = %+v, store=%v", receipt, output.memory)
 	}
@@ -263,7 +349,6 @@ func TestDisabledMemoryContributorPublishesTypedSkip(t *testing.T) {
 	if receipt.Typed == nil ||
 		receipt.Typed.Status != runtimeextension.OutcomeSkipped ||
 		receipt.Typed.Code != "disabled" ||
-		len(receipt.Tools) != 0 ||
 		output.memory != nil {
 		t.Fatalf("disabled memory contribution = %+v, store=%v", receipt, output.memory)
 	}

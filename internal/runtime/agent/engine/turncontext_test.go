@@ -247,7 +247,7 @@ func TestSnapshotTurnSpecDegradesMemoryReadFailure(t *testing.T) {
 func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 	security := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&turnWriteTool{}, nil); err != nil {
+	if err := registry.Register(&turnWriteTool{}); err != nil {
 		t.Fatal(err)
 	}
 	providerRuntime := &scriptedProvider{streams: []provider.Stream{
@@ -334,7 +334,7 @@ func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 func TestRunForTurnNextTurnSeesUpdatedPolicy(t *testing.T) {
 	security := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&turnWriteTool{}, nil); err != nil {
+	if err := registry.Register(&turnWriteTool{}); err != nil {
 		t.Fatal(err)
 	}
 	providerRuntime := &scriptedProvider{streams: []provider.Stream{

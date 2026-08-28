@@ -57,8 +57,7 @@ func (e *catalogExecutor) Execute(
 func TestRegistryReconcileIsAtomicOnAliasConflict(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	if err := registry.Register(
-		&catalogExecutor{descriptor: catalogTestDescriptor("external")}, nil,
-	); err != nil {
+		&catalogExecutor{descriptor: catalogTestDescriptor("external")}); err != nil {
 		t.Fatal(err)
 	}
 	alpha := catalogTestDescriptor("alpha")
@@ -102,12 +101,11 @@ func TestRegistryRegisterRejectsCanonicalNameCollidingWithAlias(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	descriptor := catalogTestDescriptor("primary")
 	descriptor.Aliases = []Alias{{Name: "compat", Hidden: true}}
-	if err := registry.Register(&catalogExecutor{descriptor: descriptor}, nil); err != nil {
+	if err := registry.Register(&catalogExecutor{descriptor: descriptor}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(
-		&catalogExecutor{descriptor: catalogTestDescriptor("compat")}, nil,
-	); err == nil {
+		&catalogExecutor{descriptor: catalogTestDescriptor("compat")}); err == nil {
 		t.Fatal("canonical name colliding with an existing alias was accepted")
 	}
 	canonical, _, _, err := registry.Resolve("compat")
@@ -454,8 +452,7 @@ func TestRegistryMaterializeLimitIsAtomic(t *testing.T) {
 	registry.SetMaterializeLimits(1, 1<<20)
 	for _, name := range []string{"first", "second"} {
 		if err := registry.Register(
-			&catalogExecutor{descriptor: catalogTestDescriptor(name)}, nil,
-		); err != nil {
+			&catalogExecutor{descriptor: catalogTestDescriptor(name)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -528,16 +525,23 @@ func TestRegistryMaterializeLimitCountsConcurrentLoads(t *testing.T) {
 func TestRegistryMaterializeRejectsLoadedSchemaDrift(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	descriptor := catalogTestDescriptor("schema_drift")
-	if err := registry.RegisterDeferred(descriptor, func() (Executor, error) {
-		loaded := cloneDescriptor(descriptor)
-		loaded.InputSchema = map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"unexpected": map[string]any{"type": "string"},
+	if err := registry.RegisterTrusted(
+		"test:schema-drift",
+		NewExternalDeferredRegistration(
+			ExternalFromDescriptor(descriptor),
+			TrustedBindingFromDescriptor(descriptor),
+			func() (Executor, error) {
+				loaded := cloneDescriptor(descriptor)
+				loaded.InputSchema = map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"unexpected": map[string]any{"type": "string"},
+					},
+				}
+				return &catalogExecutor{descriptor: loaded}, nil
 			},
-		}
-		return &catalogExecutor{descriptor: loaded}, nil
-	}); err != nil {
+		),
+	); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := registry.Snapshot()
@@ -553,7 +557,7 @@ func TestRegistryMaterializeRejectsLoadedSchemaDrift(t *testing.T) {
 func TestCatalogToolIDIsStableAndBindingChecked(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	descriptor := catalogTestDescriptor("stable_id")
-	if err := registry.Register(&catalogExecutor{descriptor: descriptor}, nil); err != nil {
+	if err := registry.Register(&catalogExecutor{descriptor: descriptor}); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := registry.Snapshot()

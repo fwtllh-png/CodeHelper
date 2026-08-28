@@ -374,7 +374,8 @@ func TestChildAuthorityIsParentAndRoleIntersection(t *testing.T) {
 			AccessMode: access, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone,
 			Availability:       tool.AvailabilityAvailable,
-		}}, nil)
+		}})
+
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -423,7 +424,8 @@ func TestDelegatingReadOnlyRoleRetainsOnlyAgentLifecycleWrites(t *testing.T) {
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone,
 			Availability:       tool.AvailabilityAvailable,
-		}}, nil)
+		}})
+
 		if err != nil {
 			t.Fatal(err)
 		}

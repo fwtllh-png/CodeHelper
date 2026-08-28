@@ -37,17 +37,12 @@ func BuildManagedProcessOperation(
 		strings.TrimSpace(input.WorkingDirectory) == "" {
 		return ExecutionOperation{}, errors.New("managed process operation is incomplete")
 	}
-	argumentsDigest, err := digestValue(struct {
-		Executable       string   `json:"executable"`
-		Args             []string `json:"args"`
-		WorkingDirectory string   `json:"working_directory"`
-		Environment      []string `json:"environment"`
-	}{
-		Executable:       filepath.Clean(input.Executable),
-		Args:             append([]string(nil), input.Args...),
-		WorkingDirectory: filepath.Clean(input.WorkingDirectory),
-		Environment:      append([]string(nil), input.Environment...),
-	})
+	argumentsDigest, err := ManagedProcessArgumentsDigest(
+		input.Executable,
+		input.Args,
+		input.Environment,
+		input.WorkingDirectory,
+	)
 	if err != nil {
 		return ExecutionOperation{}, err
 	}

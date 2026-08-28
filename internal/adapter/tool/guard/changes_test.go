@@ -76,7 +76,7 @@ func TestGuardDeclaresEveryTransactionPathAsAWrite(t *testing.T) {
 		}
 	}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&patchExecutor{descriptor: transactionToolDescriptor()}, nil); err != nil {
+	if err := registry.Register(&patchExecutor{descriptor: transactionToolDescriptor()}); err != nil {
 		t.Fatal(err)
 	}
 	hooks := &captureHooks{}
@@ -137,7 +137,7 @@ func TestGuardRefusesTransactionArgumentsItCannotEnumerate(t *testing.T) {
 	workspace := t.TempDir()
 	registry := tool.NewRegistry(nil, nil)
 	executor := &patchExecutor{descriptor: transactionToolDescriptor()}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	guard, err := New(Options{
@@ -184,7 +184,7 @@ func TestGuardObservesWritesFromToolsWithoutPathArguments(t *testing.T) {
 		return os.Remove(filepath.Join(workspace, "removed.txt"))
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	guard, err := New(Options{
@@ -237,7 +237,7 @@ func TestGuardReportsNoChangesWhenNothingWasWritten(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&patchExecutor{descriptor: patchToolDescriptor()}, nil); err != nil {
+	if err := registry.Register(&patchExecutor{descriptor: patchToolDescriptor()}); err != nil {
 		t.Fatal(err)
 	}
 	guard, err := New(Options{
@@ -284,7 +284,7 @@ func TestGuardCountsLinesAgainstTheTurnsStartingContent(t *testing.T) {
 		return os.WriteFile(path, []byte(content), 0o600)
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	guard, err := New(Options{
@@ -351,7 +351,7 @@ func TestGuardRefusesWritesWhenTheBeforeImageCannotBeStored(t *testing.T) {
 		return os.WriteFile(path, []byte("clobbered"), 0o600)
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	guard, err := New(Options{

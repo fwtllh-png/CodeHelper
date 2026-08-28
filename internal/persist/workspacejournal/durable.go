@@ -187,48 +187,6 @@ func ensureWorkspaceBinding(
 	return nil
 }
 
-// Interrupted describes one turn left in a journal directory, for callers that
-// want to report on a workspace without opening or changing it.
-type Interrupted struct {
-	TurnID    string   `json:"turn_id"`
-	PID       int      `json:"pid,omitempty"`
-	Committed bool     `json:"committed"`
-	Draft     bool     `json:"draft,omitempty"`
-	Paths     []string `json:"paths,omitempty"`
-}
-
-// Inspect lists the turns a journal directory still holds. It opens nothing and
-// changes nothing, so a diagnostics command can use it against a workspace some
-// other process owns.
-func Inspect(directory string) ([]Interrupted, error) {
-	root, err := os.OpenRoot(directory)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("open workspace journal directory: %w", err)
-	}
-	defer root.Close()
-	book := &ledger{
-		path: filepath.Join(directory, ledgerName),
-		name: ledgerName,
-		root: root,
-	}
-	pending, err := book.replay()
-	if err != nil {
-		return nil, err
-	}
-	turns := make([]Interrupted, 0, len(pending))
-	for _, turn := range pending {
-		turns = append(turns, Interrupted{
-			TurnID: turn.ID, PID: turn.PID, Committed: turn.Committed,
-			Draft: turn.Draft,
-			Paths: append([]string(nil), turn.Order...),
-		})
-	}
-	return turns, nil
-}
-
 // Recovery reports what an earlier process left behind and what was done with it.
 type Recovery struct {
 	// RolledBack is one receipt per turn this process undid.

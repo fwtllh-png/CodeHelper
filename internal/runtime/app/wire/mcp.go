@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	pluginextension "github.com/fwtllh-png/CodeHelper/internal/adapter/extension/plugin"
@@ -23,7 +24,7 @@ func (c mcpContributor) Contribute(
 	ctx context.Context,
 	registry *tool.Registry,
 ) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), []string{"mcp-pool", "mcp-prewarm"}, func() error {
+	return runContribution(registry, c.ID(), func() error {
 		combined := mcpruntime.Config{
 			Version: mcpruntime.ConfigVersion,
 			Servers: make(map[string]mcpruntime.ServerConfig),
@@ -76,16 +77,16 @@ func (c mcpContributor) Contribute(
 func RegisterMCPConfig(
 	registry *tool.Registry,
 	config mcpruntime.Config,
-	runtimeAuthority ...*mcpruntime.RuntimeAuthority,
+	runtimeAuthority *mcpruntime.RuntimeAuthority,
 ) (*mcpruntime.Pool, *MCPPrewarm, error) {
 	config = mcpruntime.CloneConfig(config)
 	if err := config.Validate(); err != nil {
 		return nil, nil, err
 	}
-	var factory mcpruntime.TransportFactory
-	if len(runtimeAuthority) != 0 && runtimeAuthority[0] != nil {
-		factory = mcpruntime.NewAuthorizedTransportFactory(runtimeAuthority[0])
+	if runtimeAuthority == nil {
+		return nil, nil, errors.New("MCP runtime authority is required")
 	}
+	factory := mcpruntime.NewAuthorizedTransportFactory(runtimeAuthority)
 	pool := mcpruntime.NewPool(factory)
 	prewarm := NewMCPPrewarmConfig(pool, config)
 	prewarm.SetRegistry(registry)

@@ -20,7 +20,7 @@ import (
 func TestAllocatedGuardGrantsEgressAfterApproval(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &egressRetryTool{}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 

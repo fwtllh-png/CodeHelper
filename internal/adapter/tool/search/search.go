@@ -71,14 +71,14 @@ func RegisterWithProviders(
 		if err := registry.Register(&Tool{
 			root: workspace.Root(), kind: kind,
 			workspace: workspace, backend: backend, walker: walker,
-		}, nil); err != nil {
+		}); err != nil {
 			return err
 		}
 	}
 	for _, kind := range []string{KindSymbol, KindDefinition, KindReferences, KindRelatedTests} {
 		if err := registry.Register(&symbolTool{
 			kind: kind, index: index, walker: walker, semantic: semantic,
-		}, nil); err != nil {
+		}); err != nil {
 			return err
 		}
 	}

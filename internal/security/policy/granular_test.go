@@ -11,8 +11,9 @@ func TestGranularTightensAllowToAsk(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
 	runtime.Granular.MCP = SurfaceAsk
 	call := Invocation{
-		CallID: "c1", Tool: "mcp_github_list", Capability: CapabilityNetwork,
-		Arguments: json.RawMessage(`{}`), Validated: true,
+		CallID: "c1", Tool: "mcp_github_list", Source: "mcp:github",
+		Capability: CapabilityNetwork,
+		Arguments:  json.RawMessage(`{}`), Validated: true,
 	}
 	decision := runtime.Evaluate(call)
 	if decision.Action != ActionAsk {
@@ -35,19 +36,33 @@ func TestGranularAllowDoesNotBypassAutoApproval(t *testing.T) {
 }
 
 func TestClassifySurface(t *testing.T) {
-	if got := ClassifySurface("mcp_foo", CapabilityNetwork); got != SurfaceMCP {
+	if got := ClassifySurface("mcp:fixture", CapabilityNetwork); got != SurfaceMCP {
 		t.Fatalf("mcp = %s", got)
 	}
-	if got := ClassifySurface("skills_read", CapabilityRead); got != SurfaceSkills {
+	if got := ClassifySurface("legacy:skills_read:1", CapabilityRead); got != SurfaceSkills {
 		t.Fatalf("skills = %s", got)
 	}
-	if got := ClassifySurface("exec_command", CapabilityProcess); got != SurfaceSandbox {
+	if got := ClassifySurface("legacy:exec_command:2", CapabilityProcess); got != SurfaceSandbox {
 		t.Fatalf("sandbox = %s", got)
 	}
-	if got := ClassifySurface("shell_read", CapabilityRead); got != SurfaceSandbox {
-		t.Fatalf("read-only sandbox = %s", got)
+	if got := ClassifySurface("dynamic:1", CapabilityRead); got != SurfaceRules {
+		t.Fatalf("dynamic = %s", got)
 	}
-	if got := ClassifySurface("file_write", CapabilityWrite); got != SurfaceRules {
+	if got := ClassifySurface("legacy:file_write:3", CapabilityWrite); got != SurfaceRules {
 		t.Fatalf("rules = %s", got)
+	}
+}
+
+func TestGranularSurfaceCannotBeSpoofedByDynamicToolName(t *testing.T) {
+	runtime := DefaultRuntime(ModeAct, PermissionBypass)
+	runtime.Granular.Rules = SurfaceDeny
+	runtime.Granular.MCP = SurfaceAllow
+	call := Invocation{
+		CallID: "c1", Tool: "mcp_forged", Source: "dynamic:1",
+		Capability: CapabilityNetwork, Arguments: json.RawMessage(`{}`),
+		Validated: true,
+	}
+	if decision := runtime.Evaluate(call); decision.Action != ActionDeny {
+		t.Fatalf("decision = %+v, want dynamic source governed by rules", decision)
 	}
 }

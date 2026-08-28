@@ -12,17 +12,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/vcsbroker"
 )
 
-type MutationKind = vcsbroker.MutationKind
-
-const (
-	WorktreeAdd    = vcsbroker.WorktreeAdd
-	WorktreeRemove = vcsbroker.WorktreeRemove
-	WorktreePrune  = vcsbroker.WorktreePrune
-	IndexAdd       = vcsbroker.IndexAdd
-	Commit         = vcsbroker.Commit
-	ApplyPatch     = vcsbroker.ApplyPatch
-)
-
 type Runtime struct {
 	Files     *filebroker.Runtime
 	VCS       *vcsbroker.Broker
@@ -38,9 +27,9 @@ func (r *Runtime) ReadVCS(
 	return r.VCS.Read(ctx, dir, arguments...)
 }
 
-func (r *Runtime) MutateVCS(
+func (r *Runtime) mutateVCS(
 	ctx context.Context,
-	kind MutationKind,
+	kind vcsbroker.MutationKind,
 	dir string,
 	arguments []string,
 ) error {
@@ -53,7 +42,7 @@ func (r *Runtime) MutateVCS(
 func (r *Runtime) AddWorktree(
 	ctx context.Context, dir, path, revision string,
 ) error {
-	return r.MutateVCS(ctx, WorktreeAdd, dir, []string{
+	return r.mutateVCS(ctx, vcsbroker.WorktreeAdd, dir, []string{
 		"worktree", "add", "--detach", path, revision,
 	})
 }
@@ -61,21 +50,21 @@ func (r *Runtime) AddWorktree(
 func (r *Runtime) RemoveWorktree(
 	ctx context.Context, dir, path string,
 ) error {
-	return r.MutateVCS(ctx, WorktreeRemove, dir, []string{
+	return r.mutateVCS(ctx, vcsbroker.WorktreeRemove, dir, []string{
 		"worktree", "remove", "--force", path,
 	})
 }
 
 func (r *Runtime) PruneWorktrees(ctx context.Context, dir string) error {
-	return r.MutateVCS(
-		ctx, WorktreePrune, dir, []string{"worktree", "prune"},
+	return r.mutateVCS(
+		ctx, vcsbroker.WorktreePrune, dir, []string{"worktree", "prune"},
 	)
 }
 
 func (r *Runtime) ApplyPatch(
 	ctx context.Context, dir, patchPath string,
 ) error {
-	return r.MutateVCS(ctx, ApplyPatch, dir, []string{
+	return r.mutateVCS(ctx, vcsbroker.ApplyPatch, dir, []string{
 		"apply", "--whitespace=nowarn", patchPath,
 	})
 }
@@ -84,13 +73,13 @@ func (r *Runtime) AddIndex(
 	ctx context.Context, dir string, paths []string,
 ) error {
 	arguments := append([]string{"add", "-A", "--"}, paths...)
-	return r.MutateVCS(ctx, IndexAdd, dir, arguments)
+	return r.mutateVCS(ctx, vcsbroker.IndexAdd, dir, arguments)
 }
 
 func (r *Runtime) CommitBaseline(
 	ctx context.Context, dir string,
 ) error {
-	return r.MutateVCS(ctx, Commit, dir, []string{
+	return r.mutateVCS(ctx, vcsbroker.Commit, dir, []string{
 		"-c", "user.name=CodeHelper",
 		"-c", "user.email=codehelper@localhost",
 		"commit", "--allow-empty", "--no-gpg-sign",

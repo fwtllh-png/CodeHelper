@@ -385,7 +385,7 @@ func TestSessionToolCatalogProjectsProfileSelection(t *testing.T) {
 	store := &memoryProfileStore{profile: defaults}
 	registry := tool.NewRegistry(nil, nil)
 	catalogTool := &profileCatalogTool{}
-	if err := registry.Register(catalogTool, nil); err != nil {
+	if err := registry.Register(catalogTool); err != nil {
 		t.Fatal(err)
 	}
 	runtime := NewRuntime(Options{

@@ -761,7 +761,6 @@ func (b *recordingBackend) Capability() sandbox.Capability {
 func (b *recordingBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
 	b.command = command
 	command.PreparedPolicyID = "fixture-policy"
-	command.PreparedStrength = sandbox.StrengthStrong
 	command.PreparedControls = sandbox.CommandControls(
 		b.Capability(), b.Policy(), command,
 	)

@@ -183,7 +183,7 @@ func TestToolCatalogChangeProducesTypedPatch(t *testing.T) {
 		textStream("one"), textStream("two"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -193,7 +193,7 @@ func TestToolCatalogChangeProducesTypedPatch(t *testing.T) {
 	descriptor := echoDescriptor()
 	descriptor.Name = "lookup"
 	descriptor.Description = "lookup a value"
-	if err := registry.Register(&countingCatalogExecutor{descriptor: descriptor}, nil); err != nil {
+	if err := registry.Register(&countingCatalogExecutor{descriptor: descriptor}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := engine.Run(t.Context(), "second", nil); err != nil {

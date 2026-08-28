@@ -102,7 +102,7 @@ func TestR3IncompleteToolFragmentIsRetainedAndExecutedOnlyAfterClosure(
 	}}
 	executor := &echoTool{}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -162,7 +162,7 @@ func TestR3SparseProviderSequencesPreserveCompleteToolCalls(t *testing.T) {
 	}}
 	executor := &echoTool{}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	result, err := newEngine(t, runtime, registry).Run(

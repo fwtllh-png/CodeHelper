@@ -50,6 +50,7 @@ const (
 
 type Invocation struct {
 	CallID, Tool string
+	Source       string
 	Arguments    json.RawMessage
 	Resources    []tool.Resource
 	Capability   tool.Capability
@@ -356,7 +357,7 @@ func (r *Runtime) evaluate(invocation Invocation) Decision {
 		}
 	}
 	decision = ApplySurfaceTightening(
-		decision, ClassifySurface(invocation.Tool, invocation.Capability), r.Granular,
+		decision, ClassifySurface(invocation.Source, invocation.Capability), r.Granular,
 	)
 	return decision
 }

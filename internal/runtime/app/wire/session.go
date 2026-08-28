@@ -140,15 +140,6 @@ func (s *Session) DynamicTools() *dynamictool.Manager {
 	return s.dynamicTools
 }
 
-// ContributionReceipts reports the construction identities published by
-// extension contributors without exposing their runtime-owned services.
-func (s *Session) ContributionReceipts() []ContributionReceipt {
-	if s == nil {
-		return nil
-	}
-	return s.extensions.contributionReceipts()
-}
-
 func (s *Session) SetPolicyMode(mode policy.Mode) {
 	// Applies to the next turn's SnapshotTurnContext; in-flight turns use a
 	// CloneSampling policy installed on Guard for the turn duration.

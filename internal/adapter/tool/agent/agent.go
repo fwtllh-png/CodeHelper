@@ -168,7 +168,7 @@ func Register(registry *tool.Registry, options Options) error {
 		"spawn_agent", "send_message", "wait_agent", "list_agents",
 		"followup_task", "interrupt_agent", "close_agent", "integrate_agent",
 	} {
-		if err := registry.Register(&operation{tools: shared, kind: kind}, nil); err != nil {
+		if err := registry.Register(&operation{tools: shared, kind: kind}); err != nil {
 			return err
 		}
 	}

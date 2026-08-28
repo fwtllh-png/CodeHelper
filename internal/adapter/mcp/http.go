@@ -142,7 +142,7 @@ func NewDefaultTransport(
 	config ServerConfig,
 ) (Transport, error) {
 	if config.Transport == "stdio" {
-		return NewStdioTransport(ctx, config)
+		return nil, errors.New("stdio MCP transport requires runtime authority")
 	}
 	return NewHTTPTransport(ctx, config)
 }

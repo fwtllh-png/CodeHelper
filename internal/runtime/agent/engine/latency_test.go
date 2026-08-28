@@ -360,7 +360,7 @@ func newLatencyEngine(t *testing.T, options latencyEngineOptions) *Engine {
 	t.Helper()
 	registry := tool.NewRegistry(nil, nil)
 	if options.tool != nil {
-		if err := registry.Register(options.tool, nil); err != nil {
+		if err := registry.Register(options.tool); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -81,7 +81,7 @@ func (missingPathTool) Execute(context.Context, json.RawMessage) (tool.Result, e
 
 func TestRecoverableToolFailureClassification(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	_, _, _, unknownErr := registry.Resolve("missing")
@@ -308,7 +308,7 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 // them as failed tool results and lets the turn continue.
 func TestRunToolsFeedsRecoverableFailureBackToModel(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(unreadTool{}, nil); err != nil {
+	if err := registry.Register(unreadTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -382,7 +382,7 @@ func TestMissingPathRecoveryExposesExactCandidatesToModel(t *testing.T) {
 
 func TestRunToolsFeedsMissingPathRecoveryBackToModel(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(missingPathTool{}, nil); err != nil {
+	if err := registry.Register(missingPathTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -501,7 +501,7 @@ func TestEngineFeedsSampledUnknownToolBackToModel(t *testing.T) {
 		textStream("recovered"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -547,10 +547,17 @@ func TestEngineDoesNotExecuteUnadvertisedCatalogTool(t *testing.T) {
 	descriptor := (&echoTool{}).Descriptor()
 	descriptor.Name = "deferred_echo"
 	loaded := false
-	if err := registry.RegisterDeferred(descriptor, func() (tool.Executor, error) {
-		loaded = true
-		return nil, errors.New("loader must not run")
-	}); err != nil {
+	if err := registry.RegisterTrusted(
+		"test:deferred-echo",
+		tool.NewExternalDeferredRegistration(
+			tool.ExternalFromDescriptor(descriptor),
+			tool.TrustedBindingFromDescriptor(descriptor),
+			func() (tool.Executor, error) {
+				loaded = true
+				return nil, errors.New("loader must not run")
+			},
+		),
+	); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -569,7 +576,7 @@ func TestCatalogWithoutToolSearchDoesNotTruncateEagerTools(t *testing.T) {
 	const count = 30
 	for index := range count {
 		name := fmt.Sprintf("eager_%02d", index)
-		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -591,7 +598,7 @@ func TestCatalogWithoutToolSearchDoesNotTruncateEagerTools(t *testing.T) {
 func TestToolDefinitionsEnforceCountAndSchemaBudgets(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	for _, name := range []string{"first_budgeted", "second_budgeted"} {
-		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -623,7 +630,7 @@ func TestToolSelectionKeepsCoreAndBoundedRelevantDefinitions(t *testing.T) {
 		"shell_read", "exec_command", "write_stdin", "quality_test",
 		"quality_verify", "project_map", "special_deploy", "unrelated_fixture",
 	} {
-		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -677,7 +684,7 @@ func TestToolSelectionKeepsRequiredAgentTools(t *testing.T) {
 		"spawn_agent",
 		"wait_agent",
 	} {
-		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -712,7 +719,7 @@ func TestCatalogReceiptUsesLastProviderToolDefinitions(t *testing.T) {
 	for _, name := range []string{
 		"turn_complete", "update_plan", "quality_test", "shell_read", "exec_command",
 	} {
-		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -742,7 +749,7 @@ func TestToolSearchRefreshesScopeCatalogAndBinding(t *testing.T) {
 	if err := toolsearch.Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(catalogFixtureTool("special_deploy"), nil); err != nil {
+	if err := registry.Register(catalogFixtureTool("special_deploy")); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -793,7 +800,7 @@ func TestToolSearchMaterializesForTheNextSample(t *testing.T) {
 	executor := &countingCatalogExecutor{
 		descriptor: catalogFixtureTool("special_deploy").Descriptor(),
 	}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	runtime := &scriptedProvider{streams: []provider.Stream{

@@ -89,7 +89,7 @@ func Register(registry *tool.Registry, options Options) error {
 		"github_comment", "github_close_issue", "github_close_pr",
 		"pr_attempt_record", "pr_attempt_list", "pr_attempt_read", "pr_attempt_preflight",
 	} {
-		if err := registry.Register(&executor{client: c, name: name}, nil); err != nil {
+		if err := registry.Register(&executor{client: c, name: name}); err != nil {
 			return err
 		}
 	}

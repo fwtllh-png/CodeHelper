@@ -189,7 +189,7 @@ func TestWorkspaceChangeReceiptMatchesTerminalOutcome(t *testing.T) {
 
 	t.Run("completed_with_changes", func(t *testing.T) {
 		registry := tool.NewRegistry(nil, nil)
-		if err := registry.Register(&runtimeWriteTool{}, nil); err != nil {
+		if err := registry.Register(&runtimeWriteTool{}); err != nil {
 			t.Fatal(err)
 		}
 		root := t.TempDir()
@@ -380,7 +380,7 @@ func TestRuntimeApprovalPauseResumeE2E(t *testing.T) {
 		t.Run(string(decision), func(t *testing.T) {
 			registry := tool.NewRegistry(nil, nil)
 			executor := &runtimeWriteTool{}
-			if err := registry.Register(executor, nil); err != nil {
+			if err := registry.Register(executor); err != nil {
 				t.Fatal(err)
 			}
 			security := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
@@ -708,9 +708,7 @@ func TestRuntimeCancelDuringProviderAndToolHasOneCanceledTerminal(
 				}
 				registry := tool.NewRegistry(nil, nil)
 				if err := registry.Register(
-					&runtimeBlockingTool{started: started},
-					nil,
-				); err != nil {
+					&runtimeBlockingTool{started: started}); err != nil {
 					t.Fatal(err)
 				}
 				worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &runtimeToolCancelProvider{},

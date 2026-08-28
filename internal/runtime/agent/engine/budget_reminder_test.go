@@ -70,7 +70,7 @@ func TestUncappedLongSessionKeepsCommandToolsInNewTurn(t *testing.T) {
 	}}
 	registry := tool.NewRegistry(nil, nil)
 	for _, name := range []string{"shell_read", "exec_command", "turn_complete"} {
-		if err := registry.Register(catalogFixtureTool(name), nil); err != nil {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
 			t.Fatal(err)
 		}
 	}

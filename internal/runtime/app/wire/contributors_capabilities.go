@@ -27,7 +27,6 @@ func (c skillContributor) Contribute(
 ) (ContributionReceipt, error) {
 	return runContribution(
 		registry, c.ID(),
-		[]string{"skill-catalog", "skills_list", "skills_read"},
 		func() error {
 			stateStore, err := skill.NewStateStore(c.paths.SkillsStatePath)
 			if err != nil {
@@ -78,7 +77,7 @@ func (c hookContributor) Contribute(
 	ctx context.Context,
 	registry *tool.Registry,
 ) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), []string{"hook-manager"}, func() error {
+	return runContribution(registry, c.ID(), func() error {
 		combined := hooks.Config{
 			Version: hooks.ConfigVersion,
 			Hooks:   make(map[hooks.Event][]hooks.HookConfig),
@@ -109,7 +108,7 @@ func (c hookContributor) Contribute(
 			return fmt.Errorf("merged hooks config: %w", err)
 		}
 		manager, err := hooks.New(combined, hooks.Options{
-			Sandbox: c.backend, RequireStrongSandbox: true, Workspace: c.workspace,
+			Sandbox: c.backend, Workspace: c.workspace,
 			Runtime: c.runtime,
 		})
 		if err != nil {

@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
@@ -60,21 +61,15 @@ func newExtensionContributors(state *buildState) []extensionActivation {
 func runContribution(
 	registry *tool.Registry,
 	id string,
-	outputs []string,
 	contribute func() error,
 ) (ContributionReceipt, error) {
-	before, err := snapshotCatalog(registry)
-	if err != nil {
-		return ContributionReceipt{}, err
+	if registry == nil {
+		return ContributionReceipt{}, errors.New("shared tool registry is required")
 	}
 	if err := contribute(); err != nil {
 		return ContributionReceipt{}, err
 	}
-	after, err := snapshotCatalog(registry)
-	if err != nil {
-		return ContributionReceipt{}, err
-	}
-	return contributionReceipt(id, before, after, outputs...), nil
+	return ContributionReceipt{Contributor: id}, nil
 }
 
 type pluginBundleContributor struct {
@@ -89,7 +84,7 @@ func (c pluginBundleContributor) Contribute(
 	_ context.Context,
 	registry *tool.Registry,
 ) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), nil, func() error {
+	return runContribution(registry, c.ID(), func() error {
 		if c.bundle == "" {
 			return nil
 		}
@@ -127,7 +122,7 @@ func (c pluginRegistryContributor) Contribute(
 	ctx context.Context,
 	registry *tool.Registry,
 ) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), []string{"plugin-registry"}, func() error {
+	return runContribution(registry, c.ID(), func() error {
 		lifecycle, err := NewPluginRegistry(c.paths, c.workspace, c.backend)
 		if err != nil {
 			return fmt.Errorf("plugin registry: %w", err)
@@ -164,7 +159,7 @@ func (c dynamicToolContributor) Contribute(
 	_ context.Context,
 	registry *tool.Registry,
 ) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), []string{"dynamic-tool-manager"}, func() error {
+	return runContribution(registry, c.ID(), func() error {
 		if !c.enabled {
 			return nil
 		}

@@ -97,7 +97,7 @@ func TestCompileCarriesExplicitLoopbackAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	execution := profile.ExecutionAuthority()
+	execution := profile.executionAuthority(RequiredControls{})
 	if !profile.Network.Loopback || !execution.AllowLoopback ||
 		!slices.Contains(profile.Network.Targets, "loopback://localhost:0") {
 		t.Fatalf("loopback profile = %+v execution = %+v", profile.Network, execution)

@@ -39,7 +39,8 @@ func registerHosted(registry *tool.Registry) error {
 		baseURL: strings.TrimRight(os.Getenv("CODEHELPER_HOSTED_GIT_URL"), "/"),
 		token:   os.Getenv("CODEHELPER_HOSTED_GIT_TOKEN"),
 		client:  &http.Client{Timeout: 15 * time.Second},
-	}, nil)
+	})
+
 }
 
 func (t *HostedTool) Descriptor() tool.Descriptor {

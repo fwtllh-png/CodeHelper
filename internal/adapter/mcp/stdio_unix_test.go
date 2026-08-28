@@ -9,10 +9,15 @@ import (
 )
 
 func TestStdioForcedKillCleansProcessGroup(t *testing.T) {
-	transport, err := NewStdioTransport(context.Background(), ServerConfig{
-		Command: "/bin/sh",
-		Args:    []string{"-c", `trap '' TERM; while :; do :; done`},
-	})
+	transport, err := NewAuthorizedStdioTransport(
+		context.Background(),
+		"fixture",
+		ServerConfig{
+			Command: "/bin/sh",
+			Args:    []string{"-c", `trap '' TERM; while :; do :; done`},
+		},
+		testRuntimeAuthority(t, t.TempDir()),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

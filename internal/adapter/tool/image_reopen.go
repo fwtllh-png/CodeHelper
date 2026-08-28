@@ -108,7 +108,7 @@ func RegisterImageReopen(registry *Registry) error {
 	if registry == nil || registry.images == nil {
 		return errors.New("image_reopen registry is required")
 	}
-	return registry.Register(&imageReopen{store: registry.images}, nil)
+	return registry.Register(&imageReopen{store: registry.images})
 }
 
 func (*imageReopen) Descriptor() Descriptor {

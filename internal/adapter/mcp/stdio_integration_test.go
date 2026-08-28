@@ -13,10 +13,15 @@ import (
 
 func TestStdioConnectionRealFixtureLifecycle(t *testing.T) {
 	binary := buildMCPFixture(t)
-	transport, err := NewStdioTransport(context.Background(), ServerConfig{
-		Command: binary,
-		Args:    []string{"--transport=stdio", "--stderr-bytes=65536"},
-	})
+	transport, err := NewAuthorizedStdioTransport(
+		context.Background(),
+		"fixture",
+		ServerConfig{
+			Command: binary,
+			Args:    []string{"--transport=stdio", "--stderr-bytes=65536"},
+		},
+		testRuntimeAuthority(t, t.TempDir()),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,10 +69,12 @@ func TestStdioConnectionRealFixtureLifecycle(t *testing.T) {
 }
 
 func TestStdioRejectsSecretEnvironment(t *testing.T) {
-	_, err := NewStdioTransport(context.Background(), ServerConfig{
-		Command: "unused",
-		Env:     []string{"MCP_API_KEY=secret"},
-	})
+	_, err := NewAuthorizedStdioTransport(
+		context.Background(),
+		"fixture",
+		ServerConfig{Command: "unused", Env: []string{"MCP_API_KEY=secret"}},
+		testRuntimeAuthority(t, t.TempDir()),
+	)
 	if err == nil {
 		t.Fatal("secret environment was accepted")
 	}
@@ -93,7 +100,9 @@ func TestPoolHashReloadAndCatalog(t *testing.T) {
 			},
 		},
 	}
-	pool := NewPool(nil)
+	pool := NewPool(NewAuthorizedTransportFactory(
+		testRuntimeAuthority(t, t.TempDir()),
+	))
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	changed, err := pool.Reload(ctx, config)

@@ -63,7 +63,7 @@ func TestEngineAttachesCostToStreamingUsage(t *testing.T) {
 // double-count.
 func TestEngineNumbersUsageBySampleAcrossCalls(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	runtime := &scriptedProvider{streams: []provider.Stream{

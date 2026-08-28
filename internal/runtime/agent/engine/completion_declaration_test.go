@@ -97,7 +97,7 @@ func TestSubmittedPlanContinuesCurrentTurn(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := registry.Register(&completiontool.Tool{}, nil); err != nil {
+	if err := registry.Register(&completiontool.Tool{}); err != nil {
 		t.Fatal(err)
 	}
 	runtime := &scriptedProvider{streams: []provider.Stream{
@@ -244,7 +244,7 @@ func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
 
 func TestReadOnlyToolTurnRequiresCompletionDeclaration(t *testing.T) {
 	registry := declarationRegistry(t, false)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	runtime := &scriptedProvider{streams: []provider.Stream{
@@ -351,7 +351,7 @@ func TestReadOnlyPlanDeclarationRepairConvergesAfterSingleRetry(t *testing.T) {
 
 func TestIncompleteDeclarationStopsWithResumableBlockedOutcome(t *testing.T) {
 	registry := declarationRegistry(t, false)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	runtime := &scriptedProvider{streams: []provider.Stream{
@@ -663,12 +663,12 @@ func declarationRegistry(t *testing.T, quality bool) *tool.Registry {
 	for _, executor := range []tool.Executor{
 		declarationWriteTool{}, &completiontool.Tool{},
 	} {
-		if err := registry.Register(executor, nil); err != nil {
+		if err := registry.Register(executor); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if quality {
-		if err := registry.Register(declarationQualityTool{}, nil); err != nil {
+		if err := registry.Register(declarationQualityTool{}); err != nil {
 			t.Fatal(err)
 		}
 	}

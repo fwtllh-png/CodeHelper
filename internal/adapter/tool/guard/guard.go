@@ -304,6 +304,7 @@ func (g *Guard) canEscalate(invocation Invocation) bool {
 func policyInput(callID string, invocation Invocation) policy.Invocation {
 	return policy.Invocation{
 		CallID: callID, Tool: invocation.Tool, Arguments: invocation.Arguments,
+		Source:    invocation.Ref.Source,
 		Resources: invocation.Resources, Capability: invocation.Binding.Capability,
 		Access:    invocation.Binding.AccessMode,
 		Sandbox:   invocation.Binding.SandboxRequirement,

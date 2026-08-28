@@ -54,7 +54,7 @@ type browserTool struct {
 }
 
 func registerBrowser(registry *tool.Registry, runtime BrowserRuntime) error {
-	return registry.Register(&browserTool{runtime: runtime}, nil)
+	return registry.Register(&browserTool{runtime: runtime})
 }
 
 func browserRuntimeFromEnv() BrowserRuntime {

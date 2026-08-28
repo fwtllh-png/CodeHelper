@@ -72,7 +72,7 @@ func BenchmarkToolRegistryStartupScale(b *testing.B) {
 			for b.Loop() {
 				registry := tool.NewRegistry(nil, nil)
 				for index := range count {
-					if err := registry.Register(syntheticCatalogTool{index: index}, nil); err != nil {
+					if err := registry.Register(syntheticCatalogTool{index: index}); err != nil {
 						b.Fatal(err)
 					}
 				}
@@ -118,7 +118,7 @@ func syntheticRegistry(tb testing.TB, count int) *tool.Registry {
 	tb.Helper()
 	registry := tool.NewRegistry(nil, nil)
 	for index := range count {
-		if err := registry.Register(syntheticCatalogTool{index: index}, nil); err != nil {
+		if err := registry.Register(syntheticCatalogTool{index: index}); err != nil {
 			tb.Fatal(err)
 		}
 	}

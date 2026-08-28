@@ -41,7 +41,6 @@ type Capability struct {
 	Backend   string               `json:"backend"`
 	Strength  Strength             `json:"strength"`
 	Available bool                 `json:"available"`
-	PolicyID  string               `json:"policy_id,omitempty"`
 	Controls  Controls             `json:"controls"`
 	Effective controlmatrix.Matrix `json:"effective_controls"`
 	Reason    string               `json:"reason,omitempty"`
@@ -62,7 +61,6 @@ type Command struct {
 	AuthorityDigest         string
 	PreparedPolicyID        string
 	PreparedAuthorityDigest string
-	PreparedStrength        Strength
 	PreparedControls        controlmatrix.Matrix
 	PreparedReadOnly        bool
 	PreparedReadPaths       []string
@@ -104,10 +102,6 @@ func (e *UnavailableError) Error() string {
 		e.Capability.Backend,
 		e.Capability.Strength,
 	)
-}
-
-func RequireStrong(backend Backend) error {
-	return RequireControls(backend, StrongCompatibilityRequirements())
 }
 
 func StrongCompatibilityRequirements() controlmatrix.Requirements {
@@ -306,7 +300,6 @@ func NewPlatformBackend(options Options) (Backend, error) {
 	} else {
 		capability = Probe()
 	}
-	capability.PolicyID = policy.ID
 	if !capability.Available {
 		return &unavailableBackend{capability: capability, policy: policy}, nil
 	}
@@ -423,7 +416,6 @@ func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
 		AuthorityDigest:         command.AuthorityDigest,
 		PreparedAuthorityDigest: command.AuthorityDigest,
-		PreparedStrength:        b.capability.Strength,
 		PreparedControls:        CommandControls(b.capability, b.policy, command),
 		WorkspaceReadOnly:       command.WorkspaceReadOnly,
 		AdditionalReadPaths:     append([]string(nil), readPaths...),
@@ -579,7 +571,6 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 		DirectoryFD: command.DirectoryFD, PreparedPolicyID: b.policy.ID,
 		AuthorityDigest:         command.AuthorityDigest,
 		PreparedAuthorityDigest: command.AuthorityDigest,
-		PreparedStrength:        b.capability.Strength,
 		PreparedControls:        CommandControls(b.capability, b.policy, command),
 		WorkspaceReadOnly:       command.WorkspaceReadOnly,
 		AdditionalReadPaths:     append([]string(nil), readPaths...),
@@ -1193,7 +1184,6 @@ func runAttackProbe(helperPath string) Capability {
 		return base
 	}
 	ws, _ := NewWorkspace(policy.WorkspaceRoot)
-	base.PolicyID = policy.ID
 	if runtime.GOOS == "linux" {
 		base.Controls = Controls{
 			ReadIsolation: true, WriteIsolation: true,
@@ -1202,7 +1192,6 @@ func runAttackProbe(helperPath string) Capability {
 	}
 	candidate := base
 	candidate.Available = true
-	candidate.PolicyID = policy.ID
 	candidate.Controls = policy.Controls
 	var backend Backend
 	if runtime.GOOS == "darwin" {

@@ -185,7 +185,7 @@ func newFixture(t *testing.T) brokerFixture {
 	}
 	registry := tool.NewRegistry(nil, nil)
 	executor := fixtureExecutor{}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	ref, descriptor, _, err := registry.ResolveBoundRef(

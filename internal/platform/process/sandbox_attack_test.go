@@ -37,7 +37,7 @@ func TestRealSandboxAttackCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sandbox.CloseBackend(backend)
-	if err := sandbox.RequireStrong(backend); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
 		t.Fatal(err)
 	}
 	directory, err := sandbox.NewWorkspace(root)

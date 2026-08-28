@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
@@ -74,41 +73,7 @@ func contributeExtensions(
 				receipt.Contributor,
 			)
 		}
-		slices.Sort(receipt.Tools)
-		slices.Sort(receipt.Outputs)
 		receipts = append(receipts, receipt)
 	}
 	return receipts, nil
-}
-
-func contributionReceipt(
-	id string,
-	before tool.CatalogSnapshot,
-	after tool.CatalogSnapshot,
-	outputs ...string,
-) ContributionReceipt {
-	beforeEntries := before.Entries()
-	afterEntries := after.Entries()
-	existing := make(map[string]struct{}, len(beforeEntries))
-	for _, entry := range beforeEntries {
-		existing[entry.Name] = struct{}{}
-	}
-	added := make([]string, 0, max(0, len(afterEntries)-len(beforeEntries)))
-	for _, entry := range afterEntries {
-		if _, found := existing[entry.Name]; !found {
-			added = append(added, entry.Name)
-		}
-	}
-	return ContributionReceipt{
-		Contributor: id,
-		Tools:       added,
-		Outputs:     append([]string(nil), outputs...),
-	}
-}
-
-func snapshotCatalog(registry *tool.Registry) (tool.CatalogSnapshot, error) {
-	if registry == nil {
-		return tool.CatalogSnapshot{}, errors.New("shared tool registry is required")
-	}
-	return registry.Snapshot()
 }

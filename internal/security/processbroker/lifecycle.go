@@ -67,15 +67,8 @@ func (b *Broker) StartLifecycle(
 	if err != nil {
 		return nil, settleFailure("lease_snapshot", err)
 	}
-	runCtx, err := authority.WithProfile(
+	runCtx, err := sandbox.WithExecutionAuthority(
 		context.WithoutCancel(ctx),
-		snapshot.PermissionProfile,
-	)
-	if err != nil {
-		return nil, settleFailure("authority_context", err)
-	}
-	runCtx, err = sandbox.WithExecutionAuthority(
-		runCtx,
 		snapshot.PermissionProfile.ExecutionAuthorityFor(
 			request.Validation.Operation,
 		),

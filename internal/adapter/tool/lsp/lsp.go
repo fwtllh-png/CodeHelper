@@ -35,7 +35,7 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 	if err != nil {
 		return err
 	}
-	return registry.Register(executor, nil)
+	return registry.Register(executor)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {

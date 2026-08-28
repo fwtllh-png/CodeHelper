@@ -44,7 +44,7 @@ func TestResultCacheSuppressesExactNonRetryableFailure(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	if err := registry.Register(resultCacheTool{
 		name: "process", repeat: RepeatExecute,
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	cache := &ResultCache{}
@@ -81,7 +81,7 @@ func TestResultCacheDoesNotSuppressRetryableFailure(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	if err := registry.Register(resultCacheTool{
 		name: "process", repeat: RepeatExecute,
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	cache := &ResultCache{}
@@ -108,7 +108,7 @@ func TestResultCacheMutationInvalidatesNonRetryableFailure(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	if err := registry.Register(resultCacheTool{
 		name: "process", repeat: RepeatExecute,
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	cache := &ResultCache{}
@@ -135,12 +135,12 @@ func TestResultCacheDoesNotReplayAcrossPotentialSameBatchMutation(t *testing.T) 
 	registry := NewRegistry(nil, nil)
 	if err := registry.Register(resultCacheTool{
 		name: "inspect", repeat: RepeatExecute,
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Register(resultCacheTool{
 		name: "modify", repeat: RepeatExecute, access: AccessWrite,
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	cache := &ResultCache{}

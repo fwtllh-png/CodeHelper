@@ -93,7 +93,7 @@ func TestThreadManagerIsolatesHistory(t *testing.T) {
 func TestThreadManagerBindsToolIdentityAndContextLookup(t *testing.T) {
 	seen := make(chan tool.InvocationIdentity, 1)
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&identityCaptureTool{seen: seen}, nil); err != nil {
+	if err := registry.Register(&identityCaptureTool{seen: seen}); err != nil {
 		t.Fatal(err)
 	}
 	engine, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &identityToolProvider{}, Route: runtimeTestRoute(t),
@@ -153,7 +153,7 @@ func TestThreadManagerBindsToolIdentityAndContextLookup(t *testing.T) {
 
 func TestThreadManagerRestoresPendingApprovalOnChildThread(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(restoredApprovalTool{}, nil); err != nil {
+	if err := registry.Register(restoredApprovalTool{}); err != nil {
 		t.Fatal(err)
 	}
 	worker, err := newTestAgentEngine(agentengine.Options{ProviderConfig: agentengine.ProviderConfig{Provider: &restoredApprovalProvider{}, Route: runtimeTestRoute(t)}, ToolConfig: agentengine.ToolConfig{Tools: registry}, SecurityConfig: agentengine.SecurityConfig{Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: telemetry.NewMetrics()}})

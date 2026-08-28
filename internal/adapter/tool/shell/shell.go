@@ -83,7 +83,7 @@ func registerWithBackend(
 	if err != nil {
 		return err
 	}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		return err
 	}
 	return registerProcessProtocol(registry, workspace, backend, manager)

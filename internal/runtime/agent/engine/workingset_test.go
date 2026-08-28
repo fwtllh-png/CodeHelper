@@ -227,7 +227,7 @@ func TestFrozenToolCatalogPrecedesChangingHistory(t *testing.T) {
 		textStream("done"),
 	}}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, runtime, registry)
@@ -264,7 +264,7 @@ func TestFrozenToolCatalogPrecedesChangingHistory(t *testing.T) {
 
 func TestUnchangedToolCatalogEmitsNoPatch(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&echoTool{}, nil); err != nil {
+	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)

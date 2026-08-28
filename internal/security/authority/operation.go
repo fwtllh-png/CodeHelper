@@ -328,10 +328,6 @@ func (o ExecutionOperation) Validate() error {
 	return nil
 }
 
-func (o ExecutionOperation) ProcessTool() string {
-	return o.Tool
-}
-
 func (s Subject) Validate() error {
 	if s.Kind == "" || strings.TrimSpace(s.ID) == "" ||
 		s.Trust == "" || !validDigest(s.Digest) || s.Generation == 0 {

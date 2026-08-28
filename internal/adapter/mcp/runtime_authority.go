@@ -282,20 +282,3 @@ func mcpExecutableReadPaths(command string) []string {
 	}
 	return nil
 }
-
-func localRuntimeAuthority(config ServerConfig) (*RuntimeAuthority, error) {
-	directory := config.WorkingDirectory
-	if directory == "" {
-		var err error
-		directory, err = os.Getwd()
-		if err != nil {
-			return nil, err
-		}
-	}
-	runtime, err := NewRuntimeAuthority(directory, "", 1, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	runtime.RequireHostTrust = false
-	return runtime, nil
-}

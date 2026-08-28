@@ -33,7 +33,7 @@ func TestExecutorContract(t *testing.T) {
 	}
 
 	registry := tool.NewRegistry(nil, tool.NewResultStore(16))
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := registry.Execute(t.Context(), tool.Call{
@@ -120,8 +120,9 @@ func TestExecutorContract(t *testing.T) {
 	if _, err := deferredRegistry.Reconcile(
 		"contract",
 		0,
-		[]tool.Registration{tool.NewDeferredRegistration(
-			executor.Descriptor(),
+		[]tool.Registration{tool.NewExternalDeferredRegistration(
+			tool.ExternalFromDescriptor(executor.Descriptor()),
+			tool.TrustedBindingFromDescriptor(executor.Descriptor()),
 			func() (tool.Executor, error) { return executor, nil },
 		)},
 	); err != nil {

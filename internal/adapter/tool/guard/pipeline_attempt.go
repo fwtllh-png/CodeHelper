@@ -430,18 +430,8 @@ func (g *Guard) runAttempt(
 		)
 		return run
 	}
-	runContext, err := authority.WithProfile(executeContext, profile)
-	if err != nil {
-		release()
-		run.err = err
-		run.receipt = attemptReceipt(
-			sequence, mode, started, g.now(), tool.OutcomeRejected, "authority_context",
-			run.profile,
-		)
-		return run
-	}
-	runContext, err = sandbox.WithExecutionAuthority(
-		runContext,
+	runContext, err := sandbox.WithExecutionAuthority(
+		executeContext,
 		profile.ExecutionAuthorityFor(operation),
 	)
 	if err != nil {

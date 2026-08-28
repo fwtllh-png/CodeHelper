@@ -12,6 +12,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -28,7 +30,12 @@ func TestCoreToolsRealWorkspace(t *testing.T) {
 	}
 	run(t, root, "git", "add", "main.txt")
 	run(t, root, "git", "commit", "-qm", "initial")
-	registry, err := NewWithSandboxBackend(root, builtinTestBackend{})
+	registry, _, err := NewWithDependencies(
+		root,
+		builtinTestBackend{},
+		contentstore.NewMemory(contentstore.Options{}),
+		process.NewSessionManager(0),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +110,12 @@ func TestCoreToolsRealWorkspace(t *testing.T) {
 }
 
 func TestBuiltinRegistryUsesTypedOutcomeBoundary(t *testing.T) {
-	registry, err := NewWithSandboxBackend(t.TempDir(), builtinTestBackend{})
+	registry, _, err := NewWithDependencies(
+		t.TempDir(),
+		builtinTestBackend{},
+		contentstore.NewMemory(contentstore.Options{}),
+		process.NewSessionManager(0),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

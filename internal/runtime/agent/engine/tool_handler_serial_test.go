@@ -56,7 +56,7 @@ func TestRunToolsSerialDescriptorsDoNotOverlapWithinBatch(t *testing.T) {
 		release: make(chan struct{}),
 	}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(probe, nil); err != nil {
+	if err := registry.Register(probe); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)

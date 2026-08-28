@@ -160,9 +160,7 @@ func (c *Service) Apply(
 type preparedChatMerge struct {
 	worktree string
 	edit     tool.EditPlan
-	batches  [][]filetool.Change
 	paths    []string
-	expected map[string]workspacejournal.Fingerprint
 	filePlan filebroker.Plan
 }
 
@@ -252,8 +250,8 @@ func (c *Service) plan(ctx context.Context, worktree string) (preparedChatMerge,
 	edit.ID = filePlan.Digest
 	edit.Diff = diff.String()
 	return preparedChatMerge{
-		worktree: worktree, edit: edit, batches: batches,
-		paths: paths, expected: expected, filePlan: filePlan,
+		worktree: worktree, edit: edit,
+		paths: paths, filePlan: filePlan,
 	}, nil
 }
 

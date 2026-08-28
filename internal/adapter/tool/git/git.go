@@ -38,7 +38,7 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 	for _, kind := range []string{
 		"git_status", "git_diff", "git_log", "git_remote", "git_branch", "git_show", "git_blame",
 	} {
-		if err := registry.Register(&Tool{root: absolute, kind: kind, backend: backend}, nil); err != nil {
+		if err := registry.Register(&Tool{root: absolute, kind: kind, backend: backend}); err != nil {
 			return err
 		}
 	}

@@ -91,7 +91,7 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 	sampler := NewToolSampler(&scriptedProvider{streams: []provider.Stream{
 		usageStream("a login screen", provider.Usage{InputTokens: 1_000_000, OutputTokens: 0}),
 	}})
-	if err := registry.Register(samplingTool{sampler: sampler, route: visionRoute}, nil); err != nil {
+	if err := registry.Register(samplingTool{sampler: sampler, route: visionRoute}); err != nil {
 		t.Fatal(err)
 	}
 	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: scripted, Route: testRoute(t),
@@ -251,7 +251,7 @@ func TestToolSampleUsageProjectionFailureIsSecondary(t *testing.T) {
 	}})
 	if err := registry.Register(samplingTool{
 		sampler: sampler, route: namedRoute(t, "eyes"),
-	}, nil); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{streams: []provider.Stream{

@@ -576,7 +576,7 @@ func TestVerifyGateCoversToolsWhoseArgumentsCarryNoPath(t *testing.T) {
 	}
 	store := contentstore.NewMemory(contentstore.Options{})
 	registry := tool.NewRegistry(nil, tool.NewResultStoreWithStore(32<<10, store))
-	if err := registry.Register(patchLikeTool{root: root}, nil); err != nil {
+	if err := registry.Register(patchLikeTool{root: root}); err != nil {
 		t.Fatal(err)
 	}
 	journal, err := workspacejournal.New(root, store)
@@ -646,7 +646,7 @@ func TestVerifyGateSkipsWritesThatChangeNoBytes(t *testing.T) {
 	}
 	store := contentstore.NewMemory(contentstore.Options{})
 	registry := tool.NewRegistry(nil, tool.NewResultStoreWithStore(32<<10, store))
-	if err := registry.Register(patchLikeTool{root: root}, nil); err != nil {
+	if err := registry.Register(patchLikeTool{root: root}); err != nil {
 		t.Fatal(err)
 	}
 	verifier := &scriptedVerifier{receipts: []verify.Receipt{failedReceipt("never runs")}}

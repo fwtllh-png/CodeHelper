@@ -95,8 +95,12 @@ func TestProductionHookProcessIsReadOnlyAndNetworkDenied(t *testing.T) {
 		t.Fatal(err)
 	}
 	backend := &captureSandboxBackend{workspace: workspace}
+	runtime, err := NewRuntime("", 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	runner := newExecutor(Options{
-		Workspace: workspace, Sandbox: backend, RequireStrongSandbox: true,
+		Workspace: workspace, Sandbox: backend, Runtime: runtime,
 	})
 	result := runner.run(t.Context(), MessageSubmit, HookConfig{
 		ID: "capture", Source: SourceRepository, Trust: TrustWorkspace,

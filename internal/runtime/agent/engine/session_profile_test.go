@@ -201,7 +201,7 @@ func TestSessionProfileResolvesNewModelOnExistingConnection(t *testing.T) {
 func TestSessionProfileToolAllowlistRejectsUnadvertisedExecution(t *testing.T) {
 	executor := &profileToolExecutor{}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)
@@ -242,7 +242,7 @@ func TestSessionProfileToolAllowlistRejectsUnadvertisedExecution(t *testing.T) {
 func TestSessionProfileToolAllowlistDoesNotBypassGuard(t *testing.T) {
 	executor := &profileToolExecutor{}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t),
@@ -283,7 +283,7 @@ func TestSessionProfileToolAllowlistDoesNotBypassGuard(t *testing.T) {
 func TestSessionProfileToolAllowlistBindsSourceAcrossRevocation(t *testing.T) {
 	original := &profileToolExecutor{}
 	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(original, nil); err != nil {
+	if err := registry.Register(original); err != nil {
 		t.Fatal(err)
 	}
 	engine := newEngine(t, &scriptedProvider{}, registry)

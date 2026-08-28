@@ -13,7 +13,7 @@ import (
 func TestResolveBoundRefFreezesCatalogAuthority(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &executionFixture{name: "authority_fixture"}
-	if err := registry.Register(executor, nil); err != nil {
+	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := registry.Snapshot()
