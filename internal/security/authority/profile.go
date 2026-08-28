@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"path/filepath"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -106,6 +108,7 @@ func Compile(input CompileInput) (EffectivePermissionProfile, error) {
 	if input.Revision == 0 || (input.Enforcement != "strong" && input.Enforcement != "none") {
 		return EffectivePermissionProfile{}, errors.New("authority revision and enforcement are required")
 	}
+	capability := sandbox.NormalizeCapability(input.Capability)
 	profile := EffectivePermissionProfile{
 		SchemaVersion: SchemaVersion,
 		Revision:      input.Revision,
@@ -117,17 +120,13 @@ func Compile(input CompileInput) (EffectivePermissionProfile, error) {
 		},
 		Process: ProcessAuthority{
 			Enforcement: input.Enforcement,
-			Backend:     input.Capability.Backend,
-			Strength:    string(input.Capability.Strength),
+			Backend:     capability.Backend,
+			Strength:    string(capability.Strength),
 		},
-		Controls: EffectiveControls{
-			FilesystemRead:  input.Capability.Controls.ReadIsolation,
-			FilesystemWrite: input.Capability.Controls.WriteIsolation,
-			Network:         input.Capability.Controls.NetworkIsolation,
-			ProcessTree:     input.Capability.Controls.ProcessIsolation,
-			Syscall:         input.Capability.Controls.SyscallIsolation,
-			SymlinkSafety:   input.Capability.Controls.SymlinkSafe,
-		},
+		Controls: sandbox.EffectiveControls(
+			capability,
+			input.SandboxPolicy,
+		),
 	}
 	compileResources(&profile, input.Invocation)
 	compileSandboxCeiling(&profile, input)
@@ -153,21 +152,22 @@ func (p EffectivePermissionProfile) Validate() error {
 	if expected != p.Digest {
 		return errors.New("effective permission profile digest mismatch")
 	}
-	if p.Process.Enforcement == "strong" &&
-		(p.Process.Backend == "" || p.Process.Strength != string(sandbox.StrengthStrong)) {
-		return errors.New("strong profile has no strong sandbox backend")
+	if p.Process.Enforcement == "strong" && p.Process.Backend == "" {
+		return errors.New("controlled profile has no sandbox backend")
 	}
-	if p.Process.Enforcement == "strong" &&
-		(!p.Controls.FilesystemRead ||
-			!p.Controls.Network ||
-			!p.Controls.ProcessTree ||
-			!p.Controls.SymlinkSafety) {
-		return errors.New("strong profile controls are incomplete")
+	if err := p.Controls.Validate(); err != nil {
+		return fmt.Errorf("effective controls: %w", err)
 	}
 	return nil
 }
 
-func (p EffectivePermissionProfile) ExecutionAuthority() sandbox.ExecutionAuthority {
+func (p EffectivePermissionProfile) ExecutionAuthority(
+	required ...RequiredControls,
+) sandbox.ExecutionAuthority {
+	var controls RequiredControls
+	if len(required) != 0 {
+		controls = required[0]
+	}
 	return sandbox.ExecutionAuthority{
 		Digest:              p.Digest,
 		Enforcement:         p.Process.Enforcement,
@@ -180,7 +180,17 @@ func (p EffectivePermissionProfile) ExecutionAuthority() sandbox.ExecutionAuthor
 		AllowLoopback:       p.Network.Loopback,
 		AllowNetwork:        p.Network.Mode != "denied",
 		AllowProcess:        p.Process.Allowed,
+		RequiredControls:    controlmatrix.Requirements(controls),
+		EffectiveControls:   p.Controls,
 	}
+}
+
+func (p EffectivePermissionProfile) ExecutionAuthorityFor(
+	operation ExecutionOperation,
+) sandbox.ExecutionAuthority {
+	result := p.ExecutionAuthority(operation.Required)
+	result.EffectiveControls = effectiveControls(p, operation)
+	return result
 }
 
 func compileResources(profile *EffectivePermissionProfile, invocation policy.Invocation) {
@@ -242,6 +252,7 @@ func compileSandboxCeiling(profile *EffectivePermissionProfile, input CompileInp
 		profile.Network.Mode = "unrestricted"
 		profile.Process.Backend = "none"
 		profile.Process.Strength = string(sandbox.StrengthNone)
+		profile.Controls = unrestrictedControls()
 		return
 	}
 	policyValue := input.SandboxPolicy
@@ -269,13 +280,52 @@ func compileSandboxCeiling(profile *EffectivePermissionProfile, input CompileInp
 			filepath.Join(policyValue.WorkspaceRoot, name),
 		)
 	}
-	if policyValue.ManagedProxyPort != 0 {
-		profile.Network.Mode = "managed"
+	hasNetworkTargets := false
+	for _, target := range profile.Network.Targets {
+		if !strings.HasPrefix(target, "loopback://") {
+			hasNetworkTargets = true
+			break
+		}
+	}
+	desiredMode := "denied"
+	desiredControl := controlmatrix.NetworkDenied
+	switch {
+	case !hasNetworkTargets && !profile.Network.Loopback:
+	case profile.Network.Loopback && !hasNetworkTargets:
+		desiredMode = "loopback"
+		desiredControl = controlmatrix.NetworkLoopbackExact
+	case policyValue.ManagedProxyPort != 0:
+		desiredMode = "managed"
+		desiredControl = controlmatrix.NetworkProxyTargets
 		profile.Network.ProxyPort = policyValue.ManagedProxyPort
-	} else if policyValue.AllowNetwork {
-		profile.Network.Mode = "direct"
+	case policyValue.AllowNetwork:
+		desiredMode = "direct"
+		desiredControl = controlmatrix.NetworkDirect
+	}
+	if controlmatrix.CanEnforceNetwork(
+		sandbox.NormalizeCapability(input.Capability).Effective.Network,
+		desiredControl,
+	) {
+		profile.Network.Mode = desiredMode
+		profile.Controls.Network = desiredControl
 	} else {
-		profile.Network.Mode = "denied"
+		profile.Network.Mode = string(profile.Controls.Network)
+		profile.Network.ProxyPort = 0
+	}
+}
+
+func unrestrictedControls() EffectiveControls {
+	return EffectiveControls{
+		FilesystemRead:  controlmatrix.FilesystemReadUnrestricted,
+		FilesystemWrite: controlmatrix.FilesystemWriteUnrestricted,
+		Network:         controlmatrix.NetworkDirect,
+		ProcessTree:     controlmatrix.ProcessTreeUnmanaged,
+		CrossProcess:    controlmatrix.CrossProcessUnrestricted,
+		Syscall:         controlmatrix.SyscallUnrestricted,
+		IPC:             controlmatrix.IPCUnrestricted,
+		PathIdentity:    controlmatrix.PathIdentityLexical,
+		ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+		DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 	}
 }
 

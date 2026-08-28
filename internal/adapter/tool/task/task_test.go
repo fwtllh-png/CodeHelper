@@ -228,7 +228,11 @@ type passthroughBackend struct{}
 func (passthroughBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "passthrough",
-		Strength: sandbox.StrengthStrong, Available: true,
+		Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
 	}
 }
 

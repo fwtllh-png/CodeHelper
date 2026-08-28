@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -103,16 +104,7 @@ type EffectContract struct {
 	RequireReadBeforeWrite bool                 `json:"require_read_before_write,omitempty"`
 }
 
-type RequiredControls struct {
-	FilesystemRead  bool `json:"filesystem_read,omitempty"`
-	FilesystemWrite bool `json:"filesystem_write,omitempty"`
-	Network         bool `json:"network,omitempty"`
-	ProcessTree     bool `json:"process_tree,omitempty"`
-	CrossProcess    bool `json:"cross_process,omitempty"`
-	Syscall         bool `json:"syscall,omitempty"`
-	IPC             bool `json:"ipc,omitempty"`
-	SymlinkSafety   bool `json:"symlink_safety,omitempty"`
-}
+type RequiredControls = controlmatrix.Requirements
 
 type ProcessIntent struct {
 	Kind            string `json:"kind"`
@@ -270,6 +262,9 @@ func (o ExecutionOperation) Validate() error {
 	}
 	if err := o.Effect.Validate(); err != nil {
 		return err
+	}
+	if err := o.Required.Validate(); err != nil {
+		return fmt.Errorf("required controls: %w", err)
 	}
 	for _, resource := range o.Resources {
 		if err := resource.Validate(); err != nil {

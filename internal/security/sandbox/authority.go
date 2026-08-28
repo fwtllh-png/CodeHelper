@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
 type ExecutionAuthority struct {
@@ -20,6 +22,8 @@ type ExecutionAuthority struct {
 	AllowLoopback       bool
 	AllowNetwork        bool
 	AllowProcess        bool
+	RequiredControls    controlmatrix.Requirements
+	EffectiveControls   controlmatrix.Matrix
 }
 
 func (a ExecutionAuthority) Validate() error {
@@ -31,6 +35,14 @@ func (a ExecutionAuthority) Validate() error {
 	}
 	if a.Enforcement == "strong" && strings.TrimSpace(a.WorkspaceRoot) == "" {
 		return errors.New("strong execution authority requires a workspace")
+	}
+	if err := a.RequiredControls.Validate(); err != nil {
+		return err
+	}
+	if a.EffectiveControls != (controlmatrix.Matrix{}) {
+		if err := a.EffectiveControls.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

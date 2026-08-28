@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -164,7 +165,7 @@ func TestExecutionLeaseRejectsAuthorityGenerationDrift(t *testing.T) {
 
 func TestRequiredControlsFailClosed(t *testing.T) {
 	operation, profile := fixtureLeaseInputs(t)
-	operation.Required.CrossProcess = true
+	operation.Required.CrossProcess = controlmatrix.CrossProcessIsolated
 	digest, err := operationDigest(operation)
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +203,10 @@ func fixtureLeaseInputs(
 			Reversibility: "reversible",
 		},
 		Required: RequiredControls{
-			FilesystemRead: true, Network: true, ProcessTree: true,
+			FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+			Network:        controlmatrix.NetworkDenied,
+			ProcessTree:    controlmatrix.ProcessTreeGroupKill,
+			PathIdentity:   controlmatrix.PathIdentityDescriptorRelative,
 		},
 	})
 	if err != nil {

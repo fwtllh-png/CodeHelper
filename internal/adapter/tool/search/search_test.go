@@ -228,7 +228,13 @@ func decodeMatches(t *testing.T, content string) []map[string]any {
 type searchTestBackend struct{}
 
 func (searchTestBackend) Capability() sandbox.Capability {
-	return sandbox.Capability{Platform: "test", Backend: "passthrough", Strength: sandbox.StrengthStrong, Available: true}
+	return sandbox.Capability{
+		Platform: "test", Backend: "passthrough", Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
+	}
 }
 
 func (searchTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {

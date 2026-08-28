@@ -110,11 +110,16 @@ type ManagedProfileInput struct {
 func BuildManagedProcessProfile(
 	input ManagedProfileInput,
 ) (EffectivePermissionProfile, error) {
+	if input.Controls == (EffectiveControls{}) && input.Enforcement == "none" {
+		input.Controls = unrestrictedControls()
+	}
 	networkMode := "denied"
+	proxyPort := uint16(0)
 	if input.AllowNetwork {
 		switch {
 		case input.ManagedProxyPort != 0:
 			networkMode = "managed"
+			proxyPort = input.ManagedProxyPort
 		case input.Enforcement == "none":
 			networkMode = "unrestricted"
 		default:
@@ -135,7 +140,7 @@ func BuildManagedProcessProfile(
 		},
 		Network: NetworkAuthority{Mode: networkMode,
 			Targets:   append([]string(nil), input.NetworkTargets...),
-			ProxyPort: input.ManagedProxyPort,
+			ProxyPort: proxyPort,
 		},
 		Process: ProcessAuthority{
 			Allowed: true, Enforcement: input.Enforcement,

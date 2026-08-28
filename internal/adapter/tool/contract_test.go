@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
 func TestTrustedBindingRejectsCrossFieldAuthorityConflicts(t *testing.T) {
@@ -150,7 +152,9 @@ func bindingFixture(
 			Approval: ApprovalPolicyDefault,
 		},
 		Required: RequiredControls{
-			FilesystemRead: true, Network: true,
+			FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+			Network:        controlmatrix.NetworkDenied,
+			PathIdentity:   controlmatrix.PathIdentityDescriptorRelative,
 		},
 	}
 }

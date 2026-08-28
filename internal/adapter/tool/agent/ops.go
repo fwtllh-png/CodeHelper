@@ -10,6 +10,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
 // operation dispatches one model-visible lifecycle tool onto AgentControl.
@@ -39,7 +40,7 @@ func (o *operation) TrustedBinding() tool.TrustedBinding {
 		fixed(tool.EffectAgentLifecycle, tool.RiskMedium, tool.Bounded)
 	case "integrate_agent":
 		binding.Capability = tool.CapabilityProcess
-		binding.Required.ProcessTree = true
+		binding.Required.ProcessTree = controlmatrix.ProcessTreeGroupKill
 		fixed(tool.EffectWorkspaceEdit, tool.RiskLow, tool.Reversible)
 		binding.Effect.WorkspaceTransaction = tool.TransactionBeforeImage
 		binding.Effect.RequireReadBeforeWrite = true

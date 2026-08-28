@@ -63,7 +63,7 @@ type Capabilities struct {
 	ImageInput           bool `json:"image_input"`
 	PromptCache          bool `json:"prompt_cache"`
 	AutomaticPromptCache bool `json:"automatic_prompt_cache,omitempty"`
-	ThinkingToggle       bool     `json:"thinking_toggle,omitempty"`
+	ThinkingToggle       bool `json:"thinking_toggle,omitempty"`
 }
 
 func (c Capabilities) ReasoningEffortLevels() []string {

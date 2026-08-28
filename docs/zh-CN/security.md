@@ -69,6 +69,12 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - Guard、Policy 和 Authority 不从工具名或 External Requested Effects 推导授权。
   Deferred Loader 改变 Trusted Binding、Schema 或 Alias 会 Fail Closed；替换 Binding
   会更换 Revision/Authority，使采样时的旧 Catalog Binding 失效。
+- Trusted Binding 和 ExecutionOperation 使用十维 Required Controls：
+  Filesystem Read/Write、Network、Process Tree、Cross Process、Syscall、IPC、
+  Path Identity、Artifact Origin 与 Durable Recovery。Sandbox Probe、Policy 和具体
+  Command 共同产生 Effective Controls，Lease 只在每个要求都被满足时签发。
+- Backend 完成 `Prepare` 后，Process Owner 再次核对本次命令的 Prepared Controls。
+  `Strong` 仅由控制矩阵派生并保留作兼容显示，不能单独证明或授予执行权限。
 - `file_write`、`file_edit`、`file_apply`、`file_patch`、`integrate_agent`、隔离
   Chat Merge 和 `document_convert` 的最终 Workspace 输出统一生成不可变 File Plan。
   Guard 或 Runtime Authority 签发绑定 Plan Digest、Workspace Generation 和精确
@@ -314,8 +320,8 @@ Workspace Integrity 不确定时，应停止执行，保留 State 与 Journal，
 公开报告中不能包含 Secret 或私有源码。应提供 Version、Platform、Command Shape、
 Sanitized Config Provenance、预期/实际 Security Decision，以及可行时的可复现 Fixture。
 
-[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-5
+[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-6
 已交付 State Domain、Operation/Lease、Artifact/Process/File/VCS Broker、Process
 Smoke、Hook、stdio MCP Lifecycle、Workspace Write、Git Metadata Mutation 收口，以及
-External Descriptor/Trusted Binding 分离。后续阶段继续交付 Required Controls
-能力矩阵，并收紧 Network 和其他进程入口。
+External Descriptor/Trusted Binding 分离和 Required/Effective Controls 能力矩阵。
+后续演进必须继续通过同一 Operation、Lease、Broker 和矩阵契约扩展，不能恢复旁路。

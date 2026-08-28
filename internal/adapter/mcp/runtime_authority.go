@@ -12,6 +12,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -106,10 +107,10 @@ func (r *RuntimeAuthority) Start(
 	allowNetwork := mcpNetworkAllowed(config.PermissionProfile)
 	allowWrite := mcpWorkspaceWriteAllowed(config.PermissionProfile)
 	policyID := ""
-	var proxyPort uint16
+	var sandboxPolicy sandbox.Policy
 	if bound, ok := sandbox.BackendPolicy(r.Sandbox); ok {
+		sandboxPolicy = bound
 		policyID = bound.ID
-		proxyPort = bound.ManagedProxyPort
 	}
 	required := authority.RequiredControls{}
 	capability := sandbox.Capability{Backend: "host"}
@@ -118,9 +119,13 @@ func (r *RuntimeAuthority) Start(
 		capability = r.Sandbox.Capability()
 		enforcement = "strong"
 		required = authority.RequiredControls{
-			FilesystemRead: true, Network: true,
-			ProcessTree: true, SymlinkSafety: true,
-			FilesystemWrite: allowWrite,
+			FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+			Network:        controlmatrix.NetworkDenied,
+			ProcessTree:    controlmatrix.ProcessTreeGroupKill,
+			PathIdentity:   controlmatrix.PathIdentityDescriptorRelative,
+		}
+		if allowWrite {
+			required.FilesystemWrite = controlmatrix.FilesystemWriteExactPaths
 		}
 	}
 	operation, err := authority.BuildManagedProcessOperation(
@@ -148,17 +153,17 @@ func (r *RuntimeAuthority) Start(
 			ReadRoots:          readPaths,
 			AllowNetwork:       allowNetwork || !strong,
 			NetworkTargets:     mcpNetworkTargets(config.PermissionProfile),
-			ManagedProxyPort:   proxyPort,
+			ManagedProxyPort:   sandboxPolicy.ManagedProxyPort,
 			Enforcement:        enforcement, Backend: capability.Backend,
 			Strength: string(capability.Strength),
-			Controls: authority.EffectiveControls{
-				FilesystemRead:  capability.Controls.ReadIsolation,
-				FilesystemWrite: capability.Controls.WriteIsolation,
-				Network:         capability.Controls.NetworkIsolation,
-				ProcessTree:     capability.Controls.ProcessIsolation,
-				Syscall:         capability.Controls.SyscallIsolation,
-				SymlinkSafety:   capability.Controls.SymlinkSafe,
-			},
+			Controls: sandbox.CommandControls(
+				capability,
+				sandboxPolicy,
+				sandbox.Command{
+					WorkspaceReadOnly: !allowWrite,
+					DenyNetwork:       !allowNetwork,
+				},
+			),
 		},
 	)
 	if err != nil {

@@ -7,6 +7,8 @@ import (
 	"io"
 	"sync"
 	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
 type LeaseState string
@@ -147,7 +149,7 @@ func (a *LeaseAuthority) Issue(request LeaseIssueRequest) (ExecutionLease, error
 		return ExecutionLease{}, errors.New("strong execution lease requires a sandbox policy")
 	}
 	if err := request.Operation.Required.SatisfiedBy(
-		effectiveControls(request.Profile),
+		effectiveControls(request.Profile, request.Operation),
 	); err != nil {
 		return ExecutionLease{}, err
 	}
@@ -355,42 +357,20 @@ func validateLeaseCurrent(lease ExecutionLease, current LeaseValidation) error {
 	}
 }
 
-func (r RequiredControls) SatisfiedBy(e EffectiveControls) error {
-	switch {
-	case r.FilesystemRead && !e.FilesystemRead:
-		return errors.New("filesystem read isolation is not enforced")
-	case r.FilesystemWrite && !e.FilesystemWrite:
-		return errors.New("filesystem write isolation is not enforced")
-	case r.Network && !e.Network:
-		return errors.New("network isolation is not enforced")
-	case r.ProcessTree && !e.ProcessTree:
-		return errors.New("process tree isolation is not enforced")
-	case r.CrossProcess && !e.CrossProcess:
-		return errors.New("cross-process isolation is not enforced")
-	case r.Syscall && !e.Syscall:
-		return errors.New("syscall isolation is not enforced")
-	case r.IPC && !e.IPC:
-		return errors.New("IPC isolation is not enforced")
-	case r.SymlinkSafety && !e.SymlinkSafety:
-		return errors.New("symlink safety is not enforced")
-	default:
-		return nil
+type EffectiveControls = controlmatrix.Matrix
+
+func effectiveControls(
+	profile EffectivePermissionProfile,
+	operation ExecutionOperation,
+) EffectiveControls {
+	controls := profile.Controls
+	if operation.Artifact != nil {
+		controls.ArtifactOrigin = controlmatrix.ArtifactOriginBrokerSnapshot
 	}
-}
-
-type EffectiveControls struct {
-	FilesystemRead  bool `json:"filesystem_read,omitempty"`
-	FilesystemWrite bool `json:"filesystem_write,omitempty"`
-	Network         bool `json:"network,omitempty"`
-	ProcessTree     bool `json:"process_tree,omitempty"`
-	CrossProcess    bool `json:"cross_process,omitempty"`
-	Syscall         bool `json:"syscall,omitempty"`
-	IPC             bool `json:"ipc,omitempty"`
-	SymlinkSafety   bool `json:"symlink_safety,omitempty"`
-}
-
-func effectiveControls(profile EffectivePermissionProfile) EffectiveControls {
-	return profile.Controls
+	if operation.Effect.WorkspaceTransaction == WorkspaceTransactionBeforeImage {
+		controls.DurableRecovery = controlmatrix.DurableRecoveryExternalJournal
+	}
+	return controls
 }
 
 func resourceBindings(resources []Resource) ([]ResourceBinding, error) {

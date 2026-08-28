@@ -63,6 +63,10 @@ func (passthroughBackend) Capability() sandbox.Capability {
 		Backend:   "test",
 		Strength:  sandbox.StrengthStrong,
 		Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
 	}
 }
 

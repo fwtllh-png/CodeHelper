@@ -6119,6 +6119,10 @@
                   "effect_risk": {
                     "type": "string"
                   },
+                  "effective_controls": {
+                    "type": "object",
+                    "description": "map of string"
+                  },
                   "enforcement": {
                     "type": "string"
                   },
@@ -6278,6 +6282,7 @@
                 "required": [
                   "completed_at",
                   "duration_ms",
+                  "effective_controls",
                   "sandbox",
                   "sequence",
                   "started_at",

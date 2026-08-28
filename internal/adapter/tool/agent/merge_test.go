@@ -182,6 +182,9 @@ func (b mergeTestBackend) Prepare(
 	command.PreparedPolicyID = b.policy.ID
 	command.PreparedAuthorityDigest = command.AuthorityDigest
 	command.PreparedStrength = sandbox.StrengthStrong
+	command.PreparedControls = sandbox.CommandControls(
+		b.Capability(), b.policy, command,
+	)
 	command.PreparedReadOnly = command.WorkspaceReadOnly
 	command.PreparedReadPaths = append(
 		[]string(nil),

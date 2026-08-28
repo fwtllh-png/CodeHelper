@@ -16,6 +16,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -1292,7 +1293,9 @@ func TestProcessLoopbackRequiresApprovalAndBindsAuthority(t *testing.T) {
 	}
 	if result.Execution == nil ||
 		len(result.Execution.Attempts) != 1 ||
-		!result.Execution.Attempts[0].LoopbackAllowed {
+		!result.Execution.Attempts[0].LoopbackAllowed ||
+		result.Execution.Attempts[0].EffectiveControls.Network !=
+			controlmatrix.NetworkLoopbackExact {
 		t.Fatalf("loopback execution receipt = %+v", result.Execution)
 	}
 }

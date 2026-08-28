@@ -10,6 +10,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
 var (
@@ -269,7 +270,10 @@ func trustedBinding(policy RegistrationPolicy) tool.TrustedBinding {
 	}
 	if policy.SandboxRequirement == tool.SandboxStrong {
 		binding.Required = tool.RequiredControls{
-			FilesystemRead: true, Network: true, ProcessTree: true,
+			FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+			Network:        controlmatrix.NetworkDirect,
+			ProcessTree:    controlmatrix.ProcessTreeGroupKill,
+			PathIdentity:   controlmatrix.PathIdentityDescriptorRelative,
 		}
 	}
 	return binding

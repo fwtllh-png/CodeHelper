@@ -12,6 +12,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -418,6 +419,7 @@ func (passthroughBackend) Capability() sandbox.Capability {
 		Backend:   "passthrough",
 		Strength:  sandbox.StrengthStrong,
 		Available: true,
+		Effective: shellTestControls(),
 	}
 }
 
@@ -431,6 +433,11 @@ func (passthroughBackend) Prepare(
 		command.WorkspaceWritePaths...,
 	)
 	command.PreparedNetworkDenied = command.DenyNetwork
+	command.PreparedControls = sandbox.CommandControls(
+		passthroughBackend{}.Capability(),
+		sandbox.Policy{},
+		command,
+	)
 	return command, nil
 }
 
@@ -444,6 +451,22 @@ func (errorBackend) Capability() sandbox.Capability {
 		Backend:   "error",
 		Strength:  sandbox.StrengthStrong,
 		Available: true,
+		Effective: shellTestControls(),
+	}
+}
+
+func shellTestControls() controlmatrix.Matrix {
+	return controlmatrix.Matrix{
+		FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
+		FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+		Network:         controlmatrix.NetworkDenied,
+		ProcessTree:     controlmatrix.ProcessTreeGroupKill,
+		CrossProcess:    controlmatrix.CrossProcessRestricted,
+		Syscall:         controlmatrix.SyscallDenyDangerous,
+		IPC:             controlmatrix.IPCUnixOnly,
+		PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+		ArtifactOrigin:  controlmatrix.ArtifactOriginVerifiedManifest,
+		DurableRecovery: controlmatrix.DurableRecoveryExternalJournal,
 	}
 }
 

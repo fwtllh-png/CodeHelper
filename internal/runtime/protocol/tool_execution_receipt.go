@@ -88,6 +88,7 @@ type ToolAttemptReceipt struct {
 	Enforcement             string                          `json:"enforcement,omitempty"`
 	Backend                 string                          `json:"backend,omitempty"`
 	SandboxStrength         string                          `json:"sandbox_strength,omitempty"`
+	EffectiveControls       map[string]string               `json:"effective_controls"`
 	WorkspaceRoot           string                          `json:"workspace_root,omitempty"`
 	ReadRoots               []string                        `json:"read_roots,omitempty"`
 	WritePaths              []string                        `json:"write_paths,omitempty"`
@@ -121,8 +122,7 @@ func (r *ToolExecutionReceipt) validate() error {
 		r.Tool.Revision == 0 {
 		return errors.New("tool execution receipt identity is incomplete")
 	}
-	if r.Source == "" || r.Disposition == "" ||
-		r.TerminalStatus == "" || r.TerminalOwner == "" {
+	if r.Source == "" || r.Disposition == "" || r.TerminalStatus == "" || r.TerminalOwner == "" {
 		return errors.New("tool execution receipt terminal evidence is incomplete")
 	}
 	for _, attempt := range r.Attempts {

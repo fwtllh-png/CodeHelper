@@ -352,7 +352,11 @@ type lifecycleTestBackend struct{}
 func (lifecycleTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "passthrough",
-		Strength: sandbox.StrengthStrong, Available: true,
+		Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
 	}
 }
 

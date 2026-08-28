@@ -15,6 +15,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -317,7 +318,7 @@ func (e *foregroundExecutor) TrustedBinding() tool.TrustedBinding {
 		WorkspaceTransaction: tool.TransactionNone,
 		Approval:             tool.ApprovalPolicyDefault,
 	}
-	binding.Required.ProcessTree = true
+	binding.Required.ProcessTree = controlmatrix.ProcessTreeGroupKill
 	return binding
 }
 

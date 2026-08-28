@@ -12,6 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -66,7 +67,7 @@ func (e *protocolExecutor) TrustedBinding() tool.TrustedBinding {
 	binding := tool.TrustedBindingFromDescriptor(e.runtime.Descriptor())
 	binding.Capability = tool.CapabilityProcess
 	binding.ValidateMissingWriteParent = e.Descriptor().Name == "exec_command"
-	binding.Required.ProcessTree = true
+	binding.Required.ProcessTree = controlmatrix.ProcessTreeGroupKill
 	return binding
 }
 

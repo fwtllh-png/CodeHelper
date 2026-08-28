@@ -10,6 +10,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -371,6 +372,7 @@ type AttemptReceipt struct {
 	Enforcement             string                      `json:"enforcement,omitempty"`
 	Backend                 string                      `json:"backend,omitempty"`
 	SandboxStrength         string                      `json:"sandbox_strength,omitempty"`
+	EffectiveControls       controlmatrix.Matrix        `json:"effective_controls"`
 	WorkspaceRoot           string                      `json:"workspace_root,omitempty"`
 	ReadRoots               []string                    `json:"read_roots,omitempty"`
 	WritePaths              []string                    `json:"write_paths,omitempty"`

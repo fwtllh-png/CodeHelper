@@ -96,6 +96,12 @@ Claim 在 Authority 已知后 Acquire，并在 Cancellation 等所有 Return Pat
 协调 Concurrent Call，但不能替代 Filesystem Precondition/Journal Fingerprint，因为
 External Process 仍可能修改 Workspace。
 
+Sandbox Requirement 不再由单个 `Strong` 标签决定是否可执行。Trusted Binding 与
+ExecutionOperation 冻结十维 Required Controls，Sandbox Probe、Policy 和本次 Command
+产出 Effective Controls；Lease 签发和 Backend `Prepare` 后分别执行一次集合校验。
+Filesystem、Network 等可比较维度使用显式领域顺序，PID Namespace 与 Windows Job
+Object 等不可比较控制只按明确满足关系判断。`Strength` 只保留为兼容显示。
+
 `exec_command` 的声明写路径可以指向现有普通文件，或已存在父目录中的待创建文件。
 Guard 在进入 Sandbox 前做无副作用 Preflight；Strong Backend 只为已批准的缺失文件
 创建最小占位并再次校验 Identity。目录、Symlink、父目录缺失或 TOCTOU 漂移都会在命令

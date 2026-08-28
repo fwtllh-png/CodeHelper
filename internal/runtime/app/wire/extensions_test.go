@@ -17,6 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -275,8 +276,9 @@ func TestTypedToolContributorPreservesExternalAndTrustedContracts(t *testing.T) 
 	external.Requested.SandboxRequirement = tool.SandboxNone
 	binding := tool.TrustedBindingFromDescriptor(descriptor)
 	binding.SandboxRequirement = tool.SandboxStrong
-	binding.Required.FilesystemRead = true
-	binding.Required.Network = true
+	binding.Required.FilesystemRead = controlmatrix.FilesystemReadDeclaredRoots
+	binding.Required.Network = controlmatrix.NetworkDirect
+	binding.Required.PathIdentity = controlmatrix.PathIdentityDescriptorRelative
 	extension := explicitToolExtension{registration: tool.NewExternalRegistration(
 		external,
 		binding,

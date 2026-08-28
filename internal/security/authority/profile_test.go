@@ -5,8 +5,10 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -57,7 +59,7 @@ func TestCompileProducesDeterministicEffectiveProfile(t *testing.T) {
 		t.Fatalf("digests first=%q second=%q", first.Digest, second.Digest)
 	}
 	if !first.Process.Allowed || first.Process.Enforcement != "strong" ||
-		first.Network.Mode != "direct" ||
+		first.Network.Mode != "denied" ||
 		!slices.Contains(first.Filesystem.WritePaths, filepath.Join(root, "report.txt")) {
 		t.Fatalf("profile = %+v", first)
 	}
@@ -113,11 +115,42 @@ func TestProfileDigestDetectsMutation(t *testing.T) {
 	}
 }
 
-func TestCompileRejectsStrongCapabilityWithoutRequiredControls(t *testing.T) {
+func TestLeaseRejectsInsufficientControlsDespiteStrength(t *testing.T) {
 	input := fixtureCompileInput(t)
+	input.Capability.Strength = sandbox.StrengthPartial
 	input.Capability.Controls.NetworkIsolation = false
-	if _, err := Compile(input); err == nil {
-		t.Fatal("strong capability without network isolation was accepted")
+	input.SandboxPolicy.AllowNetwork = true
+	profile, err := Compile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.Process.Strength != string(sandbox.StrengthPartial) ||
+		profile.Controls.Network != controlmatrix.NetworkDirect {
+		t.Fatalf("profile did not derive partial controls: %+v", profile)
+	}
+	operation, err := BuildExecutionOperation(OperationInput{
+		WorkspaceRoot:       input.SandboxPolicy.WorkspaceRoot,
+		WorkspaceGeneration: 1,
+		Invocation:          fixturePreparedInvocation(input.SandboxPolicy.WorkspaceRoot),
+		Effect: policy.Effect{
+			Kind: policy.EffectProcessReadOnly, Risk: policy.RiskLow,
+			Reversibility: "reversible",
+		},
+		Required: RequiredControls{
+			Network: controlmatrix.NetworkDenied,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewLeaseAuthority(LeaseAuthorityOptions{})
+	if _, err := manager.Issue(LeaseIssueRequest{
+		Operation: operation, Profile: profile,
+		PolicyRevision:  input.Runtime.Revision,
+		SandboxPolicyID: input.SandboxPolicy.ID,
+		Attempt:         1, ExpiresAt: time.Now().Add(time.Minute),
+	}); err == nil {
+		t.Fatal("profile with insufficient network control received a lease")
 	}
 }
 

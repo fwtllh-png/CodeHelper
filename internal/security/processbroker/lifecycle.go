@@ -76,7 +76,9 @@ func (b *Broker) StartLifecycle(
 	}
 	runCtx, err = sandbox.WithExecutionAuthority(
 		runCtx,
-		snapshot.PermissionProfile.ExecutionAuthority(),
+		snapshot.PermissionProfile.ExecutionAuthorityFor(
+			request.Validation.Operation,
+		),
 	)
 	if err != nil {
 		return nil, settleFailure("authority_context", err)

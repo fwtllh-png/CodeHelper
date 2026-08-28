@@ -60,7 +60,7 @@ func projectToolAttemptReceipt(
 		PermissionCapability:    string(source.PermissionCapability),
 		PermissionAccess:        string(source.PermissionAccess),
 		Enforcement:             source.Enforcement, Backend: source.Backend,
-		SandboxStrength:        source.SandboxStrength,
+		SandboxStrength: source.SandboxStrength, EffectiveControls: source.EffectiveControls.StringMap(),
 		WorkspaceRoot:          source.WorkspaceRoot,
 		ReadRoots:              append([]string(nil), source.ReadRoots...),
 		WritePaths:             append([]string(nil), source.WritePaths...),

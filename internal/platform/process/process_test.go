@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -511,6 +512,39 @@ func TestRunVerifiesEffectiveExecutionAuthority(t *testing.T) {
 	}
 }
 
+func TestRunRejectsPreparedControlsBelowAuthority(t *testing.T) {
+	root := t.TempDir()
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("e", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowProcess: true,
+		RequiredControls: controlmatrix.Requirements{
+			Network: controlmatrix.NetworkDenied,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	weaker := testControlMatrix()
+	weaker.Network = controlmatrix.NetworkDirect
+	_, err = Run(ctx, Options{
+		Command: "true", Dir: root, DirFile: directoryFile,
+		Sandbox: &recordingBackend{
+			root: root, preparedControls: &weaker,
+		},
+		RequireStrongSandbox: true,
+		WorkspaceReadOnly:    true, DenyNetwork: true,
+	})
+	denial, ok := sandbox.DenialFromError(err)
+	if !ok || denial.Resource != "required_controls" {
+		t.Fatalf("weaker prepared controls denial = %+v error=%v", denial, err)
+	}
+}
+
 func TestRunRejectsProcessBroaderThanEffectiveAuthority(t *testing.T) {
 	root := t.TempDir()
 	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
@@ -626,6 +660,56 @@ func TestRunInjectsOnlyVerifiedManagedProxy(t *testing.T) {
 	}
 }
 
+func TestRunAllowsDeniedNetworkAuthorityOnManagedProxyBackend(t *testing.T) {
+	root := t.TempDir()
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("e", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: false, AllowProcess: true,
+		ReadPaths: []string{root},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &recordingBackend{root: root, proxyPort: 43128}
+	if _, err := Run(ctx, Options{
+		Command: "true", Dir: root, DirFile: directoryFile,
+		Sandbox: backend, RequireStrongSandbox: true,
+		WorkspaceReadOnly: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !backend.command.DenyNetwork {
+		t.Fatal("denied network authority did not constrain the sandbox command")
+	}
+}
+
+func TestRunRejectsNetworkAuthorityWithoutManagedProxyBinding(t *testing.T) {
+	root := t.TempDir()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("e", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: true, AllowProcess: true,
+		ReadPaths: []string{root},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Run(ctx, Options{
+		Command: "true", Dir: root,
+		Sandbox:              &recordingBackend{root: root, proxyPort: 43128},
+		RequireStrongSandbox: true, WorkspaceReadOnly: true,
+	})
+	denial, ok := sandbox.DenialFromError(err)
+	if !ok || denial.Resource != "managed_proxy" ||
+		denial.ReasonCode != sandbox.ReasonAuthorityUnverified {
+		t.Fatalf("managed proxy denial = %+v error=%v", denial, err)
+	}
+}
+
 func TestRunBindsApprovedLoopbackToSandboxCommand(t *testing.T) {
 	root := t.TempDir()
 	directoryFile, err := os.Open(root)
@@ -660,6 +744,7 @@ type recordingBackend struct {
 	command            sandbox.Command
 	root               string
 	proxyPort          uint16
+	preparedControls   *controlmatrix.Matrix
 	ignoreRestrictions bool
 	ignoreWritePaths   bool
 	ignoreAuthority    bool
@@ -669,6 +754,7 @@ func (b *recordingBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "recording",
 		Strength: sandbox.StrengthStrong, Available: true,
+		Effective: testControlMatrix(),
 	}
 }
 
@@ -676,6 +762,12 @@ func (b *recordingBackend) Prepare(_ context.Context, command sandbox.Command) (
 	b.command = command
 	command.PreparedPolicyID = "fixture-policy"
 	command.PreparedStrength = sandbox.StrengthStrong
+	command.PreparedControls = sandbox.CommandControls(
+		b.Capability(), b.Policy(), command,
+	)
+	if b.preparedControls != nil {
+		command.PreparedControls = *b.preparedControls
+	}
 	if !b.ignoreAuthority {
 		command.PreparedAuthorityDigest = command.AuthorityDigest
 	}
@@ -688,6 +780,9 @@ func (b *recordingBackend) Prepare(_ context.Context, command sandbox.Command) (
 		command.PreparedNetworkDenied = command.DenyNetwork
 		command.PreparedLoopbackAllowed = command.AllowLoopback && !command.DenyNetwork
 		command.PreparedProxyPort = b.proxyPort
+		if command.DenyNetwork {
+			command.PreparedProxyPort = 0
+		}
 		if !b.ignoreWritePaths {
 			command.PreparedWritePaths = append(
 				[]string(nil), command.WorkspaceWritePaths...,
@@ -695,6 +790,21 @@ func (b *recordingBackend) Prepare(_ context.Context, command sandbox.Command) (
 		}
 	}
 	return command, nil
+}
+
+func testControlMatrix() controlmatrix.Matrix {
+	return controlmatrix.Matrix{
+		FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
+		FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+		Network:         controlmatrix.NetworkDenied,
+		ProcessTree:     controlmatrix.ProcessTreeGroupKill,
+		CrossProcess:    controlmatrix.CrossProcessRestricted,
+		Syscall:         controlmatrix.SyscallDenyDangerous,
+		IPC:             controlmatrix.IPCUnixOnly,
+		PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+		ArtifactOrigin:  controlmatrix.ArtifactOriginVerifiedManifest,
+		DurableRecovery: controlmatrix.DurableRecoveryExternalJournal,
+	}
 }
 
 func (b *recordingBackend) Policy() sandbox.Policy {

@@ -17,6 +17,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -164,6 +165,9 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		if err := validateExecutionAuthority(options, executionAuthority); err != nil {
 			return nil, err
 		}
+		if !executionAuthority.AllowNetwork {
+			options.DenyNetwork = true
+		}
 	}
 	environment, err := SanitizedEnvironment(options.Env)
 	if err != nil {
@@ -231,10 +235,14 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		}
 	}
 	if options.RequireStrongSandbox {
-		if err := sandbox.RequireStrong(options.Sandbox); err != nil {
+		required := sandbox.StrongCompatibilityRequirements()
+		if authorityBound && !executionAuthority.RequiredControls.IsZero() {
+			required = executionAuthority.RequiredControls
+		}
+		if err := sandbox.RequireControls(options.Sandbox, required); err != nil {
 			return nil, sandbox.Denied(sandbox.Denial{
 				Backend: backendName(options.Sandbox), Operation: sandbox.DenialProcess,
-				Resource: "strong_sandbox", ReasonCode: sandbox.ReasonBackendUnavailable,
+				Resource: "required_controls", ReasonCode: sandbox.ReasonBackendUnavailable,
 			}, err)
 		}
 		if options.DirFile == nil {
@@ -270,9 +278,27 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		}
 		if options.RequireStrongSandbox &&
 			(commandSpec.PreparedPolicyID == "" ||
-				commandSpec.PreparedPolicyID != policy.ID ||
-				commandSpec.PreparedStrength != sandbox.StrengthStrong) {
-			return nil, errors.New("strong sandbox backend returned an unverified prepared policy")
+				commandSpec.PreparedPolicyID != policy.ID) {
+			return nil, errors.New("sandbox backend returned an unverified prepared policy")
+		}
+		if authorityBound {
+			if executionAuthority.EffectiveControls !=
+				(controlmatrix.Matrix{}) {
+				commandSpec.PreparedControls.ArtifactOrigin =
+					executionAuthority.EffectiveControls.ArtifactOrigin
+				commandSpec.PreparedControls.DurableRecovery =
+					executionAuthority.EffectiveControls.DurableRecovery
+			}
+			if err := executionAuthority.RequiredControls.SatisfiedBy(
+				commandSpec.PreparedControls,
+			); err != nil {
+				return nil, sandbox.Denied(sandbox.Denial{
+					Backend:    options.Sandbox.Capability().Backend,
+					Operation:  sandbox.DenialProcess,
+					Resource:   "required_controls",
+					ReasonCode: sandbox.ReasonBackendUnavailable,
+				}, err)
+			}
 		}
 		if authorityBound &&
 			commandSpec.PreparedAuthorityDigest != executionAuthority.Digest {
@@ -391,12 +417,17 @@ func validateExecutionAuthority(
 			return errors.New("process network access exceeds the effective permission profile")
 		}
 	}
-	if policyValue, ok := sandbox.BackendPolicy(options.Sandbox); ok &&
-		authority.ManagedProxyPort != policyValue.ManagedProxyPort {
-		return sandbox.Denied(sandbox.Denial{
-			Operation: sandbox.DenialNetwork, Resource: "managed_proxy",
-			ReasonCode: sandbox.ReasonAuthorityUnverified,
-		}, errors.New("managed proxy does not match the effective permission profile"))
+	if policyValue, ok := sandbox.BackendPolicy(options.Sandbox); ok {
+		expectedProxyPort := policyValue.ManagedProxyPort
+		if !authority.AllowNetwork {
+			expectedProxyPort = 0
+		}
+		if authority.ManagedProxyPort != expectedProxyPort {
+			return sandbox.Denied(sandbox.Denial{
+				Operation: sandbox.DenialNetwork, Resource: "managed_proxy",
+				ReasonCode: sandbox.ReasonAuthorityUnverified,
+			}, errors.New("managed proxy does not match the effective permission profile"))
+		}
 	}
 	return nil
 }

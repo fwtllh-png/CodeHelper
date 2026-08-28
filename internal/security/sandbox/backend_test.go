@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
 func TestProbeReportsExplicitPlatformBackendAndStrength(t *testing.T) {
@@ -665,6 +667,72 @@ func TestRequireStrongFailsClosedForMissingAndPartialBackends(t *testing.T) {
 	}}
 	if err := RequireStrong(backend); !IsUnavailable(err) {
 		t.Fatalf("partial backend error = %v", err)
+	}
+}
+
+func TestRequiredControlsIgnoreClaimedStrength(t *testing.T) {
+	claimedStrong := &unavailableBackend{capability: Capability{
+		Platform: "fixture", Backend: "claimed-strong",
+		Strength: StrengthStrong, Available: true,
+		Effective: controlmatrix.Matrix{
+			FilesystemRead:  controlmatrix.FilesystemReadUnrestricted,
+			FilesystemWrite: controlmatrix.FilesystemWriteUnrestricted,
+			Network:         controlmatrix.NetworkDirect,
+			ProcessTree:     controlmatrix.ProcessTreeUnmanaged,
+			CrossProcess:    controlmatrix.CrossProcessUnrestricted,
+			Syscall:         controlmatrix.SyscallUnrestricted,
+			IPC:             controlmatrix.IPCUnrestricted,
+			PathIdentity:    controlmatrix.PathIdentityLexical,
+			ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
+		},
+	}}
+	if err := RequireStrong(claimedStrong); !IsUnavailable(err) {
+		t.Fatalf("claimed strong backend error = %v", err)
+	}
+	partial := claimedStrong.capability
+	partial.Strength = StrengthPartial
+	partial.Effective.FilesystemRead = controlmatrix.FilesystemReadDeclaredRoots
+	partial.Effective.Network = controlmatrix.NetworkDenied
+	if err := RequireControls(
+		&unavailableBackend{capability: partial},
+		controlmatrix.Requirements{
+			FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+			Network:        controlmatrix.NetworkDenied,
+		},
+	); err != nil {
+		t.Fatalf("partial backend with sufficient controls was rejected: %v", err)
+	}
+}
+
+func TestPolicyCannotInventUnavailableControls(t *testing.T) {
+	capability := Capability{
+		Platform: "fixture", Backend: "weak", Available: true,
+		Effective: controlmatrix.Matrix{
+			FilesystemRead:  controlmatrix.FilesystemReadUnrestricted,
+			FilesystemWrite: controlmatrix.FilesystemWriteUnrestricted,
+			Network:         controlmatrix.NetworkDirect,
+			ProcessTree:     controlmatrix.ProcessTreeUnmanaged,
+			CrossProcess:    controlmatrix.CrossProcessUnrestricted,
+			Syscall:         controlmatrix.SyscallUnrestricted,
+			IPC:             controlmatrix.IPCUnrestricted,
+			PathIdentity:    controlmatrix.PathIdentityLexical,
+			ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
+		},
+	}
+	policy := Policy{}
+	effective := EffectiveControls(capability, policy)
+	if effective.Network != controlmatrix.NetworkDirect {
+		t.Fatalf("policy invented network isolation: %+v", effective)
+	}
+	prepared := CommandControls(capability, policy, Command{
+		WorkspaceReadOnly: true,
+		DenyNetwork:       true,
+	})
+	if prepared.Network != controlmatrix.NetworkDirect ||
+		prepared.FilesystemWrite != controlmatrix.FilesystemWriteUnrestricted {
+		t.Fatalf("command invented unavailable controls: %+v", prepared)
 	}
 }
 

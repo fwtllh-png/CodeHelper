@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -20,7 +21,10 @@ func TestExecutionOperationNormalizesResourcesAndArguments(t *testing.T) {
 			Reversibility: "reversible",
 		},
 		Required: RequiredControls{
-			FilesystemRead: true, Network: true, ProcessTree: true,
+			FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+			Network:        controlmatrix.NetworkDenied,
+			ProcessTree:    controlmatrix.ProcessTreeGroupKill,
+			PathIdentity:   controlmatrix.PathIdentityDescriptorRelative,
 		},
 	}
 	first, err := BuildExecutionOperation(input)

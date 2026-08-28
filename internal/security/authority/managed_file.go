@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -78,7 +79,10 @@ func BuildManagedFileOperation(
 			RequireReadBeforeWrite: true,
 		},
 		Required: RequiredControls{
-			FilesystemRead: true, FilesystemWrite: true, SymlinkSafety: true,
+			FilesystemRead:  controlmatrix.FilesystemReadExactPaths,
+			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+			PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+			DurableRecovery: controlmatrix.DurableRecoveryExternalJournal,
 		},
 		Resources: resources,
 		File: &FileIntent{
@@ -116,7 +120,16 @@ func BuildManagedFileProfile(
 			Enforcement: "none", Backend: "file_broker", Strength: "none",
 		},
 		Controls: EffectiveControls{
-			FilesystemRead: true, FilesystemWrite: true, SymlinkSafety: true,
+			FilesystemRead:  controlmatrix.FilesystemReadExactPaths,
+			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+			Network:         controlmatrix.NetworkDenied,
+			ProcessTree:     controlmatrix.ProcessTreeUnmanaged,
+			CrossProcess:    controlmatrix.CrossProcessUnrestricted,
+			Syscall:         controlmatrix.SyscallUnrestricted,
+			IPC:             controlmatrix.IPCUnrestricted,
+			PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+			ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryExternalJournal,
 		},
 		Provenance: []AuthoritySource{{
 			Kind: "file_broker", Value: operation.Subject.ID,

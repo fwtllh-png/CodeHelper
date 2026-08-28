@@ -10,6 +10,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -441,7 +442,7 @@ func (g *Guard) runAttempt(
 	}
 	runContext, err = sandbox.WithExecutionAuthority(
 		runContext,
-		profile.ExecutionAuthority(),
+		profile.ExecutionAuthorityFor(operation),
 	)
 	if err != nil {
 		release()
@@ -854,6 +855,7 @@ func bindAttemptAuthority(
 	receipt.Enforcement = profile.Process.Enforcement
 	receipt.Backend = profile.Process.Backend
 	receipt.SandboxStrength = profile.Process.Strength
+	receipt.EffectiveControls = profile.Controls
 	receipt.WorkspaceRoot = profile.Filesystem.WorkspaceRoot
 	receipt.ReadRoots = append([]string(nil), profile.Filesystem.ReadRoots...)
 	receipt.WritePaths = append([]string(nil), profile.Filesystem.WritePaths...)
@@ -905,6 +907,15 @@ func bindAttemptLease(
 	receipt.EffectRisk = string(operation.Effect.Risk)
 	receipt.EffectReversibility = string(operation.Effect.Reversibility)
 	receipt.WorkspaceTransaction = string(operation.Effect.WorkspaceTransaction)
+	if operation.Artifact != nil {
+		receipt.EffectiveControls.ArtifactOrigin =
+			controlmatrix.ArtifactOriginBrokerSnapshot
+	}
+	if operation.Effect.WorkspaceTransaction ==
+		authority.WorkspaceTransactionBeforeImage {
+		receipt.EffectiveControls.DurableRecovery =
+			controlmatrix.DurableRecoveryExternalJournal
+	}
 }
 
 func amendmentReceipt(

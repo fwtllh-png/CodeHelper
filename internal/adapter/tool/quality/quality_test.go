@@ -11,6 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -219,11 +220,28 @@ func (qualityTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "passthrough",
 		Strength: sandbox.StrengthStrong, Available: true,
+		Effective: controlmatrix.Matrix{
+			FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
+			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+			Network:         controlmatrix.NetworkDenied,
+			ProcessTree:     controlmatrix.ProcessTreeGroupKill,
+			CrossProcess:    controlmatrix.CrossProcessRestricted,
+			Syscall:         controlmatrix.SyscallDenyDangerous,
+			IPC:             controlmatrix.IPCUnixOnly,
+			PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+			ArtifactOrigin:  controlmatrix.ArtifactOriginVerifiedManifest,
+			DurableRecovery: controlmatrix.DurableRecoveryExternalJournal,
+		},
 	}
 }
 
 func (qualityTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
 	command.PreparedReadOnly = command.WorkspaceReadOnly
+	command.PreparedControls = sandbox.CommandControls(
+		qualityTestBackend{}.Capability(),
+		sandbox.Policy{},
+		command,
+	)
 	return command, nil
 }
 

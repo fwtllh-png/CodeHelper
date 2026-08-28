@@ -9,6 +9,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -150,6 +151,10 @@ func (g *Guard) buildExecutionOperation(
 		prepared.invocation.CallID,
 		prepared.invocation,
 	)
+	required := requiredControls(prepared.invocation)
+	if artifact != nil {
+		required.ArtifactOrigin = controlmatrix.ArtifactOriginBrokerSnapshot
+	}
 	operation, err := authority.BuildExecutionOperation(authority.OperationInput{
 		WorkspaceRoot:          g.workspace,
 		WorkspaceID:            g.workspaceID,
@@ -158,7 +163,7 @@ func (g *Guard) buildExecutionOperation(
 		Effect:                 policy.NormalizeEffect(policyInvocation),
 		Journaled:              policyInvocation.Journaled,
 		RequireReadBeforeWrite: policyInvocation.Journaled,
-		Required:               requiredControls(prepared.invocation),
+		Required:               required,
 		Artifact:               artifact,
 		FileMutationDigest:     fileMutationDigest,
 		HostReadRoots: append(
@@ -219,24 +224,23 @@ func leaseValidation(
 func requiredControls(invocation Invocation) authority.RequiredControls {
 	required := invocation.Binding.Required
 	if invocation.Binding.SandboxRequirement == tool.SandboxStrong {
+		required.Network = controlmatrix.NetworkDenied
 		for _, resource := range invocation.Resources {
 			if resource.Access == tool.AccessWrite &&
 				isPathKind(resource.Kind) {
-				required.FilesystemWrite = true
-				required.SymlinkSafety = true
+				required.FilesystemWrite = controlmatrix.FilesystemWriteExactPaths
+				required.PathIdentity = controlmatrix.PathIdentityDescriptorRelative
+			}
+			if resource.Kind == "host" || resource.Kind == "url" {
+				if resource.Protocol == "loopback" {
+					required.Network = controlmatrix.NetworkLoopbackExact
+				} else {
+					required.Network = controlmatrix.NetworkProxyTargets
+				}
 			}
 		}
 	}
-	return authority.RequiredControls{
-		FilesystemRead:  required.FilesystemRead,
-		FilesystemWrite: required.FilesystemWrite,
-		Network:         required.Network,
-		ProcessTree:     required.ProcessTree,
-		CrossProcess:    required.CrossProcess,
-		Syscall:         required.Syscall,
-		IPC:             required.IPC,
-		SymlinkSafety:   required.SymlinkSafety,
-	}
+	return authority.RequiredControls(required)
 }
 
 func settleExecutionLease(

@@ -1,6 +1,6 @@
 # 安全执行边界重构方案
 
-> 状态：阶段 0-5 已交付；阶段 6 为提案。
+> 状态：阶段 0-6 已交付。
 >
 > 本文描述 CodeHelper 对副作用执行边界的目标设计和渐进迁移方案，不代表当前实现已经
 > 完成这些约束。当前已交付行为以[安全模型](./security.md)、源码和测试为准。
@@ -901,6 +901,8 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 
 ### 阶段 6：控制矩阵替代 Strong
 
+当前状态：已完成。
+
 目标：
 
 - Backend Probe 返回 Effective Controls；
@@ -908,6 +910,32 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 - Authority 执行集合匹配；
 - `Strong` 降为派生兼容字段；
 - macOS、Linux、Windows 的平台差异被准确报告。
+
+交付边界：
+
+- `internal/security/controlmatrix` 定义十个有领域语义的控制维度及显式满足关系，不使用
+  整数等级或固定平台阈值；
+- Sandbox Probe 返回实际 `EffectiveControls`，Policy 和具体 Command 继续收紧
+  Filesystem Write 与 Network 控制；`Strength` 只由矩阵派生用于兼容显示；
+- Trusted Binding、ExecutionOperation 和 Lease 分别冻结 Required Controls，
+  Permission Profile 冻结 Effective Controls，Lease 签发执行逐维集合比较；
+- Process 在 Backend `Prepare` 后再次校验 Prepared Controls，防止 Backend 声称能力
+  但未在本次命令中实际实施；
+- File Broker、Artifact Broker 和外部 Journal 提供的 Path Identity、Artifact Origin、
+  Durable Recovery 作为 Broker 事实进入 Lease 与 Receipt，不伪装成 OS Sandbox 能力；
+- Attempt Receipt 和 Runtime Protocol 输出完整 Effective Controls，跨平台差异可被
+  UI、日志和验收直接检查。
+
+实现落点：
+
+| 能力 | 当前实现 |
+| --- | --- |
+| 控制矩阵与满足关系 | `internal/security/controlmatrix` |
+| Backend Probe 与命令级收紧 | `internal/security/sandbox` |
+| Profile、Operation 与 Lease 校验 | `internal/security/authority` |
+| Process 接管后二次校验 | `internal/platform/process` |
+| Tool/Hook/MCP Required Controls | `internal/adapter/tool`、`hooks`、`mcp` |
+| Receipt 与 Protocol 投影 | `internal/adapter/tool/execution.go`、`internal/runtime/protocol` |
 
 ## 十三、PR 拆分
 

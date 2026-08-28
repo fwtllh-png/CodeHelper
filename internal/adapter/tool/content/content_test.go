@@ -125,7 +125,13 @@ test -f "$input"
 type contentTestBackend struct{}
 
 func (contentTestBackend) Capability() sandbox.Capability {
-	return sandbox.Capability{Platform: "test", Backend: "passthrough", Strength: sandbox.StrengthStrong, Available: true}
+	return sandbox.Capability{
+		Platform: "test", Backend: "passthrough", Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
+	}
 }
 
 func (contentTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {

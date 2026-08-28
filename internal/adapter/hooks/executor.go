@@ -17,6 +17,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -312,8 +313,10 @@ func (e *executor) authorizeProcess(
 		enforcement = "strong"
 		capability = e.options.Sandbox.Capability()
 		required = authority.RequiredControls{
-			FilesystemRead: true, Network: true,
-			ProcessTree: true, SymlinkSafety: true,
+			FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+			Network:        controlmatrix.NetworkDenied,
+			ProcessTree:    controlmatrix.ProcessTreeGroupKill,
+			PathIdentity:   controlmatrix.PathIdentityDescriptorRelative,
 		}
 	}
 	operation, err := authority.BuildManagedProcessOperation(
@@ -333,10 +336,10 @@ func (e *executor) authorizeProcess(
 			authority.LeaseValidation{}, err
 	}
 	policyID := ""
-	var proxyPort uint16
-	if sandboxPolicy, ok := sandbox.BackendPolicy(e.options.Sandbox); ok {
-		policyID = sandboxPolicy.ID
-		proxyPort = sandboxPolicy.ManagedProxyPort
+	var boundPolicy sandbox.Policy
+	if current, ok := sandbox.BackendPolicy(e.options.Sandbox); ok {
+		boundPolicy = current
+		policyID = current.ID
 	}
 	profile, err := authority.BuildManagedProcessProfile(
 		authority.ManagedProfileInput{
@@ -344,17 +347,17 @@ func (e *executor) authorizeProcess(
 			WorkspaceRoot:      e.options.Workspace,
 			WorkspaceBaseWrite: !e.options.RequireStrongSandbox,
 			AllowNetwork:       !e.options.RequireStrongSandbox,
-			ManagedProxyPort:   proxyPort,
+			ManagedProxyPort:   boundPolicy.ManagedProxyPort,
 			Enforcement:        enforcement, Backend: capability.Backend,
 			Strength: string(capability.Strength),
-			Controls: authority.EffectiveControls{
-				FilesystemRead:  capability.Controls.ReadIsolation,
-				FilesystemWrite: capability.Controls.WriteIsolation,
-				Network:         capability.Controls.NetworkIsolation,
-				ProcessTree:     capability.Controls.ProcessIsolation,
-				Syscall:         capability.Controls.SyscallIsolation,
-				SymlinkSafety:   capability.Controls.SymlinkSafe,
-			},
+			Controls: sandbox.CommandControls(
+				capability,
+				boundPolicy,
+				sandbox.Command{
+					WorkspaceReadOnly: e.options.RequireStrongSandbox,
+					DenyNetwork:       e.options.RequireStrongSandbox,
+				},
+			),
 		},
 	)
 	if err != nil {

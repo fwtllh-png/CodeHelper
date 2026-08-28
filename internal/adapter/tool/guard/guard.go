@@ -788,7 +788,10 @@ func (g *Guard) prepare(
 		})
 	}
 	if descriptor.SandboxRequirement == tool.SandboxStrong {
-		if err := sandbox.RequireStrong(g.registry.InjectedSandbox(canonical)); err != nil {
+		if err := sandbox.RequireControls(
+			g.registry.InjectedSandbox(canonical),
+			trusted.Required,
+		); err != nil {
 			return Invocation{}, nil, err
 		}
 	}

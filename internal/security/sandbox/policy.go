@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
 const policyVersion = 1
@@ -247,8 +249,66 @@ func (b *policyBinding) Prepare(ctx context.Context, command Command) (Command, 
 	}
 	prepared.PreparedPolicyID = b.policy.ID
 	prepared.PreparedAuthorityDigest = command.AuthorityDigest
-	prepared.PreparedStrength = b.Backend.Capability().Strength
+	capability := NormalizeCapability(b.Backend.Capability())
+	prepared.PreparedStrength = capability.Strength
+	prepared.PreparedControls = CommandControls(capability, b.policy, command)
 	return prepared, nil
+}
+
+func EffectiveControls(
+	capability Capability,
+	policy Policy,
+) controlmatrix.Matrix {
+	controls := NormalizeCapability(capability).Effective
+	desired := controlmatrix.NetworkDenied
+	switch {
+	case policy.ManagedProxyPort != 0:
+		desired = controlmatrix.NetworkProxyTargets
+	case policy.AllowNetwork:
+		desired = controlmatrix.NetworkDirect
+	}
+	if controlmatrix.CanEnforceNetwork(controls.Network, desired) {
+		controls.Network = desired
+	}
+	return controls
+}
+
+func CommandControls(
+	capability Capability,
+	policy Policy,
+	command Command,
+) controlmatrix.Matrix {
+	controls := EffectiveControls(capability, policy)
+	if command.DenyNetwork {
+		if controlmatrix.CanEnforceNetwork(
+			controls.Network,
+			controlmatrix.NetworkDenied,
+		) {
+			controls.Network = controlmatrix.NetworkDenied
+		}
+	} else if command.AllowLoopback {
+		if controlmatrix.CanEnforceNetwork(
+			controls.Network,
+			controlmatrix.NetworkLoopbackExact,
+		) {
+			controls.Network = controlmatrix.NetworkLoopbackExact
+		}
+	}
+	desiredWrite := controlmatrix.FilesystemWriteWorkspace
+	if command.WorkspaceReadOnly {
+		if len(command.WorkspaceWritePaths) == 0 {
+			desiredWrite = controlmatrix.FilesystemWriteDenied
+		} else {
+			desiredWrite = controlmatrix.FilesystemWriteExactPaths
+		}
+	}
+	if controlmatrix.CanEnforceFilesystemWrite(
+		controls.FilesystemWrite,
+		desiredWrite,
+	) {
+		controls.FilesystemWrite = desiredWrite
+	}
+	return controls
 }
 
 func (b *policyBinding) Close() error {

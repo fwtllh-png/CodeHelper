@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
 type EffectKind string
@@ -72,16 +74,7 @@ type EffectContract struct {
 	Approval               ApprovalMode         `json:"approval"`
 }
 
-type RequiredControls struct {
-	FilesystemRead  bool `json:"filesystem_read,omitempty"`
-	FilesystemWrite bool `json:"filesystem_write,omitempty"`
-	Network         bool `json:"network,omitempty"`
-	ProcessTree     bool `json:"process_tree,omitempty"`
-	CrossProcess    bool `json:"cross_process,omitempty"`
-	Syscall         bool `json:"syscall,omitempty"`
-	IPC             bool `json:"ipc,omitempty"`
-	SymlinkSafety   bool `json:"symlink_safety,omitempty"`
-}
+type RequiredControls = controlmatrix.Requirements
 
 // ExternalDescriptor is the untrusted, model-visible portion of a tool
 // declaration. Requested never grants authority; it is retained for review and
@@ -161,17 +154,18 @@ func TrustedBindingFromDescriptor(descriptor Descriptor) TrustedBinding {
 		},
 	}
 	if descriptor.SandboxRequirement == SandboxStrong {
-		binding.Required.FilesystemRead = true
-		binding.Required.Network = true
-		binding.Required.ProcessTree =
-			descriptor.Capability == CapabilityProcess ||
-				descriptor.Capability == CapabilityPlugin
+		binding.Required.FilesystemRead = controlmatrix.FilesystemReadDeclaredRoots
+		binding.Required.Network = controlmatrix.NetworkDirect
+		binding.Required.PathIdentity = controlmatrix.PathIdentityDescriptorRelative
+		if descriptor.Capability == CapabilityProcess ||
+			descriptor.Capability == CapabilityPlugin {
+			binding.Required.ProcessTree = controlmatrix.ProcessTreeGroupKill
+		}
 		for _, resource := range descriptor.ResourceResolver.Templates {
 			if resource.Access == AccessWrite &&
 				(resource.Kind == "file" || resource.Kind == "directory" ||
 					resource.Kind == "repo" || resource.Kind == "workspace") {
-				binding.Required.FilesystemWrite = true
-				binding.Required.SymlinkSafety = true
+				binding.Required.FilesystemWrite = controlmatrix.FilesystemWriteExactPaths
 			}
 		}
 	}
@@ -259,13 +253,16 @@ func (b TrustedBinding) Validate() error {
 		return errors.New("missing write targets require process capability")
 	}
 	if b.SandboxRequirement == SandboxStrong {
-		if !b.Required.FilesystemRead || !b.Required.Network {
+		if b.Required.FilesystemRead == "" || b.Required.Network == "" {
 			return errors.New("strong sandbox requires filesystem-read and network controls")
 		}
 		if (b.Capability == CapabilityProcess || b.Capability == CapabilityPlugin) &&
-			!b.Required.ProcessTree {
+			b.Required.ProcessTree == "" {
 			return errors.New("strong process sandbox requires process-tree control")
 		}
+	}
+	if err := b.Required.Validate(); err != nil {
+		return fmt.Errorf("required controls: %w", err)
 	}
 	return nil
 }

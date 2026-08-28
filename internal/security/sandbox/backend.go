@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlplane"
 )
 
@@ -36,13 +37,14 @@ const (
 )
 
 type Capability struct {
-	Platform  string   `json:"platform"`
-	Backend   string   `json:"backend"`
-	Strength  Strength `json:"strength"`
-	Available bool     `json:"available"`
-	PolicyID  string   `json:"policy_id,omitempty"`
-	Controls  Controls `json:"controls"`
-	Reason    string   `json:"reason,omitempty"`
+	Platform  string               `json:"platform"`
+	Backend   string               `json:"backend"`
+	Strength  Strength             `json:"strength"`
+	Available bool                 `json:"available"`
+	PolicyID  string               `json:"policy_id,omitempty"`
+	Controls  Controls             `json:"controls"`
+	Effective controlmatrix.Matrix `json:"effective_controls"`
+	Reason    string               `json:"reason,omitempty"`
 }
 
 type Command struct {
@@ -61,6 +63,7 @@ type Command struct {
 	PreparedPolicyID        string
 	PreparedAuthorityDigest string
 	PreparedStrength        Strength
+	PreparedControls        controlmatrix.Matrix
 	PreparedReadOnly        bool
 	PreparedReadPaths       []string
 	PreparedWritePaths      []string
@@ -104,22 +107,120 @@ func (e *UnavailableError) Error() string {
 }
 
 func RequireStrong(backend Backend) error {
+	return RequireControls(backend, StrongCompatibilityRequirements())
+}
+
+func StrongCompatibilityRequirements() controlmatrix.Requirements {
+	return controlmatrix.Requirements{
+		FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
+		FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+		Network:         controlmatrix.NetworkDenied,
+		ProcessTree:     controlmatrix.ProcessTreeGroupKill,
+		PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+	}
+}
+
+func RequireControls(
+	backend Backend,
+	required controlmatrix.Requirements,
+) error {
 	capability := Capability{
 		Platform: runtime.GOOS, Backend: "none", Strength: StrengthNone,
 	}
 	if backend != nil {
-		capability = backend.Capability()
+		capability = NormalizeCapability(backend.Capability())
 	}
-	if !capability.Available || capability.Strength != StrengthStrong {
+	if !capability.Available {
+		return &UnavailableError{Capability: capability}
+	}
+	if err := required.SatisfiedBy(capability.Effective); err != nil {
+		capability.Reason = err.Error()
 		return &UnavailableError{Capability: capability}
 	}
 	return nil
 }
 
+func NormalizeCapability(capability Capability) Capability {
+	if capability.Effective == (controlmatrix.Matrix{}) {
+		capability.Effective = compatibilityMatrix(capability)
+	}
+	capability.Controls = compatibilityControls(capability.Effective)
+	capability.Strength = deriveStrength(capability.Effective)
+	return capability
+}
+
+func compatibilityMatrix(capability Capability) controlmatrix.Matrix {
+	matrix := controlmatrix.Matrix{
+		FilesystemRead:  controlmatrix.FilesystemReadUnrestricted,
+		FilesystemWrite: controlmatrix.FilesystemWriteUnrestricted,
+		Network:         controlmatrix.NetworkDirect,
+		ProcessTree:     controlmatrix.ProcessTreeUnmanaged,
+		CrossProcess:    controlmatrix.CrossProcessUnrestricted,
+		Syscall:         controlmatrix.SyscallUnrestricted,
+		IPC:             controlmatrix.IPCUnrestricted,
+		PathIdentity:    controlmatrix.PathIdentityLexical,
+		ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+		DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
+	}
+	if capability.Controls.ReadIsolation {
+		matrix.FilesystemRead = controlmatrix.FilesystemReadDeclaredRoots
+	}
+	if capability.Controls.WriteIsolation {
+		matrix.FilesystemWrite = controlmatrix.FilesystemWriteExactPaths
+	}
+	if capability.Controls.NetworkIsolation {
+		matrix.Network = controlmatrix.NetworkDenied
+	}
+	if capability.Controls.ProcessIsolation {
+		matrix.ProcessTree = controlmatrix.ProcessTreeGroupKill
+	}
+	if capability.Controls.SyscallIsolation {
+		matrix.Syscall = controlmatrix.SyscallDenyDangerous
+	}
+	if capability.Controls.SymlinkSafe {
+		matrix.PathIdentity = controlmatrix.PathIdentityDescriptorRelative
+	}
+	return matrix
+}
+
+func compatibilityControls(matrix controlmatrix.Matrix) Controls {
+	return Controls{
+		ReadIsolation: matrix.FilesystemRead != "" &&
+			matrix.FilesystemRead != controlmatrix.FilesystemReadUnrestricted,
+		WriteIsolation: matrix.FilesystemWrite != "" &&
+			matrix.FilesystemWrite != controlmatrix.FilesystemWriteUnrestricted,
+		NetworkIsolation: matrix.Network != "" &&
+			matrix.Network != controlmatrix.NetworkDirect,
+		ProcessIsolation: matrix.ProcessTree != "" &&
+			matrix.ProcessTree != controlmatrix.ProcessTreeUnmanaged,
+		SyscallIsolation: matrix.Syscall != "" &&
+			matrix.Syscall != controlmatrix.SyscallUnrestricted,
+		SymlinkSafe: matrix.PathIdentity ==
+			controlmatrix.PathIdentityDescriptorRelative,
+	}
+}
+
+func deriveStrength(matrix controlmatrix.Matrix) Strength {
+	legacy := controlmatrix.Requirements{
+		FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
+		FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+		Network:         controlmatrix.NetworkDenied,
+		ProcessTree:     controlmatrix.ProcessTreeGroupKill,
+		PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+	}
+	if legacy.SatisfiedBy(matrix) == nil {
+		return StrengthStrong
+	}
+	if matrix.HasIsolation() {
+		return StrengthPartial
+	}
+	return StrengthNone
+}
+
 func Probe() Capability {
 	probeOnce.Do(func() {
 		helper, _ := os.Executable()
-		probedCapability = runAttackProbe(helper)
+		probedCapability = NormalizeCapability(runAttackProbe(helper))
 	})
 	return probedCapability
 }
@@ -127,27 +228,55 @@ func Probe() Capability {
 func DeclaredCapability() Capability {
 	switch runtime.GOOS {
 	case "darwin":
-		return Capability{
+		return NormalizeCapability(Capability{
 			Platform: "darwin", Backend: "seatbelt", Strength: StrengthStrong, Available: true,
-			Controls: Controls{
-				ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-				ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+			Effective: controlmatrix.Matrix{
+				FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
+				FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+				Network:         controlmatrix.NetworkDenied,
+				ProcessTree:     controlmatrix.ProcessTreeGroupKill,
+				CrossProcess:    controlmatrix.CrossProcessUnrestricted,
+				Syscall:         controlmatrix.SyscallUnrestricted,
+				IPC:             controlmatrix.IPCUnrestricted,
+				PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+				ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+				DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 			},
-		}
+		})
 	case "linux":
-		return Capability{
+		return NormalizeCapability(Capability{
 			Platform: "linux", Backend: "bwrap+landlock", Strength: StrengthStrong, Available: true,
 			Reason: "runtime strength requires the bwrap and Landlock ABI v3 attack probe",
-			Controls: Controls{
-				ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-				ProcessIsolation: true, SymlinkSafe: true,
+			Effective: controlmatrix.Matrix{
+				FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
+				FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+				Network:         controlmatrix.NetworkDenied,
+				ProcessTree:     controlmatrix.ProcessTreePIDNamespace,
+				CrossProcess:    controlmatrix.CrossProcessIsolated,
+				Syscall:         controlmatrix.SyscallDenyDangerous,
+				IPC:             controlmatrix.IPCPrivateNamespace,
+				PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+				ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+				DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 			},
-		}
+		})
 	case "windows":
-		return Capability{
+		return NormalizeCapability(Capability{
 			Platform: "windows", Backend: "restricted-token", Strength: StrengthPartial,
 			Reason: "strong restricted-token controls are unavailable",
-		}
+			Effective: controlmatrix.Matrix{
+				FilesystemRead:  controlmatrix.FilesystemReadUnrestricted,
+				FilesystemWrite: controlmatrix.FilesystemWriteUnrestricted,
+				Network:         controlmatrix.NetworkDirect,
+				ProcessTree:     controlmatrix.ProcessTreeJobObject,
+				CrossProcess:    controlmatrix.CrossProcessRestricted,
+				Syscall:         controlmatrix.SyscallUnrestricted,
+				IPC:             controlmatrix.IPCUnrestricted,
+				PathIdentity:    controlmatrix.PathIdentityCanonical,
+				ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+				DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
+			},
+		})
 	default:
 		return Capability{Platform: runtime.GOOS, Backend: "none", Strength: StrengthNone}
 	}
@@ -173,7 +302,7 @@ func NewPlatformBackend(options Options) (Backend, error) {
 	}
 	var capability Capability
 	if runtime.GOOS == "linux" {
-		capability = runAttackProbe(helperPath)
+		capability = NormalizeCapability(runAttackProbe(helperPath))
 	} else {
 		capability = Probe()
 	}
@@ -295,6 +424,7 @@ func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command
 		AuthorityDigest:         command.AuthorityDigest,
 		PreparedAuthorityDigest: command.AuthorityDigest,
 		PreparedStrength:        b.capability.Strength,
+		PreparedControls:        CommandControls(b.capability, b.policy, command),
 		WorkspaceReadOnly:       command.WorkspaceReadOnly,
 		AdditionalReadPaths:     append([]string(nil), readPaths...),
 		WorkspaceWritePaths:     append([]string(nil), writePaths...),
@@ -450,6 +580,7 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 		AuthorityDigest:         command.AuthorityDigest,
 		PreparedAuthorityDigest: command.AuthorityDigest,
 		PreparedStrength:        b.capability.Strength,
+		PreparedControls:        CommandControls(b.capability, b.policy, command),
 		WorkspaceReadOnly:       command.WorkspaceReadOnly,
 		AdditionalReadPaths:     append([]string(nil), readPaths...),
 		WorkspaceWritePaths:     append([]string(nil), writePaths...),

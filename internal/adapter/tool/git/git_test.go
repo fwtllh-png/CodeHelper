@@ -63,7 +63,13 @@ func TestLocalGitReadOperations(t *testing.T) {
 type gitTestBackend struct{}
 
 func (gitTestBackend) Capability() sandbox.Capability {
-	return sandbox.Capability{Platform: "test", Backend: "passthrough", Strength: sandbox.StrengthStrong, Available: true}
+	return sandbox.Capability{
+		Platform: "test", Backend: "passthrough", Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
+	}
 }
 
 func (gitTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
