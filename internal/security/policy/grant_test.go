@@ -132,7 +132,7 @@ func TestSessionGrantMatchesOnlyTypedKey(t *testing.T) {
 
 func TestReusableGrantRejectsUnscopedInvocation(t *testing.T) {
 	call := Invocation{
-		CallID: "one", Tool: "external_mutation", Capability: CapabilityPlugin,
+		CallID: "one", Tool: "external_mutation", Capability: CapabilityExternal,
 		Access: tool.AccessTree, Sandbox: tool.SandboxNone,
 		Arguments: json.RawMessage(`{}`), Validated: true,
 	}

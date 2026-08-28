@@ -28,7 +28,6 @@ type SubjectKind string
 const (
 	SubjectBuiltin        SubjectKind = "builtin"
 	SubjectRepositoryHook SubjectKind = "repository_hook"
-	SubjectPlugin         SubjectKind = "plugin"
 	SubjectMCPTool        SubjectKind = "mcp_tool"
 	SubjectWorkflow       SubjectKind = "workflow"
 	SubjectWorker         SubjectKind = "worker"
@@ -212,7 +211,7 @@ func BuildExecutionOperation(input OperationInput) (ExecutionOperation, error) {
 		return ExecutionOperation{}, fmt.Errorf("digest operation arguments: %w", err)
 	}
 	switch input.Invocation.Binding.Capability {
-	case tool.CapabilityProcess, tool.CapabilityPlugin:
+	case tool.CapabilityProcess, tool.CapabilityExternal:
 		operation.Process = &ProcessIntent{
 			Kind: "tool", Tool: input.Invocation.Tool,
 			ArgumentsDigest: argumentsDigest,
@@ -334,7 +333,7 @@ func (s Subject) Validate() error {
 		return errors.New("execution subject is incomplete")
 	}
 	switch s.Kind {
-	case SubjectBuiltin, SubjectRepositoryHook, SubjectPlugin, SubjectMCPTool,
+	case SubjectBuiltin, SubjectRepositoryHook, SubjectMCPTool,
 		SubjectWorkflow, SubjectWorker, SubjectHost:
 	default:
 		return errors.New("execution subject kind is invalid")
@@ -433,8 +432,8 @@ func subjectForInvocation(invocation tool.PreparedInvocation) (Subject, error) {
 	switch tool.CatalogSourceKind(invocation.Tool, invocation.Ref.Source) {
 	case "mcp":
 		kind, trust = SubjectMCPTool, TrustExternal
-	case "plugin":
-		kind, trust = SubjectPlugin, TrustExternal
+	case "external":
+		kind, trust = SubjectHost, TrustExternal
 	case "dynamic":
 		kind, trust = SubjectHost, TrustHost
 	}

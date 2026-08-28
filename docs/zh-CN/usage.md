@@ -190,7 +190,7 @@ Composer 内的 Reasoning 菜单直接采用当前模型目录声明的档位。
 Off、Low、High、Max，默认 High；其他模型保留各自完整档位，不做跨档位折算。
 
 Credential 支持创建或轮换、在线校验和二次确认删除。Settings 还可查看 Tool 的
-Policy、Constitution 和 Sandbox 信息，以及 Skill/Plugin 的来源、健康、信任、权限
+Policy、Constitution 和 Sandbox 信息，以及 Skill 的来源、健康、信任、权限
 和 Runtime Control 操作结果。
 
 Agent Preset 保存经过 Runtime 校验的 Session Profile，不包含 Credential。Preset

@@ -241,7 +241,6 @@ type ReceiptSkill struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
 	Source  string `json:"source"`
-	Plugin  string `json:"plugin,omitempty"`
 	Digest  string `json:"digest"`
 	Locked  bool   `json:"locked"`
 }

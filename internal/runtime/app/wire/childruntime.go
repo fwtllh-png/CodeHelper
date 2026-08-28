@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/admission"
 	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -31,7 +31,7 @@ type childRuntime struct {
 	// runaway child mid-turn, this stops all children together once the session
 	// pot is spent. Real numbers only exist after a turn produces a receipt, so
 	// admission reads the ledger and settlement charges it.
-	governor *rlm.Governor
+	governor *admission.Governor
 	// tools owns the isolated tool planes; a closed child's is dropped here
 	// because this is where a child's lifetime ends.
 	tools       *childToolsets
@@ -69,7 +69,7 @@ type childTurn struct {
 	leaseRenewal      chan struct{}
 	timedOut          bool
 	startedAt         time.Time
-	lease             rlm.Lease
+	lease             admission.Lease
 	leased            bool
 	workAttempt       subagent.WorkAttempt
 	budgetReservation string
@@ -85,11 +85,11 @@ func (c *childRuntime) useBudget(ledger *workbudget.Ledger) {
 }
 
 func newChildRuntime(
-	limits config.Subagent, workspace string, governor *rlm.Governor, tools *childToolsets,
+	limits config.Subagent, workspace string, governor *admission.Governor, tools *childToolsets,
 	controllers ...subagent.WorkGraphController,
 ) *childRuntime {
 	if governor == nil {
-		governor = rlm.NewGovernor(rlm.Limits{})
+		governor = admission.NewGovernor(admission.Limits{})
 	}
 	value := &childRuntime{
 		limits: limits, root: workspace, governor: governor, tools: tools,
@@ -104,8 +104,8 @@ func newChildRuntime(
 	return value
 }
 
-func newChildGovernor(limits config.Subagent) *rlm.Governor {
-	return rlm.NewGovernor(rlm.Limits{
+func newChildGovernor(limits config.Subagent) *admission.Governor {
+	return admission.NewGovernor(admission.Limits{
 		MaxTokens: limits.MaxTokens, MaxCostUSD: limits.MaxCostUSD,
 		MaxDepth: limits.MaxDepth, MaxConcurrency: limits.MaxParallel,
 	})
@@ -669,38 +669,38 @@ func (c *childRuntime) reserveChildBudget(
 //
 // The lease is the runtime-wide running-turn fence. Manager independently owns
 // MaxTotal, MaxResident, and per-Session MaxParallel admission.
-func (c *childRuntime) admit(depth int) (rlm.Lease, error) {
+func (c *childRuntime) admit(depth int) (admission.Lease, error) {
 	limits := c.governor.Limits()
 	spent := c.governor.Snapshot()
 	if limits.MaxTokens > 0 && spent.SpentTokens >= limits.MaxTokens {
-		return rlm.Lease{}, childBudgetExhausted(
+		return admission.Lease{}, childBudgetExhausted(
 			protocol.BudgetResourceTokens,
 			"child_tree:"+c.root,
 			spent.SpentTokens,
 			limits.MaxTokens,
 			false,
-			rlm.ErrTokenBudget,
+			admission.ErrTokenBudget,
 		)
 	}
 	if limits.MaxCostUSD > 0 && spent.SpentCostUSD >= limits.MaxCostUSD {
-		return rlm.Lease{}, childBudgetExhausted(
+		return admission.Lease{}, childBudgetExhausted(
 			protocol.BudgetResourceCostMicrounits,
 			"child_tree:"+c.root,
 			childBudgetMicrounits(spent.SpentCostUSD),
 			childBudgetMicrounits(limits.MaxCostUSD),
 			false,
-			rlm.ErrCostBudget,
+			admission.ErrCostBudget,
 		)
 	}
 	lease, err := c.governor.Admit(depth, 0, 0)
 	if err == nil {
 		return lease, nil
 	}
-	return rlm.Lease{}, protocol.NewProblem(
+	return admission.Lease{}, protocol.NewProblem(
 		protocol.CodeResourceExhausted,
 		fmt.Sprintf("child agent at depth %d was not admitted: %s", depth, err),
 		// Concurrency frees up on its own; depth and spend do not.
-		errors.Is(err, rlm.ErrConcurrency), nil,
+		errors.Is(err, admission.ErrConcurrency), nil,
 	)
 }
 

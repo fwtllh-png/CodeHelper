@@ -79,8 +79,8 @@ func TestNormalizeEffectAndRisk(t *testing.T) {
 			kind: EffectNetworkMutating, risk: RiskHigh,
 		},
 		{
-			name: "plugin high",
-			call: effectInvocation("plugin_call", CapabilityPlugin, tool.AccessTree, tool.SandboxStrong),
+			name: "external high",
+			call: effectInvocation("external_call", CapabilityExternal, tool.AccessTree, tool.SandboxStrong),
 			kind: EffectExternalMutation, risk: RiskHigh,
 		},
 	}
@@ -173,8 +173,8 @@ func TestEffectRiskDrivesApprovalWithoutToolNameExceptions(t *testing.T) {
 			want: ActionAllow,
 		},
 		{
-			name: "plugin bypass allows", permission: PermissionBypass,
-			call: effectInvocation("plugin_call", CapabilityPlugin, tool.AccessTree, tool.SandboxStrong),
+			name: "external bypass allows", permission: PermissionBypass,
+			call: effectInvocation("external_call", CapabilityExternal, tool.AccessTree, tool.SandboxStrong),
 			want: ActionAllow,
 		},
 	}

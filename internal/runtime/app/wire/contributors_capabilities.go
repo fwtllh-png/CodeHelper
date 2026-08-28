@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	pluginextension "github.com/fwtllh-png/CodeHelper/internal/adapter/extension/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -36,17 +35,10 @@ func (c skillContributor) Contribute(
 			if err != nil {
 				return fmt.Errorf("skill lock: %w", err)
 			}
-			pluginSkills, err := pluginextension.StageSkills(
-				ctx, c.output.pluginCapabilities, c.output.pluginRegistry,
-			)
-			if err != nil {
-				return err
-			}
 			catalog, err := skill.Discover(skill.DiscoveryOptions{
 				Workspace: c.workspace, ConfiguredDir: c.paths.SkillsConfiguredDir,
 				UserHome: c.paths.UserHome, Locale: c.paths.SkillsLocale,
 				State: stateStore, Lock: lockStore, RuntimeVersion: buildinfo.Version,
-				Plugins: pluginSkills,
 			})
 			if err != nil {
 				return fmt.Errorf("skill discovery: %w", err)
@@ -89,16 +81,6 @@ func (c hookContributor) Contribute(
 				return fmt.Errorf("hooks config: %w", loadErr)
 			}
 			mergeHookConfig(&combined, config)
-			configured = true
-		}
-		pluginHooks, pluginConfigured, err := pluginextension.HookConfig(
-			ctx, c.output.pluginCapabilities, c.output.pluginRegistry,
-		)
-		if err != nil {
-			return err
-		}
-		if pluginConfigured {
-			mergeHookConfig(&combined, pluginHooks)
 			configured = true
 		}
 		if !configured {

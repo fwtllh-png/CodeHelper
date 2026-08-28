@@ -14,7 +14,6 @@ type ResolvedSkill struct {
 	Name         string            `json:"name"`
 	Version      string            `json:"version"`
 	Source       Source            `json:"source"`
-	Plugin       string            `json:"plugin,omitempty"`
 	Digest       string            `json:"digest"`
 	Dependencies map[string]string `json:"dependencies,omitempty"`
 	Locked       bool              `json:"locked"`
@@ -195,11 +194,6 @@ func (c *Catalog) resolveEntries(
 				ErrDependencyConflict, name, requiredBy,
 			)
 		}
-		if item.source == SourcePlugin {
-			if err := c.verify(ctx, item); err != nil {
-				return fmt.Errorf("plugin skill %q authority: %w", name, err)
-			}
-		}
 		if item.manifest == nil {
 			if governedOnly || requiredBy != "" {
 				return fmt.Errorf(
@@ -260,25 +254,16 @@ func (c *Catalog) loadCandidate(
 	item candidate,
 	locked bool,
 ) (Loaded, error) {
-	var rawSkill, rawManifest []byte
-	if item.source == SourcePlugin {
-		if err := c.verify(ctx, item); err != nil {
-			return Loaded{}, fmt.Errorf("plugin skill authority: %w", err)
-		}
-		rawSkill = append([]byte(nil), item.raw...)
-		rawManifest = append([]byte(nil), item.rawManifest...)
-	} else {
-		data, err := readRegularAt(item.root, item.relative, c.limits.MaxFileBytes)
+	rawSkill, err := readRegularAt(item.root, item.relative, c.limits.MaxFileBytes)
+	if err != nil {
+		return Loaded{}, fmt.Errorf("read skill safely: %w", err)
+	}
+	var rawManifest []byte
+	if item.manifest != nil {
+		manifestRelative := filepath.Join(filepath.Dir(item.relative), ManifestFileName)
+		rawManifest, err = readRegularAt(item.root, manifestRelative, 64<<10)
 		if err != nil {
-			return Loaded{}, fmt.Errorf("read native skill safely: %w", err)
-		}
-		rawSkill = data
-		if item.manifest != nil {
-			manifestRelative := filepath.Join(filepath.Dir(item.relative), ManifestFileName)
-			rawManifest, err = readRegularAt(item.root, manifestRelative, 64<<10)
-			if err != nil {
-				return Loaded{}, fmt.Errorf("read native skill manifest safely: %w", err)
-			}
+			return Loaded{}, fmt.Errorf("read skill manifest safely: %w", err)
 		}
 	}
 	document, err := parseDocument(rawSkill)
@@ -324,7 +309,7 @@ func resolvedSkills(items []candidate, locked bool) []ResolvedSkill {
 		}
 		result = append(result, ResolvedSkill{
 			Name: item.metadata.Name, Version: version, Source: item.source,
-			Plugin: item.plugin, Digest: item.digest, Dependencies: dependencies,
+			Digest: item.digest, Dependencies: dependencies,
 			Locked: locked && item.manifest != nil,
 		})
 	}
@@ -338,12 +323,12 @@ func lockfileFor(runtimeVersion string, items []candidate) Lockfile {
 		Skills:         make([]LockEntry, 0, len(items)),
 	}
 	for _, item := range items {
-		if item.manifest == nil || item.source == SourcePlugin {
+		if item.manifest == nil {
 			continue
 		}
 		lockfile.Skills = append(lockfile.Skills, LockEntry{
 			Name: item.metadata.Name, Version: item.manifest.Version,
-			Source: item.source, Plugin: item.plugin, Digest: item.digest,
+			Source: item.source, Digest: item.digest,
 			Dependencies: cloneDependencies(item.manifest.Dependencies),
 		})
 	}
@@ -374,7 +359,7 @@ func compareLockfiles(expected, actual Lockfile) error {
 			return fmt.Errorf("skill %q is missing from lock", wanted.Name)
 		}
 		if wanted.Version != got.Version || wanted.Source != got.Source ||
-			wanted.Plugin != got.Plugin || wanted.Digest != got.Digest ||
+			wanted.Digest != got.Digest ||
 			!equalDependencies(wanted.Dependencies, got.Dependencies) {
 			return fmt.Errorf("skill %q differs from lock", wanted.Name)
 		}
@@ -414,7 +399,6 @@ func lockMatches(item candidate, entry LockEntry) bool {
 		entry.Name == item.metadata.Name &&
 		entry.Version == item.manifest.Version &&
 		entry.Source == item.source &&
-		entry.Plugin == item.plugin &&
 		entry.Digest == item.digest &&
 		equalDependencies(entry.Dependencies, item.manifest.Dependencies)
 }

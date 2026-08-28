@@ -78,7 +78,7 @@ Turn Kernel 解决“一个回合如何正确结束”；WorkGraph 解决“多�
 | Application | `internal/runtime/app` | Operation、Session、Turn Lease、Terminal、Recovery |
 | Composition | `internal/runtime/app/wire` | 具体依赖构造、资源关闭、后台服务启动 |
 | Agent | `internal/runtime/agent` | Turn Kernel、Engine、Context、Prompt |
-| Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Plugin、Hook |
+| Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Hook |
 | Security | `internal/security` | Policy、Permission、Constitution、Credential、Sandbox |
 | Orchestration | `internal/orchestration` | WorkGraph、Task、Worker、Workflow、Subagent |
 | Persistence | `internal/persist` | SQLite、CAS、Event、Session、Snapshot、Journal |

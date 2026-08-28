@@ -58,7 +58,7 @@ last_verified: null
 
 ## 问题背景
 
-Provider、Credential、Route、Sandbox、Tool、Journal、Trace、MCP、Plugin、
+Provider、Credential、Route、Sandbox、Tool、Journal、Trace、MCP、
 Persistence 和 Context Budget 必须一致连接。每个 Host 分别构造会复制 Policy；
 Agent Loop 内构造则混淆 Configuration 与 Behavior。
 
@@ -88,8 +88,8 @@ flowchart TD
 - 构建 Tool Registry、Guard、Policy、Constitution、Sandbox；
 - 组装 Stable Prompt Context 与 Partition Budget；
 - 连接 Journal、Diagnostics、Verify、Trace、Usage 和 Store；
-- 初始化 MCP、Skill、Plugin、Hook、Dynamic Tool；
-- 解析统一 Typed Extension Plan 与 Lifecycle Owner；
+- 初始化 MCP、Skill、Hook、Dynamic Tool；
+- 解析统一 Typed Extension Plan；
 - 装配 Observation Privacy、Journal、Router、Retention 与 OTLP Projection；
 - 构建 Child Runtime、Worktree 与 Background Executor；
 - 选择 Persistent 或 In-memory Application Runtime；
@@ -120,12 +120,11 @@ Merge 同样是构造模块：`app/persistence` 组合 Repository 与 Recovery�
 `orchestration/chatmerge.Service` 拥有隔离 Workspace 的 Baseline、Preview 与
 Journaled Apply。
 
-Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Plugin、Skill、Memory、
+Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Skill、Memory、
 Dynamic Tool、Hook 和 MCP 注册 Typed Contributor，只接收显式 Capability，不接收
 `buildState`，并返回有界 Receipt。Sealed Registry 将 Source State 确定性解析为绑定
-Permission Digest 的 Digested Plan；Runtime Lifecycle 随后拥有 Generation 与每个
-Contributed Effect。Task/Automation 注册归 Orchestration Module，而非 Extension
-Contributor Chain。
+Permission Digest 的 Digested Plan。Task/Automation 注册归 Orchestration Module，
+而非 Extension Contributor Chain。
 
 构造与关闭共享 `wire.ResourceStack`。`NewExec` 只注册一次资源关闭函数；
 部分构造失败回滚与正常关闭都按注册逆序关闭同一 Stack。每项资源最多关闭一次，

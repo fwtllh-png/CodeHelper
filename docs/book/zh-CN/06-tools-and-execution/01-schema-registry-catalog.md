@@ -65,9 +65,9 @@ Schema 规定调用形状，Trusted Binding 规定安全语义。外部 Requeste
 | Scheduling | Trusted Parallel Policy、Resolved Resource | Claims/Scheduler |
 | Lifecycle | Availability、Deferred、Source/Revision | Catalog/Host |
 
-Registry 校验跨字段不变量，例如 Process Resource 必须绑定 Process/Plugin Capability、
+Registry 校验跨字段不变量，例如 Process Resource 必须绑定 Process/External Capability、
 Write Resource 不能绑定 Read Capability、Before-image Transaction 必须是 Workspace
-Edit。MCP、Plugin、Dynamic 等外部 Source 必须显式提供可信 Binding；Legacy
+Edit。MCP、Dynamic 等外部 Source 必须显式提供可信 Binding；Legacy
 Registration 会 Fail Closed。
 
 Model 只看到 Public Tool Definition；Private Catalog Authority/Execution Metadata 不进入
@@ -126,8 +126,8 @@ Registry Validation、Authorization、Guard、Sandbox Policy 都在 Kit 之外�
 Typed Boundary 是所有 Executor 的默认路径，包括 Tier-2 工具（quality、handle、
 automation 与 MCP Helper Call 现在解码为静态输入类型）。Schema 由他方拥有的
 Executor 以例外方式保留 Raw JSON，并必须在 `typed-boundary-exception:` 注释中说明
-原因——该注释由 Migration Guard Test 强制：例如 Plugin Executor 的具体身份，以及
-Schema 属于远端 Catalog 的 Remote MCP Tool。
+原因——该注释由 Migration Guard Test 强制，例如 Schema 属于远端 Catalog 的
+Remote MCP Tool。
 
 `ErrorCategory` 为稳定路由分类失败：`unknown_tool`、`tool_unavailable`、
 `invalid_arguments`、`tool_precondition`，与原有 catalog-stale、revoked、
@@ -150,7 +150,7 @@ JSON-compatibility，以及保持 Catalog Identity 的 Deferred Materialization�
 
 ## 设计取舍
 
-静态列表无法支持 MCP/Plugin 变化；仅按 Name 解析存在 TOCTOU 替换风险。Snapshot Binding
+静态列表无法支持 MCP/Dynamic Tool 变化；仅按 Name 解析存在 TOCTOU 替换风险。Snapshot Binding
 既保留动态发现，又确保执行的就是模型 Sample 时看到的 Authority。
 
 ## 失败模式与安全边界

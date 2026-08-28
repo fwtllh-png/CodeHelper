@@ -35,8 +35,6 @@ type ExecOptions struct {
 	FixturePath         string
 	Permission          string
 	RepositoryRulesPath string
-	PluginBundle        string
-	PluginReceipt       string
 	MCPConfigPath       string
 	MetricsPath         string
 	LogPath             string

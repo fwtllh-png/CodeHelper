@@ -109,9 +109,7 @@ func TestSessionHasOneExtensionStateOwner(t *testing.T) {
 	if _, ok := sessionType.FieldByName("extensions"); !ok {
 		t.Fatal("Session does not own the extension runtime")
 	}
-	for _, legacy := range []string{
-		"pluginRegistry", "pluginTools", "contributionReceipts",
-	} {
+	for _, legacy := range []string{"contributionReceipts"} {
 		if _, ok := sessionType.FieldByName(legacy); ok {
 			t.Errorf("Session retains legacy extension state field %q", legacy)
 		}

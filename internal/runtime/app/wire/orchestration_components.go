@@ -12,7 +12,6 @@ import (
 	agenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/agent"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	rlmtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
@@ -20,7 +19,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	persiststate "github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -73,7 +71,7 @@ func buildChildOrchestration(
 ) error {
 	session, execution := state.session, state.config.execution
 	limits := effectiveSubagentLimits(execution.Subagent, execution.TurnBudgetTokens)
-	output.sharedGovernor, output.childGovernor = rlm.NewGovernor(rlm.Limits{}), newChildGovernor(limits)
+	output.childGovernor = newChildGovernor(limits)
 	orchestrationRoot := childOrchestrationRoot(state)
 	agentRoot := filepath.Join(orchestrationRoot, "agents")
 	if err := os.MkdirAll(agentRoot, 0o700); err != nil {
@@ -151,47 +149,6 @@ func buildChildOrchestration(
 	return nil
 }
 
-func buildRLMOrchestration(
-	_ context.Context,
-	state *buildState,
-	output *orchestrationBuildState,
-) error {
-	execution := state.config.execution
-	root := filepath.Join(execution.Workspace, ".codehelper", "rlm")
-	workspace, err := sandbox.NewWorkspace(execution.Workspace)
-	if err != nil {
-		return fmt.Errorf("rlm workspace: %w", err)
-	}
-	var subQuery rlm.SubQueryClient
-	route, routeErr := state.provider.routes.For(model.PurposeSubquery)
-	if routeErr != nil {
-		subQuery = rlm.RouteSubQuery{
-			Provider: state.provider.toolSampler, Unavailable: routeErr,
-		}
-	} else if err := route.Validate(); err == nil {
-		subQuery = rlm.RouteSubQuery{
-			Provider: state.provider.toolSampler, Route: route,
-		}
-	}
-	store, err := rlm.NewStore(rlm.StoreOptions{
-		Root: root, Backend: state.platform.backend, Workspace: workspace,
-		SubQuery: subQuery, Governor: output.sharedGovernor,
-	})
-	if err != nil {
-		return fmt.Errorf("rlm store: %w", err)
-	}
-	if err := rlmtool.Register(state.tools.registry, rlmtool.Options{
-		Store: store, Handles: state.tools.handleStore,
-		Governor: output.sharedGovernor, SubQuery: subQuery,
-		Root:    root,
-		Backend: state.platform.backend, Workspace: execution.Workspace, SessionID: state.config.hookSessionID,
-	}); err != nil {
-		return fmt.Errorf("rlm tools: %w", err)
-	}
-	state.session.rlmStore = store
-	return nil
-}
-
 func buildInteractionOrchestration(
 	_ context.Context,
 	state *buildState,
@@ -218,14 +175,14 @@ func buildInteractionOrchestration(
 	}
 	if err := interacttool.Register(state.tools.registry, interacttool.Options{
 		Host: host, Backend: state.platform.backend,
-		RLM: session.rlmStore, Governor: output.sharedGovernor, Vision: vision,
+		Vision: vision,
 		OnPlan: applyPlan, Workspace: execution.Workspace,
 	}); err != nil {
 		return fmt.Errorf("interact tools: %w", err)
 	}
 	session.inputHost = host
 	if tools := session.childTools; tools != nil {
-		tools.bindInteractions(session.rlmStore, output.sharedGovernor, vision, applyPlan)
+		tools.bindInteractions(vision, applyPlan)
 	}
 	return nil
 }

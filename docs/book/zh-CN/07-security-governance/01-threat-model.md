@@ -41,7 +41,7 @@ Boundary、Attacker Goal 与 Residual Risk。
 | Event/Journal/Receipt | Integrity/Recovery |
 | Observation Journal/CAS Payload | Privacy/Bounded Retention/Causal Integrity |
 | Host Process/Network | Model-selected Effect Isolation |
-| Plugin/MCP/Skill | Identity/Integrity/Revocation |
+| MCP/Skill | Identity/Integrity/Revocation |
 
 Local Operator、Reviewed Config、OS Account、Trusted Release Key 是 Authority Root，但
 Operator Mistake、Compromised Dependency、Malicious Repository 仍在 Scope 内。
@@ -49,7 +49,7 @@ Operator Mistake、Compromised Dependency、Malicious Repository 仍在 Scope �
 ## Untrusted Input
 
 User Prompt、Repository Text、Generated Code、Model Output、Tool Argument、Provider/MCP
-Response、Skill、Plugin、Hook、Host Protocol Request、Archive、Symlink、Environment、
+Response、Skill、Hook、Host Protocol Request、Archive、Symlink、Environment、
 Foreign Persisted State、Process Output 都是不可信输入。
 
 ```mermaid

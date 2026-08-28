@@ -44,15 +44,15 @@ func TestToolSearchRanksDeferredMatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	deferred := stubExec{
-		name: "beta_plugin", desc: "plugin beta helper", deferred: true,
+		name: "beta_extension", desc: "external beta helper", deferred: true,
 	}.Descriptor()
 	if err := registry.RegisterTrusted(
-		"test:beta-plugin",
+		"test:beta-extension",
 		tool.NewExternalDeferredRegistration(
 			tool.ExternalFromDescriptor(deferred),
 			tool.TrustedBindingFromDescriptor(deferred),
 			func() (tool.Executor, error) {
-				return stubExec{name: "beta_plugin", desc: "plugin beta helper"}, nil
+				return stubExec{name: "beta_extension", desc: "external beta helper"}, nil
 			},
 		),
 	); err != nil {
@@ -60,12 +60,12 @@ func TestToolSearchRanksDeferredMatches(t *testing.T) {
 	}
 	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name:      toolsearch.ToolName,
-		Arguments: json.RawMessage(`{"query":"plugin beta"}`),
+		Arguments: json.RawMessage(`{"query":"external beta"}`),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, "beta_plugin") {
+	if !strings.Contains(result.Content, "beta_extension") {
 		t.Fatalf("content=%s", result.Content)
 	}
 	snapshot, err := registry.Snapshot()
@@ -73,13 +73,13 @@ func TestToolSearchRanksDeferredMatches(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entry := range snapshot.Entries() {
-		if entry.Name == "beta_plugin" {
+		if entry.Name == "beta_extension" {
 			if entry.State != tool.CatalogEntryMaterialized ||
 				entry.Descriptor.Availability != tool.AvailabilityAvailable {
 				t.Fatalf("entry = %+v, want materialized/available", entry)
 			}
 			called, executeErr := tooltest.Execute(t.Context(), registry, tool.Call{
-				Name: "beta_plugin", Arguments: json.RawMessage(`{}`),
+				Name: "beta_extension", Arguments: json.RawMessage(`{}`),
 			})
 			if executeErr != nil || called.Content == "" {
 				t.Fatalf("execute materialized tool: result=%+v err=%v", called, executeErr)
@@ -87,7 +87,7 @@ func TestToolSearchRanksDeferredMatches(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("beta_plugin descriptor is missing")
+	t.Fatal("beta_extension descriptor is missing")
 }
 
 func TestConcurrentToolSearchSharesMaterializationTransition(t *testing.T) {

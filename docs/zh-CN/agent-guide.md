@@ -139,7 +139,7 @@ cd web && npm run check && npm test -- relevant-area
 
 ### Security
 
-修改 Guard、Policy、Permission、Constitution、Sandbox、Egress、Credential 或 Plugin
+修改 Guard、Policy、Permission、Constitution、Sandbox、Egress、Credential 或 MCP
 Trust 时：
 
 1. 枚举攻击者可控输入；

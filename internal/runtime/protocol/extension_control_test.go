@@ -9,21 +9,17 @@ import (
 func TestExtensionControlOperationValidation(t *testing.T) {
 	operation := ExtensionControlOperation{
 		Version: Version, ID: "operation-1",
-		Kind: ExtensionControlPlugin, Action: ExtensionActionInstall,
-		Name: "review", VersionValue: "1.0.0", CreatedAt: time.Now().UTC(),
+		Kind: ExtensionControlSkill, Action: ExtensionActionEnable,
+		Name: "review", CreatedAt: time.Now().UTC(),
 	}
 	if err := operation.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	tests := map[string]func(*ExtensionControlOperation){
-		"id":      func(value *ExtensionControlOperation) { value.ID = "../bad" },
-		"kind":    func(value *ExtensionControlOperation) { value.Kind = "unknown" },
-		"action":  func(value *ExtensionControlOperation) { value.Action = "execute" },
-		"version": func(value *ExtensionControlOperation) { value.VersionValue = "" },
-		"capability": func(value *ExtensionControlOperation) {
-			value.Action = ExtensionActionCapabilityEnable
-			value.Capability = ""
-		},
+		"id":     func(value *ExtensionControlOperation) { value.ID = "../bad" },
+		"kind":   func(value *ExtensionControlOperation) { value.Kind = "unknown" },
+		"action": func(value *ExtensionControlOperation) { value.Action = "execute" },
+		"name":   func(value *ExtensionControlOperation) { value.Name = "" },
 	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {

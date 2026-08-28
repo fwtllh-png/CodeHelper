@@ -110,7 +110,7 @@ loopback HTTP/WebSocket 连接 Embedded UI 与共享 Runtime；Provider HTTP、M
 | Entry | `cmd/codehelper` | Process Startup 与 Web Host |
 | Host | `internal/host` | Presentation 与 Transport Adapter |
 | Runtime | `internal/runtime` | Protocol、Lifecycle、Agent Loop、Wiring |
-| Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Plugin、Hook |
+| Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Hook |
 | Security | `internal/security` | Policy、Permission、Constitution、Sandbox |
 | Orchestration | `internal/orchestration` | WorkGraph、Worker、Automation、Workflow、Lane、Fleet、Subagent |
 | Persistence | `internal/persist` | SQLite、Event、CAS、Session、Journal |
@@ -173,12 +173,10 @@ SQLite 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchest
 Child Worktree/Toolset。Provider 发布所选 Provider/Model Catalog，Security 发布
 Permission Store 与 Guard Factory。
 
-Builtin 与 Extension Tool 共享同一个 Registry。Plugin、Skill、Memory、Dynamic
+Builtin 与 Extension Tool 共享同一个 Registry。Skill、Memory、Dynamic
 Tool、Hook 和 MCP Contributor 注册 Typed Contract，只接收显式 Capability，并返回
-有界 Receipt。随后 Source Resolution 生成 Digested Extension Plan；Runtime
-Lifecycle 拥有 Generation 与每个 Process、Connection、Subscription、Lease、Timer、
-Tool Registration。Task/Automation 注册归 Orchestration，而非 Extension Contributor
-Chain。
+有界 Receipt。随后 Source Resolution 生成 Digested Extension Plan。Task/Automation
+注册归 Orchestration，而非 Extension Contributor Chain。
 
 Runtime 构造具有 Prepared 状态：`RuntimeModule` 只构造 Facade 并恢复静态 Durable
 State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh、启动

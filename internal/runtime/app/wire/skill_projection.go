@@ -27,7 +27,7 @@ func selectTurnSkills(
 	for _, summary := range selection.Visible {
 		out = append(out, agentengine.SkillSummary{
 			Name: summary.Name, Description: summary.Description,
-			Source: string(summary.Source), Path: summary.Path, Plugin: summary.Plugin,
+			Source: string(summary.Source), Path: summary.Path,
 			Handle: summary.Handle, PackageHandle: summary.PackageHandle,
 			ResourceHandle: summary.ResourceHandle,
 		})

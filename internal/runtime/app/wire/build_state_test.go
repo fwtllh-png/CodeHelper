@@ -207,8 +207,6 @@ func TestExtensionContributorIDsAreUnique(t *testing.T) {
 		seen[id] = struct{}{}
 	}
 	for _, required := range []string{
-		"plugin-bundle",
-		"plugin-registry",
 		"skills",
 		"memory",
 		"dynamic-tools",

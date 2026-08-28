@@ -3,7 +3,6 @@ package skill
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"strings"
 )
 
@@ -22,15 +21,13 @@ func candidateMatchesHandle(item candidate, handle string) bool {
 
 func skillHandle(item candidate) string {
 	return boundedSkillHandle("skh", strings.Join([]string{
-		item.metadata.Name, string(item.source), item.plugin, item.digest,
-		fmt.Sprint(item.authority.Generation), item.authority.Token,
+		item.metadata.Name, string(item.source), item.digest,
 	}, "\x00"))
 }
 
 func skillPackageHandle(item candidate) string {
 	return boundedSkillHandle("skp", strings.Join([]string{
-		string(item.source), item.plugin, item.digest,
-		fmt.Sprint(item.authority.Generation), item.authority.Token,
+		string(item.source), item.digest,
 	}, "\x00"))
 }
 

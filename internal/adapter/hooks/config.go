@@ -21,7 +21,6 @@ type Source string
 
 const (
 	SourceRepository Source = "repository"
-	SourcePlugin     Source = "plugin"
 	SourceBuiltin    Source = "builtin"
 )
 
@@ -209,7 +208,7 @@ func BindRepository(config *Config) {
 
 func validHookMetadata(hook HookConfig) bool {
 	switch hook.Source {
-	case SourceRepository, SourcePlugin, SourceBuiltin:
+	case SourceRepository, SourceBuiltin:
 	default:
 		return false
 	}

@@ -77,13 +77,6 @@
       "reason": "Runtime-owned memory state."
     },
     {
-      "path": "internal/adapter/plugin",
-      "prefix": true,
-      "categories": ["process", "file", "network"],
-      "owner": "plugin adapter",
-      "reason": "Guard-authorized plugin execution, verified artifact staging, trust state, and registry client."
-    },
-    {
       "path": "internal/adapter/skill",
       "prefix": true,
       "categories": ["file"],
@@ -108,12 +101,6 @@
       "categories": ["network"],
       "owner": "git tool",
       "reason": "Guarded hosted repository metadata transport."
-    },
-    {
-      "path": "internal/adapter/tool/rlm/rlm.go",
-      "categories": ["network"],
-      "owner": "rlm tool",
-      "reason": "Guarded RLM bridge transport."
     },
     {
       "path": "internal/adapter/tool/web",
@@ -163,13 +150,6 @@
       "categories": ["file"],
       "owner": "orchestration",
       "reason": "Runtime-owned worktree, lane, and durable orchestration state."
-    },
-    {
-      "path": "internal/runtime/agent/rlm",
-      "prefix": true,
-      "categories": ["process", "file", "network"],
-      "owner": "rlm runtime",
-      "reason": "Guard-authorized sandboxed REPL process, state, and loopback bridge."
     },
     {
       "path": "internal/runtime/app/wire",

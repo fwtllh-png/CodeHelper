@@ -158,7 +158,7 @@ func TrustedBindingFromDescriptor(descriptor Descriptor) TrustedBinding {
 		binding.Required.Network = controlmatrix.NetworkDirect
 		binding.Required.PathIdentity = controlmatrix.PathIdentityDescriptorRelative
 		if descriptor.Capability == CapabilityProcess ||
-			descriptor.Capability == CapabilityPlugin {
+			descriptor.Capability == CapabilityExternal {
 			binding.Required.ProcessTree = controlmatrix.ProcessTreeGroupKill
 		}
 		for _, resource := range descriptor.ResourceResolver.Templates {
@@ -223,14 +223,14 @@ func (b TrustedBinding) Validate() error {
 	for _, resource := range b.ResourceResolver.Templates {
 		switch resource.Kind {
 		case "process":
-			if b.Capability != CapabilityProcess && b.Capability != CapabilityPlugin {
-				return errors.New("process resource requires process or plugin capability")
+			if b.Capability != CapabilityProcess && b.Capability != CapabilityExternal {
+				return errors.New("process resource requires process or external capability")
 			}
 		case "host", "url":
 			if b.Capability != CapabilityNetwork &&
 				b.Capability != CapabilityProcess &&
-				b.Capability != CapabilityPlugin {
-				return errors.New("network resource requires network, process or plugin capability")
+				b.Capability != CapabilityExternal {
+				return errors.New("network resource requires network, process or external capability")
 			}
 		}
 		if resource.Access == AccessWrite && b.Capability == CapabilityRead {
@@ -256,7 +256,7 @@ func (b TrustedBinding) Validate() error {
 		if b.Required.FilesystemRead == "" || b.Required.Network == "" {
 			return errors.New("strong sandbox requires filesystem-read and network controls")
 		}
-		if (b.Capability == CapabilityProcess || b.Capability == CapabilityPlugin) &&
+		if (b.Capability == CapabilityProcess || b.Capability == CapabilityExternal) &&
 			b.Required.ProcessTree == "" {
 			return errors.New("strong process sandbox requires process-tree control")
 		}

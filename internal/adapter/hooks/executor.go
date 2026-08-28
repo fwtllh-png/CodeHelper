@@ -263,9 +263,7 @@ func (e *executor) authorizeProcess(
 			authority.LeaseValidation{}, errors.New("hook Process Broker is unavailable")
 	}
 	subjectKind, trust := authority.SubjectRepositoryHook, authority.TrustWorkspace
-	if hook.Source == SourcePlugin {
-		subjectKind, trust = authority.SubjectPlugin, authority.TrustExternal
-	} else if hook.Source == SourceBuiltin {
+	if hook.Source == SourceBuiltin {
 		subjectKind, trust = authority.SubjectBuiltin, authority.TrustBuiltin
 	}
 	subject, err := authority.NewManagedProcessSubject(

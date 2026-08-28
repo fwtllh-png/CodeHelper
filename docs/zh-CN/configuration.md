@@ -182,10 +182,6 @@ model = "gpt-4.1-mini"
 provider = "openai-responses"
 model = "gpt-4.1"
 
-[route.subquery]
-provider = "openai"
-model = "gpt-4.1-mini"
-
 [route.summary]
 provider = "openai"
 model = "gpt-4.1-mini"
@@ -339,7 +335,7 @@ Profile 在 Turn 之间切换；运行中的 Turn 继续使用启动时冻结的
 跨 Provider 切换仍属于 Runtime 启动配置，必须修改 `[execution]` 后重启，界面以只读值
 呈现该边界，不显示不可操作的 Provider 下拉框。
 
-用途路由支持 `plan`、`vision` 和 `subquery`。设置 `route.lock=true` 后，缺失用途路由
+用途路由支持 `plan`、`vision` 和 `summary`。设置 `route.lock=true` 后，缺失用途路由
 会直接报错，不再静默回落到主执行路由。
 
 ## 凭证
@@ -428,9 +424,8 @@ stdio MCP 配置示例：
 }
 ```
 
-`host_trusted` 只承认位于外部 State Directory 的 Operator 配置或已经过 Plugin Trust
-校验的配置。它表示 MCP Server 当前以宿主进程权限运行，不表示 MCP Tool Call 绕过
-Guard。
+`host_trusted` 只承认位于外部 State Directory 的 Operator 配置。它表示 MCP Server
+当前以宿主进程权限运行，不表示 MCP Tool Call 绕过 Guard。
 
 ## Observation Capture 与 Export
 

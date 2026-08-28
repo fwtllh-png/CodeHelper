@@ -314,7 +314,7 @@ func validatePermissionProfile(profile *PermissionProfile, needsNetwork bool) er
 		return errors.New("permission_profile.capabilities must not be empty")
 	}
 	for capability := range capabilities {
-		if !oneOf(capability, "read", "write", "process", "network", "plugin") {
+		if !oneOf(capability, "read", "write", "process", "network", "external") {
 			return fmt.Errorf("permission profile has invalid capability %q", capability)
 		}
 	}
@@ -362,7 +362,7 @@ func validatePermissionCeiling(profile *PermissionProfile, binding ToolBinding) 
 }
 
 func validateBinding(binding ToolBinding) error {
-	if !oneOf(binding.Capability, "read", "write", "process", "network", "plugin") {
+	if !oneOf(binding.Capability, "read", "write", "process", "network", "external") {
 		return errors.New("capability must be explicit")
 	}
 	if !oneOf(binding.AccessMode, "read", "write", "tree") {

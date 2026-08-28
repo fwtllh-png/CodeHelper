@@ -1197,7 +1197,7 @@ export class RuntimeClient {
   }
 
   async setExtensionEnabled(
-    kind: "plugin" | "skill",
+    kind: "skill",
     name: string,
     enabled: boolean
   ): Promise<ExtensionControlResult> {
@@ -1215,10 +1215,9 @@ export class RuntimeClient {
   }
 
   async controlExtension(
-    kind: "plugin" | "skill",
+    kind: "skill",
     name: string,
-    action: ExtensionControlAction,
-    capability = ""
+    action: ExtensionControlAction
   ): Promise<ExtensionControlResult> {
     const result = await this.call<ExtensionControlResult>("extension/control", {
       version: 1,
@@ -1226,7 +1225,6 @@ export class RuntimeClient {
       kind,
       action,
       name,
-      capability,
       created_at: new Date().toISOString()
     });
     if (!["detail", "health", "permissions", "receipts"].includes(action)) {

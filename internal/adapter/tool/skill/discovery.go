@@ -210,8 +210,8 @@ func (t *readTool) run(
 	for _, item := range plan {
 		resolved = append(resolved, skillruntime.ResolvedSkill{
 			Name: item.Name, Version: item.Version, Source: item.Source,
-			Plugin: item.Plugin, Digest: item.Digest,
-			Dependencies: item.Dependencies, Locked: item.Locked,
+			Digest: item.Digest, Dependencies: item.Dependencies,
+			Locked: item.Locked,
 		})
 	}
 	return tool.Result{

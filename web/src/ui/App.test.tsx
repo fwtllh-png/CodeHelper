@@ -950,8 +950,8 @@ describe("projectTranscript", () => {
       created_at: "2026-01-01T00:00:00Z"
     }];
     value.extensions = [{
-      kind: "plugin",
-      name: "review-tools",
+      kind: "skill",
+      name: "review",
       enabled: true,
       health: "ready"
     }];
@@ -971,13 +971,13 @@ describe("projectTranscript", () => {
     fireEvent.click(screen.getByRole("button", {name: "Restore"}));
     fireEvent.click(screen.getByRole("button", {name: "Fork"}));
     fireEvent.click(screen.getByRole("button", {name: "Extensions"}));
-    fireEvent.click(screen.getByRole("checkbox", {name: /review-tools/}));
+    fireEvent.click(screen.getByRole("checkbox", {name: /review/}));
 
     expect(client.restoreCheckpoint).toHaveBeenCalledWith("checkpoint-1");
     expect(client.forkCheckpoint).toHaveBeenCalledWith("checkpoint-1");
     expect(client.setExtensionEnabled).toHaveBeenCalledWith(
-      "plugin",
-      "review-tools",
+      "skill",
+      "review",
       false
     );
   });
@@ -1158,15 +1158,14 @@ describe("projectTranscript", () => {
     });
   });
 
-  it("shows extension trust metadata and routes diagnostics through control plane", async () => {
+  it("shows skill metadata and routes diagnostics through control plane", async () => {
     const value = snapshot();
     value.extensions = [{
-      kind: "plugin",
-      name: "review-tools",
+      kind: "skill",
+      name: "review",
       version: "1.2.0",
-      source: "/plugins/review-tools",
-      publisher: "example",
-      trust: "untrusted",
+      source: "workspace",
+      trust: "catalog",
       digest: "a".repeat(64),
       enabled: true,
       health: "ready",
@@ -1178,25 +1177,24 @@ describe("projectTranscript", () => {
     await screen.findByRole("dialog", {name: "Settings"});
     fireEvent.click(screen.getByRole("button", {name: "Extensions"}));
 
-    expect(screen.getByText("Trust: untrusted")).toBeTruthy();
+    expect(screen.getByText("Trust: catalog")).toBeTruthy();
     expect(screen.getByText("Permissions: workspace.read")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Details"}));
     await waitFor(() => {
       expect(client.controlExtension).toHaveBeenCalledWith(
-        "plugin",
-        "review-tools",
+        "skill",
+        "review",
         "detail"
       );
     });
     expect(await screen.findByText(/"status": "ready"/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", {name: "Trust publisher"}));
-    fireEvent.click(screen.getByRole("button", {name: "Confirm trust"}));
+    fireEvent.click(screen.getByRole("button", {name: "Verify"}));
     await waitFor(() => {
       expect(client.controlExtension).toHaveBeenCalledWith(
-        "plugin",
-        "review-tools",
-        "trust"
+        "skill",
+        "review",
+        "verify"
       );
     });
   });

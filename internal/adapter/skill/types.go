@@ -1,8 +1,6 @@
 package skill
 
 import (
-	"context"
-	"errors"
 	"regexp"
 	"strings"
 )
@@ -22,7 +20,6 @@ const (
 	SourceWorkspace  Source = "workspace"
 	SourceConfigured Source = "configured"
 	SourceUser       Source = "user"
-	SourcePlugin     Source = "plugin"
 )
 
 type Metadata struct {
@@ -45,7 +42,6 @@ type Summary struct {
 	Description    string `json:"description"`
 	Source         Source `json:"source"`
 	Path           string `json:"path"`
-	Plugin         string `json:"plugin,omitempty"`
 	Version        string `json:"version"`
 	Compatibility  string `json:"compatibility,omitempty"`
 	Digest         string `json:"digest"`
@@ -96,38 +92,6 @@ func (l Limits) normalized() Limits {
 		l.MaxLoadBytes = DefaultMaxLoadBytes
 	}
 	return l
-}
-
-type Authority struct {
-	Plugin     string `json:"plugin"`
-	Generation uint64 `json:"generation"`
-	Token      string `json:"token"`
-}
-
-func (a Authority) validate() error {
-	if !namePattern.MatchString(a.Plugin) {
-		return errors.New("plugin authority name is invalid")
-	}
-	if a.Generation == 0 {
-		return errors.New("plugin authority generation must be positive")
-	}
-	if strings.TrimSpace(a.Token) == "" || strings.ContainsAny(a.Token, "\x00\r\n") {
-		return errors.New("plugin authority token is invalid")
-	}
-	return nil
-}
-
-type AuthorityVerifier interface {
-	VerifySkillAuthority(context.Context, Authority) error
-}
-
-type AuthorityVerifierFunc func(context.Context, Authority) error
-
-func (f AuthorityVerifierFunc) VerifySkillAuthority(ctx context.Context, authority Authority) error {
-	if f == nil {
-		return errors.New("plugin skill authority verifier is required")
-	}
-	return f(ctx, authority)
 }
 
 var (

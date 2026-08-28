@@ -23,7 +23,6 @@ type LockEntry struct {
 	Name         string            `json:"name"`
 	Version      string            `json:"version"`
 	Source       Source            `json:"source"`
-	Plugin       string            `json:"plugin,omitempty"`
 	Digest       string            `json:"digest"`
 	Dependencies map[string]string `json:"dependencies,omitempty"`
 }
@@ -174,12 +173,9 @@ func validateLockfile(lockfile Lockfile) error {
 		}
 		versions[entry.Name] = entry.Version
 		switch entry.Source {
-		case SourceWorkspace, SourceConfigured, SourceUser, SourcePlugin:
+		case SourceWorkspace, SourceConfigured, SourceUser:
 		default:
 			return fmt.Errorf("skill lock entry %q source is invalid", entry.Name)
-		}
-		if entry.Source == SourcePlugin && entry.Plugin == "" {
-			return fmt.Errorf("skill lock entry %q plugin is required", entry.Name)
 		}
 		for dependency, constraint := range entry.Dependencies {
 			if !namePattern.MatchString(dependency) || constraint == "" {

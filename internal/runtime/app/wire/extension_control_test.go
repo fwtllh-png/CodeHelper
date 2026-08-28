@@ -1,16 +1,12 @@
 package wire
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
-	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -126,113 +122,6 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 		health.Diagnostics.Metrics.SubscriberDrops != 1 ||
 		len(health.Diagnostics.Alerts) != 2 {
 		t.Fatalf("health diagnostics = %+v", health.Diagnostics)
-	}
-}
-
-func TestExtensionControlPluginLintReturnsDetail(t *testing.T) {
-	workspace := t.TempDir()
-	bundle := filepath.Join(workspace, "fixture")
-	writeControlPlugin(t, bundle)
-	paths, err := ResolveExtensionPaths(ExtensionOptions{
-		DataDir:  filepath.Join(workspace, "data"),
-		UserHome: t.TempDir(),
-	}, workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	control, err := OpenExtensionControlPlane(paths, workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer control.Close()
-	operation, err := protocol.NewExtensionControlOperation(
-		protocol.ExtensionControlPlugin,
-		protocol.ExtensionActionLint,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	operation.Name = bundle
-	result, err := control.Plane.Submit(t.Context(), operation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Detail) == 0 {
-		t.Fatal("plugin lint omitted compiled detail")
-	}
-}
-
-func TestExtensionControlProjectsDurablePluginSourceAndTrust(t *testing.T) {
-	workspace := t.TempDir()
-	writeControlPlugin(
-		t,
-		filepath.Join(workspace, ".codehelper", "plugins", "lint-fixture"),
-	)
-	paths, err := ResolveExtensionPaths(ExtensionOptions{
-		DataDir:  filepath.Join(workspace, "data"),
-		UserHome: t.TempDir(),
-	}, workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	control, err := OpenExtensionControlPlane(paths, workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer control.Close()
-	trust, err := protocol.NewExtensionControlOperation(
-		protocol.ExtensionControlPlugin,
-		protocol.ExtensionActionTrust,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	trust.Name = "lint-fixture"
-	if _, err := control.Plane.Submit(t.Context(), trust); err != nil {
-		t.Fatal(err)
-	}
-	result, err := control.Plane.Snapshot(
-		t.Context(), protocol.ExtensionControlPlugin,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Extensions) != 1 ||
-		result.Extensions[0].Source != "workspace" ||
-		result.Extensions[0].Trust != pluginruntime.TrustUnsignedLocal {
-		t.Fatalf("plugin projection = %+v", result.Extensions)
-	}
-}
-
-func writeControlPlugin(t *testing.T, bundle string) {
-	t.Helper()
-	if err := os.MkdirAll(bundle, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	executable := []byte("#!/bin/sh\nprintf 'ok\\n'\n")
-	if err := os.WriteFile(
-		filepath.Join(bundle, "run.sh"), executable, 0o700,
-	); err != nil {
-		t.Fatal(err)
-	}
-	sum := sha256.Sum256(executable)
-	manifest := pluginruntime.Manifest{
-		SchemaVersion: pluginruntime.ManifestSchemaV1,
-		Name:          "lint-fixture", Generation: 1, Executable: "run.sh",
-		ExecutableSHA256: hex.EncodeToString(sum[:]),
-		Capabilities: pluginruntime.CapabilityInventory{
-			Tools: []string{"plugin_run"}, FilesystemRoots: []string{"workspace"},
-			AllowProcess: true,
-		},
-	}
-	data, err := json.Marshal(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(bundle, pluginruntime.ManifestName), data, 0o600,
-	); err != nil {
-		t.Fatal(err)
 	}
 }
 

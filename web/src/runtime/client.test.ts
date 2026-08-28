@@ -1327,12 +1327,12 @@ describe("RuntimeClient", () => {
     await startClient(client);
 
     const detail = await client.controlExtension(
-      "plugin",
-      "review-tools",
+      "skill",
+      "review",
       "detail"
     );
     expect(detail.detail).toEqual({
-      name: "review-tools",
+      name: "review",
       action: "detail"
     });
     await client.setExtensionEnabled("skill", "review", false);
@@ -1341,7 +1341,7 @@ describe("RuntimeClient", () => {
       request.route.endsWith("/extension/control")
     );
     expect(controls.map((request) => request.body)).toMatchObject([
-      {kind: "plugin", name: "review-tools", action: "detail"},
+      {kind: "skill", name: "review", action: "detail"},
       {kind: "skill", name: "review", action: "disable"}
     ]);
     client.stop();

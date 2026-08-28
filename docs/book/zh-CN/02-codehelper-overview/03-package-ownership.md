@@ -82,11 +82,10 @@ Business Decision。它构造 `app/chatmerge` 与基于 `app/persistence` 的 Ru
 - `tool`：Descriptor、Registry、Executor、Guard；
 - `mcp`：External Protocol/Discovery；
 - `skill`：Manifest/Dependency Resolution；
-- `plugin`：Signed Distribution/Lifecycle；
 - `hooks`：Bounded Lifecycle Callback；
 - `lsp`、`memory`：Specialized Integration。
 
-Adapter 负责 Translate/Execute 已声明 Contract，不决定产品 Authority。来自 MCP/Plugin
+Adapter 负责 Translate/Execute 已声明 Contract，不决定产品 Authority。来自 MCP
 的 Consequential Tool 仍进入 Guard。
 
 ## 5. Security、Platform 与 Guard

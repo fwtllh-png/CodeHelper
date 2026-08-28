@@ -28,7 +28,6 @@ type SkillSummary struct {
 	Description    string
 	Source         string
 	Path           string
-	Plugin         string
 	Handle         string
 	PackageHandle  string
 	ResourceHandle string

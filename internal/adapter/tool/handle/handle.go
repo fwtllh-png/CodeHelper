@@ -1,5 +1,5 @@
 // Package handle owns var_handle storage and the model-visible handle_read tool.
-// Producers (RLM, subagent transcripts) insert payloads; the model retrieves
+// Producers such as subagent transcripts insert payloads; the model retrieves
 // bounded projections without copying the full body into the parent transcript.
 package handle
 
@@ -181,7 +181,7 @@ func (*ReadTool) Descriptor() tool.Descriptor {
 	return tool.Descriptor{
 		Name: "handle_read",
 		Description: "Read a bounded projection from a var_handle returned by tools such as " +
-			"RLM sessions or sub-agents. This does not read artifact ids, tool-call ids, SHA refs, " +
+			"sub-agents. This does not read artifact ids, tool-call ids, SHA refs, " +
 			"or files; use result_get for spilled tool results and file_read for workspace files.",
 		Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityRead, AccessMode: tool.AccessRead,

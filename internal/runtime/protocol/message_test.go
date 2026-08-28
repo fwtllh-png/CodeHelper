@@ -490,16 +490,9 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 				Path: "value.go", Kind: "modified", Added: 1, Removed: 1,
 			}},
 		},
-		&ExtensionLifecycleData{
-			ExtensionKind: "plugin", Name: "review", Action: "updated",
-			Version: "2.0.0", PreviousVersion: "1.0.0", Source: "builtin",
-			Publisher: "platform", Trust: "signed-registry",
-			Digest: strings.Repeat("a", 64), Generation: 2, Enabled: true,
-			ChangedAt: time.Now().UTC(),
-		},
 		&HookExecutionData{
 			HookEvent: "ToolCallBefore", HookID: "review-observer",
-			Source: "plugin", Trust: "workspace", Scope: "turn",
+			Source: "repository", Trust: "workspace", Scope: "turn",
 			Mode: "observe", Outcome: "observed", ExitCode: 0,
 			DurationMS: 2, StdoutBytes: 32, OccurredAt: time.Now().UTC(),
 		},
@@ -607,36 +600,6 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 		if err := json.Unmarshal(encoded, &decoded); err != nil {
 			t.Fatalf("%s round trip: %v", event.Kind, err)
 		}
-	}
-}
-
-func TestExtensionLifecycleValidationFailsClosed(t *testing.T) {
-	valid := ExtensionLifecycleData{
-		ExtensionKind: "plugin", Name: "review", Action: "active",
-		Version: "local", Source: "workspace", Trust: "unsigned-local",
-		Digest: strings.Repeat("a", 64), Generation: 1, Enabled: true,
-		ChangedAt: time.Now().UTC(),
-	}
-	tests := map[string]func(*ExtensionLifecycleData){
-		"kind":   func(value *ExtensionLifecycleData) { value.ExtensionKind = "skill" },
-		"action": func(value *ExtensionLifecycleData) { value.Action = "executed" },
-		"digest": func(value *ExtensionLifecycleData) { value.Digest = "../unsafe" },
-		"trust":  func(value *ExtensionLifecycleData) { value.Trust = "trusted" },
-		"publisher": func(value *ExtensionLifecycleData) {
-			value.Trust = "signed-registry"
-		},
-	}
-	for name, mutate := range tests {
-		t.Run(name, func(t *testing.T) {
-			value := valid
-			mutate(&value)
-			if _, err := NewEvent(EventMeta{
-				Sequence: 1, OperationID: "op", ThreadID: "thread",
-				TurnID: "turn", ItemID: "item",
-			}, &value); err == nil {
-				t.Fatalf("invalid lifecycle value was accepted: %+v", value)
-			}
-		})
 	}
 }
 

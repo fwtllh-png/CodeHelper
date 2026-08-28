@@ -27,10 +27,6 @@ lock = true
 [route.plan]
 provider = "openai"
 model = "gpt-4.1"
-
-[route.subquery]
-provider = "anthropic"
-model = "claude-haiku"
 `)
 
 	snapshot, err := Load(LoadOptions{Path: path})
@@ -44,10 +40,6 @@ model = "claude-haiku"
 	plan := snapshot.Config.Route.Slots["plan"]
 	if plan.Provider != "openai" || plan.Model != "gpt-4.1" {
 		t.Fatalf("plan slot = %+v", plan)
-	}
-	subquery := snapshot.Config.Route.Slots["subquery"]
-	if subquery.Provider != "anthropic" || subquery.Model != "claude-haiku" {
-		t.Fatalf("subquery slot = %+v", subquery)
 	}
 	if snapshot.Provenance[fieldRouteProvider("plan")] != SourceFile ||
 		snapshot.Provenance[fieldRouteLock] != SourceFile {

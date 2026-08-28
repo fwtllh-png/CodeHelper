@@ -185,7 +185,7 @@ func TestRegistryReplaceUpdatesDeferredLoader(t *testing.T) {
 		oldLoads.Add(1)
 		return &catalogExecutor{descriptor: descriptor, content: "old"}, nil
 	})
-	first, err := registry.Reconcile("plugin:test", 0, []Registration{oldRegistration})
+	first, err := registry.Reconcile("external:test", 0, []Registration{oldRegistration})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestRegistryReplaceUpdatesDeferredLoader(t *testing.T) {
 		newLoads.Add(1)
 		return &catalogExecutor{descriptor: descriptor, content: "new"}, nil
 	})
-	replaced, err := registry.Replace("plugin:test", first.Generation, newRegistration)
+	replaced, err := registry.Replace("external:test", first.Generation, newRegistration)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestRegistryReplaceDuringDeferredLoadRejectsOldResultAndWaiters(t *testing.
 	started := make(chan struct{})
 	release := make(chan struct{})
 	first, err := registry.Reconcile(
-		"plugin:race", 0,
+		"external:race", 0,
 		[]Registration{trustedDeferredCatalogRegistration(descriptor, func() (Executor, error) {
 			close(started)
 			<-release
@@ -286,7 +286,7 @@ func TestRegistryReplaceDuringDeferredLoadRejectsOldResultAndWaiters(t *testing.
 		resolvedCalls <- resolved{executor: executor, err: resolveErr}
 	}()
 	replaced, err := registry.Replace(
-		"plugin:race", first.Generation,
+		"external:race", first.Generation,
 		trustedDeferredCatalogRegistration(descriptor, func() (Executor, error) {
 			return &catalogExecutor{descriptor: descriptor, content: "new"}, nil
 		}),
@@ -492,7 +492,7 @@ func TestRegistryMaterializeLimitCountsConcurrentLoads(t *testing.T) {
 	release := make(chan struct{})
 	firstDescriptor := catalogTestDescriptor("first_deferred")
 	secondDescriptor := catalogTestDescriptor("second_deferred")
-	if _, err := registry.Reconcile("plugin:limit", 0, []Registration{
+	if _, err := registry.Reconcile("external:limit", 0, []Registration{
 		trustedDeferredCatalogRegistration(firstDescriptor, func() (Executor, error) {
 			close(started)
 			<-release

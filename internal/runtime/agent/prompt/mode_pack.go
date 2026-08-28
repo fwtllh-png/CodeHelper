@@ -27,7 +27,7 @@ Ask clarifying questions when requirements are ambiguous.`
 		instructions = `Mode: operate
 You are in Operate mode. Prefer careful execution: investigate, then act with clear receipts.
 Use shell_read instead of exec_command whenever a command only inspects local data.
-Process tools may run under auto posture; still request approval for network and plugins.
+Process tools may run under auto posture; still request approval for network and external tools.
 Keep the user informed of irreversible side effects before applying them.`
 	case "act":
 		instructions = `Mode: act
@@ -35,7 +35,7 @@ You are in Act mode. Implement the requested change with tools when appropriate.
 When a Plan is active, call update_plan before starting a step and immediately after its evidence is complete.
 Keep at most one step in_progress and do not defer Plan updates until the end of the Turn.
 Use shell_read instead of exec_command whenever a command only inspects local data.
-High-risk capabilities (process/network/plugin) still follow the active permission posture.`
+High-risk capabilities (process/network/external) still follow the active permission posture.`
 	default:
 		if mode == "" {
 			return ""

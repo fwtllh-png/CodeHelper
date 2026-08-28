@@ -31,7 +31,6 @@
 | Operation（操作） | 提交给 Runtime、包含身份、输入、Mode 和执行选项的请求。 | Event 与 Receipt 归属于 Operation。 |
 | Observation Envelope | 带版本、通过 Privacy Admission 的因果证据记录，包含稳定 Identity、Correlation、有界 Summary 与可选 CAS Payload Reference。 | 不是 Runtime Event 或执行权威。 |
 | Permission posture（权限姿态） | 处理 Tool 风险的策略，例如 `never`、`suggest`、`auto`、`bypass`。 | `bypass` 下仍应用硬约束。 |
-| Plugin（插件） | 通过受治理扩展边界加载的打包扩展。 | 必须解释 Trust 与 Lifecycle。 |
 | Policy（策略） | 对动作进行 Allow、Deny 或 Require Approval 的可配置规则。 | 与 Constitution 区分。 |
 | Projection（投影） | 应用有序 Event 后推导出的当前状态。 | 可以从持久事实重建。 |
 | Provider（提供方） | 传输模型请求和响应的服务或 Adapter。 | 一个 Provider 可以暴露多个 Model。 |

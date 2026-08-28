@@ -13,7 +13,7 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - 仓库文件、生成代码、测试和构建脚本；
 - 模型输出与 Tool Argument；
 - Provider Response 与 Native Search Result；
-- MCP Server、Plugin Package、Skill Content 与 Hook；
+- MCP Server、Skill Content 与 Hook；
 - HTTP/Web Transport Client Message；
 - 从其他 Workspace 复制的持久化状态；
 - Archive Path、Symlink、Environment 与 Process Output。
@@ -63,7 +63,7 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   在这三个状态域中，Sandbox 只获得 `sandbox-home` 写权限。
 - Tool Contract 要求时先读后写。
 - Tool Catalog 将模型可见的 `ExternalDescriptor` 与 Registry 可信的
-  `TrustedBinding` 分开冻结。MCP、Plugin、Dynamic Tool 等外部来源只能提交
+  `TrustedBinding` 分开冻结。MCP、Dynamic Tool 等外部来源只能提交
   Requested Effects；Capability、Resource Resolver、Access、Sandbox、Effect、
   Required Controls、Journal 和验证证据资格由可信 Binding 决定。
 - Guard、Policy 和 Authority 不从工具名或 External Requested Effects 推导授权。
@@ -220,22 +220,17 @@ make secret-leak-test
 - 不向不可信 Client 开放 Trusted Dynamic Tool Registration。
 - 可记录 Endpoint Inventory，但不能记录 Credential。
 
-## MCP、Plugin、Skill 与 Hook 供应链
+## MCP、Skill 与 Hook 供应链
 
 ### MCP
 
 Review Executable、Argument、Environment Allowlist、OAuth Config 与 Endpoint，使用
 Health Isolation 和有界 Timeout。stdio MCP 默认关闭；启用时配置必须来自外部 State
-Directory 或已验证的 Plugin Capability，并显式声明 `host_trusted=true`。该标记会
+Directory，并显式声明 `host_trusted=true`。该标记会
 进入 Tool Catalog 描述和 Tool Result Metadata，并只允许 Runtime 创建 Lifecycle
 Operation，不直接授予进程启动能力。Server 配置摘要和每次启动的 Generation 进入
 Subject；Process Broker 消费单次 Lease 并签发绑定 Workspace/Server/Generation 的
 Handle。Reload、Disable、Crash 和 Shutdown 会终结 Handle、Settlement 并释放 Lease。
-
-### Plugin
-
-要求 Trusted Publisher、Signed Registry、Digest Verification、Immutable Staging、
-Receipt 与 Revocation。Rollback 必须选择历史已验证 Artifact。
 
 ### Skill
 
@@ -249,8 +244,7 @@ Workspace 中的默认 Hook 配置不自动加载；Repository Hook 必须由 Op
 `.git`、`.codehelper`、`.codehelper-worktree`、`.agents` 和 `.codex`。每次调用先
 生成绑定 Hook 配置、Event、Workspace Generation 和 Process Spec 的 Operation，再由
 Process Broker 消费短生命周期 Lease，并执行 Start、Cancel、Wait、Reap 和 Settlement。
-Repository 与 Plugin Permission Hook 只能返回 Deny 或 Ask，不能把 Guard 的决定提升
-为 Allow。
+Repository Permission Hook 只能返回 Deny 或 Ask，不能把 Guard 的决定提升为 Allow。
 
 ## Log 与 Diagnostics
 
@@ -309,7 +303,7 @@ Secret 或 Signing Key 可能泄漏时：
 
 1. 停止受影响 Runtime/Update Distribution；
 2. Revoke 并 Rotate Credential/Key；
-3. 使受影响 Plugin/Binary Artifact 失效；
+3. 使受影响 Binary Artifact 失效；
 4. 保留脱敏证据；
 5. 检查 Event/Receipt/Log 影响范围；
 6. 适用时发布更高 Sequence 的 Revocation Manifest；

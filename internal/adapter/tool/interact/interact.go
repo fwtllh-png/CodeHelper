@@ -13,13 +13,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	rlmlib "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -27,9 +25,6 @@ type Options struct {
 	Host      *Host
 	Workspace string
 	Backend   sandbox.Backend
-	RLM       *rlmlib.Store
-	Governor  *rlmlib.Governor
-	Python    string
 	Vision    VisionClient
 	OnPlan    func(Plan) error
 }
@@ -47,8 +42,6 @@ type Tools struct {
 	host      *Host
 	workspace string
 	backend   sandbox.Backend
-	rlm       *rlmlib.Store
-	governor  *rlmlib.Governor
 	vision    VisionClient
 	onPlan    func(Plan) error
 	planMu    sync.Mutex
@@ -80,17 +73,13 @@ func Register(registry *tool.Registry, options Options) error {
 	if host == nil {
 		host = NewHost(0)
 	}
-	governor := options.Governor
-	if governor == nil {
-		governor = rlmlib.NewGovernor(rlmlib.Limits{})
-	}
 	tools := &Tools{
 		host: host, workspace: root, backend: backend,
-		rlm: options.RLM, governor: governor, vision: options.Vision, onPlan: options.OnPlan,
+		vision: options.Vision, onPlan: options.OnPlan,
 	}
 	for _, name := range []string{
 		"request_user_input", "update_plan", "submit_plan", "project_map",
-		"code_execution", "image_analyze",
+		"image_analyze",
 	} {
 		if err := registry.Register(&executor{tools: tools, name: name}); err != nil {
 			return err
@@ -206,37 +195,6 @@ func (e *executor) Descriptor() tool.Descriptor {
 				"additionalProperties": false,
 			},
 		}
-	case "code_execution":
-		available := tool.AvailabilityAvailable
-		reason := ""
-		if e.tools.backend == nil || e.tools.rlm == nil || !e.tools.rlm.PythonAvailable() {
-			available = tool.AvailabilityUnavailable
-			reason = "strong sandboxed Python runner is unavailable"
-		} else if err := sandbox.RequireControls(
-			e.tools.backend,
-			sandbox.DefaultProcessRequirements(),
-		); err != nil {
-			available = tool.AvailabilityUnavailable
-			reason = "strong sandbox is unavailable"
-		}
-		return tool.Descriptor{
-			Name: e.name, Description: "Execute isolated Python code in a strong sandbox.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityProcess,
-			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
-			SandboxRequirement: tool.SandboxStrong, Availability: available, UnavailableReason: reason,
-			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
-				Kind: "code", ID: "ephemeral", Access: tool.AccessWrite,
-			}}},
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"code":    map[string]any{"type": "string", "minLength": float64(1)},
-					"context": map[string]any{"type": "string"},
-				},
-				"required":             []string{"code"},
-				"additionalProperties": false,
-			},
-		}
 	case "image_analyze":
 		available := tool.AvailabilityUnavailable
 		reason := VisionUnavailableReason
@@ -279,8 +237,6 @@ func (e *executor) Execute(ctx context.Context, raw json.RawMessage) (tool.Resul
 		return e.tools.updatePlan(raw, true)
 	case "project_map":
 		return e.tools.projectMap(ctx, raw)
-	case "code_execution":
-		return e.tools.codeExecution(ctx, raw)
 	case "image_analyze":
 		return e.tools.imageAnalyze(ctx, raw)
 	default:
@@ -529,73 +485,6 @@ func (t *Tools) mapPrefix(rel string) (string, error) {
 		return "", err
 	}
 	return filepath.ToSlash(relative) + "/", nil
-}
-
-func (t *Tools) codeExecution(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	if t.backend == nil {
-		return tool.Result{
-			Content: "strong sandbox is unavailable", IsError: true,
-			Metadata: map[string]any{"error_category": "sandbox_unavailable"},
-		}, nil
-	}
-	if err := sandbox.RequireControls(
-		t.backend,
-		sandbox.DefaultProcessRequirements(),
-	); err != nil {
-		return tool.Result{
-			Content: err.Error(), IsError: true,
-			Metadata: map[string]any{"error_category": "sandbox_unavailable"},
-		}, nil
-	}
-	if t.rlm == nil || !t.rlm.PythonAvailable() {
-		return tool.Result{
-			Content: "python interpreter is unavailable", IsError: true,
-			Metadata: map[string]any{"error_category": "unavailable"},
-		}, nil
-	}
-	var input struct {
-		Code    string `json:"code"`
-		Context string `json:"context"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
-	lease, err := t.governor.Admit(0, 0, 0)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	defer t.governor.Release(lease)
-	name := fmt.Sprintf("codeexec-%d", time.Now().UTC().UnixNano())
-	contextBody := input.Context
-	if contextBody == "" {
-		contextBody = "# code_execution context\n"
-	}
-	session, err := t.rlm.Open(name, "inline", "", contextBody, 0)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	defer func() { _, _ = t.rlm.Close(name) }()
-	eval, _, err := t.rlm.Eval(ctx, session.Name, input.Code)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	_ = t.governor.Charge(1, 0)
-	body := map[string]any{
-		"classification": eval.Classification, "exit_code": eval.ExitCode,
-		"timed_out": eval.TimedOut, "stdout": eval.Stdout, "stderr": eval.Stderr,
-		"duration_ms": eval.DurationMS,
-	}
-	content, err := json.Marshal(body)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	return tool.Result{
-		Content: string(content),
-		IsError: eval.Classification != "passed",
-		Metadata: map[string]any{
-			"classification": eval.Classification, "exit_code": eval.ExitCode,
-		},
-	}, nil
 }
 
 func (t *Tools) imageAnalyze(ctx context.Context, raw json.RawMessage) (tool.Result, error) {

@@ -26,7 +26,7 @@ func TestASetWithoutSlotsAnswersEveryPurposeWithAct(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, purpose := range []Purpose{PurposeAct, PurposePlan, PurposeVision, PurposeSubquery} {
+	for _, purpose := range []Purpose{PurposeAct, PurposePlan, PurposeVision} {
 		route, err := routes.For(purpose)
 		if err != nil {
 			t.Fatalf("For(%q) error = %v", purpose, err)
@@ -56,7 +56,7 @@ func TestOneSlotChangesOnlyItsOwnPurpose(t *testing.T) {
 	if planned.Model().ID != "gpt-4.1" {
 		t.Fatalf("plan model = %q, want gpt-4.1", planned.Model().ID)
 	}
-	for _, purpose := range []Purpose{PurposeAct, PurposeVision, PurposeSubquery} {
+	for _, purpose := range []Purpose{PurposeAct, PurposeVision} {
 		route, err := routes.For(purpose)
 		if err != nil {
 			t.Fatalf("For(%q) error = %v", purpose, err)
@@ -173,14 +173,14 @@ func TestSlotsAndPurposesKeepAStableOrder(t *testing.T) {
 	other := testRoute(t, "openai", "gpt-4.1")
 
 	routes, err := NewRouteSet(act, map[Purpose]ReadyRoute{
-		PurposeSubquery: other, PurposeVision: other, PurposePlan: other,
+		PurposeVision: other, PurposePlan: other,
 	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	slots := routes.Slots()
-	want := []Purpose{PurposePlan, PurposeVision, PurposeSubquery}
+	want := []Purpose{PurposePlan, PurposeVision}
 	if len(slots) != len(want) {
 		t.Fatalf("Slots() = %v, want %v", slots, want)
 	}

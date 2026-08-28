@@ -104,11 +104,11 @@ const (
 type Capability string
 
 const (
-	CapabilityRead    Capability = "read"
-	CapabilityWrite   Capability = "write"
-	CapabilityProcess Capability = "process"
-	CapabilityNetwork Capability = "network"
-	CapabilityPlugin  Capability = "plugin"
+	CapabilityRead     Capability = "read"
+	CapabilityWrite    Capability = "write"
+	CapabilityProcess  Capability = "process"
+	CapabilityNetwork  Capability = "network"
+	CapabilityExternal Capability = "external"
 )
 
 type AccessMode string
@@ -818,7 +818,7 @@ func validateDescriptor(descriptor Descriptor) error {
 	}
 	if descriptor.Capability != CapabilityRead && descriptor.Capability != CapabilityWrite &&
 		descriptor.Capability != CapabilityProcess && descriptor.Capability != CapabilityNetwork &&
-		descriptor.Capability != CapabilityPlugin {
+		descriptor.Capability != CapabilityExternal {
 		return fmt.Errorf("tool %q has invalid capability", descriptor.Name)
 	}
 	if descriptor.AccessMode != AccessRead && descriptor.AccessMode != AccessWrite &&

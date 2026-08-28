@@ -292,11 +292,10 @@ func TestSkillWorldOmitsInternalPathsAndBoundsDescriptions(t *testing.T) {
 	rendered := promptcontext.RenderSkillWorld([]SkillSummary{{
 		Name: "review", Description: strings.Repeat("界", 200),
 		Source: "workspace", Path: "/private/skills/review/SKILL.md",
-		Plugin: "private-plugin", Handle: "skh_handle",
-		PackageHandle: "skp_package", ResourceHandle: "skr_resource",
+		Handle: "skh_handle", PackageHandle: "skp_package",
+		ResourceHandle: "skr_resource",
 	}})
 	if strings.Contains(rendered, "/private/") ||
-		strings.Contains(rendered, "private-plugin") ||
 		!strings.Contains(rendered, "...") ||
 		!strings.Contains(rendered, "any exact advertised handle") ||
 		!strings.Contains(rendered, `handle="skh_handle"`) ||

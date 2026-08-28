@@ -476,11 +476,11 @@ func TestProjectToolSourceCoversUnifiedFamilies(t *testing.T) {
 	tests := map[string]struct {
 		name, source, kind string
 	}{
-		"builtin": {name: "file_read", source: "builtin:file_read", kind: "builtin"},
-		"mcp":     {name: "issues", source: "mcp:github", kind: "mcp"},
-		"plugin":  {name: "plugin_demo_run", source: "plugin:lifecycle", kind: "plugin"},
-		"skill":   {name: "skills_read", source: "builtin:skills_read", kind: "skill"},
-		"dynamic": {name: "host_echo", source: "dynamic:3", kind: "dynamic"},
+		"builtin":  {name: "file_read", source: "builtin:file_read", kind: "builtin"},
+		"mcp":      {name: "issues", source: "mcp:github", kind: "mcp"},
+		"external": {name: "external_demo_run", source: "external:lifecycle", kind: "external"},
+		"skill":    {name: "skills_read", source: "builtin:skills_read", kind: "skill"},
+		"dynamic":  {name: "host_echo", source: "dynamic:3", kind: "dynamic"},
 	}
 	for label, test := range tests {
 		t.Run(label, func(t *testing.T) {

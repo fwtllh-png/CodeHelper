@@ -79,7 +79,6 @@ export const webEventKinds = [
   "tool.result",
   "tool.catalog.changed",
   "mcp.health.changed",
-  "extension.lifecycle",
   "extension.control",
   "hook.execution",
   "diagnostics.result",

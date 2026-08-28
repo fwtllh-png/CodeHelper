@@ -33,17 +33,14 @@ func publishExtensionOutputs(state *buildState) {
 	}
 	output := &state.extensions
 	session := state.session
-	session.plugins = output.plugins
 	session.memory = output.memory
 	session.hooks = output.hooks
 	session.mcpPool = output.mcpPool
 	session.mcpPrewarm = output.mcpPrewarm
 	session.dynamicTools = output.dynamicTools
 	session.extensions = &extensionSession{
-		registry:       output.registry,
-		pluginRegistry: output.pluginRegistry,
-		pluginTools:    output.pluginTools,
-		receipts:       make([]ContributionReceipt, len(output.receipts)),
+		registry: output.registry,
+		receipts: make([]ContributionReceipt, len(output.receipts)),
 	}
 	for index, receipt := range output.receipts {
 		session.extensions.receipts[index] = cloneContributionReceipt(receipt)

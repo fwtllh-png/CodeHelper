@@ -32,11 +32,11 @@ const (
 type Capability = tool.Capability
 
 const (
-	CapabilityRead    = tool.CapabilityRead
-	CapabilityWrite   = tool.CapabilityWrite
-	CapabilityProcess = tool.CapabilityProcess
-	CapabilityNetwork = tool.CapabilityNetwork
-	CapabilityPlugin  = tool.CapabilityPlugin
+	CapabilityRead     = tool.CapabilityRead
+	CapabilityWrite    = tool.CapabilityWrite
+	CapabilityProcess  = tool.CapabilityProcess
+	CapabilityNetwork  = tool.CapabilityNetwork
+	CapabilityExternal = tool.CapabilityExternal
 )
 
 type Action string

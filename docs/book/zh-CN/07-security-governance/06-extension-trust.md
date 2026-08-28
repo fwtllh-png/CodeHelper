@@ -1,6 +1,6 @@
 ---
 id: security-extension-trust
-title: MCP、Skill、Plugin 与 Hook Trust
+title: MCP、Skill 与 Hook Trust
 audience:
   - contributor
   - operator
@@ -11,31 +11,29 @@ prerequisites:
 code_paths:
   - internal/adapter/mcp
   - internal/adapter/skill
-  - internal/adapter/plugin
   - internal/adapter/hooks
   - internal/runtime/extension
   - internal/runtime/app/extension
 test_paths:
-  - internal/adapter/plugin/trust_test.go
-  - internal/adapter/plugin/distribution_test.go
+  - internal/adapter/mcp/config_test.go
+  - internal/adapter/skill/catalog_test.go
   - internal/adapter/hooks/hooks_test.go
   - internal/runtime/extension/plan_test.go
-  - internal/runtime/app/extension/lifecycle_test.go
 source_of_truth:
-  - internal/adapter/plugin/trust.go
-  - internal/adapter/plugin/distribution.go
+  - internal/adapter/mcp/config.go
+  - internal/adapter/skill/catalog.go
+  - internal/adapter/hooks/config.go
   - internal/runtime/extension/plan.go
-  - internal/runtime/extension/lifecycle.go
 status: draft
 last_verified: null
 ---
 
-# MCP、Skill、Plugin 与 Hook Trust
+# MCP、Skill 与 Hook Trust
 
 ## 学习目标
 
-区分 Extension Content、Code、Transport、Lifecycle Trust，理解 Capability Receipt、
-Signed Distribution、Revocation 与 Hook Failure Policy。
+区分 Extension Content、Transport 与 Execution Trust，理解配置来源、内容锁定、
+撤销与 Hook Failure Policy。
 
 ## Extension Risk
 
@@ -43,34 +41,13 @@ Signed Distribution、Revocation 与 Hook Failure Policy。
 | --- | --- | --- |
 | MCP | Server Tool/Response | Endpoint/Process Review、OAuth/Env Allowlist、Guard、Health |
 | Skill | Model 解释 Instruction/Resource | Source/Version Lock、Bounded Load、Injection Review |
-| Plugin | Executable/Capability | Publisher/Signature/Digest、Receipt、Sandbox、Revoke |
 | Hook | 可 Deny/Update/Env 的 Process | Strict Config、Timeout、Sanitized Env、Audit |
 
 Extension Tool 仍进入 Registry/Catalog 并通过 Guard；“Trusted Extension”不等于 Direct
 Execution Authority。
 
-Trust Admission 与 Lifecycle Ownership 相互独立。Runtime 将 Trusted Source 解析为
-绑定 Permission Digest 的 Digested Plan。每个 Process、Connection、Hook、
-Subscription、Timer、Lease 与 Tool Registration 都归因到 Extension Source、Plan
-Revision、Generation、Capability 与 Effect Kind。Disable Drain 所属 Effect；
-Revoke/Quarantine Fence Generation。
-
-## Plugin Trust Chain
-
-```text
-publisher allowlist
- -> signed registry release + monotonic generation
- -> artifact/manifest digest
- -> safe bounded archive extraction
- -> immutable content-addressed staging
- -> content + capability + generation receipt
- -> sandboxed load
- -> catalog authority
-```
-
-Capability Inventory 声明 Tool、Filesystem Root、Network Host、Process Permission，拒绝
-Wildcard。Content/Capability/Generation Drift 都使旧 Receipt 失效。Rollback 选择 Previously
-Verified Artifact；Security Revoke 会 Cancel In-flight Authority，而非只隐藏 UI。
+Runtime 将 Typed Source 解析为绑定 Permission Digest 的 Digested Plan。MCP、Skill 与
+Hook 各自拥有独立的配置、完整性和撤销边界，不能借由“扩展已安装”获得执行权限。
 
 ## Hook/Permission Hook
 
@@ -94,20 +71,20 @@ Durable Prepare/Commit Receipt 使 Restart/Retry 可审计。Host 不能通过�
 ## 验证
 
 ```bash
-go test ./internal/adapter/plugin ./internal/adapter/hooks
+go test ./internal/adapter/hooks
 go test ./internal/adapter/mcp ./internal/adapter/skill
 go test ./internal/runtime/extension ./internal/runtime/app/extension
 ```
 
 ## 复习问题
 
-1. Capability Drift 为什么使 Plugin Receipt 失效？
+1. MCP 配置漂移为什么必须产生新的 Catalog Generation？
 2. Hook Allow 为什么不能覆盖 Policy Deny？
 3. Locked Skill 为什么仍不可信？
 
 ## 延伸阅读
 
-- [Skill、Plugin 与 Hook](../11-extension-ecosystem/04-skill-plugin-hook.md)
+- [Skill 与 Hook](../11-extension-ecosystem/04-skill-plugin-hook.md)
 
 ## 事实来源与验证
 

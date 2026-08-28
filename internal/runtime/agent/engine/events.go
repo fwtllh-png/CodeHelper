@@ -11,7 +11,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -69,7 +68,6 @@ type Event struct {
 	ToolOutput         *ToolOutput                 `json:"tool_output,omitempty"`
 	CatalogChanged     *CatalogChanged             `json:"catalog_changed,omitempty"`
 	MCPHealthChanged   *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
-	ExtensionLifecycle *ExtensionLifecycleChanged  `json:"extension_lifecycle,omitempty"`
 	HookAudit          *hooks.AuditRecord          `json:"hook_audit,omitempty"`
 }
 
@@ -112,8 +110,6 @@ type CatalogChanged struct {
 
 type MCPHealthSnapshot = mcp.HealthSnapshot
 type MCPHealthChanged = mcp.ProjectedHealthChange
-type ExtensionSnapshot = runtimeextension.Snapshot
-type ExtensionLifecycleChanged = runtimeextension.LifecycleChange
 
 // ToolOutput is one piece of a tool's output, delivered while the tool is still
 // running. It exists because a command that takes a minute used to produce nothing

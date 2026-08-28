@@ -76,14 +76,7 @@ func newWebContractHost(t *testing.T, setup contract.Setup) contract.Host {
 		FixturePath: setup.Fixture, Permission: "bypass",
 		RepositoryRulesPath: setup.RepositoryRules,
 		MCPConfigPath:       setup.WriteMCPConfig(t, store.Root()),
-		Extensions: wire.ExtensionOptions{
-			PluginWorkspaceRoot: setup.PluginWorkspaceRoot,
-			PluginUserRoot:      setup.PluginUserRoot,
-			PluginBuiltinRoot:   setup.PluginBuiltinRoot,
-			PluginStatePath:     setup.PluginStatePath,
-			PluginStagingRoot:   setup.PluginStagingRoot,
-		},
-		ConfigOverrides: overrides, PersistentStore: store,
+		ConfigOverrides:     overrides, PersistentStore: store,
 		TrustedDynamicTools: setup.TrustedDynamicTools,
 		WorkspaceIdentity:   identity,
 	})

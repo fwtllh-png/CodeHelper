@@ -864,7 +864,6 @@
             "tool.result",
             "tool.catalog.changed",
             "mcp.health.changed",
-            "extension.lifecycle",
             "extension.control",
             "hook.execution",
             "diagnostics.result",
@@ -1096,9 +1095,6 @@
         "action": {
           "type": "string"
         },
-        "capability": {
-          "type": "string"
-        },
         "created_at": {
           "type": "string",
           "format": "date-time"
@@ -1114,9 +1110,6 @@
         },
         "version": {
           "type": "integer"
-        },
-        "version_value": {
-          "type": "string"
         }
       },
       "required": [
@@ -4953,9 +4946,6 @@
         "action": {
           "type": "string"
         },
-        "capability": {
-          "type": "string"
-        },
         "digest": {
           "type": "string"
         },
@@ -4977,9 +4967,6 @@
         },
         "status": {
           "type": "string"
-        },
-        "version_value": {
-          "type": "string"
         }
       },
       "required": [
@@ -4990,61 +4977,6 @@
         "operation_id",
         "revision",
         "status"
-      ],
-      "additionalProperties": false
-    },
-    "extension.lifecycle": {
-      "type": "object",
-      "properties": {
-        "action": {
-          "type": "string"
-        },
-        "changed_at": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "digest": {
-          "type": "string"
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "extension_kind": {
-          "type": "string"
-        },
-        "generation": {
-          "type": "integer"
-        },
-        "name": {
-          "type": "string"
-        },
-        "previous_version": {
-          "type": "string"
-        },
-        "publisher": {
-          "type": "string"
-        },
-        "source": {
-          "type": "string"
-        },
-        "trust": {
-          "type": "string"
-        },
-        "version": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "action",
-        "changed_at",
-        "digest",
-        "enabled",
-        "extension_kind",
-        "generation",
-        "name",
-        "source",
-        "trust",
-        "version"
       ],
       "additionalProperties": false
     },
@@ -7974,9 +7906,6 @@
               "name": {
                 "type": "string"
               },
-              "plugin": {
-                "type": "string"
-              },
               "source": {
                 "type": "string"
               },
@@ -9254,13 +9183,6 @@
       "item_owner": "operation",
       "durability": "retained",
       "correlation": "operation",
-      "terminal": false
-    },
-    "extension.lifecycle": {
-      "class": "audit",
-      "item_owner": "turn",
-      "durability": "retained",
-      "correlation": "extension",
       "terminal": false
     },
     "hook.execution": {

@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/extensioncontrol"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -20,7 +19,6 @@ import (
 
 type ControlPlane struct {
 	mu          sync.Mutex
-	plugins     *pluginruntime.Registry
 	skills      *skillruntime.Catalog
 	store       *extensioncontrol.Store
 	observed    *controlObservability
@@ -29,15 +27,14 @@ type ControlPlane struct {
 }
 
 func NewControlPlane(
-	plugins *pluginruntime.Registry,
 	skills *skillruntime.Catalog,
 	store *extensioncontrol.Store,
 ) (*ControlPlane, error) {
-	if plugins == nil || skills == nil || store == nil {
+	if skills == nil || store == nil {
 		return nil, errors.New("extension control dependencies are required")
 	}
 	return &ControlPlane{
-		plugins: plugins, skills: skills, store: store,
+		skills: skills, store: store,
 		observed:    newControlObservability(),
 		subscribers: make(map[uint64]chan protocol.ExtensionControlEvent),
 	}, nil
@@ -266,50 +263,7 @@ func (c *ControlPlane) mutate(
 	ctx context.Context,
 	operation protocol.ExtensionControlOperation,
 ) (json.RawMessage, error) {
-	if operation.Kind == protocol.ExtensionControlSkill {
-		return c.mutateSkill(ctx, operation)
-	}
-	if operation.Action != protocol.ExtensionActionRevoke &&
-		operation.Action != protocol.ExtensionActionSecurityRevoke {
-		if err := c.plugins.Reload(); err != nil {
-			return nil, err
-		}
-	}
-	switch operation.Action {
-	case protocol.ExtensionActionTrust:
-		_, err := c.plugins.Trust(operation.Name)
-		return nil, err
-	case protocol.ExtensionActionEnable:
-		return nil, c.plugins.Enable(operation.Name)
-	case protocol.ExtensionActionDisable:
-		return nil, c.plugins.Disable(operation.Name)
-	case protocol.ExtensionActionCapabilityEnable:
-		return nil, c.plugins.EnableCapability(operation.Name, operation.Capability)
-	case protocol.ExtensionActionCapabilityDisable:
-		return nil, c.plugins.DisableCapability(operation.Name, operation.Capability)
-	case protocol.ExtensionActionRevoke:
-		return nil, c.plugins.Revoke(operation.Name)
-	case protocol.ExtensionActionSecurityRevoke:
-		return nil, c.plugins.SecurityRevoke(operation.Name)
-	case protocol.ExtensionActionInstall:
-		_, err := c.plugins.Install(ctx, operation.Name, operation.VersionValue)
-		return nil, err
-	case protocol.ExtensionActionUpdate:
-		_, err := c.plugins.Update(ctx, operation.Name, operation.VersionValue)
-		return nil, err
-	case protocol.ExtensionActionRollback:
-		_, err := c.plugins.Rollback(operation.Name)
-		return nil, err
-	case protocol.ExtensionActionLint:
-		result, err := pluginruntime.LintBundle(operation.Name)
-		if err != nil {
-			return nil, err
-		}
-		detail, err := json.Marshal(result)
-		return detail, err
-	default:
-		return nil, fmt.Errorf("unsupported plugin action %q", operation.Action)
-	}
+	return c.mutateSkill(ctx, operation)
 }
 
 func (c *ControlPlane) mutateSkill(
@@ -344,13 +298,6 @@ func (c *ControlPlane) project(
 	name string,
 ) ([]protocol.ExtensionProjection, error) {
 	var result []protocol.ExtensionProjection
-	if kind == protocol.ExtensionControlPlugin || kind == protocol.ExtensionControlAll {
-		plugins, err := c.pluginProjections(ctx)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, plugins...)
-	}
 	if kind == protocol.ExtensionControlSkill || kind == protocol.ExtensionControlAll {
 		skills, err := c.skillProjections(ctx)
 		if err != nil {
@@ -373,73 +320,6 @@ func (c *ControlPlane) project(
 		}
 		return result[i].Name < result[j].Name
 	})
-	return result, nil
-}
-
-func (c *ControlPlane) pluginProjections(
-	ctx context.Context,
-) ([]protocol.ExtensionProjection, error) {
-	if err := c.plugins.Reload(); err != nil {
-		return nil, err
-	}
-	values, err := c.plugins.List()
-	if err != nil {
-		return nil, err
-	}
-	bundles, _ := c.plugins.CapabilityBundles(ctx)
-	bundleByName := make(map[string]pluginruntime.CompiledBundle, len(bundles))
-	for _, bundle := range bundles {
-		bundleByName[bundle.Plugin] = bundle
-	}
-	lifecycles, err := c.plugins.LifecycleSnapshots()
-	if err != nil {
-		return nil, err
-	}
-	lifecycleByName := make(
-		map[string]pluginruntime.LifecycleSnapshot,
-		len(lifecycles),
-	)
-	for _, lifecycle := range lifecycles {
-		lifecycleByName[lifecycle.Name] = lifecycle
-	}
-	result := make([]protocol.ExtensionProjection, 0, len(values))
-	for _, value := range values {
-		candidate := value.Candidate
-		projection := protocol.ExtensionProjection{
-			Kind: protocol.ExtensionControlPlugin, Name: candidate.Name,
-			Version: candidate.Manifest.Version, Source: candidate.Root.String(),
-			Publisher: candidate.Manifest.Publisher,
-			Digest:    candidate.Manifest.ExecutableSHA256,
-			Enabled:   value.Enabled, Health: projectionHealth(value.Enabled),
-			Trust: "untrusted",
-		}
-		if lifecycle, ok := lifecycleByName[candidate.Name]; ok {
-			projection.Source = lifecycle.Source
-			projection.Trust = lifecycle.Trust
-		}
-		if bundle, ok := bundleByName[candidate.Name]; ok {
-			projection.Generation = bundle.Generation
-			projection.Digest = bundle.Digest
-			for _, capability := range bundle.Capabilities {
-				projection.Capabilities = append(
-					projection.Capabilities,
-					protocol.ExtensionCapabilityProjection{
-						ID: capability.ID, Kind: string(capability.Kind),
-						Enabled:          capability.Enabled,
-						SourceDigest:     capability.SourceDigest,
-						PermissionDigest: capability.Authority.PermissionDigest,
-						AuthorityToken:   capability.Authority.Token,
-					},
-				)
-				projection.Permissions = append(
-					projection.Permissions,
-					capabilityPermissions(capability.Permissions)...,
-				)
-			}
-		}
-		projection.Permissions = sortedUniqueControl(projection.Permissions)
-		result = append(result, projection)
-	}
 	return result, nil
 }
 
@@ -509,20 +389,6 @@ func digestProjection(
 	}{Operation: operation, Values: values})
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
-}
-
-func capabilityPermissions(value pluginruntime.CapabilityInventory) []string {
-	result := append([]string(nil), value.Tools...)
-	for _, root := range value.FilesystemRoots {
-		result = append(result, "filesystem:"+root)
-	}
-	for _, host := range value.NetworkHosts {
-		result = append(result, "network:"+host)
-	}
-	if value.AllowProcess {
-		result = append(result, "process")
-	}
-	return result
 }
 
 func projectionHealth(enabled bool) string {

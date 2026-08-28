@@ -30,11 +30,9 @@ func (configModule) Build(_ context.Context, state *buildState) error {
 	execution := snapshot.Config.Execution
 	if !execution.Tools &&
 		(state.options.RepositoryRulesPath != "" ||
-			state.options.PluginBundle != "" ||
-			state.options.PluginReceipt != "" ||
 			state.options.MCPConfigPath != "") {
 		return errors.New(
-			"repository policy, plugins, and MCP require tools to be enabled",
+			"repository policy and MCP require tools to be enabled",
 		)
 	}
 	extensionPaths, err := resolveRuntimeExtensionPaths(state, execution.Workspace)

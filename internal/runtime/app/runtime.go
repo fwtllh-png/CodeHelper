@@ -965,7 +965,7 @@ func catalogRiskLevel(capability tool.Capability, access tool.AccessMode) string
 		return "medium"
 	case capability == tool.CapabilityProcess ||
 		capability == tool.CapabilityNetwork ||
-		capability == tool.CapabilityPlugin ||
+		capability == tool.CapabilityExternal ||
 		access == tool.AccessTree:
 		return "high"
 	default:
@@ -990,8 +990,8 @@ func projectToolSource(name, source string) (string, string) {
 			label = "MCP"
 		}
 		return "mcp", label
-	case "plugin":
-		return "plugin", "Plugin"
+	case "external":
+		return "external", "External"
 	case "dynamic":
 		return "dynamic", "Host"
 	case "skill":

@@ -164,7 +164,7 @@ func validateAdditionalPermission(
 		return nil
 	case AdditionalProcess:
 		if permission.Capability != tool.CapabilityProcess &&
-			permission.Capability != tool.CapabilityPlugin {
+			permission.Capability != tool.CapabilityExternal {
 			return errors.New("additional process capability is invalid")
 		}
 		return nil

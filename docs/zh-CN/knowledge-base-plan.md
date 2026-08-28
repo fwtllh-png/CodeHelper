@@ -136,7 +136,7 @@ docs/book/
 3. Approval 与 Constitution
 4. OS Sandbox 和 Process Isolation
 5. Egress、Credential 与数据泄漏
-6. MCP、Skill、Plugin、Hook Trust
+6. MCP、Skill、Hook Trust
 7. Fail-closed 与平台能力声明
 
 ### 第八部分：状态与可观测性
@@ -167,7 +167,7 @@ docs/book/
 1. 新增 Provider
 2. 新增受治理 Tool
 3. 接入 MCP Server
-4. 编写 Skill、Plugin 与 Hook
+4. 编写 Skill 与 Hook
 5. 新增 Host 而不复制 Runtime
 6. Extension Failure 与隔离策略
 
@@ -400,7 +400,7 @@ Recovery。
 
 2026-08-06 已完成第十一部分质量提升：扩展生态章节现在明确 Provider Route/Stream
 Commit Boundary、Tool Generation Binding、MCP Source-scoped Reconciliation、Skill/
-Plugin/Hook 的不同 Authority、Host Extension Ownership Test，以及覆盖 Activation、
+Hook 的不同 Authority、Host Extension Ownership Test，以及覆盖 Activation、
 Drain、Revocation、Quarantine、Recovery 与 Failure Domain 的统一 Lifecycle。
 
 2026-08-06 已完成第十二部分质量提升：Agent 工程实践现在明确 Fixture Fidelity/Smoke
@@ -447,7 +447,7 @@ task-lease-retry、task-checkpoint-recovery、task-lane-fleet）。
 `docs/book/catalog.json` 中标记为 `verified`（host-web-transport）。
 
 - Web；
-- MCP、Skill、Plugin、Hook；
+- MCP、Skill、Hook；
 - Provider、Tool 和 Host 扩展教程。
 
 验收：读者可以在不破坏 Runtime 边界的前提下完成一个扩展。

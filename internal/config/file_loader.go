@@ -72,11 +72,10 @@ type executionFileConfig struct {
 // map. The decoder rejects unknown fields, so a misspelled or unwired purpose is
 // refused at load time rather than accepted as a slot nothing reads.
 type routeFileConfig struct {
-	Lock     *bool                `toml:"lock"`
-	Plan     *routeSlotFileConfig `toml:"plan"`
-	Vision   *routeSlotFileConfig `toml:"vision"`
-	Subquery *routeSlotFileConfig `toml:"subquery"`
-	Summary  *routeSlotFileConfig `toml:"summary"`
+	Lock    *bool                `toml:"lock"`
+	Plan    *routeSlotFileConfig `toml:"plan"`
+	Vision  *routeSlotFileConfig `toml:"vision"`
+	Summary *routeSlotFileConfig `toml:"summary"`
 }
 
 type routeSlotFileConfig struct {
@@ -449,7 +448,6 @@ func applyRouteFile(
 	}{
 		{purpose: "plan", input: input.Plan},
 		{purpose: "vision", input: input.Vision},
-		{purpose: "subquery", input: input.Subquery},
 		{purpose: "summary", input: input.Summary},
 	}
 	for _, slot := range slots {

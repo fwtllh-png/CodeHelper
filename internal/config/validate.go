@@ -491,7 +491,7 @@ func (s Snapshot) validateVision() error {
 
 // routeSlotPurposes are the wired purposes a slot may be configured for, in the
 // order they are reported. It matches routeFileConfig.
-var routeSlotPurposes = []string{"plan", "vision", "subquery", "summary"}
+var routeSlotPurposes = []string{"plan", "vision", "summary"}
 
 // validateRoute checks the slots configuration named. A half-named slot is the
 // error worth catching here: a provider without a model resolves to nothing, and

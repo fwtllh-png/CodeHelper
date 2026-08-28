@@ -59,3 +59,25 @@ test("compares architecture and Web measurements with the same semantics", () =>
     [["architecture", "regressed"], ["web", "exceeded"]]
   );
 });
+
+test("accepts an architecture target with an explicit retirement", () => {
+  const findings = compareSnapshots(
+    {
+      architecture: {
+        targets: [{id: "removed", metrics: {production_lines: 100}}]
+      },
+      web: {bundle: {}}
+    },
+    {targets: []},
+    {bundle: {}},
+    {
+      architecture: {
+        targets: [],
+        retirements: {removed: "The subsystem was intentionally removed."}
+      },
+      web: {bundle_budgets: {}}
+    }
+  );
+
+  assert.deepEqual(findings, []);
+});

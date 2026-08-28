@@ -46,7 +46,6 @@ type scopeState struct {
 	sampledCatalog       tool.CatalogSnapshot
 	sampledTools         map[string]bool
 	contextLedger        *agentcontext.MessageLedger
-	extensionsProjected  bool
 	mcpProjected         bool
 	diagnostics          []diagnostics.Receipt
 	verification         []verify.Evidence

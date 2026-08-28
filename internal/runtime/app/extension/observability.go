@@ -41,8 +41,7 @@ func (o *controlObservability) finish(
 	switch status {
 	case "committed", "reconciled":
 		o.metrics.Committed++
-		if operation.Action == protocol.ExtensionActionRevoke ||
-			operation.Action == protocol.ExtensionActionSecurityRevoke {
+		if operation.Action == protocol.ExtensionActionRevoke {
 			o.metrics.Revokes++
 		}
 	case "duplicate":

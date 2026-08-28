@@ -124,11 +124,6 @@ func (c *Catalog) ControlSummaries(
 			return nil, err
 		}
 		item := entries[name]
-		if item.source == SourcePlugin {
-			if err := c.verify(ctx, item); err != nil {
-				continue
-			}
-		}
 		result = append(result, ControlSummary{
 			Summary: c.summary(item, lockMatches(item, locked[name])),
 			Enabled: enabledFor(item, state, nil),
@@ -209,13 +204,6 @@ func (c *Catalog) candidateForHandle(
 		if found {
 			return candidate{}, ErrSkillHandleInvalid
 		}
-		if item.source == SourcePlugin {
-			if err := c.verify(ctx, item); err != nil {
-				return candidate{}, fmt.Errorf(
-					"%w: plugin authority: %v", ErrSkillHandleInvalid, err,
-				)
-			}
-		}
 		matched = item
 		found = true
 	}
@@ -242,11 +230,6 @@ func (c *Catalog) selectionSummaries(
 		item := entries[name]
 		if !enabledFor(item, state, nil) {
 			continue
-		}
-		if item.source == SourcePlugin {
-			if err := c.verify(ctx, item); err != nil {
-				continue
-			}
 		}
 		result = append(
 			result,

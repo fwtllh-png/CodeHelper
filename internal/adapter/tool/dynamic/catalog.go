@@ -33,12 +33,12 @@ type RegistrationPolicy struct {
 
 func DefaultRegistrationPolicy() RegistrationPolicy {
 	return RegistrationPolicy{
-		Capability:     tool.CapabilityPlugin,
+		Capability:     tool.CapabilityExternal,
 		AccessMode:     tool.AccessTree,
 		ParallelPolicy: tool.ParallelSerial,
 		// Execution happens in the trusted Host, not in a local child process.
 		// Claiming a local strong sandbox here would be both false and unusable in
-		// nested Seatbelt environments; ToolGuard still authorizes the plugin
+		// nested Seatbelt environments; ToolGuard still authorizes the external
 		// capability and declared resource before dispatch.
 		SandboxRequirement: tool.SandboxNone,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -197,7 +197,7 @@ func (c *Catalog) registration(
 func validatePolicy(policy RegistrationPolicy) error {
 	switch policy.Capability {
 	case tool.CapabilityRead, tool.CapabilityWrite, tool.CapabilityProcess,
-		tool.CapabilityNetwork, tool.CapabilityPlugin:
+		tool.CapabilityNetwork, tool.CapabilityExternal:
 	default:
 		return errors.New("dynamic tool registration capability is invalid")
 	}

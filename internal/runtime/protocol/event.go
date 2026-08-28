@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +26,6 @@ const (
 	EventToolResult         EventKind = "tool.result"
 	EventToolCatalogChanged EventKind = "tool.catalog.changed"
 	EventMCPHealthChanged   EventKind = "mcp.health.changed"
-	EventExtensionLifecycle EventKind = "extension.lifecycle"
 	EventExtensionControl   EventKind = "extension.control"
 	EventHookExecution      EventKind = "hook.execution"
 	EventDiagnostics        EventKind = "diagnostics.result"
@@ -517,32 +515,15 @@ func (d *MCPHealthChangedData) validate() error {
 	return nil
 }
 
-type ExtensionLifecycleData struct {
-	ExtensionKind   string    `json:"extension_kind"`
-	Name            string    `json:"name"`
-	Action          string    `json:"action"`
-	Version         string    `json:"version"`
-	PreviousVersion string    `json:"previous_version,omitempty"`
-	Source          string    `json:"source"`
-	Publisher       string    `json:"publisher,omitempty"`
-	Trust           string    `json:"trust"`
-	Digest          string    `json:"digest"`
-	Generation      uint64    `json:"generation"`
-	Enabled         bool      `json:"enabled"`
-	ChangedAt       time.Time `json:"changed_at"`
-}
-
 type ExtensionControlData struct {
-	OperationID  string                 `json:"operation_id"`
-	Action       ExtensionControlAction `json:"action"`
-	Kind         ExtensionControlKind   `json:"kind"`
-	Name         string                 `json:"name,omitempty"`
-	VersionValue string                 `json:"version_value,omitempty"`
-	Capability   string                 `json:"capability,omitempty"`
-	Status       string                 `json:"status"`
-	Revision     uint64                 `json:"revision"`
-	Digest       string                 `json:"digest"`
-	OccurredAt   time.Time              `json:"occurred_at"`
+	OperationID string                 `json:"operation_id"`
+	Action      ExtensionControlAction `json:"action"`
+	Kind        ExtensionControlKind   `json:"kind"`
+	Name        string                 `json:"name,omitempty"`
+	Status      string                 `json:"status"`
+	Revision    uint64                 `json:"revision"`
+	Digest      string                 `json:"digest"`
+	OccurredAt  time.Time              `json:"occurred_at"`
 }
 
 type HookExecutionData struct {
@@ -573,8 +554,8 @@ func (d *HookExecutionData) validate() error {
 		d.OccurredAt.IsZero() || d.StdoutBytes < 0 || d.StderrBytes < 0 {
 		return errors.New("hook execution event is invalid")
 	}
-	if !slices.Contains([]string{"repository", "plugin", "builtin"}, d.Source) ||
-		!slices.Contains([]string{"workspace", "signed_registry", "builtin"}, d.Trust) ||
+	if !slices.Contains([]string{"repository", "builtin"}, d.Source) ||
+		!slices.Contains([]string{"workspace", "builtin"}, d.Trust) ||
 		!slices.Contains([]string{"process", "session", "thread", "turn"}, d.Scope) ||
 		!slices.Contains([]string{"observe", "enforce"}, d.Mode) {
 		return errors.New("hook execution authority metadata is invalid")
@@ -596,54 +577,12 @@ func (d *ExtensionControlData) validate() error {
 	}
 	operation := ExtensionControlOperation{
 		Version: Version, ID: d.OperationID, Kind: d.Kind, Action: d.Action,
-		Name: d.Name, VersionValue: d.VersionValue, Capability: d.Capability,
-		CreatedAt: d.OccurredAt,
+		Name: d.Name, CreatedAt: d.OccurredAt,
 	}
 	if operation.Query() {
 		return errors.New("extension control event cannot represent query")
 	}
 	return operation.Validate()
-}
-
-func (*ExtensionLifecycleData) eventKind() EventKind { return EventExtensionLifecycle }
-
-func (d *ExtensionLifecycleData) validate() error {
-	if d.ExtensionKind != "plugin" {
-		return errors.New("extension lifecycle kind must be plugin")
-	}
-	if d.Name == "" || d.Version == "" || d.Source == "" ||
-		d.Trust == "" || d.Generation == 0 || d.ChangedAt.IsZero() {
-		return errors.New(
-			"extension lifecycle requires name, version, source, trust, generation, and changed_at",
-		)
-	}
-	switch d.Action {
-	case "active", "installed", "updated", "rolled_back",
-		"enabled", "disabled", "revoked":
-	default:
-		return fmt.Errorf("invalid extension lifecycle action %q", d.Action)
-	}
-	if d.Trust != "unsigned-local" && d.Trust != "signed-registry" {
-		return fmt.Errorf("invalid extension lifecycle trust %q", d.Trust)
-	}
-	if d.Trust == "signed-registry" && d.Publisher == "" {
-		return errors.New("signed extension lifecycle requires publisher")
-	}
-	switch d.Action {
-	case "active", "installed", "updated", "enabled":
-		if !d.Enabled {
-			return fmt.Errorf("extension lifecycle action %q must be enabled", d.Action)
-		}
-	case "disabled", "revoked":
-		if d.Enabled {
-			return fmt.Errorf("extension lifecycle action %q cannot be enabled", d.Action)
-		}
-	}
-	decoded, err := hex.DecodeString(d.Digest)
-	if err != nil || len(decoded) != 32 || d.Digest != strings.ToLower(d.Digest) {
-		return errors.New("extension lifecycle digest must be lowercase SHA-256")
-	}
-	return nil
 }
 
 func (*ToolCatalogChangedData) eventKind() EventKind { return EventToolCatalogChanged }

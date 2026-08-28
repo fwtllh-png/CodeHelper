@@ -18,10 +18,15 @@ export function compareSnapshots(snapshot, architecture, web, policies) {
   const baselineArchitecture = targetsByID(snapshot.architecture);
   const currentArchitecture = targetsByID(architecture);
   const architectureLimits = limitsByID(policies.architecture);
+  const retirements = policies.architecture.retirements ?? {};
 
   for (const [id, baselineTarget] of baselineArchitecture) {
     const currentTarget = currentArchitecture.get(id);
     const limits = architectureLimits.get(id);
+    if (!currentTarget && typeof retirements[id] === "string" &&
+        retirements[id].trim() !== "") {
+      continue;
+    }
     if (!currentTarget || !limits) {
       findings.push({scope: "architecture", id, metric: "target", status: "missing"});
       continue;

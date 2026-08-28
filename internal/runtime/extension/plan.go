@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 )
 
 type SourceKind string
@@ -47,14 +46,9 @@ type Candidate struct {
 	Kind       string
 	Name       string
 	Version    string
-	Publisher  string
-	Trust      string
 	Digest     string
 	Generation uint64
 	Enabled    bool
-	LastAction string
-	ChangedAt  time.Time
-	Observable bool
 	Source     SourceRef
 }
 
@@ -301,13 +295,9 @@ type candidateIdentity struct {
 	Kind       string    `json:"kind"`
 	Name       string    `json:"name"`
 	Version    string    `json:"version"`
-	Publisher  string    `json:"publisher"`
-	Trust      string    `json:"trust"`
 	Digest     string    `json:"digest"`
 	Generation uint64    `json:"generation"`
 	Enabled    bool      `json:"enabled"`
-	LastAction string    `json:"last_action"`
-	Observable bool      `json:"observable"`
 	Source     SourceRef `json:"source"`
 }
 
@@ -316,10 +306,8 @@ func canonicalCandidates(values []Candidate) []candidateIdentity {
 	for _, value := range values {
 		result = append(result, candidateIdentity{
 			ID: value.ID, Kind: value.Kind, Name: value.Name,
-			Version: value.Version, Publisher: value.Publisher,
-			Trust: value.Trust, Digest: value.Digest,
+			Version: value.Version, Digest: value.Digest,
 			Generation: value.Generation, Enabled: value.Enabled,
-			LastAction: value.LastAction, Observable: value.Observable,
 			Source: value.Source,
 		})
 	}

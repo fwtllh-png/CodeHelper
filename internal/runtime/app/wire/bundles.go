@@ -8,7 +8,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
@@ -24,7 +23,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
@@ -49,7 +47,6 @@ type platformBundle struct {
 }
 
 type extensionBundle struct {
-	plugins      []*pluginruntime.Loaded
 	extensions   *extensionSession
 	dynamicTools *dynamictool.Manager
 	mcpPool      *mcpruntime.Pool
@@ -63,7 +60,6 @@ type orchestrationBundle struct {
 	tasks            *taskstate.Repository
 	inputHost        *interacttool.Host
 	applyPlan        func(interacttool.Plan) error
-	rlmStore         *rlm.Store
 	children         *childRuntime
 	childTools       *childToolsets
 	chatWorkspaces   *chatWorkspaces

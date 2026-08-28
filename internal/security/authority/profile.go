@@ -206,7 +206,7 @@ func compileResources(profile *EffectivePermissionProfile, invocation policy.Inv
 		}
 	}
 	if invocation.Capability == tool.CapabilityProcess ||
-		invocation.Capability == tool.CapabilityPlugin ||
+		invocation.Capability == tool.CapabilityExternal ||
 		invocation.Sandbox == tool.SandboxStrong {
 		profile.Process.Allowed = true
 	}

@@ -22,15 +22,14 @@ func TestReceiptRecordsSkillsReadInvocation(t *testing.T) {
 			Metadata: map[string]any{
 				"resolved_skills": []skillruntime.ResolvedSkill{{
 					Name: "review", Version: "1.0.0",
-					Source: skillruntime.SourcePlugin, Plugin: "fixture",
+					Source: skillruntime.SourceWorkspace,
 					Digest: strings.Repeat("c", 64), Locked: true,
 				}},
 			},
 		},
 	})
 	receipt := recorder.Build(Observations{})
-	if len(receipt.Skills) != 1 || receipt.Skills[0].Name != "review" ||
-		receipt.Skills[0].Plugin != "fixture" {
+	if len(receipt.Skills) != 1 || receipt.Skills[0].Name != "review" {
 		t.Fatalf("skills = %+v", receipt.Skills)
 	}
 }

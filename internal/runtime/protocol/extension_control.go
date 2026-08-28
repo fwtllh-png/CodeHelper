@@ -13,43 +13,33 @@ import (
 type ExtensionControlKind string
 
 const (
-	ExtensionControlPlugin ExtensionControlKind = "plugin"
-	ExtensionControlSkill  ExtensionControlKind = "skill"
-	ExtensionControlAll    ExtensionControlKind = "all"
+	ExtensionControlSkill ExtensionControlKind = "skill"
+	ExtensionControlAll   ExtensionControlKind = "all"
 )
 
 type ExtensionControlAction string
 
 const (
-	ExtensionActionList              ExtensionControlAction = "list"
-	ExtensionActionDetail            ExtensionControlAction = "detail"
-	ExtensionActionHealth            ExtensionControlAction = "health"
-	ExtensionActionPermissions       ExtensionControlAction = "permissions"
-	ExtensionActionReceipts          ExtensionControlAction = "receipts"
-	ExtensionActionTrust             ExtensionControlAction = "trust"
-	ExtensionActionEnable            ExtensionControlAction = "enable"
-	ExtensionActionDisable           ExtensionControlAction = "disable"
-	ExtensionActionCapabilityEnable  ExtensionControlAction = "capability_enable"
-	ExtensionActionCapabilityDisable ExtensionControlAction = "capability_disable"
-	ExtensionActionRevoke            ExtensionControlAction = "revoke"
-	ExtensionActionSecurityRevoke    ExtensionControlAction = "security_revoke"
-	ExtensionActionInstall           ExtensionControlAction = "install"
-	ExtensionActionUpdate            ExtensionControlAction = "update"
-	ExtensionActionRollback          ExtensionControlAction = "rollback"
-	ExtensionActionLint              ExtensionControlAction = "lint"
-	ExtensionActionLock              ExtensionControlAction = "lock"
-	ExtensionActionVerify            ExtensionControlAction = "verify"
+	ExtensionActionList        ExtensionControlAction = "list"
+	ExtensionActionDetail      ExtensionControlAction = "detail"
+	ExtensionActionHealth      ExtensionControlAction = "health"
+	ExtensionActionPermissions ExtensionControlAction = "permissions"
+	ExtensionActionReceipts    ExtensionControlAction = "receipts"
+	ExtensionActionEnable      ExtensionControlAction = "enable"
+	ExtensionActionDisable     ExtensionControlAction = "disable"
+	ExtensionActionRevoke      ExtensionControlAction = "revoke"
+	ExtensionActionLint        ExtensionControlAction = "lint"
+	ExtensionActionLock        ExtensionControlAction = "lock"
+	ExtensionActionVerify      ExtensionControlAction = "verify"
 )
 
 type ExtensionControlOperation struct {
-	Version      int                    `json:"version"`
-	ID           string                 `json:"id"`
-	Kind         ExtensionControlKind   `json:"kind"`
-	Action       ExtensionControlAction `json:"action"`
-	Name         string                 `json:"name,omitempty"`
-	VersionValue string                 `json:"version_value,omitempty"`
-	Capability   string                 `json:"capability,omitempty"`
-	CreatedAt    time.Time              `json:"created_at"`
+	Version   int                    `json:"version"`
+	ID        string                 `json:"id"`
+	Kind      ExtensionControlKind   `json:"kind"`
+	Action    ExtensionControlAction `json:"action"`
+	Name      string                 `json:"name,omitempty"`
+	CreatedAt time.Time              `json:"created_at"`
 }
 
 type ExtensionCapabilityProjection struct {
@@ -162,17 +152,14 @@ func (o ExtensionControlOperation) Validate() error {
 		return errors.New("extension operation requires version, id, and created_at")
 	}
 	switch o.Kind {
-	case ExtensionControlPlugin, ExtensionControlSkill, ExtensionControlAll:
+	case ExtensionControlSkill, ExtensionControlAll:
 	default:
 		return errors.New("extension operation kind is invalid")
 	}
 	switch o.Action {
 	case ExtensionActionList, ExtensionActionDetail, ExtensionActionHealth,
 		ExtensionActionPermissions, ExtensionActionReceipts:
-	case ExtensionActionTrust, ExtensionActionEnable, ExtensionActionDisable,
-		ExtensionActionRevoke, ExtensionActionSecurityRevoke,
-		ExtensionActionInstall, ExtensionActionUpdate, ExtensionActionRollback,
-		ExtensionActionCapabilityEnable, ExtensionActionCapabilityDisable,
+	case ExtensionActionEnable, ExtensionActionDisable, ExtensionActionRevoke,
 		ExtensionActionLint:
 		if strings.TrimSpace(o.Name) == "" {
 			return errors.New("extension mutation requires name")
@@ -183,23 +170,6 @@ func (o ExtensionControlOperation) Validate() error {
 	}
 	if o.Kind == ExtensionControlAll && !o.Query() {
 		return errors.New("extension mutation cannot target kind all")
-	}
-	if (o.Action == ExtensionActionInstall || o.Action == ExtensionActionUpdate) &&
-		strings.TrimSpace(o.VersionValue) == "" {
-		return errors.New("extension install or update requires version_value")
-	}
-	if (o.Action == ExtensionActionCapabilityEnable ||
-		o.Action == ExtensionActionCapabilityDisable) &&
-		strings.TrimSpace(o.Capability) == "" {
-		return errors.New("capability mutation requires capability")
-	}
-	if o.Kind == ExtensionControlSkill {
-		switch o.Action {
-		case ExtensionActionTrust, ExtensionActionInstall, ExtensionActionUpdate,
-			ExtensionActionRollback, ExtensionActionCapabilityEnable,
-			ExtensionActionCapabilityDisable, ExtensionActionSecurityRevoke:
-			return errors.New("skill operation does not support plugin action")
-		}
 	}
 	return nil
 }

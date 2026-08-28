@@ -63,7 +63,7 @@ Service 永远正确。
 | --- | --- | --- |
 | 个人开发者 | 本地分析、编辑、验证、Resume | Repository/Credential 由用户控制 |
 | 团队/平台工程师 | Protocol、Policy、Observability、Integration | 多 Host 只有一条 Authority Path |
-| Extension 作者 | Provider、Tool、MCP、Skill、Plugin、Hook、Host | 不建立第二控制面 |
+| Extension 作者 | Provider、Tool、MCP、Skill、Hook、Host | 不建立第二控制面 |
 | Agent 学习者 | 概念对应真实 Source/Test/Lab | 区分 Fact、Tradeoff、Roadmap |
 | Coding Agent | Machine-readable Rule、Ownership、Evidence | Instruction 不成为 Authority |
 

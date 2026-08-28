@@ -108,11 +108,6 @@ func TestResolveExtensionPathsUsesWorkspaceAndDataDefaults(t *testing.T) {
 			t.Fatalf("%q is not under %q", path, root)
 		}
 	}
-	assertWithin(paths.PluginWorkspaceRoot, workspace)
-	assertWithin(paths.PluginStatePath, paths.DataDir)
-	assertWithin(paths.PluginStagingRoot, paths.DataDir)
-	assertWithin(paths.PluginCacheRoot, paths.DataDir)
-	assertWithin(paths.PluginPublishersPath, paths.DataDir)
 	assertWithin(paths.SkillsStatePath, paths.DataDir)
 	assertWithin(paths.SkillsLockPath, paths.DataDir)
 }

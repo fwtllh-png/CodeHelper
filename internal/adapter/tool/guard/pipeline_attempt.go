@@ -609,10 +609,10 @@ func additionalPermissionAllowed(
 	case authority.AdditionalNetwork:
 		return invocation.Binding.Capability == tool.CapabilityNetwork ||
 			invocation.Binding.Capability == tool.CapabilityProcess ||
-			invocation.Binding.Capability == tool.CapabilityPlugin
+			invocation.Binding.Capability == tool.CapabilityExternal
 	case authority.AdditionalProcess:
 		return invocation.Binding.Capability == tool.CapabilityProcess ||
-			invocation.Binding.Capability == tool.CapabilityPlugin
+			invocation.Binding.Capability == tool.CapabilityExternal
 	default:
 		return false
 	}

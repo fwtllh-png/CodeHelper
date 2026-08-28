@@ -61,7 +61,7 @@ func (c SessionToolCatalog) Validate() error {
 		}
 		seen[entry.ID] = struct{}{}
 		switch entry.SourceKind {
-		case "builtin", "mcp", "plugin", "skill", "dynamic":
+		case "builtin", "mcp", "external", "skill", "dynamic":
 		default:
 			return fmt.Errorf("session tool catalog entry %q has invalid source kind", entry.ID)
 		}
@@ -80,7 +80,7 @@ func (c SessionToolCatalog) Validate() error {
 			return fmt.Errorf("session tool catalog entry %q is not guarded", entry.ID)
 		}
 		switch entry.Capability {
-		case "read", "write", "process", "network", "plugin", "unknown":
+		case "read", "write", "process", "network", "external", "unknown":
 		default:
 			return fmt.Errorf("session tool catalog entry %q has invalid capability", entry.ID)
 		}

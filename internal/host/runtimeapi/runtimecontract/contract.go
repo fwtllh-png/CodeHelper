@@ -70,11 +70,6 @@ type Setup struct {
 	Tools               bool
 	RepositoryRules     string
 	MCPConfig           []byte
-	PluginWorkspaceRoot string
-	PluginUserRoot      string
-	PluginBuiltinRoot   string
-	PluginStatePath     string
-	PluginStagingRoot   string
 	TrustedDynamicTools bool
 	MaxSteps            int
 }

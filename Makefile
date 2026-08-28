@@ -492,7 +492,7 @@ brand-check:
 
 security-test:
 	$(MAKE) security-side-effect-check
-	$(GO) test -race ./internal/security/... ./internal/adapter/hooks/... ./internal/adapter/mcp/... ./internal/adapter/tool/guard/... ./internal/adapter/tool/quality/... ./internal/adapter/plugin/... ./internal/host/web/... ./internal/runtime/agent/engine/... ./internal/runtime/app/...
+	$(GO) test -race ./internal/security/... ./internal/adapter/hooks/... ./internal/adapter/mcp/... ./internal/adapter/tool/guard/... ./internal/adapter/tool/quality/... ./internal/host/web/... ./internal/runtime/agent/engine/... ./internal/runtime/app/...
 	$(GO) test -race ./internal/platform/process/... -run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunSanitizesRegularAndPTYEnvironments|RunPinsWorkingDirectoryToDescriptor|SanitizedEnvironment)'
 
 sandbox-attack-test:

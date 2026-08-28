@@ -34,11 +34,9 @@ func TestFallingBackToABlindActForVisionIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// plan and subquery are ordinary chat, so they still fall back.
-	for _, purpose := range []Purpose{PurposePlan, PurposeSubquery} {
-		if _, err := routes.For(purpose); err != nil {
-			t.Fatalf("For(%q) error = %v", purpose, err)
-		}
+	// Plan is ordinary chat, so it still falls back.
+	if _, routeErr := routes.For(PurposePlan); routeErr != nil {
+		t.Fatalf("For(%q) error = %v", PurposePlan, routeErr)
 	}
 	_, err = routes.For(PurposeVision)
 	if err == nil || !strings.Contains(err.Error(), "vision") {
@@ -74,7 +72,7 @@ func TestPurposeRequiredCapabilitiesOnlyVisionAsksForVision(t *testing.T) {
 	if got := PurposeRequiredCapabilities(PurposeVision); len(got) != 1 || got[0] != CapVision {
 		t.Fatalf("vision requirements = %v", got)
 	}
-	for _, purpose := range []Purpose{PurposeAct, PurposePlan, PurposeSubquery} {
+	for _, purpose := range []Purpose{PurposeAct, PurposePlan} {
 		if got := PurposeRequiredCapabilities(purpose); got != nil {
 			t.Fatalf("%s requirements = %v, want none", purpose, got)
 		}

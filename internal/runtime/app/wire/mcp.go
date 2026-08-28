@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	pluginextension "github.com/fwtllh-png/CodeHelper/internal/adapter/extension/plugin"
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -21,7 +20,7 @@ type mcpContributor struct {
 func (mcpContributor) ID() string { return "mcp" }
 
 func (c mcpContributor) Contribute(
-	ctx context.Context,
+	_ context.Context,
 	registry *tool.Registry,
 ) (ContributionReceipt, error) {
 	return runContribution(registry, c.ID(), func() error {
@@ -41,21 +40,6 @@ func (c mcpContributor) Contribute(
 				return fmt.Errorf("MCP tools: %w", err)
 			}
 			for name, server := range config.Servers {
-				combined.Servers[name] = server
-			}
-			configured = true
-		}
-		pluginMCP, pluginConfigured, err := pluginextension.MCPConfig(
-			ctx, c.output.pluginCapabilities, c.output.pluginRegistry,
-		)
-		if err != nil {
-			return err
-		}
-		if pluginConfigured {
-			for name, server := range pluginMCP.Servers {
-				if _, exists := combined.Servers[name]; exists {
-					return fmt.Errorf("MCP server %q is duplicated", name)
-				}
 				combined.Servers[name] = server
 			}
 			configured = true

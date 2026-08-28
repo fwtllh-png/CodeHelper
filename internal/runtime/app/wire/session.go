@@ -16,7 +16,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -116,8 +115,6 @@ func (s *Session) Subagents() *subagent.AgentControl {
 
 func (s *Session) Security() *policy.Runtime { return s.security }
 
-func (s *Session) RLM() *rlm.Store { return s.rlmStore }
-
 func (s *Session) Processes() *process.SessionManager { return s.processes }
 
 func (s *Session) WorkspaceQuery() *workspacequery.Service { return s.workspaceQuery }
@@ -190,22 +187,6 @@ func (s *Session) registerResourceClosers() error {
 				return nil
 			}
 			return s.fixture.Close(ctx)
-		}},
-		{name: "plugin-registry", close: func(context.Context) error {
-			return s.extensions.closePluginRegistry()
-		}},
-		{name: "plugin-tools", close: func(context.Context) error {
-			return s.extensions.closePluginTools()
-		}},
-		{name: "extension-lifecycle", close: func(ctx context.Context) error {
-			return s.extensions.closeLifecycle(ctx)
-		}},
-		{name: "loaded-plugins", close: func(context.Context) error {
-			closeErrors := make([]error, 0, len(s.plugins))
-			for _, loadedPlugin := range s.plugins {
-				closeErrors = append(closeErrors, loadedPlugin.Close())
-			}
-			return errors.Join(closeErrors...)
 		}},
 		{name: "metrics", close: func(context.Context) error {
 			if s.metricsPath == "" {

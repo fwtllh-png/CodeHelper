@@ -5,16 +5,15 @@ import (
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	plugintool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/plugin"
 	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/admission"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
 	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
@@ -27,7 +26,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
@@ -66,18 +64,14 @@ type persistenceBuildState struct {
 }
 
 type extensionBuildState struct {
-	receipts           []ContributionReceipt
-	registry           *runtimeextension.Registry
-	plugins            []*pluginruntime.Loaded
-	pluginRegistry     *pluginruntime.Registry
-	pluginTools        *plugintool.Adapter
-	pluginCapabilities []pluginruntime.CompiledBundle
-	skillCatalog       *skill.Catalog
-	memory             *memory.Store
-	hooks              *hooks.Manager
-	mcpPool            *mcpruntime.Pool
-	mcpPrewarm         *MCPPrewarm
-	dynamicTools       *dynamictool.Manager
+	receipts     []ContributionReceipt
+	registry     *runtimeextension.Registry
+	skillCatalog *skill.Catalog
+	memory       *memory.Store
+	hooks        *hooks.Manager
+	mcpPool      *mcpruntime.Pool
+	mcpPrewarm   *MCPPrewarm
+	dynamicTools *dynamictool.Manager
 }
 
 type securityBuildState struct {
@@ -92,16 +86,15 @@ type securityBuildState struct {
 }
 
 type orchestrationBuildState struct {
-	workGraph      *orchestrationstore.Store
-	workBudget     *workbudget.Ledger
-	sharedGovernor *rlm.Governor
-	childGovernor  *rlm.Governor
-	children       *childRuntime
-	childToolsets  *childToolsets
-	chatTrees      *childWorktrees
-	parentFiles    *filetool.Tools
-	subagents      *subagent.AgentControl
-	tasks          *taskstate.Repository
-	automations    *automation.Repository
-	scheduler      schedulerFactory
+	workGraph     *orchestrationstore.Store
+	workBudget    *workbudget.Ledger
+	childGovernor *admission.Governor
+	children      *childRuntime
+	childToolsets *childToolsets
+	chatTrees     *childWorktrees
+	parentFiles   *filetool.Tools
+	subagents     *subagent.AgentControl
+	tasks         *taskstate.Repository
+	automations   *automation.Repository
+	scheduler     schedulerFactory
 }

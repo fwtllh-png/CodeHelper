@@ -308,7 +308,6 @@ export function projectTrajectory(
         break;
       case "tool.catalog.changed":
       case "mcp.health.changed":
-      case "extension.lifecycle":
       case "extension.control":
       case "hook.execution":
       case "run.started":

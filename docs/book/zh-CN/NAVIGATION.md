@@ -81,7 +81,7 @@
 - [Guard、Approval、Constitution 与 Sandbox](./07-security-governance/03-approval-constitution-sandbox.md) — `security-approval-sandbox` — `draft` — 规划路径: `07-security-governance/03-approval-constitution-sandbox.md`
 - [OS Sandbox 与 Process Isolation](./07-security-governance/04-process-isolation.md) — `security-process-isolation` — `draft` — 规划路径: `07-security-governance/04-process-isolation.md`
 - [Egress、Credential 与数据泄漏](./07-security-governance/05-egress-and-credentials.md) — `security-egress-credentials` — `draft` — 规划路径: `07-security-governance/05-egress-and-credentials.md`
-- [MCP、Skill、Plugin 与 Hook Trust](./07-security-governance/06-extension-trust.md) — `security-extension-trust` — `draft` — 规划路径: `07-security-governance/06-extension-trust.md`
+- [MCP、Skill 与 Hook Trust](./07-security-governance/06-extension-trust.md) — `security-extension-trust` — `draft` — 规划路径: `07-security-governance/06-extension-trust.md`
 - [Fail-closed 与平台能力声明](./07-security-governance/07-fail-closed.md) — `security-fail-closed` — `draft` — 规划路径: `07-security-governance/07-fail-closed.md`
 
 ### 部分 8: 状态与可观测性
@@ -112,7 +112,7 @@
 - [新增 Provider](./11-extension-ecosystem/01-adding-provider.md) — `extension-provider` — `draft` — 规划路径: `11-extension-ecosystem/01-adding-provider.md`
 - [新增受治理 Tool](./11-extension-ecosystem/02-adding-tool.md) — `extension-tool` — `draft` — 规划路径: `11-extension-ecosystem/02-adding-tool.md`
 - [接入 MCP Server](./11-extension-ecosystem/03-integrating-mcp.md) — `extension-mcp` — `draft` — 规划路径: `11-extension-ecosystem/03-integrating-mcp.md`
-- [编写 Skill、Plugin 与 Hook](./11-extension-ecosystem/04-skill-plugin-hook.md) — `extension-skill-plugin-hook` — `draft` — 规划路径: `11-extension-ecosystem/04-skill-plugin-hook.md`
+- [编写 Skill 与 Hook](./11-extension-ecosystem/04-skill-plugin-hook.md) — `extension-skill-plugin-hook` — `draft` — 规划路径: `11-extension-ecosystem/04-skill-plugin-hook.md`
 - [新增 Host 而不复制 Runtime](./11-extension-ecosystem/05-adding-host.md) — `extension-host` — `draft` — 规划路径: `11-extension-ecosystem/05-adding-host.md`
 - [Extension Failure 与隔离策略](./11-extension-ecosystem/06-failure-isolation.md) — `extension-failure-isolation` — `draft` — 规划路径: `11-extension-ecosystem/06-failure-isolation.md`
 

@@ -135,7 +135,6 @@ Prompt 各 Partition 不应各自持有模型无关的 Token 档位。应先预�
 | `internal/config/defaults.go` | Runtime Queue、并发、Worker Lease 等均有默认值 | 基本合理 | 已有 Config 与 Provenance；增加运行时饱和指标和拒绝原因 |
 | `internal/runtime/agent/turnkernel/runtime_control.go:46` | Mailbox 默认 64 | 应统一 | 从 Runtime Subscriber/Operation Capacity 派生或显式配置 |
 | `internal/runtime/agent/engine/cancel_handler.go:13` | Backlog 为 Mailbox 的 2 倍 | 可接受派生 | 保持相对关系，但将关系写入契约测试 |
-| `internal/runtime/agent/rlm/governor.go:20` | 默认深度 5、并发 16 | 应继承 | 从 Session/Subagent Budget 和机器并发能力收窄 |
 | `internal/orchestration/subagent/context_fork.go` | Capsule 从父 Turn 剩余容量和 Child Budget 派生 | 已改善 | `task_capsule` 默认仍只携带任务相关事实 |
 | `internal/orchestration/workflow/jsvm/vm.go:24` | 生命周期与并行项固定 1000/16 | 应配置化 | 从 Workflow Spec、宿主资源和全局 Governor 共同约束 |
 | `internal/orchestration/task/execution.go:58` | 默认退避 15s、封顶 10m | 可配置化 | Worker Config 已有对应字段，底层不得维护第二套默认 |

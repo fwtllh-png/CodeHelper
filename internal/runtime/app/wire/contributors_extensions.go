@@ -7,11 +7,8 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
-	plugintool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/plugin"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 func newExtensionContributors(state *buildState) []extensionActivation {
@@ -27,15 +24,6 @@ func newExtensionContributors(state *buildState) []extensionActivation {
 		state.platform.leaseAuthority,
 	)
 	return []extensionActivation{
-		pluginBundleContributor{
-			bundle: state.options.PluginBundle, receipt: state.options.PluginReceipt,
-			workspace: state.config.execution.Workspace,
-			backend:   state.platform.backend, output: output,
-		},
-		pluginRegistryContributor{
-			paths: state.config.extensionPaths, workspace: state.config.execution.Workspace,
-			backend: state.platform.backend, output: output,
-		},
 		skillContributor{
 			paths: state.config.extensionPaths, workspace: state.config.execution.Workspace,
 			output: output,
@@ -70,82 +58,6 @@ func runContribution(
 		return ContributionReceipt{}, err
 	}
 	return ContributionReceipt{Contributor: id}, nil
-}
-
-type pluginBundleContributor struct {
-	bundle, receipt, workspace string
-	backend                    sandbox.Backend
-	output                     *extensionBuildState
-}
-
-func (pluginBundleContributor) ID() string { return "plugin-bundle" }
-
-func (c pluginBundleContributor) Contribute(
-	_ context.Context,
-	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), func() error {
-		if c.bundle == "" {
-			return nil
-		}
-		receipt, err := pluginruntime.LoadReceipt(c.receipt)
-		if err != nil {
-			return fmt.Errorf("plugin receipt: %w", err)
-		}
-		loader, err := pluginruntime.NewLoader(c.workspace, c.backend)
-		if err != nil {
-			return fmt.Errorf("plugin loader: %w", err)
-		}
-		loaded, err := loader.Load(c.bundle, receipt)
-		if err != nil {
-			return fmt.Errorf("plugin load: %w", err)
-		}
-		if err := plugintool.Register(registry, loaded); err != nil {
-			_ = loaded.Close()
-			return fmt.Errorf("plugin register: %w", err)
-		}
-		c.output.plugins = append(c.output.plugins, loaded)
-		return nil
-	})
-}
-
-type pluginRegistryContributor struct {
-	paths     ExtensionPaths
-	workspace string
-	backend   sandbox.Backend
-	output    *extensionBuildState
-}
-
-func (pluginRegistryContributor) ID() string { return "plugin-registry" }
-
-func (c pluginRegistryContributor) Contribute(
-	ctx context.Context,
-	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), func() error {
-		lifecycle, err := NewPluginRegistry(c.paths, c.workspace, c.backend)
-		if err != nil {
-			return fmt.Errorf("plugin registry: %w", err)
-		}
-		if err := lifecycle.Reload(); err != nil {
-			_ = lifecycle.Close()
-			return fmt.Errorf("plugin registry reload: %w", err)
-		}
-		adapter, err := plugintool.NewAdapter(registry, lifecycle)
-		if err != nil {
-			_ = lifecycle.Close()
-			return fmt.Errorf("register lifecycle plugin tools: %w", err)
-		}
-		capabilities, err := lifecycle.CapabilityBundles(ctx)
-		if err != nil {
-			_ = adapter.Close()
-			_ = lifecycle.Close()
-			return fmt.Errorf("compile plugin capabilities: %w", err)
-		}
-		c.output.pluginRegistry, c.output.pluginTools = lifecycle, adapter
-		c.output.pluginCapabilities = capabilities
-		return nil
-	})
 }
 
 type dynamicToolContributor struct {

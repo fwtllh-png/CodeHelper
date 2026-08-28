@@ -32,8 +32,6 @@ type DiscoveryOptions struct {
 	Locale         string
 	Limits         Limits
 	State          *StateStore
-	Plugins        []PluginSnapshot
-	Verifier       AuthorityVerifier
 	RuntimeVersion string
 	Lock           *LockStore
 }
@@ -44,18 +42,13 @@ type rootSpec struct {
 }
 
 type candidate struct {
-	metadata    Metadata
-	source      Source
-	root        string
-	relative    string
-	path        string
-	raw         []byte
-	rawManifest []byte
-	manifest    *Manifest
-	digest      string
-	plugin      string
-	authority   Authority
-	verifier    AuthorityVerifier
+	metadata Metadata
+	source   Source
+	root     string
+	relative string
+	path     string
+	manifest *Manifest
+	digest   string
 }
 
 func discoverNative(options DiscoveryOptions) ([]candidate, []Issue, error) {
@@ -234,7 +227,7 @@ func walkSkillRoot(
 				}
 				manifest = &parsed
 			case errors.Is(manifestErr, os.ErrNotExist):
-				if spec.source == SourceConfigured || spec.source == SourcePlugin {
+				if spec.source == SourceConfigured {
 					issues = append(issues, Issue{
 						Path:   filepath.Join(root, manifestRelative),
 						Reason: "governed skill requires skill.toml",
@@ -250,7 +243,6 @@ func walkSkillRoot(
 			result = append(result, candidate{
 				metadata: document.metadata, source: spec.source,
 				root: root, relative: childRelative, path: childPath,
-				raw: document.raw, rawManifest: append([]byte(nil), manifestData...),
 				manifest: manifest, digest: skillDigest(document.raw, manifestData),
 			})
 		}

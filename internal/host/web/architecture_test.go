@@ -15,7 +15,6 @@ func TestWebHostDoesNotDependOnExecutionImplementations(t *testing.T) {
 		"github.com/fwtllh-png/CodeHelper/internal/adapter/provider",
 		"github.com/fwtllh-png/CodeHelper/internal/security/sandbox",
 		"github.com/fwtllh-png/CodeHelper/internal/adapter/tool",
-		"github.com/fwtllh-png/CodeHelper/internal/adapter/plugin",
 		"github.com/fwtllh-png/CodeHelper/internal/adapter/skill",
 		"github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension",
 	}

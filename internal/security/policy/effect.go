@@ -46,7 +46,7 @@ func NormalizeEffect(invocation Invocation) Effect {
 			return effect(EffectWorkspaceRead, RiskLow, "reversible")
 		case tool.CapabilityWrite:
 			return effect(EffectExternalMutation, RiskMedium, "bounded")
-		case tool.CapabilityProcess, tool.CapabilityNetwork, tool.CapabilityPlugin:
+		case tool.CapabilityProcess, tool.CapabilityNetwork, tool.CapabilityExternal:
 			return effect(EffectExternalMutation, RiskHigh, "irreversible")
 		default:
 			return effect(EffectExternalMutation, RiskCritical, "irreversible")

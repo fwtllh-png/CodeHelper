@@ -34,9 +34,9 @@ last_verified: null
 | --- | --- | --- |
 | Mode | `plan`、`act`、`operate` | 请求哪类工作？ |
 | Permission | `never`、`suggest`、`auto`、`bypass` | Deny/Ask/Automate？ |
-| Capability | Read/Write/Process/Network/Plugin | Tool 需要什么 Authority？ |
+| Capability | Read/Write/Process/Network/External | Tool 需要什么 Authority？ |
 | Rule | Tool/Resource/Command + Action | Invocation 是否在 Scope？ |
-| Surface | Filesystem/Network/Process/Plugin | 是否需要进一步收紧？ |
+| Surface | Filesystem/Network/Process/External | 是否需要进一步收紧？ |
 
 Mode/Posture 不是单一 Security Slider。`plan+bypass` 仍 Read-only；`operate+suggest` 仍可
 Ask；`bypass` 不能击穿 Deny、Constitution Hold 或 Required Sandbox。
@@ -61,7 +61,7 @@ Word 或 Interpreter Payload。
 
 ## Decision Orientation
 
-| Posture | Read | Write | Process | Network/Plugin |
+| Posture | Read | Write | Process | Network/External |
 | --- | --- | --- | --- | --- |
 | `never` | Governed Deny/Limited | Deny | Deny | Deny |
 | `suggest` | Allow | Ask | Ask | Ask |

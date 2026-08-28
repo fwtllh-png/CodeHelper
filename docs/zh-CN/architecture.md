@@ -34,7 +34,7 @@ Web
 | 入口 | `cmd/codehelper` | 进程上下文和 Web 启动入口 |
 | Host | `internal/host` | 用户/客户端 I/O 与呈现 |
 | Runtime | `internal/runtime` | 协议、应用状态、Agent 循环、装配 |
-| Adapter | `internal/adapter` | 模型、Provider、Tool、MCP、Skill、Plugin、Hook |
+| Adapter | `internal/adapter` | 模型、Provider、Tool、MCP、Skill、Hook |
 | Security | `internal/security` | Policy、Permission、Constitution、Sandbox |
 | Orchestration | `internal/orchestration` | Task、Worker、Automation、Workflow、Lane、Fleet |
 | Persistence | `internal/persist` | 关系状态、Event、CAS、Session、Snapshot、Journal |
@@ -85,7 +85,7 @@ MCP 生命周期；File/VCS Broker 接管模型文件工具、Agent/Chat Merge�
 输出和 Git Metadata Mutation。`workspacebroker.Runtime` 只组合窄能力，不把 Broker
 业务逻辑放入 `wire`。
 
-Builtin 与 Extension Tool 共享同一个 Registry 实例。Plugin、Skill、Memory、
+Builtin 与 Extension Tool 共享同一个 Registry 实例。Skill、Memory、
 Dynamic Tool、Hook 与 MCP Contributor 只接收其显式构造能力和共享 Registry，不接收
 `buildState`；每个 Contributor 返回确定性的 `ContributionReceipt`，记录新增 Tool
 Identity 与命名输出。Task/Automation 注册归 Orchestration，而非 Extension
@@ -552,7 +552,7 @@ Home。
 - Config 保存 Secret Reference，不保存 Secret Value。
 - Provider 与 Web 出网使用受治理 Client 和显式 Endpoint。
 - Log 与 Report 会脱敏，但仍属于敏感工程数据。
-- MCP 与 Plugin 是供应链边界，不是可信文本文件。
+- MCP 是供应链边界，不是可信文本文件。
 - 服务默认监听 Loopback。
 - Dynamic Tool 需要可信客户端和显式开启。
 
@@ -564,10 +564,8 @@ Output Budget，随后 Seal 不可变 Registry。Contributor 只接收显式 Cap
 有界 Receipt，不接收 Construction State 或私有 Tool Registry。
 
 Extension Source 按 Source Priority 确定性解析为绑定当前 Permission Digest 的
-Digested Plan。每个 Process、Connection、Hook、Subscription、Lease、Timer 与 Tool
-Registration 都通过 `EffectOwner` 绑定 Extension、Source、Plan Revision、
-Generation、Capability 和 Effect Kind。Disable 会 Drain 所属 Effect；Revoke 或
-Quarantine 会 Fence 旧 Generation。Lifecycle Receipt 持久化且已脱敏。
+Digested Plan。Tool、Skill、MCP 与 Hook 各自由其 Adapter 管理运行时生命周期和
+撤销边界，Plan 只记录已解析的 Typed Extension 结果，不承担外部包分发。
 
 Web Transport `extension/list`/`extension/control` 与 Web Extensions View 使用同一
 Runtime Control Plane。Mutation 按 Operation ID 幂等，并持久化
@@ -577,24 +575,18 @@ Prepare/Commit Receipt；Host 只提交 Operation 与投影 Runtime-owned State�
 
 外部 Server 通过协议 Adapter 暴露 Tool。Health、Timeout、Circuit Breaker 和 Tool
 Binding 隔离避免单个 Server 故障污染全部工具。当前 stdio Server 仍是宿主进程，
-因此默认关闭，只接受外部 State Directory 或已验证 Plugin 中显式
-`host_trusted=true` 的配置。
+因此默认关闭，只接受外部 State Directory 中显式 `host_trusted=true` 的配置。
 
 ### Skill
 
 Skill 打包指令和资源。Discovery、Manifest、Lock 与 Enablement State 让最终内容可见。
 Turn Selection 会先保留被精确点名、Required 以及此前使用过的 Skill，再应用有界词法
 候选上限。Turn 会冻结 Name-to-handle Binding；加载时重新校验 Content Digest、
-Dependency Plan、Lock 与可选 Plugin Authority。`skills_read` 接受该冻结条目广告的
+Dependency Plan 与 Lock。`skills_read` 接受该冻结条目广告的
 任一精确 Handle（Skill、Package 或 Resource），并在结果中返回规范化 Skill Handle。
 真正无效或过期的 Handle 会返回结构化 `skills_list` 恢复动作，而不会直接终止 Turn。
 Execution Receipt 会记录选择规模、显式命中、Token Projection、Cache 使用情况以及
 Query/Candidate 截断。
-
-### Plugin
-
-Plugin 增加可执行能力。Registry Signature、Publisher Trust、Immutable Staging、
-Receipt、Enablement、Rollback 与 Revocation 构成激活链。
 
 ### Hook
 

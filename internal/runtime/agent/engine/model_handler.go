@@ -18,7 +18,6 @@ import (
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	contextview "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -92,9 +91,6 @@ func (e *Engine) modelStep(
 		return nil, nil, provider.Usage{}, 0, err
 	}
 	*history = admittedHistory
-	if err := e.emitExtensionLifecycleChanges(scope.spec.ExtensionPlan, send); err != nil {
-		return nil, nil, provider.Usage{}, 0, err
-	}
 	if err := e.emitMCPHealthChanges(scope.spec.MCP, send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
@@ -668,32 +664,6 @@ func observableCompactionReceipt(receipt *CompactionReceipt) CompactionReceipt {
 	value.WorkingSet = nil
 	value.CriticalPaths = nil
 	return value
-}
-
-func (e *Engine) emitExtensionLifecycleChanges(
-	plan runtimeextension.Plan,
-	send func(State, Event) error,
-) error {
-	scope := e.executionScope()
-	if scope == nil {
-		return errors.New("turn scope is not active")
-	}
-	scope.mu.Lock()
-	if scope.state.extensionsProjected {
-		scope.mu.Unlock()
-		return nil
-	}
-	scope.state.extensionsProjected = true
-	scope.mu.Unlock()
-	for _, change := range runtimeextension.ProjectLifecycle(plan) {
-		value := change
-		if err := send(CallingModel, Event{
-			ExtensionLifecycle: &value,
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (e *Engine) emitMCPHealthChanges(

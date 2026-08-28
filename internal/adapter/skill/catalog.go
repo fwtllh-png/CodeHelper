@@ -17,7 +17,6 @@ type Catalog struct {
 	locale         string
 	limits         Limits
 	state          *StateStore
-	verifier       AuthorityVerifier
 	runtimeVersion string
 	lock           *LockStore
 	selectionMu    sync.Mutex
@@ -40,36 +39,10 @@ func Discover(options DiscoveryOptions) (*Catalog, error) {
 		entries[item.metadata.Name] = item
 		order = append(order, item.metadata.Name)
 	}
-	for _, snapshot := range options.Plugins {
-		for _, item := range snapshot.cloneSkills() {
-			if _, exists := entries[item.metadata.Name]; exists {
-				continue
-			}
-			if item.plugin == "" || item.authority.validate() != nil {
-				issues = append(issues, Issue{
-					Path: item.path, Reason: "plugin skill snapshot authority is invalid",
-				})
-				continue
-			}
-			if options.Verifier == nil {
-				itemVerifier := snapshot.verifier
-				if itemVerifier == nil {
-					issues = append(issues, Issue{
-						Path: item.path, Reason: "plugin skill authority verifier is missing",
-					})
-					continue
-				}
-				item.verifier = itemVerifier
-			}
-			entries[item.metadata.Name] = item
-			order = append(order, item.metadata.Name)
-		}
-	}
 	return &Catalog{
 		entries: entries, order: order, issues: append([]Issue(nil), issues...),
 		locale: normalizeLocale(options.Locale), limits: options.Limits,
-		state: options.State, verifier: options.Verifier,
-		runtimeVersion: normalizeRuntimeVersion(options.RuntimeVersion),
+		state: options.State, runtimeVersion: normalizeRuntimeVersion(options.RuntimeVersion),
 		lock:           options.Lock,
 		selectionCache: make(map[string]Selection),
 	}, nil
@@ -107,12 +80,6 @@ func (c *Catalog) List(ctx context.Context) ([]Summary, []Issue) {
 		item := entries[name]
 		if !enabledFor(item, state, stateErr) {
 			continue
-		}
-		if item.source == SourcePlugin {
-			if err := c.verify(ctx, item); err != nil {
-				issues = append(issues, Issue{Path: item.path, Reason: err.Error()})
-				continue
-			}
 		}
 		result = append(result, c.summary(item, lockMatches(item, locked[name])))
 	}
@@ -153,7 +120,7 @@ func (c *Catalog) summary(item candidate, locked bool) Summary {
 	}
 	return Summary{
 		Name: item.metadata.Name, Description: item.metadata.DescriptionFor(c.locale),
-		Source: item.source, Path: item.path, Plugin: item.plugin,
+		Source: item.source, Path: item.path,
 		Version: version, Compatibility: compatibility,
 		Digest: item.digest, Locked: locked,
 		Handle: skillHandle(item), PackageHandle: skillPackageHandle(item),
@@ -171,21 +138,10 @@ func (c *Catalog) stateSnapshot() (map[string]bool, error) {
 
 func enabledFor(item candidate, state map[string]bool, stateErr error) bool {
 	if stateErr != nil {
-		return item.source != SourcePlugin
+		return true
 	}
 	enabled, exists := state[item.metadata.Name]
 	return !exists || enabled
-}
-
-func (c *Catalog) verify(ctx context.Context, item candidate) error {
-	verifier := c.verifier
-	if verifier == nil {
-		verifier = item.verifier
-	}
-	if verifier == nil {
-		return errors.New("plugin skill authority verifier is missing")
-	}
-	return verifier.VerifySkillAuthority(ctx, item.authority)
 }
 
 func (c *Catalog) snapshot() (map[string]candidate, []string, []Issue) {

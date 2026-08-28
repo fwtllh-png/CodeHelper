@@ -519,7 +519,7 @@ func measureRepository(root string) (map[string]int, error) {
 		"agent",
 		map[string]struct{}{
 			"context": {}, "contextview": {}, "engine": {}, "prompt": {},
-			"repository": {}, "rlm": {}, "turnkernel": {},
+			"repository": {}, "turnkernel": {},
 		},
 	)
 	if err != nil {

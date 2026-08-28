@@ -37,7 +37,7 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 - **受控执行**：所有修改型工具都经过 policy、permission、constitution、journal
   与操作系统沙箱检查。
 - **证据优先**：搜索、编辑、审批、验证、用量和 trace 都形成可检查的运行事实。
-- **扩展但不分叉控制面**：MCP、Skill、Plugin、Hook、后台 Worker、Workflow 和
+- **扩展但不分叉控制面**：MCP、Skill、Hook、后台 Worker、Workflow 和
   Subagent 都通过受治理的 Adapter 接入。
 - **默认关闭而不是假装安全**：安全能力不可用时明确报告，不静默降级为“看起来已隔离”。
 
@@ -113,7 +113,7 @@ Runtime 完成恢复的 URL。
 cmd/codehelper/          进程入口
 internal/host/           Web Host 与 Runtime Transport
 internal/runtime/        Operation/Event Runtime 与 Agent Engine
-internal/adapter/        Provider、Model、Tool、MCP、Skill、Plugin、Hook
+internal/adapter/        Provider、Model、Tool、MCP、Skill、Hook
 internal/security/       Policy、Permission、Constitution、Sandbox
 internal/orchestration/  Task、Worker、Workflow、Lane、Fleet、Subagent
 internal/persist/        SQLite、Event Log、Session、Snapshot、Journal

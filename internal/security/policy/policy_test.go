@@ -111,10 +111,10 @@ func TestPolicyTruthTableAndDenyPrecedence(t *testing.T) {
 		err := authorize(runtime, call)
 		assertDecisionCode(t, err, "approval_required")
 	})
-	t.Run("operate auto plugin asks", func(t *testing.T) {
+	t.Run("operate auto external asks", func(t *testing.T) {
 		runtime := DefaultRuntime(ModeOperate, PermissionAuto)
-		call := invocation("file_read", "plugin-1", `{}`)
-		call.Capability = CapabilityPlugin
+		call := invocation("file_read", "external-1", `{}`)
+		call.Capability = CapabilityExternal
 		err := authorize(runtime, call)
 		assertDecisionCode(t, err, "approval_required")
 	})
@@ -197,7 +197,7 @@ func TestPolicyCompleteModePermissionCapabilityTruthTable(t *testing.T) {
 		PermissionSuggest, PermissionAuto, PermissionBypass, PermissionNever,
 	}
 	capabilities := []Capability{
-		CapabilityRead, CapabilityWrite, CapabilityProcess, CapabilityNetwork, CapabilityPlugin,
+		CapabilityRead, CapabilityWrite, CapabilityProcess, CapabilityNetwork, CapabilityExternal,
 	}
 	for _, mode := range modes {
 		for _, permission := range permissions {
@@ -219,7 +219,7 @@ func TestPolicyCompleteModePermissionCapabilityTruthTable(t *testing.T) {
 						switch capability {
 						case CapabilityRead:
 							want = ""
-						case CapabilityWrite, CapabilityProcess, CapabilityNetwork, CapabilityPlugin:
+						case CapabilityWrite, CapabilityProcess, CapabilityNetwork, CapabilityExternal:
 							want = "approval_required"
 						default:
 							want = "permission_denied"

@@ -36,7 +36,7 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 - 编辑器与 Agent 客户端可嵌入的 Web Transport Runtime；
 - 用于观测、评估和策略治理的结构化事件；
 - Hermetic Fixture 与契约测试支持可重复集成；
-- 通过 MCP、Skill、Plugin、Hook 和 Workflow 扩展。
+- 通过 MCP、Skill、Hook 和 Workflow 扩展。
 
 ### 对 AI Agent
 
@@ -57,7 +57,7 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 | 持久化 | SQLite Projection、Domain Fact、Terminal Envelope、Event Log、CAS、Snapshot、Journal |
 | 可观测性 | 版本化 Observation Envelope、冻结终态 Measurement、Trace、Usage、Redaction、Retention、OTLP |
 | 编排 | 统一 Durable WorkGraph 的 Run/Node/Attempt/Effect、Worker、Workflow、Lane、Fleet、Subagent |
-| 生态 | Typed Extension Plan/Lifecycle、Model Catalog、MCP、Skill、Plugin、Hook、Memory |
+| 生态 | Typed Extension Plan、Model Catalog、MCP、Skill、Hook、Memory |
 | Host | 本机 Web |
 
 ## 产品边界

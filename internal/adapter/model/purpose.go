@@ -12,8 +12,6 @@ const (
 	PurposePlan Purpose = "plan"
 	// PurposeVision is image analysis.
 	PurposeVision Purpose = "vision"
-	// PurposeSubquery is an RLM sub-query.
-	PurposeSubquery Purpose = "subquery"
 	// PurposeSummary is semantic context maintenance.
 	PurposeSummary Purpose = "summary"
 	// PurposeJudge is registered but not wired.
@@ -24,14 +22,14 @@ const (
 func Purposes() []Purpose {
 	return []Purpose{
 		PurposeAct, PurposePlan, PurposeVision,
-		PurposeSubquery, PurposeSummary, PurposeJudge,
+		PurposeSummary, PurposeJudge,
 	}
 }
 
 // Wired reports whether the runtime currently samples for this purpose.
 func (p Purpose) Wired() bool {
 	switch p {
-	case PurposeAct, PurposePlan, PurposeVision, PurposeSubquery, PurposeSummary:
+	case PurposeAct, PurposePlan, PurposeVision, PurposeSummary:
 		return true
 	default:
 		return false

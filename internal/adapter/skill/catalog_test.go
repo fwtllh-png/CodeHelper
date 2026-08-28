@@ -2,14 +2,12 @@ package skill
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 )
 
@@ -97,20 +95,11 @@ func TestStateDisableAndMalformedStateRecovery(t *testing.T) {
 		t.Fatal("disabled native skill loaded")
 	}
 
-	pluginRoot := t.TempDir()
-	writeGovernedSkill(t, pluginRoot, "plugin-skill", "1.0.0", "plugin", "plugin body", nil)
-	verifier := AuthorityVerifierFunc(func(context.Context, Authority) error { return nil })
-	snapshot, err := StagePluginSnapshot(context.Background(), pluginRoot, Authority{
-		Plugin: "example", Generation: 1, Token: "trusted",
-	}, verifier, Limits{})
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(statePath, []byte("{malformed"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	recovered, err := Discover(DiscoveryOptions{
-		Workspace: workspace, UserHome: home, State: state, Plugins: []PluginSnapshot{snapshot},
+		Workspace: workspace, UserHome: home, State: state,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -154,53 +143,6 @@ func TestStateConcurrentUpdatesAreAtomic(t *testing.T) {
 		if state[name] != (index%2 == 0) {
 			t.Fatalf("state[%q] = %t", name, state[name])
 		}
-	}
-}
-
-func TestPluginAuthorityRevocationFailsClosed(t *testing.T) {
-	workspace := t.TempDir()
-	pluginRoot := t.TempDir()
-	writeGovernedSkill(
-		t, pluginRoot, "plugin-skill", "1.0.0", "plugin", "trusted instructions", nil,
-	)
-	var revoked atomic.Bool
-	verifier := AuthorityVerifierFunc(func(_ context.Context, authority Authority) error {
-		if authority.Token != "token" || revoked.Load() {
-			return errors.New("authority revoked")
-		}
-		return nil
-	})
-	snapshot, err := StagePluginSnapshot(context.Background(), pluginRoot, Authority{
-		Plugin: "plugin", Generation: 7, Token: "token",
-	}, verifier, Limits{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	lock, err := NewLockStore(filepath.Join(t.TempDir(), "skills.lock.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	catalog, err := Discover(DiscoveryOptions{
-		Workspace: workspace, UserHome: t.TempDir(), Plugins: []PluginSnapshot{snapshot},
-		RuntimeVersion: "1.0.0", Lock: lock,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := catalog.WriteLock(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := catalog.Load(context.Background(), "plugin-skill")
-	if err != nil || loaded.Content != "trusted instructions" {
-		t.Fatalf("loaded = %+v, err = %v", loaded, err)
-	}
-	revoked.Store(true)
-	if _, err := catalog.Load(context.Background(), "plugin-skill"); err == nil ||
-		!strings.Contains(err.Error(), "revoked") {
-		t.Fatalf("revoked load error = %v", err)
-	}
-	if summaries := catalog.Summaries(context.Background()); len(summaries) != 0 {
-		t.Fatalf("revoked plugin remains visible: %+v", summaries)
 	}
 }
 

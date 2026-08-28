@@ -66,7 +66,7 @@
 - 显式 Egress Policy 与 Endpoint Inventory；
 - 托管环境的 Signed Policy/Permission Distribution；
 - 具有脱敏保证的结构化 Audit Export；
-- Plugin/MCP Provenance 与 Operator Risk Report；
+- MCP Provenance 与 Operator Risk Report；
 - Credential Rotation 与 Revocation Workflow。
 
 ## 中期：Host 体验

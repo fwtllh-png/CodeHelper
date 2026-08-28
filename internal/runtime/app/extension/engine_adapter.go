@@ -290,19 +290,6 @@ func (a *EngineAdapter) StartTurn(
 				RetryAt:             retryAt,
 			})
 		}
-		if event.ExtensionLifecycle != nil {
-			current := event.ExtensionLifecycle.Current
-			return sink.Emit(&protocol.ExtensionLifecycleData{
-				ExtensionKind: current.Kind,
-				Name:          current.Name, Action: event.ExtensionLifecycle.Action,
-				Version:         current.Version,
-				PreviousVersion: event.ExtensionLifecycle.PreviousVersion,
-				Source:          current.Source, Publisher: current.Publisher,
-				Trust: current.Trust, Digest: current.Digest,
-				Generation: current.Generation, Enabled: current.Enabled,
-				ChangedAt: current.ChangedAt,
-			})
-		}
 		if event.HookAudit != nil {
 			record := event.HookAudit
 			return sink.Emit(&protocol.HookExecutionData{

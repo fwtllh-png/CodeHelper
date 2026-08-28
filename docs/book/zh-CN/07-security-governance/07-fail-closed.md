@@ -11,10 +11,9 @@ prerequisites:
 code_paths:
   - internal/security
   - internal/adapter/tool/guard
-  - internal/adapter/plugin
 test_paths:
   - internal/security/sandbox/backend_test.go
-  - internal/adapter/plugin/trust_test.go
+  - internal/adapter/tool/guard/guard_test.go
   - internal/runtime/app/wire/sandbox_architecture_test.go
 source_of_truth:
   - internal/security/sandbox/backend.go
@@ -40,7 +39,7 @@ Security Claim 可测试。
 - Required Strong Sandbox Unavailable；
 - Credential Missing/Insecure；
 - Egress Host 未 Grant；
-- Plugin Receipt/Signature/Capability Drift；
+- 外部 Tool Binding 或 MCP Generation Drift；
 - Before-image/Journal Persistence Failure；
 - Hard Verification Runner Unavailable。
 

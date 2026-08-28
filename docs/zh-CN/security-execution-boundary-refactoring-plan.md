@@ -23,11 +23,11 @@ Permission Profile、OS Sandbox、Egress Gate 和执行 Receipt。下一阶段�
     -> Receipt
 ```
 
-完成后，Tool、Hook、MCP、Plugin、Worker 和 Host Smoke 只描述执行意图，不能自行启动
+完成后，Tool、Hook、MCP、Worker 和 Host Smoke 只描述执行意图，不能自行启动
 外部进程、修改 Workspace、发布可执行 Artifact 或访问网络。Broker 是受控副作用的唯一
 执行边界。
 
-这里的“副作用”特指由用户、模型、Repository、Plugin、MCP 或其他不可信来源触发的
+这里的“副作用”特指由用户、模型、Repository、MCP 或其他不可信来源触发的
 外部行为。Runtime 自身写入 SQLite、Event、Journal、CAS 和 Receipt 属于可信控制面
 持久化，仍由各自 Owner 管理，不能递归经过 Guard。
 
@@ -52,7 +52,7 @@ Permission Profile、OS Sandbox、Egress Gate 和执行 Receipt。下一阶段�
 - stdio MCP Server 生命周期；
 - Desktop/GUI Process Smoke；
 - Orchestration Lane 和部分 Host 平台集成；
-- 未来新增的 Plugin、Worker 或本机集成。
+- 未来新增的外部工具、Worker 或本机集成。
 
 如果继续在每个调用点分别补权限判断，会形成多套不一致的授权、取消、清理和审计语义。
 因此需要保留现有 Guard 决策能力，同时把它提升为通用 Operation Authorizer，并建立唯一
@@ -88,7 +88,7 @@ Desktop Process Smoke 应作为首个迁移对象。
 ### 3.1 范围
 
 - 由不可信输入触发的进程创建、文件修改和网络访问；
-- Hook、MCP、Plugin、Tool、Worker 与 Host Smoke 的 Subject Trust；
+- Hook、MCP、Tool、Worker 与 Host Smoke 的 Subject Trust；
 - Execution Lease 的签发、消费、撤销和审计；
 - Sandbox 后端能力探测和逐项控制匹配；
 - Workspace Journal 的控制面隔离；
@@ -124,7 +124,7 @@ Test。本文中的目标声明不能替代自动化证明。
 
 ### 4.2 不可信来源只能收紧权限
 
-Repository、Plugin、MCP 和动态工具提交的是 Requested Effects，不是最终权限。
+Repository、MCP 和动态工具提交的是 Requested Effects，不是最终权限。
 Repository Hook 和 Permission Hook 可以返回 Deny 或 Ask，但不能把 Guard 的 Deny/Ask
 提升为 Allow。最终 Capability、Effect、Required Controls 和 Resource Binding 由可信
 注册层决定。
@@ -135,7 +135,7 @@ Workspace 内容全部视为不可信。以下状态必须位于 Runtime State D
 
 - Workspace Journal Ledger 和 Before Image；
 - Approval、Lease 和 Attempt 状态；
-- Plugin Trust、Digest、Revocation 和安装记录；
+- 外部工具的 Trust、Digest 与 Revocation；
 - MCP Lifecycle Grant；
 - Broker Receipt 和恢复状态。
 
@@ -216,14 +216,14 @@ type Subject struct {
 
 - `builtin`
 - `repository_hook`
-- `plugin`
+- `external`
 - `mcp_server`
 - `mcp_tool`
 - `workflow`
 - `worker`
 - `host`
 
-`ID` 只用于定位；授权必须同时绑定不可变 Digest 和 Generation。Plugin 更新、Hook
+`ID` 只用于定位；授权必须同时绑定不可变 Digest 和 Generation。外部工具更新、Hook
 配置变化或 MCP Server 重启后，旧 Lease 自动失效。
 
 ### 5.2 外部声明与可信绑定
@@ -251,8 +251,8 @@ type TrustedBinding struct {
 
 可信绑定至少执行以下跨字段校验：
 
-- Process Resource 必须对应 Process 或 Plugin Capability；
-- Host/URL Resource 必须对应 Network、Process 或 Plugin Capability；
+- Process Resource 必须对应 Process 或 External Capability；
+- Host/URL Resource 必须对应 Network、Process 或 External Capability；
 - Write Resource 不能绑定 Read-only Capability；
 - Journaled Write 必须绑定 Workspace Transaction；
 - 外部来源不能自行选择 `SandboxNone`；
@@ -812,7 +812,7 @@ Manifest Digest 和 Generation，Process Broker 校验后单次消费 Lease，�
 | Hook Broker 迁移 | `internal/adapter/hooks/executor.go` |
 | stdio MCP Lifecycle 迁移 | `internal/adapter/mcp/runtime_authority.go`、`stdio.go` |
 
-Hook 不再调用 `process.NewCommand`，旧 Process Tree helper 已删除。Repository/Plugin
+Hook 不再调用 `process.NewCommand`，旧 Process Tree helper 已删除。Repository
 Hook 保持 Strong Sandbox、Workspace Read-only、Network Denied 和控制面隐藏。
 
 stdio MCP 的 `host_trusted=true` 只作为外部 Operator 对 Lifecycle Operation 的信任
@@ -840,7 +840,7 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 - Unified Diff 使用结构化 Parser 转换为不可变 File Plan，不再通过 `git apply`
   修改 Workspace；
 - `integrate_agent`、隔离 Chat Merge 和 `document_convert` 的最终 Workspace 输出
-  复用同一 File Broker；Runtime State、Plugin Cache 和临时转换文件仍由各自可信
+  复用同一 File Broker；Runtime State 和临时转换文件仍由各自可信
   Owner 管理；
 - File Broker 在 Journal Before Image 后再次校验内容、身份和父目录，使用
   descriptor-relative API 先写后删；写入、最终快照或 Journal Settlement 失败时
@@ -879,7 +879,7 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 - Registry 分别冻结 Model-facing `ExternalDescriptor` 与 Authority-facing
   `TrustedBinding`；Catalog Snapshot 同时绑定 External Presentation、Binding Digest、
   Source、Revision 和私有 Authority Token；
-- MCP、Plugin、Dynamic Tool 与 Typed Extension 必须由可信 Host Policy 显式注册
+- MCP、Dynamic Tool 与 Typed Extension 必须由可信 Host Policy 显式注册
   Binding，外部 Source 走 Legacy Registration 会 Fail Closed；
 - Guard、Policy、Authority、Journal、Read-before-write、一次性审批、验证证据接纳和
   缺失写目标 Preflight 只消费 Trusted Binding，不消费 Requested Effects 或工具名；
@@ -896,7 +896,7 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 | External/Trusted Contract | `internal/adapter/tool/contract.go` |
 | Registry Freeze 与 Binding Digest | `internal/adapter/tool/catalog.go`、`tool.go` |
 | Guard/Policy/Authority 消费 | `internal/adapter/tool/guard`、`internal/security` |
-| 外部 Source Binding Factory | `internal/adapter/tool/mcp`、`plugin`、`dynamic` |
+| 外部 Source Binding Factory | `internal/adapter/tool/mcp`、`dynamic` |
 | Typed Extension 保真注册 | `internal/runtime/app/wire/typed_extensions.go` |
 
 ### 阶段 6：控制矩阵替代 Strong
@@ -973,7 +973,7 @@ os/exec.CommandContext
 os.StartProcess
 syscall.Exec
 unix.Exec
-plugin.Open
+外部动态装载入口
 net.Dial*
 http.Client.Do
 os.WriteFile

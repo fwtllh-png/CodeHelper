@@ -273,8 +273,8 @@ func CatalogSourceKind(name, source string) string {
 	switch {
 	case strings.HasPrefix(source, "mcp:"):
 		return "mcp"
-	case strings.HasPrefix(source, "plugin:"):
-		return "plugin"
+	case strings.HasPrefix(source, "external:"):
+		return "external"
 	case strings.HasPrefix(source, "dynamic:"):
 		return "dynamic"
 	case name == "skills_read" || name == "skills_list" ||
@@ -287,7 +287,7 @@ func CatalogSourceKind(name, source string) string {
 
 func ParseCatalogToolID(id string) (kind, name string, ok bool) {
 	for _, candidate := range []string{
-		"builtin", "mcp", "plugin", "skill", "dynamic",
+		"builtin", "mcp", "external", "skill", "dynamic",
 	} {
 		prefix := candidate + ":"
 		if !strings.HasPrefix(id, prefix) || len(id) == len(prefix) {
@@ -558,7 +558,7 @@ func (r *Registry) Reconcile(
 
 func externalCatalogSource(source string) bool {
 	return strings.HasPrefix(source, "mcp:") ||
-		strings.HasPrefix(source, "plugin:") ||
+		strings.HasPrefix(source, "external:") ||
 		strings.HasPrefix(source, "dynamic:")
 }
 

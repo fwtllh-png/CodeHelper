@@ -184,12 +184,9 @@
       "path": "internal/adapter/tool/result",
       "limits": {
         "internal_fanout": 8,
-        "production_lines": 533,
+        "production_lines": 444,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Protect the newest Tool Result batch until a successful Provider sample consumes it."
       }
     },
     {
@@ -198,12 +195,9 @@
       "path": "internal/adapter/model",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 1000,
+        "production_lines": 998,
         "options_fields": 0,
         "mutex_fields": 1
-      },
-      "relaxations": {
-        "production_lines": "Represent authoritative model capability provenance and a pricing-independent Route identity for cache attribution."
       }
     },
     {
@@ -248,9 +242,6 @@
         "production_lines": 423,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-        "production_lines": "Record content-safe complete-request projection evidence for stateless providers."
       }
     },
     {
@@ -309,9 +300,6 @@
         "production_lines": 1953,
         "options_fields": 0,
         "mutex_fields": 2
-      },
-      "relaxations": {
-        "production_lines": "Absorb DeepSeek into the shared OpenAI-compatible adapter with capability-gated thinking, automatic cache usage, typed failures, and empty-response validation."
       }
     },
     {
@@ -341,13 +329,10 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 76,
-        "production_lines": 9296,
-        "options_fields": 74,
+        "internal_fanout": 71,
+        "production_lines": 8775,
+        "options_fields": 64,
         "mutex_fields": 7
-      },
-      "relaxations": {
-        "production_lines": "Route the shared Execution Lease Authority into Process Smoke, Hook, and stdio MCP Broker runtimes."
       }
     },
     {
@@ -356,7 +341,7 @@
       "path": "internal/runtime/extension",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 1470,
+        "production_lines": 1202,
         "options_fields": 1,
         "mutex_fields": 2
       }
@@ -366,35 +351,10 @@
       "kind": "package",
       "path": "internal/runtime/app/extension",
       "limits": {
-        "internal_fanout": 21,
-        "production_lines": 3215,
+        "internal_fanout": 18,
+        "production_lines": 2087,
         "options_fields": 0,
-        "mutex_fields": 6
-      },
-      "relaxations": {
-        "production_lines": "Project immutable Operation and Execution Lease evidence into durable Tool Result events."
-      }
-    },
-    {
-      "id": "adapter_plugin_package",
-      "kind": "package",
-      "path": "internal/adapter/plugin",
-      "limits": {
-        "internal_fanout": 2,
-        "production_lines": 4479,
-        "options_fields": 3,
-        "mutex_fields": 5
-      }
-    },
-    {
-      "id": "adapter_extension_plugin_package",
-      "kind": "package",
-      "path": "internal/adapter/extension/plugin",
-      "limits": {
-        "internal_fanout": 4,
-        "production_lines": 292,
-        "options_fields": 0,
-        "mutex_fields": 0
+        "mutex_fields": 3
       }
     },
     {
@@ -404,17 +364,6 @@
       "limits": {
         "internal_fanout": 2,
         "production_lines": 220,
-        "options_fields": 0,
-        "mutex_fields": 1
-      }
-    },
-    {
-      "id": "persist_extensionlifecycle_package",
-      "kind": "package",
-      "path": "internal/persist/extensionlifecycle",
-      "limits": {
-        "internal_fanout": 2,
-        "production_lines": 204,
         "options_fields": 0,
         "mutex_fields": 1
       }
@@ -447,8 +396,8 @@
       "path": "internal/adapter/skill",
       "limits": {
         "internal_fanout": 0,
-        "production_lines": 3070,
-        "options_fields": 10,
+        "production_lines": 2837,
+        "options_fields": 8,
         "mutex_fields": 2
       }
     },
@@ -566,14 +515,9 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 23,
-        "production_lines": 7998,
+        "production_lines": 7963,
         "options_fields": 6,
         "mutex_fields": 5
-      },
-      "relaxations": {
-        "internal_fanout": "Delegate bounded provider-view compilation to the dedicated contextview owner.",
-      "production_lines": "Enforce economic admission, resource-derived write reservations, finalization reserve, consumed-result lifecycle, and cross-turn prefix attribution in the provider sampling loop.",
-      "mutex_fields": "Keep the cross-turn Prefix Manifest baseline independent from broader mutable Engine state."
       }
     },
     {
@@ -582,12 +526,9 @@
       "path": "internal/runtime/agent/turnkernel",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 8033,
+        "production_lines": 8032,
         "options_fields": 0,
         "mutex_fields": 8
-      },
-      "relaxations": {
-        "production_lines": "Treat an explicit zero declaration-repair budget as immediate typed convergence."
       }
     },
     {
@@ -599,9 +540,6 @@
         "production_lines": 6797,
         "options_fields": 23,
         "mutex_fields": 10
-      },
-      "relaxations": {
-        "production_lines": "Persist Plan execution and recovery identity while exposing cache and token attribution through the Runtime."
       }
     },
     {
@@ -630,12 +568,9 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 7095,
+        "production_lines": 6999,
         "options_fields": 0,
         "mutex_fields": 0
-      },
-      "relaxations": {
-      "production_lines": "Publish versioned Operation, Execution Lease, authority generation, effect, and settlement evidence in guarded Tool receipts."
       }
     },
     {
@@ -643,11 +578,8 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2272,
+        "lines": 2265,
         "max_function_lines": 119
-      },
-      "relaxations": {
-        "lines": "Expose Plan transition and recovery operations through the guarded Runtime service."
       }
     },
     {
@@ -673,12 +605,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_core.go",
       "limits": {
-        "lines": 201,
+        "lines": 198,
         "max_function_lines": 63
-      },
-      "relaxations": {
-        "lines": "Pass external Workspace state identity and the shared Lease Authority into the Broker-backed builtin tool factory.",
-        "max_function_lines": "Keep platform construction atomic while creating the shared Lease Authority before builtin Process Broker wiring."
       }
     },
     {
@@ -731,11 +659,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/module_outputs.go",
       "limits": {
-        "lines": 107,
+        "lines": 100,
         "max_function_lines": 0
-      },
-      "relaxations": {
-        "lines": "Carry the single shared Lease Authority from platform construction to Guard and Process Broker construction."
       }
     },
     {
@@ -752,12 +677,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/contributors_extensions.go",
       "limits": {
-        "lines": 181,
-        "max_function_lines": 43
-      },
-      "relaxations": {
-        "lines": "Construct Hook and stdio MCP runtimes from the shared Workspace identity and Lease Authority.",
-        "max_function_lines": "Keep extension runtime authority construction adjacent to contributor dependency assembly."
+        "lines": 88,
+        "max_function_lines": 34
       }
     },
     {
@@ -765,12 +686,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/contributors_capabilities.go",
       "limits": {
-        "lines": 133,
-        "max_function_lines": 45
-      },
-      "relaxations": {
-        "lines": "Inject the Broker-backed Hook runtime without exposing Authority internals to the contributor.",
-        "max_function_lines": "Pass the Hook runtime alongside the existing Sandbox and Workspace inputs."
+        "lines": 114,
+        "max_function_lines": 35
       }
     },
     {
@@ -787,7 +704,7 @@
       "kind": "file",
       "path": "internal/adapter/skill/selection.go",
       "limits": {
-        "lines": 680,
+        "lines": 643,
         "max_function_lines": 114
       }
     },
@@ -798,24 +715,6 @@
       "limits": {
         "lines": 304,
         "max_function_lines": 49
-      }
-    },
-    {
-      "id": "runtime_app_extension_lifecycle_file",
-      "kind": "file",
-      "path": "internal/runtime/app/extension/lifecycle.go",
-      "limits": {
-        "lines": 661,
-        "max_function_lines": 87
-      }
-    },
-    {
-      "id": "persist_extensionlifecycle_store_file",
-      "kind": "file",
-      "path": "internal/persist/extensionlifecycle/store.go",
-      "limits": {
-        "lines": 175,
-        "max_function_lines": 39
       }
     },
     {
@@ -832,7 +731,7 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/orchestration_components.go",
       "limits": {
-        "lines": 253,
+        "lines": 208,
         "max_function_lines": 84
       }
     },
@@ -951,7 +850,7 @@
       "kind": "file",
       "path": "internal/runtime/app/extension/control.go",
       "limits": {
-        "lines": 548
+        "lines": 413
       }
     },
     {
@@ -959,7 +858,7 @@
       "kind": "file",
       "path": "internal/runtime/app/extension/observability.go",
       "limits": {
-        "lines": 119
+        "lines": 98
       }
     },
     {
@@ -985,16 +884,12 @@
       "path": ".",
       "limits": {
         "event_switch_sites": 23,
-        "runtime_package_dirs": 20,
-        "runtime_one_file_packages": 7,
-        "runtime_agent_package_dirs": 7,
+        "runtime_package_dirs": 19,
+        "runtime_one_file_packages": 6,
+        "runtime_agent_package_dirs": 6,
         "runtime_agent_unexpected_packages": 0,
         "runtime_app_package_dirs": 4,
         "runtime_app_unexpected_packages": 0
-      },
-      "relaxations": {
-        "event_switch_sites": "Project new structured Runtime lifecycle and cache-attribution events.",
-        "runtime_agent_package_dirs": "Add contextview as the owned package for prefix, admission, and stateless projection contracts."
       }
     },
     {
@@ -1041,6 +936,10 @@
     }
   ],
   "retirements": {
-    "provider_deepseek_package": "DeepSeek now uses the shared OpenAI-compatible adapter and no longer owns a protocol package."
+    "adapter_plugin_package": "The executable Plugin distribution and lifecycle system was removed.",
+    "adapter_extension_plugin_package": "Plugin capability projection was removed with the Plugin system.",
+    "persist_extensionlifecycle_package": "The Plugin effect-lifecycle persistence package was removed.",
+    "runtime_app_extension_lifecycle_file": "The shared effect lifecycle existed only for Plugin capabilities and was removed.",
+    "persist_extensionlifecycle_store_file": "Plugin capability lifecycle receipts are no longer produced."
   }
 }

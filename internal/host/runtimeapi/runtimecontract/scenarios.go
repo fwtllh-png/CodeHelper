@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -128,13 +127,6 @@ func Scenarios() []Scenario {
 				}
 			},
 			Run: mcpHealthIsVisible,
-		},
-		{
-			Name: "extension lifecycle is visible on the shared event stream",
-			Setup: func(t *testing.T) Setup {
-				return pluginLifecycleSetup(t)
-			},
-			Run: extensionLifecycleIsVisible,
 		},
 		{
 			Name:       "trusted dynamic tools register execute replace and revoke",
@@ -625,88 +617,6 @@ func dynamicToolsCompleteLifecycle(t *testing.T, host Host, setup Setup) {
 	}
 }
 
-func pluginLifecycleSetup(t *testing.T) Setup {
-	t.Helper()
-	root := t.TempDir()
-	workspace := filepath.Join(root, "workspace")
-	workspacePlugins := filepath.Join(root, "plugins")
-	userPlugins := filepath.Join(root, "user-plugins")
-	builtinPlugins := filepath.Join(root, "builtin-plugins")
-	stateDirectory := filepath.Join(root, "state")
-	stagingRoot := filepath.Join(root, "staging")
-	for _, path := range []string{
-		workspace, workspacePlugins, userPlugins, builtinPlugins, stateDirectory,
-	} {
-		if err := os.Mkdir(path, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	bundle := filepath.Join(workspacePlugins, "fixture")
-	if err := os.Mkdir(bundle, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	executable := []byte("#!/bin/sh\nexit 0\n")
-	if err := os.WriteFile(
-		filepath.Join(bundle, "run.sh"), executable, 0o700,
-	); err != nil {
-		t.Fatal(err)
-	}
-	sum := sha256.Sum256(executable)
-	manifest := pluginruntime.Manifest{
-		SchemaVersion: 1, Name: "fixture", Executable: "run.sh",
-		ExecutableSHA256: hex.EncodeToString(sum[:]), Generation: 1,
-		Capabilities: pluginruntime.CapabilityInventory{
-			Tools: []string{"plugin_run"}, FilesystemRoots: []string{"workspace"},
-			AllowProcess: true,
-		},
-	}
-	manifestData, err := json.Marshal(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(bundle, pluginruntime.ManifestName), manifestData, 0o600,
-	); err != nil {
-		t.Fatal(err)
-	}
-	reviewedAt := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
-	receipt, err := pluginruntime.Review(
-		bundle, manifest.Capabilities, manifest.Generation, reviewedAt,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stager, err := pluginruntime.NewStager(stagingRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	staged, err := stager.Stage(bundle)
-	if err != nil {
-		t.Fatal(err)
-	}
-	statePath := filepath.Join(stateDirectory, "plugins.json")
-	store, err := pluginruntime.OpenStateStore(statePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Update(func(state *pluginruntime.PersistentState) error {
-		state.Plugins["fixture"] = pluginruntime.PluginState{
-			Receipt: receipt, Enabled: true, Source: pluginruntime.RootWorkspace,
-			StagedHash: staged.ContentHash,
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	return Setup{
-		Fixture: fixturePath(t, "openai"), Prompt: "say hello",
-		Workspace: workspace, Tools: true,
-		PluginWorkspaceRoot: workspacePlugins, PluginUserRoot: userPlugins,
-		PluginBuiltinRoot: builtinPlugins, PluginStatePath: statePath,
-		PluginStagingRoot: stagingRoot,
-	}
-}
-
 func mcpFixtureConfig(t *testing.T, workspace string) []byte {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
@@ -772,32 +682,6 @@ func mcpHealthIsVisible(t *testing.T, host Host, setup Setup) {
 		return
 	}
 	t.Fatalf("%s: no mcp.health.changed in %s", host.Transport(), kindsOf(seen))
-}
-
-func extensionLifecycleIsVisible(t *testing.T, host Host, setup Setup) {
-	events, err := host.Live(t.Context(), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	started, err := host.StartTurn(t.Context(), setup.Prompt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	seen := collectUntilTerminal(t, host, events, started.TurnID)
-	for _, event := range seen {
-		data, ok := event.Data.(*protocol.ExtensionLifecycleData)
-		if !ok {
-			continue
-		}
-		if data.ExtensionKind != "plugin" || data.Name != "fixture" ||
-			data.Action != "active" || data.Version != "local" ||
-			data.Source != "workspace" || data.Trust != "unsigned-local" ||
-			!data.Enabled || data.Digest == "" {
-			t.Fatalf("%s: extension lifecycle = %+v", host.Transport(), data)
-		}
-		return
-	}
-	t.Fatalf("%s: no extension.lifecycle in %s", host.Transport(), kindsOf(seen))
 }
 
 func catalogChangeMatchesReceipt(t *testing.T, host Host, setup Setup) {

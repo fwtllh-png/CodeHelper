@@ -26,7 +26,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -359,8 +358,6 @@ type childToolsets struct {
 	agentSession        string
 	agentRelease        func(string)
 	interactionsBound   bool
-	interactionRLM      *rlm.Store
-	interactionGovernor *rlm.Governor
 	interactionVision   interacttool.VisionClient
 	interactionPlan     func(interacttool.Plan) error
 
@@ -379,14 +376,11 @@ func (c *childToolsets) bindAgents(
 }
 
 func (c *childToolsets) bindInteractions(
-	store *rlm.Store,
-	governor *rlm.Governor,
 	vision interacttool.VisionClient,
 	onPlan func(interacttool.Plan) error,
 ) {
 	c.mu.Lock()
-	c.interactionsBound, c.interactionRLM = true, store
-	c.interactionGovernor, c.interactionVision = governor, vision
+	c.interactionsBound, c.interactionVision = true, vision
 	c.interactionPlan = onPlan
 	c.mu.Unlock()
 }
@@ -483,7 +477,6 @@ func (c *childToolsets) open(
 		inputHost = interacttool.NewHost(0)
 		registerErr := interacttool.Register(registry, interacttool.Options{
 			Host: inputHost, Backend: backend,
-			RLM: c.interactionRLM, Governor: c.interactionGovernor,
 			Vision: c.interactionVision, OnPlan: c.interactionPlan, Workspace: root,
 		})
 		if registerErr != nil {

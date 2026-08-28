@@ -212,7 +212,7 @@ Composer 上方使用同一窄列依次展示 Todo、Goal、Queue：
 Settings 从只读 Catalog 深化为受控管理面：
 
 - Credential 创建、验证、失效诊断和删除；
-- Tool、Skill、Plugin 的启停、来源、健康、信任与错误详情；
+- Tool、Skill 的启停、来源、健康、信任与错误详情；
 - Agent Preset 创建、复制、编辑、校验和生效范围；
 - Unsaved Changes、Restart Required 和 Apply Result 使用明确状态；
 - Secret Value 不进入浏览器持久化、日志、截图或 Runtime Event。
@@ -229,8 +229,8 @@ Settings 从只读 Catalog 深化为受控管理面：
   校验时间、失败原因及重启要求；Secret 不写入浏览器存储或 Runtime Event；
 - Tool Catalog 展示来源、Capability、Access、Risk、Sandbox、Policy、
   Constitution 和不可用原因，启停变更随 Profile Draft 一次提交；
-- Skill 与 Plugin 展示来源、版本、健康、信任、权限、Capability 和摘要，
-  支持启停、Detail、Lint/Verify 以及 Plugin Trust 二次确认；
+- Skill 展示来源、版本、健康、信任、权限、Capability 和摘要，
+  支持启停、Detail 与 Verify；
 - 新增 Runtime-owned Workspace Agent Preset，支持创建、更新、复制、删除、
   载入 Draft 和应用到当前 Session；
 - Preset 使用版本化 CAS 更新和原子文件替换，按 Workspace 隔离并跨进程重启恢复；

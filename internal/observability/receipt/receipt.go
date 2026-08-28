@@ -319,8 +319,8 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 	if event.ToolCall.Name == "skills_read" ||
 		event.ToolCall.Name == "skills.read" {
 		var resolved []struct {
-			Name, Version, Source, Plugin, Digest string
-			Locked                                bool
+			Name, Version, Source, Digest string
+			Locked                        bool
 		}
 		if encoded, err := json.Marshal(event.Result.Metadata["resolved_skills"]); err == nil &&
 			json.Unmarshal(encoded, &resolved) == nil {
@@ -337,7 +337,7 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 				}
 				r.skills = append(r.skills, protocol.ReceiptSkill{
 					Name: item.Name, Version: item.Version, Source: string(item.Source),
-					Plugin: item.Plugin, Digest: item.Digest, Locked: item.Locked,
+					Digest: item.Digest, Locked: item.Locked,
 				})
 			}
 		}

@@ -45,7 +45,7 @@ func TestASessionWithoutSlotsRoutesEveryPurposeToAct(t *testing.T) {
 
 	for _, purpose := range []model.Purpose{
 		model.PurposeAct, model.PurposePlan, model.PurposeVision,
-		model.PurposeSubquery, model.PurposeSummary,
+		model.PurposeSummary,
 	} {
 		route, err := routes.For(purpose)
 		if err != nil {
@@ -167,8 +167,8 @@ func TestLockedSlotsResolveAndLockedGapsDoNot(t *testing.T) {
 	if _, err := routes.For(model.PurposePlan); err != nil {
 		t.Fatalf("For(plan) error = %v", err)
 	}
-	if _, err := routes.For(model.PurposeSubquery); err == nil {
-		t.Fatal("For(subquery) fell back to act under a lock")
+	if _, err := routes.For(model.PurposeVision); err == nil {
+		t.Fatal("For(vision) fell back to act under a lock")
 	}
 }
 

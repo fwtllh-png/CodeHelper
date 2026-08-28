@@ -543,7 +543,7 @@ export interface TraceSnapshot {
 }
 
 export interface ExtensionProjection {
-  kind: "plugin" | "skill";
+  kind: "skill";
   name: string;
   version?: string;
   source?: string;
@@ -571,16 +571,9 @@ export type ExtensionControlAction =
   | "health"
   | "permissions"
   | "receipts"
-  | "trust"
   | "enable"
   | "disable"
   | "revoke"
-  | "security_revoke"
-  | "install"
-  | "update"
-  | "rollback"
-  | "capability_enable"
-  | "capability_disable"
   | "lint"
   | "lock"
   | "verify";

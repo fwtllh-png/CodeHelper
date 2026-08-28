@@ -17,12 +17,11 @@ test_paths:
   - internal/adapter/mcp/contract/fixture_test.go
   - internal/adapter/mcp/stdio_integration_test.go
   - internal/adapter/mcp/http_integration_test.go
-  - internal/runtime/app/extension/lifecycle_test.go
+  - internal/runtime/app/wire/mcp_lifecycle_test.go
 source_of_truth:
   - internal/adapter/mcp/config.go
   - internal/adapter/mcp/pool.go
   - internal/runtime/extension/plan.go
-  - internal/runtime/extension/lifecycle.go
 status: draft
 last_verified: null
 ---
@@ -54,10 +53,9 @@ Connection Initialize Capability，分页发现 Tool/Resource/Prompt 并 Normali
 只 Reload Changed Server，隔离 Health/Circuit，发布 Catalog Notification，并关闭全部
 Transport。Discovered Tool 进入普通 Registry/Guard，MCP 不是 Policy Bypass。
 
-Runtime Extension Plan 将每个 Server Source 绑定到当前 Permission Digest 与
-Generation。Connection、Subscription、Process、Lease 与 Tool Registration 都携带
-`EffectOwner`。Disable Drain 所属 Effect；Revoke/Quarantine Fence Generation，阻止
-Stale Catalog Handle 执行。Lifecycle Transition 生成 Durable Redacted Receipt。
+Runtime Extension Plan 将已注册的 Typed Extension 结果绑定到当前 Permission Digest。
+MCP 自身通过 Pool、Runtime Authority 与 Catalog Generation 管理 Connection、
+Process 和 Tool Registration；配置变更会阻止 Stale Catalog Handle 执行。
 
 ## Source-scoped Reconciliation
 
@@ -99,7 +97,7 @@ W3C Trace Context 通过 HTTP Header 与有界 Stdio Metadata 传播。MCP 不�
 - 单 Server Failure 不隐藏 Healthy Server。
 - Stale Session Reconnect 不 Duplicate Request。
 - Catalog Refresh 绑定 Generation/Revision。
-- 每个 Live Transport/Registration 都可归因到 Effect Owner。
+- 每个 Live Transport/Registration 都可归因到 Server Generation。
 - Trace Propagation 不能扩大 MCP Authority 或泄露 Secret。
 
 ## 测试与验证

@@ -901,10 +901,9 @@ function ExtensionSettings({
   const [pending, setPending] = useState("");
   const [details, setDetails] = useState<Record<string, string>>({});
   const [result, setResult] = useState("");
-  const [confirmTrust, setConfirmTrust] = useState("");
   const run = async (
     extension: RuntimeSnapshot["extensions"][number],
-    action: "detail" | "lint" | "verify" | "trust" | "enable" | "disable"
+    action: "detail" | "verify" | "enable" | "disable"
   ) => {
     const key = `${extension.kind}:${extension.name}`;
     if (pending) return;
@@ -935,7 +934,6 @@ function ExtensionSettings({
       setResult(
         `${titleCase(action)} ${value.receipt?.status || "completed"}`
       );
-      setConfirmTrust("");
     } catch (operationError) {
       onError(operationError);
     } finally {
@@ -945,7 +943,7 @@ function ExtensionSettings({
   return (
     <SettingsSectionView
       title="Extensions"
-      description="Installed skills and plugins visible to the Runtime."
+      description="Installed skills visible to the Runtime."
     >
       {result && (
         <div className="settingsInlineResult" role="status">
@@ -1014,33 +1012,11 @@ function ExtensionSettings({
                   <button
                     type="button"
                     disabled={Boolean(pending)}
-                    onClick={() => void run(
-                      extension,
-                      extension.kind === "plugin" ? "lint" : "verify"
-                    )}
+                    onClick={() => void run(extension, "verify")}
                   >
                     <ShieldCheck size={13} />
-                    {extension.kind === "plugin" ? "Lint" : "Verify"}
+                    Verify
                   </button>
-                  {extension.kind === "plugin" && extension.trust !== "trusted" && (
-                    confirmTrust === key ? (
-                      <button
-                        type="button"
-                        disabled={Boolean(pending)}
-                        onClick={() => void run(extension, "trust")}
-                      >
-                        Confirm trust
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={Boolean(pending)}
-                        onClick={() => setConfirmTrust(key)}
-                      >
-                        Trust publisher
-                      </button>
-                    )
-                  )}
                 </div>
                 {details[key] && (
                   <pre className="settingsCode settingsExtensionDetail">

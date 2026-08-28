@@ -97,7 +97,7 @@ func fixtureSource(
 	return StaticSource{
 		Ref: ref,
 		Candidates: []Candidate{{
-			ID: "fixture", Kind: "plugin", Name: "fixture",
+			ID: "fixture", Kind: "external", Name: "fixture",
 			Version: version, Digest: digest, Generation: revision,
 			Enabled: true, Source: ref,
 		}},

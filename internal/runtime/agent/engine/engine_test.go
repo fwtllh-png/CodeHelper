@@ -38,7 +38,6 @@ import (
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -1765,47 +1764,6 @@ func TestMCPHealthSnapshotProjectsOncePerTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(changes) != 1 || changes[0].Current.State != "healthy" {
-		t.Fatalf("changes = %+v", changes)
-	}
-}
-
-func TestExtensionSnapshotProjectsOncePerTurn(t *testing.T) {
-	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
-	source := runtimeextension.SourceRef{
-		Kind: runtimeextension.SourceBuiltin, ID: "plugin:builtin",
-		Priority: 10, Revision: 1, Digest: "source-digest",
-	}
-	plan, err := (runtimeextension.Compiler{}).Compile(
-		[]runtimeextension.Candidate{{
-			ID: "plugin/review", Kind: "plugin", Name: "review", Version: "1.0.0",
-			Publisher: "platform", Trust: "signed-registry",
-			Digest: strings.Repeat("a", 64), Generation: 1, Enabled: true,
-			LastAction: "install", ChangedAt: now, Observable: true, Source: source,
-		}},
-		"permission-digest",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	engine.options.TurnSnapshots.ExtensionPlan = func() (runtimeextension.Plan, error) {
-		return plan.Clone(), nil
-	}
-	engine.options.Observability.Clock = func() time.Time { return now }
-	var changes []ExtensionLifecycleChanged
-	send := func(_ State, event Event) error {
-		if event.ExtensionLifecycle != nil {
-			changes = append(changes, *event.ExtensionLifecycle)
-		}
-		return nil
-	}
-	if err := engine.emitExtensionLifecycleChanges(plan, send); err != nil {
-		t.Fatal(err)
-	}
-	if err := engine.emitExtensionLifecycleChanges(plan, send); err != nil {
-		t.Fatal(err)
-	}
-	if len(changes) != 1 || changes[0].Action != "active" {
 		t.Fatalf("changes = %+v", changes)
 	}
 }

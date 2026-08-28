@@ -18,7 +18,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	rlmlib "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -374,24 +373,6 @@ func TestProjectMapSharesTheSearchEnumeration(t *testing.T) {
 	}
 }
 
-func TestCodeExecutionFailClosedWithoutSandbox(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	if err := interact.Register(registry, interact.Options{
-		Host: interact.NewHost(0), Workspace: t.TempDir(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	for _, d := range registry.Descriptors(tool.VisibleModel) {
-		if d.Name == "code_execution" {
-			if d.Availability != tool.AvailabilityUnavailable {
-				t.Fatalf("expected unavailable without sandbox: %+v", d)
-			}
-			return
-		}
-	}
-	t.Fatal("code_execution missing")
-}
-
 func TestImageAnalyzeUnavailable(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := interact.Register(registry, interact.Options{
@@ -470,38 +451,6 @@ func TestImageAnalyzeRejectsEscapingPath(t *testing.T) {
 	}
 	if !result.IsError || !strings.Contains(result.Content, "escapes") {
 		t.Fatalf("result = %+v", result)
-	}
-}
-
-func TestCodeExecutionWithStrongPassthrough(t *testing.T) {
-	root := t.TempDir()
-	backend, err := sandbox.BindPolicy(passthroughBackend{}, sandbox.Options{WorkspaceRoot: root})
-	if err != nil {
-		t.Fatal(err)
-	}
-	workspace, err := sandbox.NewWorkspace(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := rlmlib.NewStore(rlmlib.StoreOptions{
-		Root: filepath.Join(root, "rlm"), Backend: backend, Workspace: workspace,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !store.PythonAvailable() {
-		t.Skip("python unavailable")
-	}
-	registry := tool.NewRegistry(nil, nil)
-	if err := interact.Register(registry, interact.Options{
-		Host:    interact.NewHost(0),
-		Backend: backend, RLM: store, Governor: rlmlib.NewGovernor(rlmlib.Limits{}), Workspace: root,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	result := execute(t, registry, "code_execution", map[string]any{"code": "print(2+2)"})
-	if result.Metadata["error_category"] == "sandbox_unavailable" {
-		t.Fatalf("unexpected sandbox fail: %+v", result)
 	}
 }
 

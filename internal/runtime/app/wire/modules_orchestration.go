@@ -25,7 +25,6 @@ func (orchestrationModule) Build(
 	) error{
 		buildOrchestrationRepositories,
 		buildChildOrchestration,
-		buildRLMOrchestration,
 		buildInteractionOrchestration,
 	} {
 		if err := build(ctx, state, &output); err != nil {
