@@ -297,7 +297,8 @@ func (m *Manager) ToolCallBefore(
 }
 
 // PermissionRequest runs before the interactive approval UI (N20).
-// Merge policy: any deny wins; any allow (without deny) bypasses Ask; otherwise Ask.
+// Untrusted hooks may deny or require review, but cannot widen an Ask into
+// Allow. Only a builtin hook with builtin trust may return an allowing answer.
 func (m *Manager) PermissionRequest(
 	ctx context.Context,
 	input ToolCallBeforeInput,
@@ -385,6 +386,13 @@ func (m *Manager) PermissionRequest(
 				Action: ActionDeny, HookID: hook.ID, Reason: response.Reason,
 			}, nil
 		case ActionAllow:
+			if hook.Source != SourceBuiltin || hook.Trust != TrustBuiltin {
+				m.executor.audit(
+					ctx, PermissionRequest, hook.ID, inputKeys, nil,
+					execution, "ask", ActionAsk,
+				)
+				continue
+			}
 			sawAllow = true
 			lastAllowID = hook.ID
 			lastAllowReason = response.Reason

@@ -2,13 +2,10 @@ package wire
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
 
 	pluginextension "github.com/fwtllh-png/CodeHelper/internal/adapter/extension/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
-	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	skilltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/skill"
@@ -86,15 +83,8 @@ func (c hookContributor) Contribute(
 			Hooks:   make(map[hooks.Event][]hooks.HookConfig),
 		}
 		configured := false
-		info, err := os.Lstat(c.path)
-		if err != nil {
-			if c.explicit || !errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("hooks config: %w", err)
-			}
-		} else if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			return errors.New("hooks config must be a regular non-symlink file")
-		} else {
-			config, loadErr := hooks.LoadConfig(c.path)
+		if c.explicit {
+			config, loadErr := hooks.LoadRepositoryConfig(c.path)
 			if loadErr != nil {
 				return fmt.Errorf("hooks config: %w", loadErr)
 			}
@@ -138,58 +128,4 @@ func mergeHookConfig(target *hooks.Config, source hooks.Config) {
 	for event, configured := range source.Hooks {
 		target.Hooks[event] = append(target.Hooks[event], configured...)
 	}
-}
-
-type mcpContributor struct {
-	configPath string
-	output     *extensionBuildState
-}
-
-func (mcpContributor) ID() string { return "mcp" }
-
-func (c mcpContributor) Contribute(
-	ctx context.Context,
-	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), []string{"mcp-pool", "mcp-prewarm"}, func() error {
-		combined := mcpruntime.Config{
-			Version: mcpruntime.ConfigVersion,
-			Servers: make(map[string]mcpruntime.ServerConfig),
-		}
-		configured := false
-		if c.configPath != "" {
-			config, err := mcpruntime.LoadConfig(c.configPath)
-			if err != nil {
-				return fmt.Errorf("MCP tools: %w", err)
-			}
-			for name, server := range config.Servers {
-				combined.Servers[name] = server
-			}
-			configured = true
-		}
-		pluginMCP, pluginConfigured, err := pluginextension.MCPConfig(
-			ctx, c.output.pluginCapabilities, c.output.pluginRegistry,
-		)
-		if err != nil {
-			return err
-		}
-		if pluginConfigured {
-			for name, server := range pluginMCP.Servers {
-				if _, exists := combined.Servers[name]; exists {
-					return fmt.Errorf("MCP server %q is duplicated", name)
-				}
-				combined.Servers[name] = server
-			}
-			configured = true
-		}
-		if !configured {
-			return nil
-		}
-		pool, prewarm, err := RegisterMCPConfig(registry, combined)
-		if err != nil {
-			return fmt.Errorf("MCP tools: %w", err)
-		}
-		c.output.mcpPool, c.output.mcpPrewarm = pool, prewarm
-		return nil
-	})
 }

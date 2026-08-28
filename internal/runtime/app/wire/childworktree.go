@@ -354,7 +354,7 @@ type childToolsets struct {
 	diagnosticReadFiles []string
 	gitCommonDir        string
 	managedProxyPort    uint16
-	sandboxHomeRoot     string
+	workspaceStateRoot  string
 	agents              *subagent.AgentControl
 	agentSession        string
 	agentRelease        func(string)
@@ -398,7 +398,7 @@ func newChildToolsets(
 	diagnosticReadRoots []string,
 	diagnosticReadFiles []string,
 	gitCommonDir string, managedProxyPort uint16,
-	sandboxHomeRoot string,
+	workspaceStateRoot string,
 ) *childToolsets {
 	return &childToolsets{
 		helperPath: helperPath, content: content, web: web, verify: verifyConfig,
@@ -407,7 +407,7 @@ func newChildToolsets(
 		diagnosticReadFiles: append([]string(nil), diagnosticReadFiles...),
 		gitCommonDir:        gitCommonDir,
 		managedProxyPort:    managedProxyPort,
-		sandboxHomeRoot:     sandboxHomeRoot,
+		workspaceStateRoot:  workspaceStateRoot,
 		built:               make(map[string]*childToolset),
 	}
 }
@@ -436,16 +436,16 @@ func (c *childToolsets) open(
 		return nil, fmt.Errorf("child Git metadata: %w", err)
 	}
 	hostReadRoots = append(hostReadRoots, gitRoots...)
-	privateHome := ""
-	if c.sandboxHomeRoot != "" {
-		privateHome, err = persistentSandboxHome(c.sandboxHomeRoot, root)
-		if err != nil {
-			return nil, fmt.Errorf("child sandbox home: %w", err)
-		}
+	stateLayout, err := sandbox.PrepareChildStateLayout(
+		c.workspaceStateRoot,
+		root,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("child state layout: %w", err)
 	}
 	backend, err := newPlatformBackend(sandbox.Options{
 		WorkspaceRoot: root, HelperPath: c.helperPath,
-		PrivateTemp:      privateHome,
+		PrivateTemp:      stateLayout.SandboxHome,
 		ManagedProxyPort: c.managedProxyPort, HostReadRoots: hostReadRoots,
 		HostReadFiles: c.diagnosticReadFiles,
 	})
@@ -455,11 +455,20 @@ func (c *childToolsets) open(
 	// The child gets its own process manager: background jobs are journaled per
 	// root, and sharing the parent's would mix the two sessions' job lists.
 	processes := process.NewSessionManager(0)
-	processes.SetJournalPath(filepath.Join(root, ".codehelper", "jobs-journal.jsonl"))
 	var jobs *joblog.Store
-	if archive, err := joblog.New(filepath.Join(root, ".codehelper", "jobs")); err == nil {
-		jobs = archive
-		processes.SetArchive(archive)
+	if stateLayout.Root != "" {
+		processes.SetJournalPath(filepath.Join(stateLayout.Control, "jobs", "journal.jsonl"))
+		if err := processes.LoadStaleJournal(); err != nil {
+			processes.CloseAll()
+			_ = sandbox.CloseBackend(backend)
+			return nil, fmt.Errorf("load child process journal: %w", err)
+		}
+		if archive, archiveErr := joblog.New(
+			filepath.Join(stateLayout.Control, "jobs", "logs"),
+		); archiveErr == nil {
+			jobs = archive
+			processes.SetArchive(archive)
+		}
 	}
 	registry, handles, err := builtin.NewWithDependencies(
 		root, backend, c.content, processes, c.web,
@@ -486,7 +495,7 @@ func (c *childToolsets) open(
 			return nil, fmt.Errorf("child interact tools: %w", registerErr)
 		}
 	}
-	journal, err := c.openJournal(root)
+	journal, err := c.openJournal(root, stateLayout)
 	if err != nil {
 		processes.CloseAll()
 		_ = sandbox.CloseBackend(backend)
@@ -529,7 +538,10 @@ func (c *childToolsets) open(
 // outlives the turn that created it, so a child killed mid-turn leaves the same
 // half-applied writes — with the added twist that the person who has to clean up
 // never looked at that directory in the first place.
-func (c *childToolsets) openJournal(root string) (*workspacejournal.Manager, error) {
+func (c *childToolsets) openJournal(
+	root string,
+	stateLayout sandbox.StateLayout,
+) (*workspacejournal.Manager, error) {
 	if !c.journals.Durable {
 		journal, err := workspacejournal.New(root, c.content)
 		if err != nil {
@@ -537,7 +549,16 @@ func (c *childToolsets) openJournal(root string) (*workspacejournal.Manager, err
 		}
 		return journal, nil
 	}
-	journal, err := workspacejournal.Open(root, filepath.Join(root, ".codehelper", "journal"))
+	if stateLayout.Root == "" {
+		return nil, errors.New(
+			"durable child journal requires an external Runtime state store",
+		)
+	}
+	journal, err := workspacejournal.Open(
+		root,
+		filepath.Join(stateLayout.Control, "journal"),
+		stateLayout.WorkspaceID,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("child journal: %w", err)
 	}

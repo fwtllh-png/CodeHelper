@@ -142,6 +142,14 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyString(overrides.VerifyCommand, &verify.Command, fieldVerifyCommand, SourceStartup, provenance)
 	applyInt(overrides.VerifyRepair, &verify.MaxRepairSteps, fieldVerifyRepair, SourceStartup, provenance)
 	applyDuration(overrides.VerifyTimeout, &verify.Timeout, fieldVerifyTimeout, SourceStartup, provenance)
+	applyBool(overrides.JournalDurable, &execution.Journal.Durable, fieldJournalDurable, SourceStartup, provenance)
+	applyBool(
+		overrides.JournalRecoverOnStart,
+		&execution.Journal.RecoverOnStart,
+		fieldJournalRecoverOnStart,
+		SourceStartup,
+		provenance,
+	)
 	child := &execution.Subagent
 	applyString(overrides.SubagentDelegation, &child.Delegation, fieldSubagentDelegation, SourceStartup, provenance)
 	applyInt(overrides.SubagentMaxDepth, &child.MaxDepth, fieldSubagentMaxDepth, SourceStartup, provenance)

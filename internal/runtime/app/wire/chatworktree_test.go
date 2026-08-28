@@ -216,13 +216,13 @@ func TestIsolatedChatInteractionToolsPauseAndResume(t *testing.T) {
 	workspace := newGitWorkspace(t)
 	fixture := isolatedChatInputFixture(t)
 	tools := true
-	session, err := NewExec(t.Context(), ExecOptions{
+	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: fixture,
 		Permission:  "bypass",
 		ConfigOverrides: config.Overrides{
 			Tools: &tools, Workspace: &workspace,
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,13 +519,13 @@ func TestChatWorkspaceMergeApplyRejectsReadOnlyPosture(t *testing.T) {
 func TestIsolatedChatTurnsStartConcurrently(t *testing.T) {
 	workspace := newGitWorkspace(t)
 	tools := true
-	session, err := NewExec(t.Context(), ExecOptions{
+	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, "slow"),
 		Permission:  "bypass",
 		ConfigOverrides: config.Overrides{
 			Tools: &tools, Workspace: &workspace,
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,13 +591,13 @@ func TestIsolatedChatTurnsStartConcurrently(t *testing.T) {
 func openChatWorkspaceSession(t *testing.T, workspace string) *Session {
 	t.Helper()
 	tools := true
-	session, err := NewExec(t.Context(), ExecOptions{
+	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, "subagent"),
 		Permission:  "bypass",
 		ConfigOverrides: config.Overrides{
 			Tools: &tools, Workspace: &workspace,
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}

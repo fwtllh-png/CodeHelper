@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/builtin"
 	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
@@ -40,12 +38,21 @@ func (configModule) Build(_ context.Context, state *buildState) error {
 			"repository policy, plugins, and MCP require tools to be enabled",
 		)
 	}
-	extensionPaths, err := ResolveExtensionPaths(
-		state.options.Extensions,
-		execution.Workspace,
-	)
+	extensionPaths, err := resolveRuntimeExtensionPaths(state, execution.Workspace)
 	if err != nil {
 		return err
+	}
+	workspaceStateRoot := ""
+	workspaceStateID := ""
+	if state.options.PersistentStore != nil {
+		workspaceStateRoot, workspaceStateID, err = externalWorkspaceStateRoot(
+			state.options.PersistentStore.Root(),
+			execution.Workspace,
+			state.options.WorkspaceIdentity,
+		)
+		if err != nil {
+			return err
+		}
 	}
 	commands := configuredDiagnosticCommands(snapshot.Config.Diagnostics.Commands)
 	state.config = configBuildState{
@@ -53,6 +60,8 @@ func (configModule) Build(_ context.Context, state *buildState) error {
 		execution:           execution,
 		extensionPaths:      extensionPaths,
 		hookSessionID:       fmt.Sprintf("process-%d-%p", os.Getpid(), state.session),
+		workspaceStateID:    workspaceStateID,
+		workspaceStateRoot:  workspaceStateRoot,
 		diagnosticCommands:  commands,
 		diagnosticReadRoots: diagnosticCommandReadRoots(commands),
 		diagnosticReadFiles: diagnosticCommandReadFiles(commands),
@@ -69,11 +78,8 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 	session := state.session
 	execution := state.config.execution
 	processes := process.NewSessionManager(0)
-	processes.SetJournalPath(
-		filepath.Join(execution.Workspace, ".codehelper", "jobs-journal.jsonl"),
-	)
-	if err := processes.LoadStaleJournal(); err != nil {
-		return fmt.Errorf("load process session journal: %w", err)
+	if err := configureProcessState(state, processes); err != nil {
+		return err
 	}
 	if state.persistence.jobLogs != nil {
 		processes.SetArchive(state.persistence.jobLogs)
@@ -140,17 +146,7 @@ func (persistenceModule) Build(
 	content := contentstore.NewMemory(contentstore.Options{})
 	state.session.content = content
 	state.persistence.content = content
-	jobs, err := joblog.New(
-		filepath.Join(
-			state.config.execution.Workspace,
-			".codehelper",
-			"jobs",
-		),
-	)
-	if err == nil {
-		state.session.jobLogs = jobs
-		state.persistence.jobLogs = jobs
-	}
+	openJobLog(state)
 	store, ephemeral, cleanupDir, err := openOrchestrationStore(
 		ctx,
 		state.options.PersistentStore,

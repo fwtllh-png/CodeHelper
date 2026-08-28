@@ -15,7 +15,9 @@ codehelper --config ./codehelper.toml --workspace . --open
 ```
 
 MCP Server 定义使用独立、严格且带版本的 JSON 文件，不属于 Runtime TOML 控制面。
-Web 通过 `--mcp-config` 传入，并在 Settings 中展示加载状态。
+Web 通过 `--mcp-config` 传入，并在 Settings 中展示加载状态。该文件必须位于
+`[state].data_dir` 下；启用 stdio Server 还必须显式声明 `host_trusted: true`，因为
+阶段 0 尚未把 Server 生命周期迁入 Process Broker。
 
 ## 完整实用示例
 
@@ -26,7 +28,7 @@ event_history = 256
 subscriber_buffer = 64
 
 [state]
-data_dir = ".codehelper"
+data_dir = "/absolute/path/outside/workspace/codehelper-state"
 busy_timeout = "5s"
 event_retention = 1000000
 
@@ -383,13 +385,46 @@ Suite。每个 `turn.verification` Check 都包含命令推导原因。无法识
 ## 状态与持久化
 
 默认用户数据目录为 `~/.codehelper/v1`。工作区可通过 `--data-dir` 或
-`[state].data_dir` 使用独立目录。
+`[state].data_dir` 使用独立目录。State Directory 不能位于 Workspace 内部，也不能
+包含 Workspace；启用 Durable Journal 时缺少外部 State Store 会导致 Runtime
+Fail Closed。
+
+每个 Workspace 在 `<data-dir>/workspaces/<workspace-id>/` 下拥有彼此隔离的
+`control`、`sandbox-home` 和 `artifacts` 目录。只有 `sandbox-home` 可映射为 Sandbox
+写目录；`control` 和 `artifacts` 不会暴露给 Workspace 进程。
 
 持久化内容包括 Runtime Projection、Event、CAS、Session Metadata、Usage 和 Journal。
 项目仍处于公开发布前，不应依赖旧开发提交产生的数据库兼容性。
 
 `execution.journal.durable=true` 会保留中断 Turn 恢复所需的编辑证据，真实仓库应保持
 开启。
+
+stdio MCP 配置示例：
+
+```json
+{
+  "version": 1,
+  "servers": {
+    "local-service": {
+      "transport": "stdio",
+      "host_trusted": true,
+      "command": "/absolute/path/to/server",
+      "tools": {
+        "lookup": {
+          "capability": "read",
+          "access_mode": "read",
+          "parallel_policy": "concurrent",
+          "sandbox_requirement": "none"
+        }
+      }
+    }
+  }
+}
+```
+
+`host_trusted` 只承认位于外部 State Directory 的 Operator 配置或已经过 Plugin Trust
+校验的配置。它表示 MCP Server 当前以宿主进程权限运行，不表示 MCP Tool Call 绕过
+Guard。
 
 ## Observation Capture 与 Export
 

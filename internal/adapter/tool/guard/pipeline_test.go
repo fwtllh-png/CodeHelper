@@ -101,6 +101,65 @@ func TestApprovalWaitHoldsNeitherAdmissionNorClaims(t *testing.T) {
 	}
 }
 
+func TestHostProcessApprovalIsFreshOnceAndSkipsPermissionHooks(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	descriptor := readDescriptor("quality_process_smoke")
+	descriptor.Capability = tool.CapabilityProcess
+	descriptor.AccessMode = tool.AccessWrite
+	executor := &testExecutor{descriptor: descriptor}
+	if err := registry.Register(executor, nil); err != nil {
+		t.Fatal(err)
+	}
+	requests := make(chan ApprovalRequest, 1)
+	var hookCalls atomic.Int32
+	guard, err := New(Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionBypass,
+		),
+		Workspace: t.TempDir(),
+		Approvals: func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		},
+		PermissionHooks: permissionRequesterFunc(func(
+			context.Context,
+			Invocation,
+		) (PermissionDecision, error) {
+			hookCalls.Add(1)
+			return PermissionDecision{Action: PermissionAllow}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, executeErr := guard.Execute(
+			context.Background(),
+			"process-smoke",
+			"quality_process_smoke",
+			json.RawMessage(`{}`),
+		)
+		done <- executeErr
+	}()
+	request := <-requests
+	if request.ReasonCode != "host_process_approval_required" ||
+		request.ReplacementAllowed ||
+		len(request.AllowedScopes) != 1 ||
+		request.AllowedScopes[0] != policy.ApprovalOnce {
+		t.Fatalf("host process approval = %+v", request)
+	}
+	if hookCalls.Load() != 0 {
+		t.Fatalf("permission hooks ran %d times", hookCalls.Load())
+	}
+	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestInitialApprovalDenialReturnsGuardTerminalReceipt(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	descriptor := readDescriptor("approval_denied_receipt")

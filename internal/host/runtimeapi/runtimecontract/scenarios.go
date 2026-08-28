@@ -704,7 +704,7 @@ func pluginLifecycleSetup(t *testing.T) Setup {
 	}
 }
 
-func mcpFixtureConfig(t *testing.T) string {
+func mcpFixtureConfig(t *testing.T) []byte {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
 	if err != nil {
@@ -714,8 +714,9 @@ func mcpFixtureConfig(t *testing.T) string {
 		"version": 1,
 		"servers": map[string]any{
 			"fixture": map[string]any{
-				"transport": "stdio",
-				"command":   "go",
+				"transport":    "stdio",
+				"host_trusted": true,
+				"command":      "go",
 				"args": []string{
 					"run", "./internal/adapter/mcp/testdata/fixture", "--transport=stdio",
 				},
@@ -734,11 +735,7 @@ func mcpFixtureConfig(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "mcp.json")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	return data
 }
 
 func mcpHealthIsVisible(t *testing.T, host Host, setup Setup) {

@@ -25,6 +25,8 @@ type processSmokeInput struct {
 	MinimumRuntimeMS uint64   `json:"minimum_runtime_ms"`
 }
 
+const ProcessSmokeUnavailableReason = "host process smoke is disabled until immutable artifact and desktop broker enforcement is available"
+
 type processSmokeTool struct {
 	root     string
 	resolver *sandbox.TrustedHostPathResolver
@@ -104,7 +106,8 @@ func (t *processSmokeTool) Descriptor() tool.Descriptor {
 		ParallelPolicy:     tool.ParallelSerial,
 		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxNone,
-		Availability:       tool.AvailabilityAvailable,
+		Availability:       tool.AvailabilityUnavailable,
+		UnavailableReason:  ProcessSmokeUnavailableReason,
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{

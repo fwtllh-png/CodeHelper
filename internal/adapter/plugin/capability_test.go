@@ -178,6 +178,7 @@ func writeV2CapabilityFixtureAt(t *testing.T, root string) Manifest {
   "servers": {
     "fixture": {
       "transport": "stdio",
+      "host_trusted": true,
       "command": "/missing/plugin-mcp",
       "tools": {
         "echo": {

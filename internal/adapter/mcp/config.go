@@ -26,17 +26,20 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Transport           string                 `json:"transport"`
-	Command             string                 `json:"command"`
-	Args                []string               `json:"args,omitempty"`
-	Env                 []string               `json:"env,omitempty"`
-	WorkingDirectory    string                 `json:"working_directory,omitempty"`
-	URL                 string                 `json:"url,omitempty"`
-	Headers             map[string]string      `json:"headers,omitempty"`
-	HeaderEnv           map[string]string      `json:"header_env,omitempty"`
-	BearerTokenEnv      string                 `json:"bearer_token_env,omitempty"`
-	OAuth               *OAuthConfig           `json:"oauth,omitempty"`
-	Enabled             *bool                  `json:"enabled,omitempty"`
+	Transport        string            `json:"transport"`
+	Command          string            `json:"command"`
+	Args             []string          `json:"args,omitempty"`
+	Env              []string          `json:"env,omitempty"`
+	WorkingDirectory string            `json:"working_directory,omitempty"`
+	URL              string            `json:"url,omitempty"`
+	Headers          map[string]string `json:"headers,omitempty"`
+	HeaderEnv        map[string]string `json:"header_env,omitempty"`
+	BearerTokenEnv   string            `json:"bearer_token_env,omitempty"`
+	OAuth            *OAuthConfig      `json:"oauth,omitempty"`
+	Enabled          *bool             `json:"enabled,omitempty"`
+	// HostTrusted is an explicit operator acknowledgement that an enabled
+	// stdio server currently runs with host process authority.
+	HostTrusted         bool                   `json:"host_trusted,omitempty"`
 	TokenFile           string                 `json:"token_file,omitempty"`
 	ConnectTimeout      time.Duration          `json:"-"`
 	ReadTimeout         time.Duration          `json:"-"`
@@ -198,6 +201,12 @@ func (c *Config) Validate() error {
 		if server.Transport == "stdio" {
 			if strings.TrimSpace(server.Command) == "" {
 				return fmt.Errorf("MCP server %q: command is required", name)
+			}
+			if server.IsEnabled() && !server.HostTrusted {
+				return fmt.Errorf(
+					"MCP server %q: enabled stdio transport requires host_trusted=true",
+					name,
+				)
 			}
 		} else if strings.TrimSpace(server.URL) == "" {
 			return fmt.Errorf("MCP server %q: url is required", name)

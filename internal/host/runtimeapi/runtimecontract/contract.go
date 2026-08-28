@@ -10,6 +10,8 @@ package contract
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -67,7 +69,7 @@ type Setup struct {
 	WorkspaceIdentity   *protocol.WorkspaceIdentity
 	Tools               bool
 	RepositoryRules     string
-	MCPConfig           string
+	MCPConfig           []byte
 	PluginWorkspaceRoot string
 	PluginUserRoot      string
 	PluginBuiltinRoot   string
@@ -75,6 +77,18 @@ type Setup struct {
 	PluginStagingRoot   string
 	TrustedDynamicTools bool
 	MaxSteps            int
+}
+
+func (s Setup) WriteMCPConfig(t *testing.T, stateRoot string) string {
+	t.Helper()
+	if len(s.MCPConfig) == 0 {
+		return ""
+	}
+	path := filepath.Join(stateRoot, "mcp.json")
+	if err := os.WriteFile(path, s.MCPConfig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 // Host is one transport under test, in protocol vocabulary. A scenario written

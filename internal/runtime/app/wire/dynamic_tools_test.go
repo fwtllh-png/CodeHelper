@@ -27,10 +27,10 @@ func TestTrustedDynamicToolsAreExplicitAndRequireToolRuntime(t *testing.T) {
 	}
 
 	tools = true
-	session, err := NewExec(t.Context(), ExecOptions{
+	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: fixture, TrustedDynamicTools: true, Permission: "bypass",
 		ConfigOverrides: config.Overrides{Workspace: &workspace, Tools: &tools},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,10 +66,10 @@ func TestTrustedDynamicToolsDefaultToDisabled(t *testing.T) {
 	}
 	workspace := t.TempDir()
 	tools := true
-	session, err := NewExec(t.Context(), ExecOptions{
+	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: fixture, Permission: "bypass",
 		ConfigOverrides: config.Overrides{Workspace: &workspace, Tools: &tools},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}

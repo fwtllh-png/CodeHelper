@@ -216,10 +216,10 @@ func TestChildWorktreeProvisionRecoversMissingRegisteredPath(t *testing.T) {
 func openWritingChildSession(t *testing.T, workspace string) *Session {
 	t.Helper()
 	tools := true
-	session, err := NewExec(context.Background(), ExecOptions{
+	session, err := NewExec(context.Background(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, "subagent-write"), Permission: "bypass",
 		ConfigOverrides: config.Overrides{Tools: &tools, Workspace: &workspace},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("NewExec: %v", err)
 	}
@@ -319,12 +319,12 @@ func TestWorktreeStrategyRequiresGitWorkspace(t *testing.T) {
 	workspace := t.TempDir()
 	tools := true
 	strategy := config.SubagentWorkspaceWorktree
-	_, err := NewExec(context.Background(), ExecOptions{
+	_, err := NewExec(context.Background(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, "subagent"), Permission: "bypass",
 		ConfigOverrides: config.Overrides{
 			Tools: &tools, Workspace: &workspace, SubagentWorkspace: &strategy,
 		},
-	})
+	}))
 	// Asking for worktree isolation in a workspace that cannot provide it is a
 	// startup error: discovering it at the first spawn would be a session that
 	// looked healthy and was not.
@@ -356,12 +356,12 @@ func TestSerializedWritingChildUsesHostWorkspaceWithoutGit(t *testing.T) {
 	workspace := t.TempDir()
 	tools := true
 	strategy := config.SubagentWorkspaceSerialized
-	session, err := NewExec(context.Background(), ExecOptions{
+	session, err := NewExec(context.Background(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, "subagent-write"), Permission: "bypass",
 		ConfigOverrides: config.Overrides{
 			Tools: &tools, Workspace: &workspace, SubagentWorkspace: &strategy,
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("NewExec: %v", err)
 	}

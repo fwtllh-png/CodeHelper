@@ -1,44 +1,77 @@
 package workspacejournal
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 // Names inside the journal directory.
 const (
-	ledgerName  = "turns.jsonl"
-	objectsName = "objects"
+	ledgerName     = "turns.jsonl"
+	objectsName    = "objects"
+	bindingName    = "workspace.json"
+	bindingVersion = 1
 )
 
-// Open returns a journal whose ledger and before-images live in directory, so an
-// interrupted turn can be undone by whichever process comes next. Until this
-// existed, edit atomicity held only inside a live process: a process killed
-// mid-turn left the workspace half changed with nothing to undo it from.
-//
-// directory is the caller's to choose. Putting it under the workspace keeps the
-// guarantee for hosts started without a state directory, and lets a worktree's
-// journal travel with the worktree.
-func Open(root, directory string) (*Manager, error) {
+type workspaceBinding struct {
+	Version       int    `json:"version"`
+	WorkspaceID   string `json:"workspace_id"`
+	CanonicalRoot string `json:"canonical_root"`
+	Device        uint64 `json:"device,omitempty"`
+	Inode         uint64 `json:"inode,omitempty"`
+	FileID        string `json:"file_id,omitempty"`
+}
+
+// Open returns a durable journal rooted outside the untrusted workspace.
+// workspaceID names the trusted Runtime registry entry that owns directory.
+func Open(root, directory, workspaceID string) (*Manager, error) {
 	if directory == "" {
 		return nil, errors.New("workspace journal directory is required")
 	}
-	// Resolve once at open so a later chdir cannot move the ledger under
-	// another workspace. New already Abs's the workspace root for the same reason.
+	if !validWorkspaceID(workspaceID) {
+		return nil, errors.New("workspace journal workspace id is invalid")
+	}
+	workspace, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		return nil, err
+	}
 	absolute, err := filepath.Abs(directory)
 	if err != nil {
 		return nil, fmt.Errorf("resolve workspace journal directory: %w", err)
 	}
-	directory = absolute
+	absolute, err = sandbox.ExternalStateDirectory(workspace.Root(), absolute)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(absolute, 0o700); err != nil {
+		return nil, fmt.Errorf("create workspace journal directory: %w", err)
+	}
+	directory, err = filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return nil, fmt.Errorf("resolve workspace journal directory links: %w", err)
+	}
+	directory = filepath.Clean(directory)
+	if err := os.Chmod(directory, 0o700); err != nil {
+		return nil, fmt.Errorf("protect workspace journal directory: %w", err)
+	}
+	if err := ensureWorkspaceBinding(directory, workspaceID, workspace); err != nil {
+		return nil, err
+	}
 	manager, err := New(root, contentstore.NewMemory(contentstore.Options{}))
 	if err != nil {
 		return nil, err
@@ -65,6 +98,95 @@ func Open(root, directory string) (*Manager, error) {
 	return manager, nil
 }
 
+func validWorkspaceID(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != sha256.Size*2 || filepath.Base(value) != value {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+func ensureWorkspaceBinding(
+	directory, workspaceID string,
+	workspace *sandbox.Workspace,
+) error {
+	info, err := os.Stat(workspace.Root())
+	if err != nil {
+		return fmt.Errorf("inspect workspace journal root: %w", err)
+	}
+	rootIdentity := identity(info)
+	expected := workspaceBinding{
+		Version: bindingVersion, WorkspaceID: workspaceID,
+		CanonicalRoot: workspace.Root(), Device: rootIdentity.Device,
+		Inode: rootIdentity.Inode, FileID: rootIdentity.FileID,
+	}
+	stateRoot, err := os.OpenRoot(directory)
+	if err != nil {
+		return fmt.Errorf("open workspace journal state root: %w", err)
+	}
+	defer stateRoot.Close()
+	info, err = stateRoot.Lstat(bindingName)
+	if err == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0) {
+		return errors.New("workspace journal binding must be a regular non-symlink file")
+	}
+	if err == nil && info.Mode().Perm()&0o077 != 0 {
+		return errors.New("workspace journal binding permissions are too broad")
+	}
+	if err == nil && linkCount(info) > 1 {
+		return errors.New("workspace journal binding must not be multiply linked")
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect workspace journal binding: %w", err)
+	}
+	data, err := stateRoot.ReadFile(bindingName)
+	if errors.Is(err, os.ErrNotExist) {
+		encoded, encodeErr := json.Marshal(expected)
+		if encodeErr != nil {
+			return encodeErr
+		}
+		file, createErr := stateRoot.OpenFile(
+			bindingName,
+			os.O_WRONLY|os.O_CREATE|os.O_EXCL,
+			0o600,
+		)
+		if errors.Is(createErr, os.ErrExist) {
+			return ensureWorkspaceBinding(directory, workspaceID, workspace)
+		}
+		if createErr != nil {
+			return fmt.Errorf("create workspace journal binding: %w", createErr)
+		}
+		_, writeErr := file.Write(append(encoded, '\n'))
+		syncErr := file.Sync()
+		closeErr := file.Close()
+		if err := errors.Join(writeErr, syncErr, closeErr); err != nil {
+			_ = stateRoot.Remove(bindingName)
+			return fmt.Errorf("persist workspace journal binding: %w", err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read workspace journal binding: %w", err)
+	}
+	var actual workspaceBinding
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&actual); err != nil {
+		return fmt.Errorf("decode workspace journal binding: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("workspace journal binding contains multiple JSON values")
+		}
+		return fmt.Errorf("decode workspace journal binding: %w", err)
+	}
+	if actual != expected {
+		return errors.New("workspace journal binding does not match the current workspace")
+	}
+	return nil
+}
+
 // Interrupted describes one turn left in a journal directory, for callers that
 // want to report on a workspace without opening or changing it.
 type Interrupted struct {
@@ -79,7 +201,19 @@ type Interrupted struct {
 // changes nothing, so a diagnostics command can use it against a workspace some
 // other process owns.
 func Inspect(directory string) ([]Interrupted, error) {
-	book := &ledger{path: filepath.Join(directory, ledgerName)}
+	root, err := os.OpenRoot(directory)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open workspace journal directory: %w", err)
+	}
+	defer root.Close()
+	book := &ledger{
+		path: filepath.Join(directory, ledgerName),
+		name: ledgerName,
+		root: root,
+	}
 	pending, err := book.replay()
 	if err != nil {
 		return nil, err
@@ -132,6 +266,10 @@ func (m *Manager) Recover(ctx context.Context) (Recovery, error) {
 		keep     []pendingTurn
 	)
 	for _, turn := range pending {
+		turn, err = m.bindPendingTurn(turn)
+		if err != nil {
+			return recovery, err
+		}
 		switch {
 		case turn.Owner == m.owner:
 			// Our own record from earlier in this process's life: the in-memory
@@ -173,10 +311,75 @@ func (m *Manager) Recover(ctx context.Context) (Recovery, error) {
 	sort.Strings(recovery.Abandoned)
 	sort.Strings(recovery.Drafts)
 	sort.Strings(recovery.Skipped)
-	if err := m.ledger.compact(keep); err != nil {
+	durableKeep := make([]pendingTurn, 0, len(keep))
+	for _, turn := range keep {
+		durable, durableErr := m.durablePendingTurn(turn)
+		if durableErr != nil {
+			return recovery, durableErr
+		}
+		durableKeep = append(durableKeep, durable)
+	}
+	if err := m.ledger.compact(durableKeep); err != nil {
 		return recovery, err
 	}
 	return recovery, nil
+}
+
+func (m *Manager) durablePendingTurn(turn pendingTurn) (pendingTurn, error) {
+	durable := pendingTurn{
+		ID: turn.ID, Owner: turn.Owner, PID: turn.PID, Started: turn.Started,
+		Committed: turn.Committed, Draft: turn.Draft,
+		Records: make(map[string]*Record, len(turn.Records)),
+	}
+	for _, path := range turn.Order {
+		record, err := m.durableRecord(turn.Records[path])
+		if err != nil {
+			return pendingTurn{}, err
+		}
+		durable.Order = append(durable.Order, record.Path)
+		durable.Records[record.Path] = record
+	}
+	return durable, nil
+}
+
+func (m *Manager) bindPendingTurn(turn pendingTurn) (pendingTurn, error) {
+	bound := pendingTurn{
+		ID: turn.ID, Owner: turn.Owner, PID: turn.PID, Started: turn.Started,
+		Committed: turn.Committed, Draft: turn.Draft,
+		Records: make(map[string]*Record, len(turn.Records)),
+	}
+	for _, name := range turn.Order {
+		if filepath.IsAbs(name) || filepath.Clean(name) != name || name == "." ||
+			name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
+			return pendingTurn{}, fmt.Errorf(
+				"workspace journal contains unsafe path %q",
+				name,
+			)
+		}
+		record := turn.Records[name]
+		if record == nil || record.Path != name ||
+			record.Before.Path != name || record.After.Path != name {
+			return pendingTurn{}, fmt.Errorf(
+				"workspace journal record path mismatch for %q",
+				name,
+			)
+		}
+		path, resolveErr := m.workspace.Resolve(name, sandbox.AllowMissing)
+		if resolveErr != nil {
+			return pendingTurn{}, fmt.Errorf(
+				"resolve workspace journal path %q: %w",
+				name,
+				resolveErr,
+			)
+		}
+		copy := *record
+		copy.Path = path
+		copy.Before.Path = path
+		copy.After.Path = path
+		bound.Order = append(bound.Order, path)
+		bound.Records[path] = &copy
+	}
+	return bound, nil
 }
 
 func pendingTurnHasChanges(turn pendingTurn) bool {

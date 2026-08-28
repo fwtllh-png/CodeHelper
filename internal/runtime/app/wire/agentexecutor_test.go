@@ -138,14 +138,14 @@ func TestSchedulerMergesACompletedWritingAgentIntoTheWorkspace(t *testing.T) {
 	tools := true
 	workerEnabled := true
 	claimInterval := 20 * time.Millisecond
-	session, err := NewExec(t.Context(), ExecOptions{
+	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, "subagent-write"),
 		Permission:  "bypass",
 		ConfigOverrides: config.Overrides{
 			Tools: &tools, Workspace: &workspace,
 			WorkerEnabled: &workerEnabled, WorkerClaimInterval: &claimInterval,
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}

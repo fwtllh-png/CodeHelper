@@ -62,6 +62,7 @@ git diff --check
 | `make web-experience-check` | 校验 Web 体验契约 |
 | `make host-journey-contract` | 校验 Runtime 与 Web 主旅程 |
 | `make architecture-ratchet` | 校验架构预算 |
+| `make security-side-effect-check` | 校验生产副作用入口 Inventory 与 Owner Allowlist |
 
 `make verify` 是完整门禁。Web Build 和依赖嵌入 Go Binary 的测试应串行执行，避免
 Vite 清空 `web/dist` 时 Go 编译器正在读取资源。

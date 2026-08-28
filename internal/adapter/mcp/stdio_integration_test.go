@@ -79,9 +79,9 @@ func TestPoolHashReloadAndCatalog(t *testing.T) {
 		Version: ConfigVersion,
 		Servers: map[string]ServerConfig{
 			"fixture-server": {
-				Transport: "stdio",
-				Command:   binary,
-				Args:      []string{"--transport=stdio"},
+				Transport: "stdio", HostTrusted: true,
+				Command: binary,
+				Args:    []string{"--transport=stdio"},
 				Tools: map[string]ToolBinding{
 					"fixture.echo": {
 						Capability:         "read",

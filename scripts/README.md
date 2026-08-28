@@ -13,6 +13,7 @@ Root 运行。
 | `test-brand-check.sh` | 无 | Brand Scanner 自测 |
 | `run-test-lane.py` | 取决于被测命令 | 写入 Passed、Failed 或 Unavailable JSON Lane 证据 |
 | `check-hotspot-baseline.go` | 无 | 校验当前热点职责归属与体积预算 |
+| `securityeffects` | 无 | 使用 Go AST 校验生产副作用入口及其 Owner Allowlist |
 | `webexperiencecheck` | 无 | 校验 Web 布局、Token、Motion、Viewport 和 CSS 静态契约 |
 | `webassetmanifest` | 无 | 生成并核验嵌入 Web 产物的 SHA-256、大小和 MIME Manifest |
 | `webprotocolgen` | 无 | 从 Web Route Registry 生成或校验 Web Host 传输契约 |
@@ -50,6 +51,7 @@ make release-fact-check
 make doc-external-links
 make brand-check
 make secret-leak-test
+make security-side-effect-check
 make web-release-drill PREVIOUS_RELEASE_REF=<上一发布提交>
 make web-supply-chain-check
 make web-vulnerability-check

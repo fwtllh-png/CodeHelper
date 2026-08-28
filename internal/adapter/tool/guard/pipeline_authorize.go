@@ -58,8 +58,17 @@ func (g *Guard) authorize(
 			decision.Code = "edit_plan_required"
 			decision.Reason = "workspace writes require a fresh edit plan approval"
 		}
+		hostProcessApproval := invocation.Tool == "quality_process_smoke"
+		if hostProcessApproval &&
+			decision.Action != policy.ActionDeny &&
+			decision.Action != policy.ActionHold {
+			decision.Action = policy.ActionAsk
+			decision.Code = "host_process_approval_required"
+			decision.Reason = "host process execution requires one-time user approval"
+		}
 		hookAction := PermissionAction("")
-		if decision.Action == policy.ActionAsk || decision.Code == "auto_review_allowed" {
+		if !hostProcessApproval &&
+			(decision.Action == policy.ActionAsk || decision.Code == "auto_review_allowed") {
 			hookAction, err = g.permissionAction(ctx, invocation)
 			if err != nil {
 				return preparedExecution{
@@ -158,7 +167,8 @@ func (g *Guard) authorizeAsk(
 	reviewLatency time.Duration,
 ) (authorized bool, replacement json.RawMessage, waited time.Duration, err error) {
 	now := g.now()
-	if !g.forceEditPlanApproval &&
+	hostProcessApproval := invocation.Tool == "quality_process_smoke"
+	if !g.forceEditPlanApproval && !hostProcessApproval &&
 		g.policy.Approvals != nil &&
 		g.policy.Approvals.MatchInvocation(policyInvocation, now) {
 		g.observeApproval("grant_hit", policyInvocation, decision, 0)
@@ -180,6 +190,10 @@ func (g *Guard) authorizeAsk(
 		ask.DisableReplace = true
 		ask.EditPlan = editPlan
 	}
+	if hostProcessApproval {
+		ask.AllowedScopes = []policy.ApprovalScope{policy.ApprovalOnce}
+		ask.DisableReplace = true
+	}
 	g.observeApproval("human_required", policyInvocation, decision, reviewLatency)
 	waitStarted := g.now()
 	approval, err := g.waitForApproval(ctx, invocation, policyInvocation, now, ask)
@@ -191,6 +205,9 @@ func (g *Guard) authorizeAsk(
 		if err := revalidateApprovedEdit(ctx, executor, invocation, *editPlan, approval); err != nil {
 			return false, nil, waited, err
 		}
+		return true, nil, waited, nil
+	}
+	if hostProcessApproval {
 		return true, nil, waited, nil
 	}
 	if len(approval.ReplacementArguments) != 0 {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -26,7 +27,8 @@ type Options struct {
 }
 
 type executor struct {
-	options Options
+	options     Options
+	hiddenPaths []string
 }
 
 type execution struct {
@@ -68,7 +70,23 @@ func newExecutor(options Options) *executor {
 	if options.Now == nil {
 		options.Now = time.Now
 	}
-	return &executor{options: options}
+	return &executor{
+		options:     options,
+		hiddenPaths: existingHookControlPaths(options.Workspace),
+	}
+}
+
+func existingHookControlPaths(workspace string) []string {
+	var paths []string
+	for _, name := range []string{
+		".agents", ".codehelper", ".codehelper-worktree", ".codex", ".git",
+	} {
+		path := filepath.Join(workspace, name)
+		if _, err := os.Lstat(path); err == nil {
+			paths = append(paths, path)
+		}
+	}
+	return paths
 }
 
 func (e *executor) run(ctx context.Context, event Event, hook HookConfig, input any) execution {
@@ -121,6 +139,9 @@ func (e *executor) run(ctx context.Context, event Event, hook HookConfig, input 
 		Path: hook.Command, Args: hook.Args, Dir: hook.WorkingDirectory,
 		DirFile: directory, Env: hook.Env, Sandbox: e.options.Sandbox,
 		RequireStrongSandbox: e.options.RequireStrongSandbox,
+		WorkspaceReadOnly:    e.options.RequireStrongSandbox,
+		WorkspaceHiddenPaths: append([]string(nil), e.hiddenPaths...),
+		DenyNetwork:          e.options.RequireStrongSandbox,
 	})
 	if err != nil {
 		result := execution{exitCode: -1, errCode: "prepare_process", err: err}

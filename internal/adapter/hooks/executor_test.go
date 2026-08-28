@@ -1,7 +1,12 @@
 package hooks
 
 import (
+	"context"
+	"errors"
+	"os"
 	"testing"
+
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 // TestBoundedBufferWriteAlwaysAcceptsData verifies the bounded buffer's
@@ -52,5 +57,55 @@ func TestBoundedBufferWriteAlwaysAcceptsData(t *testing.T) {
 	// Verify total bytes counts all data, even truncated.
 	if buf.Total() != 18 {
 		t.Errorf("expected total 18 bytes, got %d", buf.Total())
+	}
+}
+
+type captureSandboxBackend struct {
+	workspace string
+	command   sandbox.Command
+}
+
+func (b *captureSandboxBackend) Capability() sandbox.Capability {
+	return sandbox.Capability{
+		Platform: "fixture", Backend: "capture",
+		Strength: sandbox.StrengthStrong, Available: true,
+	}
+}
+
+func (b *captureSandboxBackend) Policy() sandbox.Policy {
+	return sandbox.Policy{ID: "capture-policy", WorkspaceRoot: b.workspace}
+}
+
+func (b *captureSandboxBackend) Prepare(
+	_ context.Context,
+	command sandbox.Command,
+) (sandbox.Command, error) {
+	b.command = command
+	return sandbox.Command{}, errors.New("captured")
+}
+
+func TestProductionHookProcessIsReadOnlyAndNetworkDenied(t *testing.T) {
+	workspace := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &captureSandboxBackend{workspace: workspace}
+	runner := newExecutor(Options{
+		Workspace: workspace, Sandbox: backend, RequireStrongSandbox: true,
+	})
+	result := runner.run(t.Context(), MessageSubmit, HookConfig{
+		ID: "capture", Source: SourceRepository, Trust: TrustWorkspace,
+		Scope: ScopeProcess, Mode: ModeEnforce,
+		Command: executable, WorkingDirectory: workspace,
+	}, MessageSubmitInput{SessionID: "session", Message: "fixture"})
+	if result.errCode != "prepare_process" ||
+		!backend.command.WorkspaceReadOnly ||
+		!backend.command.DenyNetwork {
+		t.Fatalf(
+			"hook execution = %+v, sandbox command = %+v",
+			result,
+			backend.command,
+		)
 	}
 }

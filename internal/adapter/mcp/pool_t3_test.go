@@ -241,7 +241,7 @@ func TestMCPToolIsErrorDoesNotTripBreaker(t *testing.T) {
 
 func fixtureServerConfig(toolName string) ServerConfig {
 	return ServerConfig{
-		Transport: "stdio", Command: "fixture",
+		Transport: "stdio", Command: "fixture", HostTrusted: true,
 		Tools: map[string]ToolBinding{
 			toolName: {
 				Capability: "read", AccessMode: "read",

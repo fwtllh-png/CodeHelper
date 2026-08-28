@@ -547,13 +547,13 @@ grant_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		t.Fatal(err)
 	}
 	tools := true
-	session, err := NewExec(t.Context(), ExecOptions{
+	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, "openai"),
 		Permission:  "never",
 		ConfigOverrides: config.Overrides{
 			Tools: &tools, Workspace: &workspace, StateDataDir: &stateDataDir,
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -594,10 +594,10 @@ func openChildSessionWithPermission(
 	if tune != nil {
 		tune(&overrides)
 	}
-	session, err := NewExec(context.Background(), ExecOptions{
+	session, err := NewExec(context.Background(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, fixture), Permission: permission,
 		ConfigOverrides: overrides,
-	})
+	}))
 	if err != nil {
 		t.Fatalf("NewExec: %v", err)
 	}

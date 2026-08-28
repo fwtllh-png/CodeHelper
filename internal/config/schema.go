@@ -394,6 +394,8 @@ type Overrides struct {
 	VerifyCommand         *string
 	VerifyRepair          *int
 	VerifyTimeout         *time.Duration
+	JournalDurable        *bool
+	JournalRecoverOnStart *bool
 
 	SubagentMaxDepth    *int
 	SubagentDelegation  *string

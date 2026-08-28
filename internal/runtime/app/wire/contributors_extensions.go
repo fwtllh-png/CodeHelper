@@ -39,8 +39,8 @@ func newExtensionContributors(state *buildState) []extensionActivation {
 			backend:   state.platform.backend, output: output,
 		},
 		mcpContributor{
-			configPath: state.options.MCPConfigPath,
-			output:     output,
+			configPath: state.options.MCPConfigPath, trustedConfigRoot: state.config.extensionPaths.DataDir,
+			output: output,
 		},
 	}
 }

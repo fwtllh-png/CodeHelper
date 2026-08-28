@@ -2,6 +2,7 @@ package workspacejournal
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,26 +39,49 @@ type entry struct {
 	SourceTurnID string    `json:"source_turn_id,omitempty"`
 }
 
-// ledger appends turn records to a file and replays what an earlier process
-// left. It is deliberately a JSONL file next to the workspace rather than a
-// SQLite table: the atomicity it protects must hold for hosts that were started
-// without a state directory, and the journal is per workspace while the state
-// database is per data directory.
+// ledger appends turn records beneath a pinned external state directory and
+// replays what an earlier process left.
 type ledger struct {
 	mu   sync.Mutex
 	path string
+	name string
+	root *os.Root
 	file *os.File
 }
 
 func openLedger(path string) (*ledger, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, fmt.Errorf("create journal directory: %w", err)
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	root, err := os.OpenRoot(directory)
 	if err != nil {
+		return nil, fmt.Errorf("open workspace journal root: %w", err)
+	}
+	name := filepath.Base(path)
+	if info, statErr := root.Lstat(name); statErr == nil {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			_ = root.Close()
+			return nil, errors.New("workspace journal ledger must be a regular non-symlink file")
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			_ = root.Close()
+			return nil, errors.New("workspace journal ledger permissions are too broad")
+		}
+		if linkCount(info) > 1 {
+			_ = root.Close()
+			return nil, errors.New("workspace journal ledger must not be multiply linked")
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		_ = root.Close()
+		return nil, fmt.Errorf("inspect workspace journal ledger: %w", statErr)
+	}
+	file, err := root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		_ = root.Close()
 		return nil, fmt.Errorf("open workspace journal ledger: %w", err)
 	}
-	return &ledger{path: path, file: file}, nil
+	return &ledger{path: path, name: name, root: root, file: file}, nil
 }
 
 // append writes one line and flushes it. Buffering would defeat the point: the
@@ -88,7 +112,7 @@ func (l *ledger) close() error {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.file.Close()
+	return errors.Join(l.file.Close(), l.root.Close())
 }
 
 // pendingTurn is a turn an earlier process began and never settled.
@@ -107,7 +131,7 @@ type pendingTurn struct {
 // the order they began. A torn last line is ignored: the crash that truncated it
 // happened before the write it describes, so there is nothing to undo for it.
 func (l *ledger) replay() ([]pendingTurn, error) {
-	file, err := os.Open(l.path)
+	file, err := l.root.Open(l.name)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -122,21 +146,17 @@ func (l *ledger) replay() ([]pendingTurn, error) {
 	reader := bufio.NewReader(file)
 	for {
 		line, err := reader.ReadBytes('\n')
-		if len(line) > 0 && (err == nil || errors.Is(err, io.EOF)) {
+		if len(line) > 0 && err == nil {
 			var value entry
-			if json.Unmarshal(line, &value) != nil {
-				// Either a torn tail or a line another version wrote. Skipping is the
-				// only safe reading: acting on half a record could restore the wrong
-				// bytes.
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				continue
+			if decodeErr := decodeLedgerEntry(line, &value); decodeErr != nil {
+				return nil, fmt.Errorf("decode workspace journal: %w", decodeErr)
 			}
 			applyEntry(pending, sequence, &next, value)
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				// append always terminates committed entries with a newline. Bytes
+				// after the final newline are an uncommitted crash tail.
 				break
 			}
 			return nil, fmt.Errorf("read workspace journal: %w", err)
@@ -154,6 +174,41 @@ func (l *ledger) replay() ([]pendingTurn, error) {
 		result = append(result, *turn)
 	}
 	return result, nil
+}
+
+func decodeLedgerEntry(data []byte, value *entry) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple JSON values")
+		}
+		return err
+	}
+	switch value.Phase {
+	case phaseBegin, phaseCommit, phaseDraft, phaseSettled, phaseRecover:
+		if value.Record != nil {
+			return errors.New("non-record journal phase carries a record")
+		}
+	case phaseBefore, phaseAfter:
+		if value.Record == nil {
+			return errors.New("record journal phase is missing a record")
+		}
+	case phaseResume:
+		if value.SourceTurnID == "" || value.Record != nil {
+			return errors.New("resume journal phase is invalid")
+		}
+	default:
+		return fmt.Errorf("unknown journal phase %q", value.Phase)
+	}
+	if value.TurnID == "" {
+		return errors.New("journal entry turn id is required")
+	}
+	return nil
 }
 
 func applyEntry(
@@ -222,8 +277,11 @@ func (l *ledger) compact(turns []pendingTurn) error {
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	temporary := l.path + ".compact"
-	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	temporary := l.name + ".compact"
+	if err := l.root.Remove(temporary); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove stale workspace journal temporary file: %w", err)
+	}
+	file, err := l.root.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return fmt.Errorf("compact workspace journal: %w", err)
 	}
@@ -275,7 +333,7 @@ func (l *ledger) compact(turns []pendingTurn) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(temporary, l.path); err != nil {
+	if err := l.root.Rename(temporary, l.name); err != nil {
 		return fmt.Errorf("replace workspace journal: %w", err)
 	}
 	// The old descriptor still points at the replaced inode, so reopen before the
@@ -283,7 +341,7 @@ func (l *ledger) compact(turns []pendingTurn) error {
 	if err := l.file.Close(); err != nil {
 		return err
 	}
-	reopened, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	reopened, err := l.root.OpenFile(l.name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("reopen workspace journal: %w", err)
 	}

@@ -18,6 +18,7 @@ LDFLAGS := -s -w \
 	test-release release-baseline-check integration-gate release-gate race build cross-build smoke \
 	agent-preflight agent-ratchet-test ratchet-fast \
 	capacity-policy-check \
+	security-side-effect-check \
 	docs-check book-check web-experience-check \
 	host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
@@ -156,7 +157,7 @@ agent-preflight:
 capacity-policy-check:
 	$(GO) test ./scripts -run '^TestCapacityPathsDoNotReintroduceLegacyTiers$$'
 
-ratchet-fast: capacity-policy-check
+ratchet-fast: capacity-policy-check security-side-effect-check
 	@test -s '$(AGENT_PREFLIGHT_SNAPSHOT)' || { \
 		printf '%s\n' 'agent preflight is missing; run make agent-preflight first'; \
 		exit 1; \
@@ -490,7 +491,8 @@ brand-check:
 	./scripts/test-brand-check.sh
 
 security-test:
-	$(GO) test -race ./internal/security/... ./internal/adapter/tool/guard/... ./internal/adapter/plugin/... ./internal/host/web/... ./internal/runtime/agent/engine/... ./internal/runtime/app/...
+	$(MAKE) security-side-effect-check
+	$(GO) test -race ./internal/security/... ./internal/adapter/hooks/... ./internal/adapter/mcp/... ./internal/adapter/tool/guard/... ./internal/adapter/tool/quality/... ./internal/adapter/plugin/... ./internal/host/web/... ./internal/runtime/agent/engine/... ./internal/runtime/app/...
 	$(GO) test -race ./internal/platform/process/... -run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunSanitizesRegularAndPTYEnvironments|RunPinsWorkingDirectoryToDescriptor|SanitizedEnvironment)'
 
 sandbox-attack-test:
@@ -504,6 +506,10 @@ secret-leak-test: build
 	$(GO) test -race ./internal/config ./internal/observability/telemetry \
 		./internal/platform/process/... \
 		-run 'Test(Secret|JSONLogger|RunSanitizesRegularAndPTYEnvironments|SanitizedEnvironment)'
+
+security-side-effect-check:
+	$(GO) test ./scripts/securityeffects
+	$(GO) run ./scripts/securityeffects -root .
 
 web-host-smoke:
 	$(GO) test -race -count=1 ./internal/host/web/...

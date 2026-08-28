@@ -14,6 +14,7 @@ func TestVersionedConfigStrictValidationAndNaming(t *testing.T) {
 		"servers": {
 			"Fixture Server": {
 				"transport": "stdio",
+				"host_trusted": true,
 				"command": "fixture",
 				"connect_timeout": "3s",
 				"tools": {
@@ -45,6 +46,34 @@ func TestVersionedConfigStrictValidationAndNaming(t *testing.T) {
 	}
 	if _, err := LoadConfig(path); err == nil {
 		t.Fatal("unknown config field was accepted")
+	}
+}
+
+func TestEnabledStdioRequiresExplicitHostTrust(t *testing.T) {
+	config := Config{
+		Version: ConfigVersion,
+		Servers: map[string]ServerConfig{
+			"local": {
+				Transport: "stdio",
+				Command:   "fixture",
+				Tools: map[string]ToolBinding{
+					"read": {
+						Capability: "read", AccessMode: "read",
+						ParallelPolicy: "concurrent", SandboxRequirement: "none",
+					},
+				},
+			},
+		},
+	}
+	if err := config.Validate(); err == nil {
+		t.Fatal("enabled stdio MCP server without host trust was accepted")
+	}
+	disabled := false
+	server := config.Servers["local"]
+	server.Enabled = &disabled
+	config.Servers["local"] = server
+	if err := config.Validate(); err != nil {
+		t.Fatalf("disabled untrusted stdio MCP server: %v", err)
 	}
 }
 

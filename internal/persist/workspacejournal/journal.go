@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -120,6 +121,20 @@ func unsignedField(value reflect.Value, name string) uint64 {
 	default:
 		return 0
 	}
+}
+
+func linkCount(info fs.FileInfo) uint64 {
+	value := reflect.ValueOf(info.Sys())
+	if value.Kind() == reflect.Pointer {
+		value = value.Elem()
+	}
+	if !value.IsValid() || value.Kind() != reflect.Struct {
+		return 0
+	}
+	if links := unsignedField(value, "Nlink"); links != 0 {
+		return links
+	}
+	return unsignedField(value, "NumberOfLinks")
 }
 
 func Equal(left, right Fingerprint) bool {
@@ -412,8 +427,16 @@ func (m *Manager) Before(ctx context.Context, path string) error {
 	if m.active != nil && m.active.records[path] == nil {
 		// The record must be on disk before the tool writes, or a crash between the
 		// two leaves a changed file with no before-image to restore.
+		durableRecord, err := m.durableRecord(record)
+		if err != nil {
+			m.mu.Unlock()
+			if handle != "" {
+				_ = m.store.Release(context.Background(), handle)
+			}
+			return err
+		}
 		if err := m.ledger.append(entry{
-			Phase: phaseBefore, TurnID: m.active.id, Record: record,
+			Phase: phaseBefore, TurnID: m.active.id, Record: durableRecord,
 		}); err != nil {
 			m.mu.Unlock()
 			if handle != "" {
@@ -465,12 +488,34 @@ func (m *Manager) AfterFingerprint(path string) (Fingerprint, error) {
 	record.After = after
 	// Rollback compares the file on disk against this fingerprint, so a recovering
 	// process needs it as much as this one does.
+	durableRecord, err := m.durableRecord(record)
+	if err != nil {
+		return Fingerprint{}, err
+	}
 	if err := m.ledger.append(entry{
-		Phase: phaseAfter, TurnID: m.active.id, Record: record,
+		Phase: phaseAfter, TurnID: m.active.id, Record: durableRecord,
 	}); err != nil {
 		return Fingerprint{}, err
 	}
 	return after, nil
+}
+
+func (m *Manager) durableRecord(record *Record) (*Record, error) {
+	if record == nil {
+		return nil, errors.New("workspace journal record is required")
+	}
+	relative, err := filepath.Rel(m.root, record.Path)
+	if err != nil || relative == "." || relative == ".." ||
+		filepath.IsAbs(relative) ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return nil, errors.New("workspace journal record path escapes root")
+	}
+	relative = filepath.Clean(relative)
+	copy := *record
+	copy.Path = relative
+	copy.Before.Path = relative
+	copy.After.Path = relative
+	return &copy, nil
 }
 
 // Changes lists the paths the active turn has changed so far, in write order.
@@ -822,11 +867,13 @@ func (m *Manager) restore(ctx context.Context, journal *turnJournal) (Receipt, e
 
 func (m *Manager) restoreRecord(ctx context.Context, record *Record) error {
 	relative, err := filepath.Rel(m.root, record.Path)
-	if err != nil || relative == ".." {
+	if err != nil || relative == "." || relative == ".." ||
+		filepath.IsAbs(relative) ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return errors.New("workspace restore path escapes root")
 	}
 	if !record.Before.Exists {
-		if err := os.Remove(record.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := m.workspace.Remove(relative); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		return nil

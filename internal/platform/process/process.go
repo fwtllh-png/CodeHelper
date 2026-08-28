@@ -33,6 +33,7 @@ type Options struct {
 	WorkspaceReadOnly    bool
 	AdditionalReadPaths  []string
 	WorkspaceWritePaths  []string
+	WorkspaceHiddenPaths []string
 	DenyNetwork          bool
 	// TrustedRuntimeHelper is reserved for CodeHelper-owned helper processes.
 	// Arbitrary user commands never receive internal W3C trace context.
@@ -194,7 +195,11 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		WorkspaceReadOnly:   options.WorkspaceReadOnly,
 		AdditionalReadPaths: append([]string(nil), options.AdditionalReadPaths...),
 		WorkspaceWritePaths: append([]string(nil), options.WorkspaceWritePaths...),
-		DenyNetwork:         options.DenyNetwork,
+		WorkspaceHiddenPaths: append(
+			[]string(nil),
+			options.WorkspaceHiddenPaths...,
+		),
+		DenyNetwork: options.DenyNetwork,
 		AllowLoopback: authorityBound &&
 			executionAuthority.AllowLoopback &&
 			!options.DenyNetwork,
@@ -284,6 +289,9 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		}
 		if !slices.Equal(options.WorkspaceWritePaths, commandSpec.PreparedWritePaths) {
 			return nil, errors.New("sandbox backend did not enforce exact workspace write paths")
+		}
+		if !slices.Equal(options.WorkspaceHiddenPaths, commandSpec.PreparedHiddenPaths) {
+			return nil, errors.New("sandbox backend did not enforce hidden workspace paths")
 		}
 		if options.DenyNetwork && !commandSpec.PreparedNetworkDenied {
 			return nil, errors.New("sandbox backend did not enforce network isolation")

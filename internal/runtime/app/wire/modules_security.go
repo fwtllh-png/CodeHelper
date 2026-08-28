@@ -31,9 +31,8 @@ func (securityModule) Build(
 	session.security = securityRuntime
 	journal, err := openWorkspaceJournal(
 		ctx,
-		execution.Workspace,
-		session.content,
-		execution.Journal,
+		execution.Workspace, session.content, execution.Journal,
+		state.config.workspaceStateRoot, state.config.workspaceStateID,
 		session,
 	)
 	if err != nil {
@@ -77,7 +76,7 @@ func (securityModule) Build(
 			repositoryRules...,
 		)
 	}
-	permissionStore, err := permissions.OpenWorkspaceStore(state.config.snapshot.Config.State.DataDir, execution.Workspace)
+	permissionStore, err := permissions.OpenWorkspaceStore(securityStateDataDir(state), execution.Workspace)
 	if err != nil {
 		return fmt.Errorf("permissions: %w", err)
 	}

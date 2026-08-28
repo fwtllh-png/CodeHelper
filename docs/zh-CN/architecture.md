@@ -485,6 +485,10 @@ Tool Identity、Risk、Approval、Repository Policy 与 Edit Evidence 的统一�
 ### 5. Edit Journal 与 Verify
 
 授权写入后提供可恢复性和正确性证据。
+Durable Workspace Journal、Process Job Journal 与 Job Log 位于
+`<data-dir>/workspaces/<workspace-id>/control`，不读取 Workspace 内的旧 Journal。
+同一 Workspace Identity 下的 `control`、`sandbox-home` 和 `artifacts` 是互不重叠的
+状态域；只有 `sandbox-home` 可以作为 Sandbox 写目录。
 Execution Receipt 会保留每次 Verification Attempt、命令推导原因、失败分类、Repair
 次数、最终 Gate Action 和最终 Workspace Outcome。Rollback 会区分已恢复路径、冲突和
 无法回滚的非文件副作用；原有 Pass/Fail 聚合字段只作为兼容摘要保留。
@@ -533,7 +537,9 @@ Prepare/Commit Receipt；Host 只提交 Operation 与投影 Runtime-owned State�
 ### MCP
 
 外部 Server 通过协议 Adapter 暴露 Tool。Health、Timeout、Circuit Breaker 和 Tool
-Binding 隔离避免单个 Server 故障污染全部工具。
+Binding 隔离避免单个 Server 故障污染全部工具。阶段 0 中 stdio Server 仍是宿主进程，
+因此默认关闭，只接受外部 State Directory 或已验证 Plugin 中显式
+`host_trusted=true` 的配置。
 
 ### Skill
 
@@ -553,7 +559,9 @@ Receipt、Enablement、Rollback 与 Revocation 构成激活链。
 
 ### Hook
 
-Hook 观察或拦截生命周期点，必须有界，不能成为另一条无 Guard 执行路径。
+Hook 观察或拦截生命周期点，必须有界。Repository Hook 不再从 Workspace 默认路径
+隐式启用；显式启用的 Hook 在只读、禁网 Sandbox 中运行，且不能通过 Permission
+Decision 扩大 Guard 权限。
 
 ## 编排架构
 

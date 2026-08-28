@@ -266,6 +266,9 @@ func descriptorFor(entry mcpruntime.CatalogEntry) (tool.Descriptor, error) {
 	if description == "" {
 		description = "MCP tool " + entry.RemoteName + " from " + entry.Server
 	}
+	if entry.HostTrusted {
+		description = "[Host-trusted MCP server process] " + description
+	}
 	var resources []tool.ResourceTemplate
 	for _, resource := range entry.Binding.Resources {
 		resources = append(resources, tool.ResourceTemplate{
@@ -323,9 +326,10 @@ func (e *executor) Execute(
 		}
 	}
 	metadata := map[string]any{
-		"mcp_server":  e.entry.Server,
-		"mcp_tool":    e.entry.RemoteName,
-		"mcp_content": result.Content,
+		"mcp_server":       e.entry.Server,
+		"mcp_tool":         e.entry.RemoteName,
+		"mcp_host_trusted": e.entry.HostTrusted,
+		"mcp_content":      result.Content,
 	}
 	if len(result.StructuredContent) != 0 {
 		var structured any

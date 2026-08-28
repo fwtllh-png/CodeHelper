@@ -342,12 +342,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 76,
-        "production_lines": 9159,
+        "production_lines": 9254,
         "options_fields": 74,
         "mutex_fields": 7
       },
       "relaxations": {
-        "production_lines": "Persist Workspace-scoped sandbox homes and expose validated host toolchains through one shared main/child runtime contract."
+        "production_lines": "Route Workspace control state, sandbox homes, artifact staging, jobs, hooks, and MCP trust through one identity-bound composition contract."
       }
     },
     {
@@ -673,8 +673,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_core.go",
       "limits": {
-        "lines": 204,
-        "max_function_lines": 67
+        "lines": 195,
+        "max_function_lines": 60
       }
     },
     {
@@ -691,8 +691,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_security.go",
       "limits": {
-        "lines": 110,
-        "max_function_lines": 92
+        "lines": 109,
+        "max_function_lines": 90
       }
     },
     {
@@ -754,8 +754,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/contributors_capabilities.go",
       "limits": {
-        "lines": 198,
-        "max_function_lines": 51
+        "lines": 131,
+        "max_function_lines": 44
       }
     },
     {

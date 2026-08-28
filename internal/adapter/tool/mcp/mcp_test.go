@@ -98,8 +98,8 @@ func TestCapabilityHelpersUseAdvertisedCatalogOnly(t *testing.T) {
 		Version: mcpruntime.ConfigVersion,
 		Servers: map[string]mcpruntime.ServerConfig{
 			"remote": {
-				Transport: "stdio",
-				Command:   "scripted",
+				Transport: "stdio", HostTrusted: true,
+				Command: "scripted",
 				Tools: map[string]mcpruntime.ToolBinding{
 					"danger": {
 						Capability:         "read",
@@ -180,8 +180,8 @@ func TestAdapterModelCallRequiresToolGuardPolicy(t *testing.T) {
 		Version: mcpruntime.ConfigVersion,
 		Servers: map[string]mcpruntime.ServerConfig{
 			"remote": {
-				Transport: "stdio",
-				Command:   "scripted",
+				Transport: "stdio", HostTrusted: true,
+				Command: "scripted",
 				Tools: map[string]mcpruntime.ToolBinding{
 					"danger": {
 						Capability:         "process",
@@ -293,7 +293,7 @@ func TestLargeMCPToolCatalogIsDeferredUntilSearchMaterializes(t *testing.T) {
 		Version: mcpruntime.ConfigVersion,
 		Servers: map[string]mcpruntime.ServerConfig{
 			"large": {
-				Transport: "stdio", Command: "scripted", Tools: bindings,
+				Transport: "stdio", Command: "scripted", HostTrusted: true, Tools: bindings,
 				ConnectTimeout: time.Second, CallTimeout: time.Second,
 				ShutdownTimeout: time.Second,
 			},
@@ -453,7 +453,7 @@ func TestAdapterRevokesOpenServerAndRestoresAfterProbe(t *testing.T) {
 		}, nil
 	})
 	server := mcpruntime.ServerConfig{
-		Transport: "stdio", Command: "scripted",
+		Transport: "stdio", Command: "scripted", HostTrusted: true,
 		Tools: map[string]mcpruntime.ToolBinding{
 			"danger": {
 				Capability: "read", AccessMode: "read",
@@ -536,7 +536,7 @@ func TestAsyncSyncQuarantinesStaleCatalogAndRecovers(t *testing.T) {
 		Version: mcpruntime.ConfigVersion,
 		Servers: map[string]mcpruntime.ServerConfig{
 			"remote": {
-				Transport: "stdio", Command: "scripted",
+				Transport: "stdio", Command: "scripted", HostTrusted: true,
 				Tools: map[string]mcpruntime.ToolBinding{
 					"danger": {
 						Capability: "read", AccessMode: "read",
@@ -628,7 +628,7 @@ func TestAdapterReplacesExecutorWhenConnectionChanges(t *testing.T) {
 		Version: mcpruntime.ConfigVersion,
 		Servers: map[string]mcpruntime.ServerConfig{
 			"remote": {
-				Transport: "stdio", Command: "scripted",
+				Transport: "stdio", Command: "scripted", HostTrusted: true,
 				Tools: map[string]mcpruntime.ToolBinding{
 					"danger": {
 						Capability: "read", AccessMode: "read",
@@ -699,7 +699,7 @@ func TestCatalogNotificationReconcilesOnlyServerSource(t *testing.T) {
 		return transport, nil
 	})
 	server := mcpruntime.ServerConfig{
-		Transport: "stdio", Command: "scripted",
+		Transport: "stdio", Command: "scripted", HostTrusted: true,
 		Tools: map[string]mcpruntime.ToolBinding{
 			"echo": {
 				Capability: "read", AccessMode: "read",
@@ -752,7 +752,8 @@ func TestCatalogNotificationReconcilesOnlyServerSource(t *testing.T) {
 	}
 	entry, ok := after.Lookup("mcp_remote_echo")
 	if !ok || entry.Revision <= beforeEntry.Revision ||
-		entry.Descriptor.Description != "version 2" {
+		entry.Descriptor.Description !=
+			"[Host-trusted MCP server process] version 2" {
 		t.Fatalf("replacement entry = %+v", entry)
 	}
 	if entry.State != tool.CatalogEntryDeferred ||

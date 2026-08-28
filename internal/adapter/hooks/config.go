@@ -86,6 +86,26 @@ func LoadConfig(path string) (Config, error) {
 	return DecodeConfig(data)
 }
 
+// LoadRepositoryConfig admits one operator-selected regular config file and
+// replaces all self-reported source metadata with repository trust.
+func LoadRepositoryConfig(path string) (Config, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return Config{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return Config{}, errors.New(
+			"hooks config must be a regular non-symlink file",
+		)
+	}
+	config, err := LoadConfig(path)
+	if err != nil {
+		return Config{}, err
+	}
+	BindRepository(&config)
+	return config, nil
+}
+
 func DecodeConfig(data []byte) (Config, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -170,6 +190,21 @@ func (c *Config) Validate() error {
 	}
 	c.Version = ConfigVersion
 	return nil
+}
+
+// BindRepository replaces self-reported source and trust metadata on hooks
+// loaded from an operator-selected repository configuration.
+func BindRepository(config *Config) {
+	if config == nil {
+		return
+	}
+	for event, configured := range config.Hooks {
+		for index := range configured {
+			configured[index].Source = SourceRepository
+			configured[index].Trust = TrustWorkspace
+		}
+		config.Hooks[event] = configured
+	}
 }
 
 func validHookMetadata(hook HookConfig) bool {

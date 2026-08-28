@@ -1,0 +1,202 @@
+{
+  "version": 1,
+  "id": "SEC-EXEC-BOUNDARY-001",
+  "rules": [
+    {
+      "path": "internal/platform/process",
+      "prefix": true,
+      "categories": ["process", "file"],
+      "owner": "process runtime",
+      "reason": "Existing process construction, process-group lifecycle, and job journal boundary pending Broker migration."
+    },
+    {
+      "path": "internal/security/sandbox",
+      "prefix": true,
+      "categories": ["process", "file", "network"],
+      "owner": "sandbox",
+      "reason": "Trusted sandbox probes, helper execution, and private policy state."
+    },
+    {
+      "path": "internal/adapter/mcp/stdio.go",
+      "categories": ["process"],
+      "owner": "mcp",
+      "reason": "Temporary stdio lifecycle exception; disabled unless explicitly host-trusted until Broker migration."
+    },
+    {
+      "path": "internal/adapter/mcp/oauth.go",
+      "categories": ["process", "file", "network"],
+      "owner": "mcp",
+      "reason": "OAuth callback state and operator browser launch."
+    },
+    {
+      "path": "internal/adapter/mcp",
+      "prefix": true,
+      "categories": ["network"],
+      "owner": "mcp",
+      "reason": "MCP HTTP transport and OAuth callback listener."
+    },
+    {
+      "path": "internal/orchestration/lane",
+      "prefix": true,
+      "categories": ["process", "file"],
+      "owner": "orchestration lane",
+      "reason": "Existing command and tmux lifecycle pending Process Broker migration."
+    },
+    {
+      "path": "internal/host/runtimeapi/web/native_directory.go",
+      "categories": ["process"],
+      "owner": "web host",
+      "reason": "Operator-initiated native directory picker."
+    },
+    {
+      "path": "internal/host/runtimeapi/web/native_path.go",
+      "categories": ["process"],
+      "owner": "web host",
+      "reason": "Operator-initiated native path opener."
+    },
+    {
+      "path": "internal/host/web",
+      "prefix": true,
+      "categories": ["process", "file", "network"],
+      "owner": "web host",
+      "reason": "Local listener, supervisor state, and operator browser launch."
+    },
+    {
+      "path": "internal/host/runtimeapi/runtimecontract",
+      "prefix": true,
+      "categories": ["process", "file"],
+      "owner": "runtime contract fixture",
+      "reason": "Executable contract fixture retained outside production host wiring."
+    },
+    {
+      "path": "internal/persist",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "persistence",
+      "reason": "Trusted durable state owners."
+    },
+    {
+      "path": "internal/adapter/memory",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "memory adapter",
+      "reason": "Runtime-owned memory state."
+    },
+    {
+      "path": "internal/adapter/plugin",
+      "prefix": true,
+      "categories": ["file", "network"],
+      "owner": "plugin adapter",
+      "reason": "Verified artifact staging, trust state, and registry client."
+    },
+    {
+      "path": "internal/adapter/skill",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "skill adapter",
+      "reason": "Runtime-owned skill state and lock files."
+    },
+    {
+      "path": "internal/adapter/tool/content",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "content tool",
+      "reason": "Bounded temporary conversion artifacts."
+    },
+    {
+      "path": "internal/adapter/tool/github/github.go",
+      "categories": ["file", "network"],
+      "owner": "github tool",
+      "reason": "Guarded GitHub transport and Runtime-owned cache."
+    },
+    {
+      "path": "internal/adapter/tool/git/hosted.go",
+      "categories": ["network"],
+      "owner": "git tool",
+      "reason": "Guarded hosted repository metadata transport."
+    },
+    {
+      "path": "internal/adapter/tool/rlm/rlm.go",
+      "categories": ["network"],
+      "owner": "rlm tool",
+      "reason": "Guarded RLM bridge transport."
+    },
+    {
+      "path": "internal/adapter/tool/web",
+      "prefix": true,
+      "categories": ["network"],
+      "owner": "web tool",
+      "reason": "Guarded web fetch and search transports."
+    },
+    {
+      "path": "internal/adapter/provider",
+      "prefix": true,
+      "categories": ["file", "network"],
+      "owner": "provider adapter",
+      "reason": "Model transports, credential-file readers, and hermetic fixture server."
+    },
+    {
+      "path": "internal/adapter/tool/agent",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "agent tool",
+      "reason": "Guarded child-agent workspace preparation."
+    },
+    {
+      "path": "internal/host/bench",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "benchmark host",
+      "reason": "Developer-invoked benchmark fixture materialization."
+    },
+    {
+      "path": "internal/platform/ownerlease",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "owner lease",
+      "reason": "Runtime-owned supervisor lease persistence."
+    },
+    {
+      "path": "internal/observability",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "observability",
+      "reason": "Runtime-owned observation journals, exports, and dumps."
+    },
+    {
+      "path": "internal/orchestration",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "orchestration",
+      "reason": "Runtime-owned worktree, lane, and durable orchestration state."
+    },
+    {
+      "path": "internal/runtime/agent/rlm",
+      "prefix": true,
+      "categories": ["file", "network"],
+      "owner": "rlm runtime",
+      "reason": "Sandboxed REPL state and loopback bridge."
+    },
+    {
+      "path": "internal/runtime/app/wire",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "composition root",
+      "reason": "Construction and cleanup of Runtime-owned state directories."
+    },
+    {
+      "path": "internal/runtime/protocol/schemagen",
+      "prefix": true,
+      "categories": ["file"],
+      "owner": "protocol generator",
+      "reason": "Developer-invoked generated artifact writer."
+    },
+    {
+      "path": "internal/security",
+      "prefix": true,
+      "categories": ["file", "network"],
+      "owner": "security",
+      "reason": "Credential, permission, egress, and sandbox state owners."
+    }
+  ]
+}

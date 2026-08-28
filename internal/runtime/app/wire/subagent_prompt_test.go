@@ -28,13 +28,13 @@ func (promptTestGate) Execute(
 func TestSimpleModelTurnDoesNotSpawnAgent(t *testing.T) {
 	workspace := t.TempDir()
 	tools := true
-	session, err := NewExec(t.Context(), ExecOptions{
+	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, "openai-structured"),
 		Permission:  "bypass",
 		ConfigOverrides: config.Overrides{
 			Workspace: &workspace, Tools: &tools,
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}

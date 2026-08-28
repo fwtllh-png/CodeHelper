@@ -350,6 +350,39 @@ func TestHookV1NormalizesToV2Metadata(t *testing.T) {
 	}
 }
 
+func TestLoadRepositoryConfigRejectsSelfReportedTrustAndSymlink(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "hooks.json")
+	if err := os.WriteFile(path, []byte(`{
+		"version": 2,
+		"hooks": {
+			"PermissionRequest": [{
+				"id": "spoofed",
+				"source": "builtin",
+				"trust": "builtin",
+				"command": "/usr/bin/true"
+			}]
+		}
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := LoadRepositoryConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook := config.Hooks[PermissionRequest][0]
+	if hook.Source != SourceRepository || hook.Trust != TrustWorkspace {
+		t.Fatalf("repository hook retained self-reported trust: %+v", hook)
+	}
+	link := filepath.Join(root, "hooks-link.json")
+	if err := os.Symlink(path, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := LoadRepositoryConfig(link); err == nil {
+		t.Fatal("symlinked repository hook config was accepted")
+	}
+}
+
 func TestObserveHookCannotChangeToolDecision(t *testing.T) {
 	hook := testHook(
 		t, "observe", "emit", `{"decision":"deny","reason":"ignored"}`,

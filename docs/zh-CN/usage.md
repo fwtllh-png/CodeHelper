@@ -33,7 +33,7 @@ codehelper
 | `--no-open` | 禁止自动打开浏览器 |
 | `--enable-tools` | 启用内置 Workspace Tool |
 | `--posture MODE` | `suggest`、`auto` 或 `never` |
-| `--mcp-config PATH` | 版本化 MCP Stdio 配置 |
+| `--mcp-config PATH` | State Directory 内的版本化 MCP 配置；stdio Server 还需显式 `host_trusted=true` |
 | `--provider ID` | 覆盖配置中的 Provider |
 | `--model ID` | 覆盖配置中的 Model |
 | `--api-key-env NAME` | 使用环境变量中的 Provider Credential |

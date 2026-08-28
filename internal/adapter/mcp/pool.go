@@ -11,13 +11,14 @@ import (
 )
 
 type CatalogEntry struct {
-	Server     string
-	RemoteName string
-	ModelName  string
-	Tool       Tool
-	Binding    ToolBinding
-	Connection *Connection
-	Authority  func(context.Context) error
+	Server      string
+	RemoteName  string
+	ModelName   string
+	HostTrusted bool
+	Tool        Tool
+	Binding     ToolBinding
+	Connection  *Connection
+	Authority   func(context.Context) error
 }
 
 type ResourceCatalogEntry struct {
@@ -235,8 +236,9 @@ func (p *Pool) connectServer(
 		}
 		runtime.catalog = append(runtime.catalog, CatalogEntry{
 			Server: name, RemoteName: discovered.Name,
-			ModelName: ModelToolName(name, discovered.Name),
-			Tool:      discovered, Binding: binding, Connection: connection,
+			ModelName:   ModelToolName(name, discovered.Name),
+			HostTrusted: server.Transport == "stdio" && server.HostTrusted,
+			Tool:        discovered, Binding: binding, Connection: connection,
 			Authority: server.Authority,
 		})
 	}

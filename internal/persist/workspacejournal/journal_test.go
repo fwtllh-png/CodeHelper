@@ -10,6 +10,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 )
 
+const testWorkspaceID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 func TestJournalCommitRevertAndConflict(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "value.txt")
@@ -77,7 +79,7 @@ func TestJournalCommitRevertAndConflict(t *testing.T) {
 func TestJournalCommitRetainsOwnershipUntilLedgerPersists(t *testing.T) {
 	root := t.TempDir()
 	directory := filepath.Join(t.TempDir(), "journal")
-	manager, err := Open(root, directory)
+	manager, err := Open(root, directory, testWorkspaceID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +109,12 @@ func TestJournalCommitRetainsOwnershipUntilLedgerPersists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reopenedRoot, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
 	manager.ledger.file = reopened
+	manager.ledger.root = reopenedRoot
 	if err := manager.Commit("turn-retry"); err != nil {
 		t.Fatal(err)
 	}

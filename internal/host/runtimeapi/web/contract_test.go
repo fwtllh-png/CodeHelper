@@ -75,7 +75,7 @@ func newWebContractHost(t *testing.T, setup contract.Setup) contract.Host {
 	session, err := wire.NewExec(t.Context(), wire.ExecOptions{
 		FixturePath: setup.Fixture, Permission: "bypass",
 		RepositoryRulesPath: setup.RepositoryRules,
-		MCPConfigPath:       setup.MCPConfig,
+		MCPConfigPath:       setup.WriteMCPConfig(t, store.Root()),
 		Extensions: wire.ExtensionOptions{
 			PluginWorkspaceRoot: setup.PluginWorkspaceRoot,
 			PluginUserRoot:      setup.PluginUserRoot,

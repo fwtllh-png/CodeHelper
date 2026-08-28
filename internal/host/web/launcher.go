@@ -170,6 +170,18 @@ func runWeb(
 		dataDir = loaded.Config.State.DataDir
 		options.workspace = workspaceRoot
 	}
+	if configErr == nil {
+		dataDir, configErr = wire.ValidateExternalStateDirectory(
+			workspaceRoot,
+			dataDir,
+		)
+		if configErr == nil {
+			// Keep subsequent setup reloads and Runtime wiring on the same
+			// canonical state root used by the persistent store.
+			options.dataDir = dataDir
+			loaded.Config.State.DataDir = dataDir
+		}
+	}
 	selection := webSetupSelection{}
 	routeReference := credential.Reference{}
 	setupRequired := false

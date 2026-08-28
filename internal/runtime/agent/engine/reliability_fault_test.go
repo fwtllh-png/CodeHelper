@@ -146,6 +146,7 @@ func TestJournalFinalizationFailureLeavesRetryableCommittingTurn(
 	journal, err := workspacejournal.Open(
 		root,
 		t.TempDir(),
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 	)
 	if err != nil {
 		t.Fatal(err)

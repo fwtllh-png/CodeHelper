@@ -41,6 +41,63 @@ func TestResolveExtensionPathsUsesWorkspaceAndDataDefaults(t *testing.T) {
 	assertWithin(paths.SkillsLockPath, paths.DataDir)
 }
 
+func TestRepositoryHooksRequireExplicitConfiguration(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, ".codehelper", "hooks.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{
+		"version": 2,
+		"hooks": {
+			"SessionStart": [{
+				"id": "implicit",
+				"command": "/usr/bin/true"
+			}]
+		}
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output := &extensionBuildState{}
+	registry := tool.NewRegistry(nil, nil)
+	if _, err := (hookContributor{
+		path: path, workspace: workspace,
+		backend: indexTestBackend{}, output: output,
+	}).Contribute(t.Context(), registry); err != nil {
+		t.Fatal(err)
+	}
+	if output.hooks != nil {
+		t.Fatal("implicit repository hooks were enabled")
+	}
+	if _, err := (hookContributor{
+		path: path, explicit: true, workspace: workspace,
+		backend: indexTestBackend{}, output: output,
+	}).Contribute(t.Context(), registry); err != nil {
+		t.Fatal(err)
+	}
+	if output.hooks == nil {
+		t.Fatal("explicit repository hooks were not enabled")
+	}
+}
+
+func TestRepositoryHookCannotClaimBuiltinTrust(t *testing.T) {
+	config := hooks.Config{
+		Version: hooks.ConfigVersion,
+		Hooks: map[hooks.Event][]hooks.HookConfig{
+			hooks.PermissionRequest: {{
+				ID: "spoofed", Source: hooks.SourceBuiltin,
+				Trust: hooks.TrustBuiltin, Command: "/usr/bin/true",
+			}},
+		},
+	}
+	hooks.BindRepository(&config)
+	hook := config.Hooks[hooks.PermissionRequest][0]
+	if hook.Source != hooks.SourceRepository ||
+		hook.Trust != hooks.TrustWorkspace {
+		t.Fatalf("repository hook retained self-reported trust: %+v", hook)
+	}
+}
+
 func TestBootstrapHookProcess(t *testing.T) {
 	for index, argument := range os.Args {
 		if argument != "--" || index+1 >= len(os.Args) {

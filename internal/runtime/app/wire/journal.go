@@ -2,7 +2,9 @@ package wire
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
@@ -16,7 +18,8 @@ import (
 // next turn would otherwise build on.
 func openWorkspaceJournal(
 	ctx context.Context, workspace string, content contentstore.Store,
-	settings config.Journal, session *Session,
+	settings config.Journal, workspaceStateRoot, workspaceID string,
+	session *Session,
 ) (*workspacejournal.Manager, error) {
 	if !settings.Durable {
 		journal, err := workspacejournal.New(workspace, content)
@@ -25,8 +28,26 @@ func openWorkspaceJournal(
 		}
 		return journal, nil
 	}
+	if workspaceStateRoot == "" {
+		return nil, errors.New(
+			"durable workspace journal requires an external Runtime state store",
+		)
+	}
+	legacyPath := filepath.Join(workspace, ".codehelper", "journal")
+	if _, err := os.Lstat(legacyPath); err == nil {
+		if session.logger != nil {
+			session.logger.Warn(
+				"legacy workspace journal ignored",
+				"path", legacyPath,
+			)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("inspect legacy workspace journal: %w", err)
+	}
 	journal, err := workspacejournal.Open(
-		workspace, filepath.Join(workspace, ".codehelper", "journal"),
+		workspace,
+		filepath.Join(workspaceStateRoot, "control", "journal"),
+		workspaceID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("open durable workspace journal: %w", err)

@@ -74,6 +74,14 @@ func TestQualityVerificationToolsDeclareGuardedNetworkTargets(t *testing.T) {
 	}
 }
 
+func TestProcessSmokeIsUnavailableUntilDesktopBrokerExists(t *testing.T) {
+	descriptor := (&processSmokeTool{}).Descriptor()
+	if descriptor.Availability != tool.AvailabilityUnavailable ||
+		descriptor.UnavailableReason != ProcessSmokeUnavailableReason {
+		t.Fatalf("process smoke descriptor = %+v", descriptor)
+	}
+}
+
 func TestQualityDiagnosticsAndReviewParseCommandOutput(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := RegisterWithBackend(registry, t.TempDir(), qualityTestBackend{}); err != nil {

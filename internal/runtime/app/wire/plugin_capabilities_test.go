@@ -378,6 +378,7 @@ func writeWireV2Plugin(t *testing.T, root string) {
   "servers": {
     "fixture": {
       "transport": "stdio",
+      "host_trusted": true,
       "command": "/missing/plugin-mcp",
       "tools": {
         "echo": {

@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -302,6 +304,28 @@ func TestReplayIgnoresATornFinalLine(t *testing.T) {
 	}
 }
 
+func TestReplayRejectsMalformedCompleteLine(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(t.TempDir(), "journal")
+	manager, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	appendRaw(t, filepath.Join(directory, ledgerName), "{malformed}\n")
+	reopened, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close(context.Background()) })
+	if _, err := reopened.Recover(t.Context()); err == nil ||
+		!strings.Contains(err.Error(), "decode workspace journal") {
+		t.Fatalf("Recover() error = %v", err)
+	}
+}
+
 // A clean shutdown should leave nothing for the next process to reason about.
 func TestClosingSettlesCommittedTurnsSoTheNextProcessStartsClean(t *testing.T) {
 	root := t.TempDir()
@@ -358,17 +382,19 @@ func TestClosingHandsDraftToInProcessReplacement(t *testing.T) {
 
 func openJournal(t *testing.T, root string) *Manager {
 	t.Helper()
-	manager, err := Open(root, filepath.Join(root, ".codehelper", "journal"))
+	directory := filepath.Join(
+		filepath.Dir(root),
+		"."+filepath.Base(root)+"-journal",
+	)
+	manager, err := Open(root, directory, testWorkspaceID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return manager
 }
 
-func TestOpenAbsResolvesARelativeJournalDirectory(t *testing.T) {
+func TestOpenResolvesRelativeExternalJournalDirectory(t *testing.T) {
 	root := t.TempDir()
-	// Callers often pass filepath.Join(workspace, ".codehelper", "journal") where
-	// workspace is still "."; Abs at open must make that usable.
 	previous, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -378,17 +404,239 @@ func TestOpenAbsResolvesARelativeJournalDirectory(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(previous) })
 
-	manager, err := Open(".", ".codehelper/journal")
+	manager, err := Open(
+		".",
+		filepath.Join("..", "."+filepath.Base(root)+"-journal"),
+		testWorkspaceID,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = manager.Close(context.Background()) })
-	info, err := os.Stat(filepath.Join(root, ".codehelper", "journal", ledgerName))
+	info, err := os.Stat(manager.ledger.path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !info.Mode().IsRegular() {
 		t.Fatalf("ledger mode = %v", info.Mode())
+	}
+}
+
+func TestOpenRejectsJournalInsideWorkspace(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, ".codehelper", "journal")
+	_, err := Open(
+		root,
+		directory,
+		testWorkspaceID,
+	)
+	if err == nil || !strings.Contains(err.Error(), "must not overlap") {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if _, err := os.Stat(directory); !os.IsNotExist(err) {
+		t.Fatalf("rejected journal directory was created: %v", err)
+	}
+}
+
+func TestOpenRejectsWorkspaceBindingReuse(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(t.TempDir(), "journal")
+	first, err := Open(root, directory, strings.Repeat("1", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(root, directory, strings.Repeat("2", 64)); err == nil ||
+		!strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("Open() binding error = %v", err)
+	}
+}
+
+func TestDurableLedgerStoresWorkspaceRelativePaths(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "value.txt")
+	if err := os.WriteFile(path, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(t.TempDir(), "journal")
+	manager, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = manager.Close(context.Background()) })
+	if err := manager.Begin("relative-path"); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Before(t.Context(), path); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(directory, ledgerName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), root) ||
+		!strings.Contains(string(data), `"path":"value.txt"`) {
+		t.Fatalf("ledger contains unsafe path representation: %s", data)
+	}
+}
+
+func TestRecoverRejectsAbsoluteLedgerPath(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(t.TempDir(), "journal")
+	manager, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	appendRaw(t, filepath.Join(directory, ledgerName),
+		`{"phase":"begin","turn_id":"hostile","owner":"dead","pid":0}`+"\n")
+	appendRaw(t, filepath.Join(directory, ledgerName),
+		`{"phase":"after","turn_id":"hostile","record":{"path":`+
+			strconv.Quote(outside)+`,"before":{"path":`+
+			strconv.Quote(outside)+`},"after":{"path":`+
+			strconv.Quote(outside)+`}}}`+"\n")
+	reopened, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close(context.Background()) })
+	if _, err := reopened.Recover(t.Context()); err == nil ||
+		!strings.Contains(err.Error(), "unsafe path") {
+		t.Fatalf("Recover() error = %v", err)
+	}
+}
+
+func TestRecoverRejectsSymlinkEscapeFromLedger(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(t.TempDir(), "journal")
+	manager, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "escape")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	appendRaw(t, filepath.Join(directory, ledgerName),
+		`{"phase":"begin","turn_id":"hostile","owner":"dead","pid":0}`+"\n")
+	appendRaw(t, filepath.Join(directory, ledgerName),
+		`{"phase":"after","turn_id":"hostile","record":{"path":"escape/file",`+
+			`"before":{"path":"escape/file"},"after":{"path":"escape/file"}}}`+"\n")
+	reopened, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close(context.Background()) })
+	if _, err := reopened.Recover(t.Context()); err == nil ||
+		!strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("Recover() error = %v", err)
+	}
+}
+
+func TestOpenRejectsReplacedWorkspaceRoot(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "workspace")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	directory := filepath.Join(t.TempDir(), "journal")
+	manager, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(root, root+".old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(root, directory, testWorkspaceID); err == nil ||
+		!strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("Open() root replacement error = %v", err)
+	}
+}
+
+func TestOpenRejectsSymlinkOrHardlinkedControlFiles(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(t.TempDir(), "journal")
+	manager, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	originalBinding := filepath.Join(directory, bindingName)
+	movedBinding := originalBinding + ".moved"
+	if err := os.Rename(originalBinding, movedBinding); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(movedBinding, originalBinding); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := Open(root, directory, testWorkspaceID); err == nil ||
+		!strings.Contains(err.Error(), "non-symlink") {
+		t.Fatalf("Open() symlink binding error = %v", err)
+	}
+	if err := os.Remove(originalBinding); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(movedBinding, originalBinding); err != nil {
+		t.Fatal(err)
+	}
+
+	ledgerPath := filepath.Join(directory, ledgerName)
+	if err := os.Link(ledgerPath, ledgerPath+".alias"); err != nil {
+		t.Skipf("hard links unavailable: %v", err)
+	}
+	if _, err := Open(root, directory, testWorkspaceID); err == nil ||
+		!strings.Contains(err.Error(), "multiply linked") {
+		t.Fatalf("Open() hardlinked ledger error = %v", err)
+	}
+}
+
+func TestRecoverRejectsMultiplyLinkedTarget(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "target.txt")
+	if err := os.WriteFile(target, []byte("current"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(target, filepath.Join(root, "alias.txt")); err != nil {
+		t.Skipf("hard links unavailable: %v", err)
+	}
+	directory := filepath.Join(t.TempDir(), "journal")
+	manager, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	appendRaw(t, filepath.Join(directory, ledgerName),
+		`{"phase":"begin","turn_id":"hostile","owner":"dead","pid":0}`+"\n")
+	appendRaw(t, filepath.Join(directory, ledgerName),
+		`{"phase":"after","turn_id":"hostile","record":{"path":"target.txt",`+
+			`"before":{"path":"target.txt"},"after":{"path":"target.txt"}}}`+"\n")
+	reopened, err := Open(root, directory, testWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close(context.Background()) })
+	if _, err := reopened.Recover(t.Context()); err == nil ||
+		!strings.Contains(err.Error(), "multiply linked") {
+		t.Fatalf("Recover() error = %v", err)
 	}
 }
 

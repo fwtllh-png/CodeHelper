@@ -11,10 +11,10 @@ func TestApprovalAutoReviewKillSwitchWiring(t *testing.T) {
 	t.Setenv("CODEHELPER_DISABLE_APPROVAL_AUTO_REVIEW", "1")
 	workspace := t.TempDir()
 	tools := true
-	session, err := NewExec(t.Context(), ExecOptions{
+	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{
 		FixturePath: subagentFixture(t, "subagent"), Permission: "auto",
 		ConfigOverrides: config.Overrides{Workspace: &workspace, Tools: &tools},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}

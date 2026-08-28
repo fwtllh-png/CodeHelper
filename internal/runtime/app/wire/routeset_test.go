@@ -186,14 +186,14 @@ model = "planner"
 		t.Fatal(err)
 	}
 	mode, tools := "plan", true
-	session, err := NewExec(context.Background(), ExecOptions{
+	session, err := NewExec(context.Background(), withNonDurableTestJournal(t, ExecOptions{
 		ConfigPath:  configPath,
 		FixturePath: subagentFixture(t, "openai"),
 		Permission:  "bypass",
 		ConfigOverrides: config.Overrides{
 			Workspace: &workspace, Mode: &mode, Tools: &tools,
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("NewExec: %v", err)
 	}

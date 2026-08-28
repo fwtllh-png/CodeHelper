@@ -54,6 +54,7 @@ type Command struct {
 	WorkspaceReadOnly       bool
 	AdditionalReadPaths     []string
 	WorkspaceWritePaths     []string
+	WorkspaceHiddenPaths    []string
 	DenyNetwork             bool
 	AllowLoopback           bool
 	AuthorityDigest         string
@@ -63,6 +64,7 @@ type Command struct {
 	PreparedReadOnly        bool
 	PreparedReadPaths       []string
 	PreparedWritePaths      []string
+	PreparedHiddenPaths     []string
 	PreparedNetworkDenied   bool
 	PreparedLoopbackAllowed bool
 	PreparedProxyPort       uint16
@@ -257,12 +259,20 @@ func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command
 	if err != nil {
 		return Command{}, err
 	}
+	hiddenPaths, err := validateWorkspaceHiddenPaths(
+		b.workspace,
+		command.WorkspaceHiddenPaths,
+	)
+	if err != nil {
+		return Command{}, err
+	}
 	profile := seatbeltProfileForCommand(
 		b.policy,
 		executable,
 		command.WorkspaceReadOnly,
 		readPaths,
 		writePaths,
+		hiddenPaths,
 		command.DenyNetwork,
 		command.AllowLoopback,
 	)
@@ -288,10 +298,12 @@ func (b *seatbeltBackend) Prepare(ctx context.Context, command Command) (Command
 		WorkspaceReadOnly:       command.WorkspaceReadOnly,
 		AdditionalReadPaths:     append([]string(nil), readPaths...),
 		WorkspaceWritePaths:     append([]string(nil), writePaths...),
+		WorkspaceHiddenPaths:    append([]string(nil), hiddenPaths...),
 		DenyNetwork:             command.DenyNetwork,
 		PreparedReadOnly:        command.WorkspaceReadOnly,
 		PreparedReadPaths:       append([]string(nil), readPaths...),
 		PreparedWritePaths:      append([]string(nil), writePaths...),
+		PreparedHiddenPaths:     append([]string(nil), hiddenPaths...),
 		PreparedNetworkDenied:   command.DenyNetwork,
 		PreparedLoopbackAllowed: command.AllowLoopback && !command.DenyNetwork,
 		PreparedProxyPort:       preparedProxyPort,
@@ -347,6 +359,13 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 	if err != nil {
 		return Command{}, err
 	}
+	hiddenPaths, err := validateWorkspaceHiddenPaths(
+		b.workspace,
+		command.WorkspaceHiddenPaths,
+	)
+	if err != nil {
+		return Command{}, err
+	}
 	var helper, requestPath string
 	if b.useLandlock {
 		helper, requestPath, err = prepareLandlockInvocation(
@@ -389,6 +408,17 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 	for _, path := range writePaths {
 		args = appendMount(args, created, path, path, false)
 	}
+	for _, path := range hiddenPaths {
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			return Command{}, statErr
+		}
+		if info.IsDir() {
+			args = append(args, "--tmpfs", path)
+		} else {
+			args = append(args, "--ro-bind", "/dev/null", path)
+		}
+	}
 	args = appendMount(args, created, b.policy.PrivateTemp, b.policy.PrivateTemp, false)
 	executableMountedLiteral := !coveredByRoots(
 		executable, append(b.policy.RuntimeReadRoots, b.policy.HostReadRoots...),
@@ -423,10 +453,12 @@ func (b *bubblewrapBackend) Prepare(ctx context.Context, command Command) (Comma
 		WorkspaceReadOnly:       command.WorkspaceReadOnly,
 		AdditionalReadPaths:     append([]string(nil), readPaths...),
 		WorkspaceWritePaths:     append([]string(nil), writePaths...),
+		WorkspaceHiddenPaths:    append([]string(nil), hiddenPaths...),
 		DenyNetwork:             command.DenyNetwork,
 		PreparedReadOnly:        command.WorkspaceReadOnly,
 		PreparedReadPaths:       append([]string(nil), readPaths...),
 		PreparedWritePaths:      append([]string(nil), writePaths...),
+		PreparedHiddenPaths:     append([]string(nil), hiddenPaths...),
 		PreparedNetworkDenied:   command.DenyNetwork,
 		PreparedLoopbackAllowed: false,
 		PreparedProxyPort:       0,
@@ -472,7 +504,7 @@ func (b *closeBinding) Policy() Policy {
 
 func seatbeltProfile(policy Policy, executable string) string {
 	return seatbeltProfileForCommand(
-		policy, executable, false, nil, nil, false, false,
+		policy, executable, false, nil, nil, nil, false, false,
 	)
 }
 
@@ -482,6 +514,7 @@ func seatbeltProfileForCommand(
 	workspaceReadOnly bool,
 	additionalReadPaths []string,
 	workspaceWritePaths []string,
+	workspaceHiddenPaths []string,
 	denyNetwork bool,
 	allowLoopback bool,
 ) string {
@@ -557,6 +590,22 @@ func seatbeltProfileForCommand(
 	// grants preserve read isolation while allowing a permitted root to be
 	// resolved.
 	writeSeatbeltAncestorMetadata(&profile, readRoots...)
+	for _, path := range workspaceHiddenPaths {
+		info, err := os.Stat(path)
+		if err == nil && info.IsDir() {
+			fmt.Fprintf(
+				&profile,
+				"(deny file-read* file-write* (subpath %s))\n",
+				seatbeltQuote(path),
+			)
+		} else {
+			fmt.Fprintf(
+				&profile,
+				"(deny file-read* file-write* (literal %s))\n",
+				seatbeltQuote(path),
+			)
+		}
+	}
 	if home, err := os.UserHomeDir(); err == nil {
 		for _, sensitive := range []string{
 			filepath.Join(home, ".ssh"), filepath.Join(home, ".gnupg"),
@@ -589,6 +638,30 @@ func seatbeltProfileForCommand(
 		profile.WriteString("(deny network*)\n")
 	}
 	return profile.String()
+}
+
+func validateWorkspaceHiddenPaths(
+	workspace *Workspace,
+	paths []string,
+) ([]string, error) {
+	hidden := make([]string, 0, len(paths))
+	for _, path := range paths {
+		resolved, err := workspace.Resolve(path, MustExist)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("hidden workspace path %q: %w", path, err)
+		}
+		if resolved == workspace.Root() {
+			return nil, errors.New("cannot hide the entire workspace")
+		}
+		if !slices.Contains(hidden, resolved) {
+			hidden = append(hidden, resolved)
+		}
+	}
+	slices.Sort(hidden)
+	return hidden, nil
 }
 
 func validateExactWorkspaceWritePaths(

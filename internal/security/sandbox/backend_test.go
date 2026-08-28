@@ -265,7 +265,7 @@ func TestSeatbeltCommandCanRestrictWorkspaceAndNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := seatbeltProfileForCommand(
-		policy, "/bin/sh", true, nil, nil, true, false,
+		policy, "/bin/sh", true, nil, nil, nil, true, false,
 	)
 	workspaceWrite := "(allow file-write* (subpath " + seatbeltQuote(policy.WorkspaceRoot) + "))"
 	if strings.Contains(profile, workspaceWrite) {
@@ -281,6 +281,50 @@ func TestSeatbeltCommandCanRestrictWorkspaceAndNetwork(t *testing.T) {
 	}
 }
 
+func TestSeatbeltCommandHidesWorkspaceControlPaths(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hidden := filepath.Join(workspace.Root(), ".git")
+	if err := os.Mkdir(hidden, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	policy, err := BuildPolicy(Options{
+		WorkspaceRoot: root, PrivateTemp: t.TempDir(),
+		SkipPATHReadRoots: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := validateWorkspaceHiddenPaths(workspace, []string{hidden})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := seatbeltProfileForCommand(
+		policy, "/bin/sh", true, nil, nil, paths, true, false,
+	)
+	rule := "(deny file-read* file-write* (subpath " + seatbeltQuote(hidden) + "))"
+	if !strings.Contains(profile, rule) {
+		t.Fatalf("hidden control path rule missing:\n%s", profile)
+	}
+}
+
+func TestWorkspaceHiddenPathsRejectEscape(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validateWorkspaceHiddenPaths(
+		workspace,
+		[]string{t.TempDir()},
+	); err == nil {
+		t.Fatal("outside hidden path was accepted")
+	}
+}
+
 func TestSeatbeltManagedNetworkAllowsOnlyProxyPort(t *testing.T) {
 	policy, err := BuildPolicy(Options{
 		WorkspaceRoot: t.TempDir(), PrivateTemp: t.TempDir(),
@@ -290,7 +334,7 @@ func TestSeatbeltManagedNetworkAllowsOnlyProxyPort(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := seatbeltProfileForCommand(
-		policy, "/bin/sh", true, nil, nil, false, false,
+		policy, "/bin/sh", true, nil, nil, nil, false, false,
 	)
 	if !strings.Contains(
 		profile,
@@ -310,7 +354,7 @@ func TestSeatbeltManagedNetworkCanAddExplicitLoopback(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := seatbeltProfileForCommand(
-		policy, "/bin/sh", true, nil, nil, false, true,
+		policy, "/bin/sh", true, nil, nil, nil, false, true,
 	)
 	for _, rule := range []string{
 		`(allow network-outbound (remote ip "localhost:43128"))`,
@@ -335,7 +379,7 @@ func TestSeatbeltCanAllowLoopbackWithoutManagedProxy(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := seatbeltProfileForCommand(
-		policy, "/bin/sh", true, nil, nil, false, true,
+		policy, "/bin/sh", true, nil, nil, nil, false, true,
 	)
 	if !strings.Contains(profile, `remote ip "localhost:*"`) ||
 		strings.Contains(profile, "\n(allow network-outbound)\n") {
@@ -436,7 +480,7 @@ func TestSeatbeltCommandAllowsOnlyDeclaredWorkspaceFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := seatbeltProfileForCommand(
-		policy, "/bin/sh", true, nil, []string{declared}, true, false,
+		policy, "/bin/sh", true, nil, []string{declared}, nil, true, false,
 	)
 	declaredWrite := "(allow file-write* (literal " + seatbeltQuote(declared) + "))"
 	if !strings.Contains(profile, declaredWrite) {
@@ -477,7 +521,7 @@ func TestSeatbeltProfileAddsOnlyApprovedReadPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	profile := seatbeltProfileForCommand(
-		policy, "/bin/sh", true, paths, nil, true, false,
+		policy, "/bin/sh", true, paths, nil, nil, true, false,
 	)
 	rule := "(allow file-read* (literal " + seatbeltQuote(paths[0]) + "))"
 	if !strings.Contains(profile, rule) {

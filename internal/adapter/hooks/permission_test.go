@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestPermissionRequestDenyWinsAllowBypasses(t *testing.T) {
+func TestPermissionRequestDenyWinsAndOnlyBuiltinMayAllow(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell hooks")
 	}
@@ -55,7 +55,7 @@ func TestPermissionRequestDenyWinsAllowBypasses(t *testing.T) {
 		t.Fatalf("got %+v", result)
 	}
 
-	allowOnly, err := New(Config{
+	untrustedAllow, err := New(Config{
 		Version: ConfigVersion,
 		Hooks: map[Event][]HookConfig{
 			PermissionRequest: {{ID: "allow", Command: allowScript, Timeout: budget}},
@@ -64,8 +64,30 @@ func TestPermissionRequestDenyWinsAllowBypasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err = allowOnly.PermissionRequest(context.Background(), ToolCallBeforeInput{
+	result, err = untrustedAllow.PermissionRequest(context.Background(), ToolCallBeforeInput{
 		CallID: "c2", Tool: "exec_command", Input: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Action != ActionAsk {
+		t.Fatalf("untrusted allow widened permission: %+v", result)
+	}
+
+	builtinHook := testHook(t, "builtin-allow", "emit", `{"decision":"allow"}`)
+	builtinHook.Source = SourceBuiltin
+	builtinHook.Trust = TrustBuiltin
+	builtinAllow, err := New(Config{
+		Version: ConfigVersion,
+		Hooks: map[Event][]HookConfig{
+			PermissionRequest: {builtinHook},
+		},
+	}, Options{Workspace: dir, DefaultTimeout: budget})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = builtinAllow.PermissionRequest(context.Background(), ToolCallBeforeInput{
+		CallID: "c3", Tool: "exec_command", Input: json.RawMessage(`{}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +105,7 @@ func TestPermissionRequestDenyWinsAllowBypasses(t *testing.T) {
 	}
 	result, err = noHooks.PermissionRequest(
 		context.Background(),
-		ToolCallBeforeInput{CallID: "c3", Tool: "web_fetch", Input: json.RawMessage(`{}`)},
+		ToolCallBeforeInput{CallID: "c4", Tool: "web_fetch", Input: json.RawMessage(`{}`)},
 	)
 	if err != nil || result.Action != "" {
 		t.Fatalf("no-hook decision = %+v, err = %v", result, err)

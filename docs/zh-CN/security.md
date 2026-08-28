@@ -55,6 +55,11 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 
 - 相对配置 Workspace 解析并校验路径。
 - 拒绝 Traversal、不安全 Symlink 和 Archive Escape。
+- Durable Workspace Journal、Process Job Journal 和 Job Log 位于
+  `<data-dir>/workspaces/<workspace-id>/control`，不再从 Workspace 内的旧
+  `.codehelper/journal` 恢复。旧目录只产生诊断提示。
+- Workspace State 分为互不重叠的 `control`、`sandbox-home` 和 `artifacts`；
+  在这三个状态域中，Sandbox 只获得 `sandbox-home` 写权限。
 - Tool Contract 要求时先读后写。
 - 修改写入 Journal 并保持 Atomicity。
 - `exec_command` 的写权限只授予显式 `write_paths`。目标可以是现有普通文件，或位于
@@ -97,15 +102,10 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - `quality_test`、`quality_diagnostics`、`quality_review` 和 `quality_verify`
   使用 POSIX `set -e` 的 Fail-fast 语义，不能由尾部日志命令覆盖前序检查的非零
   退出码。需要有意接受失败时必须在 Command 中显式表达。
-- GUI、WindowServer 或其他无法在 Strong Sandbox 内运行的桌面 Smoke 只能使用
-  `quality_process_smoke`。该工具仅启动当前 Workspace 或该 Workspace 专属持久
-  Sandbox Home 内经过无 Symlink、Hardlink 和 Device Boundary 校验的确切可执行文件；
-  其他宿主绝对路径一律拒绝。最小存活时间由调用参数声明，随后必须终止并回收进程组；
-  它不会获得 Workspace 写权限或 Network Grant。由于进程在 OS Sandbox 外运行，
-  Guard 始终把精确可执行文件和 Host Process 作为审批资源，并要求显式批准，`auto`
-  也不会静默放行。路径不存在、不可执行或启动失败会形成失败的 `process_smoke`
-  Verification Evidence；普通 `quality_verify` 不能覆盖该失败，只有后续通过的同类
-  Process Smoke 才能解除完成门禁。
+- `quality_process_smoke` 在 Artifact Snapshot 和 Desktop Broker 完成前标记为不可用，
+  不允许从 Workspace 或可写 Sandbox Home 直接启动宿主进程。保留的 Guard 防御要求
+  `ApprovalOnce`，并禁止 Permission Hook 自动批准，防止未来重新开放时恢复旧的宽松
+  行为。
 - Linux Strong Sandbox 将 Landlock、`no_new_privs`、seccomp 与 `execve` 固定在
   同一个 OS Thread。Seccomp 拒绝 Tracing、跨进程内存访问、Namespace 创建、
   `clone3` 与 `io_uring`；Restricted Network Mode 只保留 AF_UNIX 进程内 IPC。
@@ -173,7 +173,10 @@ make secret-leak-test
 ### MCP
 
 Review Executable、Argument、Environment Allowlist、OAuth Config 与 Endpoint，使用
-Health Isolation 和有界 Timeout。
+Health Isolation 和有界 Timeout。stdio MCP 默认关闭；启用时配置必须来自外部 State
+Directory 或已验证的 Plugin Capability，并显式声明 `host_trusted=true`。该标记会
+进入 Tool Catalog 描述和 Tool Result Metadata，表示 Server 自身当前不受 Tool Guard
+保护。
 
 ### Plugin
 
@@ -187,7 +190,10 @@ Receipt 与 Revocation。Rollback 必须选择历史已验证 Artifact。
 
 ### Hook
 
-Hook 应保持最小、有界、显式，不能成为绕过 Tool Policy 的隐藏路径。
+Workspace 中的默认 Hook 配置不自动加载；Repository Hook 必须由 Operator 显式指定。
+所有 Hook 进程使用 Workspace Read-only、Network Denied 的 Strong Sandbox，并隐藏
+`.git`、`.codehelper`、`.codehelper-worktree`、`.agents` 和 `.codex`。Repository 与
+Plugin Permission Hook 只能返回 Deny 或 Ask，不能把 Guard 的决定提升为 Allow。
 
 ## Log 与 Diagnostics
 
@@ -223,6 +229,7 @@ Payload，并以独占方式创建 mode `0600` 的文件。导出结果仍是敏
 ## 安全测试
 
 ```bash
+make security-side-effect-check
 make security-test
 make sandbox-attack-test
 make secret-leak-test
@@ -259,3 +266,7 @@ Workspace Integrity 不确定时，应停止执行，保留 State 与 Journal，
 
 公开报告中不能包含 Secret 或私有源码。应提供 Version、Platform、Command Shape、
 Sanitized Config Provenance、预期/实际 Security Decision，以及可行时的可复现 Fixture。
+
+后续将通过[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)
+把 Hook、MCP、宿主 Smoke 和其他旁路逐步收口到统一的 Operation、Execution Lease 与
+Broker 链路。该方案是演进目标，不代表当前实现已经交付。
