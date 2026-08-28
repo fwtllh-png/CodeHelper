@@ -4,8 +4,6 @@ package chatmerge
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +17,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/CodeHelper/internal/security/filebroker"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 const (
@@ -36,7 +36,30 @@ type Service struct {
 	parent     *filetool.Tools
 	journal    *workspacejournal.Manager
 	gate       *agentengine.WorkspaceTurnGate
+	brokers    WorkspaceBroker
 	allowApply bool
+}
+
+type WorkspaceBroker interface {
+	ReadVCS(context.Context, string, ...string) (string, error)
+	AddWorktree(context.Context, string, string, string) error
+	RemoveWorktree(context.Context, string, string) error
+	PruneWorktrees(context.Context, string) error
+	ApplyPatch(context.Context, string, string) error
+	AddIndex(context.Context, string, []string) error
+	CommitBaseline(context.Context, string) error
+	CommitFiles(
+		context.Context,
+		string,
+		filebroker.Plan,
+		*workspacejournal.Manager,
+	) (filebroker.Result, error)
+	CommitFilesAt(
+		context.Context,
+		string,
+		string,
+		filebroker.Plan,
+	) (filebroker.Result, error)
 }
 
 // New returns nil when the merge boundary is unavailable.
@@ -45,9 +68,11 @@ func New(
 	parent *filetool.Tools,
 	journal *workspacejournal.Manager,
 	gate *agentengine.WorkspaceTurnGate,
+	brokers WorkspaceBroker,
 	allowApply bool,
 ) *Service {
-	if parent == nil || journal == nil || gate == nil {
+	if parent == nil || journal == nil || gate == nil ||
+		brokers == nil {
 		return nil
 	}
 	canonicalRepository, err := filepath.EvalSymlinks(repository)
@@ -56,7 +81,8 @@ func New(
 	}
 	return &Service{
 		repository: canonicalRepository, root: root,
-		parent: parent, journal: journal, gate: gate, allowApply: allowApply,
+		parent: parent, journal: journal, gate: gate,
+		brokers: brokers, allowApply: allowApply,
 	}
 }
 
@@ -106,24 +132,10 @@ func (c *Service) Apply(
 		}
 		resultErr = errors.Join(resultErr, rollbackErr)
 	}()
-	for _, path := range plan.paths {
-		if err := c.journal.Before(ctx, filepath.Join(c.repository, filepath.FromSlash(path))); err != nil {
-			return tool.EditPlan{}, err
-		}
-	}
-	applyContext := workspacejournal.WithExpectedWrites(ctx, plan.expected)
-	for index, batch := range plan.batches {
-		if _, _, err := c.parent.Apply(applyContext, batch, false); err != nil {
-			return tool.EditPlan{}, fmt.Errorf(
-				"apply Chat merge batch %d/%d: %w",
-				index+1, len(plan.batches), err,
-			)
-		}
-	}
-	for _, path := range plan.paths {
-		if err := c.journal.After(filepath.Join(c.repository, filepath.FromSlash(path))); err != nil {
-			return tool.EditPlan{}, err
-		}
+	if _, err := c.brokers.CommitFiles(
+		ctx, "chat_merge", plan.filePlan, c.journal,
+	); err != nil {
+		return tool.EditPlan{}, fmt.Errorf("apply Chat merge: %w", err)
 	}
 	if err := c.journal.Commit(transactionID); err != nil {
 		committed = true
@@ -131,7 +143,7 @@ func (c *Service) Apply(
 	}
 	committed = true
 	if err := c.syncChatWorktreeFromParent(
-		plan.worktree, plan.paths,
+		ctx, plan.worktree, plan.paths,
 	); err != nil {
 		return tool.EditPlan{}, fmt.Errorf(
 			"Chat changes reached the main workspace but worktree refresh failed: %w", err,
@@ -151,6 +163,7 @@ type preparedChatMerge struct {
 	batches  [][]filetool.Change
 	paths    []string
 	expected map[string]workspacejournal.Fingerprint
+	filePlan filebroker.Plan
 }
 
 // Plan returns a compact, digest-bound merge preview.
@@ -201,8 +214,8 @@ func (c *Service) plan(ctx context.Context, worktree string) (preparedChatMerge,
 	planContext := workspacejournal.WithExpectedWrites(ctx, expected)
 	batches := chunkChatMergeChanges(changes)
 	edit := tool.EditPlan{}
-	digest := sha256.New()
 	var diff strings.Builder
+	var fileEntries []filebroker.Entry
 	for index, batch := range batches {
 		batchPlan, err := c.parent.PlanApply(planContext, batch)
 		if err != nil {
@@ -211,7 +224,14 @@ func (c *Service) plan(ctx context.Context, worktree string) (preparedChatMerge,
 				index+1, len(batches), err,
 			)
 		}
-		_, _ = digest.Write([]byte(batchPlan.ID))
+		prepared, err := c.parent.PrepareApply(planContext, batch)
+		if err != nil {
+			return preparedChatMerge{}, fmt.Errorf(
+				"prepare Chat merge batch %d/%d: %w",
+				index+1, len(batches), err,
+			)
+		}
+		fileEntries = append(fileEntries, prepared.Plan.Entries...)
 		if diff.Len() != 0 && !strings.HasSuffix(diff.String(), "\n") {
 			diff.WriteByte('\n')
 		}
@@ -225,11 +245,15 @@ func (c *Service) plan(ctx context.Context, worktree string) (preparedChatMerge,
 			edit.Files = append(edit.Files, compactChatMergePlanFile(file))
 		}
 	}
-	edit.ID = hex.EncodeToString(digest.Sum(nil))
+	filePlan, err := filebroker.NewPlan(fileEntries)
+	if err != nil {
+		return preparedChatMerge{}, err
+	}
+	edit.ID = filePlan.Digest
 	edit.Diff = diff.String()
 	return preparedChatMerge{
 		worktree: worktree, edit: edit, batches: batches,
-		paths: paths, expected: expected,
+		paths: paths, expected: expected, filePlan: filePlan,
 	}, nil
 }
 
@@ -273,7 +297,7 @@ func (c *Service) Snapshot(ctx context.Context, worktree string) error {
 			return err
 		}
 		defer os.Remove(name)
-		if _, err := c.git(ctx, worktree, "apply", "--whitespace=nowarn", name); err != nil {
+		if err := c.brokers.ApplyPatch(ctx, worktree, name); err != nil {
 			return err
 		}
 	}
@@ -284,10 +308,10 @@ func (c *Service) Snapshot(ctx context.Context, worktree string) error {
 	if err != nil {
 		return err
 	}
-	for _, path := range splitNUL(untracked) {
-		if err := copyRegularFile(c.repository, worktree, path); err != nil {
-			return err
-		}
+	if err := c.syncWorkspaceFiles(
+		ctx, c.repository, worktree, splitNUL(untracked),
+	); err != nil {
+		return err
 	}
 	return c.commitBaseline(ctx, worktree, nil)
 }
@@ -495,27 +519,11 @@ func (c *Service) mergeChatText(
 }
 
 func (c *Service) syncChatWorktreeFromParent(
+	ctx context.Context,
 	worktree string,
 	paths []string,
 ) error {
-	for _, path := range paths {
-		source := filepath.Join(c.repository, filepath.FromSlash(path))
-		target := filepath.Join(worktree, filepath.FromSlash(path))
-		_, err := os.Lstat(source)
-		switch {
-		case err == nil:
-			if err := copyRegularFile(c.repository, worktree, path); err != nil {
-				return err
-			}
-		case errors.Is(err, os.ErrNotExist):
-			if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-		default:
-			return err
-		}
-	}
-	return nil
+	return c.syncWorkspaceFiles(ctx, c.repository, worktree, paths)
 }
 
 func (c *Service) commitBaseline(
@@ -523,21 +531,16 @@ func (c *Service) commitBaseline(
 	worktree string,
 	paths []string,
 ) error {
-	arguments := []string{"add", "-A", "--"}
+	var pathsToAdd []string
 	if len(paths) == 0 {
-		arguments = append(arguments, ".", ":(exclude).codehelper")
+		pathsToAdd = []string{".", ":(exclude).codehelper"}
 	} else {
-		arguments = append(arguments, paths...)
+		pathsToAdd = append(pathsToAdd, paths...)
 	}
-	if _, err := c.git(ctx, worktree, arguments...); err != nil {
+	if err := c.brokers.AddIndex(ctx, worktree, pathsToAdd); err != nil {
 		return err
 	}
-	_, err := c.git(
-		ctx, worktree,
-		"-c", "user.name=CodeHelper", "-c", "user.email=codehelper@localhost",
-		"commit", "--allow-empty", "--no-gpg-sign", "-m", "codehelper chat baseline",
-	)
-	return err
+	return c.brokers.CommitBaseline(ctx, worktree)
 }
 
 func (c *Service) git(
@@ -545,20 +548,7 @@ func (c *Service) git(
 	directory string,
 	arguments ...string,
 ) (string, error) {
-	result, err := process.Run(ctx, process.Options{
-		Path: process.GitExecutable(), Args: process.ManagedGitArguments(arguments), Dir: directory,
-	})
-	if err != nil {
-		return "", err
-	}
-	if result.ExitCode != 0 {
-		message := strings.TrimSpace(result.Stderr)
-		if message == "" {
-			message = strings.TrimSpace(result.Stdout)
-		}
-		return "", fmt.Errorf("git %s: %s", strings.Join(arguments, " "), message)
-	}
-	return result.Stdout, nil
+	return c.brokers.ReadVCS(ctx, directory, arguments...)
 }
 
 func splitNUL(value string) []string {
@@ -572,22 +562,64 @@ func splitNUL(value string) []string {
 	return result
 }
 
-func copyRegularFile(sourceRoot, targetRoot, relative string) error {
-	source := filepath.Join(sourceRoot, filepath.FromSlash(relative))
-	info, err := os.Lstat(source)
+func (c *Service) syncWorkspaceFiles(
+	ctx context.Context,
+	sourceRoot, targetRoot string,
+	paths []string,
+) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	source, err := sandbox.NewWorkspace(sourceRoot)
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("untracked Chat baseline path %q is not a regular file", relative)
-	}
-	data, err := os.ReadFile(source)
+	target, err := sandbox.NewWorkspace(targetRoot)
 	if err != nil {
 		return err
 	}
-	target := filepath.Join(targetRoot, filepath.FromSlash(relative))
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+	entries := make([]filebroker.Entry, 0, len(paths))
+	for _, path := range paths {
+		sourceFile, err := source.SnapshotFile(path)
+		if err != nil {
+			return fmt.Errorf("snapshot Chat source %q: %w", path, err)
+		}
+		targetFile, err := target.SnapshotFile(path)
+		if err != nil {
+			return fmt.Errorf("snapshot Chat target %q: %w", path, err)
+		}
+		if sourceFile.Exists == targetFile.Exists &&
+			(!sourceFile.Exists ||
+				(sourceFile.Digest == targetFile.Digest &&
+					sourceFile.Mode.Perm() == targetFile.Mode.Perm())) {
+			continue
+		}
+		entry := filebroker.Entry{
+			Path: filepath.ToSlash(filepath.Clean(path)),
+			Before: filebroker.State{
+				Exists: targetFile.Exists, Digest: targetFile.Digest,
+				Identity: targetFile.Identity, Mode: uint32(targetFile.Mode.Perm()),
+			},
+			BeforeData: targetFile.Data,
+		}
+		if sourceFile.Exists {
+			entry.After = filebroker.State{
+				Exists: true, Digest: sourceFile.Digest,
+				Mode: uint32(sourceFile.Mode.Perm()),
+			}
+			entry.Data = sourceFile.Data
+		}
+		entries = append(entries, entry)
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	plan, err := filebroker.NewPlan(entries)
+	if err != nil {
 		return err
 	}
-	return os.WriteFile(target, data, info.Mode().Perm())
+	_, err = c.brokers.CommitFilesAt(
+		ctx, targetRoot, "chat_worktree_sync", plan,
+	)
+	return err
 }

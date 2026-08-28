@@ -8,9 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -18,6 +16,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/textdiff"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/filebroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -95,13 +95,15 @@ func named(request changeRequest, fields ...string) []string {
 // plannedFile is one path inside a transaction: what validation read from disk,
 // and what the composed operations leave behind.
 type plannedFile struct {
-	name      string
-	relative  string
-	canonical string
-	mode      fs.FileMode
+	name       string
+	relative   string
+	canonical  string
+	mode       fs.FileMode
+	beforeMode fs.FileMode
 
-	existed bool
-	before  []byte
+	existed     bool
+	before      []byte
+	beforeState filebroker.State
 
 	exists bool
 	after  []byte
@@ -115,7 +117,8 @@ func (p *plannedFile) kind() string {
 		return workspacejournal.ChangeCreated
 	case p.existed && !p.exists:
 		return workspacejournal.ChangeDeleted
-	case p.existed && p.exists && !bytes.Equal(p.before, p.after):
+	case p.existed && p.exists &&
+		(!bytes.Equal(p.before, p.after) || p.beforeMode != p.mode):
 		return workspacejournal.ChangeModified
 	default:
 		return ""
@@ -149,13 +152,64 @@ type AppliedChange struct {
 	Removed int    `json:"removed"`
 }
 
+type PreparedApply struct {
+	Plan    filebroker.Plan
+	Changes []AppliedChange
+	Diff    string
+}
+
 // Apply runs a validate-then-apply transaction. dryRun renders a unified diff
 // and writes nothing. Used by file_apply and by integrate_agent.
 func (t *Tools) Apply(
 	ctx context.Context, changes []Change, dryRun bool,
 ) ([]AppliedChange, string, error) {
-	requests := changeRequests(changes)
-	return t.transact(ctx, requests, dryRun)
+	prepared, err := t.PrepareApply(ctx, changes)
+	if err != nil {
+		return nil, "", err
+	}
+	if !dryRun {
+		return nil, "", errors.New("workspace mutation requires an authorized File Broker lease")
+	}
+	return prepared.Changes, prepared.Diff, nil
+}
+
+func (t *Tools) PrepareApply(
+	ctx context.Context,
+	changes []Change,
+) (PreparedApply, error) {
+	transaction, applied, diff, err := t.prepareTransaction(
+		ctx, changeRequests(changes),
+	)
+	if err != nil {
+		return PreparedApply{}, err
+	}
+	plan, err := transaction.brokerPlan()
+	if err != nil {
+		return PreparedApply{}, err
+	}
+	return PreparedApply{Plan: plan, Changes: applied, Diff: diff}, nil
+}
+
+func (t *Tools) CommitApply(
+	ctx context.Context,
+	prepared PreparedApply,
+	grant authority.AuthorizedFileGrant,
+	manager *authority.LeaseAuthority,
+	journal *workspacejournal.Manager,
+) error {
+	broker, err := filebroker.New(t.workspace, manager)
+	if err != nil {
+		return err
+	}
+	var transactionJournal filebroker.Journal
+	if journal != nil {
+		transactionJournal = journal
+	}
+	_, err = broker.Commit(ctx, filebroker.Request{
+		Lease: grant.Lease, Validation: grant.Validation,
+		Plan: prepared.Plan, Journal: transactionJournal,
+	})
+	return err
 }
 
 // PlanApply returns the exact edit plan Apply would execute without writing.
@@ -187,48 +241,43 @@ func ResultFromApply(changes []AppliedChange, diff string, dryRun bool) tool.Res
 // resolution, op preconditions, composition) and only then touch the disk. With
 // dryRun the composed result is rendered as a unified diff and nothing is
 // written.
-func (t *Tools) transact(
-	ctx context.Context, requests []changeRequest, dryRun bool,
-) ([]AppliedChange, string, error) {
+func (t *Tools) prepareTransaction(
+	ctx context.Context,
+	requests []changeRequest,
+) (*transaction, []AppliedChange, string, error) {
 	if len(requests) == 0 {
-		return nil, "", tool.Precondition(errors.New("changes must not be empty"))
+		return nil, nil, "", tool.Precondition(errors.New("changes must not be empty"))
 	}
 	if len(requests) > maxTransactionChanges {
-		return nil, "", tool.Precondition(fmt.Errorf(
+		return nil, nil, "", tool.Precondition(fmt.Errorf(
 			"transaction has %d changes, at most %d are allowed",
 			len(requests), maxTransactionChanges,
 		))
 	}
 	for index, request := range requests {
 		if err := request.validate(); err != nil {
-			return nil, "", tool.Precondition(fmt.Errorf("change %d: %w", index, err))
+			return nil, nil, "", tool.Precondition(fmt.Errorf("change %d: %w", index, err))
 		}
 	}
 	// Freshness first, before any op precondition: an edit whose "old" text no
 	// longer matches because someone else rewrote the file must report the stale
 	// read, not the failed match.
 	if err := t.checkFreshness(ctx, requests); err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	transaction := &transaction{tools: t, files: make(map[string]*plannedFile)}
 	// Composition only reads, so any failure here has changed nothing and the
 	// caller can safely retry with different changes.
 	for index, request := range requests {
 		if err := transaction.compose(request); err != nil {
-			return nil, "", changePrecondition(index, request, err)
+			return nil, nil, "", changePrecondition(index, request, err)
 		}
 	}
 	changes, diff, err := transaction.summarize()
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
-	if dryRun {
-		return changes, diff, nil
-	}
-	if err := transaction.commit(); err != nil {
-		return nil, "", err
-	}
-	return changes, diff, nil
+	return transaction, changes, diff, nil
 }
 
 func (t *Tools) plan(
@@ -347,19 +396,42 @@ func (x *transaction) load(name string) (*plannedFile, error) {
 		name: name, relative: filepath.ToSlash(relative),
 		canonical: canonical, mode: 0o644,
 	}
-	data, mode, err := x.tools.readFile(name)
+	snapshot, err := x.tools.workspace.SnapshotFile(name)
 	switch {
-	case err == nil:
+	case err == nil && snapshot.Exists:
 		planned.existed, planned.exists = true, true
-		planned.before, planned.after = data, data
-		planned.mode = mode
-	case errors.Is(err, os.ErrNotExist):
+		planned.before, planned.after = snapshot.Data, snapshot.Data
+		planned.mode = snapshot.Mode
+		planned.beforeMode = snapshot.Mode
+		planned.beforeState = filebroker.State{
+			Exists: true, Digest: snapshot.Digest,
+			Identity: snapshot.Identity, Mode: uint32(snapshot.Mode.Perm()),
+		}
+	case err == nil:
 	default:
 		return nil, err
 	}
 	x.files[canonical] = planned
 	x.order = append(x.order, canonical)
 	return planned, nil
+}
+
+func (x *transaction) brokerPlan() (filebroker.Plan, error) {
+	entries := make([]filebroker.Entry, 0, len(x.changed()))
+	for _, planned := range x.changed() {
+		after := filebroker.State{}
+		if planned.exists {
+			after.Exists = true
+			after.Digest = digestContent(planned.after, true)
+			after.Mode = uint32(planned.mode.Perm())
+		}
+		entries = append(entries, filebroker.Entry{
+			Path:   filepath.ToSlash(planned.relative),
+			Before: planned.beforeState, BeforeData: planned.before,
+			After: after, Data: planned.after,
+		})
+	}
+	return filebroker.NewPlan(entries)
 }
 
 func (x *transaction) compose(request changeRequest) error {
@@ -440,84 +512,6 @@ func (x *transaction) summarize() ([]AppliedChange, string, error) {
 		})
 	}
 	return changes, diff.String(), nil
-}
-
-// commit writes the composed result to disk. A failure part way through undoes
-// the writes already made, so the caller sees either the whole transaction or
-// none of it.
-func (x *transaction) commit() error {
-	var done []*plannedFile
-	fail := func(planned *plannedFile, cause error) error {
-		cause = fmt.Errorf("apply %q: %w", planned.relative, cause)
-		var failures []string
-		for index := len(done) - 1; index >= 0; index-- {
-			if err := x.restore(done[index]); err != nil {
-				failures = append(failures, err.Error())
-			}
-		}
-		if len(failures) != 0 {
-			return fmt.Errorf(
-				"%w; the workspace is partially changed because rollback failed: %s",
-				cause, strings.Join(failures, "; "),
-			)
-		}
-		return cause
-	}
-	// Writes come before removals: if the process dies between the two phases the
-	// workspace holds an extra copy of the data rather than none.
-	for _, planned := range x.changed() {
-		if !planned.exists {
-			continue
-		}
-		if err := x.write(planned); err != nil {
-			return fail(planned, err)
-		}
-		done = append(done, planned)
-	}
-	for _, planned := range x.changed() {
-		if planned.exists {
-			continue
-		}
-		if err := x.tools.workspace.Remove(planned.name); err != nil {
-			return fail(planned, err)
-		}
-		done = append(done, planned)
-	}
-	return nil
-}
-
-func (x *transaction) write(planned *plannedFile) error {
-	if planned.existed {
-		return x.tools.workspace.AtomicWrite(planned.name, planned.after, planned.mode)
-	}
-	return x.tools.workspace.AtomicCreate(planned.name, planned.after, planned.mode)
-}
-
-func (x *transaction) restore(planned *plannedFile) error {
-	if planned.existed {
-		return x.tools.workspace.AtomicWrite(planned.name, planned.before, planned.mode)
-	}
-	if err := x.tools.workspace.Remove(planned.name); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
-}
-
-func (t *Tools) readFile(name string) ([]byte, fs.FileMode, error) {
-	file, err := t.workspace.OpenFile(name)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer file.Close()
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, 0, err
-	}
-	info, err := file.Stat()
-	if err != nil {
-		return nil, 0, err
-	}
-	return data, info.Mode().Perm(), nil
 }
 
 func changePrecondition(index int, request changeRequest, err error) error {

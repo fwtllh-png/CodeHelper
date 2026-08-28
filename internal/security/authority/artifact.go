@@ -41,6 +41,18 @@ type AuthorizedProcessGrant struct {
 	Artifact   any
 }
 
+type FileBinding struct {
+	MutationDigest string
+	Value          any
+}
+
+type AuthorizedFileGrant struct {
+	Operation  ExecutionOperation
+	Lease      ExecutionLease
+	Validation LeaseValidation
+	Plan       any
+}
+
 func NewArtifactManifest(manifest ArtifactManifest) (ArtifactManifest, error) {
 	manifest.Version = ArtifactManifestVersion
 	manifest.Digest = ""

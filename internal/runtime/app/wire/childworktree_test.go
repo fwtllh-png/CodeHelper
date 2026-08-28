@@ -15,6 +15,7 @@ import (
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 )
 
 // newGitWorkspace makes a workspace a writing child can be isolated inside: a
@@ -176,6 +177,8 @@ func TestChildWorktreeProvisionRecoversMissingRegisteredPath(t *testing.T) {
 	root := t.TempDir()
 	trees, err := newChildWorktrees(
 		workspace, root, config.SubagentWorkspaceWorktree, nil,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
 	)
 	if err != nil {
 		t.Fatal(err)

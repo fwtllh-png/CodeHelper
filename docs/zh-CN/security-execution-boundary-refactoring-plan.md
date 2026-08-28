@@ -1,6 +1,6 @@
 # 安全执行边界重构方案
 
-> 状态：阶段 0-3 已交付；阶段 4-6 为提案。
+> 状态：阶段 0-4 已交付；阶段 5-6 为提案。
 >
 > 本文描述 CodeHelper 对副作用执行边界的目标设计和渐进迁移方案，不代表当前实现已经
 > 完成这些约束。当前已交付行为以[安全模型](./security.md)、源码和测试为准。
@@ -823,12 +823,45 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 
 ### 阶段 4：建立 File Broker 和 VCS Broker
 
+当前状态：已完成。
+
 目标：
 
 - Workspace File Write 全部迁移到 descriptor-relative File Broker；
 - Journal Transaction 与 File Lease、Suspend/Resume 和 Settlement 绑定；
 - Git Metadata 不再通过普通 Workspace Write 或 Shell 绕过；
 - 未启用 VCS Broker 时，Agent 不会重复尝试被策略禁止的 `.git` 写入。
+
+已交付行为：
+
+- `file_write`、`file_edit`、`file_apply` 和 `file_patch` 只负责解码、内存 Compose、
+  Preview 与结果投影；File Broker 消费绑定 Mutation Digest 和精确 Path Resource
+  的单次 Lease；
+- Unified Diff 使用结构化 Parser 转换为不可变 File Plan，不再通过 `git apply`
+  修改 Workspace；
+- `integrate_agent`、隔离 Chat Merge 和 `document_convert` 的最终 Workspace 输出
+  复用同一 File Broker；Runtime State、Plugin Cache 和临时转换文件仍由各自可信
+  Owner 管理；
+- File Broker 在 Journal Before Image 后再次校验内容、身份和父目录，使用
+  descriptor-relative API 先写后删；写入、最终快照或 Journal Settlement 失败时
+  逆序恢复，恢复失败显式报告 Partial Change；
+- File Broker 自身拒绝 `.git`、`.codehelper`、`.codehelper-worktree`、`.agents`
+  和 `.codex`，普通 File Lease 不能升级为 Repository Metadata 权限；
+- VCS Broker 只开放 Worktree Add/Remove/Prune、Chat Baseline `add`/`commit` 和
+  Snapshot Patch 白名单；授权绑定 Repository Identity、目标 Worktree HEAD/Ref、
+  Index Digest 和 Worktree Registration Digest；
+- Child Worktree 和 Chat Baseline 不再直接拥有 Git Metadata Mutation。只读
+  `git show`、`diff`、`ls-files` 和 `merge-file` 保留为读取或临时计算路径。
+
+实现落点：
+
+| 能力 | 当前实现 |
+| --- | --- |
+| File Plan 与事务 | `internal/security/filebroker` |
+| Workspace Broker 聚合边界 | `internal/security/workspacebroker` |
+| VCS Metadata Mutation | `internal/security/vcsbroker` |
+| Tool File Plan | `internal/adapter/tool/file` |
+| Agent 与 Chat Merge | `internal/adapter/tool/agent`、`internal/orchestration/chatmerge` |
 
 ### 阶段 5：替换 Descriptor 自报
 
@@ -990,4 +1023,5 @@ Windows 在 Partial Backend 落地后维护独立 Corpus，并明确不能证明
 
 阶段 0 先降低真实风险，阶段 1 已在不改变 Tool Guard 决策语义的前提下引入
 Operation/Lease。阶段 2 已接管 Process Smoke，阶段 3 已接管 Hook 和 stdio MCP
-Lifecycle；下一步按阶段 4 建立 File Broker 和 VCS Broker。
+Lifecycle，阶段 4 已接管 Workspace File Write 和 Git Metadata Mutation；下一步按
+阶段 5 收紧 Trusted Descriptor Binding。

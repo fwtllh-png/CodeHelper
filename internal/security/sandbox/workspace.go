@@ -1,8 +1,12 @@
 package sandbox
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +22,14 @@ const (
 type Workspace struct {
 	root     string
 	identity fileIdentity
+}
+
+type FileSnapshot struct {
+	Data     []byte
+	Mode     fs.FileMode
+	Digest   string
+	Identity string
+	Exists   bool
 }
 
 func NewWorkspace(root string) (*Workspace, error) {
@@ -45,6 +57,43 @@ func NewWorkspace(root string) (*Workspace, error) {
 
 func (w *Workspace) Root() string {
 	return w.root
+}
+
+func (w *Workspace) SnapshotFile(name string) (FileSnapshot, error) {
+	file, err := w.OpenFile(name)
+	if errors.Is(err, os.ErrNotExist) {
+		if _, resolveErr := w.Resolve(name, AllowMissing); resolveErr != nil {
+			return FileSnapshot{}, resolveErr
+		}
+		return FileSnapshot{}, nil
+	}
+	if err != nil {
+		return FileSnapshot{}, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return FileSnapshot{}, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		return FileSnapshot{}, err
+	}
+	identity, err := identityOf(file.Name(), info)
+	if err != nil {
+		return FileSnapshot{}, err
+	}
+	sum := sha256.Sum256(data)
+	return FileSnapshot{
+		Data: data, Mode: info.Mode().Perm(),
+		Digest: hex.EncodeToString(sum[:]),
+		Identity: fmt.Sprintf(
+			"%x:%x:%x:%d:%d",
+			identity.device, identity.inode, identity.links,
+			info.ModTime().UnixNano(), info.Size(),
+		),
+		Exists: true,
+	}, nil
 }
 
 func (w *Workspace) Resolve(name string, mode ResolveMode) (string, error) {

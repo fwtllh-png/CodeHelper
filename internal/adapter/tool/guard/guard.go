@@ -443,21 +443,40 @@ func invocationWritePaths(invocation Invocation) []string {
 func (g *Guard) prepareFileWrites(
 	ctx context.Context, paths []string, requireRead bool,
 ) (map[string]workspacejournal.Fingerprint, error) {
-	expected := make(map[string]workspacejournal.Fingerprint, len(paths))
+	expected, err := g.validateFileWrites(paths, requireRead)
+	if err != nil {
+		return nil, err
+	}
 	for _, path := range paths {
+		if g.journal == nil {
+			continue
+		}
+		if err := g.journal.Before(ctx, path); err != nil {
+			return nil, fmt.Errorf("journal before-image %q: %w", path, err)
+		}
 		if requireRead {
 			if _, err := g.readTracker.ValidateWrite(path); err != nil {
 				return nil, g.readValidationError(path, err)
 			}
 		}
-		if g.journal != nil {
-			if err := g.journal.Before(ctx, path); err != nil {
-				return nil, fmt.Errorf("journal before-image %q: %w", path, err)
-			}
-			if requireRead {
-				if _, err := g.readTracker.ValidateWrite(path); err != nil {
-					return nil, g.readValidationError(path, err)
-				}
+		current, _, _, err := workspacejournal.Snapshot(path)
+		if err != nil {
+			return nil, err
+		}
+		expected[path] = current
+	}
+	return expected, nil
+}
+
+func (g *Guard) validateFileWrites(
+	paths []string,
+	requireRead bool,
+) (map[string]workspacejournal.Fingerprint, error) {
+	expected := make(map[string]workspacejournal.Fingerprint, len(paths))
+	for _, path := range paths {
+		if requireRead {
+			if _, err := g.readTracker.ValidateWrite(path); err != nil {
+				return nil, g.readValidationError(path, err)
 			}
 		}
 		current, _, _, err := workspacejournal.Snapshot(path)
@@ -614,6 +633,50 @@ func (g *Guard) finishFileWrites(
 	return nil
 }
 
+func (g *Guard) finishBrokerFileWrites(
+	ctx context.Context,
+	paths []string,
+	result *tool.Result,
+	succeeded bool,
+) error {
+	for _, path := range paths {
+		if !succeeded {
+			g.readTracker.Invalidate(path)
+			continue
+		}
+		after, _, _, err := workspacejournal.Snapshot(path)
+		if err != nil {
+			return fmt.Errorf("snapshot broker write %q: %w", path, err)
+		}
+		if err := g.readTracker.RecordFingerprint(after); err != nil {
+			return fmt.Errorf("record broker write fingerprint %q: %w", path, err)
+		}
+		receipt, err := g.diagnostics.Run(ctx, path)
+		if err != nil {
+			if errors.Is(err, context.Canceled) ||
+				errors.Is(err, context.DeadlineExceeded) {
+				return fmt.Errorf("post-edit diagnostics %q: %w", path, err)
+			}
+			receipt = diagnostics.Receipt{
+				Path: path, Status: "unavailable",
+				Diagnostics: []diagnostics.Diagnostic{},
+				Message:     err.Error(), ErrorCategory: "runner_failure",
+			}
+		}
+		tool.EnsureOutcomeFacts(result).Diagnostics = append(
+			tool.EnsureOutcomeFacts(result).Diagnostics,
+			receipt,
+		)
+	}
+	if result.Metadata == nil {
+		result.Metadata = make(map[string]any)
+	}
+	result.Metadata["observed_changes"] = len(
+		tool.EnsureOutcomeFacts(result).WorkspaceChanges,
+	)
+	return nil
+}
+
 func (g *Guard) observeFileChange(
 	ctx context.Context, before workspacejournal.Fingerprint, path string,
 ) (FileChange, bool, error) {
@@ -674,7 +737,7 @@ func (g *Guard) countLines(
 
 func mediatedFileWriter(name string) bool {
 	switch name {
-	case "file_write", "file_edit", "file_apply", "file_patch":
+	case "file_write", "file_edit", "file_apply", "file_patch", "integrate_agent":
 		return true
 	default:
 		return false

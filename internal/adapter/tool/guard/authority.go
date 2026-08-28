@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
@@ -26,6 +27,22 @@ type AuthorizedProcessExecutor interface {
 		context.Context,
 		tool.PreparedInvocation,
 		authority.AuthorizedProcessGrant,
+	) (tool.Result, tool.Outcome, error)
+}
+
+type AuthorizedFileExecutor interface {
+	tool.Executor
+	IsAuthorizedFileMutation(tool.PreparedInvocation) bool
+	PrepareAuthorizedFile(
+		context.Context,
+		tool.PreparedInvocation,
+	) (authority.FileBinding, error)
+	ExecuteAuthorizedFile(
+		context.Context,
+		tool.PreparedInvocation,
+		authority.AuthorizedFileGrant,
+		*authority.LeaseAuthority,
+		*workspacejournal.Manager,
 	) (tool.Result, tool.Outcome, error)
 }
 
@@ -76,6 +93,7 @@ func (g *Guard) issueExecutionLease(
 	profile authority.EffectivePermissionProfile,
 	attempt uint64,
 	artifact *authority.ArtifactIntent,
+	fileMutationDigest string,
 	consume bool,
 ) (
 	authority.ExecutionOperation,
@@ -83,7 +101,9 @@ func (g *Guard) issueExecutionLease(
 	authority.LeaseSnapshot,
 	error,
 ) {
-	operation, err := g.buildExecutionOperation(prepared, profile, artifact)
+	operation, err := g.buildExecutionOperation(
+		prepared, profile, artifact, fileMutationDigest,
+	)
 	if err != nil {
 		return authority.ExecutionOperation{}, authority.ExecutionLease{},
 			authority.LeaseSnapshot{}, err
@@ -124,6 +144,7 @@ func (g *Guard) buildExecutionOperation(
 	prepared preparedExecution,
 	profile authority.EffectivePermissionProfile,
 	artifact *authority.ArtifactIntent,
+	fileMutationDigest string,
 ) (authority.ExecutionOperation, error) {
 	policyInvocation := policyInput(
 		prepared.invocation.CallID,
@@ -139,6 +160,7 @@ func (g *Guard) buildExecutionOperation(
 		RequireReadBeforeWrite: policyInvocation.Journaled,
 		Required:               requiredControls(prepared.invocation),
 		Artifact:               artifact,
+		FileMutationDigest:     fileMutationDigest,
 		HostReadRoots: append(
 			append([]string(nil), profile.Filesystem.ReadRoots...),
 			profile.Filesystem.WritePaths...,

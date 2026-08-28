@@ -15,10 +15,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/filebroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 	pdf "github.com/ledongthuc/pdf"
 )
@@ -73,16 +73,45 @@ type operation struct {
 	kind  string
 }
 
+type operationInput struct {
+	Path      string          `json:"path"`
+	Content   string          `json:"content"`
+	Old       string          `json:"old"`
+	New       string          `json:"new"`
+	Patch     string          `json:"patch"`
+	Changes   []changeRequest `json:"changes"`
+	DryRun    bool            `json:"dry_run"`
+	StartLine int             `json:"start_line"`
+	MaxLines  int             `json:"max_lines"`
+	Pages     string          `json:"pages"`
+	Offset    int             `json:"offset"`
+	Limit     int             `json:"limit"`
+}
+
+type preparedFileMutation struct {
+	plan       filebroker.Plan
+	changes    []AppliedChange
+	diff       string
+	operations int
+	dryRun     bool
+	kind       string
+}
+
+func (o *operation) IsAuthorizedFileMutation(
+	_ tool.PreparedInvocation,
+) bool {
+	switch o.kind {
+	case "file_write", "file_edit", "file_apply", "file_patch":
+		return true
+	default:
+		return false
+	}
+}
+
 func (o *operation) PlanEdit(
 	ctx context.Context, raw json.RawMessage,
 ) (tool.EditPlan, error) {
-	var input struct {
-		Path    string          `json:"path"`
-		Content string          `json:"content"`
-		Old     string          `json:"old"`
-		New     string          `json:"new"`
-		Changes []changeRequest `json:"changes"`
-	}
+	var input operationInput
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.EditPlan{}, err
 	}
@@ -246,25 +275,9 @@ func (o *operation) Descriptor() tool.Descriptor {
 }
 
 func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Path      string          `json:"path"`
-		Content   string          `json:"content"`
-		Old       string          `json:"old"`
-		New       string          `json:"new"`
-		Patch     string          `json:"patch"`
-		Changes   []changeRequest `json:"changes"`
-		DryRun    bool            `json:"dry_run"`
-		StartLine int             `json:"start_line"`
-		MaxLines  int             `json:"max_lines"`
-		Pages     string          `json:"pages"`
-		Offset    int             `json:"offset"`
-		Limit     int             `json:"limit"`
-	}
+	var input operationInput
 	if err := json.Unmarshal(raw, &input); err != nil {
 		return tool.Result{}, err
-	}
-	if o.kind == "file_patch" {
-		return o.tools.applyUnifiedPatch(ctx, input.Patch)
 	}
 	switch o.kind {
 	case "file_read":
@@ -280,26 +293,8 @@ func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Resu
 			return readPDF(file, input.Pages)
 		}
 		return readTextRange(file, input.StartLine, input.MaxLines)
-	case "file_write":
-		if _, _, err := o.tools.transact(ctx, []changeRequest{{
-			Op: opWrite, Path: input.Path, Content: input.Content,
-		}}, false); err != nil {
-			return tool.Result{}, err
-		}
-		return tool.Result{Content: "written", Metadata: map[string]any{"bytes": len(input.Content)}}, nil
-	case "file_edit":
-		if _, _, err := o.tools.transact(ctx, []changeRequest{{
-			Op: opEdit, Path: input.Path, Old: input.Old, New: input.New,
-		}}, false); err != nil {
-			return tool.Result{}, err
-		}
-		return tool.Result{Content: "edited", Metadata: map[string]any{"replacements": 1}}, nil
-	case "file_apply":
-		changes, diff, err := o.tools.transact(ctx, input.Changes, input.DryRun)
-		if err != nil {
-			return tool.Result{}, err
-		}
-		return applyResult(changes, diff, len(input.Changes), input.DryRun), nil
+	case "file_write", "file_edit", "file_apply", "file_patch":
+		return tool.Result{}, errors.New("workspace mutation requires an authorized File Broker lease")
 	case "file_list":
 		directory, err := o.tools.workspace.OpenDirectory(input.Path)
 		if err != nil {
@@ -309,6 +304,139 @@ func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Resu
 		return listDirectory(directory, input.Offset, input.Limit)
 	default:
 		return tool.Result{}, errors.New("unknown file operation")
+	}
+}
+
+func (o *operation) PrepareAuthorizedFile(
+	ctx context.Context,
+	invocation tool.PreparedInvocation,
+) (authority.FileBinding, error) {
+	prepared, err := o.prepareMutation(ctx, invocation.Arguments)
+	if err != nil {
+		return authority.FileBinding{}, err
+	}
+	return authority.FileBinding{
+		MutationDigest: prepared.plan.Digest,
+		Value:          prepared,
+	}, nil
+}
+
+func (o *operation) ExecuteAuthorizedFile(
+	ctx context.Context,
+	_ tool.PreparedInvocation,
+	grant authority.AuthorizedFileGrant,
+	manager *authority.LeaseAuthority,
+	journal *workspacejournal.Manager,
+) (tool.Result, tool.Outcome, error) {
+	prepared, ok := grant.Plan.(preparedFileMutation)
+	if !ok || prepared.plan.Digest == "" {
+		return tool.Result{}, tool.Outcome{}, errors.New("authorized file plan is invalid")
+	}
+	if prepared.dryRun {
+		result := applyResult(
+			prepared.changes, prepared.diff, prepared.operations, true,
+		)
+		return result, tool.OutcomeFromResult(result), nil
+	}
+	broker, err := filebroker.New(o.tools.workspace, manager)
+	if err != nil {
+		return tool.Result{}, tool.Outcome{}, err
+	}
+	var transactionJournal filebroker.Journal
+	if journal != nil {
+		transactionJournal = journal
+	}
+	if _, err := broker.Commit(ctx, filebroker.Request{
+		Lease: grant.Lease, Validation: grant.Validation,
+		Plan: prepared.plan, Journal: transactionJournal,
+	}); err != nil {
+		return tool.Result{}, tool.Outcome{}, err
+	}
+	result := o.mutationResult(prepared)
+	facts := tool.EnsureOutcomeFacts(&result)
+	for _, change := range prepared.changes {
+		facts.WorkspaceChanges = append(facts.WorkspaceChanges, tool.WorkspaceChange{
+			Path: change.Path, Kind: change.Kind,
+			Added: change.Added, Removed: change.Removed,
+		})
+	}
+	return result, tool.OutcomeFromResult(result), nil
+}
+
+func (o *operation) prepareMutation(
+	ctx context.Context,
+	raw json.RawMessage,
+) (preparedFileMutation, error) {
+	var input operationInput
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return preparedFileMutation{}, err
+	}
+	var requests []changeRequest
+	switch o.kind {
+	case "file_write":
+		requests = []changeRequest{{
+			Op: opWrite, Path: input.Path, Content: input.Content,
+		}}
+	case "file_edit":
+		requests = []changeRequest{{
+			Op: opEdit, Path: input.Path, Old: input.Old, New: input.New,
+		}}
+	case "file_apply":
+		requests = input.Changes
+	case "file_patch":
+		transaction, changes, diff, operations, err :=
+			o.tools.preparePatchTransaction(ctx, input.Patch)
+		if err != nil {
+			return preparedFileMutation{}, err
+		}
+		plan, err := transaction.brokerPlan()
+		if err != nil {
+			return preparedFileMutation{}, err
+		}
+		return preparedFileMutation{
+			plan: plan, changes: changes, diff: diff,
+			operations: operations, kind: o.kind,
+		}, nil
+	default:
+		return preparedFileMutation{}, errors.New("tool is not a workspace writer")
+	}
+	transaction, changes, diff, err := o.tools.prepareTransaction(ctx, requests)
+	if err != nil {
+		return preparedFileMutation{}, err
+	}
+	plan, err := transaction.brokerPlan()
+	if err != nil {
+		return preparedFileMutation{}, err
+	}
+	return preparedFileMutation{
+		plan: plan, changes: changes, diff: diff,
+		operations: len(requests), dryRun: input.DryRun, kind: o.kind,
+	}, nil
+}
+
+func (o *operation) mutationResult(prepared preparedFileMutation) tool.Result {
+	switch prepared.kind {
+	case "file_write":
+		bytes := 0
+		if len(prepared.plan.Entries) != 0 {
+			bytes = len(prepared.plan.Entries[0].Data)
+		}
+		return tool.Result{
+			Content: "written", Metadata: map[string]any{"bytes": bytes},
+		}
+	case "file_edit":
+		return tool.Result{
+			Content: "edited", Metadata: map[string]any{"replacements": 1},
+		}
+	case "file_patch":
+		return tool.Result{
+			Content:  "patched",
+			Metadata: map[string]any{"format": "unified"},
+		}
+	default:
+		return applyResult(
+			prepared.changes, prepared.diff, prepared.operations, false,
+		)
 	}
 }
 
@@ -563,74 +691,8 @@ func listDirectory(directory *os.File, offset, limit int) (tool.Result, error) {
 	}, nil
 }
 
-func (t *Tools) applyUnifiedPatch(ctx context.Context, patch string) (tool.Result, error) {
-	if strings.TrimSpace(patch) == "" {
-		return tool.Result{}, errors.New("patch is required")
-	}
-	for _, name := range patchPaths(patch) {
-		canonical, err := t.resolve(name, sandbox.AllowMissing)
-		if err != nil {
-			return tool.Result{}, fmt.Errorf("unsafe patch path: %w", err)
-		}
-		if err := workspacejournal.ValidateExpectedWrite(ctx, canonical); err != nil {
-			return tool.Result{}, fmt.Errorf("patch freshness %q: %w", name, err)
-		}
-	}
-	directory, err := process.OpenPinnedDirectory(t.backend, t.root)
-	if err != nil {
-		return tool.Result{}, err
-	}
-	defer directory.Close()
-	sandboxBackend, requireStrong := guard.ProcessSandbox(ctx, t.backend)
-	check, err := process.NewCommand(ctx, process.Options{
-		Path: "git", Args: []string{"apply", "--check", "--whitespace=nowarn", "-"},
-		Dir: t.root, DirFile: directory, Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
-	})
-	if err != nil {
-		return tool.Result{}, err
-	}
-	check.Stdin = strings.NewReader(patch)
-	if output, err := check.CombinedOutput(); err != nil {
-		msg := strings.TrimSpace(string(output))
-		return tool.Result{}, fmt.Errorf("patch conflict: %s", msg)
-	}
-	apply, err := process.NewCommand(ctx, process.Options{
-		Path: "git", Args: []string{"apply", "--whitespace=nowarn", "-"},
-		Dir: t.root, DirFile: directory, Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
-	})
-	if err != nil {
-		return tool.Result{}, err
-	}
-	apply.Stdin = strings.NewReader(patch)
-	if output, err := apply.CombinedOutput(); err != nil {
-		msg := strings.TrimSpace(string(output))
-		return tool.Result{}, fmt.Errorf("apply patch: %s", msg)
-	}
-	return tool.Result{Content: "patched", Metadata: map[string]any{"format": "unified"}}, nil
-}
-
 func (t *Tools) resolve(name string, mode sandbox.ResolveMode) (string, error) {
 	return t.workspace.Resolve(name, mode)
-}
-
-func patchPaths(patch string) []string {
-	seen := make(map[string]bool)
-	var paths []string
-	for line := range strings.SplitSeq(patch, "\n") {
-		if !strings.HasPrefix(line, "+++ ") && !strings.HasPrefix(line, "--- ") {
-			continue
-		}
-		name := strings.Fields(strings.TrimSpace(line[4:]))
-		if len(name) == 0 || name[0] == "/dev/null" {
-			continue
-		}
-		path := strings.TrimPrefix(strings.TrimPrefix(name[0], "a/"), "b/")
-		if !seen[path] {
-			seen[path] = true
-			paths = append(paths, path)
-		}
-	}
-	return paths
 }
 
 func isBinary(data []byte) bool {

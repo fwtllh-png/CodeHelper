@@ -44,6 +44,52 @@ func run() {
 	}
 }
 
+func TestWorkspaceAndVCSWritersStayBrokered(t *testing.T) {
+	root := filepath.Clean("../..")
+	for path, forbidden := range map[string][]string{
+		"internal/adapter/tool/file": {
+			".AtomicWrite(", ".AtomicCreate(", "process.NewCommand(",
+		},
+		"internal/adapter/tool/content/content.go":   {".AtomicWrite("},
+		"internal/runtime/app/wire/childworktree.go": {"process.Run("},
+		"internal/orchestration/chatmerge/service.go": {
+			"copyRegularFile(", `c.git(ctx, worktree, "apply"`,
+			`c.git(ctx, worktree, "add"`, `c.git(ctx, worktree, "commit"`,
+		},
+	} {
+		info, err := os.Stat(filepath.Join(root, path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var files []string
+		if info.IsDir() {
+			entries, err := os.ReadDir(filepath.Join(root, path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, entry := range entries {
+				if strings.HasSuffix(entry.Name(), ".go") &&
+					!strings.HasSuffix(entry.Name(), "_test.go") {
+					files = append(files, filepath.Join(root, path, entry.Name()))
+				}
+			}
+		} else {
+			files = []string{filepath.Join(root, path)}
+		}
+		for _, file := range files {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, token := range forbidden {
+				if strings.Contains(string(data), token) {
+					t.Errorf("%s contains broker bypass %q", file, token)
+				}
+			}
+		}
+	}
+}
+
 func writeFixture(t *testing.T, root, name, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(name))

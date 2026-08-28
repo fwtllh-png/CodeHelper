@@ -62,7 +62,16 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - Workspace State 分为互不重叠的 `control`、`sandbox-home` 和 `artifacts`；
   在这三个状态域中，Sandbox 只获得 `sandbox-home` 写权限。
 - Tool Contract 要求时先读后写。
-- 修改写入 Journal 并保持 Atomicity。
+- `file_write`、`file_edit`、`file_apply`、`file_patch`、`integrate_agent`、隔离
+  Chat Merge 和 `document_convert` 的最终 Workspace 输出统一生成不可变 File Plan。
+  Guard 或 Runtime Authority 签发绑定 Plan Digest、Workspace Generation 和精确
+  Path Resource 的单次 Lease，File Broker 是提交这些 Plan 的唯一 Owner。
+- File Broker 在 Journal Before Image 后再次校验文件内容、身份和父目录，使用
+  descriptor-relative API 先写后删。写入、最终快照或 Journal Settlement 失败时
+  逆序恢复；恢复冲突或失败明确报告 Partial Change，不伪造原子成功。
+- File Broker 拒绝 Symlink、Hardlink、Device Boundary、Root/Parent Replacement，
+  并在自身边界拒绝 `.git`、`.codehelper`、`.codehelper-worktree`、`.agents` 和
+  `.codex`。Unified Diff 先解析为 File Plan，不调用 `git apply` 修改 Workspace。
 - `exec_command` 的写权限只授予显式 `write_paths`。目标可以是现有普通文件，或位于
   已存在父目录下的待创建文件；Guard 在执行前完成 Preflight，Strong Sandbox 只为
   这些精确路径物化最小占位。目录、Symlink、重复路径和执行前发生的身份漂移均拒绝。
@@ -70,6 +79,10 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - 隔离 Worktree 仅可只读访问经过校验的自身 Git Administration Directory，以及
   Repository Common Git Directory 中必要的 Object、Ref 与配置路径；这不会授予
   Parent Worktree 或 Git Metadata 写权限。
+- Git Worktree Registration、Index 和 Ref 不属于普通 Workspace 文件。Child
+  Worktree Add/Remove/Prune 与 Chat Baseline `add`/`commit` 只能由 VCS Broker
+  执行。每次白名单 Mutation 绑定 Common Git Directory Identity、目标 Worktree
+  HEAD/Ref、Index Digest 和 Worktree Registration Digest；执行接管前发生漂移即拒绝。
 - 使用 `apply --dry-run` 检查生成计划。
 - 重要仓库必须纳入版本控制并维护备份。
 
@@ -294,7 +307,7 @@ Workspace Integrity 不确定时，应停止执行，保留 State 与 Journal，
 公开报告中不能包含 Secret 或私有源码。应提供 Version、Platform、Command Shape、
 Sanitized Config Provenance、预期/实际 Security Decision，以及可行时的可复现 Fixture。
 
-[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-3
-已交付 State Domain、Operation/Lease、Artifact/Process Broker、Process Smoke、
-Hook 和 stdio MCP Lifecycle 迁移。后续阶段继续迁移 File、VCS、Network 和其他进程
-入口。
+[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-4
+已交付 State Domain、Operation/Lease、Artifact/Process/File/VCS Broker、Process
+Smoke、Hook、stdio MCP Lifecycle、Workspace Write 与 Git Metadata Mutation 收口。
+后续阶段继续收紧 Trusted Descriptor Binding、Network 和其他进程入口。

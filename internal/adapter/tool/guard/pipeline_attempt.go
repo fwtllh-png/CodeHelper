@@ -261,10 +261,15 @@ func (g *Guard) runAttempt(
 	}
 	run.profile = profile
 	brokerExecutor, brokerAware := prepared.executor.(AuthorizedProcessExecutor)
+	fileExecutor, fileBrokerAware := prepared.executor.(AuthorizedFileExecutor)
+	fileBrokerAware = fileBrokerAware &&
+		fileExecutor.IsAuthorizedFileMutation(prepared.invocation)
+	brokerManaged := brokerAware || fileBrokerAware
 	var artifactBinding authority.ArtifactBinding
 	var artifactIntent *authority.ArtifactIntent
+	var fileBinding authority.FileBinding
 	if brokerAware {
-		preliminary, buildErr := g.buildExecutionOperation(prepared, profile, nil)
+		preliminary, buildErr := g.buildExecutionOperation(prepared, profile, nil, "")
 		if buildErr != nil {
 			run.err = buildErr
 			run.receipt = attemptReceipt(
@@ -289,13 +294,27 @@ func (g *Guard) runAttempt(
 			Generation:     artifactBinding.Generation,
 		}
 	}
+	if fileBrokerAware {
+		fileBinding, err = fileExecutor.PrepareAuthorizedFile(
+			ctx, prepared.invocation,
+		)
+		if err != nil {
+			run.err = err
+			run.receipt = attemptReceipt(
+				sequence, mode, started, g.now(), tool.OutcomeRejected,
+				"file_plan", run.profile,
+			)
+			return run
+		}
+	}
 	operation, lease, leaseSnapshot, err := g.issueExecutionLease(
 		ctx,
 		prepared,
 		profile,
 		uint64(sequence),
 		artifactIntent,
-		!brokerAware,
+		fileBinding.MutationDigest,
+		!brokerManaged,
 	)
 	if err != nil {
 		run.err = err
@@ -308,7 +327,7 @@ func (g *Guard) runAttempt(
 	defer func() {
 		var snapshot authority.LeaseSnapshot
 		var settleErr error
-		if brokerAware {
+		if brokerManaged {
 			snapshot, settleErr = g.leaseAuthority.Snapshot(lease)
 			if settleErr == nil && snapshot.State == authority.LeaseIssued {
 				settleErr = g.leaseAuthority.Revoke(lease)
@@ -380,7 +399,12 @@ func (g *Guard) runAttempt(
 	}
 	writePaths := invocationWritePaths(invocation)
 	requireRead := mediatedFileWriter(invocation.Tool)
-	expectedWrites, err := g.prepareFileWrites(ctx, writePaths, requireRead)
+	var expectedWrites map[string]workspacejournal.Fingerprint
+	if fileBrokerAware {
+		expectedWrites, err = g.validateFileWrites(writePaths, requireRead)
+	} else {
+		expectedWrites, err = g.prepareFileWrites(ctx, writePaths, requireRead)
+	}
 	if err != nil {
 		release()
 		run.err = err
@@ -459,6 +483,32 @@ func (g *Guard) runAttempt(
 					},
 				)
 		}
+	} else if fileBrokerAware {
+		sandboxPolicyID, policyErr := sandboxPolicyBinding(
+			profile, prepared.invocation.Tool,
+		)
+		if policyErr != nil {
+			run.err = policyErr
+		} else {
+			run.result, run.outcome, run.err =
+				fileExecutor.ExecuteAuthorizedFile(
+					runContext,
+					prepared.invocation,
+					authority.AuthorizedFileGrant{
+						Operation: operation,
+						Lease:     lease,
+						Validation: leaseValidation(
+							operation,
+							prepared.runtime.Revision,
+							sandboxPolicyID,
+							uint64(sequence),
+						),
+						Plan: fileBinding.Value,
+					},
+					g.leaseAuthority,
+					g.journal,
+				)
+		}
 	} else {
 		run.result, run.outcome, run.err, run.aborted = g.executePrepared(
 			runContext,
@@ -470,7 +520,7 @@ func (g *Guard) runAttempt(
 			run.err = recordErr
 		}
 	}
-	if len(writePaths) != 0 {
+	if len(writePaths) != 0 && !fileBrokerAware {
 		if finishErr := g.finishFileWrites(
 			ctx,
 			writePaths,
@@ -479,6 +529,13 @@ func (g *Guard) runAttempt(
 			run.err == nil,
 			mediatedFileWriter(invocation.Tool),
 			mediatedFileWriter(invocation.Tool),
+		); finishErr != nil && run.err == nil {
+			run.err = finishErr
+		}
+	}
+	if len(writePaths) != 0 && fileBrokerAware {
+		if finishErr := g.finishBrokerFileWrites(
+			ctx, writePaths, &run.result, run.err == nil,
 		); finishErr != nil && run.err == nil {
 			run.err = finishErr
 		}

@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	sourcediff "github.com/sourcegraph/go-diff/diff"
 )
 
 func TestFileToolsPreserveModeAndApplyEdits(t *testing.T) {
@@ -32,10 +33,26 @@ func TestFileToolsPreserveModeAndApplyEdits(t *testing.T) {
 	if err := tools.Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: "file_edit", Authorized: true,
-		Arguments: json.RawMessage(`{"path":"sample.txt","old":"two","new":"three"}`),
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct, policy.PermissionBypass,
+		),
+		Workspace: root,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guarded.Execute(
+		t.Context(), "read", "file_read",
+		json.RawMessage(`{"path":"sample.txt"}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	result, err := guarded.Execute(
+		t.Context(), "edit", "file_edit",
+		json.RawMessage(`{"path":"sample.txt","old":"two","new":"three"}`),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +437,7 @@ new file mode 100644
 @@ -0,0 +1 @@
 +created
 `
-	executePatch(t, registry, patch)
+	executePatch(t, root, registry, patch)
 	if _, err := os.Stat(filepath.Join(root, "old.txt")); !os.IsNotExist(err) {
 		t.Fatalf("old.txt still exists: %v", err)
 	}
@@ -466,9 +483,10 @@ func TestFilePatchConflictIsAllOrNothing(t *testing.T) {
 +changed
 `
 	data, _ := json.Marshal(map[string]string{"patch": patch})
-	if _, err := registry.Execute(t.Context(), tool.Call{
-		Name: "file_patch", Arguments: data, Authorized: true,
-	}); err == nil || !strings.Contains(err.Error(), "patch conflict") {
+	guarded := patchGuard(t, root, registry, patch)
+	if _, err := guarded.Execute(
+		t.Context(), "patch", "file_patch", data,
+	); err == nil || !strings.Contains(err.Error(), "patch conflict") {
 		t.Fatalf("file_patch error = %v", err)
 	}
 	for name, want := range map[string]string{"one.txt": "one\n", "two.txt": "two\n"} {
@@ -535,7 +553,7 @@ func TestFileMutationToolsAreSerial(t *testing.T) {
 	}
 }
 
-func TestFilePatchCannotBypassSandboxAttempt(t *testing.T) {
+func TestFilePatchCannotBypassGuardWithSandboxAttempt(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "sample.txt"), []byte("one\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -553,23 +571,92 @@ func TestFilePatchCannotBypassSandboxAttempt(t *testing.T) {
 	ctx := toolguard.WithSandboxAttempt(t.Context(), toolguard.SandboxAttempt{Mode: toolguard.SandboxModeNone})
 	if _, err := registry.Execute(ctx, tool.Call{
 		Name: "file_patch", Arguments: data, Authorized: true,
-	}); err != nil {
-		t.Fatal(err)
+	}); err == nil || !strings.Contains(err.Error(), "File Broker lease") {
+		t.Fatalf("direct file_patch error = %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(root, "sample.txt"))
-	if err != nil || string(got) != "two\n" {
+	if err != nil || string(got) != "one\n" {
 		t.Fatalf("patched content = %q, %v", got, err)
 	}
 }
 
-func executePatch(t *testing.T, registry *tool.Registry, patch string) {
+func executePatch(t *testing.T, root string, registry *tool.Registry, patch string) {
 	t.Helper()
 	data, _ := json.Marshal(map[string]string{"patch": patch})
-	if _, err := registry.Execute(t.Context(), tool.Call{
-		Name: "file_patch", Arguments: data, Authorized: true,
-	}); err != nil {
+	if _, err := patchGuard(t, root, registry, patch).Execute(
+		t.Context(), "patch", "file_patch", data,
+	); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func patchGuard(
+	t *testing.T,
+	root string,
+	registry *tool.Registry,
+	patch string,
+) *toolguard.Guard {
+	t.Helper()
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct, policy.PermissionBypass,
+		),
+		Workspace: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := sourcediff.ParseMultiFileDiff([]byte(patch))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := make(map[string]bool)
+	var extraPaths []string
+	for line := range strings.SplitSeq(patch, "\n") {
+		if strings.HasPrefix(line, "rename from ") {
+			extraPaths = append(
+				extraPaths,
+				strings.TrimSpace(strings.TrimPrefix(line, "rename from ")),
+			)
+		}
+	}
+	for _, file := range files {
+		for _, value := range []string{file.OrigName, file.NewName} {
+			path, exists, pathErr := patchPath(value)
+			if pathErr != nil {
+				t.Fatal(pathErr)
+			}
+			if !exists || read[path] {
+				continue
+			}
+			if info, statErr := os.Stat(filepath.Join(root, path)); statErr == nil &&
+				info.Mode().IsRegular() {
+				arguments, _ := json.Marshal(map[string]string{"path": path})
+				if _, readErr := guarded.Execute(
+					t.Context(), "read-"+path, "file_read", arguments,
+				); readErr != nil {
+					t.Fatal(readErr)
+				}
+				read[path] = true
+			}
+		}
+	}
+	for _, path := range extraPaths {
+		if read[path] {
+			continue
+		}
+		if info, statErr := os.Stat(filepath.Join(root, path)); statErr == nil &&
+			info.Mode().IsRegular() {
+			arguments, _ := json.Marshal(map[string]string{"path": path})
+			if _, readErr := guarded.Execute(
+				t.Context(), "read-"+path, "file_read", arguments,
+			); readErr != nil {
+				t.Fatal(readErr)
+			}
+		}
+	}
+	return guarded
 }
 
 type fileTestBackend struct{}

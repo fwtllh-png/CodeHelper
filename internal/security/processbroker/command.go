@@ -99,7 +99,7 @@ func (b *Broker) RunCommand(
 		return Result{}, err
 	}
 	settlement.Status, settlement.Reason = "succeeded", "command_completed"
-	if waitErr != nil {
+	if waitErr != nil || processResult.ExitCode != 0 {
 		settlement.Status, settlement.Reason = "failed", "command_failed"
 	}
 	if err := b.authority.CompleteProcessHandle(handle); err != nil {

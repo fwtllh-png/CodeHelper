@@ -7,9 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
 )
 
 func TestContentToolsWithRealFilesAndFixtureDependencies(t *testing.T) {
@@ -58,7 +61,17 @@ test -f "$input"
 	t.Setenv("CODEHELPER_FFMPEG_BINARY", ocr)
 
 	registry := tool.NewRegistry(nil, nil)
-	if err := RegisterWithBackend(registry, root, contentTestBackend{}); err != nil {
+	broker, err := workspacebroker.New(
+		root,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := RegisterWithBackendAndRuntime(
+		registry, root, contentTestBackend{}, broker,
+	); err != nil {
 		t.Fatal(err)
 	}
 	probe := Probe()

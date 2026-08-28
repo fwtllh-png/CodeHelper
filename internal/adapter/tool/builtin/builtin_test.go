@@ -10,7 +10,9 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -30,9 +32,50 @@ func TestCoreToolsRealWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct, policy.PermissionBypass,
+		),
+		Workspace: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executeGuarded := func(name, arguments string) tool.Result {
+		t.Helper()
+		ctx := tool.WithInvocationIdentity(
+			t.Context(),
+			tool.InvocationIdentity{ThreadID: "thread-builtin-test"},
+		)
+		ctx = tool.WithResultTokenBudget(ctx, registry.ResultTokenCapacity())
+		result, executeErr := guarded.Execute(
+			ctx, "call-"+name, name, json.RawMessage(arguments),
+		)
+		if executeErr != nil {
+			t.Fatalf("%s: %v", name, executeErr)
+		}
+		return result
+	}
+	executeDirect := func(name, arguments string) tool.Result {
+		t.Helper()
+		ctx := tool.WithInvocationIdentity(
+			t.Context(),
+			tool.InvocationIdentity{ThreadID: "thread-builtin-test"},
+		)
+		ctx = tool.WithResultTokenBudget(ctx, registry.ResultTokenCapacity())
+		result, executeErr := registry.Execute(ctx, tool.Call{
+			Name: name, Arguments: json.RawMessage(arguments), Authorized: true,
+		})
+		if executeErr != nil {
+			t.Fatalf("%s: %v", name, executeErr)
+		}
+		return result
+	}
 
-	execute(t, registry, "file_edit", `{"path":"main.txt","old":"before","new":"after"}`)
-	search := execute(t, registry, "search_text", `{"query":"after"}`)
+	executeGuarded("file_read", `{"path":"main.txt"}`)
+	executeGuarded("file_edit", `{"path":"main.txt","old":"before","new":"after"}`)
+	search := executeDirect("search_text", `{"query":"after"}`)
 	if !strings.Contains(search.Content, `"file":"main.txt"`) ||
 		!strings.Contains(search.Content, `"line":1`) ||
 		!strings.Contains(search.Content, `"text":"after"`) {
@@ -42,11 +85,11 @@ func TestCoreToolsRealWorkspace(t *testing.T) {
 		len(search.Outcome.Facts.Evidence) == 0 {
 		t.Fatalf("search typed facts = %+v", search.Outcome)
 	}
-	shell := execute(t, registry, "exec_command", `{"command":"printf stdout; printf stderr >&2; exit 3"}`)
+	shell := executeDirect("exec_command", `{"command":"printf stdout; printf stderr >&2; exit 3"}`)
 	if !shell.IsError || shell.Metadata["exit_code"] != 3 {
 		t.Fatalf("shell result = %+v", shell)
 	}
-	diff := execute(t, registry, "git_diff", `{}`)
+	diff := executeDirect("git_diff", `{}`)
 	if !strings.Contains(diff.Content, "-before") || !strings.Contains(diff.Content, "+after") {
 		t.Fatalf("git diff = %q", diff.Content)
 	}
@@ -94,6 +137,10 @@ func (builtinTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "passthrough",
 		Strength: sandbox.StrengthStrong, Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
 	}
 }
 
@@ -106,22 +153,6 @@ func (builtinTestBackend) Prepare(
 	)
 	command.PreparedNetworkDenied = command.DenyNetwork
 	return command, nil
-}
-
-func execute(t *testing.T, registry *tool.Registry, name, arguments string) tool.Result {
-	t.Helper()
-	ctx := tool.WithInvocationIdentity(
-		t.Context(),
-		tool.InvocationIdentity{ThreadID: "thread-builtin-test"},
-	)
-	ctx = tool.WithResultTokenBudget(ctx, registry.ResultTokenCapacity())
-	result, err := registry.Execute(ctx, tool.Call{
-		Name: name, Arguments: json.RawMessage(arguments), Authorized: true,
-	})
-	if err != nil {
-		t.Fatalf("%s: %v", name, err)
-	}
-	return result
 }
 
 func run(t *testing.T, directory, name string, arguments ...string) {

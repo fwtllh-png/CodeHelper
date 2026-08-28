@@ -189,8 +189,8 @@
       "path": "internal/security",
       "prefix": true,
       "categories": ["file", "network"],
-      "owner": "security",
-      "reason": "Credential, permission, egress, and sandbox state owners."
+      "owner": "security brokers",
+      "reason": "Credential, permission, egress, sandbox state, and descriptor-relative File Broker primitives."
     }
   ]
 }

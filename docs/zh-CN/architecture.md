@@ -80,8 +80,10 @@ Child Worktree/Toolset。Provider 显式输出 Provider/Model Catalog，Security
 Required Controls 的 `ExecutionOperation`，并由 Runtime 共享的 `LeaseAuthority`
 签发单次 `ExecutionLease`。Guard 保留 `ExecuteBound` 作为兼容 Facade，但每个实际
 Attempt 都会先签发和消费 Lease，再把 Operation/Lease/Settlement 证据投影到
-`tool.result.execution`。Process、Artifact 和 Desktop Broker 尚未在阶段 1 接管进程
-启动，因此 Host Process Smoke 仍保持关闭。
+`tool.result.execution`。Artifact/Process Broker 接管 Process Smoke、Hook 与 stdio
+MCP 生命周期；File/VCS Broker 接管模型文件工具、Agent/Chat Merge、生成型 Workspace
+输出和 Git Metadata Mutation。`workspacebroker.Runtime` 只组合窄能力，不把 Broker
+业务逻辑放入 `wire`。
 
 Builtin 与 Extension Tool 共享同一个 Registry 实例。Plugin、Skill、Memory、
 Dynamic Tool、Hook 与 MCP Contributor 只接收其显式构造能力和共享 Registry，不接收
@@ -245,7 +247,9 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
    Constitution、Approval 与 Sandbox。
 8. Tool、Approval、Input Result 以一个可保留重试的 Result Command 返回；Coordinator
    在 Host Projection 前持久化逻辑闭合。
-9. 修改型工具通过 Journal/事务 Adapter 写入。
+9. 修改型 Tool 先生成不可变 File Plan；File Broker 消费单次 Lease，在 Journal
+   Before/After 与 descriptor-relative Workspace API 之间提交或回滚。Git Metadata
+   Mutation 由独立 VCS Broker 执行。
 10. 交互式主 Turn 必须选择合法 Runtime 状态：`request_user_input` 创建可持久化的 Input
     Wait，Tool Call 继续同一个 Turn。未执行工具、没有 Mutation、Pending Tool 或 Workspace Change 的
     只读 Answer/Plan，可以由带非空正文的 Provider `end_turn` 完成，避免纯文本直答仅为形式化声明再次

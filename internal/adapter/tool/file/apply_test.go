@@ -42,16 +42,47 @@ func applyTools(t *testing.T, files map[string]string) (string, *tool.Registry) 
 }
 
 func applyChanges(
-	t *testing.T, registry *tool.Registry, changes []map[string]any, dryRun bool,
+	t *testing.T,
+	root string,
+	registry *tool.Registry,
+	changes []map[string]any,
+	dryRun bool,
 ) (tool.Result, error) {
 	t.Helper()
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct, policy.PermissionBypass,
+		),
+		Workspace: root,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := make(map[string]bool)
+	for _, change := range changes {
+		for _, field := range []string{"path", "to"} {
+			path, _ := change[field].(string)
+			if path == "" || read[path] {
+				continue
+			}
+			if info, statErr := os.Stat(filepath.Join(root, path)); statErr == nil &&
+				info.Mode().IsRegular() {
+				arguments, _ := json.Marshal(map[string]string{"path": path})
+				if _, readErr := guarded.Execute(
+					t.Context(), "read-"+field+"-"+path, "file_read", arguments,
+				); readErr != nil {
+					t.Fatal(readErr)
+				}
+				read[path] = true
+			}
+		}
+	}
 	arguments, err := json.Marshal(map[string]any{"changes": changes, "dry_run": dryRun})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return registry.Execute(t.Context(), tool.Call{
-		Name: "file_apply", Arguments: arguments, Authorized: true,
-	})
+	return guarded.Execute(t.Context(), "apply", "file_apply", arguments)
 }
 
 func read(t *testing.T, root, name string) string {
@@ -72,7 +103,7 @@ func TestFileApplyCommitsEveryOperationKind(t *testing.T) {
 	if err := os.Chmod(filepath.Join(root, "move.txt"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	result, err := applyChanges(t, registry, []map[string]any{
+	result, err := applyChanges(t, root, registry, []map[string]any{
 		{"op": "edit", "path": "edit.txt", "old": "two", "new": "three"},
 		{"op": "write", "path": "nested/created.txt", "content": "new\n"},
 		{"op": "move", "path": "move.txt", "to": "moved/target.txt"},
@@ -132,7 +163,7 @@ func TestFileApplyCommitsEveryOperationKind(t *testing.T) {
 
 func TestFileApplyEditsTheSameFileTwiceInOneCall(t *testing.T) {
 	root, registry := applyTools(t, map[string]string{"sample.txt": "alpha beta\n"})
-	if _, err := applyChanges(t, registry, []map[string]any{
+	if _, err := applyChanges(t, root, registry, []map[string]any{
 		{"op": "edit", "path": "sample.txt", "old": "alpha", "new": "gamma"},
 		{"op": "edit", "path": "sample.txt", "old": "beta", "new": "delta"},
 	}, false); err != nil {
@@ -150,7 +181,7 @@ func TestFileApplyValidationFailureWritesNothing(t *testing.T) {
 		"first.txt":  "first\n",
 		"repeat.txt": "same\nsame\n",
 	})
-	_, err := applyChanges(t, registry, []map[string]any{
+	_, err := applyChanges(t, root, registry, []map[string]any{
 		{"op": "write", "path": "first.txt", "content": "rewritten\n"},
 		{"op": "write", "path": "created.txt", "content": "created\n"},
 		{"op": "edit", "path": "repeat.txt", "old": "same", "new": "changed"},
@@ -266,7 +297,7 @@ func TestFileApplyRollsBackWritesWhenALaterWriteFails(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
 
-	_, err := applyChanges(t, registry, []map[string]any{
+	_, err := applyChanges(t, root, registry, []map[string]any{
 		{"op": "write", "path": "first.txt", "content": "rewritten\n"},
 		{"op": "write", "path": "locked/second.txt", "content": "rewritten\n"},
 	}, false)
@@ -297,7 +328,7 @@ func TestFileApplyRollbackRemovesFilesItCreated(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
 
-	if _, err := applyChanges(t, registry, []map[string]any{
+	if _, err := applyChanges(t, root, registry, []map[string]any{
 		{"op": "write", "path": "created.txt", "content": "created\n"},
 		{"op": "write", "path": "locked/second.txt", "content": "rewritten\n"},
 	}, false); err == nil {
@@ -309,7 +340,7 @@ func TestFileApplyRollbackRemovesFilesItCreated(t *testing.T) {
 }
 
 func TestFileApplyRefusesImpossibleOperations(t *testing.T) {
-	_, registry := applyTools(t, map[string]string{
+	root, registry := applyTools(t, map[string]string{
 		"exists.txt": "exists\n", "other.txt": "other\n",
 	})
 	cases := []struct {
@@ -338,7 +369,7 @@ func TestFileApplyRefusesImpossibleOperations(t *testing.T) {
 	}, {
 		name:    "escape the workspace",
 		changes: []map[string]any{{"op": "write", "path": "../outside.txt", "content": "x"}},
-		want:    "outside",
+		want:    "escapes workspace",
 	}, {
 		// The schema rejects this before the core sees it; both layers refuse.
 		name:    "unknown op",
@@ -359,7 +390,7 @@ func TestFileApplyRefusesImpossibleOperations(t *testing.T) {
 	}}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			_, err := applyChanges(t, registry, testCase.changes, false)
+			_, err := applyChanges(t, root, registry, testCase.changes, false)
 			if err == nil || !strings.Contains(err.Error(), testCase.want) {
 				t.Fatalf("error = %v, want it to mention %q", err, testCase.want)
 			}
@@ -402,8 +433,8 @@ func TestChangeRequestValidation(t *testing.T) {
 }
 
 func TestFileApplyRejectsAnEmptyOrOversizedTransaction(t *testing.T) {
-	_, registry := applyTools(t, nil)
-	if _, err := applyChanges(t, registry, nil, false); err == nil {
+	root, registry := applyTools(t, nil)
+	if _, err := applyChanges(t, root, registry, nil, false); err == nil {
 		t.Fatal("expected an empty transaction to be refused")
 	}
 	changes := make([]map[string]any, maxTransactionChanges+1)
@@ -412,7 +443,7 @@ func TestFileApplyRejectsAnEmptyOrOversizedTransaction(t *testing.T) {
 			"op": "write", "path": "file" + string(rune('a'+index%26)) + ".txt", "content": "x",
 		}
 	}
-	if _, err := applyChanges(t, registry, changes, false); err == nil {
+	if _, err := applyChanges(t, root, registry, changes, false); err == nil {
 		t.Fatal("expected an oversized transaction to be refused")
 	}
 }
@@ -460,7 +491,7 @@ func TestFileApplyDryRunPreviewsWithoutWriting(t *testing.T) {
 	})
 	before := snapshotTree(t, root)
 
-	result, err := applyChanges(t, registry, []map[string]any{
+	result, err := applyChanges(t, root, registry, []map[string]any{
 		{"op": "edit", "path": "edit.txt", "old": "two", "new": "TWO"},
 		{"op": "write", "path": "created.txt", "content": "created\n"},
 		{"op": "delete", "path": "gone.txt"},
@@ -494,7 +525,7 @@ func TestFileApplyDryRunPreviewsWithoutWriting(t *testing.T) {
 func TestFileApplyDryRunReportsValidationFailures(t *testing.T) {
 	root, registry := applyTools(t, map[string]string{"repeat.txt": "same\nsame\n"})
 	before := snapshotTree(t, root)
-	if _, err := applyChanges(t, registry, []map[string]any{
+	if _, err := applyChanges(t, root, registry, []map[string]any{
 		{"op": "edit", "path": "repeat.txt", "old": "same", "new": "changed"},
 	}, true); err == nil {
 		t.Fatal("expected the ambiguous edit to be refused in a dry run too")
@@ -792,10 +823,26 @@ func TestSingleFileToolsKeepTheirContract(t *testing.T) {
 	if err := os.Chmod(filepath.Join(root, "sample.txt"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: "file_write", Authorized: true,
-		Arguments: json.RawMessage(`{"path":"sample.txt","content":"three\n"}`),
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct, policy.PermissionBypass,
+		),
+		Workspace: root,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guarded.Execute(
+		t.Context(), "read", "file_read",
+		json.RawMessage(`{"path":"sample.txt"}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	result, err := guarded.Execute(
+		t.Context(), "write", "file_write",
+		json.RawMessage(`{"path":"sample.txt","content":"three\n"}`),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -809,10 +856,10 @@ func TestSingleFileToolsKeepTheirContract(t *testing.T) {
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode after write = %o, want the existing 600 kept", info.Mode().Perm())
 	}
-	result, err = registry.Execute(t.Context(), tool.Call{
-		Name: "file_edit", Authorized: true,
-		Arguments: json.RawMessage(`{"path":"sample.txt","old":"three","new":"four"}`),
-	})
+	result, err = guarded.Execute(
+		t.Context(), "edit", "file_edit",
+		json.RawMessage(`{"path":"sample.txt","old":"three","new":"four"}`),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -822,10 +869,10 @@ func TestSingleFileToolsKeepTheirContract(t *testing.T) {
 	if got := read(t, root, "sample.txt"); got != "four\n" {
 		t.Fatalf("sample.txt = %q", got)
 	}
-	if _, err := registry.Execute(t.Context(), tool.Call{
-		Name: "file_write", Authorized: true,
-		Arguments: json.RawMessage(`{"path":"fresh.txt","content":"fresh\n"}`),
-	}); err != nil {
+	if _, err := guarded.Execute(
+		t.Context(), "fresh", "file_write",
+		json.RawMessage(`{"path":"fresh.txt","content":"fresh\n"}`),
+	); err != nil {
 		t.Fatal(err)
 	}
 	if got := read(t, root, "fresh.txt"); got != "fresh\n" {

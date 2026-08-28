@@ -73,8 +73,7 @@ func buildChildOrchestration(
 ) error {
 	session, execution := state.session, state.config.execution
 	limits := effectiveSubagentLimits(execution.Subagent, execution.TurnBudgetTokens)
-	output.sharedGovernor = rlm.NewGovernor(rlm.Limits{})
-	output.childGovernor = newChildGovernor(limits)
+	output.sharedGovernor, output.childGovernor = rlm.NewGovernor(rlm.Limits{}), newChildGovernor(limits)
 	orchestrationRoot := childOrchestrationRoot(state)
 	agentRoot := filepath.Join(orchestrationRoot, "agents")
 	if err := os.MkdirAll(agentRoot, 0o700); err != nil {
@@ -82,6 +81,7 @@ func buildChildOrchestration(
 	}
 	childTrees, err := newChildWorktrees(
 		execution.Workspace, agentRoot, limits.Workspace, state.platform.backend,
+		state.platform.leaseAuthority, execution.LeaseTimeout,
 	)
 	if err != nil {
 		return fmt.Errorf("child worktrees: %w", err)
@@ -104,7 +104,7 @@ func buildChildOrchestration(
 	}
 	output.chatTrees, err = newChildWorktrees(
 		execution.Workspace, chatRoot, config.SubagentWorkspaceAuto,
-		state.platform.backend,
+		state.platform.backend, state.platform.leaseAuthority, execution.LeaseTimeout,
 	)
 	if err != nil {
 		return fmt.Errorf("Chat worktrees: %w", err)

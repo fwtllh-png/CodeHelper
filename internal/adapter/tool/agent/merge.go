@@ -21,6 +21,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/filebroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -40,6 +42,121 @@ type mergeInput struct {
 	Paths         []string          `json:"paths,omitempty"`
 	Changes       []filetool.Change `json:"changes,omitempty"`
 	Worktree      string            `json:"worktree,omitempty"`
+}
+
+type authorizedMerge struct {
+	input    mergeInput
+	prepared filetool.PreparedApply
+	dryRun   bool
+}
+
+func (o *operation) IsAuthorizedFileMutation(
+	invocation tool.PreparedInvocation,
+) bool {
+	if o == nil || o.kind != "integrate_agent" {
+		return false
+	}
+	var input mergeInput
+	return json.Unmarshal(invocation.Arguments, &input) == nil &&
+		strings.TrimSpace(input.Op) == mergeApply
+}
+
+func (o *operation) PlanEdit(
+	ctx context.Context,
+	raw json.RawMessage,
+) (tool.EditPlan, error) {
+	binding, err := o.PrepareAuthorizedFile(ctx, tool.PreparedInvocation{
+		Arguments: raw,
+	})
+	if err != nil {
+		return tool.EditPlan{}, err
+	}
+	value := binding.Value.(authorizedMerge)
+	return editPlanFromPrepared(value.prepared), nil
+}
+
+func (o *operation) PrepareAuthorizedFile(
+	ctx context.Context,
+	invocation tool.PreparedInvocation,
+) (authority.FileBinding, error) {
+	if o == nil || o.tools == nil || o.kind != "integrate_agent" {
+		return authority.FileBinding{}, errors.New("agent operation is not a workspace writer")
+	}
+	var input mergeInput
+	if err := json.Unmarshal(invocation.Arguments, &input); err != nil {
+		return authority.FileBinding{}, err
+	}
+	op, err := normalizeMergeOp(input.Op)
+	if err != nil {
+		return authority.FileBinding{}, err
+	}
+	var prepared filetool.PreparedApply
+	if op == mergeDiscard {
+		plan, planErr := filebroker.NewPlan(nil)
+		if planErr != nil {
+			return authority.FileBinding{}, planErr
+		}
+		prepared.Plan = plan
+	} else {
+		prepared, err = o.tools.files.PrepareApply(ctx, input.Changes)
+		if err != nil {
+			return authority.FileBinding{}, err
+		}
+	}
+	return authority.FileBinding{
+		MutationDigest: prepared.Plan.Digest,
+		Value: authorizedMerge{
+			input: input, prepared: prepared, dryRun: op != mergeApply,
+		},
+	}, nil
+}
+
+func (o *operation) ExecuteAuthorizedFile(
+	ctx context.Context,
+	invocation tool.PreparedInvocation,
+	grant authority.AuthorizedFileGrant,
+	manager *authority.LeaseAuthority,
+	journal *workspacejournal.Manager,
+) (tool.Result, tool.Outcome, error) {
+	value, ok := grant.Plan.(authorizedMerge)
+	if !ok || value.prepared.Plan.Digest == "" {
+		return tool.Result{}, tool.Outcome{}, errors.New("authorized agent merge plan is invalid")
+	}
+	if value.dryRun {
+		result, err := o.Execute(ctx, invocation.Arguments)
+		return result, tool.OutcomeFromResult(result), err
+	}
+	result, err := o.tools.applyMergeAuthorized(
+		ctx, value, grant, manager, journal,
+	)
+	return result, tool.OutcomeFromResult(result), err
+}
+
+func editPlanFromPrepared(prepared filetool.PreparedApply) tool.EditPlan {
+	plan := tool.EditPlan{ID: prepared.Plan.Digest, Diff: prepared.Diff}
+	for _, entry := range prepared.Plan.Entries {
+		kind := workspacejournal.ChangeModified
+		switch {
+		case !entry.Before.Exists:
+			kind = workspacejournal.ChangeCreated
+		case !entry.After.Exists:
+			kind = workspacejournal.ChangeDeleted
+		}
+		plan.Files = append(plan.Files, tool.EditPlanFile{
+			Path: entry.Path, Kind: kind,
+			BeforeExists: entry.Before.Exists, AfterExists: entry.After.Exists,
+			BeforeDigest: digestOrMissing(entry.Before.Exists, entry.Before.Digest),
+			AfterDigest:  digestOrMissing(entry.After.Exists, entry.After.Digest),
+		})
+	}
+	return plan
+}
+
+func digestOrMissing(exists bool, digest string) string {
+	if !exists {
+		return "missing"
+	}
+	return digest
 }
 
 func (o *operation) ExpandArguments(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
@@ -363,6 +480,86 @@ func (t *Tool) applyMerge(
 	)
 	addIntegrationMetadata(&result, candidate)
 	result.Metadata["op"] = mergeApply
+	return result, nil
+}
+
+func (t *Tool) applyMergeAuthorized(
+	ctx context.Context,
+	authorized authorizedMerge,
+	grant authority.AuthorizedFileGrant,
+	manager *authority.LeaseAuthority,
+	journal *workspacejournal.Manager,
+) (tool.Result, error) {
+	agentID := strings.TrimSpace(authorized.input.AgentID)
+	previewDigest := strings.TrimSpace(authorized.input.PreviewDigest)
+	candidate, err := t.loadMergeCandidate(
+		agentID, previewDigest, subagent.IntegrationPreviewed,
+	)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	plan, err := t.planMerge(ctx, agentID, candidate.Paths)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	if err := validateMergeCandidate(candidate, plan); err != nil {
+		return tool.Result{}, err
+	}
+	current, err := t.files.PrepareApply(ctx, plan.changes)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	if current.Plan.Digest != authorized.prepared.Plan.Digest {
+		return tool.Result{}, errors.New("agent merge file plan is stale")
+	}
+	candidate.Status = subagent.IntegrationApplying
+	candidate.Message = "integration apply started"
+	if err := t.control.SaveIntegration(candidate); err != nil {
+		return tool.Result{}, err
+	}
+	if err := t.control.BeginIntegration(agentID); err != nil {
+		return tool.Result{}, t.failMergeCandidate(candidate, err, false)
+	}
+	if err := t.files.CommitApply(
+		ctx, current, grant, manager, journal,
+	); err != nil {
+		return tool.Result{}, t.failMergeCandidate(candidate, err, true)
+	}
+	changedPaths := appliedPaths(current.Changes)
+	verification, verifyMessage := t.verifyParent(ctx, changedPaths)
+	candidate.Status = subagent.IntegrationApplied
+	candidate.Verification = verification
+	candidate.Receipt = &subagent.IntegrationReceipt{
+		ChangedPaths: changedPaths,
+		Verification: verification,
+		AppliedAt:    time.Now().UTC(),
+	}
+	candidate.Message = verifyMessage
+	if err := t.control.SaveIntegration(candidate); err != nil {
+		_ = t.control.FinishIntegration(agentID, err)
+		return tool.Result{}, err
+	}
+	if err := t.control.FinishIntegration(agentID, nil); err != nil {
+		return tool.Result{}, err
+	}
+	result := filetool.ResultFromApply(
+		current.Changes, current.Diff, false,
+	)
+	result.Content = fmt.Sprintf(
+		"%s\npreview_digest=%s\nparent_verification=%s",
+		result.Content, candidate.PreviewDigest, verification.Verify,
+	)
+	addIntegrationMetadata(&result, candidate)
+	result.Metadata["op"] = mergeApply
+	for _, change := range current.Changes {
+		tool.EnsureOutcomeFacts(&result).WorkspaceChanges = append(
+			tool.EnsureOutcomeFacts(&result).WorkspaceChanges,
+			tool.WorkspaceChange{
+				Path: change.Path, Kind: change.Kind,
+				Added: change.Added, Removed: change.Removed,
+			},
+		)
+	}
 	return result, nil
 }
 

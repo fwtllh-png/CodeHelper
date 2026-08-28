@@ -17,7 +17,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/contentdeps"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/filebroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
 )
 
 const contentOutputLimit = 4 << 20
@@ -28,6 +30,7 @@ type Tool struct {
 	kind      string
 	workspace *sandbox.Workspace
 	backend   sandbox.Backend
+	broker    *workspacebroker.Runtime
 }
 
 type input struct {
@@ -40,6 +43,15 @@ type input struct {
 }
 
 func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.Backend) error {
+	return RegisterWithBackendAndRuntime(registry, root, backend, nil)
+}
+
+func RegisterWithBackendAndRuntime(
+	registry *tool.Registry,
+	root string,
+	backend sandbox.Backend,
+	broker *workspacebroker.Runtime,
+) error {
 	if backend == nil {
 		return errors.New("content tools require an injected sandbox backend")
 	}
@@ -56,7 +68,8 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 		"content_capabilities", "image_ocr", "speech_transcribe", "document_convert", "data_validate",
 	} {
 		if err := registry.Register(&Tool{
-			root: workspace.Root(), kind: kind, workspace: workspace, backend: backend,
+			root: workspace.Root(), kind: kind, workspace: workspace,
+			backend: backend, broker: broker,
 		}, nil); err != nil {
 			return err
 		}
@@ -294,7 +307,20 @@ func (t *Tool) convert(ctx context.Context, value input) (tool.Result, error) {
 	if len(output) > contentOutputLimit {
 		return contentFailure("output_too_large", "converted document exceeds 4 MiB"), nil
 	}
-	if err := t.workspace.AtomicWrite(value.OutputPath, output, 0o644); err != nil {
+	if t.broker == nil {
+		return tool.Result{}, errors.New(
+			"document conversion requires the Workspace File Broker",
+		)
+	}
+	plan, err := filebroker.PlanWrite(
+		t.workspace, value.OutputPath, output, 0o644,
+	)
+	if err != nil {
+		return tool.Result{}, fmt.Errorf("plan converted document: %w", err)
+	}
+	if _, err := t.broker.CommitFiles(
+		ctx, "document_convert", plan, nil,
+	); err != nil {
 		return tool.Result{}, fmt.Errorf("commit converted document: %w", err)
 	}
 	content, err := json.Marshal(map[string]any{

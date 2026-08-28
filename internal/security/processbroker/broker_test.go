@@ -2,6 +2,8 @@ package processbroker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/artifactbroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -76,6 +79,78 @@ func TestBrokerRejectsMutatedSnapshotBeforeLeaseConsumption(t *testing.T) {
 	}
 	if state.State != authority.LeaseIssued {
 		t.Fatalf("rejected snapshot consumed lease: %q", state.State)
+	}
+}
+
+func TestRunCommandSettlesNonZeroExitAsFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture uses /bin/sh")
+	}
+	manager := authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{})
+	broker, err := New(manager)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := t.TempDir()
+	sum := sha256.Sum256([]byte(filepath.Clean(workspace)))
+	workspaceID := hex.EncodeToString(sum[:])
+	subject, err := authority.NewManagedProcessSubject(
+		authority.SubjectHost, "command-test", authority.TrustHost, 1,
+		map[string]string{"command": "exit 7"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := authority.BuildManagedProcessOperation(
+		authority.ManagedProcessInput{
+			ID: "command-exit", Tool: "command-test",
+			WorkspaceID: workspaceID, WorkspaceGeneration: 1,
+			Subject: subject, Executable: "/bin/sh",
+			Args: []string{"-c", "exit 7"}, WorkingDirectory: workspace,
+			Effect: authority.ManagedProcessEffect(policy.RiskLow),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := authority.BuildManagedProcessProfile(
+		authority.ManagedProfileInput{
+			Operation: operation, Revision: 1, WorkspaceRoot: workspace,
+			WorkspaceBaseWrite: true, AllowNetwork: true,
+			Enforcement: "none", Backend: "none", Strength: "none",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := manager.Issue(authority.LeaseIssueRequest{
+		Operation: operation, Profile: profile,
+		PolicyRevision: 1, Attempt: 1, ExpiresAt: time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := broker.RunCommand(t.Context(), CommandRequest{
+		Lease: lease,
+		Validation: authority.LeaseValidation{
+			Operation: operation, PolicyRevision: 1,
+			WorkspaceID: workspaceID, WorkspaceGeneration: 1,
+			SubjectDigest: subject.Digest, SubjectGeneration: 1, Attempt: 1,
+		},
+		Options: process.Options{
+			Path: "/bin/sh", Args: []string{"-c", "exit 7"}, Dir: workspace,
+		},
+		Identity: Identity{
+			SessionID: "session", ThreadID: "thread", TurnID: "turn",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "exit status 7") {
+		t.Fatalf("RunCommand error = %v", err)
+	}
+	if result.Process.ExitCode != 7 ||
+		result.Settlement.Status != "failed" ||
+		result.Settlement.Reason != "command_failed" {
+		t.Fatalf("result = %+v", result)
 	}
 }
 

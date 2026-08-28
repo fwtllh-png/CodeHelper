@@ -126,6 +126,7 @@ type NetworkIntent struct {
 
 type FileIntent struct {
 	ResourceDigests []string `json:"resource_digests"`
+	MutationDigest  string   `json:"mutation_digest,omitempty"`
 }
 
 type ArtifactIntent struct {
@@ -160,6 +161,7 @@ type OperationInput struct {
 	RequireReadBeforeWrite bool
 	Required               RequiredControls
 	Artifact               *ArtifactIntent
+	FileMutationDigest     string
 	HostReadRoots          []string
 }
 
@@ -242,7 +244,10 @@ func BuildExecutionOperation(input OperationInput) (ExecutionOperation, error) {
 		operation.Network = &NetworkIntent{Targets: uniqueSorted(networkTargets)}
 	}
 	if len(fileDigests) != 0 {
-		operation.File = &FileIntent{ResourceDigests: uniqueSorted(fileDigests)}
+		operation.File = &FileIntent{
+			ResourceDigests: uniqueSorted(fileDigests),
+			MutationDigest:  input.FileMutationDigest,
+		}
 	}
 	digest, err := operationDigest(operation)
 	if err != nil {
@@ -309,6 +314,9 @@ func (o ExecutionOperation) Validate() error {
 				(index > 0 && digest == o.File.ResourceDigests[index-1]) {
 				return errors.New("execution file resource digest is invalid")
 			}
+		}
+		if o.File.MutationDigest != "" && !validDigest(o.File.MutationDigest) {
+			return errors.New("execution file mutation digest is invalid")
 		}
 	}
 	if o.Artifact != nil &&

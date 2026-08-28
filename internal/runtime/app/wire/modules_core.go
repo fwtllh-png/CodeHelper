@@ -189,7 +189,7 @@ func (builtinToolsModule) Build(
 		state.platform.repositoryIndex,
 		state.config.workspaceStateRoot,
 		state.config.workspaceStateID,
-		state.platform.leaseAuthority,
+		state.platform.leaseAuthority, state.config.execution.LeaseTimeout,
 		state.platform.web,
 	)
 	if err != nil {

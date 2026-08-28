@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"errors"
+	"time"
 
 	language "github.com/fwtllh-png/CodeHelper/internal/adapter/lsp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -22,6 +23,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
 )
 
 func NewWithSandboxBackend(root string, backend sandbox.Backend) (*tool.Registry, error) {
@@ -150,11 +152,19 @@ func NewWithIndexAndRuntime(
 	for _, register := range []func(*tool.Registry, string, sandbox.Backend) error{
 		gittool.RegisterWithBackend,
 		lsptool.RegisterWithBackend,
-		contenttool.RegisterWithBackend,
 	} {
 		if err := register(registry, root, backend); err != nil {
 			return nil, nil, err
 		}
+	}
+	var workspaceRuntime *workspacebroker.Runtime
+	if runtime != nil {
+		workspaceRuntime = runtime.workspace
+	}
+	if err := contenttool.RegisterWithBackendAndRuntime(
+		registry, root, backend, workspaceRuntime,
+	); err != nil {
+		return nil, nil, err
 	}
 	if err := shelltool.RegisterWithManagerAndBackend(
 		registry, root, manager, backend,
@@ -189,10 +199,11 @@ func NewWithRuntimeState(
 	index *repoindex.Index,
 	stateRoot, workspaceID string,
 	leaseAuthority *authority.LeaseAuthority,
+	leaseTTL time.Duration,
 	webOpts ...webtool.Options,
 ) (*tool.Registry, *handletool.Store, error) {
 	runtime, err := NewProcessRuntime(
-		root, stateRoot, workspaceID, 1, leaseAuthority,
+		root, stateRoot, workspaceID, 1, leaseAuthority, leaseTTL,
 	)
 	if err != nil {
 		return nil, nil, err

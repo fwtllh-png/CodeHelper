@@ -67,7 +67,7 @@ func buildChatWorkspaces(
 	merger := chatmerge.New(
 		state.config.execution.Workspace, state.orchestration.chatTrees.root,
 		state.orchestration.parentFiles, state.security.journal,
-		gate, allowApply,
+		gate, state.orchestration.chatTrees.brokers, allowApply,
 	)
 	return newChatWorkspaces(
 		state.orchestration.chatTrees, state.orchestration.childToolsets,

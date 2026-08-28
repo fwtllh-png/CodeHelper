@@ -14,11 +14,13 @@ import (
 	agenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/agent"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/builtin"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
+	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
+	"github.com/fwtllh-png/CodeHelper/internal/orchestration/chatmerge"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
@@ -29,9 +31,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
-// gitCommandTimeout bounds a single provisioning command. A worktree checkout of
-// a large repository is slow, but not minutes-slow, and hanging here would hang
-// the parent turn that called the agent tool.
+// gitCommandTimeout bounds one caller-owned provisioning attempt.
 const gitCommandTimeout = 2 * time.Minute
 
 // childWorktrees provisions where each child agent works. A read-only child gets
@@ -46,14 +46,22 @@ type childWorktrees struct {
 	strategy   string
 	backend    sandbox.Backend
 	scratch    subagent.WorktreeProvider
+	brokers    chatmerge.WorkspaceBroker
 }
 
 func newChildWorktrees(
-	workspace, root, strategy string, backend sandbox.Backend,
+	workspace, root, strategy string,
+	backend sandbox.Backend,
+	leases *toolguard.LeaseAuthority,
+	leaseTTL time.Duration,
 ) (*childWorktrees, error) {
+	brokers, err := builtin.NewWorkspaceBroker(workspace, leases, leaseTTL)
+	if err != nil {
+		return nil, err
+	}
 	trees := &childWorktrees{
 		repository: workspace, root: root, strategy: strategy, backend: backend,
-		scratch: subagent.NewScratchWorktrees(root),
+		scratch: subagent.NewScratchWorktrees(root), brokers: brokers,
 	}
 	if strategy != config.SubagentWorkspaceWorktree {
 		return trees, nil
@@ -111,19 +119,19 @@ func (c *childWorktrees) Provision(
 	if err := os.RemoveAll(path); err != nil {
 		return subagent.Worktree{}, err
 	}
-	if err := c.addDetachedWorktree(ctx, path); err != nil {
-		return subagent.Worktree{}, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			fmt.Sprintf("cannot create a git worktree for child agent %s: %s", agentID, err),
-			false, nil,
-		)
-	}
 	baseRev, err := c.git(ctx, "rev-parse", "HEAD")
 	if err != nil {
-		_ = c.Discard(subagent.Worktree{ID: agentID, Path: path, Isolated: true})
 		return subagent.Worktree{}, protocol.NewProblem(
 			protocol.CodeUnavailable,
 			fmt.Sprintf("cannot record base revision for child agent %s: %s", agentID, err),
+			false, nil,
+		)
+	}
+	baseRev = strings.TrimSpace(baseRev)
+	if err := c.addDetachedWorktree(ctx, path, baseRev); err != nil {
+		return subagent.Worktree{}, protocol.NewProblem(
+			protocol.CodeUnavailable,
+			fmt.Sprintf("cannot create a git worktree for child agent %s: %s", agentID, err),
 			false, nil,
 		)
 	}
@@ -136,19 +144,20 @@ func (c *childWorktrees) Provision(
 func (c *childWorktrees) addDetachedWorktree(
 	ctx context.Context,
 	path string,
+	revision string,
 ) error {
-	_, firstErr := c.git(ctx, "worktree", "add", "--detach", path, "HEAD")
+	firstErr := c.brokers.AddWorktree(ctx, c.repository, path, revision)
 	if firstErr == nil {
 		return nil
 	}
 	// A killed host can leave an exact-path Git registration after its managed
 	// directory disappears. Remove only that registration, then retry once.
-	if _, cleanupErr := c.git(
-		ctx, "worktree", "remove", "--force", path,
+	if cleanupErr := c.brokers.RemoveWorktree(
+		ctx, c.repository, path,
 	); cleanupErr != nil {
 		return firstErr
 	}
-	_, retryErr := c.git(ctx, "worktree", "add", "--detach", path, "HEAD")
+	retryErr := c.brokers.AddWorktree(ctx, c.repository, path, revision)
 	if retryErr != nil {
 		return errors.Join(firstErr, fmt.Errorf("retry worktree add: %w", retryErr))
 	}
@@ -166,10 +175,14 @@ func (c *childWorktrees) Discard(worktree subagent.Worktree) error {
 	defer cancel()
 	// --force because the child almost certainly left uncommitted changes: this
 	// is a discard, and the caller already decided the work is done with.
-	if _, err := c.git(ctx, "worktree", "remove", "--force", worktree.Path); err != nil {
+	if err := c.brokers.RemoveWorktree(
+		ctx, c.repository, worktree.Path,
+	); err != nil {
 		// Removing the registration without the directory, or the other way
 		// round, would leave git complaining forever. Prune reconciles both.
-		if _, pruneErr := c.git(ctx, "worktree", "prune"); pruneErr != nil {
+		if pruneErr := c.brokers.PruneWorktrees(
+			ctx, c.repository,
+		); pruneErr != nil {
 			return errors.Join(err, pruneErr)
 		}
 		return os.RemoveAll(worktree.Path)
@@ -201,20 +214,7 @@ func (c *childWorktrees) checkRepository(ctx context.Context) error {
 }
 
 func (c *childWorktrees) git(ctx context.Context, arguments ...string) (string, error) {
-	result, err := process.Run(ctx, process.Options{
-		Path: process.GitExecutable(), Args: process.ManagedGitArguments(arguments), Dir: c.repository,
-	})
-	if err != nil {
-		return "", err
-	}
-	if result.ExitCode != 0 {
-		message := strings.TrimSpace(result.Stderr)
-		if message == "" {
-			message = strings.TrimSpace(result.Stdout)
-		}
-		return "", fmt.Errorf("git %s: %s", strings.Join(arguments, " "), message)
-	}
-	return result.Stdout, nil
+	return c.brokers.ReadVCS(ctx, c.repository, arguments...)
 }
 
 func (c *childWorktrees) commonGitDir(ctx context.Context) (string, error) {
