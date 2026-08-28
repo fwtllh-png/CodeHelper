@@ -30,6 +30,7 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 | Workspace Permission | 把已记忆权限绑定到单一 Workspace |
 | Constitution | 普通配置不能绕过的硬约束 |
 | Tool Guard | Identity、Risk、Resource、Approval 与 Evidence 的统一决策 |
+| Execution Authority | 将授权结果绑定为单次 Operation Lease，并校验 Generation 与 Controls |
 | Edit Journal | 记录 Before Image 与中断工作 |
 | Verify Gate | Commit 前收集正确性证据 |
 | OS Sandbox | 强制进程、文件系统和网络边界 |
@@ -74,6 +75,22 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 
 ## 进程执行
 
+- Guard 在现有 Policy、Permission Hook 和人工审批完成后，把冻结的 Tool Invocation
+  规范化为 `ExecutionOperation`。Operation 绑定 Workspace/Subject Generation、
+  Resource Namespace、Effect Contract、Required Controls、参数摘要和 Artifact
+  Provenance；资源排序、去重后计算稳定 Digest。
+- 每次实际 Attempt 使用共享 `LeaseAuthority` 签发并消费一个不可伪造、单次使用的
+  Execution Lease。Lease 绑定 Operation Digest、Permission Profile Digest、Policy
+  Revision、Sandbox Policy、Workspace/Subject Generation、Artifact Digest 和 Attempt。
+  过期、撤销、重复消费或任一 Generation 漂移都会 Fail Closed。
+- `execution.lease_timeout` 是授权到执行接管之间的显式配置上限；更早的调用 Context
+  Deadline 会收紧它。Lease 消费后，运行中资源的回收不受 Lease 到期影响。
+- Attempt Receipt 持久记录 Operation Digest、Lease ID/State、Effect、Workspace、
+  Subject、Policy 和 Sandbox 绑定。当前兼容 Facade 保持原有 Policy Decision、
+  Approval Scope、Typed Denial 与 Amendment 语义不变。
+- Artifact Manifest 和 `ProcessHandleCapability` 已建立不可变契约与边界测试，但真正
+  验证 Lease 并独占 Start/Cancel/Wait/Reap 的 Process/Artifact Broker 属于阶段 2。
+  在 Broker 交付前，`quality_process_smoke` 继续不可用。
 - Command 使用 Sanitized Environment。
 - Working Directory 与 Executable Path 必须显式。
 - 必须支持 Timeout、Cancel 和 Process Group Cleanup。
@@ -267,6 +284,7 @@ Workspace Integrity 不确定时，应停止执行，保留 State 与 Journal，
 公开报告中不能包含 Secret 或私有源码。应提供 Version、Platform、Command Shape、
 Sanitized Config Provenance、预期/实际 Security Decision，以及可行时的可复现 Fixture。
 
-后续将通过[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)
-把 Hook、MCP、宿主 Smoke 和其他旁路逐步收口到统一的 Operation、Execution Lease 与
-Broker 链路。该方案是演进目标，不代表当前实现已经交付。
+[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-1
+已交付 State Domain、旁路止血、Operation 与 Execution Lease。后续阶段继续把 Hook、
+MCP、宿主 Smoke 和其他入口迁移到 Process/Artifact/Network Broker；文档中 Broker
+相关目标不代表当前已经强制执行。

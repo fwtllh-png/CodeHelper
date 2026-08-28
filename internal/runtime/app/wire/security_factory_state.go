@@ -1,0 +1,33 @@
+package wire
+
+import (
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
+	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/security/permissions"
+	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+)
+
+type guardFactory struct {
+	registry               *tool.Registry
+	runtime                *policy.Runtime
+	workspace, workspaceID string
+	hooks                  *hooks.Manager
+	journal                *workspacejournal.Manager
+	readTracker            *workspacejournal.ReadTracker
+	diagnostics            diagnostics.Runner
+	permissions            *permissions.Store
+	onNetworkAllow         toolguard.NetworkAllow
+	leaseAuthority         *toolguard.LeaseAuthority
+	forceEditReview        bool
+	leaseTTL               time.Duration
+	now                    func() time.Time
+}
+
+func newLeaseAuthority() *toolguard.LeaseAuthority {
+	return toolguard.NewLeaseAuthority()
+}

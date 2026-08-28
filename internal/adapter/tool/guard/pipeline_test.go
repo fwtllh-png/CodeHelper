@@ -11,6 +11,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -272,6 +273,17 @@ func TestAdditionalPermissionApprovalReleasesAdmissionAndClaims(t *testing.T) {
 	if first.PermissionRevision != 1 || second.PermissionRevision != 2 ||
 		first.PermissionDigest == "" || second.PermissionDigest == "" ||
 		first.PermissionDigest == second.PermissionDigest ||
+		first.OperationDigest == "" || second.OperationDigest == "" ||
+		first.OperationDigest == second.OperationDigest ||
+		first.LeaseID == "" || second.LeaseID == "" ||
+		first.LeaseID == second.LeaseID ||
+		first.LeaseState != string(authority.LeaseSettled) ||
+		second.LeaseState != string(authority.LeaseSettled) ||
+		first.LeaseAttempt != 1 || second.LeaseAttempt != 2 ||
+		first.PolicyRevision == 0 ||
+		first.WorkspaceID == "" || first.WorkspaceGeneration == 0 ||
+		first.SubjectDigest == "" || first.SubjectGeneration == 0 ||
+		first.EffectKind == "" || first.EffectRisk == "" ||
 		first.Enforcement != "strong" || second.Enforcement != "strong" ||
 		first.Backend != "test" || second.Backend != "test" ||
 		first.NetworkMode != "denied" || second.NetworkMode != "denied" ||

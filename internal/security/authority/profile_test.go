@@ -33,6 +33,10 @@ func TestCompileProducesDeterministicEffectiveProfile(t *testing.T) {
 		Authorized: true, Revision: 1, Enforcement: "strong",
 		Capability: sandbox.Capability{
 			Backend: "seatbelt", Strength: sandbox.StrengthStrong, Available: true,
+			Controls: sandbox.Controls{
+				ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+				ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+			},
 		},
 		SandboxPolicy: sandbox.Policy{
 			ID: "sandbox-policy", WorkspaceRoot: root,
@@ -109,6 +113,14 @@ func TestProfileDigestDetectsMutation(t *testing.T) {
 	}
 }
 
+func TestCompileRejectsStrongCapabilityWithoutRequiredControls(t *testing.T) {
+	input := fixtureCompileInput(t)
+	input.Capability.Controls.NetworkIsolation = false
+	if _, err := Compile(input); err == nil {
+		t.Fatal("strong capability without network isolation was accepted")
+	}
+}
+
 func TestReplacementArgumentsProduceDifferentProfileDigest(t *testing.T) {
 	input := fixtureCompileInput(t)
 	first, err := Compile(input)
@@ -182,6 +194,10 @@ func fixtureCompileInput(t *testing.T) CompileInput {
 		Authorized: true, Revision: 1, Enforcement: "strong",
 		Capability: sandbox.Capability{
 			Backend: "seatbelt", Strength: sandbox.StrengthStrong, Available: true,
+			Controls: sandbox.Controls{
+				ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+				ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+			},
 		},
 		SandboxPolicy: sandbox.Policy{ID: "sandbox", WorkspaceRoot: root},
 	}

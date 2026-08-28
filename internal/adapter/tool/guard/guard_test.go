@@ -1501,6 +1501,10 @@ type strongBackend struct{}
 func (strongBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "test", Strength: sandbox.StrengthStrong, Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
 	}
 }
 func (strongBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {

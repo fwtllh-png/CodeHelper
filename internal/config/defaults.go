@@ -57,9 +57,10 @@ func Defaults() Config {
 		Telemetry: Telemetry{LogLevel: "info"},
 		Execution: Execution{
 			Protocol: "openai_chat", Mode: "act", Workspace: ".",
-			MaxSteps:    64,
-			Timeout:     2 * time.Minute,
-			IdleTimeout: 60 * time.Second, MaxConcurrent: 8,
+			MaxSteps:     64,
+			Timeout:      2 * time.Minute,
+			LeaseTimeout: 2 * time.Minute,
+			IdleTimeout:  60 * time.Second, MaxConcurrent: 8,
 
 			Verify: Verify{
 				Mode: "soft", Scope: "diagnostics", OnFailure: "fail",

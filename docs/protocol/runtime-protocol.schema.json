@@ -6110,11 +6110,29 @@
                   "duration_ms": {
                     "type": "integer"
                   },
+                  "effect_kind": {
+                    "type": "string"
+                  },
+                  "effect_reversibility": {
+                    "type": "string"
+                  },
+                  "effect_risk": {
+                    "type": "string"
+                  },
                   "enforcement": {
                     "type": "string"
                   },
                   "filesystem_unrestricted": {
                     "type": "boolean"
+                  },
+                  "lease_attempt": {
+                    "type": "integer"
+                  },
+                  "lease_id": {
+                    "type": "string"
+                  },
+                  "lease_state": {
+                    "type": "string"
                   },
                   "loopback_allowed": {
                     "type": "boolean"
@@ -6131,6 +6149,12 @@
                       "type": "string"
                     }
                   },
+                  "operation_digest": {
+                    "type": "string"
+                  },
+                  "operation_schema_version": {
+                    "type": "integer"
+                  },
                   "permission_access": {
                     "type": "string"
                   },
@@ -6144,6 +6168,9 @@
                     "type": "integer"
                   },
                   "permission_schema_version": {
+                    "type": "integer"
+                  },
+                  "policy_revision": {
                     "type": "integer"
                   },
                   "process_allowed": {
@@ -6186,6 +6213,9 @@
                   "sandbox": {
                     "type": "string"
                   },
+                  "sandbox_policy_id": {
+                    "type": "string"
+                  },
                   "sandbox_strength": {
                     "type": "string"
                   },
@@ -6197,6 +6227,18 @@
                     "format": "date-time"
                   },
                   "status": {
+                    "type": "string"
+                  },
+                  "subject_digest": {
+                    "type": "string"
+                  },
+                  "subject_generation": {
+                    "type": "integer"
+                  },
+                  "subject_id": {
+                    "type": "string"
+                  },
+                  "subject_kind": {
                     "type": "string"
                   },
                   "teardown": {
@@ -6214,7 +6256,16 @@
                   "workspace_base_write": {
                     "type": "boolean"
                   },
+                  "workspace_generation": {
+                    "type": "integer"
+                  },
+                  "workspace_id": {
+                    "type": "string"
+                  },
                   "workspace_root": {
+                    "type": "string"
+                  },
+                  "workspace_transaction": {
                     "type": "string"
                   },
                   "write_paths": {

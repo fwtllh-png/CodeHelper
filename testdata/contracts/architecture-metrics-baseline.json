@@ -342,12 +342,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 76,
-        "production_lines": 9254,
+        "production_lines": 9267,
         "options_fields": 74,
         "mutex_fields": 7
       },
       "relaxations": {
-        "production_lines": "Route Workspace control state, sandbox homes, artifact staging, jobs, hooks, and MCP trust through one identity-bound composition contract."
+        "production_lines": "Route Workspace state domains and one shared Execution Lease Authority through the identity-bound Runtime composition contract."
       }
     },
     {
@@ -367,12 +367,12 @@
       "path": "internal/runtime/app/extension",
       "limits": {
         "internal_fanout": 21,
-        "production_lines": 3198,
+        "production_lines": 3215,
         "options_fields": 0,
         "mutex_fields": 6
       },
       "relaxations": {
-        "production_lines": "Persist and restore validated Plan execution identity across failed-turn recovery."
+        "production_lines": "Project immutable Operation and Execution Lease evidence into durable Tool Result events."
       }
     },
     {
@@ -630,12 +630,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 7070,
+        "production_lines": 7095,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-      "production_lines": "Publish content-safe economic admission, prefix divergence, append-only image attribution, uncached-input, Profile-bound recoverable Plan identity facts, and blocked Session lifecycle state."
+      "production_lines": "Publish versioned Operation, Execution Lease, authority generation, effect, and settlement evidence in guarded Tool receipts."
       }
     },
     {

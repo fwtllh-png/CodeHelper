@@ -237,10 +237,9 @@ func (g *Guard) runAttempt(
 	egressRetried bool,
 	permissionRetried bool,
 	profileOverride *authority.EffectivePermissionProfile,
-) attemptRun {
+) (run attemptRun) {
 	invocation := prepared.invocation
 	started := g.now()
-	run := attemptRun{}
 	var profile authority.EffectivePermissionProfile
 	var err error
 	if profileOverride == nil {
@@ -261,6 +260,45 @@ func (g *Guard) runAttempt(
 		return run
 	}
 	run.profile = profile
+	operation, lease, leaseSnapshot, err := g.issueExecutionLease(
+		ctx,
+		prepared,
+		profile,
+		uint64(sequence),
+	)
+	if err != nil {
+		run.err = err
+		run.receipt = attemptReceipt(
+			sequence, mode, started, g.now(), tool.OutcomeRejected, "lease_issue",
+			run.profile,
+		)
+		return run
+	}
+	defer func() {
+		snapshot, settleErr := settleExecutionLease(
+			g.leaseAuthority,
+			lease,
+			run.receipt.Status,
+			run.receipt.Reason,
+			g.now(),
+		)
+		if settleErr != nil {
+			run.err = errors.Join(run.err, settleErr)
+			run.receipt.Status = tool.OutcomeFailed
+			run.receipt.Reason = "lease_settlement"
+			run.receipt.TerminalOwner = tool.TerminalOwnerGuard
+			snapshot = leaseSnapshot
+		}
+		bindAttemptLease(&run.receipt, operation, snapshot)
+		if settleErr == nil {
+			if releaseErr := g.leaseAuthority.Release(lease); releaseErr != nil {
+				run.err = errors.Join(run.err, releaseErr)
+				run.receipt.Status = tool.OutcomeFailed
+				run.receipt.Reason = "lease_release"
+				run.receipt.TerminalOwner = tool.TerminalOwnerGuard
+			}
+		}
+	}()
 	dispatchStarted := g.now()
 	releaseAdmission, err := tool.AdmitExecution(ctx, invocation.Descriptor.ParallelPolicy)
 	run.dispatchWait = g.now().Sub(dispatchStarted)
@@ -699,6 +737,33 @@ func bindAttemptAuthority(
 			Digest: source.Digest, Revision: source.Revision,
 		}
 	}
+}
+
+func bindAttemptLease(
+	receipt *tool.AttemptReceipt,
+	operation authority.ExecutionOperation,
+	lease authority.LeaseSnapshot,
+) {
+	if receipt == nil || operation.Validate() != nil || lease.ID == "" {
+		return
+	}
+	receipt.OperationSchemaVersion = operation.SchemaVersion
+	receipt.OperationDigest = operation.Digest
+	receipt.LeaseID = lease.ID
+	receipt.LeaseState = string(lease.State)
+	receipt.LeaseAttempt = lease.Attempt
+	receipt.WorkspaceID = lease.WorkspaceID
+	receipt.WorkspaceGeneration = lease.WorkspaceGeneration
+	receipt.SubjectKind = string(operation.Subject.Kind)
+	receipt.SubjectID = operation.Subject.ID
+	receipt.SubjectDigest = lease.SubjectDigest
+	receipt.SubjectGeneration = lease.SubjectGeneration
+	receipt.PolicyRevision = lease.PolicyRevision
+	receipt.SandboxPolicyID = lease.SandboxPolicyID
+	receipt.EffectKind = string(operation.Effect.Kind)
+	receipt.EffectRisk = string(operation.Effect.Risk)
+	receipt.EffectReversibility = string(operation.Effect.Reversibility)
+	receipt.WorkspaceTransaction = string(operation.Effect.WorkspaceTransaction)
 }
 
 func amendmentReceipt(

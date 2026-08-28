@@ -112,11 +112,15 @@ type Options struct {
 	PermissionHooks       PermissionRequester
 	Now                   func() time.Time
 	ApprovalTTL           time.Duration
+	LeaseTTL              time.Duration
 	ReadTracker           *workspacejournal.ReadTracker
 	Journal               *workspacejournal.Manager
 	Diagnostics           diagnostics.Runner
 	Escalation            *EscalationPolicy
 	ForceEditPlanApproval bool
+	WorkspaceID           string
+	WorkspaceGeneration   uint64
+	LeaseAuthority        *authority.LeaseAuthority
 }
 
 type pending struct {
@@ -156,11 +160,15 @@ type Guard struct {
 	permissionHooks       PermissionRequester
 	now                   func() time.Time
 	approvalTTL           time.Duration
+	leaseTTL              time.Duration
 	readTracker           *workspacejournal.ReadTracker
 	journal               *workspacejournal.Manager
 	diagnostics           diagnostics.Runner
 	escalation            EscalationPolicy
 	forceEditPlanApproval bool
+	workspaceID           string
+	workspaceGeneration   uint64
+	leaseAuthority        *authority.LeaseAuthority
 
 	mu           sync.Mutex
 	pending      map[string]*pending
@@ -209,11 +217,22 @@ func New(options Options) (*Guard, error) {
 	if options.ApprovalTTL <= 0 {
 		options.ApprovalTTL = 5 * time.Minute
 	}
+	if options.LeaseTTL <= 0 {
+		options.LeaseTTL = options.ApprovalTTL
+	}
 	if options.ReadTracker == nil {
 		options.ReadTracker = workspacejournal.NewReadTracker()
 	}
 	if options.Diagnostics == nil {
 		options.Diagnostics = diagnostics.UnavailableRunner{}
+	}
+	if options.WorkspaceGeneration == 0 {
+		options.WorkspaceGeneration = 1
+	}
+	if options.LeaseAuthority == nil {
+		options.LeaseAuthority = authority.NewLeaseAuthority(
+			authority.LeaseAuthorityOptions{Now: options.Now},
+		)
 	}
 	escalation := DefaultEscalationPolicy()
 	if options.Escalation != nil {
@@ -240,9 +259,13 @@ func New(options Options) (*Guard, error) {
 		onNetworkAllow: options.OnNetworkAllow,
 		hooks:          options.Hooks, permissionHooks: options.PermissionHooks, now: options.Now,
 		approvalTTL: options.ApprovalTTL,
+		leaseTTL:    options.LeaseTTL,
 		readTracker: options.ReadTracker, journal: options.Journal, diagnostics: options.Diagnostics,
 		escalation:            escalation,
 		forceEditPlanApproval: options.ForceEditPlanApproval,
+		workspaceID:           options.WorkspaceID,
+		workspaceGeneration:   options.WorkspaceGeneration,
+		leaseAuthority:        options.LeaseAuthority,
 		pending:               make(map[string]*pending), completed: make(map[string]time.Time),
 		recovered: make(map[string]ApprovalRequest),
 	}, nil

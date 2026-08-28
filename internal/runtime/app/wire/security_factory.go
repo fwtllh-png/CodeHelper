@@ -2,37 +2,18 @@ package wire
 
 import (
 	"context"
-	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/security/permissions"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
-
-type guardFactory struct {
-	registry        *tool.Registry
-	runtime         *policy.Runtime
-	workspace       string
-	hooks           *hooks.Manager
-	journal         *workspacejournal.Manager
-	readTracker     *workspacejournal.ReadTracker
-	diagnostics     diagnostics.Runner
-	permissions     *permissions.Store
-	onNetworkAllow  toolguard.NetworkAllow
-	forceEditReview bool
-	now             func() time.Time
-}
 
 func (f guardFactory) Build(context.Context) (*toolguard.Guard, error) {
 	options := toolguard.Options{
 		Registry: f.registry, Policy: f.runtime,
 
-		ForceEditPlanApproval: f.forceEditReview, Now: f.now, Diagnostics: f.diagnostics, OnNetworkAllow: f.onNetworkAllow, Workspace: f.workspace,
+		ForceEditPlanApproval: f.forceEditReview, Now: f.now, Diagnostics: f.diagnostics, OnNetworkAllow: f.onNetworkAllow, Workspace: f.workspace, WorkspaceID: f.workspaceID, WorkspaceGeneration: 1, LeaseAuthority: f.leaseAuthority, LeaseTTL: f.leaseTTL,
 		ReadTracker: f.readTracker, Journal: f.journal,
 	}
 	if f.hooks != nil {
@@ -72,8 +53,7 @@ func bindEngineGuardFactory(
 	factory.onNetworkAllow = options.OnNetworkAllow
 	factory.now = options.Observability.Now
 	if options.Workspace != base.workspace {
-		factory.hooks = nil
-		factory.permissions = nil
+		factory.hooks, factory.permissions, factory.workspaceID = nil, nil, ""
 	}
 	options.Guard = nil
 	options.GuardFactory = func(ctx context.Context) (*toolguard.Guard, error) {

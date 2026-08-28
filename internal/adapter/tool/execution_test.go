@@ -112,7 +112,7 @@ func TestCloneExecutionReceiptDeepCopiesAuthorityEvidence(t *testing.T) {
 
 func TestExecutionReceiptAuthorityEvidenceRoundTripsJSON(t *testing.T) {
 	source := tool.ExecutionReceipt{Attempts: []tool.AttemptReceipt{{
-		PermissionSchemaVersion: 1,
+		PermissionSchemaVersion: 2,
 		PermissionRevision:      2,
 		PermissionDigest:        strings.Repeat("a", 64),
 		Enforcement:             "strong",

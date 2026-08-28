@@ -18,7 +18,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 type FilesystemAuthority struct {
 	WorkspaceRoot      string   `json:"workspace_root"`
@@ -59,6 +59,7 @@ type EffectivePermissionProfile struct {
 	Filesystem    FilesystemAuthority `json:"filesystem"`
 	Network       NetworkAuthority    `json:"network"`
 	Process       ProcessAuthority    `json:"process"`
+	Controls      EffectiveControls   `json:"controls"`
 	Provenance    []AuthoritySource   `json:"provenance"`
 	Digest        string              `json:"digest"`
 }
@@ -119,6 +120,14 @@ func Compile(input CompileInput) (EffectivePermissionProfile, error) {
 			Backend:     input.Capability.Backend,
 			Strength:    string(input.Capability.Strength),
 		},
+		Controls: EffectiveControls{
+			FilesystemRead:  input.Capability.Controls.ReadIsolation,
+			FilesystemWrite: input.Capability.Controls.WriteIsolation,
+			Network:         input.Capability.Controls.NetworkIsolation,
+			ProcessTree:     input.Capability.Controls.ProcessIsolation,
+			Syscall:         input.Capability.Controls.SyscallIsolation,
+			SymlinkSafety:   input.Capability.Controls.SymlinkSafe,
+		},
 	}
 	compileResources(&profile, input.Invocation)
 	compileSandboxCeiling(&profile, input)
@@ -147,6 +156,13 @@ func (p EffectivePermissionProfile) Validate() error {
 	if p.Process.Enforcement == "strong" &&
 		(p.Process.Backend == "" || p.Process.Strength != string(sandbox.StrengthStrong)) {
 		return errors.New("strong profile has no strong sandbox backend")
+	}
+	if p.Process.Enforcement == "strong" &&
+		(!p.Controls.FilesystemRead ||
+			!p.Controls.Network ||
+			!p.Controls.ProcessTree ||
+			!p.Controls.SymlinkSafety) {
+		return errors.New("strong profile controls are incomplete")
 	}
 	return nil
 }

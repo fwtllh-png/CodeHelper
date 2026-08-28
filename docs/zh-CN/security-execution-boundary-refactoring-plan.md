@@ -1,6 +1,6 @@
 # 安全执行边界重构方案
 
-> 状态：阶段 0 已交付；阶段 1-6 为提案。
+> 状态：阶段 0-1 已交付；阶段 2-6 为提案。
 >
 > 本文描述 CodeHelper 对副作用执行边界的目标设计和渐进迁移方案，不代表当前实现已经
 > 完成这些约束。当前已交付行为以[安全模型](./security.md)、源码和测试为准。
@@ -740,6 +740,23 @@ Golden Test 固定：
 - Resource Root、Artifact、Process Handle 和 Sandbox Home Generation 失配；
 - Preflight Failure 与 Verification Evidence 的失败闭环。
 
+实现状态：
+
+| 能力 | 当前实现 |
+| --- | --- |
+| Operation、Subject、Effect 与 Resource Namespace | `internal/security/authority/operation.go` |
+| 单次 Lease、撤销、过期、消费与 Settlement | `internal/security/authority/lease.go` |
+| Artifact Manifest 与 Bundle Tree Digest | `internal/security/authority/artifact.go` |
+| Process Handle Capability | `internal/security/authority/process_handle.go` |
+| Tool Guard 兼容 Facade | `internal/adapter/tool/guard/authority.go` 与 `pipeline_attempt.go` |
+| Durable Receipt Projection | `internal/adapter/tool/execution.go`、`internal/runtime/protocol/tool_execution_receipt.go` |
+| 公开 Lease TTL | `execution.lease_timeout` / `CODEHELPER_LEASE_TIMEOUT` |
+
+阶段 1 保持原有 Policy Decision、Approval Scope、Typed Denial 和 Amendment 语义。
+Lease 已在每个实际 Tool Attempt 前签发并单次消费，但 Process/Artifact Broker 尚未
+接管进程启动；因此 Broker Enforcement、Desktop Smoke 和完整失败 Settlement Ledger
+仍属于阶段 2。
+
 ### 阶段 2：建立 Process/Artifact Broker 并先迁移 Process Smoke
 
 先迁移当前风险最高的 Desktop Process Smoke，证明：
@@ -934,5 +951,5 @@ Windows 在 Partial Backend 落地后维护独立 Corpus，并明确不能证明
 5. 在 Artifact Snapshot 与 Desktop Broker 完成前关闭 Process Smoke；随后将它作为首个
    Broker 迁移对象。
 
-这批工作不改变现有 Tool Guard 的决策语义。完成后再引入 Operation/Lease 和 Broker，
-可以先降低真实风险，再逐步统一架构。
+阶段 0 先降低真实风险，阶段 1 已在不改变 Tool Guard 决策语义的前提下引入
+Operation/Lease。下一步由阶段 2 的 Process/Artifact Broker 接管真实进程生命周期。

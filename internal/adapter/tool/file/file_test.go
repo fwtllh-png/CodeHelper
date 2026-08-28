@@ -575,7 +575,14 @@ func executePatch(t *testing.T, registry *tool.Registry, patch string) {
 type fileTestBackend struct{}
 
 func (fileTestBackend) Capability() sandbox.Capability {
-	return sandbox.Capability{Platform: "test", Backend: "passthrough", Strength: sandbox.StrengthStrong, Available: true}
+	return sandbox.Capability{
+		Platform: "test", Backend: "passthrough",
+		Strength: sandbox.StrengthStrong, Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
+	}
 }
 
 func (fileTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {

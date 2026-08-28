@@ -141,6 +141,9 @@ type Execution struct {
 	// headers. Streaming body lifetime is governed by the caller Context and
 	// IdleTimeout, so active streams do not inherit a fixed wall-clock limit.
 	Timeout time.Duration `json:"timeout" toml:"-"`
+	// LeaseTimeout bounds the authorization-to-execution handoff. It does not
+	// terminate work after a Broker has consumed the Lease.
+	LeaseTimeout time.Duration `json:"lease_timeout" toml:"-"`
 	// The phase-specific values override Timeout when non-zero.
 	ConnectionTimeout     time.Duration `json:"connection_timeout" toml:"-"`
 	TLSHandshakeTimeout   time.Duration `json:"tls_handshake_timeout" toml:"-"`
@@ -377,6 +380,7 @@ type Overrides struct {
 	MaxOutputTokens       *uint64
 	MaxSteps              *int
 	Timeout               *time.Duration
+	LeaseTimeout          *time.Duration
 	ConnectionTimeout     *time.Duration
 	TLSHandshakeTimeout   *time.Duration
 	ResponseHeaderTimeout *time.Duration

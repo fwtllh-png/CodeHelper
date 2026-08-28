@@ -345,6 +345,23 @@ type AttemptReceipt struct {
 	Status                  OutcomeStatus               `json:"status"`
 	TerminalOwner           TerminalOwner               `json:"terminal_owner"`
 	Reason                  string                      `json:"reason,omitempty"`
+	OperationSchemaVersion  int                         `json:"operation_schema_version,omitempty"`
+	OperationDigest         string                      `json:"operation_digest,omitempty"`
+	LeaseID                 string                      `json:"lease_id,omitempty"`
+	LeaseState              string                      `json:"lease_state,omitempty"`
+	LeaseAttempt            uint64                      `json:"lease_attempt,omitempty"`
+	WorkspaceID             string                      `json:"workspace_id,omitempty"`
+	WorkspaceGeneration     uint64                      `json:"workspace_generation,omitempty"`
+	SubjectKind             string                      `json:"subject_kind,omitempty"`
+	SubjectID               string                      `json:"subject_id,omitempty"`
+	SubjectDigest           string                      `json:"subject_digest,omitempty"`
+	SubjectGeneration       uint64                      `json:"subject_generation,omitempty"`
+	PolicyRevision          uint64                      `json:"policy_revision,omitempty"`
+	SandboxPolicyID         string                      `json:"sandbox_policy_id,omitempty"`
+	EffectKind              string                      `json:"effect_kind,omitempty"`
+	EffectRisk              string                      `json:"effect_risk,omitempty"`
+	EffectReversibility     string                      `json:"effect_reversibility,omitempty"`
+	WorkspaceTransaction    string                      `json:"workspace_transaction,omitempty"`
 	PermissionSchemaVersion int                         `json:"permission_schema_version,omitempty"`
 	PermissionRevision      uint64                      `json:"permission_revision,omitempty"`
 	PermissionDigest        string                      `json:"permission_digest,omitempty"`

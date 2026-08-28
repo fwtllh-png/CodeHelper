@@ -234,6 +234,9 @@ func (s Snapshot) Validate() error {
 	if execution.Timeout <= 0 {
 		return fieldError(fieldTimeout, s.Provenance, "must be positive")
 	}
+	if execution.LeaseTimeout <= 0 {
+		return fieldError(fieldLeaseTimeout, s.Provenance, "must be positive")
+	}
 	for _, value := range []struct {
 		field string
 		value time.Duration

@@ -73,6 +73,7 @@ const (
 	fieldMaxOutputTokens       = "execution.max_output_tokens"
 	fieldMaxSteps              = "execution.max_steps"
 	fieldTimeout               = "execution.timeout"
+	fieldLeaseTimeout          = "execution.lease_timeout"
 	fieldConnectionTimeout     = "execution.connection_timeout"
 	fieldTLSHandshakeTimeout   = "execution.tls_handshake_timeout"
 	fieldResponseHeaderTimeout = "execution.response_header_timeout"
@@ -211,6 +212,7 @@ func defaultProvenance() map[string]Source {
 		fieldMaxOutputTokens:       SourceDefault,
 		fieldMaxSteps:              SourceDefault,
 		fieldTimeout:               SourceDefault,
+		fieldLeaseTimeout:          SourceDefault,
 		fieldConnectionTimeout:     SourceDefault,
 		fieldTLSHandshakeTimeout:   SourceDefault,
 		fieldResponseHeaderTimeout: SourceDefault,

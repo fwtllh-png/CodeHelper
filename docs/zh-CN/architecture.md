@@ -51,6 +51,7 @@ Web
 5. 所有有副作用工具都经过 `adapter/tool/guard`。
 6. UI State 是 Projection，不是 Runtime 事实来源。
 7. 持久化写入在所属边界内使用事务或 Journal。
+8. Guard 授权后的副作用尝试必须绑定规范化 Execution Operation 和单次 Lease。
 
 Architecture Test 会检查重要 Import 限制。需要违反这些规则的设计必须先进行显式架构
 调整，不能用局部捷径绕过。
@@ -73,6 +74,14 @@ SQLite 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchest
 拥有 Task/Automation Repository、Workflow Executor、Scheduler 构造、Subagent 与
 Child Worktree/Toolset。Provider 显式输出 Provider/Model Catalog，Security 显式
 输出 Permission Store 与 Guard Factory。
+
+`internal/security/authority` 拥有执行授权数据模型。它把已验证的 Tool Invocation
+规范化为带 Resource Namespace、Root Generation、Subject、Effect Contract 和
+Required Controls 的 `ExecutionOperation`，并由 Runtime 共享的 `LeaseAuthority`
+签发单次 `ExecutionLease`。Guard 保留 `ExecuteBound` 作为兼容 Facade，但每个实际
+Attempt 都会先签发和消费 Lease，再把 Operation/Lease/Settlement 证据投影到
+`tool.result.execution`。Process、Artifact 和 Desktop Broker 尚未在阶段 1 接管进程
+启动，因此 Host Process Smoke 仍保持关闭。
 
 Builtin 与 Extension Tool 共享同一个 Registry 实例。Plugin、Skill、Memory、
 Dynamic Tool、Hook 与 MCP Contributor 只接收其显式构造能力和共享 Registry，不接收
@@ -537,7 +546,7 @@ Prepare/Commit Receipt；Host 只提交 Operation 与投影 Runtime-owned State�
 ### MCP
 
 外部 Server 通过协议 Adapter 暴露 Tool。Health、Timeout、Circuit Breaker 和 Tool
-Binding 隔离避免单个 Server 故障污染全部工具。阶段 0 中 stdio Server 仍是宿主进程，
+Binding 隔离避免单个 Server 故障污染全部工具。当前 stdio Server 仍是宿主进程，
 因此默认关闭，只接受外部 State Directory 或已验证 Plugin 中显式
 `host_trusted=true` 的配置。
 

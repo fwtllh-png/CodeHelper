@@ -44,6 +44,7 @@ execution.connection_timeout
 execution.idle_timeout
 execution.journal.durable
 execution.journal.recover_on_start
+execution.lease_timeout
 execution.max_concurrent
 execution.max_output_tokens
 execution.max_steps

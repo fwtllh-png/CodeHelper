@@ -2,10 +2,11 @@ package app
 
 import (
 	"encoding/json"
-	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"strings"
 	"testing"
 	"time"
+
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -24,8 +25,17 @@ func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {
 		Disposition: tool.DispositionWaitForTeardown,
 		Attempts: []tool.AttemptReceipt{{
 			Sequence: 1, Sandbox: "strong", Status: tool.OutcomeRejected,
-			TerminalOwner:           tool.TerminalOwnerGuard,
-			PermissionSchemaVersion: 1, PermissionRevision: 7,
+			TerminalOwner:          tool.TerminalOwnerGuard,
+			OperationSchemaVersion: 1, OperationDigest: digest,
+			LeaseID: "lease-1", LeaseState: "settled", LeaseAttempt: 1,
+			WorkspaceID: digest, WorkspaceGeneration: 2,
+			SubjectKind: "builtin", SubjectID: "builtin:exec_command",
+			SubjectDigest: digest, SubjectGeneration: 3,
+			PolicyRevision: 7, SandboxPolicyID: "sandbox-policy",
+			EffectKind: "process.read_only", EffectRisk: "low",
+			EffectReversibility:     "reversible",
+			WorkspaceTransaction:    "none",
+			PermissionSchemaVersion: 2, PermissionRevision: 7,
 			PermissionDigest: digest, PermissionCapability: tool.CapabilityProcess,
 			PermissionAccess: tool.AccessRead, Enforcement: "strong",
 			Backend: "seatbelt", SandboxStrength: "strong",
@@ -57,6 +67,8 @@ func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {
 		projected.TerminalOwner != "guard" ||
 		len(projected.Attempts) != 1 ||
 		projected.Attempts[0].PermissionDigest != digest ||
+		projected.Attempts[0].OperationDigest != digest ||
+		projected.Attempts[0].LeaseState != "settled" ||
 		projected.Attempts[0].ReadRoots[0] != "/workspace" ||
 		!projected.Attempts[0].LoopbackAllowed ||
 		projected.Attempts[0].Denial.Resource != "/workspace/result.txt" {
@@ -83,6 +95,8 @@ func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {
 	result, ok := decoded.Data.(*protocol.ToolResultData)
 	if !ok || result.Execution == nil ||
 		result.Execution.Attempts[0].PermissionDigest != digest ||
+		result.Execution.Attempts[0].OperationDigest != digest ||
+		result.Execution.Attempts[0].LeaseID != "lease-1" ||
 		!result.Execution.Attempts[0].LoopbackAllowed {
 		t.Fatalf("decoded result = %#v", decoded.Data)
 	}

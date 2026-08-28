@@ -56,6 +56,7 @@ tools = true
 max_output_tokens = 0           # 0 = 使用当前模型声明的 MaxOutputTokens
 max_steps = 64                  # 连续无结构化进展的 Step Lease；0 = 不设置
 timeout = "2m"                  # 连接、TLS 和响应头阶段
+lease_timeout = "2m"            # Guard 授权到 Executor 接管前的 Lease 有效期
 connection_timeout = "0s"       # 0 表示继承 timeout
 tls_handshake_timeout = "0s"    # 0 表示继承 timeout
 response_header_timeout = "0s"  # 0 表示继承 timeout
@@ -275,6 +276,11 @@ Mutation、任意 Plan 状态变化、Verification 或 Completion 推进都会�
 `execution.idle_timeout` 约束相邻流事件之间的空闲时间，每收到一个事件就重新计时，
 因此持续产出进展的长流不会在固定两分钟后被中断。
 
+`execution.lease_timeout` 是 Guard 完成授权到 Executor 消费 Execution Lease 之间的
+公开上限，可由 `CODEHELPER_LEASE_TIMEOUT` 或受信配置覆盖。调用 Context 的 Deadline
+更早时使用更早值。Lease 被消费后，运行中进程的 Timeout、Cancel、Wait 和 Reap 由
+Executor/Broker 生命周期负责，不能因为 Lease 到期而放弃回收。
+
 这些 Convergence Budget 不等于物理边界或用户配置的硬上限。Runtime 不会越过
 Token/Cost Ceiling，不会猜测半截 Tool Call，不会绕过 Content Filter，也不会在安全
 Compaction 后请求仍无法放入 Context 的 Sample。
@@ -477,7 +483,7 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | --- | --- |
 | `CODEHELPER_PROVIDER`、`CODEHELPER_MODEL`、`CODEHELPER_PROTOCOL` | 主模型路由 |
 | `CODEHELPER_MODE`、`CODEHELPER_WORKSPACE`、`CODEHELPER_TOOLS` | 执行行为 |
-| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT` | 限制 |
+| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_LEASE_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT` | 限制 |
 | `CODEHELPER_BUDGET_TOKENS`、`CODEHELPER_BUDGET_USD` | 会话预算 |
 | `CODEHELPER_SUBAGENT_*` | 委派模式、Tree 限制、Child 预算、Wall Time 与 Workspace 策略 |
 | `CODEHELPER_VERIFY_*` | 验证行为 |

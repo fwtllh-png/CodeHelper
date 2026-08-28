@@ -53,6 +53,7 @@ tools = true
 max_output_tokens = 2048
 max_steps = 3
 timeout = "45s"
+lease_timeout = "40s"
 idle_timeout = "15s"
 max_concurrent = 2
 rate_limit = 4.5
@@ -106,6 +107,7 @@ native_search = true
 	if snapshot.Config.Execution.Provider != "env-provider" ||
 		snapshot.Config.Execution.Model != "file-model" ||
 		snapshot.Config.Execution.MaxSteps != 9 ||
+		snapshot.Config.Execution.LeaseTimeout != 40*time.Second ||
 		snapshot.Provenance[fieldProvider] != SourceEnv ||
 		snapshot.Provenance[fieldModel] != SourceFile ||
 		snapshot.Provenance[fieldMaxSteps] != SourceStartup {
@@ -440,6 +442,49 @@ response_header_timeout = "5s"
 		execution.TLSHandshakeTimeout != 4*time.Second ||
 		execution.ResponseHeaderTimeout != 5*time.Second {
 		t.Fatalf("execution deadlines = %+v", execution)
+	}
+}
+
+func TestExecutionLeaseTimeoutHasProvenanceAndValidation(t *testing.T) {
+	if Defaults().Execution.LeaseTimeout != 2*time.Minute {
+		t.Fatalf(
+			"default lease timeout = %s",
+			Defaults().Execution.LeaseTimeout,
+		)
+	}
+	path := writeConfig(t, `
+[execution]
+lease_timeout = "45s"
+`)
+	fromFile, err := Load(LoadOptions{
+		Path: path, LookupEnv: envLookup(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromFile.Config.Execution.LeaseTimeout != 45*time.Second ||
+		fromFile.Provenance[fieldLeaseTimeout] != SourceFile {
+		t.Fatalf("file lease timeout = %+v", fromFile)
+	}
+	fromEnv, err := Load(LoadOptions{
+		Path: path,
+		LookupEnv: envLookup(map[string]string{
+			"CODEHELPER_LEASE_TIMEOUT": "30s",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromEnv.Config.Execution.LeaseTimeout != 30*time.Second ||
+		fromEnv.Provenance[fieldLeaseTimeout] != SourceEnv {
+		t.Fatalf("environment lease timeout = %+v", fromEnv)
+	}
+	invalid := time.Duration(0)
+	_, err = Load(LoadOptions{
+		Overrides: Overrides{LeaseTimeout: &invalid},
+	})
+	if err == nil || !strings.Contains(err.Error(), fieldLeaseTimeout) {
+		t.Fatalf("zero lease timeout error = %v", err)
 	}
 }
 

@@ -88,9 +88,9 @@ func (securityModule) Build(
 	session.constitutionPrompt = constitutionBundle.Prompt
 	factory := guardFactory{
 		registry: state.tools.registry, runtime: securityRuntime,
-		workspace: execution.Workspace, hooks: session.hooks,
+		workspace: execution.Workspace, workspaceID: state.config.workspaceStateID, hooks: session.hooks,
 		journal: journal, diagnostics: diagnosticRunner,
-		permissions:     permissionStore,
+		permissions: permissionStore, leaseAuthority: newLeaseAuthority(), leaseTTL: execution.LeaseTimeout,
 		onNetworkAllow:  state.provider.egress.AllowTarget,
 		forceEditReview: state.options.ForceEditPlanApproval,
 	}
