@@ -147,6 +147,19 @@ func NewDefaultTransport(
 	return NewHTTPTransport(ctx, config)
 }
 
+func NewAuthorizedTransportFactory(runtime *RuntimeAuthority) TransportFactory {
+	return func(
+		ctx context.Context,
+		name string,
+		config ServerConfig,
+	) (Transport, error) {
+		if config.Transport == "stdio" {
+			return NewAuthorizedStdioTransport(ctx, name, config, runtime)
+		}
+		return NewHTTPTransport(ctx, config)
+	}
+}
+
 func (t *HTTPTransport) Request(
 	ctx context.Context,
 	method string,

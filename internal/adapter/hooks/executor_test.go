@@ -69,6 +69,10 @@ func (b *captureSandboxBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "capture",
 		Strength: sandbox.StrengthStrong, Available: true,
+		Controls: sandbox.Controls{
+			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
+			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		},
 	}
 }
 
@@ -98,6 +102,7 @@ func TestProductionHookProcessIsReadOnlyAndNetworkDenied(t *testing.T) {
 		ID: "capture", Source: SourceRepository, Trust: TrustWorkspace,
 		Scope: ScopeProcess, Mode: ModeEnforce,
 		Command: executable, WorkingDirectory: workspace,
+		Authority: func(context.Context) error { return nil },
 	}, MessageSubmitInput{SessionID: "session", Message: "fixture"})
 	if result.errCode != "prepare_process" ||
 		!backend.command.WorkspaceReadOnly ||

@@ -1,6 +1,6 @@
 # 安全执行边界重构方案
 
-> 状态：阶段 0-2 已交付；阶段 3-6 为提案。
+> 状态：阶段 0-3 已交付；阶段 4-6 为提案。
 >
 > 本文描述 CodeHelper 对副作用执行边界的目标设计和渐进迁移方案，不代表当前实现已经
 > 完成这些约束。当前已交付行为以[安全模型](./security.md)、源码和测试为准。
@@ -790,6 +790,8 @@ Manifest Digest 和 Generation，Process Broker 校验后单次消费 Lease，�
 
 ### 阶段 3：迁移 Hook 和 stdio MCP
 
+当前状态：已完成。
+
 目标：
 
 - Hook 不再直接调用 `process.NewCommand`；
@@ -798,6 +800,26 @@ Manifest Digest 和 Generation，Process Broker 校验后单次消费 Lease，�
 - Tool Call 权限不超过 Server 上界；
 - Restart、Crash、Disable 和 Config Digest 变化会撤销旧 Lease；
 - stdout/stderr、Process Tree 和 Credential Environment 有界。
+
+实现落点：
+
+| 能力 | 当前实现 |
+| --- | --- |
+| Managed Process Operation/Profile | `internal/security/authority/managed_process.go` |
+| 短进程 Broker 与 Settlement | `internal/security/processbroker/command.go` |
+| 长生命周期 Handle 与 Settlement | `internal/security/processbroker/lifecycle.go` |
+| Broker-owned stdio 管道 | `internal/platform/process/stream_managed.go` |
+| Hook Broker 迁移 | `internal/adapter/hooks/executor.go` |
+| stdio MCP Lifecycle 迁移 | `internal/adapter/mcp/runtime_authority.go`、`stdio.go` |
+
+Hook 不再调用 `process.NewCommand`，旧 Process Tree helper 已删除。Repository/Plugin
+Hook 保持 Strong Sandbox、Workspace Read-only、Network Denied 和控制面隐藏。
+
+stdio MCP 的 `host_trusted=true` 只作为外部 Operator 对 Lifecycle Operation 的信任
+前提。最终启动由共享 Lease Authority 和 Process Broker 接管；Operation 绑定 Server
+Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Environment，
+每次真实启动递增 Server Generation。Pool Reload、Disable、Crash 和 Shutdown 会关闭
+旧 Connection，并终结对应 Handle、Settlement 和 Lease。
 
 ### 阶段 4：建立 File Broker 和 VCS Broker
 
@@ -967,5 +989,5 @@ Windows 在 Partial Backend 落地后维护独立 Corpus，并明确不能证明
    Broker 迁移对象。
 
 阶段 0 先降低真实风险，阶段 1 已在不改变 Tool Guard 决策语义的前提下引入
-Operation/Lease。阶段 2 已由 Process/Artifact Broker 接管 Process Smoke 的真实进程
-生命周期；后续按阶段 3 迁移 Hook 和 stdio MCP。
+Operation/Lease。阶段 2 已接管 Process Smoke，阶段 3 已接管 Hook 和 stdio MCP
+Lifecycle；下一步按阶段 4 建立 File Broker 和 VCS Broker。

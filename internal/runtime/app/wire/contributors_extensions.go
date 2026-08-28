@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
+	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
@@ -13,6 +15,16 @@ import (
 
 func newExtensionContributors(state *buildState) []extensionActivation {
 	output := &state.extensions
+	hookRuntime, _ := hooks.NewRuntime(
+		state.config.workspaceStateID, 1, state.platform.leaseAuthority,
+	)
+	mcpAuthority, _ := mcpruntime.NewRuntimeAuthority(
+		state.config.execution.Workspace,
+		state.config.workspaceStateID,
+		1,
+		state.platform.backend,
+		state.platform.leaseAuthority,
+	)
 	return []extensionActivation{
 		pluginBundleContributor{
 			bundle: state.options.PluginBundle, receipt: state.options.PluginReceipt,
@@ -36,11 +48,11 @@ func newExtensionContributors(state *buildState) []extensionActivation {
 			path:      state.config.extensionPaths.HooksConfigPath,
 			explicit:  state.options.Extensions.HooksConfigPath != "",
 			workspace: state.config.execution.Workspace,
-			backend:   state.platform.backend, output: output,
+			backend:   state.platform.backend, runtime: hookRuntime, output: output,
 		},
 		mcpContributor{
 			configPath: state.options.MCPConfigPath, trustedConfigRoot: state.config.extensionPaths.DataDir,
-			output: output,
+			runtimeAuthority: mcpAuthority, output: output,
 		},
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
@@ -119,9 +120,11 @@ func Scenarios() []Scenario {
 		{
 			Name: "MCP health changes are visible on the shared event stream",
 			Setup: func(t *testing.T) Setup {
+				workspace := t.TempDir()
 				return Setup{
 					Fixture: fixturePath(t, "openai"), Prompt: "say hello",
-					Workspace: t.TempDir(), Tools: true, MCPConfig: mcpFixtureConfig(t),
+					Workspace: workspace, Tools: true,
+					MCPConfig: mcpFixtureConfig(t, workspace),
 				}
 			},
 			Run: mcpHealthIsVisible,
@@ -704,24 +707,34 @@ func pluginLifecycleSetup(t *testing.T) Setup {
 	}
 }
 
-func mcpFixtureConfig(t *testing.T) []byte {
+func mcpFixtureConfig(t *testing.T, workspace string) []byte {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
+	name := "mcp-fixture"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	binary := filepath.Join(workspace, name)
+	command := exec.Command(
+		"go", "build", "-trimpath", "-o", binary,
+		"./internal/adapter/mcp/testdata/fixture",
+	)
+	command.Dir = root
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("build MCP fixture: %v\n%s", err, output)
+	}
 	config := map[string]any{
 		"version": 1,
 		"servers": map[string]any{
 			"fixture": map[string]any{
-				"transport":    "stdio",
-				"host_trusted": true,
-				"command":      "go",
-				"args": []string{
-					"run", "./internal/adapter/mcp/testdata/fixture", "--transport=stdio",
-				},
-				"working_directory": root,
-				"connect_timeout":   "30s",
+				"transport":       "stdio",
+				"host_trusted":    true,
+				"command":         binary,
+				"args":            []string{"--transport=stdio"},
+				"connect_timeout": "30s",
 				"tools": map[string]any{
 					"fixture.echo": map[string]any{
 						"capability": "read", "access_mode": "read",

@@ -28,6 +28,7 @@ type Options struct {
 	DirFile              *os.File
 	PTY                  bool
 	Env                  []string
+	Stdin                io.Reader
 	Sandbox              sandbox.Backend
 	RequireStrongSandbox bool
 	WorkspaceReadOnly    bool
@@ -318,6 +319,7 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		return nil, err
 	}
 	configureProcessGroup(command, options.PTY)
+	command.Stdin = options.Stdin
 	command.Cancel = func() error {
 		if command.Process == nil {
 			return os.ErrProcessDone

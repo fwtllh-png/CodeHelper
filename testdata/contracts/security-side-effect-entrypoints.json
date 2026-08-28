@@ -17,12 +17,6 @@
       "reason": "Trusted sandbox probes, helper execution, and private policy state."
     },
     {
-      "path": "internal/adapter/mcp/stdio.go",
-      "categories": ["process"],
-      "owner": "mcp",
-      "reason": "Temporary stdio lifecycle exception; disabled unless explicitly host-trusted until Broker migration."
-    },
-    {
       "path": "internal/adapter/mcp/oauth.go",
       "categories": ["process", "file", "network"],
       "owner": "mcp",

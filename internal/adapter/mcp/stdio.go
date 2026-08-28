@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,13 +16,14 @@ import (
 	"time"
 
 	platformprocess "github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
 )
 
 const defaultStderrTailBytes = 32 << 10
 
 type StdioTransport struct {
-	command *exec.Cmd
-	stdin   io.WriteCloser
+	lifecycle *processbroker.Lifecycle
+	stdin     io.WriteCloser
 
 	writeMu        sync.Mutex
 	mu             sync.Mutex
@@ -61,41 +62,60 @@ type wireMessage struct {
 }
 
 func NewStdioTransport(ctx context.Context, config ServerConfig) (*StdioTransport, error) {
+	runtime, err := localRuntimeAuthority(config)
+	if err != nil {
+		return nil, err
+	}
+	return NewAuthorizedStdioTransport(ctx, "", config, runtime)
+}
+
+func NewAuthorizedStdioTransport(
+	ctx context.Context,
+	name string,
+	config ServerConfig,
+	runtime *RuntimeAuthority,
+) (*StdioTransport, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(name) == "" {
+		name = "stdio"
 	}
 	environment, err := platformprocess.SanitizedEnvironment(config.Env)
 	if err != nil {
 		return nil, fmt.Errorf("sanitize MCP environment: %w", err)
 	}
-	command := exec.Command(config.Command, config.Args...)
-	command.Env = environment
-	command.Dir = config.WorkingDirectory
-	configureMCPProcessGroup(command)
-	stdin, err := command.StdinPipe()
+	lifecycle, err := runtime.Start(ctx, name, config, environment)
+	if err != nil {
+		return nil, fmt.Errorf("start MCP stdio server: %w", err)
+	}
+	stdin, err := lifecycle.Stdin()
 	if err != nil {
 		return nil, err
 	}
-	stdout, err := command.StdoutPipe()
+	stdout, err := lifecycle.Stdout()
 	if err != nil {
+		_ = lifecycle.Close(context.Background())
+		return nil, err
+	}
+	stderrReader, err := lifecycle.Stderr()
+	if err != nil {
+		_ = lifecycle.Close(context.Background())
 		return nil, err
 	}
 	stderr := newTailBuffer(defaultStderrTailBytes)
-	command.Stderr = stderr
 	transport := &StdioTransport{
-		command:     command,
+		lifecycle:   lifecycle,
 		stdin:       stdin,
 		pending:     make(map[string]chan Response),
 		stderr:      stderr,
 		done:        make(chan struct{}),
 		processDone: make(chan struct{}),
 	}
-	if err := command.Start(); err != nil {
-		return nil, fmt.Errorf("start MCP stdio server: %w", err)
-	}
 	go transport.readLoop(stdout)
+	go func() { _, _ = io.Copy(stderr, stderrReader) }()
 	go func() {
-		err := command.Wait()
+		err := lifecycle.Wait(context.Background())
 		transport.finish(err)
 		close(transport.processDone)
 	}()
@@ -301,11 +321,11 @@ func (t *StdioTransport) Close(ctx context.Context) error {
 		return nil
 	}
 
-	_ = gracefulMCPProcessGroup(t.command.Process)
+	_ = t.lifecycle.Signal(os.Interrupt)
 	if waitForProcess(t.processDone, ctx, 250*time.Millisecond) {
 		return nil
 	}
-	_ = killMCPProcessGroup(t.command.Process)
+	_ = t.lifecycle.Close(context.WithoutCancel(ctx))
 	select {
 	case <-t.processDone:
 		return nil

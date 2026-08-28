@@ -68,6 +68,7 @@ type hookContributor struct {
 	path, workspace string
 	explicit        bool
 	backend         sandbox.Backend
+	runtime         *hooks.Runtime
 	output          *extensionBuildState
 }
 
@@ -109,6 +110,7 @@ func (c hookContributor) Contribute(
 		}
 		manager, err := hooks.New(combined, hooks.Options{
 			Sandbox: c.backend, RequireStrongSandbox: true, Workspace: c.workspace,
+			Runtime: c.runtime,
 		})
 		if err != nil {
 			return fmt.Errorf("hooks manager: %w", err)

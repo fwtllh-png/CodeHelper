@@ -197,8 +197,10 @@ make secret-leak-test
 Review Executable、Argument、Environment Allowlist、OAuth Config 与 Endpoint，使用
 Health Isolation 和有界 Timeout。stdio MCP 默认关闭；启用时配置必须来自外部 State
 Directory 或已验证的 Plugin Capability，并显式声明 `host_trusted=true`。该标记会
-进入 Tool Catalog 描述和 Tool Result Metadata，表示 Server 自身当前不受 Tool Guard
-保护。
+进入 Tool Catalog 描述和 Tool Result Metadata，并只允许 Runtime 创建 Lifecycle
+Operation，不直接授予进程启动能力。Server 配置摘要和每次启动的 Generation 进入
+Subject；Process Broker 消费单次 Lease 并签发绑定 Workspace/Server/Generation 的
+Handle。Reload、Disable、Crash 和 Shutdown 会终结 Handle、Settlement 并释放 Lease。
 
 ### Plugin
 
@@ -214,8 +216,11 @@ Receipt 与 Revocation。Rollback 必须选择历史已验证 Artifact。
 
 Workspace 中的默认 Hook 配置不自动加载；Repository Hook 必须由 Operator 显式指定。
 所有 Hook 进程使用 Workspace Read-only、Network Denied 的 Strong Sandbox，并隐藏
-`.git`、`.codehelper`、`.codehelper-worktree`、`.agents` 和 `.codex`。Repository 与
-Plugin Permission Hook 只能返回 Deny 或 Ask，不能把 Guard 的决定提升为 Allow。
+`.git`、`.codehelper`、`.codehelper-worktree`、`.agents` 和 `.codex`。每次调用先
+生成绑定 Hook 配置、Event、Workspace Generation 和 Process Spec 的 Operation，再由
+Process Broker 消费短生命周期 Lease，并执行 Start、Cancel、Wait、Reap 和 Settlement。
+Repository 与 Plugin Permission Hook 只能返回 Deny 或 Ask，不能把 Guard 的决定提升
+为 Allow。
 
 ## Log 与 Diagnostics
 
@@ -289,7 +294,7 @@ Workspace Integrity 不确定时，应停止执行，保留 State 与 Journal，
 公开报告中不能包含 Secret 或私有源码。应提供 Version、Platform、Command Shape、
 Sanitized Config Provenance、预期/实际 Security Decision，以及可行时的可复现 Fixture。
 
-[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-1
-已交付 State Domain、旁路止血、Operation 与 Execution Lease。后续阶段继续把 Hook、
-MCP、宿主 Smoke 和其他入口迁移到 Process/Artifact/Network Broker；文档中 Broker
-相关目标不代表当前已经强制执行。
+[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-3
+已交付 State Domain、Operation/Lease、Artifact/Process Broker、Process Smoke、
+Hook 和 stdio MCP Lifecycle 迁移。后续阶段继续迁移 File、VCS、Network 和其他进程
+入口。

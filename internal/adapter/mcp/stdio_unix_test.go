@@ -21,7 +21,9 @@ func TestStdioForcedKillCleansProcessGroup(t *testing.T) {
 	if err := transport.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if transport.command.ProcessState == nil {
-		t.Fatalf("hung MCP process was not reaped: %+v", transport.command.ProcessState)
+	select {
+	case <-transport.processDone:
+	default:
+		t.Fatal("hung MCP process was not reaped")
 	}
 }

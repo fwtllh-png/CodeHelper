@@ -13,6 +13,7 @@ import (
 type mcpContributor struct {
 	configPath        string
 	trustedConfigRoot string
+	runtimeAuthority  *mcpruntime.RuntimeAuthority
 	output            *extensionBuildState
 }
 
@@ -61,7 +62,9 @@ func (c mcpContributor) Contribute(
 		if !configured {
 			return nil
 		}
-		pool, prewarm, err := RegisterMCPConfig(registry, combined)
+		pool, prewarm, err := RegisterMCPConfig(
+			registry, combined, c.runtimeAuthority,
+		)
 		if err != nil {
 			return fmt.Errorf("MCP tools: %w", err)
 		}
@@ -73,12 +76,17 @@ func (c mcpContributor) Contribute(
 func RegisterMCPConfig(
 	registry *tool.Registry,
 	config mcpruntime.Config,
+	runtimeAuthority ...*mcpruntime.RuntimeAuthority,
 ) (*mcpruntime.Pool, *MCPPrewarm, error) {
 	config = mcpruntime.CloneConfig(config)
 	if err := config.Validate(); err != nil {
 		return nil, nil, err
 	}
-	pool := mcpruntime.NewPool(nil)
+	var factory mcpruntime.TransportFactory
+	if len(runtimeAuthority) != 0 && runtimeAuthority[0] != nil {
+		factory = mcpruntime.NewAuthorizedTransportFactory(runtimeAuthority[0])
+	}
+	pool := mcpruntime.NewPool(factory)
 	prewarm := NewMCPPrewarmConfig(pool, config)
 	prewarm.SetRegistry(registry)
 	prewarm.RequestRefresh()

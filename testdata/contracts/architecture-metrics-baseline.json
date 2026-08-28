@@ -342,12 +342,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 76,
-        "production_lines": 9274,
+        "production_lines": 9296,
         "options_fields": 74,
         "mutex_fields": 7
       },
       "relaxations": {
-        "production_lines": "Route Workspace state domains, the shared Execution Lease Authority, and Broker-backed Process Smoke dependencies through Runtime composition."
+        "production_lines": "Route the shared Execution Lease Authority into Process Smoke, Hook, and stdio MCP Broker runtimes."
       }
     },
     {
@@ -752,8 +752,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/contributors_extensions.go",
       "limits": {
-        "lines": 169,
-        "max_function_lines": 33
+        "lines": 181,
+        "max_function_lines": 43
+      },
+      "relaxations": {
+        "lines": "Construct Hook and stdio MCP runtimes from the shared Workspace identity and Lease Authority.",
+        "max_function_lines": "Keep extension runtime authority construction adjacent to contributor dependency assembly."
       }
     },
     {
@@ -761,8 +765,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/contributors_capabilities.go",
       "limits": {
-        "lines": 131,
-        "max_function_lines": 44
+        "lines": 133,
+        "max_function_lines": 45
+      },
+      "relaxations": {
+        "lines": "Inject the Broker-backed Hook runtime without exposing Authority internals to the contributor.",
+        "max_function_lines": "Pass the Hook runtime alongside the existing Sandbox and Workspace inputs."
       }
     },
     {
