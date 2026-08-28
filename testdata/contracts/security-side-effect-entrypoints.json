@@ -84,18 +84,6 @@
       "reason": "Guard-authorized sandbox conversion and bounded temporary artifacts."
     },
     {
-      "path": "internal/adapter/tool/github/github.go",
-      "categories": ["process", "file", "network"],
-      "owner": "github tool",
-      "reason": "Guard-authorized Git preflight, GitHub transport, and Runtime-owned cache."
-    },
-    {
-      "path": "internal/adapter/tool/git/hosted.go",
-      "categories": ["network"],
-      "owner": "git tool",
-      "reason": "Guarded hosted repository metadata transport."
-    },
-    {
       "path": "internal/adapter/tool/web",
       "prefix": true,
       "categories": ["network"],

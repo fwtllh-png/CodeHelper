@@ -3,14 +3,10 @@ package git
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -89,80 +85,6 @@ func (gitTestBackend) Capability() sandbox.Capability {
 
 func (gitTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
 	return command, nil
-}
-
-func TestHostedGitAuthenticationPaginationAndRateErrors(t *testing.T) {
-	var issueRequests atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Header.Get("Authorization") != "Bearer fixture-token" {
-			http.Error(writer, `{"message":"bad token"}`, http.StatusUnauthorized)
-			return
-		}
-		switch request.URL.Path {
-		case "/repos/acme/repo/issues":
-			page := issueRequests.Add(1)
-			if page == 1 {
-				writer.Header().Set("Link", fmt.Sprintf(`<%s/repos/acme/repo/issues?page=2>; rel="next"`, serverURL(request)))
-				_, _ = writer.Write([]byte(`[{"id":1}]`))
-				return
-			}
-			_, _ = writer.Write([]byte(`[{"id":2}]`))
-		case "/repos/acme/repo/pulls/7":
-			writer.Header().Set("X-RateLimit-Remaining", "0")
-			http.Error(writer, `{"message":"rate exceeded"}`, http.StatusForbidden)
-		default:
-			http.NotFound(writer, request)
-		}
-	}))
-	defer server.Close()
-
-	hosted := &HostedTool{baseURL: server.URL, token: "fixture-token", client: server.Client()}
-	result, err := hosted.Execute(t.Context(), json.RawMessage(
-		`{"provider":"github","operation":"issues","repository":"acme/repo","max_pages":3}`,
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.IsError || result.Metadata["pages"] != 2 || result.Content != `[{"id":1},{"id":2}]` {
-		t.Fatalf("pagination result = %+v", result)
-	}
-
-	rate, err := hosted.Execute(t.Context(), json.RawMessage(
-		`{"provider":"github","operation":"pull_request","repository":"acme/repo","number":7}`,
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !rate.IsError || rate.Metadata["error_category"] != "rate_limited" {
-		t.Fatalf("rate result = %+v", rate)
-	}
-
-	hosted.token = ""
-	auth, err := hosted.Execute(t.Context(), json.RawMessage(
-		`{"provider":"github","operation":"issues","repository":"acme/repo"}`,
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !auth.IsError || auth.Metadata["error_category"] != "authentication" {
-		t.Fatalf("auth result = %+v", auth)
-	}
-}
-
-func TestHostedGitUnavailableWithoutEndpoint(t *testing.T) {
-	result, err := (&HostedTool{}).Execute(context.Background(), json.RawMessage(
-		`{"provider":"github","operation":"issues","repository":"acme/repo"}`,
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError || result.Metadata["error_category"] != "unavailable" {
-		t.Fatalf("result = %+v", result)
-	}
-}
-
-func serverURL(request *http.Request) string {
-	return "http://" + request.Host
 }
 
 func runGit(t *testing.T, root string, arguments ...string) {

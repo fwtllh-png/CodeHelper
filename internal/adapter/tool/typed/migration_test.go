@@ -76,8 +76,6 @@ func TestRemainingBuiltinsExposeTypedOutcomeBoundary(t *testing.T) {
 		"content/content.go",
 		"file/file.go",
 		"git/git.go",
-		"git/hosted.go",
-		"github/github.go",
 		"search/search.go",
 		"search/symbol.go",
 		"web/web.go",

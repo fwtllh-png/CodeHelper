@@ -42,7 +42,7 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 			return err
 		}
 	}
-	return registerHosted(registry)
+	return nil
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {

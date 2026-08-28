@@ -10,7 +10,6 @@ import (
 	contenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/content"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	gittool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/git"
-	githubtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/github"
 	handletool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
 	lsptool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/lsp"
 	qualitytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/quality"
@@ -171,11 +170,6 @@ func NewWithIndexAndRuntime(
 	if err := qualitytool.RegisterWithBackendAndRuntime(
 		registry, root, backend, qualityRuntime,
 	); err != nil {
-		return nil, nil, err
-	}
-	if err := githubtool.Register(registry, githubtool.Options{
-		Backend: backend, Workspace: root,
-	}); err != nil {
 		return nil, nil, err
 	}
 	if err := toolsearch.Register(registry); err != nil {
