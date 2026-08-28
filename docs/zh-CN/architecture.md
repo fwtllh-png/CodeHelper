@@ -86,7 +86,7 @@ MCP 生命周期；File/VCS Broker 接管模型文件工具、Agent/Chat Merge�
 业务逻辑放入 `wire`。
 
 Builtin 与 Extension Tool 共享同一个 Registry 实例。Skill、Memory、
-Dynamic Tool、Hook 与 MCP Contributor 只接收其显式构造能力和共享 Registry，不接收
+Hook 与 MCP Contributor 只接收其显式构造能力和共享 Registry，不接收
 `buildState`；每个 Contributor 返回确定性的 `ContributionReceipt`，记录新增 Tool
 Identity 与命名输出。Subagent 工具由 Orchestration Module 装配，而非 Extension
 Contributor Chain。
@@ -532,7 +532,6 @@ Home。
 - Log 与 Report 会脱敏，但仍属于敏感工程数据。
 - MCP 是供应链边界，不是可信文本文件。
 - 服务默认监听 Loopback。
-- Dynamic Tool 需要可信客户端和显式开启。
 
 ## 扩展架构
 

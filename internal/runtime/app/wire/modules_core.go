@@ -84,11 +84,6 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 	session.processes = processes
 	state.platform.processes = processes
 	state.platform.leaseAuthority = newLeaseAuthority()
-	if !execution.Tools && state.options.TrustedDynamicTools {
-		return errors.New(
-			"trusted-host dynamic tools require execution.tools",
-		)
-	}
 	helperPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve sandbox helper executable: %w", err)

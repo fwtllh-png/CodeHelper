@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	contract "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/runtimecontract"
 	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
@@ -27,7 +26,6 @@ func TestRuntimeApplicationMeetsTheHostContract(t *testing.T) {
 type runtimeContractHost struct {
 	runtime      *app.Runtime
 	repositories apppersistence.PersistentRepositories
-	dynamic      *dynamictool.Manager
 	agents       *subagent.AgentControl
 	workspace    string
 	identity     protocol.WorkspaceIdentity
@@ -75,8 +73,7 @@ func newRuntimeContractHost(
 		RepositoryRulesPath: setup.RepositoryRules,
 		MCPConfigPath:       setup.WriteMCPConfig(t, store.Root()),
 		ConfigOverrides:     overrides, PersistentStore: store,
-		TrustedDynamicTools: setup.TrustedDynamicTools,
-		WorkspaceIdentity:   identity,
+		WorkspaceIdentity: identity,
 	})
 	if err != nil {
 		_ = store.CloseAll(context.Background())
@@ -110,21 +107,9 @@ func newRuntimeContractHost(
 	}
 	host := &runtimeContractHost{
 		runtime: session.Runtime, repositories: repositories,
-		dynamic: session.DynamicTools(), agents: session.Subagents(),
+		agents:    session.Subagents(),
 		workspace: workspace, identity: identity,
 		sessionID: binding.SessionID, threadID: binding.ThreadID,
-	}
-	if host.dynamic != nil {
-		unsubscribe := host.dynamic.Subscribe(func(call protocol.DynamicToolCallParams) {
-			_ = host.dynamic.Complete(call.CallID, protocol.DynamicToolCallResult{
-				Version: protocol.DynamicToolSpecVersion,
-				Success: true,
-				Content: []protocol.DynamicToolCallContent{{
-					Type: "input_text", Text: "dynamic-ok",
-				}},
-			})
-		})
-		t.Cleanup(unsubscribe)
 	}
 	return host
 }
@@ -396,48 +381,6 @@ func (h *runtimeContractHost) UpdateSessionProfile(
 		patch,
 	)
 	return result, contractError(err)
-}
-
-func (h *runtimeContractHost) RegisterDynamic(
-	_ context.Context,
-	spec protocol.DynamicToolSpec,
-) (contract.DynamicCatalog, error) {
-	if h.dynamic == nil {
-		return contract.DynamicCatalog{}, dynamictool.ErrDisabled
-	}
-	result, err := h.dynamic.Register(spec)
-	return dynamicCatalog(result), err
-}
-
-func (h *runtimeContractHost) ReplaceDynamic(
-	_ context.Context,
-	spec protocol.DynamicToolSpec,
-	expectedGeneration uint64,
-) (contract.DynamicCatalog, error) {
-	if h.dynamic == nil {
-		return contract.DynamicCatalog{}, dynamictool.ErrDisabled
-	}
-	result, err := h.dynamic.Replace(spec, expectedGeneration)
-	return dynamicCatalog(result), err
-}
-
-func (h *runtimeContractHost) RevokeDynamic(
-	_ context.Context,
-	name string,
-	expectedGeneration uint64,
-) (contract.DynamicCatalog, error) {
-	if h.dynamic == nil {
-		return contract.DynamicCatalog{}, dynamictool.ErrDisabled
-	}
-	result, err := h.dynamic.Revoke(name, expectedGeneration)
-	return dynamicCatalog(result), err
-}
-
-func dynamicCatalog(value dynamictool.Snapshot) contract.DynamicCatalog {
-	return contract.DynamicCatalog{
-		CatalogID: value.CatalogID, Generation: value.Generation,
-		Digest: value.Digest, Tools: value.Tools,
-	}
 }
 
 func contractError(err error) error {

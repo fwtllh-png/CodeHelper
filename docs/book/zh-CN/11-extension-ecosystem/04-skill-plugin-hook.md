@@ -50,7 +50,7 @@ Ask；Guard 对 Updated Input 重新验证，Hook Error/Unresolved Ask Fail Clos
 
 ## Shared Runtime Extension Contract
 
-Skill、Hook、Memory、Dynamic Tool 与 MCP 都适配到统一 Typed Runtime
+Skill、Hook、Memory 与 MCP 都适配到统一 Typed Runtime
 Extension Core。Contributor 声明 Identity、Phase、Capability、Failure Policy、Timeout
 与 Output Budget。注册时校验 Contract 并 Seal 不可变 Registry；Contributor 只接收
 显式 Capability，不接收 Construction State 或私有 Tool Registry。

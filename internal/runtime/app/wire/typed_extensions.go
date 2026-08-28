@@ -37,7 +37,6 @@ func publishExtensionOutputs(state *buildState) {
 	session.hooks = output.hooks
 	session.mcpPool = output.mcpPool
 	session.mcpPrewarm = output.mcpPrewarm
-	session.dynamicTools = output.dynamicTools
 	session.extensions = &extensionSession{
 		registry: output.registry,
 		receipts: make([]ContributionReceipt, len(output.receipts)),

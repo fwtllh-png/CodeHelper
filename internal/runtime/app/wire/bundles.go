@@ -9,7 +9,6 @@ import (
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
@@ -44,12 +43,11 @@ type platformBundle struct {
 }
 
 type extensionBundle struct {
-	extensions   *extensionSession
-	dynamicTools *dynamictool.Manager
-	mcpPool      *mcpruntime.Pool
-	mcpPrewarm   *MCPPrewarm
-	memory       *memory.Store
-	hooks        *hooks.Manager
+	extensions *extensionSession
+	mcpPool    *mcpruntime.Pool
+	mcpPrewarm *MCPPrewarm
+	memory     *memory.Store
+	hooks      *hooks.Manager
 }
 
 type orchestrationBundle struct {

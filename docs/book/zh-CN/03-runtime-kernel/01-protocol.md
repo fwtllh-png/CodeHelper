@@ -148,7 +148,6 @@ Schema 都是 Authority。
 | Codec 与 Strict Validation | `codec.go`、`validate.go` |
 | Readiness | `readiness.go` |
 | Machine Error | `problem.go` |
-| Dynamic Tool | `dynamic.go` |
 | Workspace Identity | `workspace_identity.go` |
 | Session Profile/Lifecycle | `session_profile.go`、`session_lifecycle.go` |
 | Provider/Model 与 Tool Catalog | `model_catalog.go`、`tool_catalog.go` |

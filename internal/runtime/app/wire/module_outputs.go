@@ -7,7 +7,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
@@ -68,7 +67,6 @@ type extensionBuildState struct {
 	hooks        *hooks.Manager
 	mcpPool      *mcpruntime.Pool
 	mcpPrewarm   *MCPPrewarm
-	dynamicTools *dynamictool.Manager
 }
 
 type securityBuildState struct {

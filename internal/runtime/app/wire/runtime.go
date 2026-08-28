@@ -41,9 +41,6 @@ type ExecOptions struct {
 	// TrustProbe lets probe "supported" observations widen catalog capabilities.
 	// Without it, probes may only tighten.
 	TrustProbe bool
-	// TrustedDynamicTools exposes the host-managed dynamic catalog. It is off by
-	// default and requires the normal tool/Guard runtime.
-	TrustedDynamicTools bool
 	// ForceEditPlanApproval is enabled by interactive editor hosts that must
 	// preview every workspace write regardless of broader policy grants.
 	ForceEditPlanApproval bool

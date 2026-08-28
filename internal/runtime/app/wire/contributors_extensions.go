@@ -1,14 +1,11 @@
 package wire
 
 import (
-	"context"
 	"errors"
-	"fmt"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 )
 
 func newExtensionContributors(state *buildState) []extensionActivation {
@@ -29,10 +26,6 @@ func newExtensionContributors(state *buildState) []extensionActivation {
 			output: output,
 		},
 		newMemoryContributor(state.config.snapshot.Config.Memory, output),
-		dynamicToolContributor{
-			enabled: state.options.TrustedDynamicTools,
-			output:  output,
-		},
 		hookContributor{
 			path:      state.config.extensionPaths.HooksConfigPath,
 			explicit:  state.options.Extensions.HooksConfigPath != "",
@@ -58,31 +51,4 @@ func runContribution(
 		return ContributionReceipt{}, err
 	}
 	return ContributionReceipt{Contributor: id}, nil
-}
-
-type dynamicToolContributor struct {
-	enabled bool
-	output  *extensionBuildState
-}
-
-func (dynamicToolContributor) ID() string { return "dynamic-tools" }
-
-func (c dynamicToolContributor) Contribute(
-	_ context.Context,
-	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), func() error {
-		if !c.enabled {
-			return nil
-		}
-		manager, err := dynamictool.NewManager(
-			registry,
-			dynamictool.DefaultRegistrationPolicy(),
-		)
-		if err != nil {
-			return fmt.Errorf("dynamic tool manager: %w", err)
-		}
-		c.output.dynamicTools = manager
-		return nil
-	})
 }

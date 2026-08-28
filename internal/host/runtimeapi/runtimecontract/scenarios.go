@@ -129,18 +129,6 @@ func Scenarios() []Scenario {
 			Run: mcpHealthIsVisible,
 		},
 		{
-			Name:       "trusted dynamic tools register execute replace and revoke",
-			Capability: CapabilityDynamicTools,
-			Setup: func(t *testing.T) Setup {
-				return Setup{
-					Fixture: fixturePath(t, "dynamic-tools"), Prompt: "call host echo",
-					Workspace: t.TempDir(), Tools: true, TrustedDynamicTools: true,
-					MaxSteps: 4,
-				}
-			},
-			Run: dynamicToolsCompleteLifecycle,
-		},
-		{
 			Name: "a canceled turn reaches exactly one terminal event",
 			Setup: func(t *testing.T) Setup {
 				return Setup{Fixture: fixturePath(t, "slow"), Prompt: "wait for interrupt"}
@@ -544,76 +532,6 @@ func readModelsExposeCompletedThread(t *testing.T, host Host, setup Setup) {
 			"%s: usage/rollup = %+v / %+v",
 			host.Transport(), state.Usage, state.Rollup,
 		)
-	}
-}
-
-func dynamicToolsCompleteLifecycle(t *testing.T, host Host, setup Setup) {
-	snapshot, err := host.SessionProfile(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	planningOff := "off"
-	if _, err := host.UpdateSessionProfile(
-		t.Context(),
-		snapshot.Profile.Revision,
-		protocol.SessionProfilePatch{PlanningPolicy: &planningOff},
-	); err != nil {
-		t.Fatal(err)
-	}
-	spec := protocol.DynamicToolSpec{
-		Version: protocol.DynamicToolSpecVersion, Name: "host_echo",
-		Description: "Echo a value through the trusted host",
-		InputSchema: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{"value": map[string]any{"type": "string"}},
-			"required":   []any{"value"}, "additionalProperties": false,
-		},
-	}
-	registered, err := host.RegisterDynamic(t.Context(), spec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(registered.Tools) != 1 || registered.Tools[0].ToolName() != "host_echo" {
-		t.Fatalf("%s: registered catalog = %+v", host.Transport(), registered)
-	}
-	events, err := host.Live(t.Context(), 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	started, err := host.StartTurn(t.Context(), setup.Prompt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	seen := collectUntilTerminal(t, host, events, started.TurnID)
-	if seen[len(seen)-1].Kind != protocol.EventTurnCompleted {
-		t.Fatalf(
-			"%s: dynamic turn ended with %s: %+v",
-			host.Transport(), seen[len(seen)-1].Kind, seen[len(seen)-1].Data,
-		)
-	}
-
-	replacement := spec
-	replacement.Description = "Echo a replacement value through the trusted host"
-	if _, err := host.ReplaceDynamic(
-		t.Context(), replacement, registered.Generation-1,
-	); err == nil {
-		t.Fatalf("%s: stale replace succeeded", host.Transport())
-	}
-	replaced, err := host.ReplaceDynamic(t.Context(), replacement, registered.Generation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := host.RevokeDynamic(
-		t.Context(), "host_echo", registered.Generation,
-	); err == nil {
-		t.Fatalf("%s: stale revoke succeeded", host.Transport())
-	}
-	revoked, err := host.RevokeDynamic(t.Context(), "host_echo", replaced.Generation)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(revoked.Tools) != 0 {
-		t.Fatalf("%s: revoked catalog = %+v", host.Transport(), revoked)
 	}
 }
 

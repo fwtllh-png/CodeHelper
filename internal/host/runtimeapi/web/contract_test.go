@@ -77,8 +77,7 @@ func newWebContractHost(t *testing.T, setup contract.Setup) contract.Host {
 		RepositoryRulesPath: setup.RepositoryRules,
 		MCPConfigPath:       setup.WriteMCPConfig(t, store.Root()),
 		ConfigOverrides:     overrides, PersistentStore: store,
-		TrustedDynamicTools: setup.TrustedDynamicTools,
-		WorkspaceIdentity:   identity,
+		WorkspaceIdentity: identity,
 	})
 	if err != nil {
 		_ = store.CloseAll(context.Background())
@@ -160,10 +159,6 @@ func newWebContractHost(t *testing.T, setup contract.Setup) contract.Host {
 }
 
 func (h *webContractHost) Transport() string { return "web" }
-
-func (h *webContractHost) Supports(capability string) bool {
-	return capability != contract.CapabilityDynamicTools
-}
 
 func (h *webContractHost) StartTurn(
 	ctx context.Context,
@@ -481,29 +476,6 @@ func (h *webContractHost) UpdateSessionProfile(
 		"expected_revision": expectedRevision, "patch": patch,
 	}, &result, "profile-update")
 	return result, err
-}
-
-func (*webContractHost) RegisterDynamic(
-	context.Context,
-	protocol.DynamicToolSpec,
-) (contract.DynamicCatalog, error) {
-	return contract.DynamicCatalog{}, errors.New("dynamic tools are not exposed")
-}
-
-func (*webContractHost) ReplaceDynamic(
-	context.Context,
-	protocol.DynamicToolSpec,
-	uint64,
-) (contract.DynamicCatalog, error) {
-	return contract.DynamicCatalog{}, errors.New("dynamic tools are not exposed")
-}
-
-func (*webContractHost) RevokeDynamic(
-	context.Context,
-	string,
-	uint64,
-) (contract.DynamicCatalog, error) {
-	return contract.DynamicCatalog{}, errors.New("dynamic tools are not exposed")
 }
 
 func (h *webContractHost) call(

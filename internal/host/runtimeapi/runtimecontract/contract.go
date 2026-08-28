@@ -64,13 +64,12 @@ type Setup struct {
 	Prompt string
 	// Workspace, Tools and RepositoryRules are for scenarios that need a real tool
 	// call — an approval only exists if something asked to write.
-	Workspace           string
-	WorkspaceIdentity   *protocol.WorkspaceIdentity
-	Tools               bool
-	RepositoryRules     string
-	MCPConfig           []byte
-	TrustedDynamicTools bool
-	MaxSteps            int
+	Workspace         string
+	WorkspaceIdentity *protocol.WorkspaceIdentity
+	Tools             bool
+	RepositoryRules   string
+	MCPConfig         []byte
+	MaxSteps          int
 }
 
 func (s Setup) WriteMCPConfig(t *testing.T, stateRoot string) string {
@@ -156,33 +155,6 @@ type Host interface {
 		expectedRevision uint64,
 		patch protocol.SessionProfilePatch,
 	) (protocol.SessionProfileUpdateResult, error)
-	RegisterDynamic(
-		ctx context.Context,
-		spec protocol.DynamicToolSpec,
-	) (DynamicCatalog, error)
-	ReplaceDynamic(
-		ctx context.Context,
-		spec protocol.DynamicToolSpec,
-		expectedGeneration uint64,
-	) (DynamicCatalog, error)
-	RevokeDynamic(
-		ctx context.Context,
-		name string,
-		expectedGeneration uint64,
-	) (DynamicCatalog, error)
-}
-
-type CapabilityHost interface {
-	Supports(string) bool
-}
-
-const CapabilityDynamicTools = "dynamic-tools"
-
-type DynamicCatalog struct {
-	CatalogID  string                     `json:"catalog_id"`
-	Generation uint64                     `json:"generation"`
-	Digest     string                     `json:"digest"`
-	Tools      []protocol.DynamicToolSpec `json:"tools"`
 }
 
 // Factory builds a host for one scenario. It registers its own cleanup.
@@ -191,9 +163,6 @@ type Factory func(t *testing.T, setup Setup) Host
 // Scenario is one behaviour, plus what the host needs to show it.
 type Scenario struct {
 	Name string
-	// Capability is empty for the shared minimum. A Host may explicitly decline
-	// a legacy capability that its product contract intentionally removed.
-	Capability string
 	// Setup runs per scenario so temporary directories are not shared.
 	Setup func(t *testing.T) Setup
 	Run   func(t *testing.T, host Host, setup Setup)
@@ -206,12 +175,6 @@ func Run(t *testing.T, newHost Factory) {
 		t.Run(scenario.Name, func(t *testing.T) {
 			setup := scenario.Setup(t)
 			host := newHost(t, setup)
-			if scenario.Capability != "" {
-				if capabilities, ok := host.(CapabilityHost); ok &&
-					!capabilities.Supports(scenario.Capability) {
-					t.Skipf("%s intentionally does not expose %s", host.Transport(), scenario.Capability)
-				}
-			}
 			scenario.Run(t, host, setup)
 		})
 	}

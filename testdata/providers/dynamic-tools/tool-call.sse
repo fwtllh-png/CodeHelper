@@ -1,3 +1,0 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_dynamic","function":{"name":"host_echo","arguments":"{\"value\":\"hello\"}"}}]},"finish_reason":"tool_calls"}]}
-
-data: [DONE]

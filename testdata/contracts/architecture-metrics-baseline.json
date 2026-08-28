@@ -208,9 +208,9 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 65,
-        "production_lines": 7463,
-        "options_fields": 62,
+        "internal_fanout": 64,
+        "production_lines": 7350,
+        "options_fields": 61,
         "mutex_fields": 6
       }
     },
@@ -403,7 +403,7 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6405,
+        "production_lines": 6240,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -512,7 +512,7 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/contributors_extensions.go",
       "limits": {
-        "lines": 88,
+        "lines": 54,
         "max_function_lines": 34
       }
     },

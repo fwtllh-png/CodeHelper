@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
@@ -113,15 +112,6 @@ func (s *Session) MCPHealth() []mcp.HealthSnapshot {
 		return nil
 	}
 	return s.mcpPool.HealthSnapshots()
-}
-
-// DynamicTools reports the trusted-host management surface. Nil means the host
-// did not explicitly enable dynamic registration for this session.
-func (s *Session) DynamicTools() *dynamictool.Manager {
-	if s == nil {
-		return nil
-	}
-	return s.dynamicTools
 }
 
 func (s *Session) SetPolicyMode(mode policy.Mode) {

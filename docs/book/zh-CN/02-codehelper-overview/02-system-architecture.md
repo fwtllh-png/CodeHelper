@@ -173,8 +173,8 @@ SQLite 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchest
 Provider 发布所选 Provider/Model Catalog，Security 发布 Permission Store 与
 Guard Factory。
 
-Builtin 与 Extension Tool 共享同一个 Registry。Skill、Memory、Dynamic
-Tool、Hook 和 MCP Contributor 注册 Typed Contract，只接收显式 Capability，并返回
+Builtin 与 Extension Tool 共享同一个 Registry。Skill、Memory、Hook 和 MCP
+Contributor 注册 Typed Contract，只接收显式 Capability，并返回
 有界 Receipt。随后 Source Resolution 生成 Digested Extension Plan。Subagent 工具
 由 Orchestration Module 装配，而非 Extension Contributor Chain。
 

@@ -1,5 +1,0 @@
-data: {"choices":[{"delta":{"content":"I will finish the dynamic tool review."},"finish_reason":null}]}
-
-data: {"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":2}}
-
-data: [DONE]

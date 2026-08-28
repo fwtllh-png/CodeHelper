@@ -11,7 +11,6 @@ prerequisites:
 code_paths:
   - internal/adapter/tool
   - internal/adapter/tool/toolsearch
-  - internal/adapter/tool/dynamic
   - internal/adapter/tool/typed
   - internal/adapter/tool/result
 test_paths:
@@ -67,7 +66,7 @@ Schema 规定调用形状，Trusted Binding 规定安全语义。外部 Requeste
 
 Registry 校验跨字段不变量，例如 Process Resource 必须绑定 Process/External Capability、
 Write Resource 不能绑定 Read Capability、Before-image Transaction 必须是 Workspace
-Edit。MCP、Dynamic 等外部 Source 必须显式提供可信 Binding；Legacy
+Edit。MCP 等外部 Source 必须显式提供可信 Binding；Legacy
 Registration 会 Fail Closed。
 
 Model 只看到 Public Tool Definition；Private Catalog Authority/Execution Metadata 不进入
@@ -144,13 +143,12 @@ JSON-compatibility，以及保持 Catalog Identity 的 Deferred Materialization�
 | Descriptor/Registry | `adapter/tool/tool.go` |
 | Snapshot/Reconcile | `adapter/tool/catalog.go` |
 | Deferred Discovery | `adapter/tool/toolsearch` |
-| Dynamic Source | `adapter/tool/dynamic` |
 | MCP Reconcile | `adapter/tool/mcp` |
 | Typed Kit | `adapter/tool/typed`、`adapter/tool/result` |
 
 ## 设计取舍
 
-静态列表无法支持 MCP/Dynamic Tool 变化；仅按 Name 解析存在 TOCTOU 替换风险。Snapshot Binding
+静态列表无法支持 MCP Tool 变化；仅按 Name 解析存在 TOCTOU 替换风险。Snapshot Binding
 既保留动态发现，又确保执行的就是模型 Sample 时看到的 Authority。
 
 ## 失败模式与安全边界
@@ -166,7 +164,7 @@ JSON-compatibility，以及保持 Catalog Identity 的 Deferred Materialization�
 ## 测试与验证
 
 ```bash
-go test ./internal/adapter/tool -run 'Test(CatalogSnapshot|Registry|DynamicCatalog)'
+go test ./internal/adapter/tool -run 'Test(CatalogSnapshot|Registry)'
 go test ./internal/adapter/tool/toolsearch ./internal/adapter/tool/mcp
 go test ./internal/adapter/tool/typed ./internal/adapter/tool/result
 ```

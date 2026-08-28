@@ -63,7 +63,7 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   在这三个状态域中，Sandbox 只获得 `sandbox-home` 写权限。
 - Tool Contract 要求时先读后写。
 - Tool Catalog 将模型可见的 `ExternalDescriptor` 与 Registry 可信的
-  `TrustedBinding` 分开冻结。MCP、Dynamic Tool 等外部来源只能提交
+  `TrustedBinding` 分开冻结。MCP 等外部来源只能提交
   Requested Effects；Capability、Resource Resolver、Access、Sandbox、Effect、
   Required Controls、Journal 和验证证据资格由可信 Binding 决定。
 - Guard、Policy 和 Authority 不从工具名或 External Requested Effects 推导授权。
@@ -217,7 +217,6 @@ make secret-leak-test
 - 非 Loopback 部署必须使用经过 Review 的认证网关。
 - Provider Base URL 与 Redirect 属于安全敏感配置。
 - Native/Web Search Result 仍是不可信内容。
-- 不向不可信 Client 开放 Trusted Dynamic Tool Registration。
 - 可记录 Endpoint Inventory，但不能记录 Credential。
 
 ## MCP、Skill 与 Hook 供应链
