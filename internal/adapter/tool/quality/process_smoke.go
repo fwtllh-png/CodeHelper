@@ -6,15 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/artifactbroker"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -28,14 +29,10 @@ type processSmokeInput struct {
 const ProcessSmokeUnavailableReason = "host process smoke is disabled until immutable artifact and desktop broker enforcement is available"
 
 type processSmokeTool struct {
-	root     string
-	resolver *sandbox.TrustedHostPathResolver
-	run      func(context.Context, process.Options) (process.Result, error)
-}
-
-type processSmokeOutcome struct {
-	result process.Result
-	err    error
+	root      string
+	resolver  *sandbox.TrustedHostPathResolver
+	artifacts *artifactbroker.Broker
+	processes *processbroker.Broker
 }
 
 type processSmokeRuntime interface {
@@ -68,6 +65,7 @@ func registerProcessSmoke(
 	registry *tool.Registry,
 	root string,
 	privateHome string,
+	runtime RuntimeDependencies,
 ) error {
 	resolver, err := sandbox.NewTrustedHostPathResolver(root, privateHome)
 	if err != nil {
@@ -75,6 +73,8 @@ func registerProcessSmoke(
 	}
 	executor, err := (&processSmokeTool{
 		root: root, resolver: resolver,
+		artifacts: runtime.ArtifactBroker,
+		processes: runtime.ProcessBroker,
 	}).typedExecutor()
 	if err != nil {
 		return err
@@ -83,6 +83,12 @@ func registerProcessSmoke(
 }
 
 func (t *processSmokeTool) Descriptor() tool.Descriptor {
+	availability := tool.AvailabilityUnavailable
+	unavailableReason := ProcessSmokeUnavailableReason
+	if t.artifacts != nil && t.processes != nil {
+		availability = tool.AvailabilityAvailable
+		unavailableReason = ""
+	}
 	return tool.Descriptor{
 		Name: "quality_process_smoke",
 		Description: "Launch an exact executable from the Workspace or its private " +
@@ -106,8 +112,8 @@ func (t *processSmokeTool) Descriptor() tool.Descriptor {
 		ParallelPolicy:     tool.ParallelSerial,
 		RepeatPolicy:       tool.RepeatExecute,
 		SandboxRequirement: tool.SandboxNone,
-		Availability:       tool.AvailabilityUnavailable,
-		UnavailableReason:  ProcessSmokeUnavailableReason,
+		Availability:       availability,
+		UnavailableReason:  unavailableReason,
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -155,162 +161,126 @@ func (t *processSmokeTool) typedExecutor() (tool.Executor, error) {
 }
 
 func (t *processSmokeTool) runTyped(
-	ctx context.Context,
+	_ context.Context,
 	input processSmokeInput,
 ) (tool.Result, error) {
+	return tool.Result{}, errors.New(
+		"process smoke requires an authorized Process Broker grant",
+	)
+}
+
+func (e *processSmokeExecutor) PrepareAuthorizedProcess(
+	_ context.Context,
+	invocation tool.PreparedInvocation,
+	producerOperationDigest string,
+) (authority.ArtifactBinding, error) {
+	if e.smoke.artifacts == nil {
+		return authority.ArtifactBinding{}, errors.New("artifact broker is unavailable")
+	}
+	var input processSmokeInput
+	if err := json.Unmarshal(invocation.Arguments, &input); err != nil {
+		return authority.ArtifactBinding{}, err
+	}
+	snapshot, err := e.smoke.artifacts.Prepare(artifactbroker.PrepareRequest{
+		SourcePath:              input.Path,
+		ProducerOperationDigest: producerOperationDigest,
+	})
+	if err != nil {
+		return authority.ArtifactBinding{}, err
+	}
+	return authority.ArtifactBinding{
+		ManifestDigest: snapshot.Manifest.Digest,
+		Generation:     snapshot.Manifest.Generation,
+		Value:          snapshot,
+	}, nil
+}
+
+func (e *processSmokeExecutor) ReleaseAuthorizedProcess(
+	_ context.Context,
+	binding authority.ArtifactBinding,
+) error {
+	snapshot, ok := binding.Value.(artifactbroker.Snapshot)
+	if !ok {
+		return errors.New("process Artifact is invalid")
+	}
+	return e.smoke.artifacts.Release(snapshot)
+}
+
+func (e *processSmokeExecutor) ExecuteAuthorizedProcess(
+	ctx context.Context,
+	invocation tool.PreparedInvocation,
+	grant authority.AuthorizedProcessGrant,
+) (tool.Result, tool.Outcome, error) {
+	snapshot, ok := grant.Artifact.(artifactbroker.Snapshot)
+	if !ok {
+		return tool.Result{}, tool.Outcome{}, errors.New("process Artifact is invalid")
+	}
+	var input processSmokeInput
+	if err := json.Unmarshal(invocation.Arguments, &input); err != nil {
+		return tool.Result{}, tool.Outcome{}, err
+	}
 	if input.MinimumRuntimeMS == 0 {
-		return tool.Result{}, errors.New("minimum_runtime_ms must be positive")
+		return tool.Result{}, tool.Outcome{}, errors.New("minimum_runtime_ms must be positive")
 	}
 	minimumRuntime := time.Duration(input.MinimumRuntimeMS) * time.Millisecond
 	if minimumRuntime <= 0 ||
 		uint64(minimumRuntime/time.Millisecond) != input.MinimumRuntimeMS {
-		return tool.Result{}, errors.New("minimum_runtime_ms is out of range")
+		return tool.Result{}, tool.Outcome{}, errors.New("minimum_runtime_ms is out of range")
 	}
-	coveredPaths, err := (&Tool{root: t.root}).
+	coveredPaths, err := (&Tool{root: e.smoke.root}).
 		canonicalCoveredPaths(input.CoveredPaths)
 	if err != nil {
-		return tool.Result{}, err
+		return tool.Result{}, tool.Outcome{}, err
 	}
-	executable, err := t.resolver.Resolve(input.Path, sandbox.MustExist)
+	identity := tool.InvocationIdentityFrom(ctx)
+	if identity.SessionID == "" {
+		identity.SessionID = grant.Operation.WorkspaceID
+	}
+	if identity.ThreadID == "" {
+		identity.ThreadID = grant.Operation.ID
+	}
+	if identity.TurnID == "" {
+		identity.TurnID = grant.Operation.ID
+	}
+	brokerResult, err := e.smoke.processes.RunSmoke(
+		ctx,
+		processbroker.Request{
+			Lease: grant.Lease, Validation: grant.Validation, Artifact: snapshot,
+			Args: input.Args, Dir: e.smoke.root,
+			Identity: processbroker.Identity{
+				SessionID: identity.SessionID,
+				ThreadID:  identity.ThreadID,
+				TurnID:    identity.TurnID,
+			},
+			MinimumRuntime: minimumRuntime,
+		},
+	)
 	if err != nil {
-		return t.failedProcessSmokeResult(
-			input.Path, input.Args, coveredPaths, -1, err.Error(),
-		)
-	}
-	info, err := os.Lstat(executable)
-	if err != nil {
-		return t.failedProcessSmokeResult(
-			input.Path, input.Args, coveredPaths, -1, err.Error(),
-		)
-	}
-	if !info.Mode().IsRegular() {
-		return t.failedProcessSmokeResult(
+		failed, encodeErr := e.smoke.encodeProcessSmokeResult(
 			input.Path,
 			input.Args,
 			coveredPaths,
-			-1,
-			"process smoke path must be a regular file",
+			verify.StatusFailed,
+			process.Result{ExitCode: -1},
+			"process smoke runner failed: "+err.Error(),
 		)
+		return failed, tool.OutcomeFromResult(failed), errors.Join(err, encodeErr)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
-		return t.failedProcessSmokeResult(
-			input.Path,
-			input.Args,
-			coveredPaths,
-			-1,
-			"process smoke path is not executable",
-		)
-	}
-
-	runContext, cancel := context.WithCancel(ctx)
-	defer cancel()
-	finished := make(chan processSmokeOutcome, 1)
-	go func() {
-		run := t.run
-		if run == nil {
-			run = process.Run
-		}
-		result, runErr := run(runContext, process.Options{
-			Path: executable,
-			Args: append([]string(nil), input.Args...),
-			Dir:  t.root,
-		})
-		finished <- processSmokeOutcome{result: result, err: runErr}
-	}()
-
-	timer := time.NewTimer(minimumRuntime)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		cancel()
-		<-finished
-		return tool.Result{}, ctx.Err()
-	case completed := <-finished:
-		return t.processSmokeResult(
-			input.Path,
-			input.Args,
-			coveredPaths,
-			completed,
-			false,
-		)
-	case <-timer.C:
-		select {
-		case completed := <-finished:
-			return t.processSmokeResult(
-				input.Path,
-				input.Args,
-				coveredPaths,
-				completed,
-				false,
-			)
-		default:
-		}
-		cancel()
-		completed := <-finished
-		return t.processSmokeResult(
-			input.Path,
-			input.Args,
-			coveredPaths,
-			completed,
-			true,
-		)
-	}
-}
-
-func (t *processSmokeTool) processSmokeResult(
-	path string,
-	args []string,
-	coveredPaths []string,
-	completed processSmokeOutcome,
-	survived bool,
-) (tool.Result, error) {
-	if completed.err != nil && !errors.Is(completed.err, context.Canceled) {
-		exitCode := completed.result.ExitCode
-		if exitCode == 0 {
-			exitCode = -1
-		}
-		return t.failedProcessSmokeResult(
-			path,
-			args,
-			coveredPaths,
-			exitCode,
-			"process smoke could not start: "+completed.err.Error(),
-		)
-	}
-	status := verify.StatusFailed
-	message := fmt.Sprintf(
-		"%s exited before the declared minimum runtime",
-		filepath.ToSlash(path),
-	)
-	if survived {
-		status = verify.StatusPassed
-		message = ""
-	}
-	return t.encodeProcessSmokeResult(
-		path,
-		args,
+	result, encodeErr := e.smoke.encodeProcessSmokeResult(
+		input.Path,
+		input.Args,
 		coveredPaths,
-		status,
-		completed.result,
-		message,
+		map[bool]string{true: verify.StatusPassed, false: verify.StatusFailed}[brokerResult.Survived],
+		brokerResult.Process,
+		map[bool]string{
+			true: "",
+			false: fmt.Sprintf(
+				"%s exited before the declared minimum runtime",
+				filepath.ToSlash(input.Path),
+			),
+		}[brokerResult.Survived],
 	)
-}
-
-func (t *processSmokeTool) failedProcessSmokeResult(
-	path string,
-	args []string,
-	coveredPaths []string,
-	exitCode int,
-	message string,
-) (tool.Result, error) {
-	return t.encodeProcessSmokeResult(
-		path,
-		args,
-		coveredPaths,
-		verify.StatusFailed,
-		process.Result{ExitCode: exitCode},
-		message,
-	)
+	return result, tool.OutcomeFromResult(result), encodeErr
 }
 
 func (t *processSmokeTool) encodeProcessSmokeResult(

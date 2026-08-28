@@ -260,11 +260,42 @@ func (g *Guard) runAttempt(
 		return run
 	}
 	run.profile = profile
+	brokerExecutor, brokerAware := prepared.executor.(AuthorizedProcessExecutor)
+	var artifactBinding authority.ArtifactBinding
+	var artifactIntent *authority.ArtifactIntent
+	if brokerAware {
+		preliminary, buildErr := g.buildExecutionOperation(prepared, profile, nil)
+		if buildErr != nil {
+			run.err = buildErr
+			run.receipt = attemptReceipt(
+				sequence, mode, started, g.now(), tool.OutcomeRejected,
+				"artifact_operation", run.profile,
+			)
+			return run
+		}
+		artifactBinding, err = brokerExecutor.PrepareAuthorizedProcess(
+			ctx, prepared.invocation, preliminary.Digest,
+		)
+		if err != nil {
+			run.err = err
+			run.receipt = attemptReceipt(
+				sequence, mode, started, g.now(), tool.OutcomeRejected,
+				"artifact_prepare", run.profile,
+			)
+			return run
+		}
+		artifactIntent = &authority.ArtifactIntent{
+			ManifestDigest: artifactBinding.ManifestDigest,
+			Generation:     artifactBinding.Generation,
+		}
+	}
 	operation, lease, leaseSnapshot, err := g.issueExecutionLease(
 		ctx,
 		prepared,
 		profile,
 		uint64(sequence),
+		artifactIntent,
+		!brokerAware,
 	)
 	if err != nil {
 		run.err = err
@@ -275,13 +306,25 @@ func (g *Guard) runAttempt(
 		return run
 	}
 	defer func() {
-		snapshot, settleErr := settleExecutionLease(
-			g.leaseAuthority,
-			lease,
-			run.receipt.Status,
-			run.receipt.Reason,
-			g.now(),
-		)
+		var snapshot authority.LeaseSnapshot
+		var settleErr error
+		if brokerAware {
+			snapshot, settleErr = g.leaseAuthority.Snapshot(lease)
+			if settleErr == nil && snapshot.State == authority.LeaseIssued {
+				settleErr = g.leaseAuthority.Revoke(lease)
+				if settleErr == nil {
+					snapshot, settleErr = g.leaseAuthority.Snapshot(lease)
+				}
+			}
+		} else {
+			snapshot, settleErr = settleExecutionLease(
+				g.leaseAuthority,
+				lease,
+				run.receipt.Status,
+				run.receipt.Reason,
+				g.now(),
+			)
+		}
 		if settleErr != nil {
 			run.err = errors.Join(run.err, settleErr)
 			run.receipt.Status = tool.OutcomeFailed
@@ -295,6 +338,17 @@ func (g *Guard) runAttempt(
 				run.err = errors.Join(run.err, releaseErr)
 				run.receipt.Status = tool.OutcomeFailed
 				run.receipt.Reason = "lease_release"
+				run.receipt.TerminalOwner = tool.TerminalOwnerGuard
+			}
+		}
+		if brokerAware {
+			if releaseErr := brokerExecutor.ReleaseAuthorizedProcess(
+				context.WithoutCancel(ctx),
+				artifactBinding,
+			); releaseErr != nil {
+				run.err = errors.Join(run.err, releaseErr)
+				run.receipt.Status = tool.OutcomeFailed
+				run.receipt.Reason = "artifact_release"
 				run.receipt.TerminalOwner = tool.TerminalOwnerGuard
 			}
 		}
@@ -381,10 +435,36 @@ func (g *Guard) runAttempt(
 			teardownMu.Unlock()
 		},
 	)
-	run.result, run.outcome, run.err, run.aborted = g.executePrepared(
-		runContext,
-		prepared,
-	)
+	if brokerAware {
+		sandboxPolicyID, policyErr := sandboxPolicyBinding(
+			profile, prepared.invocation.Tool,
+		)
+		if policyErr != nil {
+			run.err = policyErr
+		} else {
+			run.result, run.outcome, run.err =
+				brokerExecutor.ExecuteAuthorizedProcess(
+					runContext,
+					prepared.invocation,
+					authority.AuthorizedProcessGrant{
+						Operation: operation,
+						Lease:     lease,
+						Validation: leaseValidation(
+							operation,
+							prepared.runtime.Revision,
+							sandboxPolicyID,
+							uint64(sequence),
+						),
+						Artifact: artifactBinding.Value,
+					},
+				)
+		}
+	} else {
+		run.result, run.outcome, run.err, run.aborted = g.executePrepared(
+			runContext,
+			prepared,
+		)
+	}
 	if invocation.Tool == "file_read" && run.err == nil {
 		if recordErr := g.recordFileRead(&run.result, invocation, readBefore); recordErr != nil {
 			run.err = recordErr

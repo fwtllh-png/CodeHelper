@@ -88,9 +88,14 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - Attempt Receipt 持久记录 Operation Digest、Lease ID/State、Effect、Workspace、
   Subject、Policy 和 Sandbox 绑定。当前兼容 Facade 保持原有 Policy Decision、
   Approval Scope、Typed Denial 与 Amendment 语义不变。
-- Artifact Manifest 和 `ProcessHandleCapability` 已建立不可变契约与边界测试，但真正
-  验证 Lease 并独占 Start/Cancel/Wait/Reap 的 Process/Artifact Broker 属于阶段 2。
-  在 Broker 交付前，`quality_process_smoke` 继续不可用。
+- Artifact Broker 只接受 Workspace 或 Sandbox Home 内的常规可执行文件，拒绝
+  Symlink、Hardlink、特殊文件与 Device Boundary 变化，并复制到 Broker-only
+  Artifact Staging。复制前后复核源身份，Manifest 绑定 Workspace Generation、
+  Producer Operation 与内容摘要。
+- Process Broker 验证 Artifact Manifest 和最终 Operation，单次消费 Execution Lease，
+  签发绑定 Session/Thread/Turn 与 Process Generation 的 Process Handle，并独占
+  Start、Cancel、Wait、Reap 和 Settlement。Runner Failure 与提前退出分别记录为
+  `runner_failure` 和 `command_exited_early`。
 - Command 使用 Sanitized Environment。
 - Working Directory 与 Executable Path 必须显式。
 - 必须支持 Timeout、Cancel 和 Process Group Cleanup。
@@ -119,10 +124,10 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - `quality_test`、`quality_diagnostics`、`quality_review` 和 `quality_verify`
   使用 POSIX `set -e` 的 Fail-fast 语义，不能由尾部日志命令覆盖前序检查的非零
   退出码。需要有意接受失败时必须在 Command 中显式表达。
-- `quality_process_smoke` 在 Artifact Snapshot 和 Desktop Broker 完成前标记为不可用，
-  不允许从 Workspace 或可写 Sandbox Home 直接启动宿主进程。保留的 Guard 防御要求
-  `ApprovalOnce`，并禁止 Permission Hook 自动批准，防止未来重新开放时恢复旧的宽松
-  行为。
+- `quality_process_smoke` 仅在持久化 Workspace State 可提供 Artifact Staging 和
+  Process Broker 时开放。原始 Workspace 或 Sandbox Home 路径只作为 Snapshot 输入，
+  实际进程只能从 Broker-owned Snapshot 启动；Guard 强制 `ApprovalOnce`、禁止
+  Permission Hook 自动批准，且不提供 Session/Always Grant。
 - Linux Strong Sandbox 将 Landlock、`no_new_privs`、seccomp 与 `execve` 固定在
   同一个 OS Thread。Seccomp 拒绝 Tracing、跨进程内存访问、Namespace 创建、
   `clone3` 与 `io_uring`；Restricted Network Mode 只保留 AF_UNIX 进程内 IPC。

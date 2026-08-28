@@ -54,6 +54,7 @@ type platformBuildState struct {
 	backend         sandbox.Backend
 	web             webtool.Options
 	processes       *process.SessionManager
+	leaseAuthority  *toolguard.LeaseAuthority
 	repositoryIndex *repoindex.Index
 }
 

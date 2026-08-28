@@ -3,9 +3,9 @@ package quality
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -165,66 +165,7 @@ func TestQualityCommandsUseFailFastShellSemantics(t *testing.T) {
 	}
 }
 
-func TestProcessSmokeRequiresSurvivalAndReapsTheProcess(t *testing.T) {
-	root := t.TempDir()
-	privateHome := t.TempDir()
-	path := filepath.Join(root, "fixture-app")
-	if err := os.WriteFile(path, []byte("fixture"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	path, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolver, err := sandbox.NewTrustedHostPathResolver(root, privateHome)
-	if err != nil {
-		t.Fatal(err)
-	}
-	smoke := &processSmokeTool{
-		root: root, resolver: resolver,
-		run: func(ctx context.Context, _ process.Options) (process.Result, error) {
-			<-ctx.Done()
-			return process.Result{}, ctx.Err()
-		},
-	}
-	executor, err := smoke.typedExecutor()
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := executor.Execute(t.Context(), json.RawMessage(
-		`{"path":"fixture-app","covered_paths":["fixture-app"],"minimum_runtime_ms":1}`,
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.IsError {
-		t.Fatalf("surviving smoke result = %+v", result)
-	}
-	evidence, ok := result.Metadata[verify.EvidenceMetadataKey].(verify.Evidence)
-	if !ok || evidence.Status != verify.StatusPassed ||
-		len(evidence.CoveredPaths) != 1 {
-		t.Fatalf("smoke evidence = %+v", result.Metadata)
-	}
-
-	smoke.run = func(context.Context, process.Options) (process.Result, error) {
-		return process.Result{ExitCode: 9}, nil
-	}
-	executor, err = smoke.typedExecutor()
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err = executor.Execute(t.Context(), json.RawMessage(
-		`{"path":"fixture-app","covered_paths":["fixture-app"],"minimum_runtime_ms":1}`,
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatalf("early-exit smoke result = %+v", result)
-	}
-}
-
-func TestProcessSmokeAcceptsPrivateHomeExecutable(t *testing.T) {
+func TestProcessSmokeExpandsPrivateHomeButRequiresBrokerGrant(t *testing.T) {
 	root := t.TempDir()
 	privateHome := t.TempDir()
 	path := filepath.Join(privateHome, "target", "fixture-app")
@@ -242,14 +183,8 @@ func TestProcessSmokeAcceptsPrivateHomeExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var executed string
 	smoke := &processSmokeTool{
 		root: root, resolver: resolver,
-		run: func(ctx context.Context, options process.Options) (process.Result, error) {
-			executed = options.Path
-			<-ctx.Done()
-			return process.Result{}, ctx.Err()
-		},
 	}
 	executor, err := smoke.typedExecutor()
 	if err != nil {
@@ -272,69 +207,9 @@ func TestProcessSmokeAcceptsPrivateHomeExecutable(t *testing.T) {
 	if expandedInput.Path != path {
 		t.Fatalf("expanded path = %q, want %q", expandedInput.Path, path)
 	}
-	result, err := executor.Execute(t.Context(), expanded)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.IsError || executed != path {
-		t.Fatalf("result = %+v, executed = %q, want %q", result, executed, path)
-	}
-}
-
-func TestProcessSmokeValidationFailuresEmitEvidence(t *testing.T) {
-	root := t.TempDir()
-	privateHome := t.TempDir()
-	resolver, err := sandbox.NewTrustedHostPathResolver(root, privateHome)
-	if err != nil {
-		t.Fatal(err)
-	}
-	smoke := &processSmokeTool{
-		root: root, resolver: resolver,
-		run: func(context.Context, process.Options) (process.Result, error) {
-			t.Fatal("invalid executable reached process runner")
-			return process.Result{}, nil
-		},
-	}
-	executor, err := smoke.typedExecutor()
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := executor.Execute(t.Context(), json.RawMessage(
-		`{"path":"missing-app","covered_paths":["src/main.go"],"minimum_runtime_ms":1}`,
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	evidence, ok := result.Metadata[verify.EvidenceMetadataKey].(verify.Evidence)
-	if !result.IsError || !ok || evidence.Kind != "process_smoke" ||
-		evidence.Status != verify.StatusFailed ||
-		evidence.CommandDigest == "" ||
-		len(evidence.CoveredPaths) != 1 ||
-		evidence.CoveredPaths[0] != "src/main.go" {
-		t.Fatalf("result = %+v, evidence = %+v", result, evidence)
-	}
-
-	path := filepath.Join(root, "start-fails")
-	if err := os.WriteFile(path, []byte("fixture"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	smoke.run = func(context.Context, process.Options) (process.Result, error) {
-		return process.Result{}, errors.New("fixture start failure")
-	}
-	executor, err = smoke.typedExecutor()
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err = executor.Execute(t.Context(), json.RawMessage(
-		`{"path":"start-fails","covered_paths":["src/main.go"],"minimum_runtime_ms":1}`,
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	evidence, ok = result.Metadata[verify.EvidenceMetadataKey].(verify.Evidence)
-	if !result.IsError || !ok || evidence.Status != verify.StatusFailed ||
-		evidence.ExitCode != -1 {
-		t.Fatalf("start failure result = %+v, evidence = %+v", result, evidence)
+	if _, err := executor.Execute(t.Context(), expanded); err == nil ||
+		!strings.Contains(err.Error(), "Process Broker grant") {
+		t.Fatalf("direct process smoke error = %v", err)
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -49,6 +50,21 @@ func NewWithIndex(
 	store contentstore.Store,
 	manager *process.SessionManager,
 	index *repoindex.Index,
+	webOpts ...webtool.Options,
+) (*tool.Registry, *handletool.Store, error) {
+	return NewWithIndexAndRuntime(
+		root, backend, store, manager, index,
+		nil, webOpts...,
+	)
+}
+
+func NewWithIndexAndRuntime(
+	root string,
+	backend sandbox.Backend,
+	store contentstore.Store,
+	manager *process.SessionManager,
+	index *repoindex.Index,
+	runtime *ProcessRuntime,
 	webOpts ...webtool.Options,
 ) (*tool.Registry, *handletool.Store, error) {
 	if backend == nil {
@@ -145,7 +161,13 @@ func NewWithIndex(
 	); err != nil {
 		return nil, nil, err
 	}
-	if err := qualitytool.RegisterWithBackend(registry, root, backend); err != nil {
+	var qualityRuntime qualitytool.RuntimeDependencies
+	if runtime != nil {
+		qualityRuntime = runtime.quality
+	}
+	if err := qualitytool.RegisterWithBackendAndRuntime(
+		registry, root, backend, qualityRuntime,
+	); err != nil {
 		return nil, nil, err
 	}
 	if err := githubtool.Register(registry, githubtool.Options{
@@ -157,4 +179,25 @@ func NewWithIndex(
 		return nil, nil, err
 	}
 	return registry, handles, nil
+}
+
+func NewWithRuntimeState(
+	root string,
+	backend sandbox.Backend,
+	store contentstore.Store,
+	manager *process.SessionManager,
+	index *repoindex.Index,
+	stateRoot, workspaceID string,
+	leaseAuthority *authority.LeaseAuthority,
+	webOpts ...webtool.Options,
+) (*tool.Registry, *handletool.Store, error) {
+	runtime, err := NewProcessRuntime(
+		root, stateRoot, workspaceID, 1, leaseAuthority,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	return NewWithIndexAndRuntime(
+		root, backend, store, manager, index, runtime, webOpts...,
+	)
 }

@@ -28,6 +28,19 @@ type ArtifactManifest struct {
 	Digest                    string          `json:"digest"`
 }
 
+type ArtifactBinding struct {
+	ManifestDigest string
+	Generation     uint64
+	Value          any
+}
+
+type AuthorizedProcessGrant struct {
+	Operation  ExecutionOperation
+	Lease      ExecutionLease
+	Validation LeaseValidation
+	Artifact   any
+}
+
 func NewArtifactManifest(manifest ArtifactManifest) (ArtifactManifest, error) {
 	manifest.Version = ArtifactManifestVersion
 	manifest.Digest = ""

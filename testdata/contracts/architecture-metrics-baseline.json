@@ -342,12 +342,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 76,
-        "production_lines": 9267,
+        "production_lines": 9274,
         "options_fields": 74,
         "mutex_fields": 7
       },
       "relaxations": {
-        "production_lines": "Route Workspace state domains and one shared Execution Lease Authority through the identity-bound Runtime composition contract."
+        "production_lines": "Route Workspace state domains, the shared Execution Lease Authority, and Broker-backed Process Smoke dependencies through Runtime composition."
       }
     },
     {
@@ -673,8 +673,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_core.go",
       "limits": {
-        "lines": 195,
-        "max_function_lines": 60
+        "lines": 201,
+        "max_function_lines": 63
+      },
+      "relaxations": {
+        "lines": "Pass external Workspace state identity and the shared Lease Authority into the Broker-backed builtin tool factory.",
+        "max_function_lines": "Keep platform construction atomic while creating the shared Lease Authority before builtin Process Broker wiring."
       }
     },
     {
@@ -727,8 +731,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/module_outputs.go",
       "limits": {
-        "lines": 106,
+        "lines": 107,
         "max_function_lines": 0
+      },
+      "relaxations": {
+        "lines": "Carry the single shared Lease Authority from platform construction to Guard and Process Broker construction."
       }
     },
     {

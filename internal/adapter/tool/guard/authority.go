@@ -14,6 +14,21 @@ import (
 
 type LeaseAuthority = authority.LeaseAuthority
 
+type AuthorizedProcessExecutor interface {
+	tool.Executor
+	PrepareAuthorizedProcess(
+		context.Context,
+		tool.PreparedInvocation,
+		string,
+	) (authority.ArtifactBinding, error)
+	ReleaseAuthorizedProcess(context.Context, authority.ArtifactBinding) error
+	ExecuteAuthorizedProcess(
+		context.Context,
+		tool.PreparedInvocation,
+		authority.AuthorizedProcessGrant,
+	) (tool.Result, tool.Outcome, error)
+}
+
 func NewLeaseAuthority() *LeaseAuthority {
 	return authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{})
 }
@@ -60,53 +75,23 @@ func (g *Guard) issueExecutionLease(
 	prepared preparedExecution,
 	profile authority.EffectivePermissionProfile,
 	attempt uint64,
+	artifact *authority.ArtifactIntent,
+	consume bool,
 ) (
 	authority.ExecutionOperation,
 	authority.ExecutionLease,
 	authority.LeaseSnapshot,
 	error,
 ) {
-	policyInvocation := policyInput(
-		prepared.invocation.CallID,
-		prepared.invocation,
-	)
-	operation, err := authority.BuildExecutionOperation(authority.OperationInput{
-		WorkspaceRoot:          g.workspace,
-		WorkspaceID:            g.workspaceID,
-		WorkspaceGeneration:    g.workspaceGeneration,
-		Invocation:             prepared.invocation,
-		Effect:                 policy.NormalizeEffect(policyInvocation),
-		Journaled:              policyInvocation.Journaled,
-		RequireReadBeforeWrite: policyInvocation.Journaled,
-		Required:               requiredControls(prepared.invocation),
-		HostReadRoots: append(
-			append([]string(nil), profile.Filesystem.ReadRoots...),
-			profile.Filesystem.WritePaths...,
-		),
-	})
+	operation, err := g.buildExecutionOperation(prepared, profile, artifact)
 	if err != nil {
 		return authority.ExecutionOperation{}, authority.ExecutionLease{},
 			authority.LeaseSnapshot{}, err
 	}
-	sandboxPolicyID := ""
-	for _, source := range profile.Provenance {
-		if source.Kind == "sandbox" {
-			sandboxPolicyID = source.Digest
-			break
-		}
-	}
-	if sandboxPolicyID == "" && profile.Process.Enforcement == "strong" {
-		sandboxPolicyID = authority.FallbackSandboxPolicyID(
-			profile.Filesystem.WorkspaceRoot,
-			profile.Process.Backend,
-			profile.Controls,
-		)
-		if sandboxPolicyID == "" {
-			return operation, authority.ExecutionLease{},
-				authority.LeaseSnapshot{}, fmt.Errorf(
-					"derive sandbox policy binding for %q", prepared.invocation.Tool,
-				)
-		}
+	sandboxPolicyID, err := sandboxPolicyBinding(profile, prepared.invocation.Tool)
+	if err != nil {
+		return operation, authority.ExecutionLease{},
+			authority.LeaseSnapshot{}, err
 	}
 	expiresAt := g.now().Add(g.leaseTTL)
 	if deadline, ok := ctx.Deadline(); ok && deadline.Before(expiresAt) {
@@ -122,24 +107,91 @@ func (g *Guard) issueExecutionLease(
 		return operation, authority.ExecutionLease{},
 			authority.LeaseSnapshot{}, err
 	}
+	validation := leaseValidation(
+		operation, prepared.runtime.Revision, sandboxPolicyID, attempt,
+	)
+	if consume {
+		err = g.leaseAuthority.Consume(lease, validation)
+	}
+	if err != nil {
+		return operation, lease, authority.LeaseSnapshot{}, err
+	}
+	snapshot, err := g.leaseAuthority.Snapshot(lease)
+	return operation, lease, snapshot, err
+}
+
+func (g *Guard) buildExecutionOperation(
+	prepared preparedExecution,
+	profile authority.EffectivePermissionProfile,
+	artifact *authority.ArtifactIntent,
+) (authority.ExecutionOperation, error) {
+	policyInvocation := policyInput(
+		prepared.invocation.CallID,
+		prepared.invocation,
+	)
+	operation, err := authority.BuildExecutionOperation(authority.OperationInput{
+		WorkspaceRoot:          g.workspace,
+		WorkspaceID:            g.workspaceID,
+		WorkspaceGeneration:    g.workspaceGeneration,
+		Invocation:             prepared.invocation,
+		Effect:                 policy.NormalizeEffect(policyInvocation),
+		Journaled:              policyInvocation.Journaled,
+		RequireReadBeforeWrite: policyInvocation.Journaled,
+		Required:               requiredControls(prepared.invocation),
+		Artifact:               artifact,
+		HostReadRoots: append(
+			append([]string(nil), profile.Filesystem.ReadRoots...),
+			profile.Filesystem.WritePaths...,
+		),
+	})
+	return operation, err
+}
+
+func sandboxPolicyBinding(
+	profile authority.EffectivePermissionProfile,
+	toolName string,
+) (string, error) {
+	sandboxPolicyID := ""
+	for _, source := range profile.Provenance {
+		if source.Kind == "sandbox" {
+			sandboxPolicyID = source.Digest
+			break
+		}
+	}
+	if sandboxPolicyID == "" && profile.Process.Enforcement == "strong" {
+		sandboxPolicyID = authority.FallbackSandboxPolicyID(
+			profile.Filesystem.WorkspaceRoot,
+			profile.Process.Backend,
+			profile.Controls,
+		)
+		if sandboxPolicyID == "" {
+			return "", fmt.Errorf(
+				"derive sandbox policy binding for %q", toolName,
+			)
+		}
+	}
+	return sandboxPolicyID, nil
+}
+
+func leaseValidation(
+	operation authority.ExecutionOperation,
+	policyRevision uint64,
+	sandboxPolicyID string,
+	attempt uint64,
+) authority.LeaseValidation {
 	artifactDigest := ""
 	if operation.Artifact != nil {
 		artifactDigest = operation.Artifact.ManifestDigest
 	}
-	err = g.leaseAuthority.Consume(lease, authority.LeaseValidation{
-		Operation: operation, PolicyRevision: prepared.runtime.Revision,
+	return authority.LeaseValidation{
+		Operation: operation, PolicyRevision: policyRevision,
 		WorkspaceID:         operation.WorkspaceID,
 		WorkspaceGeneration: operation.WorkspaceGeneration,
 		SubjectDigest:       operation.Subject.Digest,
 		SubjectGeneration:   operation.Subject.Generation,
 		SandboxPolicyID:     sandboxPolicyID, ArtifactDigest: artifactDigest,
 		Attempt: attempt,
-	})
-	if err != nil {
-		return operation, lease, authority.LeaseSnapshot{}, err
 	}
-	snapshot, err := g.leaseAuthority.Snapshot(lease)
-	return operation, lease, snapshot, err
 }
 
 func requiredControls(invocation Invocation) authority.RequiredControls {

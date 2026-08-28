@@ -86,6 +86,7 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 	}
 	session.processes = processes
 	state.platform.processes = processes
+	state.platform.leaseAuthority = newLeaseAuthority()
 	if !execution.Tools && state.options.TrustedDynamicTools {
 		return errors.New(
 			"trusted-host dynamic tools require execution.tools",
@@ -115,6 +116,7 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 	if !execution.Tools {
 		state.platform = platformBuildState{
 			helperPath: helperPath, backend: backend, processes: processes,
+			leaseAuthority:  state.platform.leaseAuthority,
 			repositoryIndex: index,
 		}
 		return nil
@@ -130,6 +132,7 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 		backend:         backend,
 		web:             webOptions,
 		processes:       processes,
+		leaseAuthority:  state.platform.leaseAuthority,
 		repositoryIndex: index,
 	}
 	return nil
@@ -178,12 +181,15 @@ func (builtinToolsModule) Build(
 		)
 		return nil
 	}
-	registry, handles, err := builtin.NewWithIndex(
+	registry, handles, err := builtin.NewWithRuntimeState(
 		state.config.execution.Workspace,
 		state.platform.backend,
 		state.session.content,
 		state.session.processes,
 		state.platform.repositoryIndex,
+		state.config.workspaceStateRoot,
+		state.config.workspaceStateID,
+		state.platform.leaseAuthority,
 		state.platform.web,
 	)
 	if err != nil {

@@ -16,6 +16,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/artifactbroker"
+	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -33,7 +35,23 @@ type input struct {
 	AllowLoopback  bool                         `json:"allow_loopback"`
 }
 
+type RuntimeDependencies struct {
+	ArtifactBroker *artifactbroker.Broker
+	ProcessBroker  *processbroker.Broker
+}
+
 func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.Backend) error {
+	return RegisterWithBackendAndRuntime(
+		registry, root, backend, RuntimeDependencies{},
+	)
+}
+
+func RegisterWithBackendAndRuntime(
+	registry *tool.Registry,
+	root string,
+	backend sandbox.Backend,
+	runtime RuntimeDependencies,
+) error {
 	if backend == nil {
 		return fmt.Errorf("quality tools require an injected sandbox backend")
 	}
@@ -63,7 +81,9 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 	if !ok {
 		return errors.New("quality process smoke requires an injected sandbox policy")
 	}
-	return registerProcessSmoke(registry, absolute, sandboxPolicy.PrivateTemp)
+	return registerProcessSmoke(
+		registry, absolute, sandboxPolicy.PrivateTemp, runtime,
+	)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {

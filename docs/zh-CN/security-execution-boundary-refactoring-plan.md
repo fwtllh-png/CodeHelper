@@ -1,6 +1,6 @@
 # 安全执行边界重构方案
 
-> 状态：阶段 0-1 已交付；阶段 2-6 为提案。
+> 状态：阶段 0-2 已交付；阶段 3-6 为提案。
 >
 > 本文描述 CodeHelper 对副作用执行边界的目标设计和渐进迁移方案，不代表当前实现已经
 > 完成这些约束。当前已交付行为以[安全模型](./security.md)、源码和测试为准。
@@ -753,11 +753,13 @@ Golden Test 固定：
 | 公开 Lease TTL | `execution.lease_timeout` / `CODEHELPER_LEASE_TIMEOUT` |
 
 阶段 1 保持原有 Policy Decision、Approval Scope、Typed Denial 和 Amendment 语义。
-Lease 已在每个实际 Tool Attempt 前签发并单次消费，但 Process/Artifact Broker 尚未
-接管进程启动；因此 Broker Enforcement、Desktop Smoke 和完整失败 Settlement Ledger
-仍属于阶段 2。
+未迁移 Tool 继续由 Guard 兼容消费 Lease；Broker-aware Process Tool 由 Process Broker
+消费 Lease，避免 Guard 提前消费和 Broker 二次授权。
 
 ### 阶段 2：建立 Process/Artifact Broker 并先迁移 Process Smoke
+
+当前状态：已完成首个迁移对象 `quality_process_smoke`。普通 Sandboxed Process Tool
+和 Hook 的迁移留在后续阶段，不扩大本阶段的宿主执行面。
 
 先迁移当前风险最高的 Desktop Process Smoke，证明：
 
@@ -770,8 +772,21 @@ Lease 已在每个实际 Tool Attempt 前签发并单次消费，但 Process/Art
 - Runner Failure 与 Command Failure 区分；
 - 失败路径的 Receipt 和 Verification Evidence 完整性。
 
-随后迁移一条普通 Sandboxed Process Tool，再迁移 Hook。旧执行路径在每条迁移完成后
-立即删除。
+实现落点：
+
+| 能力 | 当前实现 |
+| --- | --- |
+| Artifact Snapshot、Manifest 与源身份复核 | `internal/security/artifactbroker` |
+| Lease 消费、Process Handle 与 Settlement | `internal/security/processbroker` |
+| Start、Cancel、Wait、Reap 进程原语 | `internal/platform/process/managed.go` |
+| Guard Broker-aware 执行分支 | `internal/adapter/tool/guard/pipeline_attempt.go` |
+| Process Smoke 迁移 | `internal/adapter/tool/quality/process_smoke.go` |
+| Runtime Broker Wiring | `internal/runtime/app/wire/modules_core.go` |
+
+`quality_process_smoke` 只在持久化 State Layout 可提供 Broker-only Artifact Staging 时
+开放。原始 Workspace/Sandbox Home 文件只作为 Snapshot 输入；最终 Operation 绑定
+Manifest Digest 和 Generation，Process Broker 校验后单次消费 Lease，并从 Snapshot
+启动。Guard 继续强制 `ApprovalOnce`、禁用 Permission Hook 自动批准和持久 Grant。
 
 ### 阶段 3：迁移 Hook 和 stdio MCP
 
@@ -952,4 +967,5 @@ Windows 在 Partial Backend 落地后维护独立 Corpus，并明确不能证明
    Broker 迁移对象。
 
 阶段 0 先降低真实风险，阶段 1 已在不改变 Tool Guard 决策语义的前提下引入
-Operation/Lease。下一步由阶段 2 的 Process/Artifact Broker 接管真实进程生命周期。
+Operation/Lease。阶段 2 已由 Process/Artifact Broker 接管 Process Smoke 的真实进程
+生命周期；后续按阶段 3 迁移 Hook 和 stdio MCP。

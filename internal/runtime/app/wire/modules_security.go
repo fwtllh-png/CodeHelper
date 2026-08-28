@@ -90,7 +90,7 @@ func (securityModule) Build(
 		registry: state.tools.registry, runtime: securityRuntime,
 		workspace: execution.Workspace, workspaceID: state.config.workspaceStateID, hooks: session.hooks,
 		journal: journal, diagnostics: diagnosticRunner,
-		permissions: permissionStore, leaseAuthority: newLeaseAuthority(), leaseTTL: execution.LeaseTimeout,
+		permissions: permissionStore, leaseAuthority: state.platform.leaseAuthority, leaseTTL: execution.LeaseTimeout,
 		onNetworkAllow:  state.provider.egress.AllowTarget,
 		forceEditReview: state.options.ForceEditPlanApproval,
 	}
