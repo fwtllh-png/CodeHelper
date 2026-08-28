@@ -17,6 +17,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestCanceledExecCommandHasBoundedTeardownAndNoOrphan(t *testing.T) {
@@ -60,8 +61,8 @@ func TestCanceledExecCommandHasBoundedTeardownAndNoOrphan(t *testing.T) {
 		)
 		done := make(chan error, 1)
 		go func() {
-			_, executeErr := registry.Execute(ctx, tool.Call{
-				Name: "exec_command", Arguments: raw, Authorized: true,
+			_, executeErr := tooltest.Execute(ctx, registry, tool.Call{
+				Name: "exec_command", Arguments: raw,
 			})
 			done <- executeErr
 		}()

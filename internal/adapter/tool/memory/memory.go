@@ -47,7 +47,7 @@ func Register(registry *tool.Registry, store *memorystore.Store) error {
 		return err
 	}
 	for _, registration := range registrations {
-		if err := registry.Register(registration.Executor()); err != nil {
+		if err := registry.RegisterTrusted("builtin:memory", registration); err != nil {
 			return err
 		}
 	}
@@ -66,7 +66,7 @@ func Registration(store *memorystore.Store) (tool.Registration, error) {
 	if err != nil {
 		return tool.Registration{}, err
 	}
-	return tool.NewRegistration(typedExecutor), nil
+	return trustedRegistration(typedExecutor), nil
 }
 
 func Registrations(store *memorystore.Store) ([]tool.Registration, error) {
@@ -86,9 +86,22 @@ func Registrations(store *memorystore.Store) ([]tool.Registration, error) {
 		if buildErr != nil {
 			return nil, buildErr
 		}
-		result = append(result, tool.NewRegistration(executor))
+		result = append(result, trustedRegistration(executor))
 	}
 	return result, nil
+}
+
+func trustedRegistration(executor tool.Executor) tool.Registration {
+	descriptor := executor.Descriptor()
+	binding := tool.TrustedBindingFromDescriptor(descriptor)
+	if provider, ok := executor.(tool.TrustedBindingProvider); ok {
+		binding = provider.TrustedBinding()
+	}
+	return tool.NewExternalRegistration(
+		tool.ExternalFromDescriptor(descriptor),
+		binding,
+		executor,
+	)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {

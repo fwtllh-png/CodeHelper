@@ -11,6 +11,7 @@ import (
 
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {
@@ -34,8 +35,8 @@ func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {
 	if err := RegisterDiscovery(registry, catalog); err != nil {
 		t.Fatal(err)
 	}
-	first, err := registry.Execute(context.Background(), tool.Call{
-		Name: "skills.list", Arguments: json.RawMessage(`{}`), Authorized: true,
+	first, err := tooltest.Execute(context.Background(), registry, tool.Call{
+		Name: "skills.list", Arguments: json.RawMessage(`{}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -51,8 +52,8 @@ func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {
 		t.Fatalf("first page = %+v", page)
 	}
 	secondArgs, _ := json.Marshal(listInput{Cursor: page.NextCursor})
-	second, err := registry.Execute(context.Background(), tool.Call{
-		Name: "skills.list", Arguments: secondArgs, Authorized: true,
+	second, err := tooltest.Execute(context.Background(), registry, tool.Call{
+		Name: "skills.list", Arguments: secondArgs,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -75,8 +76,8 @@ func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {
 	} {
 		t.Run(name+"_handle", func(t *testing.T) {
 			readArgs, _ := json.Marshal(readInput{Handle: handle})
-			read, readErr := registry.Execute(context.Background(), tool.Call{
-				Name: "skills.read", Arguments: readArgs, Authorized: true,
+			read, readErr := tooltest.Execute(context.Background(), registry, tool.Call{
+				Name: "skills.read", Arguments: readArgs,
 			})
 			if readErr != nil {
 				t.Fatal(readErr)
@@ -92,8 +93,8 @@ func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {
 	staleArgs, _ := json.Marshal(readInput{
 		Handle: "skh_" + strings.Repeat("0", 40),
 	})
-	if _, err := registry.Execute(context.Background(), tool.Call{
-		Name: "skills.read", Arguments: staleArgs, Authorized: true,
+	if _, err := tooltest.Execute(context.Background(), registry, tool.Call{
+		Name: "skills.read", Arguments: staleArgs,
 	}); err == nil {
 		t.Fatal("mismatched authority-bound resource was accepted")
 	} else if hint, ok := tool.RecoveryHintFromError(err); !ok ||

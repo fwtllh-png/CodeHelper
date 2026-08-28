@@ -512,7 +512,7 @@ func (t *Tool) runBounded(
 	defer directory.Close()
 	command, err := process.NewCommand(ctx, process.Options{
 		Path: binary, Args: arguments, Dir: t.root,
-		DirFile: directory, Sandbox: t.backend, RequireStrongSandbox: true,
+		DirFile: directory, Sandbox: t.backend, RequireSandbox: true,
 	})
 	if err != nil {
 		return "", "", -1, err

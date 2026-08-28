@@ -13,7 +13,7 @@ func TestLandlockHelperProtocolRoundTripAndSecretIsolation(t *testing.T) {
 	secret := "fixture-secret-must-not-enter-helper-argv"
 	request := landlockRequest{
 		SchemaVersion: landlockSchemaVersion,
-		PolicyID:      "sandbox-v1-0123456789abcdef",
+		PolicyID:      "sandbox-v2-0123456789abcdef",
 		SyscallPolicy: syscallPolicyRestricted,
 		ReadOnly:      []string{"/bin", "/usr"},
 		ReadWrite:     []string{"/private/tmp", "/workspace"},
@@ -43,7 +43,7 @@ func TestLandlockHelperProtocolRoundTripAndSecretIsolation(t *testing.T) {
 func TestLandlockHelperProtocolRejectsUnknownAndMalformedInput(t *testing.T) {
 	valid := `{
 		"schema_version":1,
-		"policy_id":"sandbox-v1-0123456789abcdef",
+		"policy_id":"sandbox-v2-0123456789abcdef",
 		"syscall_policy":"restricted",
 		"read_only":["/bin"],
 		"read_write":["/workspace"],
@@ -82,13 +82,13 @@ func TestPolicySyscallModeIsMonotonic(t *testing.T) {
 }
 
 func TestLandlockHelperArgumentsRejectUnknownOrSecretBearingParameters(t *testing.T) {
-	valid := []string{"--request", "/private/tmp/request", "--policy-id", "sandbox-v1-id"}
+	valid := []string{"--request", "/private/tmp/request", "--policy-id", "sandbox-v2-id"}
 	if path, policyID, err := parseLandlockHelperArguments(valid); err != nil ||
 		path != valid[1] || policyID != valid[3] {
 		t.Fatalf("parse valid helper arguments = %q, %q, %v", path, policyID, err)
 	}
 	for _, arguments := range [][]string{
-		{"--request", "relative", "--policy-id", "sandbox-v1-id"},
+		{"--request", "relative", "--policy-id", "sandbox-v2-id"},
 		{"--request", "/private/tmp/request", "--unknown", "value"},
 		append(append([]string{}, valid...), "--secret", "fixture-secret"),
 	} {

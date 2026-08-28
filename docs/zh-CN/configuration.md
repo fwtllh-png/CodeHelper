@@ -17,7 +17,7 @@ codehelper --config ./codehelper.toml --workspace . --open
 MCP Server 定义使用独立、严格且带版本的 JSON 文件，不属于 Runtime TOML 控制面。
 Web 通过 `--mcp-config` 传入，并在 Settings 中展示加载状态。该文件必须位于
 `[state].data_dir` 下；启用 stdio Server 还必须显式声明 `host_trusted: true`，因为
-阶段 0 尚未把 Server 生命周期迁入 Process Broker。
+Runtime 会将 Server 生命周期绑定到受信配置、Execution Lease 和 Process Broker。
 
 ## 完整实用示例
 

@@ -74,7 +74,7 @@ func TestRealManagedProxyBlocksDirectEgress(t *testing.T) {
 	allowed, err := process.Run(ctx, process.Options{
 		Command: shellQuote(curl) + " -fsS --noproxy '' " + shellQuote(upstream.URL),
 		Dir:     root, DirFile: pinned, Sandbox: backend,
-		RequireStrongSandbox: true, WorkspaceReadOnly: true,
+		RequireSandbox: true, WorkspaceReadOnly: true,
 	})
 	if err != nil || allowed.Stdout != "managed-ok" {
 		t.Fatalf("managed request = %+v error=%v", allowed, err)
@@ -82,7 +82,7 @@ func TestRealManagedProxyBlocksDirectEgress(t *testing.T) {
 	direct, err := process.Run(ctx, process.Options{
 		Command: "/usr/bin/nc -w 1 127.0.0.1 " + targetURL.Port(),
 		Dir:     root, DirFile: pinned, Sandbox: backend,
-		RequireStrongSandbox: true, WorkspaceReadOnly: true,
+		RequireSandbox: true, WorkspaceReadOnly: true,
 	})
 	if err != nil {
 		t.Fatal(err)

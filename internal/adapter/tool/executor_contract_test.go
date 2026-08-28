@@ -11,6 +11,7 @@ import (
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 type contractInput struct {
@@ -36,24 +37,18 @@ func TestExecutorContract(t *testing.T) {
 	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.Execute(t.Context(), tool.Call{
-		Name: "contract_fixture", Arguments: json.RawMessage(`{"value":"ok"}`),
-	}); err == nil {
-		t.Fatal("authorization was not required")
-	}
 	for _, raw := range []string{`{}`, `{"value":"ok","unknown":true}`} {
-		_, err := registry.Execute(t.Context(), tool.Call{
-			Name: "contract_fixture", Arguments: json.RawMessage(raw), Authorized: true,
+		_, err := tooltest.Execute(t.Context(), registry, tool.Call{
+			Name: "contract_fixture", Arguments: json.RawMessage(raw),
 		})
 		if !errors.Is(err, tool.ErrInvalidArguments) ||
 			tool.ErrorCategory(err) != tool.ErrorCategoryInvalidArguments {
 			t.Fatalf("schema error for %s = %v", raw, err)
 		}
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name:       "contract_fixture",
-		Arguments:  json.RawMessage(`{"value":"` + strings.Repeat("x", 32) + `"}`),
-		Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "contract_fixture",
+		Arguments: json.RawMessage(`{"value":"` + strings.Repeat("x", 32) + `"}`),
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -31,7 +31,7 @@ type Options struct {
 	Env                  []string
 	Stdin                io.Reader
 	Sandbox              sandbox.Backend
-	RequireStrongSandbox bool
+	RequireSandbox       bool
 	WorkspaceReadOnly    bool
 	AdditionalReadPaths  []string
 	WorkspaceWritePaths  []string
@@ -234,8 +234,8 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 			"sh", environmentValue(environment, "PATH"), options.Command,
 		}
 	}
-	if options.RequireStrongSandbox {
-		required := sandbox.StrongCompatibilityRequirements()
+	if options.RequireSandbox {
+		required := sandbox.DefaultProcessRequirements()
 		if authorityBound && !executionAuthority.RequiredControls.IsZero() {
 			required = executionAuthority.RequiredControls
 		}
@@ -264,7 +264,7 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		commandSpec.Path = resolved
 		commandSpec.Args[0] = resolved
 		policy, ok := sandbox.BackendPolicy(options.Sandbox)
-		if options.RequireStrongSandbox && !ok {
+		if options.RequireSandbox && !ok {
 			return nil, errors.New("strong sandbox backend has no prepared policy identity")
 		}
 		environment = sandboxEnvironment(environment, policy, options.DenyNetwork)
@@ -276,7 +276,7 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 				options.Sandbox.Capability().Backend,
 			)
 		}
-		if options.RequireStrongSandbox &&
+		if options.RequireSandbox &&
 			(commandSpec.PreparedPolicyID == "" ||
 				commandSpec.PreparedPolicyID != policy.ID) {
 			return nil, errors.New("sandbox backend returned an unverified prepared policy")
@@ -365,14 +365,14 @@ func validateExecutionAuthority(
 	}
 	switch authority.Enforcement {
 	case "strong":
-		if !options.RequireStrongSandbox || options.Sandbox == nil {
+		if !options.RequireSandbox || options.Sandbox == nil {
 			return sandbox.Denied(sandbox.Denial{
 				Operation: sandbox.DenialProcess, Resource: "strong_sandbox",
 				ReasonCode: sandbox.ReasonEnforcementMismatch,
 			}, errors.New("strong execution authority requires strong sandbox enforcement"))
 		}
 	case "none":
-		if options.RequireStrongSandbox {
+		if options.RequireSandbox {
 			return sandbox.Denied(sandbox.Denial{
 				Operation: sandbox.DenialProcess, Resource: "unsandboxed",
 				ReasonCode: sandbox.ReasonEnforcementMismatch,

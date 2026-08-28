@@ -1525,10 +1525,21 @@ type strongBackend struct{}
 
 func (strongBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
-		Platform: "test", Backend: "test", Strength: sandbox.StrengthStrong, Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		Platform: "test", Backend: "test", Available: true,
+		Effective: controlmatrix.
+			Matrix{FilesystemRead: controlmatrix.
+			FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+
+			Network: controlmatrix.
+				NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill,
+			CrossProcess: controlmatrix.CrossProcessUnrestricted,
+			Syscall:      controlmatrix.SyscallDenyDangerous, IPC: controlmatrix.IPCUnrestricted,
+			PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+			ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 		},
 	}
 }

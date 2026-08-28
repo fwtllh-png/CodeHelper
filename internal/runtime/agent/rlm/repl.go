@@ -368,7 +368,7 @@ func (s *Store) Eval(ctx context.Context, name, code string) (EvalResult, *Sessi
 		Path: s.python,
 		Args: []string{runner, contextPath, statePath, codePath, outPath},
 		Dir:  directory, DirFile: directoryFile,
-		Sandbox: s.backend, RequireStrongSandbox: true,
+		Sandbox: s.backend, RequireSandbox: true,
 	})
 	timedOut := errors.Is(runCtx.Err(), context.DeadlineExceeded) ||
 		(err != nil && errors.Is(err, context.DeadlineExceeded))

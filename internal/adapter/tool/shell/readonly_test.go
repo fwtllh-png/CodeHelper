@@ -18,6 +18,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
@@ -31,7 +32,7 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.DefaultProcessRequirements()); err != nil {
 		t.Skipf("strong sandbox unavailable: %v", err)
 	}
 	manager := process.NewSessionManager(4096)
@@ -41,12 +42,11 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	read, err := registry.Execute(t.Context(), tool.Call{
+	read, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: "shell_read",
 		Arguments: json.RawMessage(
 			`{"command":"cat input.txt; printf temp > \"$TMPDIR/probe\"; cat \"$TMPDIR/probe\"; python3 - <<'PY'\nprint('heredoc')\nPY"}`,
 		),
-		Authorized: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -55,12 +55,11 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 		t.Fatalf("read result = %+v", read)
 	}
 
-	unsupported, err := registry.Execute(t.Context(), tool.Call{
+	unsupported, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: "shell_read",
 		Arguments: json.RawMessage(
 			`{"command":"diff <(printf left) <(printf right)"}`,
 		),
-		Authorized: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -77,10 +76,9 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 			t.Context(),
 			tool.InvocationIdentity{ThreadID: processTestThread},
 		)
-		write, err := registry.Execute(ctx, tool.Call{
-			Name:       name,
-			Arguments:  json.RawMessage(`{"command":"printf changed > input.txt"}`),
-			Authorized: true,
+		write, err := tooltest.Execute(ctx, registry, tool.Call{
+			Name:      name,
+			Arguments: json.RawMessage(`{"command":"printf changed > input.txt"}`),
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -114,10 +112,9 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		hostRead, err := registry.Execute(t.Context(), tool.Call{
-			Name:       "shell_read",
-			Arguments:  arguments,
-			Authorized: true,
+		hostRead, err := tooltest.Execute(t.Context(), registry, tool.Call{
+			Name:      "shell_read",
+			Arguments: arguments,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -131,10 +128,9 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chmod, err := registry.Execute(t.Context(), tool.Call{
-		Name:       "shell_read",
-		Arguments:  json.RawMessage(`{"command":"chmod 700 ."}`),
-		Authorized: true,
+	chmod, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "shell_read",
+		Arguments: json.RawMessage(`{"command":"chmod 700 ."}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +206,7 @@ func TestShellRunExactWriteScopeIsGuardedAndObserved(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.DefaultProcessRequirements()); err != nil {
 		t.Skipf("strong sandbox unavailable: %v", err)
 	}
 	manager := process.NewSessionManager(4096)
@@ -444,7 +440,7 @@ func TestShellRunWriteGlobsAreJournaledAsExactFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.DefaultProcessRequirements()); err != nil {
 		t.Skipf("strong sandbox unavailable: %v", err)
 	}
 	registry := tool.NewRegistry(nil, nil)

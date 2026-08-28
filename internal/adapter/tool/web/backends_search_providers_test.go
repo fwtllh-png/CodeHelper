@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestWebSearchTavilySearXNGBochaBackends(t *testing.T) {
@@ -114,8 +115,8 @@ func TestWebRunUnavailableAndFake(t *testing.T) {
 	if err := RegisterWithOptions(registry, Options{Browser: fake}); err != nil {
 		t.Fatal(err)
 	}
-	nav, err := registry.Execute(t.Context(), tool.Call{
-		Name: "web_run", Authorized: true,
+	nav, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "web_run",
 		Arguments: json.RawMessage(`{"action":"navigate","url":"https://example.com"}`),
 	})
 	if err != nil {
@@ -124,20 +125,20 @@ func TestWebRunUnavailableAndFake(t *testing.T) {
 	if nav.IsError || !strings.Contains(nav.Content, "https://example.com") {
 		t.Fatalf("navigate = %+v", nav)
 	}
-	if _, err := registry.Execute(t.Context(), tool.Call{
-		Name: "web_run", Authorized: true,
+	if _, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "web_run",
 		Arguments: json.RawMessage(`{"action":"click","selector":"#go"}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.Execute(t.Context(), tool.Call{
-		Name: "web_run", Authorized: true,
+	if _, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "web_run",
 		Arguments: json.RawMessage(`{"action":"fill","selector":"#q","value":"hi"}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	snap, err := registry.Execute(t.Context(), tool.Call{
-		Name: "web_run", Authorized: true,
+	snap, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "web_run",
 		Arguments: json.RawMessage(`{"action":"snapshot"}`),
 	})
 	if err != nil {

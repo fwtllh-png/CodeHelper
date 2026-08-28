@@ -371,14 +371,12 @@ type AttemptReceipt struct {
 	PermissionAccess        AccessMode                  `json:"permission_access,omitempty"`
 	Enforcement             string                      `json:"enforcement,omitempty"`
 	Backend                 string                      `json:"backend,omitempty"`
-	SandboxStrength         string                      `json:"sandbox_strength,omitempty"`
 	EffectiveControls       controlmatrix.Matrix        `json:"effective_controls"`
 	WorkspaceRoot           string                      `json:"workspace_root,omitempty"`
 	ReadRoots               []string                    `json:"read_roots,omitempty"`
 	WritePaths              []string                    `json:"write_paths,omitempty"`
 	DeniedWriteRoots        []string                    `json:"denied_write_roots,omitempty"`
 	WorkspaceBaseWrite      bool                        `json:"workspace_base_write,omitempty"`
-	FilesystemUnrestricted  bool                        `json:"filesystem_unrestricted,omitempty"`
 	NetworkMode             string                      `json:"network_mode,omitempty"`
 	NetworkTargets          []string                    `json:"network_targets,omitempty"`
 	ManagedProxyPort        uint16                      `json:"managed_proxy_port,omitempty"`

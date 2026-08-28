@@ -9,6 +9,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 type stubExec struct {
@@ -57,8 +58,8 @@ func TestToolSearchRanksDeferredMatches(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: toolsearch.ToolName, Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      toolsearch.ToolName,
 		Arguments: json.RawMessage(`{"query":"plugin beta"}`),
 	})
 	if err != nil {
@@ -77,8 +78,8 @@ func TestToolSearchRanksDeferredMatches(t *testing.T) {
 				entry.Descriptor.Availability != tool.AvailabilityAvailable {
 				t.Fatalf("entry = %+v, want materialized/available", entry)
 			}
-			called, executeErr := registry.Execute(t.Context(), tool.Call{
-				Name: "beta_plugin", Authorized: true, Arguments: json.RawMessage(`{}`),
+			called, executeErr := tooltest.Execute(t.Context(), registry, tool.Call{
+				Name: "beta_plugin", Arguments: json.RawMessage(`{}`),
 			})
 			if executeErr != nil || called.Content == "" {
 				t.Fatalf("execute materialized tool: result=%+v err=%v", called, executeErr)
@@ -118,8 +119,8 @@ func TestConcurrentToolSearchSharesMaterializationTransition(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			result, err := registry.Execute(t.Context(), tool.Call{
-				Name: toolsearch.ToolName, Authorized: true,
+			result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+				Name:      toolsearch.ToolName,
 				Arguments: json.RawMessage(`{"query":"durable workflow"}`),
 			})
 			if err == nil && result.IsError {

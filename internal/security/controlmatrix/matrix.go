@@ -4,6 +4,7 @@ package controlmatrix
 
 import (
 	"fmt"
+	"strings"
 )
 
 type FilesystemRead string
@@ -94,6 +95,21 @@ func (m Matrix) StringMap() map[string]string {
 		"artifact_origin":  string(m.ArtifactOrigin),
 		"durable_recovery": string(m.DurableRecovery),
 	}
+}
+
+func (m Matrix) Identity() string {
+	return strings.Join([]string{
+		string(m.FilesystemRead),
+		string(m.FilesystemWrite),
+		string(m.Network),
+		string(m.ProcessTree),
+		string(m.CrossProcess),
+		string(m.Syscall),
+		string(m.IPC),
+		string(m.PathIdentity),
+		string(m.ArtifactOrigin),
+		string(m.DurableRecovery),
+	}, "/")
 }
 
 func (m Matrix) validate(allowEmpty bool) error {
@@ -265,19 +281,6 @@ func satisfiesProcessTree(required, actual ProcessTree) bool {
 	default:
 		return required == actual
 	}
-}
-
-func (m Matrix) HasIsolation() bool {
-	weakest := Matrix{
-		FilesystemRead:  FilesystemReadUnrestricted,
-		FilesystemWrite: FilesystemWriteUnrestricted,
-		Network:         NetworkDirect, ProcessTree: ProcessTreeUnmanaged,
-		CrossProcess: CrossProcessUnrestricted, Syscall: SyscallUnrestricted,
-		IPC: IPCUnrestricted, PathIdentity: PathIdentityLexical,
-		ArtifactOrigin:  ArtifactOriginUnverifiedPath,
-		DurableRecovery: DurableRecoveryMemoryOnly,
-	}
-	return m != (Matrix{}) && m != weakest
 }
 
 func validFilesystemRead(value FilesystemRead) bool {

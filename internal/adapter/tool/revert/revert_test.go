@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 type fakeReverter struct {
@@ -75,8 +76,8 @@ func TestRevertTurnFakeHappyPath(t *testing.T) {
 			t.Fatalf("expected available: %+v", d)
 		}
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: "revert_turn", Arguments: json.RawMessage(`{}`), Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "revert_turn", Arguments: json.RawMessage(`{}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -88,9 +89,8 @@ func TestRevertTurnFakeHappyPath(t *testing.T) {
 	if len(fake.calls) != 1 || fake.calls[0] != "turn_last" {
 		t.Fatalf("calls = %+v", fake.calls)
 	}
-	result, err = registry.Execute(t.Context(), tool.Call{
+	result, err = tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: "revert_turn", Arguments: json.RawMessage(`{"target_turn_id":"turn_x"}`),
-		Authorized: true,
 	})
 	if err != nil {
 		t.Fatal(err)

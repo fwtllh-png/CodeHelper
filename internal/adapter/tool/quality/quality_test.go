@@ -13,6 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestQualityToolsReturnIndependentStructuredResults(t *testing.T) {
@@ -28,8 +29,8 @@ func TestQualityToolsReturnIndependentStructuredResults(t *testing.T) {
 	}
 	for name, field := range expectations {
 		t.Run(name, func(t *testing.T) {
-			result, err := registry.Execute(t.Context(), tool.Call{
-				Name: name, Arguments: json.RawMessage(`{"command":"printf fixture"}`), Authorized: true,
+			result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+				Name: name, Arguments: json.RawMessage(`{"command":"printf fixture"}`),
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -119,8 +120,8 @@ func TestQualityDiagnosticsAndReviewParseCommandOutput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := registry.Execute(t.Context(), tool.Call{
-				Name: test.name, Arguments: raw, Authorized: true,
+			result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+				Name: test.name, Arguments: raw,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -219,7 +220,7 @@ type qualityTestBackend struct{}
 func (qualityTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "passthrough",
-		Strength: sandbox.StrengthStrong, Available: true,
+		Available: true,
 		Effective: controlmatrix.Matrix{
 			FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
 			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,

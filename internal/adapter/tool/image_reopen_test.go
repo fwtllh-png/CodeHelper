@@ -29,11 +29,11 @@ func TestImageReopenUsesHandleWithoutTextualImageBytes(t *testing.T) {
 	if !strings.HasPrefix(handle, "image_") {
 		t.Fatalf("handle = %q", handle)
 	}
-	result, err := registry.Execute(context.Background(), Call{
-		Name:       ImageReopenToolName,
-		Arguments:  []byte(`{"handle":"` + handle + `"}`),
-		Authorized: true,
+	result, err := executeRegistry(context.Background(), registry, Call{
+		Name:      ImageReopenToolName,
+		Arguments: []byte(`{"handle":"` + handle + `"}`),
 	})
+
 	if err != nil {
 		t.Fatal(err)
 	}

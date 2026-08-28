@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -98,14 +99,13 @@ type ManagedProfileInput struct {
 	ManagedProxyPort   uint16
 	Enforcement        string
 	Backend            string
-	Strength           string
-	Controls           EffectiveControls
+	Controls           controlmatrix.Matrix
 }
 
 func BuildManagedProcessProfile(
 	input ManagedProfileInput,
 ) (EffectivePermissionProfile, error) {
-	if input.Controls == (EffectiveControls{}) && input.Enforcement == "none" {
+	if input.Controls == (controlmatrix.Matrix{}) && input.Enforcement == "none" {
 		input.Controls = unrestrictedControls()
 	}
 	networkMode := "denied"
@@ -139,7 +139,7 @@ func BuildManagedProcessProfile(
 		},
 		Process: ProcessAuthority{
 			Allowed: true, Enforcement: input.Enforcement,
-			Backend: input.Backend, Strength: input.Strength,
+			Backend: input.Backend,
 		},
 		Controls: input.Controls,
 		Provenance: []AuthoritySource{{

@@ -180,7 +180,7 @@ func (e *executor) run(ctx context.Context, event Event, hook HookConfig, input 
 		Path: hook.Command, Args: hook.Args, Dir: hook.WorkingDirectory,
 		DirFile: directory, Env: hook.Env, Sandbox: e.options.Sandbox,
 		Stdin: bytes.NewReader(payload), OutputLimitBytes: limit,
-		RequireStrongSandbox: true,
+		RequireSandbox:       true,
 		WorkspaceReadOnly:    true,
 		WorkspaceHiddenPaths: append([]string(nil), e.hiddenPaths...),
 		DenyNetwork:          true,
@@ -334,7 +334,6 @@ func (e *executor) authorizeProcess(
 			AllowNetwork:       false,
 			ManagedProxyPort:   boundPolicy.ManagedProxyPort,
 			Enforcement:        "strong", Backend: capability.Backend,
-			Strength: string(capability.Strength),
 			Controls: sandbox.CommandControls(
 				capability,
 				boundPolicy,

@@ -20,7 +20,9 @@ import (
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	rlmlib "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestRequestUserInputRejectsBlankAndDuplicateOptions(t *testing.T) {
@@ -31,8 +33,8 @@ func TestRequestUserInputRejectsBlankAndDuplicateOptions(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := registry.Execute(t.Context(), tool.Call{
-		Name: "request_user_input", Authorized: true,
+	_, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "request_user_input",
 		Arguments: mustJSON(map[string]any{
 			"prompt": "pick", "options": []string{"a", " ", "b"},
 		}),
@@ -40,8 +42,8 @@ func TestRequestUserInputRejectsBlankAndDuplicateOptions(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "non-empty") {
 		t.Fatalf("blank option err = %v", err)
 	}
-	_, err = registry.Execute(t.Context(), tool.Call{
-		Name: "request_user_input", Authorized: true,
+	_, err = tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "request_user_input",
 		Arguments: mustJSON(map[string]any{
 			"prompt": "pick", "options": []string{"Yes", "yes"},
 		}),
@@ -81,8 +83,8 @@ func TestRequestUserInputFailClosedWithoutHost(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := registry.Execute(t.Context(), tool.Call{
-		Name: "request_user_input", Authorized: true,
+	_, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "request_user_input",
 		Arguments: mustJSON(map[string]any{"prompt": "hi"}),
 	})
 	var unavailable interact.HostUnavailableError
@@ -107,8 +109,8 @@ func TestRequestUserInputBlocksUntilHostReply(t *testing.T) {
 	done := make(chan tool.Result, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		result, err := registry.Execute(t.Context(), tool.Call{
-			Name: "request_user_input", Authorized: true,
+		result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+			Name:      "request_user_input",
 			Arguments: mustJSON(map[string]any{"prompt": "Continue?", "options": []any{"yes", "no"}}),
 		})
 		if err != nil {
@@ -285,8 +287,8 @@ func TestUpdatePlanRejectsEmptyStepTitle(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := registry.Execute(t.Context(), tool.Call{
-		Name: "update_plan", Authorized: true,
+	_, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "update_plan",
 		Arguments: mustJSON(map[string]any{"steps": []any{map[string]any{"title": "  "}}}),
 	})
 	if err == nil || !strings.Contains(err.Error(), "must have a title") {
@@ -364,8 +366,8 @@ func TestProjectMapSharesTheSearchEnumeration(t *testing.T) {
 		strings.Contains(scoped.Content, "main.go") {
 		t.Fatalf("scoped result = %+v", scoped)
 	}
-	if _, err := registry.Execute(t.Context(), tool.Call{
-		Name: "project_map", Authorized: true,
+	if _, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "project_map",
 		Arguments: []byte(`{"path":"../outside"}`),
 	}); err == nil {
 		t.Fatal("a path outside the workspace was accepted")
@@ -437,8 +439,8 @@ func TestImageAnalyzeAvailableWithFakeClient(t *testing.T) {
 			break
 		}
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: "image_analyze", Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "image_analyze",
 		Arguments: mustJSON(map[string]any{"path": "shot.png", "prompt": "what"}),
 	})
 	if err != nil {
@@ -459,8 +461,8 @@ func TestImageAnalyzeRejectsEscapingPath(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: "image_analyze", Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "image_analyze",
 		Arguments: mustJSON(map[string]any{"path": "../secret.png"}),
 	})
 	if err != nil {
@@ -505,8 +507,8 @@ func TestCodeExecutionWithStrongPassthrough(t *testing.T) {
 
 func execute(t *testing.T, registry *tool.Registry, name string, input map[string]any) tool.Result {
 	t.Helper()
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: name, Arguments: mustJSON(input), Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: name, Arguments: mustJSON(input),
 	})
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)
@@ -528,9 +530,19 @@ func (passthroughBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "passthrough",
 		Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		Effective: controlmatrix.Matrix{
+			FilesystemRead: controlmatrix.
+				FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+
+			Network: controlmatrix.NetworkDenied, ProcessTree: controlmatrix.
+					ProcessTreeGroupKill, CrossProcess: controlmatrix.CrossProcessUnrestricted,
+			Syscall: controlmatrix.SyscallDenyDangerous,
+			IPC:     controlmatrix.IPCUnrestricted, PathIdentity: controlmatrix.
+					PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.
+					ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 		},
 	}
 }

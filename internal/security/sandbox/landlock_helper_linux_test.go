@@ -232,7 +232,7 @@ func TestLandlockBubblewrapPreparationMountsHelperLiteral(t *testing.T) {
 		workspace: workspace, policy: policy,
 		capability: Capability{
 			Platform: "linux", Backend: "bwrap+landlock",
-			Strength: StrengthStrong, Available: true,
+			Available: true,
 		},
 		helperPath: helper, requestRoot: requestRoot, useLandlock: true,
 	}

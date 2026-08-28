@@ -117,9 +117,9 @@ func BuildManagedFileProfile(
 		},
 		Network: NetworkAuthority{Mode: "denied"},
 		Process: ProcessAuthority{
-			Enforcement: "none", Backend: "file_broker", Strength: "none",
+			Enforcement: "none", Backend: "file_broker",
 		},
-		Controls: EffectiveControls{
+		Controls: controlmatrix.Matrix{
 			FilesystemRead:  controlmatrix.FilesystemReadExactPaths,
 			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
 			Network:         controlmatrix.NetworkDenied,

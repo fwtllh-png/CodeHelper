@@ -14,8 +14,10 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 	sourcediff "github.com/sourcegraph/go-diff/diff"
 )
 
@@ -178,8 +180,8 @@ func TestFileToolsRejectTraversalAndBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, arguments := range []string{`{"path":"../outside"}`, `{"path":"binary"}`} {
-		if _, err := registry.Execute(t.Context(), tool.Call{
-			Name: "file_read", Arguments: json.RawMessage(arguments), Authorized: true,
+		if _, err := tooltest.Execute(t.Context(), registry, tool.Call{
+			Name: "file_read", Arguments: json.RawMessage(arguments),
 		}); err == nil {
 			t.Fatalf("read %s succeeded", arguments)
 		}
@@ -205,9 +207,8 @@ func TestMissingFilePathsCarryStructuredRecoveryHints(t *testing.T) {
 		{name: "file_list", args: `{"path":"missing"}`},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			_, err := registry.Execute(t.Context(), tool.Call{
+			_, err := tooltest.Execute(t.Context(), registry, tool.Call{
 				Name: testCase.name, Arguments: json.RawMessage(testCase.args),
-				Authorized: true,
 			})
 			if err == nil || !errors.Is(err, tool.ErrPrecondition) {
 				t.Fatalf("%s error = %v, want recoverable precondition",
@@ -253,12 +254,11 @@ func TestMissingFileSuggestsBoundedExistingSiblingPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = registry.Execute(t.Context(), tool.Call{
+	_, err = tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: "file_read",
 		Arguments: json.RawMessage(
 			`{"path":"docs/context/01-prompt-context.md"}`,
 		),
-		Authorized: true,
 	})
 	if err == nil {
 		t.Fatal("missing read succeeded")
@@ -300,10 +300,10 @@ func TestFileReadRangesAndStructuredListAreBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ranged, err := registry.Execute(t.Context(), tool.Call{
+	ranged, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: "file_read", Arguments: json.RawMessage(
 			`{"path":"large.txt","start_line":2,"max_lines":2}`,
-		), Authorized: true,
+		),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -311,8 +311,8 @@ func TestFileReadRangesAndStructuredListAreBounded(t *testing.T) {
 	if ranged.Content != "line-002\nline-003" || ranged.Metadata["next_start_line"] != 4 {
 		t.Fatalf("ranged read = %+v", ranged)
 	}
-	bounded, err := registry.Execute(t.Context(), tool.Call{
-		Name: "file_read", Arguments: json.RawMessage(`{"path":"large.txt"}`), Authorized: true,
+	bounded, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "file_read", Arguments: json.RawMessage(`{"path":"large.txt"}`),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -322,10 +322,10 @@ func TestFileReadRangesAndStructuredListAreBounded(t *testing.T) {
 		t.Fatalf("default read = %+v", bounded)
 	}
 
-	listed, err := registry.Execute(t.Context(), tool.Call{
+	listed, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: "file_list", Arguments: json.RawMessage(
 			`{"path":".","offset":0,"limit":2}`,
-		), Authorized: true,
+		),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -357,10 +357,10 @@ func TestFileReadExtractsSelectedPDFPages(t *testing.T) {
 	if err := tools.Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: "file_read", Arguments: json.RawMessage(
 			`{"path":"fixture.pdf","pages":"2"}`,
-		), Authorized: true,
+		),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -569,8 +569,8 @@ func TestFilePatchCannotBypassGuardWithSandboxAttempt(t *testing.T) {
 	patch := "--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-one\n+two\n"
 	data, _ := json.Marshal(map[string]string{"patch": patch})
 	ctx := toolguard.WithSandboxAttempt(t.Context(), toolguard.SandboxAttempt{Mode: toolguard.SandboxModeNone})
-	if _, err := registry.Execute(ctx, tool.Call{
-		Name: "file_patch", Arguments: data, Authorized: true,
+	if _, err := tooltest.Execute(ctx, registry, tool.Call{
+		Name: "file_patch", Arguments: data,
 	}); err == nil || !strings.Contains(err.Error(), "File Broker lease") {
 		t.Fatalf("direct file_patch error = %v", err)
 	}
@@ -664,11 +664,19 @@ type fileTestBackend struct{}
 func (fileTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "passthrough",
-		Strength: sandbox.StrengthStrong, Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Available: true,
+		Effective: controlmatrix.
+			Matrix{FilesystemRead: controlmatrix.
+			FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+
+			Network: controlmatrix.NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill, CrossProcess: controlmatrix.CrossProcessUnrestricted,
+			Syscall: controlmatrix.SyscallDenyDangerous, IPC: controlmatrix.IPCUnrestricted, PathIdentity: controlmatrix.
+					PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.
+					ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.
+					DurableRecoveryMemoryOnly},
 	}
 }
 

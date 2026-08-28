@@ -126,7 +126,7 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	defer directory.Close()
 	command, err := process.NewCommand(ctx, process.Options{
 		Path: gitExecutable(), Args: arguments, Dir: t.root,
-		DirFile: directory, Sandbox: t.backend, RequireStrongSandbox: true,
+		DirFile: directory, Sandbox: t.backend, RequireSandbox: true,
 	})
 	if err != nil {
 		return tool.Result{}, err

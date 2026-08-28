@@ -262,7 +262,7 @@ func (p *Loaded) Run(ctx context.Context, arguments json.RawMessage) (process.Re
 	defer directory.Close()
 	return process.Run(ctx, process.Options{
 		Path: executable, Args: commandArguments, Dir: directoryPath,
-		DirFile: directory, Sandbox: backend, RequireStrongSandbox: true,
+		DirFile: directory, Sandbox: backend, RequireSandbox: true,
 		WorkspaceReadOnly: true,
 	})
 }

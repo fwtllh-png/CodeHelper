@@ -218,11 +218,6 @@ func NewExternalDeferredRegistration(
 	}
 }
 
-func (r Registration) WithTrustedBinding(binding TrustedBinding) Registration {
-	r.binding, r.explicit = binding, true
-	return r
-}
-
 func (r Registration) WithPayload(payload any) Registration {
 	r.payload = payload
 	return r

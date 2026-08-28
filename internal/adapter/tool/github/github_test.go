@@ -15,8 +15,10 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	githubtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/github"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestGitHubIssueAndPRContextReadonly(t *testing.T) {
@@ -105,8 +107,8 @@ func TestGitHubCommentAndCloseWritePath(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "dirty.txt"), []byte("x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	dirty, err := registry.Execute(t.Context(), tool.Call{
-		Name: "github_close_pr", Authorized: true,
+	dirty, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "github_close_pr",
 		Arguments: mustJSON(map[string]any{
 			"provider": "github", "repository": "acme/repo", "number": 5,
 			"acceptance_criteria": []any{"ok"}, "evidence": []any{"ev"},
@@ -269,8 +271,8 @@ func runGit(t *testing.T, root string, args ...string) {
 
 func execute(t *testing.T, registry *tool.Registry, name string, input map[string]any) tool.Result {
 	t.Helper()
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: name, Arguments: mustJSON(input), Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: name, Arguments: mustJSON(input),
 	})
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)
@@ -292,10 +294,17 @@ func (passthroughBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "passthrough",
 		Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Effective: controlmatrix.Matrix{
+			FilesystemRead: controlmatrix.
+				FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+
+			Network: controlmatrix.
+				NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill,
+			CrossProcess: controlmatrix.CrossProcessUnrestricted, Syscall: controlmatrix.
+					SyscallDenyDangerous, IPC: controlmatrix.IPCUnrestricted, PathIdentity: controlmatrix.PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly},
 	}
 }
 

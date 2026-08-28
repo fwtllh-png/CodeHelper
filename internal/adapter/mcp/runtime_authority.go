@@ -155,7 +155,6 @@ func (r *RuntimeAuthority) Start(
 			NetworkTargets:     mcpNetworkTargets(config.PermissionProfile),
 			ManagedProxyPort:   sandboxPolicy.ManagedProxyPort,
 			Enforcement:        enforcement, Backend: capability.Backend,
-			Strength: string(capability.Strength),
 			Controls: sandbox.CommandControls(
 				capability,
 				sandboxPolicy,
@@ -196,7 +195,7 @@ func (r *RuntimeAuthority) Start(
 	options := process.Options{
 		Path: config.Command, Args: config.Args, Dir: directory,
 		Env: environment, Sandbox: r.Sandbox,
-		RequireStrongSandbox: strong,
+		RequireSandbox:       strong,
 		WorkspaceReadOnly:    strong && !allowWrite,
 		DenyNetwork:          strong && !allowNetwork,
 		WorkspaceHiddenPaths: mcpHiddenPaths(r.Workspace),

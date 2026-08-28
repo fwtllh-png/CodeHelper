@@ -857,7 +857,7 @@ func gitBlobHash(
 			Path: gitMergeExecutable(),
 			Args: append([]string{"-C", worktree}, arguments...),
 			Dir:  workspace, DirFile: directory,
-			Sandbox: backend, RequireStrongSandbox: true,
+			Sandbox: backend, RequireSandbox: true,
 			WorkspaceReadOnly:   true,
 			AdditionalReadPaths: []string{worktree},
 		})

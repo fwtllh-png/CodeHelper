@@ -327,7 +327,7 @@ func (t *Tool) executeVerifier(
 func (t *Tool) runProcess(ctx context.Context, command string) (process.Result, error) {
 	options := process.Options{
 		Command: failFastShellCommand(command), Dir: t.root, Sandbox: t.sandbox,
-		RequireStrongSandbox: true, WorkspaceReadOnly: true,
+		RequireSandbox: true, WorkspaceReadOnly: true,
 	}
 	if t.run != nil {
 		return t.run(ctx, options)

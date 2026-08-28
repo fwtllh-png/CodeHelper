@@ -18,6 +18,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -362,10 +363,18 @@ func (eventAuthorizationBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "passthrough",
 		Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Effective: controlmatrix.
+			Matrix{
+			FilesystemRead: controlmatrix.
+				FilesystemReadDeclaredRoots,
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+			Network: controlmatrix.
+				NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill,
+			CrossProcess: controlmatrix.CrossProcessUnrestricted, Syscall: controlmatrix.
+					SyscallDenyDangerous, IPC: controlmatrix.IPCUnrestricted,
+			PathIdentity: controlmatrix.PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly},
 	}
 }
 

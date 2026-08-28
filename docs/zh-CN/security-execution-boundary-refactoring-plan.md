@@ -155,7 +155,7 @@ Policy 生成最终约束。任何 Descriptor 自报都不能单独证明：
 
 ### 4.5 Required Controls 必须逐项满足
 
-`Strong` 只能作为 UI 或兼容层的派生摘要，不能继续作为内部授权依据。执行前必须证明：
+UI 如需摘要只能从控制矩阵即时派生，不能保存或使用 `Strong` 作为授权依据。执行前必须证明：
 
 ```text
 RequiredControls is satisfied by EffectiveControls
@@ -523,7 +523,7 @@ type Controls struct {
 
 每个取值需要定义满足关系；不同维度和不可比较值不能通过整数排序。Backend Probe 产生
 `EffectiveControls`，Trusted Binding 声明 `RequiredControls`，Authority 执行逐项集合
-判断。兼容字段 `Strength` 由矩阵派生，仅用于 UI、诊断和旧协议。
+判断。旧 `Strength` 字段已从 Capability、Profile 和 Receipt 删除。
 
 ## 十、Workspace Journal
 
@@ -908,7 +908,7 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 - Backend Probe 返回 Effective Controls；
 - Tool Binding 声明 Required Controls；
 - Authority 执行集合匹配；
-- `Strong` 降为派生兼容字段；
+- 删除 `Strong` 能力标签；
 - macOS、Linux、Windows 的平台差异被准确报告。
 
 交付边界：
@@ -916,7 +916,7 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 - `internal/security/controlmatrix` 定义十个有领域语义的控制维度及显式满足关系，不使用
   整数等级或固定平台阈值；
 - Sandbox Probe 返回实际 `EffectiveControls`，Policy 和具体 Command 继续收紧
-  Filesystem Write 与 Network 控制；`Strength` 只由矩阵派生用于兼容显示；
+  Filesystem Write 与 Network 控制；旧 `Strength` 能力与 Receipt 字段已删除；
 - Trusted Binding、ExecutionOperation 和 Lease 分别冻结 Required Controls，
   Permission Profile 冻结 Effective Controls，Lease 签发执行逐维集合比较；
 - Process 在 Backend `Prepare` 后再次校验 Prepared Controls，防止 Backend 声称能力

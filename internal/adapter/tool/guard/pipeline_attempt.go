@@ -844,7 +844,6 @@ func bindAttemptAuthority(
 	receipt.PermissionAccess = profile.Access
 	receipt.Enforcement = profile.Process.Enforcement
 	receipt.Backend = profile.Process.Backend
-	receipt.SandboxStrength = profile.Process.Strength
 	receipt.EffectiveControls = profile.Controls
 	receipt.WorkspaceRoot = profile.Filesystem.WorkspaceRoot
 	receipt.ReadRoots = append([]string(nil), profile.Filesystem.ReadRoots...)
@@ -854,7 +853,6 @@ func bindAttemptAuthority(
 		profile.Filesystem.DeniedWriteRoots...,
 	)
 	receipt.WorkspaceBaseWrite = profile.Filesystem.WorkspaceBaseWrite
-	receipt.FilesystemUnrestricted = profile.Filesystem.Unrestricted
 	receipt.NetworkMode = profile.Network.Mode
 	receipt.NetworkTargets = append([]string(nil), profile.Network.Targets...)
 	receipt.ManagedProxyPort = profile.Network.ProxyPort

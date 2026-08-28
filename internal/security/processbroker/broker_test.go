@@ -117,7 +117,7 @@ func TestRunCommandSettlesNonZeroExitAsFailure(t *testing.T) {
 		authority.ManagedProfileInput{
 			Operation: operation, Revision: 1, WorkspaceRoot: workspace,
 			WorkspaceBaseWrite: true, AllowNetwork: true,
-			Enforcement: "none", Backend: "none", Strength: "none",
+			Enforcement: "none", Backend: "none",
 		},
 	)
 	if err != nil {

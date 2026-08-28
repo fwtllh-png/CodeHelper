@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestCompletionToolReturnsStructuredDeclaration(t *testing.T) {
@@ -13,14 +14,13 @@ func TestCompletionToolReturnsStructuredDeclaration(t *testing.T) {
 	if err := Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: Name,
 		Arguments: json.RawMessage(`{
 			"status":"complete",
 			"summary":"implemented and verified",
 			"pending_actions":[]
 		}`),
-		Authorized: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -49,13 +49,12 @@ func TestCompletionToolRequiresPendingActions(t *testing.T) {
 	if err := Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	_, err := registry.Execute(t.Context(), tool.Call{
+	_, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: Name,
 		Arguments: json.RawMessage(`{
 			"status":"complete",
 			"summary":"implemented and verified"
 		}`),
-		Authorized: true,
 	})
 	if err == nil {
 		t.Fatal("declaration without pending_actions was accepted")
@@ -67,14 +66,13 @@ func TestCompletionToolRejectsPendingActionsForCompleteStatus(t *testing.T) {
 	if err := Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	_, err := registry.Execute(t.Context(), tool.Call{
+	_, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: Name,
 		Arguments: json.RawMessage(`{
 			"status":"complete",
 			"summary":"not actually complete",
 			"pending_actions":["run tests"]
 		}`),
-		Authorized: true,
 	})
 	if err == nil {
 		t.Fatal("pending completion action was accepted")
@@ -86,14 +84,13 @@ func TestCompletionToolReturnsStructuredIncompleteDeclaration(t *testing.T) {
 	if err := Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: Name,
 		Arguments: json.RawMessage(`{
 			"status":"incomplete",
 			"summary":"implementation remains",
 			"pending_actions":["apply the workspace edits"]
 		}`),
-		Authorized: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -110,14 +107,13 @@ func TestCompletionToolRejectsIncompleteWithoutPendingActions(t *testing.T) {
 	if err := Register(registry); err != nil {
 		t.Fatal(err)
 	}
-	_, err := registry.Execute(t.Context(), tool.Call{
+	_, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: Name,
 		Arguments: json.RawMessage(`{
 			"status":"incomplete",
 			"summary":"implementation remains",
 			"pending_actions":[]
 		}`),
-		Authorized: true,
 	})
 	if err == nil {
 		t.Fatal("incomplete declaration without pending actions was accepted")

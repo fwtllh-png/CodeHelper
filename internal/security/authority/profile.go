@@ -19,7 +19,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 type FilesystemAuthority struct {
 	WorkspaceRoot      string   `json:"workspace_root"`
@@ -27,7 +27,6 @@ type FilesystemAuthority struct {
 	WritePaths         []string `json:"write_paths,omitempty"`
 	DeniedWriteRoots   []string `json:"denied_write_roots,omitempty"`
 	WorkspaceBaseWrite bool     `json:"workspace_base_write,omitempty"`
-	Unrestricted       bool     `json:"unrestricted,omitempty"`
 }
 
 type NetworkAuthority struct {
@@ -41,7 +40,6 @@ type ProcessAuthority struct {
 	Allowed     bool   `json:"allowed"`
 	Enforcement string `json:"enforcement"`
 	Backend     string `json:"backend"`
-	Strength    string `json:"strength"`
 }
 
 type AuthoritySource struct {
@@ -52,17 +50,17 @@ type AuthoritySource struct {
 }
 
 type EffectivePermissionProfile struct {
-	SchemaVersion int                 `json:"schema_version"`
-	Revision      uint64              `json:"revision"`
-	Tool          string              `json:"tool"`
-	Capability    tool.Capability     `json:"capability"`
-	Access        tool.AccessMode     `json:"access"`
-	Filesystem    FilesystemAuthority `json:"filesystem"`
-	Network       NetworkAuthority    `json:"network"`
-	Process       ProcessAuthority    `json:"process"`
-	Controls      EffectiveControls   `json:"controls"`
-	Provenance    []AuthoritySource   `json:"provenance"`
-	Digest        string              `json:"digest"`
+	SchemaVersion int                  `json:"schema_version"`
+	Revision      uint64               `json:"revision"`
+	Tool          string               `json:"tool"`
+	Capability    tool.Capability      `json:"capability"`
+	Access        tool.AccessMode      `json:"access"`
+	Filesystem    FilesystemAuthority  `json:"filesystem"`
+	Network       NetworkAuthority     `json:"network"`
+	Process       ProcessAuthority     `json:"process"`
+	Controls      controlmatrix.Matrix `json:"controls"`
+	Provenance    []AuthoritySource    `json:"provenance"`
+	Digest        string               `json:"digest"`
 }
 
 type CompileInput struct {
@@ -87,7 +85,7 @@ func Compile(input CompileInput) (EffectivePermissionProfile, error) {
 	if input.Revision == 0 || (input.Enforcement != "strong" && input.Enforcement != "none") {
 		return EffectivePermissionProfile{}, errors.New("authority revision and enforcement are required")
 	}
-	capability := sandbox.NormalizeCapability(input.Capability)
+	capability := input.Capability
 	profile := EffectivePermissionProfile{
 		SchemaVersion: SchemaVersion,
 		Revision:      input.Revision,
@@ -100,7 +98,6 @@ func Compile(input CompileInput) (EffectivePermissionProfile, error) {
 		Process: ProcessAuthority{
 			Enforcement: input.Enforcement,
 			Backend:     capability.Backend,
-			Strength:    string(capability.Strength),
 		},
 		Controls: sandbox.EffectiveControls(
 			capability,
@@ -144,10 +141,11 @@ func (p EffectivePermissionProfile) executionAuthority(
 	required RequiredControls,
 ) sandbox.ExecutionAuthority {
 	return sandbox.ExecutionAuthority{
-		Digest:              p.Digest,
-		Enforcement:         p.Process.Enforcement,
-		WorkspaceRoot:       p.Filesystem.WorkspaceRoot,
-		WorkspaceBaseWrite:  p.Filesystem.WorkspaceBaseWrite || p.Filesystem.Unrestricted,
+		Digest:        p.Digest,
+		Enforcement:   p.Process.Enforcement,
+		WorkspaceRoot: p.Filesystem.WorkspaceRoot,
+		WorkspaceBaseWrite: p.Filesystem.WorkspaceBaseWrite ||
+			p.Process.Enforcement == "none",
 		ReadPaths:           append([]string(nil), p.Filesystem.ReadRoots...),
 		WorkspaceWritePaths: append([]string(nil), p.Filesystem.WritePaths...),
 		NetworkTargets:      append([]string(nil), p.Network.Targets...),
@@ -223,10 +221,8 @@ func networkKey(target policy.NetworkTarget) string {
 
 func compileSandboxCeiling(profile *EffectivePermissionProfile, input CompileInput) {
 	if input.Enforcement == "none" {
-		profile.Filesystem.Unrestricted = true
 		profile.Network.Mode = "unrestricted"
 		profile.Process.Backend = "none"
-		profile.Process.Strength = string(sandbox.StrengthNone)
 		profile.Controls = unrestrictedControls()
 		return
 	}
@@ -278,7 +274,7 @@ func compileSandboxCeiling(profile *EffectivePermissionProfile, input CompileInp
 		desiredControl = controlmatrix.NetworkDirect
 	}
 	if controlmatrix.CanEnforceNetwork(
-		sandbox.NormalizeCapability(input.Capability).Effective.Network,
+		input.Capability.Effective.Network,
 		desiredControl,
 	) {
 		profile.Network.Mode = desiredMode
@@ -289,8 +285,8 @@ func compileSandboxCeiling(profile *EffectivePermissionProfile, input CompileInp
 	}
 }
 
-func unrestrictedControls() EffectiveControls {
-	return EffectiveControls{
+func unrestrictedControls() controlmatrix.Matrix {
+	return controlmatrix.Matrix{
 		FilesystemRead:  controlmatrix.FilesystemReadUnrestricted,
 		FilesystemWrite: controlmatrix.FilesystemWriteUnrestricted,
 		Network:         controlmatrix.NetworkDirect,

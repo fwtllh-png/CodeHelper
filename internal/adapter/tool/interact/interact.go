@@ -214,7 +214,7 @@ func (e *executor) Descriptor() tool.Descriptor {
 			reason = "strong sandboxed Python runner is unavailable"
 		} else if err := sandbox.RequireControls(
 			e.tools.backend,
-			sandbox.StrongCompatibilityRequirements(),
+			sandbox.DefaultProcessRequirements(),
 		); err != nil {
 			available = tool.AvailabilityUnavailable
 			reason = "strong sandbox is unavailable"
@@ -540,7 +540,7 @@ func (t *Tools) codeExecution(ctx context.Context, raw json.RawMessage) (tool.Re
 	}
 	if err := sandbox.RequireControls(
 		t.backend,
-		sandbox.StrongCompatibilityRequirements(),
+		sandbox.DefaultProcessRequirements(),
 	); err != nil {
 		return tool.Result{
 			Content: err.Error(), IsError: true,

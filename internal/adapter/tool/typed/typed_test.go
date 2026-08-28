@@ -10,6 +10,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 type fixtureInput struct {
@@ -48,7 +49,7 @@ func TestDefineExecutesStrictTypedContract(t *testing.T) {
 	}
 }
 
-func TestRegistryKeepsSchemaAuthorizationAndOutputRouting(t *testing.T) {
+func TestRegistryKeepsSchemaAndOutputRouting(t *testing.T) {
 	registry := tool.NewRegistry(nil, tool.NewResultStore(16))
 	executor := fixtureExecutor(t, func(_ context.Context, input fixtureInput) (fixtureOutput, error) {
 		return fixtureOutput{Greeting: strings.Repeat(input.Name, 32)}, nil
@@ -56,20 +57,15 @@ func TestRegistryKeepsSchemaAuthorizationAndOutputRouting(t *testing.T) {
 	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.Execute(t.Context(), tool.Call{
-		Name: "typed_fixture", Arguments: json.RawMessage(`{"name":"x"}`),
-	}); err == nil {
-		t.Fatal("unauthorized typed tool executed")
-	}
 	for _, raw := range []string{`{}`, `{"name":"x","unknown":true}`} {
-		if _, err := registry.Execute(t.Context(), tool.Call{
-			Name: "typed_fixture", Arguments: json.RawMessage(raw), Authorized: true,
+		if _, err := tooltest.Execute(t.Context(), registry, tool.Call{
+			Name: "typed_fixture", Arguments: json.RawMessage(raw),
 		}); !errors.Is(err, tool.ErrInvalidArguments) {
 			t.Fatalf("schema arguments %s error = %v", raw, err)
 		}
 	}
-	value, err := registry.Execute(t.Context(), tool.Call{
-		Name: "typed_fixture", Arguments: json.RawMessage(`{"name":"long"}`), Authorized: true,
+	value, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "typed_fixture", Arguments: json.RawMessage(`{"name":"long"}`),
 	})
 	if err != nil {
 		t.Fatal(err)

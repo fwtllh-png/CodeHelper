@@ -17,6 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestChatWorkspacesProvisionMergeAndRestore(t *testing.T) {
@@ -170,20 +171,18 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 		t.Context(),
 		tool.InvocationIdentity{ThreadID: "thread-chat-git"},
 	)
-	shown, err := toolset.registry.Execute(toolContext, tool.Call{
+	shown, err := tooltest.Execute(toolContext, toolset.registry, tool.Call{
 		Name: "git_show", Arguments: json.RawMessage(`{"revision":"HEAD"}`),
-		Authorized: true,
 	})
 	if err != nil || shown.IsError ||
 		!strings.Contains(shown.Content, "codehelper chat baseline") {
 		t.Fatalf("git_show result=%+v err=%v", shown, err)
 	}
-	shell, err := toolset.registry.Execute(toolContext, tool.Call{
+	shell, err := tooltest.Execute(toolContext, toolset.registry, tool.Call{
 		Name: "exec_command",
 		Arguments: json.RawMessage(
 			`{"command":"git rev-parse --is-inside-work-tree && git log -1 --format=%s"}`,
 		),
-		Authorized: true,
 	})
 	if err != nil || shell.IsError ||
 		!strings.Contains(shell.Content, "true") ||
@@ -201,8 +200,8 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write, err := toolset.registry.Execute(toolContext, tool.Call{
-		Name: "exec_command", Arguments: arguments, Authorized: true,
+	write, err := tooltest.Execute(toolContext, toolset.registry, tool.Call{
+		Name: "exec_command", Arguments: arguments,
 	})
 	if err == nil && !write.IsError {
 		t.Fatalf("main workspace write unexpectedly succeeded: %+v", write)

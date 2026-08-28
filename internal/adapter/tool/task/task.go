@@ -612,7 +612,7 @@ func (t *Tools) gateRun(ctx context.Context, raw json.RawMessage) (tool.Result, 
 	started := time.Now().UTC()
 	result, err := process.Run(runCtx, process.Options{
 		Command: input.Command, Dir: directory, DirFile: directoryFile,
-		Sandbox: t.backend, RequireStrongSandbox: true,
+		Sandbox: t.backend, RequireSandbox: true,
 		WorkspaceReadOnly: true,
 	})
 	if err != nil {

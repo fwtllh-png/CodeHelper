@@ -333,7 +333,7 @@ func testRequest(
 		authority.ManagedProfileInput{
 			Operation: operation, Revision: 1, WorkspaceRoot: root,
 			WorkspaceBaseWrite: true, AllowNetwork: true,
-			Enforcement: "none", Backend: "none", Strength: "none",
+			Enforcement: "none", Backend: "none",
 		},
 	)
 	if err != nil {

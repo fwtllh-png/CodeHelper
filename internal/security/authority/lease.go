@@ -357,12 +357,10 @@ func validateLeaseCurrent(lease ExecutionLease, current LeaseValidation) error {
 	}
 }
 
-type EffectiveControls = controlmatrix.Matrix
-
 func effectiveControls(
 	profile EffectivePermissionProfile,
 	operation ExecutionOperation,
-) EffectiveControls {
+) controlmatrix.Matrix {
 	controls := profile.Controls
 	if operation.Artifact != nil {
 		controls.ArtifactOrigin = controlmatrix.ArtifactOriginBrokerSnapshot

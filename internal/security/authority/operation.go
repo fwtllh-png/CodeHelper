@@ -701,7 +701,7 @@ func digestString(value string) string {
 
 func FallbackSandboxPolicyID(
 	workspaceRoot, backend string,
-	controls EffectiveControls,
+	controls controlmatrix.Matrix,
 ) string {
 	if strings.TrimSpace(workspaceRoot) == "" ||
 		strings.TrimSpace(backend) == "" {
@@ -710,7 +710,7 @@ func FallbackSandboxPolicyID(
 	digest, err := digestValue(struct {
 		WorkspaceRoot string
 		Backend       string
-		Controls      EffectiveControls
+		Controls      controlmatrix.Matrix
 	}{
 		WorkspaceRoot: filepath.Clean(workspaceRoot),
 		Backend:       backend,

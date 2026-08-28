@@ -14,6 +14,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 const processTestThread = "thread-process-test"
@@ -162,13 +163,14 @@ func TestUnifiedProcessProtocolRejectsInvalidYieldBeforeSessionStart(t *testing.
 	raw := json.RawMessage(
 		`{"command":"sleep 60","yield_time_ms":300000}`,
 	)
-	_, executionErr := registry.Execute(
+	_, executionErr := tooltest.Execute(
 		tool.WithInvocationIdentity(
 			t.Context(),
 			tool.InvocationIdentity{ThreadID: processTestThread},
-		),
+		), registry,
+
 		tool.Call{
-			Name: "exec_command", Arguments: raw, Authorized: true,
+			Name: "exec_command", Arguments: raw,
 		},
 	)
 	if !errors.Is(executionErr, tool.ErrInvalidArguments) {
@@ -292,8 +294,8 @@ func TestUnifiedProcessProtocolEnforcesThreadOwnership(t *testing.T) {
 		t.Context(),
 		tool.InvocationIdentity{ThreadID: "thread-other"},
 	)
-	_, err := registry.Execute(ctx, tool.Call{
-		Name: "write_stdin", Arguments: raw, Authorized: true,
+	_, err := tooltest.Execute(ctx, registry, tool.Call{
+		Name: "write_stdin", Arguments: raw,
 	})
 	if !errors.Is(err, process.ErrSessionOwnership) {
 		t.Fatalf("cross-thread interaction error = %v", err)
@@ -363,12 +365,13 @@ func TestExecCommandPropagatesSandboxPrepareError(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw := json.RawMessage(`{"command":"printf unsafe"}`)
-	_, err := registry.Execute(
+	_, err := tooltest.Execute(
 		tool.WithInvocationIdentity(
 			t.Context(),
 			tool.InvocationIdentity{ThreadID: processTestThread},
-		),
-		tool.Call{Name: "exec_command", Arguments: raw, Authorized: true},
+		), registry,
+
+		tool.Call{Name: "exec_command", Arguments: raw},
 	)
 	if !errors.Is(err, want) {
 		t.Fatalf("exec error = %v, want %v", err, want)
@@ -391,12 +394,11 @@ func TestShellWorkspaceChangeDuringSandboxValidationIsRecoverable(t *testing.T) 
 	); err != nil {
 		t.Fatal(err)
 	}
-	_, err := registry.Execute(t.Context(), tool.Call{
+	_, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: "shell_read",
 		Arguments: json.RawMessage(
 			`{"command":"printf should-not-run"}`,
 		),
-		Authorized: true,
 	})
 	if !errors.Is(err, tool.ErrPrecondition) {
 		t.Fatalf("shell error = %v, want recoverable precondition", err)
@@ -415,9 +417,9 @@ type passthroughBackend struct{}
 
 func (passthroughBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
-		Platform:  "fixture",
-		Backend:   "passthrough",
-		Strength:  sandbox.StrengthStrong,
+		Platform: "fixture",
+		Backend:  "passthrough",
+
 		Available: true,
 		Effective: shellTestControls(),
 	}
@@ -447,9 +449,9 @@ type errorBackend struct {
 
 func (errorBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
-		Platform:  "fixture",
-		Backend:   "error",
-		Strength:  sandbox.StrengthStrong,
+		Platform: "fixture",
+		Backend:  "error",
+
 		Available: true,
 		Effective: shellTestControls(),
 	}
@@ -498,10 +500,9 @@ func executeProcessTool(
 			CallID:    "call-" + name,
 		},
 	)
-	result, err := registry.Execute(ctx, tool.Call{
-		Name:       name,
-		Arguments:  data,
-		Authorized: true,
+	result, err := tooltest.Execute(ctx, registry, tool.Call{
+		Name:      name,
+		Arguments: data,
 	})
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)

@@ -72,7 +72,7 @@ func validateLandlockRequest(request landlockRequest) error {
 	if request.SchemaVersion != landlockSchemaVersion {
 		return errors.New("unsupported Landlock helper schema version")
 	}
-	if !strings.HasPrefix(request.PolicyID, "sandbox-v1-") {
+	if !strings.HasPrefix(request.PolicyID, "sandbox-v2-") {
 		return errors.New("invalid Landlock helper policy identity")
 	}
 	if !validSyscallPolicy(request.SyscallPolicy) {

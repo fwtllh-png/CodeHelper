@@ -685,7 +685,7 @@ func (c *client) preflight(ctx context.Context, raw json.RawMessage) (tool.Resul
 	defer directory.Close()
 	check, err := process.NewCommand(ctx, process.Options{
 		Path: "git", Args: []string{"apply", "--check", "--whitespace=nowarn", "-"},
-		Dir: c.workspace.Root(), DirFile: directory, Sandbox: c.backend, RequireStrongSandbox: true,
+		Dir: c.workspace.Root(), DirFile: directory, Sandbox: c.backend, RequireSandbox: true,
 	})
 	if err != nil {
 		return tool.Result{}, err
@@ -720,7 +720,7 @@ func (c *client) worktreeDirty(ctx context.Context) (bool, error) {
 	defer directory.Close()
 	result, err := process.Run(ctx, process.Options{
 		Path: "git", Args: []string{"status", "--porcelain"},
-		Dir: c.workspace.Root(), DirFile: directory, Sandbox: c.backend, RequireStrongSandbox: true,
+		Dir: c.workspace.Root(), DirFile: directory, Sandbox: c.backend, RequireSandbox: true,
 	})
 	if err != nil {
 		return false, err

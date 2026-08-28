@@ -6126,9 +6126,6 @@
                   "enforcement": {
                     "type": "string"
                   },
-                  "filesystem_unrestricted": {
-                    "type": "boolean"
-                  },
                   "lease_attempt": {
                     "type": "integer"
                   },
@@ -6218,9 +6215,6 @@
                     "type": "string"
                   },
                   "sandbox_policy_id": {
-                    "type": "string"
-                  },
-                  "sandbox_strength": {
                     "type": "string"
                   },
                   "sequence": {

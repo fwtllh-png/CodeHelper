@@ -12,6 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestDynamicCatalogRegisterValidateRevokeAndStaleReplace(t *testing.T) {
@@ -46,8 +47,8 @@ func TestDynamicCatalogRegisterValidateRevokeAndStaleReplace(t *testing.T) {
 	ctx := tool.WithInvocationIdentity(t.Context(), tool.InvocationIdentity{
 		CallID: "call_test", ThreadID: "thread_1", TurnID: "turn_1",
 	})
-	_, err = registry.Execute(ctx, tool.Call{
-		Name: "bench__lookup", Authorized: true,
+	_, err = tooltest.Execute(ctx, registry, tool.Call{
+		Name:      "bench__lookup",
 		Arguments: json.RawMessage(`{"id":1}`),
 	})
 	if err == nil {
@@ -56,8 +57,8 @@ func TestDynamicCatalogRegisterValidateRevokeAndStaleReplace(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatal("handler must not run for invalid args")
 	}
-	result, err := registry.Execute(ctx, tool.Call{
-		Name: "bench__lookup", Authorized: true,
+	result, err := tooltest.Execute(ctx, registry, tool.Call{
+		Name:      "bench__lookup",
 		Arguments: json.RawMessage(`{"id":"123"}`),
 	})
 	if err != nil {
@@ -81,8 +82,8 @@ func TestDynamicCatalogRegisterValidateRevokeAndStaleReplace(t *testing.T) {
 	if err := catalog.Revoke("bench__lookup"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.Execute(ctx, tool.Call{
-		Name: "bench__lookup", Authorized: true,
+	if _, err := tooltest.Execute(ctx, registry, tool.Call{
+		Name:      "bench__lookup",
 		Arguments: json.RawMessage(`{"id":"123"}`),
 	}); !errors.Is(err, dynamic.ErrRevoked) {
 		// Resolve may surface unavailable before Execute; accept either signal.
@@ -124,8 +125,8 @@ func TestRevokedDynamicToolCanBeRegisteredAgain(t *testing.T) {
 	ctx := tool.WithInvocationIdentity(t.Context(), tool.InvocationIdentity{
 		CallID: "call_after_reregister", ThreadID: "thread", TurnID: "turn",
 	})
-	result, err := registry.Execute(ctx, tool.Call{
-		Name: "echo", Authorized: true, Arguments: json.RawMessage(`{}`),
+	result, err := tooltest.Execute(ctx, registry, tool.Call{
+		Name: "echo", Arguments: json.RawMessage(`{}`),
 	})
 	if err != nil || result.Content != "ok" || calls.Load() != 1 {
 		t.Fatalf("execute after re-register: result=%+v calls=%d err=%v", result, calls.Load(), err)
@@ -208,8 +209,8 @@ func TestDynamicCallRequiresIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = registry.Execute(t.Context(), tool.Call{
-		Name: "bench__lookup", Authorized: true,
+	_, err = tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "bench__lookup",
 		Arguments: json.RawMessage(`{}`),
 	})
 	if err == nil || !strings.Contains(err.Error(), "call id is required") {
@@ -243,8 +244,8 @@ func TestDynamicConcurrentCallIDsDoNotCollide(t *testing.T) {
 			ctx := tool.WithInvocationIdentity(context.Background(), tool.InvocationIdentity{
 				CallID: callID, ThreadID: "t", TurnID: "u",
 			})
-			if _, err := registry.Execute(ctx, tool.Call{
-				Name: "bench__echo", Authorized: true,
+			if _, err := tooltest.Execute(ctx, registry, tool.Call{
+				Name:      "bench__echo",
 				Arguments: json.RawMessage(`{}`),
 			}); err != nil {
 				t.Errorf("execute %s: %v", callID, err)
@@ -259,33 +260,5 @@ func TestDynamicConcurrentCallIDsDoNotCollide(t *testing.T) {
 	}
 	if !got["call_a"] || !got["call_b"] {
 		t.Fatalf("seen CallIDs = %v", got)
-	}
-}
-
-func TestUnauthorizedDynamicCallNeverReachesHandler(t *testing.T) {
-	var calls atomic.Int64
-	registry := tool.NewRegistry(nil, nil)
-	catalog, err := dynamic.NewCatalog(registry, dynamic.FunctionHandler(
-		func(ctx context.Context, params protocol.DynamicToolCallParams) (tool.Result, error) {
-			calls.Add(1)
-			return tool.Result{Content: "nope"}, nil
-		},
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := catalog.Register(protocol.DynamicToolSpec{
-		Version: 1, Name: "echo", Description: "Echo",
-		InputSchema: map[string]any{"type": "object"},
-	}, dynamic.DefaultRegistrationPolicy()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := registry.Execute(t.Context(), tool.Call{
-		Name: "echo", Authorized: false, Arguments: json.RawMessage(`{}`),
-	}); err == nil {
-		t.Fatal("expected unauthorized rejection")
-	}
-	if calls.Load() != 0 {
-		t.Fatal("handler must not run")
 	}
 }

@@ -21,7 +21,9 @@ import (
 
 	pluginruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/plugin"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestNamespacedNameAvoidsNormalizedPluginCollisions(t *testing.T) {
@@ -317,8 +319,8 @@ func waitForToolOutput(
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		result, err := registry.Execute(t.Context(), tool.Call{
-			Name: name, Authorized: true, Arguments: json.RawMessage(`{}`),
+		result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+			Name: name, Arguments: json.RawMessage(`{}`),
 		})
 		if err == nil && strings.TrimSpace(result.Content) == expected {
 			return
@@ -353,10 +355,22 @@ func (lifecycleTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "passthrough",
 		Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Effective: controlmatrix.Matrix{FilesystemRead: controlmatrix.
+			FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+			Network: controlmatrix.
+				NetworkDenied,
+
+			ProcessTree: controlmatrix.
+				ProcessTreeGroupKill,
+
+			CrossProcess: controlmatrix.
+				CrossProcessUnrestricted, Syscall: controlmatrix.SyscallDenyDangerous,
+			IPC: controlmatrix.IPCUnrestricted, PathIdentity: controlmatrix.PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.
+				ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.
+				DurableRecoveryMemoryOnly},
 	}
 }
 

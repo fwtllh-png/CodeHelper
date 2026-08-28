@@ -351,9 +351,8 @@ type Registry struct {
 }
 
 type Call struct {
-	Name       string
-	Arguments  json.RawMessage
-	Authorized bool
+	Name      string
+	Arguments json.RawMessage
 }
 
 func NewRegistry(claims *Claims, results *ResultStore) *Registry {
@@ -715,22 +714,6 @@ func (r *Registry) Descriptors(visibility Visibility) []Descriptor {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Name < result[j].Name })
 	return result
-}
-
-func (r *Registry) Execute(ctx context.Context, call Call) (Result, error) {
-	name, descriptor, executor, err := r.Resolve(call.Name)
-	if err != nil {
-		return Result{}, err
-	}
-	if !call.Authorized {
-		return Result{}, fmt.Errorf("tool %q is not authorized", name)
-	}
-	arguments := RepairArguments(call.Arguments)
-	if err := ValidateArguments(descriptor.InputSchema, arguments); err != nil {
-		return Result{}, fmt.Errorf("tool %q arguments: %w", name, err)
-	}
-	result, _, err := r.ExecutePreparedOutcome(ctx, name, arguments, executor)
-	return result, err
 }
 
 func (r *Registry) ExecutePreparedOutcome(

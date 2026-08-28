@@ -168,9 +168,10 @@ func TestRegistryRevokeTombstoneAndReregister(t *testing.T) {
 	if len(second.Added) != 1 || second.Added[0].Revision != 3 {
 		t.Fatalf("re-register change = %+v", second)
 	}
-	result, err := registry.Execute(t.Context(), Call{
-		Name: "echo_compat", Authorized: true, Arguments: json.RawMessage(`{}`),
+	result, err := executeRegistry(t.Context(), registry, Call{
+		Name: "echo_compat", Arguments: json.RawMessage(`{}`),
 	})
+
 	if err != nil || result.Content != "v2" {
 		t.Fatalf("execute re-registered alias: result=%+v err=%v", result, err)
 	}
@@ -199,9 +200,10 @@ func TestRegistryReplaceUpdatesDeferredLoader(t *testing.T) {
 	if len(replaced.Replaced) != 1 || replaced.Replaced[0].Revision != 2 {
 		t.Fatalf("replace change = %+v", replaced)
 	}
-	result, err := registry.Execute(t.Context(), Call{
-		Name: "deferred", Authorized: true, Arguments: json.RawMessage(`{}`),
+	result, err := executeRegistry(t.Context(), registry, Call{
+		Name: "deferred", Arguments: json.RawMessage(`{}`),
 	})
+
 	if err != nil || result.Content != "new" {
 		t.Fatalf("execute replaced deferred: result=%+v err=%v", result, err)
 	}
@@ -317,9 +319,10 @@ func TestRegistryReplaceDuringDeferredLoadRejectsOldResultAndWaiters(t *testing.
 	if stale == 0 {
 		t.Fatal("old loader result was not rejected as stale")
 	}
-	result, err := registry.Execute(t.Context(), Call{
-		Name: "deferred_race", Authorized: true, Arguments: json.RawMessage(`{}`),
+	result, err := executeRegistry(t.Context(), registry, Call{
+		Name: "deferred_race", Arguments: json.RawMessage(`{}`),
 	})
+
 	if err != nil || result.Content != "new" {
 		t.Fatalf("new deferred execute: result=%+v err=%v", result, err)
 	}

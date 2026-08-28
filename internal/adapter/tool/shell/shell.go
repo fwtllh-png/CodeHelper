@@ -201,7 +201,7 @@ func (t *Tool) execute(ctx context.Context, input foregroundInput) (tool.Result,
 	result, err := process.Run(ctx, process.Options{
 		Command: command, Dir: directory, PTY: false,
 		DirFile: directoryFile,
-		Sandbox: sandboxBackend, RequireStrongSandbox: requireStrong,
+		Sandbox: sandboxBackend, RequireSandbox: requireStrong,
 		WorkspaceReadOnly:   true,
 		WorkspaceWritePaths: writePaths,
 		DenyNetwork:         true,

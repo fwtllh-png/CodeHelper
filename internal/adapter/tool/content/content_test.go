@@ -11,8 +11,10 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestContentToolsWithRealFilesAndFixtureDependencies(t *testing.T) {
@@ -127,9 +129,14 @@ type contentTestBackend struct{}
 func (contentTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "passthrough", Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		Effective: controlmatrix.Matrix{FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths, Network: controlmatrix.NetworkDenied,
+			ProcessTree: controlmatrix.ProcessTreeGroupKill, CrossProcess: controlmatrix.CrossProcessUnrestricted, Syscall: controlmatrix.
+					SyscallDenyDangerous, IPC: controlmatrix.IPCUnrestricted, PathIdentity: controlmatrix.PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.
+					ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 		},
 	}
 }
@@ -176,8 +183,8 @@ func TestContentDependencyUnavailableIsStable(t *testing.T) {
 
 func execute(t *testing.T, registry *tool.Registry, name, arguments string) tool.Result {
 	t.Helper()
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: name, Arguments: json.RawMessage(arguments), Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: name, Arguments: json.RawMessage(arguments),
 	})
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)

@@ -40,6 +40,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -48,11 +49,22 @@ type engineSandboxBackend struct{ root string }
 func (b engineSandboxBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "fixture",
-		Strength: sandbox.StrengthStrong, Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Available: true,
+		Effective: controlmatrix.Matrix{FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+
+			Network: controlmatrix.
+				NetworkDenied,
+
+			ProcessTree: controlmatrix.
+				ProcessTreeGroupKill,
+
+			CrossProcess: controlmatrix.CrossProcessUnrestricted,
+			Syscall:      controlmatrix.SyscallDenyDangerous, IPC: controlmatrix.
+					IPCUnrestricted, PathIdentity: controlmatrix.PathIdentityDescriptorRelative,
+			ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly},
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -16,11 +17,18 @@ type indexTestBackend struct{}
 func (indexTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "passthrough",
-		Strength: sandbox.StrengthStrong, Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Available: true,
+		Effective: controlmatrix.
+			Matrix{FilesystemRead: controlmatrix.
+			FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+			Network:         controlmatrix.NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill, CrossProcess: controlmatrix.
+						CrossProcessUnrestricted,
+			Syscall: controlmatrix.SyscallDenyDangerous, IPC: controlmatrix.
+					IPCUnrestricted, PathIdentity: controlmatrix.PathIdentityDescriptorRelative,
+			ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly},
 	}
 }
 

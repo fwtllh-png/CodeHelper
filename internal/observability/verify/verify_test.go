@@ -152,7 +152,7 @@ func TestCommandRunnerRunsDetectedCommands(t *testing.T) {
 		},
 		Run: func(_ context.Context, options process.Options) (process.Result, error) {
 			commands = append(commands, options.Command)
-			if !options.RequireStrongSandbox {
+			if !options.RequireSandbox {
 				t.Fatal("verification ran without requiring a strong sandbox")
 			}
 			if options.Command == "golangci-lint run" {
@@ -244,7 +244,7 @@ func TestCommandRunnerRunsFromTheResolvedRoot(t *testing.T) {
 	if observed.Dir != resolved {
 		t.Fatalf("ran in %q, want the resolved root %q", observed.Dir, resolved)
 	}
-	if !observed.RequireStrongSandbox || !observed.WorkspaceReadOnly {
+	if !observed.RequireSandbox || !observed.WorkspaceReadOnly {
 		t.Fatalf("verification process authority = %+v", observed)
 	}
 }

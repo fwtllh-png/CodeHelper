@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -68,11 +69,18 @@ type captureSandboxBackend struct {
 func (b *captureSandboxBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "capture",
-		Strength: sandbox.StrengthStrong, Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Available: true,
+		Effective: controlmatrix.
+			Matrix{FilesystemRead: controlmatrix.
+			FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+
+			Network: controlmatrix.NetworkDenied, ProcessTree: controlmatrix.
+					ProcessTreeGroupKill, CrossProcess: controlmatrix.CrossProcessUnrestricted,
+			Syscall: controlmatrix.SyscallDenyDangerous, IPC: controlmatrix.IPCUnrestricted,
+			PathIdentity:   controlmatrix.PathIdentityDescriptorRelative,
+			ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly},
 	}
 }
 

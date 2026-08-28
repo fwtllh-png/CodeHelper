@@ -12,6 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -152,10 +153,18 @@ type catalogBenchmarkBackend struct{}
 func (catalogBenchmarkBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "passthrough",
-		Strength: sandbox.StrengthStrong, Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		Available: true,
+		Effective: controlmatrix.Matrix{
+			FilesystemRead: controlmatrix.
+				FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths, Network: controlmatrix.NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill,
+			CrossProcess: controlmatrix.CrossProcessUnrestricted,
+			Syscall:      controlmatrix.SyscallDenyDangerous, IPC: controlmatrix.
+					IPCUnrestricted, PathIdentity: controlmatrix.PathIdentityDescriptorRelative,
+			ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath,
+
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 		},
 	}
 }

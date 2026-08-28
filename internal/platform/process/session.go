@@ -65,7 +65,7 @@ type SessionOptions struct {
 	PTY                  bool
 	Timeout              time.Duration
 	Sandbox              sandbox.Backend
-	RequireStrongSandbox bool
+	RequireSandbox       bool
 	WorkspaceReadOnly    bool
 	WorkspaceWritePaths  []string
 	TrustedRuntimeHelper bool
@@ -182,7 +182,7 @@ func (m *SessionManager) Create(
 		Command: commandText, Dir: options.Dir, DirFile: options.DirFile,
 		Env: options.Env, Sandbox: options.Sandbox, PTY: options.PTY,
 		TrustedRuntimeHelper: options.TrustedRuntimeHelper,
-		RequireStrongSandbox: options.RequireStrongSandbox,
+		RequireSandbox:       options.RequireSandbox,
 		WorkspaceReadOnly:    options.WorkspaceReadOnly,
 		WorkspaceWritePaths: append(
 			[]string(nil), options.WorkspaceWritePaths...,

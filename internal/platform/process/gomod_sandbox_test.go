@@ -31,7 +31,7 @@ func TestGoModuleCacheWritableInSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.DefaultProcessRequirements()); err != nil {
 		t.Skip(err)
 	}
 	ws, err := sandbox.NewWorkspace(root)
@@ -49,7 +49,7 @@ func TestGoModuleCacheWritableInSandbox(t *testing.T) {
 	result, err := Run(ctx, Options{
 		Dir: ws.Root(), DirFile: pinned,
 		Command: `go env GOMODCACHE GOCACHE GOTMPDIR HOME && go list -m`,
-		Sandbox: backend, RequireStrongSandbox: true,
+		Sandbox: backend, RequireSandbox: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +88,7 @@ func TestInstalledHostToolchainIsReusableInSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.DefaultProcessRequirements()); err != nil {
 		t.Skip(err)
 	}
 	policy, ok := sandbox.BackendPolicy(backend)
@@ -110,7 +110,7 @@ func TestInstalledHostToolchainIsReusableInSandbox(t *testing.T) {
 	result, err := Run(ctx, Options{
 		Dir: ws.Root(), DirFile: pinned,
 		Command: `cargo --version && rustc --version`,
-		Sandbox: backend, RequireStrongSandbox: true,
+		Sandbox: backend, RequireSandbox: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +141,7 @@ func TestInstalledHostNodeRuntimeIsReusableInSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
-	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.DefaultProcessRequirements()); err != nil {
 		t.Skip(err)
 	}
 	policy, ok := sandbox.BackendPolicy(backend)
@@ -166,7 +166,7 @@ func TestInstalledHostNodeRuntimeIsReusableInSandbox(t *testing.T) {
 			`node -e 'const c=require("node:child_process");` +
 			`const r=c.spawnSync("/bin/sh",["-c","exit 0"]);` +
 			`if(r.error)throw r.error;process.exit(r.status??1)'`,
-		Sandbox: backend, RequireStrongSandbox: true,
+		Sandbox: backend, RequireSandbox: true,
 	})
 	if err != nil {
 		t.Fatal(err)

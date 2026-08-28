@@ -15,6 +15,7 @@ import (
 	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestAutomationCreateRunTaskRead(t *testing.T) {
@@ -160,8 +161,8 @@ func openStore(t *testing.T, workspace string) *sqlitestate.Store {
 
 func execute(t *testing.T, registry *tool.Registry, name string, input map[string]any) tool.Result {
 	t.Helper()
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: name, Arguments: mustJSON(input), Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: name, Arguments: mustJSON(input),
 	})
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)

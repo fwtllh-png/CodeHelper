@@ -267,5 +267,10 @@ func sandboxIdentity(registry *tool.Registry) string {
 	if !capability.Available {
 		return "unavailable"
 	}
-	return fmt.Sprintf("%s/%s/%s", capability.Platform, capability.Backend, capability.Strength)
+	return fmt.Sprintf(
+		"%s/%s/%s",
+		capability.Platform,
+		capability.Backend,
+		capability.Effective.Identity(),
+	)
 }

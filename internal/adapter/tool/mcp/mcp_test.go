@@ -15,6 +15,7 @@ import (
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 type scriptedTransport struct {
@@ -325,8 +326,8 @@ func TestLargeMCPToolCatalogIsDeferredUntilSearchMaterializes(t *testing.T) {
 		t.Fatal("catalog discovery called a remote tool")
 	}
 
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: toolsearch.ToolName, Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      toolsearch.ToolName,
 		Arguments: json.RawMessage(`{"query":"remote_042","limit":1}`),
 	})
 	if err != nil {
@@ -361,8 +362,8 @@ func TestLargeMCPToolCatalogIsDeferredUntilSearchMaterializes(t *testing.T) {
 		)
 	}
 
-	called, err := registry.Execute(t.Context(), tool.Call{
-		Name: target, Authorized: true,
+	called, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      target,
 		Arguments: json.RawMessage(`{"value":"ok"}`),
 	})
 	if err != nil {

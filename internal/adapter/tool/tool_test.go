@@ -14,25 +14,46 @@ import (
 	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
 )
 
-func TestRegistryValidatesAndAuthorizesBeforeExecute(t *testing.T) {
+func executeRegistry(
+	ctx context.Context,
+	registry *Registry,
+	call Call,
+) (Result, error) {
+	name, descriptor, executor, err := registry.Resolve(call.Name)
+	if err != nil {
+		return Result{}, err
+	}
+	arguments := RepairArguments(call.Arguments)
+	if err := ValidateArguments(descriptor.InputSchema, arguments); err != nil {
+		return Result{}, fmt.Errorf("tool %q arguments: %w", name, err)
+	}
+	result, _, err := registry.ExecutePreparedOutcome(
+		ctx,
+		name,
+		arguments,
+		executor,
+	)
+	return result, err
+}
+
+func TestRegistryTestExecutionValidatesArguments(t *testing.T) {
 	executor := &countingTool{}
 	registry := NewRegistry(nil, nil)
 	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
 	for _, call := range []Call{
-		{Name: "count", Arguments: json.RawMessage(`{"value":"ok"}`)},
-		{Name: "count", Arguments: json.RawMessage(`{"value":1}`), Authorized: true},
+		{Name: "count", Arguments: json.RawMessage(`{"value":1}`)},
 	} {
-		if _, err := registry.Execute(t.Context(), call); err == nil {
+		if _, err := executeRegistry(t.Context(), registry, call); err == nil {
 			t.Fatalf("Execute(%s) error = nil", call.Arguments)
 		}
 	}
 	if executor.calls.Load() != 0 {
 		t.Fatalf("executor calls = %d, want 0", executor.calls.Load())
 	}
-	if _, err := registry.Execute(t.Context(), Call{
-		Name: "count", Arguments: json.RawMessage(`{"value":"ok"}`), Authorized: true,
+	if _, err := executeRegistry(t.Context(), registry, Call{
+		Name: "count", Arguments: json.RawMessage(`{"value":"ok"}`),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -57,8 +78,8 @@ func TestRegistryRepairsFencedJSONArguments(t *testing.T) {
 	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.Execute(t.Context(), Call{
-		Name: "count", Arguments: json.RawMessage("```json\n{\"value\":\"ok\"}\n```"), Authorized: true,
+	if _, err := executeRegistry(t.Context(), registry, Call{
+		Name: "count", Arguments: json.RawMessage("```json\n{\"value\":\"ok\"}\n```"),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -225,9 +246,10 @@ func TestResultGetPagesReconstructFullLargeResult(t *testing.T) {
 			"handle": routed.Handle, "mode": "bytes",
 			"offset": offset, "max_bytes": 32 << 10,
 		})
-		page, err := registry.Execute(t.Context(), Call{
-			Name: "result_get", Arguments: raw, Authorized: true,
+		page, err := executeRegistry(t.Context(), registry, Call{
+			Name: "result_get", Arguments: raw,
 		})
+
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -246,11 +268,11 @@ func TestResultGetPagesReconstructFullLargeResult(t *testing.T) {
 
 func TestResultGetMissingHandleReturnsStructuredPrecondition(t *testing.T) {
 	registry := NewRegistry(nil, NewResultStore(32<<10))
-	_, err := registry.Execute(t.Context(), Call{
-		Name:       "result_get",
-		Arguments:  json.RawMessage(`{"handle":"call-id-is-not-a-handle"}`),
-		Authorized: true,
+	_, err := executeRegistry(t.Context(), registry, Call{
+		Name:      "result_get",
+		Arguments: json.RawMessage(`{"handle":"call-id-is-not-a-handle"}`),
 	})
+
 	if !errors.Is(err, ErrPrecondition) {
 		t.Fatalf("Execute() error = %v, want precondition", err)
 	}
@@ -352,9 +374,10 @@ func TestResultRetrievalModesAreBoundedAndPagePastInlineContent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			result, err := registry.Execute(t.Context(), Call{
-				Name: "result_get", Arguments: raw, Authorized: true,
+			result, err := executeRegistry(t.Context(), registry, Call{
+				Name: "result_get", Arguments: raw,
 			})
+
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -393,9 +416,10 @@ func TestResultRetrievalCannotBypassHardCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		result, err := registry.Execute(t.Context(), Call{
-			Name: "result_get", Arguments: raw, Authorized: true,
+		result, err := executeRegistry(t.Context(), registry, Call{
+			Name: "result_get", Arguments: raw,
 		})
+
 		if err != nil {
 			t.Fatal(err)
 		}

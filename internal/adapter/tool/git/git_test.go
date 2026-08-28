@@ -14,7 +14,9 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestLocalGitReadOperations(t *testing.T) {
@@ -47,8 +49,8 @@ func TestLocalGitReadOperations(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := registry.Execute(t.Context(), tool.Call{
-				Name: test.name, Arguments: json.RawMessage(test.args), Authorized: true,
+			result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+				Name: test.name, Arguments: json.RawMessage(test.args),
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -65,9 +67,22 @@ type gitTestBackend struct{}
 func (gitTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "passthrough", Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		Effective: controlmatrix.
+			Matrix{
+			FilesystemRead: controlmatrix.
+				FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+
+			Network: controlmatrix.
+				NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill,
+			CrossProcess: controlmatrix.CrossProcessUnrestricted, Syscall: controlmatrix.SyscallDenyDangerous, IPC: controlmatrix.
+					IPCUnrestricted, PathIdentity: controlmatrix.
+					PathIdentityDescriptorRelative,
+			ArtifactOrigin: controlmatrix.
+				ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 		},
 	}
 }

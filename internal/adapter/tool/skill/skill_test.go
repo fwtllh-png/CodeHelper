@@ -10,9 +10,10 @@ import (
 
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
-func TestSkillsReadExecutesOnlyThroughAuthorizedRegistry(t *testing.T) {
+func TestSkillsReadExecutesThroughTestRegistry(t *testing.T) {
 	workspace := t.TempDir()
 	directory := filepath.Join(workspace, ".agents", "skills", "review")
 	if err := os.MkdirAll(directory, 0o755); err != nil {
@@ -44,13 +45,8 @@ Follow the review checklist.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := registry.Execute(context.Background(), tool.Call{
+	result, err := tooltest.Execute(context.Background(), registry, tool.Call{
 		Name: "skills_read", Arguments: arguments,
-	}); err == nil || !strings.Contains(err.Error(), "not authorized") {
-		t.Fatalf("unauthorized execution error = %v", err)
-	}
-	result, err := registry.Execute(context.Background(), tool.Call{
-		Name: "skills_read", Arguments: arguments, Authorized: true,
 	})
 	if err != nil {
 		t.Fatal(err)

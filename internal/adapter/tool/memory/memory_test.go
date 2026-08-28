@@ -8,6 +8,7 @@ import (
 	memorystore "github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	memorytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/memory"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestRememberRegistersOnlyWithStoreAndWritesCanonicalResource(t *testing.T) {
@@ -33,8 +34,8 @@ func TestRememberRegistersOnlyWithStoreAndWritesCanonicalResource(t *testing.T) 
 	if remember.ResourceResolver.Templates[0].ID != store.Path() {
 		t.Fatalf("resource id = %q", remember.ResourceResolver.Templates[0].ID)
 	}
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: "remember", Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "remember",
 		Arguments: json.RawMessage(`{"note":"use gofmt"}`),
 	})
 	if err != nil {
@@ -58,8 +59,8 @@ func TestMemoryCRUDToolsShareGuardedRecordStore(t *testing.T) {
 	if err := memorytool.Register(registry, store); err != nil {
 		t.Fatal(err)
 	}
-	created, err := registry.Execute(t.Context(), tool.Call{
-		Name: "remember", Authorized: true,
+	created, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "remember",
 		Arguments: json.RawMessage(
 			`{"note":"prefer table tests","category":"preference"}`,
 		),
@@ -72,16 +73,16 @@ func TestMemoryCRUDToolsShareGuardedRecordStore(t *testing.T) {
 		t.Fatalf("remember result = %q", created.Content)
 	}
 	id := strings.TrimSuffix(fields[1], ":")
-	listed, err := registry.Execute(t.Context(), tool.Call{
-		Name: "memory_list", Authorized: true,
+	listed, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "memory_list",
 		Arguments: json.RawMessage(`{"query":"table"}`),
 	})
 	if err != nil || !strings.Contains(listed.Content, id) ||
 		strings.Contains(listed.Content, "prefer table tests") {
 		t.Fatalf("list result=%+v err=%v", listed, err)
 	}
-	updated, err := registry.Execute(t.Context(), tool.Call{
-		Name: "memory_update", Authorized: true,
+	updated, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "memory_update",
 		Arguments: json.RawMessage(
 			`{"id":"` + id + `","text":"prefer deterministic table tests"}`,
 		),
@@ -89,15 +90,15 @@ func TestMemoryCRUDToolsShareGuardedRecordStore(t *testing.T) {
 	if err != nil || !strings.Contains(updated.Content, "deterministic") {
 		t.Fatalf("update result=%+v err=%v", updated, err)
 	}
-	read, err := registry.Execute(t.Context(), tool.Call{
-		Name: "memory_get", Authorized: true,
+	read, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "memory_get",
 		Arguments: json.RawMessage(`{"id":"` + id + `"}`),
 	})
 	if err != nil || !strings.Contains(read.Content, "deterministic") {
 		t.Fatalf("get result=%+v err=%v", read, err)
 	}
-	deleted, err := registry.Execute(t.Context(), tool.Call{
-		Name: "forget", Authorized: true,
+	deleted, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "forget",
 		Arguments: json.RawMessage(`{"id":"` + id + `"}`),
 	})
 	if err != nil || !strings.Contains(deleted.Content, `"deleted":true`) {

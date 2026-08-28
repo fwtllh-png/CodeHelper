@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
@@ -59,14 +60,25 @@ type passthroughBackend struct{}
 
 func (passthroughBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
-		Platform:  runtime.GOOS,
-		Backend:   "test",
-		Strength:  sandbox.StrengthStrong,
+		Platform: runtime.GOOS,
+		Backend:  "test",
+
 		Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Effective: controlmatrix.Matrix{
+			FilesystemRead: controlmatrix.
+				FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths, Network: controlmatrix.
+						NetworkDenied, ProcessTree:        controlmatrix.ProcessTreeGroupKill, CrossProcess: controlmatrix.
+						CrossProcessUnrestricted, Syscall: controlmatrix.SyscallDenyDangerous,
+			IPC: controlmatrix.IPCUnrestricted,
+			PathIdentity: controlmatrix.
+				PathIdentityDescriptorRelative,
+
+			ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath,
+
+			DurableRecovery: controlmatrix.
+				DurableRecoveryMemoryOnly},
 	}
 }
 

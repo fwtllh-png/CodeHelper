@@ -28,7 +28,7 @@ func TestProcessToolsCannotConstructOrDisableSandbox(t *testing.T) {
 		if strings.Contains(source, "NewPlatformBackend(") {
 			t.Errorf("%s constructs a platform backend outside wire", path)
 		}
-		if strings.Contains(source, "RequireStrongSandbox: false") {
+		if strings.Contains(source, "RequireSandbox: false") {
 			t.Errorf("%s disables the strong sandbox requirement", path)
 		}
 		return nil

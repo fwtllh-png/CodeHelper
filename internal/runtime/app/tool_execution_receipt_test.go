@@ -38,7 +38,7 @@ func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {
 			PermissionSchemaVersion: 2, PermissionRevision: 7,
 			PermissionDigest: digest, PermissionCapability: tool.CapabilityProcess,
 			PermissionAccess: tool.AccessRead, Enforcement: "strong",
-			Backend: "seatbelt", SandboxStrength: "strong",
+			Backend:       "seatbelt",
 			WorkspaceRoot: "/workspace", ReadRoots: []string{"/workspace"},
 			WritePaths:  []string{"/workspace/result.txt"},
 			NetworkMode: "managed", LoopbackAllowed: true, ProcessAllowed: true,

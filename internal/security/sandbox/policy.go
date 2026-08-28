@@ -16,7 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
-const policyVersion = 1
+const policyVersion = 2
 
 func SupportsManagedNetworkProxy() bool { return runtime.GOOS == "darwin" }
 
@@ -52,15 +52,6 @@ type Options struct {
 	SkipPATHReadRoots bool
 }
 
-type Controls struct {
-	ReadIsolation    bool `json:"read_isolation"`
-	WriteIsolation   bool `json:"write_isolation"`
-	NetworkIsolation bool `json:"network_isolation"`
-	ProcessIsolation bool `json:"process_isolation"`
-	SyscallIsolation bool `json:"syscall_isolation"`
-	SymlinkSafe      bool `json:"symlink_safe"`
-}
-
 type Policy struct {
 	Version          int               `json:"version"`
 	ID               string            `json:"id"`
@@ -72,7 +63,6 @@ type Policy struct {
 	Toolchains       ToolchainExposure `json:"toolchains,omitempty"`
 	AllowNetwork     bool              `json:"allow_network,omitempty"`
 	ManagedProxyPort uint16            `json:"managed_proxy_port,omitempty"`
-	Controls         Controls          `json:"controls"`
 	ownsPrivateTemp  bool
 }
 
@@ -183,13 +173,7 @@ func BuildPolicy(options Options) (Policy, error) {
 		Toolchains:       toolchains,
 		AllowNetwork:     options.AllowNetwork,
 		ManagedProxyPort: options.ManagedProxyPort,
-		Controls: Controls{
-			ReadIsolation: true, WriteIsolation: true,
-			NetworkIsolation: !options.AllowNetwork,
-			ProcessIsolation: true, SyscallIsolation: runtime.GOOS == "linux",
-			SymlinkSafe: true,
-		},
-		ownsPrivateTemp: ownsPrivateTemp,
+		ownsPrivateTemp:  ownsPrivateTemp,
 	}
 	hashInput := policy
 	hashInput.ID = ""
@@ -198,7 +182,7 @@ func BuildPolicy(options Options) (Policy, error) {
 		return Policy{}, err
 	}
 	sum := sha256.Sum256(encoded)
-	policy.ID = "sandbox-v1-" + hex.EncodeToString(sum[:16])
+	policy.ID = "sandbox-v2-" + hex.EncodeToString(sum[:16])
 	return policy, nil
 }
 
@@ -249,7 +233,7 @@ func (b *policyBinding) Prepare(ctx context.Context, command Command) (Command, 
 	}
 	prepared.PreparedPolicyID = b.policy.ID
 	prepared.PreparedAuthorityDigest = command.AuthorityDigest
-	capability := NormalizeCapability(b.Backend.Capability())
+	capability := b.Backend.Capability()
 	prepared.PreparedControls = CommandControls(capability, b.policy, command)
 	return prepared, nil
 }
@@ -258,7 +242,7 @@ func EffectiveControls(
 	capability Capability,
 	policy Policy,
 ) controlmatrix.Matrix {
-	controls := NormalizeCapability(capability).Effective
+	controls := capability.Effective
 	desired := controlmatrix.NetworkDenied
 	switch {
 	case policy.ManagedProxyPort != 0:

@@ -79,7 +79,6 @@ func (c typedToolContributor) Contribute(
 					c.id,
 				)
 			}
-			registration = registration.WithTrustedBinding(registration.TrustedBinding())
 			if err := registry.RegisterTrusted("extension:"+c.id, registration); err != nil {
 				return ContributionReceipt{}, err
 			}

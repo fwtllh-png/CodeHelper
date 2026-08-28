@@ -292,7 +292,7 @@ func (w *Walker) gitFiles(ctx context.Context) ([]string, bool, error) {
 	result, err := w.run(ctx, process.Options{
 		Path: "git",
 		Args: []string{"ls-files", "--cached", "--others", "--exclude-standard", "-z"},
-		Dir:  w.root, DirFile: pinned, Sandbox: w.backend, RequireStrongSandbox: true,
+		Dir:  w.root, DirFile: pinned, Sandbox: w.backend, RequireSandbox: true,
 	})
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, false, ctxErr
@@ -305,7 +305,7 @@ func (w *Walker) gitFiles(ctx context.Context) ([]string, bool, error) {
 		Args: []string{
 			"ls-files", "--cached", "--ignored", "--exclude-standard", "-z",
 		},
-		Dir: w.root, DirFile: pinned, Sandbox: w.backend, RequireStrongSandbox: true,
+		Dir: w.root, DirFile: pinned, Sandbox: w.backend, RequireSandbox: true,
 	})
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, false, ctxErr

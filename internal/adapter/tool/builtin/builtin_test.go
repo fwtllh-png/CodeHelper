@@ -14,8 +14,10 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestCoreToolsRealWorkspace(t *testing.T) {
@@ -71,8 +73,8 @@ func TestCoreToolsRealWorkspace(t *testing.T) {
 			tool.InvocationIdentity{ThreadID: "thread-builtin-test"},
 		)
 		ctx = tool.WithResultTokenBudget(ctx, registry.ResultTokenCapacity())
-		result, executeErr := registry.Execute(ctx, tool.Call{
-			Name: name, Arguments: json.RawMessage(arguments), Authorized: true,
+		result, executeErr := tooltest.Execute(ctx, registry, tool.Call{
+			Name: name, Arguments: json.RawMessage(arguments),
 		})
 		if executeErr != nil {
 			t.Fatalf("%s: %v", name, executeErr)
@@ -148,11 +150,17 @@ type builtinTestBackend struct{}
 func (builtinTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "passthrough",
-		Strength: sandbox.StrengthStrong, Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Available: true,
+		Effective: controlmatrix.Matrix{FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths, Network: controlmatrix.NetworkDenied,
+			ProcessTree: controlmatrix.ProcessTreeGroupKill, CrossProcess: controlmatrix.
+					CrossProcessUnrestricted, Syscall: controlmatrix.SyscallDenyDangerous,
+			IPC: controlmatrix.IPCUnrestricted, PathIdentity: controlmatrix.
+				PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.
+				ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.
+				DurableRecoveryMemoryOnly},
 	}
 }
 

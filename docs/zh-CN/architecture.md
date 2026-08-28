@@ -99,7 +99,7 @@ Authority、Journal、Sandbox 和验证证据接纳只消费 Trusted Binding。�
 Trusted Binding 以十维 Required Controls 描述操作需求，Sandbox Probe、Policy 与具体
 Command 共同产出 Effective Controls。Authority 在 Lease 签发时执行逐维集合比较，
 Process Owner 在 Backend `Prepare` 后再次校验本次命令的 Prepared Controls。
-`Strength` 仅是由矩阵派生的兼容展示字段，不参与授权。
+旧 `Strength` 能力字段已删除；展示和缓存身份直接由 Effective Controls 派生。
 
 Runtime 构造具有 Prepared 状态。`RuntimeModule` 只构造 Facade 并恢复静态 Durable
 State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh、启动 Runtime

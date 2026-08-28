@@ -100,7 +100,7 @@ Sandbox Requirement 不再由单个 `Strong` 标签决定是否可执行。Trust
 ExecutionOperation 冻结十维 Required Controls，Sandbox Probe、Policy 和本次 Command
 产出 Effective Controls；Lease 签发和 Backend `Prepare` 后分别执行一次集合校验。
 Filesystem、Network 等可比较维度使用显式领域顺序，PID Namespace 与 Windows Job
-Object 等不可比较控制只按明确满足关系判断。`Strength` 只保留为兼容显示。
+Object 等不可比较控制只按明确满足关系判断。旧 `Strength` 能力字段不再存在。
 
 `exec_command` 的声明写路径可以指向现有普通文件，或已存在父目录中的待创建文件。
 Guard 在进入 Sandbox 前做无副作用 Preflight；Strong Backend 只为已批准的缺失文件

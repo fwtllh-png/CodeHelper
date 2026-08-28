@@ -15,16 +15,18 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
-func TestProbeReportsExplicitPlatformBackendAndStrength(t *testing.T) {
+func TestProbeReportsExplicitPlatformBackendAndControls(t *testing.T) {
 	capability := Probe()
 	if capability.Platform != runtime.GOOS {
 		t.Fatalf("platform = %q, want %q", capability.Platform, runtime.GOOS)
 	}
-	if capability.Backend == "" || capability.Strength == "" {
+	if capability.Backend == "" {
 		t.Fatalf("capability = %+v", capability)
 	}
-	if capability.Available && capability.Strength == StrengthNone {
-		t.Fatalf("available backend has no controls: %+v", capability)
+	if capability.Available {
+		if err := capability.Effective.Validate(); err != nil {
+			t.Fatalf("available backend controls: %v", err)
+		}
 	}
 }
 
@@ -250,9 +252,6 @@ func TestSeatbeltAllowsNetworkWhenConfigured(t *testing.T) {
 	}
 	if !strings.Contains(profile, "(allow network-outbound)") {
 		t.Fatalf("network outbound missing:\n%s", profile)
-	}
-	if policy.Controls.NetworkIsolation {
-		t.Fatal("NetworkIsolation should be false when AllowNetwork is set")
 	}
 }
 
@@ -627,7 +626,7 @@ func TestBackendsPreserveDescriptorRelativeWorkingDirectory(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		seatbelt, err := (&seatbeltBackend{
 			workspace: workspace, policy: policy,
-			capability: Capability{Strength: StrengthStrong},
+			capability: Capability{},
 		}).Prepare(t.Context(), input)
 		if err != nil {
 			t.Fatal(err)
@@ -642,7 +641,7 @@ func TestBackendsPreserveDescriptorRelativeWorkingDirectory(t *testing.T) {
 		}
 		bubblewrap, err := (&bubblewrapBackend{
 			workspace: workspace, policy: policy,
-			capability: Capability{Strength: StrengthPartial},
+			capability: Capability{},
 		}).Prepare(t.Context(), input)
 		if err != nil {
 			t.Fatal(err)
@@ -660,26 +659,26 @@ func TestBackendsPreserveDescriptorRelativeWorkingDirectory(t *testing.T) {
 func TestRequireStrongFailsClosedForMissingAndPartialBackends(t *testing.T) {
 	if err := RequireControls(
 		nil,
-		StrongCompatibilityRequirements(),
+		DefaultProcessRequirements(),
 	); !IsUnavailable(err) {
 		t.Fatalf("nil backend error = %v", err)
 	}
 	backend := &unavailableBackend{capability: Capability{
 		Platform: "fixture", Backend: "partial",
-		Strength: StrengthPartial, Available: true,
+		Available: true,
 	}}
 	if err := RequireControls(
 		backend,
-		StrongCompatibilityRequirements(),
+		DefaultProcessRequirements(),
 	); !IsUnavailable(err) {
 		t.Fatalf("partial backend error = %v", err)
 	}
 }
 
-func TestRequiredControlsIgnoreClaimedStrength(t *testing.T) {
+func TestRequiredControlsUseEffectiveMatrix(t *testing.T) {
 	claimedStrong := &unavailableBackend{capability: Capability{
 		Platform: "fixture", Backend: "claimed-strong",
-		Strength: StrengthStrong, Available: true,
+		Available: true,
 		Effective: controlmatrix.Matrix{
 			FilesystemRead:  controlmatrix.FilesystemReadUnrestricted,
 			FilesystemWrite: controlmatrix.FilesystemWriteUnrestricted,
@@ -695,12 +694,11 @@ func TestRequiredControlsIgnoreClaimedStrength(t *testing.T) {
 	}}
 	if err := RequireControls(
 		claimedStrong,
-		StrongCompatibilityRequirements(),
+		DefaultProcessRequirements(),
 	); !IsUnavailable(err) {
 		t.Fatalf("claimed strong backend error = %v", err)
 	}
 	partial := claimedStrong.capability
-	partial.Strength = StrengthPartial
 	partial.Effective.FilesystemRead = controlmatrix.FilesystemReadDeclaredRoots
 	partial.Effective.Network = controlmatrix.NetworkDenied
 	if err := RequireControls(

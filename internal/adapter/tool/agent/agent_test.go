@@ -16,6 +16,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 type recordingGate struct {
@@ -294,12 +295,13 @@ func TestAgentTaskCapsuleUsesRuntimeParentSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	forkInput := spawnInput("continue_review", "continue review", "explore")
-	forked, err := registry.Execute(
+	forked, err := tooltest.Execute(
 		tool.WithInvocationIdentity(t.Context(), tool.InvocationIdentity{
 			ThreadID: "thread-parent", TurnID: "turn-parent",
-		}),
+		}), registry,
+
 		tool.Call{
-			Name: "spawn_agent", Arguments: mustJSON(forkInput), Authorized: true,
+			Name: "spawn_agent", Arguments: mustJSON(forkInput),
 		},
 	)
 	if err != nil {
@@ -351,9 +353,8 @@ func TestAgentUnsupportedRoleFailClosed(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err := registry.Execute(t.Context(), tool.Call{
+	_, err := tooltest.Execute(t.Context(), registry, tool.Call{
 		Name: "spawn_agent", Arguments: mustJSON(spawnInput("bad_role", "x", "nope")),
-		Authorized: true,
 	})
 	if err == nil {
 		t.Fatal("expected unsupported role rejection")
@@ -384,8 +385,8 @@ func TestAgentDepthAndConcurrencyFailClosed(t *testing.T) {
 	childID, _ := childBody["agent_id"].(string)
 	deepInput := spawnInput("too_deep", "too-deep", "general")
 	deepInput["parent_id"] = childID
-	_, err := registry.Execute(t.Context(), tool.Call{
-		Name: "spawn_agent", Arguments: mustJSON(deepInput), Authorized: true,
+	_, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "spawn_agent", Arguments: mustJSON(deepInput),
 	})
 	if err == nil {
 		t.Fatal("expected depth fail-closed")
@@ -399,9 +400,8 @@ func TestAgentDepthAndConcurrencyFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = execute(t, registry2, "spawn_agent", spawnInput("hold", "hold", "general"))
-	_, err = registry2.Execute(t.Context(), tool.Call{
+	_, err = tooltest.Execute(t.Context(), registry2, tool.Call{
 		Name: "spawn_agent", Arguments: mustJSON(spawnInput("overflow", "overflow", "general")),
-		Authorized: true,
 	})
 	if err == nil {
 		t.Fatal("expected concurrency fail-closed")
@@ -644,10 +644,10 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 	waitErr := make(chan error, 1)
 	waitResult := make(chan tool.Result, 1)
 	go func() {
-		result, err := registry.Execute(context.Background(), tool.Call{
+		result, err := tooltest.Execute(context.Background(), registry, tool.Call{
 			Name: "wait_agent", Arguments: mustJSON(map[string]any{
 				"agent_ids": []string{agentID},
-			}), Authorized: true,
+			}),
 		})
 		waitResult <- result
 		waitErr <- err
@@ -708,8 +708,8 @@ func TestLegacyUnifiedAgentToolIsUnavailable(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = registry.Execute(t.Context(), tool.Call{
-		Name: "agent", Arguments: mustJSON(map[string]any{}), Authorized: true,
+	_, err = tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "agent", Arguments: mustJSON(map[string]any{}),
 	})
 	if !errors.Is(err, tool.ErrUnknownTool) {
 		t.Fatalf("legacy tool error = %v, want unknown tool", err)
@@ -952,8 +952,8 @@ func mustDelegationPolicy(t *testing.T) subagent.DelegationPolicy {
 
 func execute(t *testing.T, registry *tool.Registry, name string, input map[string]any) tool.Result {
 	t.Helper()
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: name, Arguments: mustJSON(input), Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: name, Arguments: mustJSON(input),
 	})
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)
@@ -967,8 +967,8 @@ func executeWithContext(
 	name string,
 	input map[string]any,
 ) (tool.Result, error) {
-	return registry.Execute(ctx, tool.Call{
-		Name: name, Arguments: mustJSON(input), Authorized: true,
+	return tooltest.Execute(ctx, registry, tool.Call{
+		Name: name, Arguments: mustJSON(input),
 	})
 }
 

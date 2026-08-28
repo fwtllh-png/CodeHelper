@@ -37,7 +37,7 @@ func TestRealSandboxAttackCorpus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sandbox.CloseBackend(backend)
-	if err := sandbox.RequireControls(backend, sandbox.StrongCompatibilityRequirements()); err != nil {
+	if err := sandbox.RequireControls(backend, sandbox.DefaultProcessRequirements()); err != nil {
 		t.Fatal(err)
 	}
 	directory, err := sandbox.NewWorkspace(root)
@@ -55,7 +55,7 @@ func TestRealSandboxAttackCorpus(t *testing.T) {
 		tb.Helper()
 		result, runErr := Run(tb.Context(), Options{
 			Command: command, Dir: root, DirFile: pinned,
-			Sandbox: backend, RequireStrongSandbox: true,
+			Sandbox: backend, RequireSandbox: true,
 		})
 		if runErr != nil {
 			tb.Fatal(runErr)
@@ -113,7 +113,7 @@ EOF
 	if err := os.Link(secret, hardlink); err == nil {
 		if _, err := NewCommand(t.Context(), Options{
 			Command: "cat hardlink-secret", Dir: root, DirFile: pinned,
-			Sandbox: backend, RequireStrongSandbox: true,
+			Sandbox: backend, RequireSandbox: true,
 		}); err == nil {
 			t.Fatal("hard-linked external fixture was accepted")
 		}

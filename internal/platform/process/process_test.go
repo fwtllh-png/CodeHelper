@@ -289,12 +289,12 @@ func TestRunUsesInjectedStrongSandboxBackend(t *testing.T) {
 	defer directory.Close()
 	backend := &recordingBackend{root: root}
 	result, err := Run(t.Context(), Options{
-		Command:              "printf sandboxed",
-		Dir:                  root,
-		DirFile:              directory,
-		Env:                  []string{"LANG=C"},
-		Sandbox:              backend,
-		RequireStrongSandbox: true,
+		Command:        "printf sandboxed",
+		Dir:            root,
+		DirFile:        directory,
+		Env:            []string{"LANG=C"},
+		Sandbox:        backend,
+		RequireSandbox: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -322,7 +322,7 @@ func TestStructuredCommandUsesSanitizedEnvironmentAndSandbox(t *testing.T) {
 	result, err := Run(t.Context(), Options{
 		Path: "sh",
 		Args: []string{"-c", `printf '%s' "$CODEHELPER_API_KEY"`},
-		Dir:  root, DirFile: directory, Sandbox: backend, RequireStrongSandbox: true,
+		Dir:  root, DirFile: directory, Sandbox: backend, RequireSandbox: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -377,7 +377,7 @@ func TestRunPinsWorkingDirectoryToDescriptor(t *testing.T) {
 	backend := &recordingBackend{root: root}
 	result, err := Run(t.Context(), Options{
 		Command: "cat marker", Dir: directory, DirFile: directoryFile,
-		Sandbox: backend, RequireStrongSandbox: true,
+		Sandbox: backend, RequireSandbox: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -392,7 +392,7 @@ func TestRunPinsWorkingDirectoryToDescriptor(t *testing.T) {
 
 func TestRunFailsClosedWithoutStrongSandbox(t *testing.T) {
 	_, err := Run(t.Context(), Options{
-		Command: "true", Dir: t.TempDir(), RequireStrongSandbox: true,
+		Command: "true", Dir: t.TempDir(), RequireSandbox: true,
 	})
 	if !sandbox.IsUnavailable(err) ||
 		!strings.Contains(err.Error(), sandbox.ErrUnavailableCode) {
@@ -414,7 +414,7 @@ func TestRunPropagatesAndVerifiesReadOnlyRestrictions(t *testing.T) {
 	backend := &recordingBackend{root: root}
 	result, err := Run(t.Context(), Options{
 		Command: "printf ok", Dir: root, DirFile: directoryFile,
-		Sandbox: backend, RequireStrongSandbox: true,
+		Sandbox: backend, RequireSandbox: true,
 		WorkspaceReadOnly: true, DenyNetwork: true,
 		WorkspaceWritePaths: []string{writePath},
 	})
@@ -448,9 +448,9 @@ func TestRunRejectsBackendThatDoesNotAcknowledgeExactWritePaths(t *testing.T) {
 		Sandbox: &recordingBackend{
 			root: root, ignoreWritePaths: true,
 		},
-		RequireStrongSandbox: true,
-		WorkspaceReadOnly:    true,
-		WorkspaceWritePaths:  []string{writePath},
+		RequireSandbox:      true,
+		WorkspaceReadOnly:   true,
+		WorkspaceWritePaths: []string{writePath},
 	})
 	if err == nil || !strings.Contains(err.Error(), "exact workspace write paths") {
 		t.Fatalf("Run() error = %v", err)
@@ -466,9 +466,9 @@ func TestRunRejectsBackendThatDoesNotAcknowledgeRestrictions(t *testing.T) {
 	defer directoryFile.Close()
 	_, err = Run(t.Context(), Options{
 		Command: "true", Dir: root, DirFile: directoryFile,
-		Sandbox:              &recordingBackend{root: root, ignoreRestrictions: true},
-		RequireStrongSandbox: true,
-		WorkspaceReadOnly:    true, DenyNetwork: true,
+		Sandbox:           &recordingBackend{root: root, ignoreRestrictions: true},
+		RequireSandbox:    true,
+		WorkspaceReadOnly: true, DenyNetwork: true,
 	})
 	denial, ok := sandbox.DenialFromError(err)
 	if !ok || denial.ReasonCode != sandbox.ReasonRestrictionUnenforced {
@@ -495,17 +495,17 @@ func TestRunVerifiesEffectiveExecutionAuthority(t *testing.T) {
 		Sandbox: &recordingBackend{
 			root: root, ignoreAuthority: true,
 		},
-		RequireStrongSandbox: true,
-		WorkspaceReadOnly:    true, DenyNetwork: true,
+		RequireSandbox:    true,
+		WorkspaceReadOnly: true, DenyNetwork: true,
 	})
 	if err == nil || !strings.Contains(err.Error(), "execution authority") {
 		t.Fatalf("unverified authority error = %v", err)
 	}
 	result, err := Run(ctx, Options{
 		Command: "printf ok", Dir: root, DirFile: directoryFile,
-		Sandbox:              &recordingBackend{root: root},
-		RequireStrongSandbox: true,
-		WorkspaceReadOnly:    true, DenyNetwork: true,
+		Sandbox:           &recordingBackend{root: root},
+		RequireSandbox:    true,
+		WorkspaceReadOnly: true, DenyNetwork: true,
 	})
 	if err != nil || result.Stdout != "ok" {
 		t.Fatalf("verified authority result=%+v error=%v", result, err)
@@ -536,8 +536,8 @@ func TestRunRejectsPreparedControlsBelowAuthority(t *testing.T) {
 		Sandbox: &recordingBackend{
 			root: root, preparedControls: &weaker,
 		},
-		RequireStrongSandbox: true,
-		WorkspaceReadOnly:    true, DenyNetwork: true,
+		RequireSandbox:    true,
+		WorkspaceReadOnly: true, DenyNetwork: true,
 	})
 	denial, ok := sandbox.DenialFromError(err)
 	if !ok || denial.Resource != "required_controls" {
@@ -556,7 +556,7 @@ func TestRunRejectsProcessBroaderThanEffectiveAuthority(t *testing.T) {
 	}
 	_, err = NewCommand(ctx, Options{
 		Command: "true", Dir: root,
-		Sandbox: &recordingBackend{root: root}, RequireStrongSandbox: true,
+		Sandbox: &recordingBackend{root: root}, RequireSandbox: true,
 	})
 	denial, ok := sandbox.DenialFromError(err)
 	if !ok || denial.ReasonCode != sandbox.ReasonWorkspaceTreeDenied ||
@@ -581,7 +581,7 @@ func TestRunProducesAmendableTypedPathDenial(t *testing.T) {
 	}
 	_, err = NewCommand(ctx, Options{
 		Command: "true", Dir: root,
-		Sandbox: &recordingBackend{root: root}, RequireStrongSandbox: true,
+		Sandbox: &recordingBackend{root: root}, RequireSandbox: true,
 		WorkspaceReadOnly: true, WorkspaceWritePaths: []string{path},
 	})
 	denial, ok := sandbox.DenialFromError(err)
@@ -620,7 +620,7 @@ func TestRunAppliesApprovedAdditionalReadPath(t *testing.T) {
 	}
 	result, err := Run(ctx, Options{
 		Path: "cat", Args: []string{path}, Dir: root, DirFile: directoryFile,
-		Sandbox: &recordingBackend{root: root}, RequireStrongSandbox: true,
+		Sandbox: &recordingBackend{root: root}, RequireSandbox: true,
 		WorkspaceReadOnly: true, AdditionalReadPaths: []string{path},
 		DenyNetwork: true,
 	})
@@ -647,7 +647,7 @@ func TestRunInjectsOnlyVerifiedManagedProxy(t *testing.T) {
 	backend := &recordingBackend{root: root, proxyPort: 43128}
 	_, err = Run(ctx, Options{
 		Command: "true", Dir: root, DirFile: directoryFile,
-		Sandbox: backend, RequireStrongSandbox: true,
+		Sandbox: backend, RequireSandbox: true,
 		WorkspaceReadOnly: true,
 	})
 	if err != nil {
@@ -678,7 +678,7 @@ func TestRunAllowsDeniedNetworkAuthorityOnManagedProxyBackend(t *testing.T) {
 	backend := &recordingBackend{root: root, proxyPort: 43128}
 	if _, err := Run(ctx, Options{
 		Command: "true", Dir: root, DirFile: directoryFile,
-		Sandbox: backend, RequireStrongSandbox: true,
+		Sandbox: backend, RequireSandbox: true,
 		WorkspaceReadOnly: true,
 	}); err != nil {
 		t.Fatal(err)
@@ -700,8 +700,8 @@ func TestRunRejectsNetworkAuthorityWithoutManagedProxyBinding(t *testing.T) {
 	}
 	_, err = Run(ctx, Options{
 		Command: "true", Dir: root,
-		Sandbox:              &recordingBackend{root: root, proxyPort: 43128},
-		RequireStrongSandbox: true, WorkspaceReadOnly: true,
+		Sandbox:        &recordingBackend{root: root, proxyPort: 43128},
+		RequireSandbox: true, WorkspaceReadOnly: true,
 	})
 	denial, ok := sandbox.DenialFromError(err)
 	if !ok || denial.Resource != "managed_proxy" ||
@@ -729,7 +729,7 @@ func TestRunBindsApprovedLoopbackToSandboxCommand(t *testing.T) {
 	backend := &recordingBackend{root: root, proxyPort: 43128}
 	_, err = Run(ctx, Options{
 		Command: "true", Dir: root, DirFile: directoryFile,
-		Sandbox: backend, RequireStrongSandbox: true,
+		Sandbox: backend, RequireSandbox: true,
 		WorkspaceReadOnly: true,
 	})
 	if err != nil {
@@ -753,7 +753,7 @@ type recordingBackend struct {
 func (b *recordingBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "recording",
-		Strength: sandbox.StrengthStrong, Available: true,
+		Available: true,
 		Effective: testControlMatrix(),
 	}
 }

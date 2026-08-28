@@ -157,7 +157,7 @@ func (b *Broker) Mutate(
 			Operation: operation, Revision: sequence,
 			WorkspaceRoot: b.repository, WorkspaceBaseWrite: true,
 			AllowNetwork: true,
-			Enforcement:  "none", Backend: "none", Strength: "none",
+			Enforcement:  "none", Backend: "none",
 		},
 	)
 	if err != nil {

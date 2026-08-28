@@ -34,11 +34,17 @@ func TestCompileProducesDeterministicEffectiveProfile(t *testing.T) {
 		Decision:   policy.Decision{Action: policy.ActionAsk},
 		Authorized: true, Revision: 1, Enforcement: "strong",
 		Capability: sandbox.Capability{
-			Backend: "seatbelt", Strength: sandbox.StrengthStrong, Available: true,
-			Controls: sandbox.Controls{
-				ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-				ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-			},
+			Backend: "seatbelt", Available: true,
+			Effective: controlmatrix.Matrix{FilesystemRead: controlmatrix.
+				FilesystemReadDeclaredRoots,
+
+				FilesystemWrite: controlmatrix.FilesystemWriteExactPaths, Network: controlmatrix.
+							NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill,
+				CrossProcess: controlmatrix.CrossProcessUnrestricted,
+				Syscall:      controlmatrix.SyscallDenyDangerous, IPC: controlmatrix.
+						IPCUnrestricted, PathIdentity: controlmatrix.PathIdentityDescriptorRelative,
+				ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.
+						DurableRecoveryMemoryOnly},
 		},
 		SandboxPolicy: sandbox.Policy{
 			ID: "sandbox-policy", WorkspaceRoot: root,
@@ -115,17 +121,15 @@ func TestProfileDigestDetectsMutation(t *testing.T) {
 	}
 }
 
-func TestLeaseRejectsInsufficientControlsDespiteStrength(t *testing.T) {
+func TestLeaseRejectsInsufficientControls(t *testing.T) {
 	input := fixtureCompileInput(t)
-	input.Capability.Strength = sandbox.StrengthPartial
-	input.Capability.Controls.NetworkIsolation = false
+	input.Capability.Effective.Network = controlmatrix.NetworkDirect
 	input.SandboxPolicy.AllowNetwork = true
 	profile, err := Compile(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if profile.Process.Strength != string(sandbox.StrengthPartial) ||
-		profile.Controls.Network != controlmatrix.NetworkDirect {
+	if profile.Controls.Network != controlmatrix.NetworkDirect {
 		t.Fatalf("profile did not derive partial controls: %+v", profile)
 	}
 	operation, err := BuildExecutionOperation(OperationInput{
@@ -226,11 +230,17 @@ func fixtureCompileInput(t *testing.T) CompileInput {
 		Decision:   policy.Decision{Action: policy.ActionAllow},
 		Authorized: true, Revision: 1, Enforcement: "strong",
 		Capability: sandbox.Capability{
-			Backend: "seatbelt", Strength: sandbox.StrengthStrong, Available: true,
-			Controls: sandbox.Controls{
-				ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-				ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-			},
+			Backend: "seatbelt", Available: true,
+			Effective: controlmatrix.Matrix{FilesystemRead: controlmatrix.
+				FilesystemReadDeclaredRoots,
+
+				FilesystemWrite: controlmatrix.FilesystemWriteExactPaths, Network: controlmatrix.
+							NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill,
+				CrossProcess: controlmatrix.CrossProcessUnrestricted,
+				Syscall:      controlmatrix.SyscallDenyDangerous, IPC: controlmatrix.
+						IPCUnrestricted, PathIdentity: controlmatrix.PathIdentityDescriptorRelative,
+				ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.
+						DurableRecoveryMemoryOnly},
 		},
 		SandboxPolicy: sandbox.Policy{ID: "sandbox", WorkspaceRoot: root},
 	}

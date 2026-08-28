@@ -106,7 +106,7 @@ func (r *CommandRunner) Run(ctx context.Context, path string) (Receipt, error) {
 	defer directory.Close()
 	result, runErr := process.Run(ctx, process.Options{
 		Path: binary, Args: args, Dir: policy.WorkspaceRoot, DirFile: directory, Sandbox: backend,
-		RequireStrongSandbox: true, Env: []string{"OPENSSL_CONF=/dev/null"},
+		RequireSandbox: true, Env: []string{"OPENSSL_CONF=/dev/null"},
 	})
 	if runErr != nil {
 		return Receipt{}, runErr

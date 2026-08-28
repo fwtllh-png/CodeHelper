@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,12 @@ func TestProductionToolExecutionHasNoGuardBypass(t *testing.T) {
 			relative, err := filepath.Rel(root, path)
 			if err != nil {
 				return err
+			}
+			if strings.HasPrefix(
+				filepath.ToSlash(relative),
+				"internal/testutil/",
+			) {
+				return nil
 			}
 			fileSet := token.NewFileSet()
 			file, err := parser.ParseFile(fileSet, path, nil, 0)
@@ -67,6 +74,42 @@ func TestProductionToolExecutionHasNoGuardBypass(t *testing.T) {
 				}
 				return true
 			})
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProductionCodeCannotImportToolTestHelpers(t *testing.T) {
+	root := filepath.Clean("../../..")
+	err := filepath.WalkDir(
+		filepath.Join(root, "internal"),
+		func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() || !strings.HasSuffix(path, ".go") ||
+				strings.HasSuffix(path, "_test.go") ||
+				strings.Contains(filepath.ToSlash(path), "/internal/testutil/") {
+				return nil
+			}
+			fileSet := token.NewFileSet()
+			file, err := parser.ParseFile(fileSet, path, nil, parser.ImportsOnly)
+			if err != nil {
+				return err
+			}
+			for _, imported := range file.Imports {
+				name, err := strconv.Unquote(imported.Path.Value)
+				if err != nil {
+					return err
+				}
+				if strings.Contains(name, "/internal/testutil/") {
+					relative, _ := filepath.Rel(root, path)
+					t.Errorf("%s imports test-only helper %q", relative, name)
+				}
+			}
 			return nil
 		},
 	)

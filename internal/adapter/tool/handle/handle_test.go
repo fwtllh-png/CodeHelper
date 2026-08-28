@@ -8,6 +8,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestHandleReadBoundedProjection(t *testing.T) {
@@ -29,8 +30,8 @@ func TestHandleReadBoundedProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := registry.Execute(context.Background(), tool.Call{
-		Name: "handle_read", Arguments: raw, Authorized: true,
+	result, err := tooltest.Execute(context.Background(), registry, tool.Call{
+		Name: "handle_read", Arguments: raw,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -49,8 +50,8 @@ func TestHandleReadBoundedProjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	count, err := registry.Execute(context.Background(), tool.Call{
-		Name: "handle_read", Arguments: compact, Authorized: true,
+	count, err := tooltest.Execute(context.Background(), registry, tool.Call{
+		Name: "handle_read", Arguments: compact,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -96,8 +97,8 @@ func TestHandleReadCompactFormAllowsNamespacedName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := registry.Execute(context.Background(), tool.Call{
-		Name: "handle_read", Arguments: raw, Authorized: true,
+	result, err := tooltest.Execute(context.Background(), registry, tool.Call{
+		Name: "handle_read", Arguments: raw,
 	})
 	if err != nil {
 		t.Fatal(err)

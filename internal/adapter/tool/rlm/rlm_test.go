@@ -13,7 +13,9 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
 	rlmtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/rlm"
 	rlmlib "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/rlm"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func requirePython(t *testing.T) {
@@ -116,8 +118,8 @@ func TestRLMTimeoutAndBudgetFailClosed(t *testing.T) {
 	execute(t, registry, "rlm_configure", map[string]any{
 		"name": "slow", "eval_timeout_secs": 1,
 	})
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: "rlm_eval", Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "rlm_eval",
 		Arguments: mustJSON(map[string]any{
 			"name": "slow",
 			"code": "import time\ntime.sleep(5)\nprint('late')",
@@ -138,8 +140,8 @@ func TestRLMTimeoutAndBudgetFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer gov.Release(lease)
-	_, err = registry.Execute(t.Context(), tool.Call{
-		Name: "rlm_open", Authorized: true,
+	_, err = tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      "rlm_open",
 		Arguments: mustJSON(map[string]any{"name": "blocked", "content": "nope"}),
 	})
 	if !errors.Is(err, rlmlib.ErrConcurrency) {
@@ -176,8 +178,8 @@ func TestRLMSessionObjectOpen(t *testing.T) {
 
 func execute(t *testing.T, registry *tool.Registry, name string, input map[string]any) tool.Result {
 	t.Helper()
-	result, err := registry.Execute(t.Context(), tool.Call{
-		Name: name, Arguments: mustJSON(input), Authorized: true,
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: name, Arguments: mustJSON(input),
 	})
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)
@@ -199,10 +201,17 @@ func (passthroughBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "fixture", Backend: "passthrough",
 		Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
-		},
+		Effective: controlmatrix.Matrix{FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+
+			Network:     controlmatrix.NetworkDenied,
+			ProcessTree: controlmatrix.ProcessTreeGroupKill, CrossProcess: controlmatrix.CrossProcessUnrestricted, Syscall: controlmatrix.SyscallDenyDangerous,
+			IPC: controlmatrix.IPCUnrestricted, PathIdentity: controlmatrix.
+				PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.
+				ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly},
 	}
 }
 

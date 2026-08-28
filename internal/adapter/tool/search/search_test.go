@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
 func TestSearchHonorsGitIgnoreFiltersAndFilePolicies(t *testing.T) {
@@ -230,9 +232,17 @@ type searchTestBackend struct{}
 func (searchTestBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "passthrough", Available: true,
-		Controls: sandbox.Controls{
-			ReadIsolation: true, WriteIsolation: true, NetworkIsolation: true,
-			ProcessIsolation: true, SyscallIsolation: true, SymlinkSafe: true,
+		Effective: controlmatrix.Matrix{FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
+
+			FilesystemWrite: controlmatrix.
+				FilesystemWriteExactPaths,
+
+			Network:     controlmatrix.NetworkDenied,
+			ProcessTree: controlmatrix.ProcessTreeGroupKill, CrossProcess: controlmatrix.
+					CrossProcessUnrestricted, Syscall: controlmatrix.SyscallDenyDangerous,
+			IPC: controlmatrix.
+				IPCUnrestricted, PathIdentity: controlmatrix.PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
 		},
 	}
 }
@@ -245,8 +255,8 @@ func execute(t *testing.T, registry *tool.Registry, name string, input map[strin
 	t.Helper()
 	data, _ := json.Marshal(input)
 	ctx := tool.WithResultTokenBudget(t.Context(), 10_000)
-	result, err := registry.Execute(ctx, tool.Call{
-		Name: name, Arguments: data, Authorized: true,
+	result, err := tooltest.Execute(ctx, registry, tool.Call{
+		Name: name, Arguments: data,
 	})
 	if err != nil {
 		t.Fatal(err)

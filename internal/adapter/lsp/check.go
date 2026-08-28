@@ -205,7 +205,7 @@ func (c Checker) start(ctx context.Context) (*rpcClient, error) {
 	defer directory.Close()
 	command, err := process.NewCommand(ctx, process.Options{
 		Path: binary, Args: c.Args, Dir: root, DirFile: directory,
-		Sandbox: backend, RequireStrongSandbox: true,
+		Sandbox: backend, RequireSandbox: true,
 	})
 	if err != nil {
 		return nil, err
