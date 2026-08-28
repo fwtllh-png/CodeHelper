@@ -20,8 +20,8 @@ type preparedExecution struct {
 	waited     time.Duration
 }
 
-// authorize prepares immutable arguments and resources, evaluates policy and
-// hooks, and completes every initial approval before execution admission.
+// authorize prepares immutable arguments and resources, evaluates policy, and
+// completes every initial approval before execution admission.
 func (g *Guard) authorize(
 	ctx context.Context,
 	callID, name string,
@@ -67,24 +67,6 @@ func (g *Guard) authorize(
 			decision.Code = "host_process_approval_required"
 			decision.Reason = "host process execution requires one-time user approval"
 		}
-		hookAction := PermissionAction("")
-		if !hostProcessApproval &&
-			(decision.Action == policy.ActionAsk || decision.Code == "auto_review_allowed") {
-			hookAction, err = g.permissionAction(ctx, invocation)
-			if err != nil {
-				return preparedExecution{
-					invocation: invocation, executor: executor,
-					arguments: arguments, runtime: runtime,
-					decision: decision, waited: approvalWait,
-				}, err
-			}
-			if decision.Code == "auto_review_allowed" && hookAction == PermissionAsk {
-				decision = policy.Decision{
-					Action: policy.ActionAsk, Code: "permission_hook_ask",
-					Reason: "permission hook requires human approval",
-				}
-			}
-		}
 		g.observeApproval("evaluated", policyInvocation, decision, 0)
 		switch decision.Action {
 		case policy.ActionDeny, policy.ActionHold:
@@ -113,7 +95,6 @@ func (g *Guard) authorize(
 				executor,
 				policyInvocation,
 				decision,
-				hookAction,
 				reviewLatency,
 			)
 			approvalWait += waited
@@ -164,7 +145,6 @@ func (g *Guard) authorizeAsk(
 	executor tool.Executor,
 	policyInvocation policy.Invocation,
 	decision policy.Decision,
-	hookAction PermissionAction,
 	reviewLatency time.Duration,
 ) (authorized bool, replacement json.RawMessage, waited time.Duration, err error) {
 	now := g.now()
@@ -174,9 +154,6 @@ func (g *Guard) authorizeAsk(
 		g.policy.Approvals != nil &&
 		g.policy.Approvals.MatchInvocation(policyInvocation, now) {
 		g.observeApproval("grant_hit", policyInvocation, decision, 0)
-		return true, nil, 0, nil
-	}
-	if hookAction == PermissionAllow {
 		return true, nil, 0, nil
 	}
 	editPlan, err := g.planApprovalEdit(ctx, invocation, executor)

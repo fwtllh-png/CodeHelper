@@ -34,7 +34,7 @@ Web
 | 入口 | `cmd/codehelper` | 进程上下文和 Web 启动入口 |
 | Host | `internal/host` | 用户/客户端 I/O 与呈现 |
 | Runtime | `internal/runtime` | 协议、应用状态、Agent 循环、装配 |
-| Adapter | `internal/adapter` | 模型、Provider、Tool、MCP、Skill、Hook |
+| Adapter | `internal/adapter` | 模型、Provider、Tool、MCP、Skill |
 | Security | `internal/security` | Policy、Permission、Constitution、Sandbox |
 | Orchestration | `internal/orchestration` | Subagent、Admission/Budget、Chat Merge |
 | Persistence | `internal/persist` | 关系状态、Event、CAS、Session、Snapshot、Journal |
@@ -80,13 +80,13 @@ Guard Factory。
 Required Controls 的 `ExecutionOperation`，并由 Runtime 共享的 `LeaseAuthority`
 签发单次 `ExecutionLease`。Guard 保留 `ExecuteBound` 作为兼容 Facade，但每个实际
 Attempt 都会先签发和消费 Lease，再把 Operation/Lease/Settlement 证据投影到
-`tool.result.execution`。Artifact/Process Broker 接管 Process Smoke、Hook 与 stdio
+`tool.result.execution`。Artifact/Process Broker 接管 Process Smoke 与 stdio
 MCP 生命周期；File/VCS Broker 接管模型文件工具、Agent/Chat Merge、生成型 Workspace
 输出和 Git Metadata Mutation。`workspacebroker.Runtime` 只组合窄能力，不把 Broker
 业务逻辑放入 `wire`。
 
-Builtin 与 Extension Tool 共享同一个 Registry 实例。Skill、Memory、
-Hook 与 MCP Contributor 只接收其显式构造能力和共享 Registry，不接收
+Builtin 与 Extension Tool 共享同一个 Registry 实例。Skill、Memory 与 MCP
+Contributor 只接收其显式构造能力和共享 Registry，不接收
 `buildState`；每个 Contributor 返回确定性的 `ContributionReceipt`，记录新增 Tool
 Identity 与命名输出。Subagent 工具由 Orchestration Module 装配，而非 Extension
 Contributor Chain。
@@ -541,7 +541,7 @@ Output Budget，随后 Seal 不可变 Registry。Contributor 只接收显式 Cap
 有界 Receipt，不接收 Construction State 或私有 Tool Registry。
 
 Extension Source 按 Source Priority 确定性解析为绑定当前 Permission Digest 的
-Digested Plan。Tool、Skill、MCP 与 Hook 各自由其 Adapter 管理运行时生命周期和
+Digested Plan。Tool、Skill 与 MCP 各自由其 Adapter 管理运行时生命周期和
 撤销边界，Plan 只记录已解析的 Typed Extension 结果，不承担外部包分发。
 
 Web Transport `extension/list`/`extension/control` 与 Web Extensions View 使用同一
@@ -564,12 +564,6 @@ Dependency Plan 与 Lock。`skills_read` 接受该冻结条目广告的
 真正无效或过期的 Handle 会返回结构化 `skills_list` 恢复动作，而不会直接终止 Turn。
 Execution Receipt 会记录选择规模、显式命中、Token Projection、Cache 使用情况以及
 Query/Candidate 截断。
-
-### Hook
-
-Hook 观察或拦截生命周期点，必须有界。Repository Hook 不再从 Workspace 默认路径
-隐式启用；显式启用的 Hook 在只读、禁网 Sandbox 中运行，且不能通过 Permission
-Decision 扩大 Guard 权限。
 
 ## Subagent 协作架构
 

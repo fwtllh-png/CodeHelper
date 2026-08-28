@@ -467,12 +467,6 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 				Path: "value.go", Kind: "modified", Added: 1, Removed: 1,
 			}},
 		},
-		&HookExecutionData{
-			HookEvent: "ToolCallBefore", HookID: "review-observer",
-			Source: "repository", Trust: "workspace", Scope: "turn",
-			Mode: "observe", Outcome: "observed", ExitCode: 0,
-			DurationMS: 2, StdoutBytes: 32, OccurredAt: time.Now().UTC(),
-		},
 		&DiagnosticsData{
 			Tool: "file_edit", CallID: "call_1",
 			Receipts: []DiagnosticReceipt{{

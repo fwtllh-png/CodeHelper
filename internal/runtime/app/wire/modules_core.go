@@ -56,7 +56,7 @@ func (configModule) Build(_ context.Context, state *buildState) error {
 		snapshot:            snapshot,
 		execution:           execution,
 		extensionPaths:      extensionPaths,
-		hookSessionID:       fmt.Sprintf("process-%d-%p", os.Getpid(), state.session),
+		runtimeSessionID:    fmt.Sprintf("process-%d-%p", os.Getpid(), state.session),
 		workspaceStateID:    workspaceStateID,
 		workspaceStateRoot:  workspaceStateRoot,
 		diagnosticCommands:  commands,

@@ -76,30 +76,7 @@ type ApprovalDecision struct {
 	PlanID               string
 }
 
-type Hooks interface {
-	Before(context.Context, Invocation) error
-	After(context.Context, Invocation, tool.Result, error)
-}
-
 type Invocation = tool.PreparedInvocation
-
-type PermissionRequester interface {
-	PermissionRequest(ctx context.Context, invocation Invocation) (PermissionDecision, error)
-}
-
-type PermissionDecision struct {
-	Action PermissionAction
-	Reason string
-	HookID string
-}
-
-type PermissionAction string
-
-const (
-	PermissionAllow PermissionAction = "allow"
-	PermissionDeny  PermissionAction = "deny"
-	PermissionAsk   PermissionAction = "ask"
-)
 
 type Options struct {
 	Registry              *tool.Registry
@@ -108,8 +85,6 @@ type Options struct {
 	Approvals             func(context.Context, ApprovalRequest) error
 	PersistAllow          func(policy.Invocation) error
 	OnNetworkAllow        NetworkAllow
-	Hooks                 Hooks
-	PermissionHooks       PermissionRequester
 	Now                   func() time.Time
 	ApprovalTTL           time.Duration
 	LeaseTTL              time.Duration
@@ -156,8 +131,6 @@ type Guard struct {
 	approvals             func(context.Context, ApprovalRequest) error
 	persistAllow          func(policy.Invocation) error
 	onNetworkAllow        NetworkAllow
-	hooks                 Hooks
-	permissionHooks       PermissionRequester
 	now                   func() time.Time
 	approvalTTL           time.Duration
 	leaseTTL              time.Duration
@@ -257,10 +230,10 @@ func New(options Options) (*Guard, error) {
 		controlPlane: controlPlane,
 		approvals:    options.Approvals, persistAllow: options.PersistAllow,
 		onNetworkAllow: options.OnNetworkAllow,
-		hooks:          options.Hooks, permissionHooks: options.PermissionHooks, now: options.Now,
-		approvalTTL: options.ApprovalTTL,
-		leaseTTL:    options.LeaseTTL,
-		readTracker: options.ReadTracker, journal: options.Journal, diagnostics: options.Diagnostics,
+		now:            options.Now,
+		approvalTTL:    options.ApprovalTTL,
+		leaseTTL:       options.LeaseTTL,
+		readTracker:    options.ReadTracker, journal: options.Journal, diagnostics: options.Diagnostics,
 		escalation:            escalation,
 		forceEditPlanApproval: options.ForceEditPlanApproval,
 		workspaceID:           options.WorkspaceID,
@@ -374,24 +347,6 @@ func (g *Guard) approveEgressHost(
 	started := g.now()
 	decision := g.policy.Evaluate(policyInvocation)
 	reviewLatency := g.now().Sub(started)
-	redirect := invocation
-	redirect.Resources = resources
-	if decision.Action == policy.ActionAsk || decision.Code == "auto_review_allowed" {
-		action, err := g.permissionAction(ctx, redirect)
-		if err != nil {
-			return err
-		}
-		if action == PermissionAllow {
-			g.grantNetworkHosts(resources)
-			return nil
-		}
-		if decision.Code == "auto_review_allowed" && action == PermissionAsk {
-			decision = policy.Decision{
-				Action: policy.ActionAsk, Code: "permission_hook_ask",
-				Reason: "permission hook requires human approval",
-			}
-		}
-	}
 	g.observeApproval("evaluated", policyInvocation, decision, 0)
 	if decision.Action == policy.ActionDeny || decision.Action == policy.ActionHold {
 		g.observeApproval("denied", policyInvocation, decision, 0)
@@ -1104,29 +1059,6 @@ func (g *Guard) waitForApproval(
 		}
 		return decision, nil
 	}
-}
-
-func (g *Guard) permissionAction(
-	ctx context.Context,
-	invocation Invocation,
-) (PermissionAction, error) {
-	if g.permissionHooks == nil {
-		return "", nil
-	}
-	decision, err := g.permissionHooks.PermissionRequest(ctx, invocation)
-	if err != nil {
-		return "", err
-	}
-	if decision.Action == PermissionDeny {
-		reason := decision.Reason
-		if reason == "" {
-			reason = "permission hook denied"
-		}
-		return "", &policy.DecisionError{
-			Code: "permission_hook_denied", Reason: reason,
-		}
-	}
-	return decision.Action, nil
 }
 
 func (g *Guard) observeApproval(

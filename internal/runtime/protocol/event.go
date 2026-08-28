@@ -27,7 +27,6 @@ const (
 	EventToolCatalogChanged EventKind = "tool.catalog.changed"
 	EventMCPHealthChanged   EventKind = "mcp.health.changed"
 	EventExtensionControl   EventKind = "extension.control"
-	EventHookExecution      EventKind = "hook.execution"
 	EventDiagnostics        EventKind = "diagnostics.result"
 	EventTurnCompleted      EventKind = "turn.completed"
 	EventTurnFailed         EventKind = "turn.failed"
@@ -509,47 +508,6 @@ type ExtensionControlData struct {
 	Revision    uint64                 `json:"revision"`
 	Digest      string                 `json:"digest"`
 	OccurredAt  time.Time              `json:"occurred_at"`
-}
-
-type HookExecutionData struct {
-	HookEvent       string    `json:"hook_event"`
-	HookID          string    `json:"hook_id"`
-	Source          string    `json:"source"`
-	Trust           string    `json:"trust"`
-	Scope           string    `json:"scope"`
-	Mode            string    `json:"mode"`
-	Outcome         string    `json:"outcome"`
-	Action          string    `json:"action,omitempty"`
-	ErrorCode       string    `json:"error_code,omitempty"`
-	ExitCode        int       `json:"exit_code"`
-	DurationMS      uint64    `json:"duration_ms"`
-	TimedOut        bool      `json:"timed_out,omitempty"`
-	Canceled        bool      `json:"canceled,omitempty"`
-	StdoutBytes     int64     `json:"stdout_bytes"`
-	StderrBytes     int64     `json:"stderr_bytes"`
-	StdoutTruncated bool      `json:"stdout_truncated,omitempty"`
-	StderrTruncated bool      `json:"stderr_truncated,omitempty"`
-	OccurredAt      time.Time `json:"occurred_at"`
-}
-
-func (*HookExecutionData) eventKind() EventKind { return EventHookExecution }
-
-func (d *HookExecutionData) validate() error {
-	if d.HookEvent == "" || d.HookID == "" || d.Outcome == "" ||
-		d.OccurredAt.IsZero() || d.StdoutBytes < 0 || d.StderrBytes < 0 {
-		return errors.New("hook execution event is invalid")
-	}
-	if !slices.Contains([]string{"repository", "builtin"}, d.Source) ||
-		!slices.Contains([]string{"workspace", "builtin"}, d.Trust) ||
-		!slices.Contains([]string{"process", "session", "thread", "turn"}, d.Scope) ||
-		!slices.Contains([]string{"observe", "enforce"}, d.Mode) {
-		return errors.New("hook execution authority metadata is invalid")
-	}
-	if d.Action != "" &&
-		!slices.Contains([]string{"allow", "deny", "ask"}, d.Action) {
-		return errors.New("hook execution action is invalid")
-	}
-	return nil
 }
 
 func (*ExtensionControlData) eventKind() EventKind { return EventExtensionControl }

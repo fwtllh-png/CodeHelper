@@ -26,7 +26,6 @@ const (
 	OriginRuntime      Origin = "runtime"
 	OriginProvider     Origin = "provider"
 	OriginTool         Origin = "tool"
-	OriginHook         Origin = "hook"
 	OriginVerification Origin = "verification"
 	OriginPersistence  Origin = "persistence"
 	OriginProjection   Origin = "projection"

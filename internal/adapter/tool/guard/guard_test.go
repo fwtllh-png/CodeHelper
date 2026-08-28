@@ -30,7 +30,7 @@ func TestMalformedArgumentsFailBeforePolicy(t *testing.T) {
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
 	runtime.Repository = []policy.Rule{{Tool: "write", Action: policy.ActionHold, Code: "hold"}}
-	guard := newTestGuard(t, registry, runtime, nil, nil)
+	guard := newTestGuard(t, registry, runtime, nil)
 	_, err := guard.Execute(t.Context(), "call", "write", json.RawMessage(`{"path":`))
 	if err == nil || !contains(err.Error(), "arguments") || contains(err.Error(), "hold") {
 		t.Fatalf("error = %v, want schema error before policy", err)
@@ -209,7 +209,6 @@ func TestArgumentExpansionFailureIsRecoverableInvalidArguments(t *testing.T) {
 		registry,
 		policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
 		nil,
-		nil,
 	)
 	_, err := guard.Execute(t.Context(), "call", "expand", json.RawMessage(`{}`))
 	if !errors.Is(err, tool.ErrInvalidArguments) {
@@ -223,20 +222,23 @@ func TestDefaultsNormalizeBeforeCanonicalResources(t *testing.T) {
 	if err := registry.Register(&executor); err != nil {
 		t.Fatal(err)
 	}
-	hooks := &captureHooks{}
 	guard := newTestGuard(
-		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), nil, hooks,
+		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), nil,
 	)
-	if _, err := guard.Execute(t.Context(), "call", "write", json.RawMessage(`{"value":"x"}`)); err != nil {
+	invocation, _, err := guard.prepare(
+		t.Context(), "write", "call",
+		json.RawMessage(`{"value":"x"}`), tool.CatalogBinding{},
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if string(hooks.invocation.Arguments) != `{"path":"default.txt","value":"x"}` {
-		t.Fatalf("normalized arguments = %s", hooks.invocation.Arguments)
+	if string(invocation.Arguments) != `{"path":"default.txt","value":"x"}` {
+		t.Fatalf("normalized arguments = %s", invocation.Arguments)
 	}
-	if len(hooks.invocation.Resources) != 1 ||
-		hooks.invocation.Resources[0].Path == "" ||
-		hooks.invocation.Resources[0].Access != tool.AccessWrite {
-		t.Fatalf("resources = %+v", hooks.invocation.Resources)
+	if len(invocation.Resources) != 1 ||
+		invocation.Resources[0].Path == "" ||
+		invocation.Resources[0].Access != tool.AccessWrite {
+		t.Fatalf("resources = %+v", invocation.Resources)
 	}
 }
 
@@ -256,7 +258,7 @@ func TestRepositoryAskPausesAndApproveDenyResume(t *testing.T) {
 			guard := newTestGuard(t, registry, runtime, func(_ context.Context, request ApprovalRequest) error {
 				requests <- request
 				return nil
-			}, nil)
+			})
 			result := make(chan error, 1)
 			go func() {
 				_, err := guard.Execute(
@@ -333,7 +335,6 @@ func TestActAutoProcessPausesForApprovalThenResumes(t *testing.T) {
 			requests <- request
 			return nil
 		},
-		nil,
 	)
 	result := make(chan error, 1)
 	go func() {
@@ -379,7 +380,6 @@ func TestActAutoReadOnlyShellDoesNotAsk(t *testing.T) {
 			approvals.Add(1)
 			return nil
 		},
-		nil,
 	)
 	if _, err := guard.Execute(
 		t.Context(), "read-process-call", "shell_read", json.RawMessage(`{}`),
@@ -581,7 +581,7 @@ func TestApprovalCancelDuplicateLateAndWrongRequest(t *testing.T) {
 		func(_ context.Context, request ApprovalRequest) error {
 			requests <- request
 			return nil
-		}, nil,
+		},
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
@@ -670,7 +670,7 @@ func TestAliasDeferredUnknownAvailabilityAndSandboxFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	guard := newTestGuard(
-		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), nil, nil,
+		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), nil,
 	)
 	if _, err := guard.Execute(
 		t.Context(), "alias", "legacy_write",
@@ -739,7 +739,7 @@ func TestStrongSandboxDescriptorUsesInjectedBackend(t *testing.T) {
 		t.Fatal(err)
 	}
 	guard := newTestGuard(
-		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), nil, nil,
+		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), nil,
 	)
 	if _, err := guard.Execute(t.Context(), "sandboxed", "sandboxed", json.RawMessage(`{}`)); err != nil {
 		t.Fatal(err)
@@ -778,30 +778,33 @@ func TestPatchRenameAndSymlinkTargetsCanonicalizeIdentically(t *testing.T) {
 	if err := registry.Register(&testExecutor{descriptor: patchDescriptor}); err != nil {
 		t.Fatal(err)
 	}
-	hooks := &captureHooks{}
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		Workspace: workspace, Hooks: hooks,
+		Workspace: workspace,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := guard.Execute(
+	writeInvocation, _, err := guard.prepare(
 		t.Context(), "write", "write",
 		json.RawMessage(`{"path":"alias.txt","value":"x"}`),
-	); err != nil {
+		tool.CatalogBinding{},
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
-	writePath := hooks.invocation.Resources[0].Path
-	if _, err := guard.Execute(
+	writePath := writeInvocation.Resources[0].Path
+	patchInvocation, _, err := guard.prepare(
 		t.Context(), "patch", "patch",
 		json.RawMessage(`{"patch":"rename from old.txt\nrename to alias.txt\n"}`),
-	); err != nil {
+		tool.CatalogBinding{},
+	)
+	if err != nil {
 		t.Fatal(err)
 	}
 	var patchPath string
-	for _, resource := range hooks.invocation.Resources {
+	for _, resource := range patchInvocation.Resources {
 		if resource.Path == writePath {
 			patchPath = resource.Path
 		}
@@ -822,16 +825,6 @@ type testExecutor struct {
 type approvalMetricSink struct {
 	mu     sync.Mutex
 	values []string
-}
-
-type permissionRequesterFunc func(
-	context.Context, Invocation,
-) (PermissionDecision, error)
-
-func (f permissionRequesterFunc) PermissionRequest(
-	ctx context.Context, invocation Invocation,
-) (PermissionDecision, error) {
-	return f(ctx, invocation)
 }
 
 func (s *approvalMetricSink) Approval(
@@ -1105,7 +1098,7 @@ func TestNetworkHostApprovalSessionReuseAndCancel(t *testing.T) {
 	guard := newTestGuard(t, registry, runtime, func(_ context.Context, request ApprovalRequest) error {
 		requests <- request
 		return nil
-	}, nil)
+	})
 
 	result := make(chan error, 1)
 	go func() {
@@ -1319,7 +1312,7 @@ func TestNetworkAutoReviewsUnderActAuto(t *testing.T) {
 		context.Context, ApprovalRequest,
 	) error {
 		return errors.New("auto-reviewed network read requested human approval")
-	}, nil)
+	})
 	guard.SetApprovalObserver(metrics.Approval)
 	if _, err := guard.Execute(
 		context.Background(), "call", "web_fetch",
@@ -1332,46 +1325,6 @@ func TestNetworkAutoReviewsUnderActAuto(t *testing.T) {
 	}
 	if !reflect.DeepEqual(metrics.outcomes(), []string{"evaluated", "auto_allowed"}) {
 		t.Fatalf("approval metrics = %v", metrics.outcomes())
-	}
-}
-
-func TestPermissionHookAskOverridesAutoReview(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	executor := &testExecutor{descriptor: networkFetchDescriptor()}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
-	requests := make(chan ApprovalRequest, 1)
-	guard := newTestGuard(
-		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto),
-		func(_ context.Context, request ApprovalRequest) error {
-			requests <- request
-			return nil
-		}, nil,
-	)
-	metrics := &approvalMetricSink{}
-	guard.SetApprovalObserver(metrics.Approval)
-	guard.permissionHooks = permissionRequesterFunc(func(
-		context.Context, Invocation,
-	) (PermissionDecision, error) {
-		return PermissionDecision{Action: PermissionAsk}, nil
-	})
-	done := make(chan error, 1)
-	go func() {
-		_, err := guard.Execute(
-			context.Background(), "call", "web_fetch",
-			json.RawMessage(`{"url":"https://example.com/"}`),
-		)
-		done <- err
-	}()
-	request := <-requests
-	if request.ReasonCode != ApprovalReasonNetworkHost ||
-		!reflect.DeepEqual(metrics.outcomes(), []string{"evaluated", "human_required"}) {
-		t.Fatalf("request = %+v metrics = %v", request, metrics.outcomes())
-	}
-	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
-	if err := <-done; err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -1473,7 +1426,6 @@ func TestControlPlaneWriteCannotBeApprovedOrBypassed(t *testing.T) {
 			requested.Store(true)
 			return nil
 		},
-		nil,
 	)
 	_, err := guard.Execute(
 		t.Context(),
@@ -1507,19 +1459,6 @@ func readDescriptor(name string) tool.Descriptor {
 		},
 	}
 }
-
-type captureHooks struct {
-	mu         sync.Mutex
-	invocation Invocation
-}
-
-func (h *captureHooks) Before(_ context.Context, invocation Invocation) error {
-	h.mu.Lock()
-	h.invocation = invocation
-	h.mu.Unlock()
-	return nil
-}
-func (*captureHooks) After(context.Context, Invocation, tool.Result, error) {}
 
 type strongBackend struct{}
 
@@ -1560,7 +1499,7 @@ func TestAdditionalPermissionRequiresReapproval(t *testing.T) {
 		func(_ context.Context, request ApprovalRequest) error {
 			requests <- request
 			return nil
-		}, nil,
+		},
 	)
 
 	result := make(chan error, 1)
@@ -1616,7 +1555,7 @@ func TestAdditionalPermissionRequiresApprovalForEveryInvocation(t *testing.T) {
 		func(_ context.Context, request ApprovalRequest) error {
 			requests <- request
 			return nil
-		}, nil,
+		},
 	)
 
 	first := make(chan error, 1)
@@ -1672,7 +1611,7 @@ func TestAdditionalPermissionRetriesAtMostOnce(t *testing.T) {
 		func(_ context.Context, request ApprovalRequest) error {
 			requests <- request
 			return nil
-		}, nil,
+		},
 	)
 	done := make(chan error, 1)
 	go func() {
@@ -1715,7 +1654,7 @@ func TestSandboxStrongApprovalDoesNotCoverAdditionalPermission(t *testing.T) {
 	guard := newTestGuard(t, registry, runtime, func(_ context.Context, request ApprovalRequest) error {
 		requests <- request
 		return nil
-	}, nil)
+	})
 
 	first := make(chan error, 1)
 	go func() {
@@ -1812,7 +1751,6 @@ func TestUntypedSandboxFailureFailsClosedWithoutApproval(t *testing.T) {
 			t.Fatal("untyped denial must not request additional permission")
 			return nil
 		},
-		nil,
 	)
 	_, err := guard.Execute(t.Context(), "untyped", "untyped_denial", json.RawMessage(`{}`))
 	if err == nil || err.Error() != "Operation not permitted" {
@@ -1929,21 +1867,23 @@ func TestAbsoluteWorkspacePathIsRewritten(t *testing.T) {
 	if err := registry.Register(&testExecutor{descriptor: writeDescriptor()}); err != nil {
 		t.Fatal(err)
 	}
-	hooks := &captureHooks{}
 	guard, err := New(Options{
 		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		Workspace: workspace, Hooks: hooks,
+		Workspace: workspace,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	target := filepath.Join(workspace, "note.txt")
 	args, _ := json.Marshal(map[string]any{"path": target, "value": "hello"})
-	if _, err := guard.Execute(t.Context(), "abs", "write", args); err != nil {
+	invocation, _, err := guard.prepare(
+		t.Context(), "write", "abs", args, tool.CatalogBinding{},
+	)
+	if err != nil {
 		t.Fatalf("absolute in-workspace path should be rewritten: %v", err)
 	}
 	var normalized map[string]any
-	if err := json.Unmarshal(hooks.invocation.Arguments, &normalized); err != nil {
+	if err := json.Unmarshal(invocation.Arguments, &normalized); err != nil {
 		t.Fatal(err)
 	}
 	if normalized["path"] != "note.txt" {
@@ -1951,7 +1891,9 @@ func TestAbsoluteWorkspacePathIsRewritten(t *testing.T) {
 	}
 	outside := filepath.Join(t.TempDir(), "evil.txt")
 	bad, _ := json.Marshal(map[string]any{"path": outside, "value": "x"})
-	if _, err := guard.Execute(t.Context(), "out", "write", bad); err == nil ||
+	if _, _, err := guard.prepare(
+		t.Context(), "write", "out", bad, tool.CatalogBinding{},
+	); err == nil ||
 		!strings.Contains(err.Error(), "absolute resource path") {
 		t.Fatalf("outside absolute path error = %v", err)
 	}
@@ -1962,12 +1904,11 @@ func newTestGuard(
 	registry *tool.Registry,
 	runtime *policy.Runtime,
 	approvals func(context.Context, ApprovalRequest) error,
-	hooks Hooks,
 ) *Guard {
 	t.Helper()
 	value, err := New(Options{
 		Registry: registry, Policy: runtime, Workspace: t.TempDir(),
-		Approvals: approvals, Hooks: hooks,
+		Approvals: approvals,
 	})
 	if err != nil {
 		t.Fatal(err)

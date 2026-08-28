@@ -48,7 +48,6 @@ func (g *Guard) executePipeline(
 	mode := SandboxModeStrong
 	egressRetried := false
 	permissionRetried := false
-	hooksStarted := false
 	var retryPrepared *preparedExecution
 	var retryProfile *authority.EffectivePermissionProfile
 	var receipt tool.ExecutionReceipt
@@ -81,12 +80,6 @@ func (g *Guard) executePipeline(
 			prepared = authorized
 		}
 		raw = append(json.RawMessage(nil), prepared.arguments...)
-		if !hooksStarted && g.hooks != nil {
-			if err := g.hooks.Before(ctx, prepared.invocation); err != nil {
-				return tool.Result{}, err
-			}
-			hooksStarted = true
-		}
 		if prepared.invocation.Binding.SandboxRequirement == tool.SandboxNone {
 			mode = SandboxModeNone
 		}
@@ -748,37 +741,20 @@ func (g *Guard) reauthorizeAdditionalPermission(
 		prepared.invocation,
 	)
 	decision := runtime.Evaluate(invocation)
-	hookAction := PermissionAction("")
-	if decision.Action == policy.ActionAsk ||
-		decision.Code == "auto_review_allowed" {
-		hookAction, err = g.permissionAction(ctx, prepared.invocation)
-		if err != nil {
-			return preparedExecution{}, err
-		}
-		if decision.Code == "auto_review_allowed" &&
-			hookAction == PermissionAsk {
-			decision = policy.Decision{
-				Action: policy.ActionAsk, Code: "permission_hook_ask",
-				Reason: "permission hook requires human approval",
-			}
-		}
-	}
 	switch decision.Action {
 	case policy.ActionDeny, policy.ActionHold:
 		return preparedExecution{}, &policy.DecisionError{
 			Code: decision.Code, Reason: decision.Reason,
 		}
 	case policy.ActionAsk:
-		if hookAction != PermissionAllow {
-			if err := g.cacheApproval(invocation, approval); err != nil {
-				return preparedExecution{}, err
-			}
-			if runtime.Approvals == nil ||
-				!runtime.Approvals.MatchInvocation(invocation, g.now()) {
-				return preparedExecution{}, &policy.DecisionError{
-					Code:   "approval_expired",
-					Reason: "amended tool approval is no longer valid",
-				}
+		if err := g.cacheApproval(invocation, approval); err != nil {
+			return preparedExecution{}, err
+		}
+		if runtime.Approvals == nil ||
+			!runtime.Approvals.MatchInvocation(invocation, g.now()) {
+			return preparedExecution{}, &policy.DecisionError{
+				Code:   "approval_expired",
+				Reason: "amended tool approval is no longer valid",
 			}
 		}
 	case policy.ActionAllow:
@@ -803,9 +779,6 @@ func (g *Guard) afterAttempt(
 		if submitted, _ := result.Metadata["submitted_plan"].(bool); submitted {
 			g.Policy().SubmitPlan()
 		}
-	}
-	if g.hooks != nil {
-		g.hooks.After(ctx, invocation, result, err)
 	}
 }
 

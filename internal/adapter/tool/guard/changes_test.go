@@ -79,11 +79,10 @@ func TestGuardDeclaresEveryTransactionPathAsAWrite(t *testing.T) {
 	if err := registry.Register(&patchExecutor{descriptor: transactionToolDescriptor()}); err != nil {
 		t.Fatal(err)
 	}
-	hooks := &captureHooks{}
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
-		Workspace: workspace, Hooks: hooks,
+		Workspace: workspace,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -98,6 +97,12 @@ func TestGuardDeclaresEveryTransactionPathAsAWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	invocation, _, err := guard.prepare(
+		t.Context(), "apply", "call-1", arguments, tool.CatalogBinding{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := guard.Execute(t.Context(), "call-1", "apply", arguments); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +114,7 @@ func TestGuardDeclaresEveryTransactionPathAsAWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	declared := make(map[string]tool.AccessMode)
-	for _, resource := range hooks.invocation.Resources {
+	for _, resource := range invocation.Resources {
 		if resource.Kind == "file" {
 			relative, err := filepath.Rel(root, resource.Path)
 			if err != nil {

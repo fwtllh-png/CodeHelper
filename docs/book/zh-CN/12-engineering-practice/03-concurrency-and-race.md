@@ -26,7 +26,7 @@ last_verified: null
 确定性构造 Interleaving，并正确理解 Race Detector 的证据边界。
 
 并发风险包括 Submit/Close、Strict Event Sequence、Unique Terminal、Tool Claim、
-Catalog Replace During Load、Active Turn Fence、CAS Lock、Hook State 与 Child Budget。
+Catalog Replace During Load、Active Turn Fence、CAS Lock 与 Child Budget。
 
 ```mermaid
 flowchart LR

@@ -13,7 +13,7 @@ CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意
 - 仓库文件、生成代码、测试和构建脚本；
 - 模型输出与 Tool Argument；
 - Provider Response 与 Native Search Result；
-- MCP Server、Skill Content 与 Hook；
+- MCP Server 与 Skill Content；
 - HTTP/Web Transport Client Message；
 - 从其他 Workspace 复制的持久化状态；
 - Archive Path、Symlink、Environment 与 Process Output。
@@ -105,7 +105,7 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 
 ## 进程执行
 
-- Guard 在现有 Policy、Permission Hook 和人工审批完成后，把冻结的 Tool Invocation
+- Guard 在现有 Policy 和人工审批完成后，把冻结的 Tool Invocation
   规范化为 `ExecutionOperation`。Operation 绑定 Workspace/Subject Generation、
   Resource Namespace、Effect Contract、Required Controls、参数摘要和 Artifact
   Provenance；资源排序、去重后计算稳定 Digest。
@@ -156,8 +156,8 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   退出码。需要有意接受失败时必须在 Command 中显式表达。
 - `quality_process_smoke` 仅在持久化 Workspace State 可提供 Artifact Staging 和
   Process Broker 时开放。原始 Workspace 或 Sandbox Home 路径只作为 Snapshot 输入，
-  实际进程只能从 Broker-owned Snapshot 启动；Guard 强制 `ApprovalOnce`、禁止
-  Permission Hook 自动批准，且不提供 Session/Always Grant。
+  实际进程只能从 Broker-owned Snapshot 启动；Guard 强制 `ApprovalOnce`，且不提供
+  Session/Always Grant。
 - Linux Strong Sandbox 将 Landlock、`no_new_privs`、seccomp 与 `execve` 固定在
   同一个 OS Thread。Seccomp 拒绝 Tracing、跨进程内存访问、Namespace 创建、
   `clone3` 与 `io_uring`；Restricted Network Mode 只保留 AF_UNIX 进程内 IPC。
@@ -219,7 +219,7 @@ make secret-leak-test
 - Native/Web Search Result 仍是不可信内容。
 - 可记录 Endpoint Inventory，但不能记录 Credential。
 
-## MCP、Skill 与 Hook 供应链
+## MCP 与 Skill 供应链
 
 ### MCP
 
@@ -235,15 +235,6 @@ Handle。Reload、Disable、Crash 和 Shutdown 会终结 Handle、Settlement 并
 
 锁定最终 Source/Version，并 Review Instruction/Resource。Skill 是 Agent 解释的内容，
 存在 Prompt Injection 风险。
-
-### Hook
-
-Workspace 中的默认 Hook 配置不自动加载；Repository Hook 必须由 Operator 显式指定。
-所有 Hook 进程使用 Workspace Read-only、Network Denied 的 Strong Sandbox，并隐藏
-`.git`、`.codehelper`、`.codehelper-worktree`、`.agents` 和 `.codex`。每次调用先
-生成绑定 Hook 配置、Event、Workspace Generation 和 Process Spec 的 Operation，再由
-Process Broker 消费短生命周期 Lease，并执行 Start、Cancel、Wait、Reap 和 Settlement。
-Repository Permission Hook 只能返回 Deny 或 Ask，不能把 Guard 的决定提升为 Allow。
 
 ## Log 与 Diagnostics
 
@@ -301,6 +292,6 @@ Sanitized Config Provenance、预期/实际 Security Decision，以及可行时�
 
 [安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-6
 已交付 State Domain、Operation/Lease、Artifact/Process/File/VCS Broker、Process
-Smoke、Hook、stdio MCP Lifecycle、Workspace Write、Git Metadata Mutation 收口，以及
+Smoke、stdio MCP Lifecycle、Workspace Write、Git Metadata Mutation 收口，以及
 External Descriptor/Trusted Binding 分离和 Required/Effective Controls 能力矩阵。
 后续演进必须继续通过同一 Operation、Lease、Broker 和矩阵契约扩展，不能恢复旁路。

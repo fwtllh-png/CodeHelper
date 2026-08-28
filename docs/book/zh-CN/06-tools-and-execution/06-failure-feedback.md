@@ -78,7 +78,7 @@ Replacement 普遍安全。
 
 ## Terminal Failure
 
-大多数 Policy Decision、Sandbox Failure、Hook/Journal Failure 和 Unclassified Executor
+大多数 Policy Decision、Sandbox Failure、Journal Failure 和 Unclassified Executor
 Error 会终止 Turn。将它们反馈重试可能复制 Effect 或鼓励 Permission Probing。
 Cancellation 在并发 Tool 完成清理后返回带归属的 Aborted Result。
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -83,7 +82,6 @@ type TelemetryConfig struct {
 	Metrics            Metrics
 	Observability      trace.Runtime
 	TurnKernelObserver func(turnkernel.TransitionRecord)
-	Hooks              *hooks.Manager
 }
 
 type LifecycleConfig struct {

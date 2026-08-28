@@ -47,7 +47,6 @@ var eventData = []struct {
 	{EventToolCatalogChanged, func() EventData { return &ToolCatalogChangedData{} }},
 	{EventMCPHealthChanged, func() EventData { return &MCPHealthChangedData{} }},
 	{EventExtensionControl, func() EventData { return &ExtensionControlData{} }},
-	{EventHookExecution, func() EventData { return &HookExecutionData{} }},
 	{EventDiagnostics, func() EventData { return &DiagnosticsData{} }},
 	{EventTurnCompleted, func() EventData { return &TurnCompletedData{} }},
 	{EventTurnFailed, func() EventData { return &TurnFailedData{} }},

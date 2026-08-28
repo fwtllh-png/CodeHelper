@@ -110,7 +110,7 @@ loopback HTTP/WebSocket 连接 Embedded UI 与共享 Runtime；Provider HTTP、M
 | Entry | `cmd/codehelper` | Process Startup 与 Web Host |
 | Host | `internal/host` | Presentation 与 Transport Adapter |
 | Runtime | `internal/runtime` | Protocol、Lifecycle、Agent Loop、Wiring |
-| Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Hook |
+| Adapter | `internal/adapter` | Provider、Tool、MCP、Skill |
 | Security | `internal/security` | Policy、Permission、Constitution、Sandbox |
 | Orchestration | `internal/orchestration` | Subagent、Admission/Budget、Worktree、Chat Merge |
 | Persistence | `internal/persist` | SQLite、Event、CAS、Session、Journal |
@@ -173,7 +173,7 @@ SQLite 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchest
 Provider 发布所选 Provider/Model Catalog，Security 发布 Permission Store 与
 Guard Factory。
 
-Builtin 与 Extension Tool 共享同一个 Registry。Skill、Memory、Hook 和 MCP
+Builtin 与 Extension Tool 共享同一个 Registry。Skill、Memory 和 MCP
 Contributor 注册 Typed Contract，只接收显式 Capability，并返回
 有界 Receipt。随后 Source Resolution 生成 Digested Extension Plan。Subagent 工具
 由 Orchestration Module 装配，而非 Extension Contributor Chain。

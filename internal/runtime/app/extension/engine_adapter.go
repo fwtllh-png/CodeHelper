@@ -289,22 +289,6 @@ func (a *EngineAdapter) StartTurn(
 				RetryAt:             retryAt,
 			})
 		}
-		if event.HookAudit != nil {
-			record := event.HookAudit
-			return sink.Emit(&protocol.HookExecutionData{
-				HookEvent: string(record.Event), HookID: record.HookID,
-				Source: string(record.Source), Trust: string(record.Trust),
-				Scope: string(record.Scope), Mode: string(record.Mode),
-				Outcome: record.Outcome, Action: string(record.Action),
-				ErrorCode: record.ErrorCode, ExitCode: record.ExitCode,
-				DurationMS: uint64(max(0, record.Duration.Milliseconds())),
-				TimedOut:   record.TimedOut, Canceled: record.Canceled,
-				StdoutBytes: record.StdoutBytes, StderrBytes: record.StderrBytes,
-				StdoutTruncated: record.StdoutTruncated,
-				StderrTruncated: record.StderrTruncated,
-				OccurredAt:      record.Time,
-			})
-		}
 		switch event.State {
 		case agentengine.Preparing:
 			displayPrompt := payload.DisplayPrompt

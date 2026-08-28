@@ -6,7 +6,6 @@ import (
 
 	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	reverttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/revert"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
@@ -71,7 +70,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	modelCapabilities := route.Model().Capabilities
 	contextRuntime, err := buildContextRuntime(
 		state.options.PersistentStore,
-		state.config.hookSessionID,
+		state.config.runtimeSessionID,
 	)
 	if err != nil {
 		return fmt.Errorf("create context runtime: %w", err)
@@ -113,7 +112,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		),
 
 		PromptCacheKey: promptcontext.StickyCacheKey(
-			state.config.hookSessionID,
+			state.config.runtimeSessionID,
 			execution.Workspace,
 		),
 
@@ -180,15 +179,13 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 
 		Journal:           state.security.journal,
 		WorkspaceTurnGate: workspaceTurnGate}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: session.metrics,
-		Observability: engineObservability(state),
-
-		Hooks: session.hooks}, LifecycleConfig: agentengine.LifecycleConfig{TurnCoordinatorRuntime: contextRuntime.coordinator,
+		Observability: engineObservability(state)}, LifecycleConfig: agentengine.LifecycleConfig{TurnCoordinatorRuntime: contextRuntime.coordinator,
 		ReleaseTurnResources: session.turnProcessReleaser(
 			session.processes,
 			"main",
 		),
 
-		SessionID: state.config.hookSessionID,
+		SessionID: state.config.runtimeSessionID,
 		InputHost: session.inputHost},
 	}
 	engineGuardFactory := state.security.guardFactory
@@ -335,12 +332,6 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		}
 	}
 	session.applyPlan = threadManager.ApplyPlan
-	if session.hooks != nil {
-		session.hooks.SessionStart(ctx, hooks.SessionStartInput{
-			SessionID: state.config.hookSessionID,
-			Workspace: execution.Workspace,
-		})
-	}
 	state.agent = agentBuildState{
 		workspaceTurnGate:   workspaceTurnGate,
 		coordinatorRuntime:  contextRuntime.coordinator,
@@ -398,7 +389,7 @@ func (runtimeModule) Build(
 		if err := ConfigurePersistentSubagents(
 			state.agent.threads, store,
 			state.config.execution.Workspace,
-			state.config.hookSessionID,
+			state.config.runtimeSessionID,
 			session.Runtime,
 			func(graph any) error {
 				return control.AttachGraph(graph.(subagent.Graph))

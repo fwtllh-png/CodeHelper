@@ -16,7 +16,6 @@ var eventTraits = map[EventKind]EventTraits{
 	"command.execution":    {"audit", "tool", "retained", "call", false},
 	"diagnostics.result":   {"evidence", "turn", "retained", "turn", false},
 	"extension.control":    {"audit", "operation", "retained", "operation", false},
-	"hook.execution":       {"audit", "tool", "retained", "hook", false},
 	"host.command":         {"interaction", "turn", "retained", "command", false},
 	"input.required":       {"interaction", "input", "retained", "request", false},
 	"input.resolved":       {"interaction", "input", "retained", "request", false},

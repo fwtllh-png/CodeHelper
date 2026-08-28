@@ -15,7 +15,7 @@ func TestDecideExhaustiveMatrix(t *testing.T) {
 		Canceled, DeadlineExceeded, Internal,
 	}
 	origins := []Origin{
-		OriginRuntime, OriginProvider, OriginTool, OriginHook,
+		OriginRuntime, OriginProvider, OriginTool,
 		OriginVerification, OriginPersistence, OriginProjection, OriginKernel,
 	}
 	dispositions := []Disposition{

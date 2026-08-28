@@ -78,7 +78,7 @@ Child 的实际执行仍是普通 Runtime Turn，不建立后台 WorkGraph 镜�
 | Application | `internal/runtime/app` | Operation、Session、Turn Lease、Terminal、Recovery |
 | Composition | `internal/runtime/app/wire` | 具体依赖构造、资源关闭、后台服务启动 |
 | Agent | `internal/runtime/agent` | Turn Kernel、Engine、Context、Prompt |
-| Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Hook |
+| Adapter | `internal/adapter` | Provider、Tool、MCP、Skill |
 | Security | `internal/security` | Policy、Permission、Constitution、Credential、Sandbox |
 | Orchestration | `internal/orchestration` | Subagent、Admission/Budget、Worktree、Chat Merge |
 | Persistence | `internal/persist` | SQLite、CAS、Event、Session、Snapshot、Journal |

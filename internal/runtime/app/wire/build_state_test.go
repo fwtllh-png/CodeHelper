@@ -209,7 +209,6 @@ func TestExtensionContributorIDsAreUnique(t *testing.T) {
 	for _, required := range []string{
 		"skills",
 		"memory",
-		"hooks",
 		"mcp",
 	} {
 		if _, exists := seen[required]; !exists {

@@ -3,7 +3,6 @@ package wire
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -15,11 +14,6 @@ func (f guardFactory) Build(context.Context) (*toolguard.Guard, error) {
 
 		ForceEditPlanApproval: f.forceEditReview, Now: f.now, Diagnostics: f.diagnostics, OnNetworkAllow: f.onNetworkAllow, Workspace: f.workspace, WorkspaceID: f.workspaceID, WorkspaceGeneration: 1, LeaseAuthority: f.leaseAuthority, LeaseTTL: f.leaseTTL,
 		ReadTracker: f.readTracker, Journal: f.journal,
-	}
-	if f.hooks != nil {
-		adapter := &hooks.Adapter{Manager: f.hooks}
-		options.Hooks = adapter
-		options.PermissionHooks = adapter
 	}
 	if f.permissions != nil {
 		options.PersistAllow = func(invocation policy.Invocation) error {
@@ -53,7 +47,7 @@ func bindEngineGuardFactory(
 	factory.onNetworkAllow = options.OnNetworkAllow
 	factory.now = options.Observability.Now
 	if options.Workspace != base.workspace {
-		factory.hooks, factory.permissions, factory.workspaceID = nil, nil, ""
+		factory.permissions, factory.workspaceID = nil, ""
 	}
 	options.Guard = nil
 	options.GuardFactory = func(ctx context.Context) (*toolguard.Guard, error) {

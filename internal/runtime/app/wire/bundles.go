@@ -5,7 +5,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
@@ -47,7 +46,6 @@ type extensionBundle struct {
 	mcpPool    *mcpruntime.Pool
 	mcpPrewarm *MCPPrewarm
 	memory     *memory.Store
-	hooks      *hooks.Manager
 }
 
 type orchestrationBundle struct {

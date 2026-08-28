@@ -87,7 +87,7 @@ flowchart TD
 - 构建 Tool Registry、Guard、Policy、Constitution、Sandbox；
 - 组装 Stable Prompt Context 与 Partition Budget；
 - 连接 Journal、Diagnostics、Verify、Trace、Usage 和 Store；
-- 初始化 MCP、Skill 与 Hook；
+- 初始化 MCP 与 Skill；
 - 解析统一 Typed Extension Plan；
 - 装配 Trace、Usage、Receipt、Metrics 与 Logger；
 - 构建 Child Runtime、Worktree 与 Subagent Admission；
@@ -119,8 +119,8 @@ Merge 同样是构造模块：`app/persistence` 组合 Repository 与 Recovery�
 `orchestration/chatmerge.Service` 拥有隔离 Workspace 的 Baseline、Preview 与
 Journaled Apply。
 
-Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Skill、Memory、
-Hook 和 MCP 注册 Typed Contributor，只接收显式 Capability，不接收
+Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Skill、Memory 和 MCP
+注册 Typed Contributor，只接收显式 Capability，不接收
 `buildState`，并返回有界 Receipt。Sealed Registry 将 Source State 确定性解析为绑定
 Permission Digest 的 Digested Plan。Subagent 工具由 Orchestration Module 装配，
 而非 Extension Contributor Chain。

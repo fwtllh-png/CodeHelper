@@ -93,14 +93,13 @@ Later Successful Control 不能补偿 Earlier Missing Control。
 1. 解析 Canonical Tool 与 Catalog Binding；
 2. 验证 Argument 和 Resource；
 3. 评估 Policy；
-4. 获取 Permission Hook 与 Human Approval；
+4. 获取 Human Approval；
 5. Preview 并重新验证 File Edit；
 6. 获取 Resource Claim；
-7. 执行 Lifecycle Hook；
-8. 保存 Before-image 和 Expected Write；
-9. 在要求的 Sandbox 中执行；
-10. 观察 Read、Write、Egress 与 Result Metadata；
-11. 在任何结果下释放 Claim。
+7. 保存 Before-image 和 Expected Write；
+8. 在要求的 Sandbox 中执行；
+9. 观察 Read、Write、Egress 与 Result Metadata；
+10. 在任何结果下释放 Claim。
 
 Registry 可以运行 Prepared Tool，但 Agent 路径由 Wiring 强制经过 Guard。单一 Security
 Boundary 比每个 Tool 各自实现不完整策略更可审计。

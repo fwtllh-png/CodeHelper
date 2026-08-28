@@ -107,7 +107,7 @@ func TestApprovalWaitHoldsNeitherAdmissionNorClaims(t *testing.T) {
 	}
 }
 
-func TestHostProcessApprovalIsFreshOnceAndSkipsPermissionHooks(t *testing.T) {
+func TestHostProcessApprovalIsFreshOnce(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	descriptor := readDescriptor("quality_process_smoke")
 	descriptor.Capability = tool.CapabilityProcess
@@ -124,7 +124,6 @@ func TestHostProcessApprovalIsFreshOnceAndSkipsPermissionHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	requests := make(chan ApprovalRequest, 1)
-	var hookCalls atomic.Int32
 	guard, err := New(Options{
 		Registry: registry,
 		Policy: policy.DefaultRuntime(
@@ -136,13 +135,6 @@ func TestHostProcessApprovalIsFreshOnceAndSkipsPermissionHooks(t *testing.T) {
 			requests <- request
 			return nil
 		},
-		PermissionHooks: permissionRequesterFunc(func(
-			context.Context,
-			Invocation,
-		) (PermissionDecision, error) {
-			hookCalls.Add(1)
-			return PermissionDecision{Action: PermissionAllow}, nil
-		}),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -168,9 +160,6 @@ func TestHostProcessApprovalIsFreshOnceAndSkipsPermissionHooks(t *testing.T) {
 		len(request.AllowedScopes) != 1 ||
 		request.AllowedScopes[0] != policy.ApprovalOnce {
 		t.Fatalf("host process approval = %+v", request)
-	}
-	if hookCalls.Load() != 0 {
-		t.Fatalf("permission hooks ran %d times", hookCalls.Load())
 	}
 	mustDecide(t, guard, request, policy.ApprovalOnce, nil)
 	if err := <-done; err != nil {
@@ -460,20 +449,12 @@ func TestReplacementArgumentsRepeatPreparationAndAuthorization(t *testing.T) {
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 1)
-	authorized := make(chan Invocation, 2)
 	guard, err := New(Options{
 		Registry: registry, Policy: runtime, Workspace: t.TempDir(),
 		Approvals: func(_ context.Context, request ApprovalRequest) error {
 			requests <- request
 			return nil
 		},
-		PermissionHooks: permissionRequesterFunc(func(
-			_ context.Context,
-			invocation Invocation,
-		) (PermissionDecision, error) {
-			authorized <- invocation
-			return PermissionDecision{Action: PermissionAsk}, nil
-		}),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -521,13 +502,6 @@ func TestReplacementArgumentsRepeatPreparationAndAuthorization(t *testing.T) {
 			profiles[0],
 			out.result.Execution,
 		)
-	}
-	first, second := <-authorized, <-authorized
-	if string(first.Arguments) == string(second.Arguments) ||
-		string(second.Arguments) != `{"path":"b.txt","value":"after"}` ||
-		len(second.Resources) == 0 ||
-		second.Resources[0].Path == first.Resources[0].Path {
-		t.Fatalf("authorization invocations = first:%+v second:%+v", first, second)
 	}
 }
 

@@ -135,7 +135,6 @@
       ],
       "source_patterns": [
         "internal/adapter/extension/**",
-        "internal/adapter/hooks/**",
         "internal/adapter/mcp/**",
         "internal/adapter/skill/**",
         "internal/runtime/extension/**",

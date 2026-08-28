@@ -34,7 +34,6 @@ func publishExtensionOutputs(state *buildState) {
 	output := &state.extensions
 	session := state.session
 	session.memory = output.memory
-	session.hooks = output.hooks
 	session.mcpPool = output.mcpPool
 	session.mcpPrewarm = output.mcpPrewarm
 	session.extensions = &extensionSession{

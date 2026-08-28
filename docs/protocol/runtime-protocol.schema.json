@@ -865,7 +865,6 @@
             "tool.catalog.changed",
             "mcp.health.changed",
             "extension.control",
-            "hook.execution",
             "diagnostics.result",
             "turn.completed",
             "turn.failed",
@@ -4595,81 +4594,6 @@
         "operation_id",
         "revision",
         "status"
-      ],
-      "additionalProperties": false
-    },
-    "hook.execution": {
-      "type": "object",
-      "properties": {
-        "action": {
-          "type": "string"
-        },
-        "canceled": {
-          "type": "boolean"
-        },
-        "duration_ms": {
-          "type": "integer"
-        },
-        "error_code": {
-          "type": "string"
-        },
-        "exit_code": {
-          "type": "integer"
-        },
-        "hook_event": {
-          "type": "string"
-        },
-        "hook_id": {
-          "type": "string"
-        },
-        "mode": {
-          "type": "string"
-        },
-        "occurred_at": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "outcome": {
-          "type": "string"
-        },
-        "scope": {
-          "type": "string"
-        },
-        "source": {
-          "type": "string"
-        },
-        "stderr_bytes": {
-          "type": "integer"
-        },
-        "stderr_truncated": {
-          "type": "boolean"
-        },
-        "stdout_bytes": {
-          "type": "integer"
-        },
-        "stdout_truncated": {
-          "type": "boolean"
-        },
-        "timed_out": {
-          "type": "boolean"
-        },
-        "trust": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "duration_ms",
-        "exit_code",
-        "hook_event",
-        "hook_id",
-        "mode",
-        "occurred_at",
-        "outcome",
-        "scope",
-        "source",
-        "stderr_bytes",
-        "stdout_bytes",
-        "trust"
       ],
       "additionalProperties": false
     },
@@ -8483,13 +8407,6 @@
       "item_owner": "operation",
       "durability": "retained",
       "correlation": "operation",
-      "terminal": false
-    },
-    "hook.execution": {
-      "class": "audit",
-      "item_owner": "tool",
-      "durability": "retained",
-      "correlation": "hook",
       "terminal": false
     },
     "host.command": {

@@ -1,6 +1,6 @@
 ---
 id: security-extension-trust
-title: MCP、Skill 与 Hook Trust
+title: MCP 与 Skill Trust
 audience:
   - contributor
   - operator
@@ -11,29 +11,25 @@ prerequisites:
 code_paths:
   - internal/adapter/mcp
   - internal/adapter/skill
-  - internal/adapter/hooks
   - internal/runtime/extension
   - internal/runtime/app/extension
 test_paths:
   - internal/adapter/mcp/config_test.go
   - internal/adapter/skill/catalog_test.go
-  - internal/adapter/hooks/hooks_test.go
   - internal/runtime/extension/plan_test.go
 source_of_truth:
   - internal/adapter/mcp/config.go
   - internal/adapter/skill/catalog.go
-  - internal/adapter/hooks/config.go
   - internal/runtime/extension/plan.go
 status: draft
 last_verified: null
 ---
 
-# MCP、Skill 与 Hook Trust
+# MCP 与 Skill Trust
 
 ## 学习目标
 
-区分 Extension Content、Transport 与 Execution Trust，理解配置来源、内容锁定、
-撤销与 Hook Failure Policy。
+区分 Extension Content、Transport 与 Execution Trust，理解配置来源、内容锁定与撤销。
 
 ## Extension Risk
 
@@ -41,22 +37,12 @@ last_verified: null
 | --- | --- | --- |
 | MCP | Server Tool/Response | Endpoint/Process Review、OAuth/Env Allowlist、Guard、Health |
 | Skill | Model 解释 Instruction/Resource | Source/Version Lock、Bounded Load、Injection Review |
-| Hook | 可 Deny/Update/Env 的 Process | Strict Config、Timeout、Sanitized Env、Audit |
 
 Extension Tool 仍进入 Registry/Catalog 并通过 Guard；“Trusted Extension”不等于 Direct
 Execution Authority。
 
-Runtime 将 Typed Source 解析为绑定 Permission Digest 的 Digested Plan。MCP、Skill 与
-Hook 各自拥有独立的配置、完整性和撤销边界，不能借由“扩展已安装”获得执行权限。
-
-## Hook/Permission Hook
-
-Observer Hook 仅在配置允许时 Fail Open，并必须 Audit。Message/Tool/Permission Gate Hook
-按声明 Policy 失败。Deny Wins；Argument Update 返回 Guard 全量 Revalidate；Allow 不能
-绕过 Hard Policy Deny。
-
-Hook Output Bounded 且不整体进入 Audit。Environment Sanitized；Timeout/Cancel Kill
-Process Tree；Shell Env Audit 只记录 Name，不记录 Value。
+Runtime 将 Typed Source 解析为绑定 Permission Digest 的 Digested Plan。MCP 与 Skill
+各自拥有独立的配置、完整性和撤销边界，不能借由“扩展已安装”获得执行权限。
 
 ## MCP/Skill Boundary
 
@@ -71,7 +57,6 @@ Durable Prepare/Commit Receipt 使 Restart/Retry 可审计。Host 不能通过�
 ## 验证
 
 ```bash
-go test ./internal/adapter/hooks
 go test ./internal/adapter/mcp ./internal/adapter/skill
 go test ./internal/runtime/extension ./internal/runtime/app/extension
 ```
@@ -79,12 +64,11 @@ go test ./internal/runtime/extension ./internal/runtime/app/extension
 ## 复习问题
 
 1. MCP 配置漂移为什么必须产生新的 Catalog Generation？
-2. Hook Allow 为什么不能覆盖 Policy Deny？
-3. Locked Skill 为什么仍不可信？
+2. Locked Skill 为什么仍不可信？
 
 ## 延伸阅读
 
-- [Skill 与 Hook](../11-extension-ecosystem/04-skill-plugin-hook.md)
+- [编写 Skill](../11-extension-ecosystem/04-skill-plugin-hook.md)
 
 ## 事实来源与验证
 

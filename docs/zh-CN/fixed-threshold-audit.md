@@ -201,7 +201,7 @@ Prompt 各 Partition 不应各自持有模型无关的 Token 档位。应先预�
 
 ### P2：配置与安全治理
 
-1. 将网络、MCP、Worker、Hook、Retention 和存储容量纳入统一配置与 Provenance。
+1. 将网络、MCP、Worker、Retention 和存储容量纳入统一配置与 Provenance。
 2. 将不可配置的绝对值登记为 Protocol/Security Contract。
 3. 增加静态检查，禁止在容量决策路径新增未经登记的数值常量。
 4. CI 输出新增、删除和来源变化的阈值清单。

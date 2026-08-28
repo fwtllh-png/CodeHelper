@@ -16,8 +16,8 @@ import (
 )
 
 // ExtensionOptions is the explicit production configuration surface for
-// skills and hooks. Empty fields are resolved to safe CodeHelper-owned
-// locations by ResolveExtensionPaths.
+// skills. Empty fields are resolved to safe CodeHelper-owned locations by
+// ResolveExtensionPaths.
 type ExtensionOptions struct {
 	DataDir             string
 	SkillsConfiguredDir string
@@ -25,7 +25,6 @@ type ExtensionOptions struct {
 	SkillsLockPath      string
 	SkillsLocale        string
 	UserHome            string
-	HooksConfigPath     string
 }
 
 type ExtensionPaths struct {
@@ -35,7 +34,6 @@ type ExtensionPaths struct {
 	SkillsLockPath      string
 	SkillsLocale        string
 	UserHome            string
-	HooksConfigPath     string
 }
 
 type ExtensionControlHandle struct {
@@ -111,13 +109,12 @@ func ResolveExtensionPaths(options ExtensionOptions, workspace string) (Extensio
 			options.SkillsLockPath,
 			filepath.Join(dataDir, "skills", "locks", workspaceID+".lock.json"),
 		),
-		SkillsLocale:    strings.TrimSpace(options.SkillsLocale),
-		UserHome:        home,
-		HooksConfigPath: firstPath(options.HooksConfigPath, filepath.Join(workspace, ".codehelper", "hooks.json")),
+		SkillsLocale: strings.TrimSpace(options.SkillsLocale),
+		UserHome:     home,
 	}
 	for _, target := range []*string{
 		&paths.SkillsConfiguredDir, &paths.SkillsStatePath,
-		&paths.HooksConfigPath, &paths.SkillsLockPath,
+		&paths.SkillsLockPath,
 	} {
 		*target, err = absoluteClean(*target)
 		if err != nil {

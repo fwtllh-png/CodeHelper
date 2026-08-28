@@ -208,9 +208,9 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 64,
-        "production_lines": 7350,
-        "options_fields": 61,
+        "internal_fanout": 63,
+        "production_lines": 7255,
+        "options_fields": 60,
         "mutex_fields": 6
       }
     },
@@ -349,8 +349,8 @@
       "kind": "package",
       "path": "internal/runtime/agent/engine",
       "limits": {
-        "internal_fanout": 23,
-        "production_lines": 7963,
+        "internal_fanout": 22,
+        "production_lines": 7882,
         "options_fields": 6,
         "mutex_fields": 5
       }
@@ -403,7 +403,7 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6240,
+        "production_lines": 6195,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -476,8 +476,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 425,
-        "max_function_lines": 330
+        "lines": 414,
+        "max_function_lines": 321
       }
     },
     {
@@ -512,8 +512,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/contributors_extensions.go",
       "limits": {
-        "lines": 54,
-        "max_function_lines": 34
+        "lines": 44,
+        "max_function_lines": 21
       }
     },
     {
@@ -521,8 +521,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/contributors_capabilities.go",
       "limits": {
-        "lines": 114,
-        "max_function_lines": 35
+        "lines": 54,
+        "max_function_lines": 34
       }
     },
     {
@@ -575,8 +575,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/security_factory.go",
       "limits": {
-        "lines": 87,
-        "max_function_lines": 32
+        "lines": 61,
+        "max_function_lines": 31
       }
     },
     {

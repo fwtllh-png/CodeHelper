@@ -309,7 +309,6 @@ export function projectTrajectory(
       case "tool.catalog.changed":
       case "mcp.health.changed":
       case "extension.control":
-      case "hook.execution":
       case "command.execution":
       case "host.command":
       case "turn.steered":

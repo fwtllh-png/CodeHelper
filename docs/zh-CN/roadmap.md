@@ -89,7 +89,7 @@
 ## 长期：生态
 
 - 契约稳定后提供 Extension SDK；
-- MCP、Skill 与 Hook 模板；
+- MCP 与 Skill 模板；
 - Signed Registry Operation 与 Offline Mirror；
 - 不分叉 Core Runtime 的可选企业治理能力。
 

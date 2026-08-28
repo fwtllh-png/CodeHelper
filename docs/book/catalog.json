@@ -400,7 +400,7 @@
           "slug": "06-extension-trust",
           "status": "draft",
           "titles": {
-            "zh-CN": "MCP、Skill 与 Hook Trust"
+            "zh-CN": "MCP 与 Skill Trust"
           }
         },
         {
@@ -588,7 +588,7 @@
           "slug": "04-skill-plugin-hook",
           "status": "draft",
           "titles": {
-            "zh-CN": "编写 Skill 与 Hook"
+            "zh-CN": "编写 Skill"
           }
         },
         {

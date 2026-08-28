@@ -65,7 +65,7 @@ Serial Tool 增加 Claim，并验证 Injected Strong Sandbox。
 | Schema Normalize | Model Argument | Canonical Typed JSON |
 | Resource Resolve | Normalized Argument | Canonical Effect Target |
 | Policy | Validated Invocation | Deny/Hold/Ask/Allow |
-| Approval | Human/Hook Decision | Scoped/Expiring Authority |
+| Approval | Human Decision | Scoped/Expiring Authority |
 | Claims | Canonical Resource | Exclude Conflicting Effect |
 | Sandbox/Egress | Authorized Attempt | OS/Network Boundary |
 | Observation | Result + Actual State | Change/Diagnostic/Receipt Evidence |
@@ -86,7 +86,7 @@ Check。Deny 始终优先；更宽 Mode/Permission 不能削弱 Constitution/Rep
 
 ## Execution 与 Observation
 
-Resource Claim 序列化冲突访问，Hook 包围执行。写操作建立 Before-image/Fingerprint，
+Resource Claim 序列化冲突访问。写操作建立 Before-image/Fingerprint，
 经 Registry 执行后观察实际磁盘变化并运行 Diagnostics。可增权的 Typed Sandbox
 Denial 可通过独立 Critical One-shot Approval 申请单个 Path、Host/Port 或 Process
 Capability。新 Profile 使用递增 Revision 和 Digest，保留 Immutable Deny，并在同一

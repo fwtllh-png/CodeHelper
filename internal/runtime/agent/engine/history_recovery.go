@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
@@ -206,13 +205,6 @@ func (e *Engine) compactHistoryWithPolicy(
 	economicInput uint64,
 	projectHistory agentcontext.HistoryProjector,
 ) *CompactionReceipt {
-	if e.options.Hooks != nil {
-		if err := e.options.Hooks.PreCompact(context.Background(), hooks.CompactInput{
-			SessionID: e.options.SessionID, Forced: force, Messages: len(*history),
-		}); err != nil {
-			return nil
-		}
-	}
 	if len(*history) <= 1 {
 		return nil
 	}
@@ -222,13 +214,6 @@ func (e *Engine) compactHistoryWithPolicy(
 		e.options.Metrics.Compaction(
 			receipt.OriginalBytes - receipt.RetainedBytes,
 		)
-		if e.options.Hooks != nil {
-			e.options.Hooks.PostCompact(context.Background(), hooks.CompactInput{
-				SessionID: e.options.SessionID,
-				Forced:    force,
-				Messages:  len(*history),
-			})
-		}
 		return receipt
 	}
 	authority := e.buildTruthCapsule(e.buildCompactSummary(nil))

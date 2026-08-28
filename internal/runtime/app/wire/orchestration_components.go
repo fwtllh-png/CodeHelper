@@ -75,12 +75,12 @@ func buildChildOrchestration(
 
 		Runtime: output.children, Worktrees: childTrees, Budget: subagent.Budget{
 			MaxTokens: limits.MaxTokens, MaxCostUSD: limits.MaxCostUSD, MaxDepth: limits.MaxDepth, MaxParallel: limits.MaxParallel, MaxResident: limits.MaxResident, MaxTotal: limits.MaxTotal,
-		}, Workspace: workspaceIdentity, SessionID: state.config.hookSessionID,
+		}, Workspace: workspaceIdentity, SessionID: state.config.runtimeSessionID,
 	}, subagent.DelegationMode(limits.Delegation))
 	if err != nil {
 		return fmt.Errorf("agent control: %w", err)
 	}
-	output.childToolsets.bindAgents(output.subagents, state.config.hookSessionID, output.children.release)
+	output.childToolsets.bindAgents(output.subagents, state.config.runtimeSessionID, output.children.release)
 	output.parentFiles, err = filetool.NewWithBackend(
 		execution.Workspace,
 		state.platform.backend,
@@ -93,10 +93,10 @@ func buildChildOrchestration(
 
 		Root: agentRoot, Gate: state.security.guard,
 		Graph: persiststate.NewAgentGraph(
-			state.options.PersistentStore, execution.Workspace, state.config.hookSessionID,
+			state.options.PersistentStore, execution.Workspace, state.config.runtimeSessionID,
 		),
 		Files:   output.parentFiles,
-		Sandbox: state.platform.backend, OnRelease: output.children.release, Verify: state.security.verify, Workspace: execution.Workspace, SessionID: state.config.hookSessionID,
+		Sandbox: state.platform.backend, OnRelease: output.children.release, Verify: state.security.verify, Workspace: execution.Workspace, SessionID: state.config.runtimeSessionID,
 	}); err != nil {
 		return fmt.Errorf("agent tool: %w", err)
 	}

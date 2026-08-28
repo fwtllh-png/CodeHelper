@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -249,28 +248,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	if e.guard != nil && spec.Policy != nil {
 		sessionPolicy := e.guard.SwapPolicy(spec.Policy)
 		defer e.guard.SwapPolicy(sessionPolicy)
-	}
-	if e.options.Hooks != nil {
-		ctx = hooks.WithAuditEmitter(ctx, func(record hooks.AuditRecord) {
-			value := record
-			_ = emit(Event{
-				State: Preparing, Turn: e.turn + 1, HookAudit: &value,
-			})
-		})
-		if err := e.options.Hooks.MessageSubmit(ctx, hooks.MessageSubmitInput{
-			SessionID: e.options.SessionID, TurnID: turnID, Message: prompt,
-		}); err != nil {
-			return Result{}, err
-		}
-		defer func() {
-			status := string(result.State)
-			if status == "" {
-				status = string(Failed)
-			}
-			e.options.Hooks.TurnEnd(context.WithoutCancel(ctx), hooks.TurnEndInput{
-				SessionID: e.options.SessionID, TurnID: turnID, Status: status,
-			})
-		}()
 	}
 	e.setApprovalEmit(func(event Event) error {
 		event.State, event.Turn = AwaitingApproval, e.turn

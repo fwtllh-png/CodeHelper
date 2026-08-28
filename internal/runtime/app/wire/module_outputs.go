@@ -1,7 +1,6 @@
 package wire
 
 import (
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
@@ -64,7 +63,6 @@ type extensionBuildState struct {
 	registry     *runtimeextension.Registry
 	skillCatalog *skill.Catalog
 	memory       *memory.Store
-	hooks        *hooks.Manager
 	mcpPool      *mcpruntime.Pool
 	mcpPrewarm   *MCPPrewarm
 }

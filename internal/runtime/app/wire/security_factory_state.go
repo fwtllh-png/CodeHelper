@@ -3,7 +3,6 @@ package wire
 import (
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/hooks"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
@@ -16,7 +15,6 @@ type guardFactory struct {
 	registry               *tool.Registry
 	runtime                *policy.Runtime
 	workspace, workspaceID string
-	hooks                  *hooks.Manager
 	journal                *workspacejournal.Manager
 	readTracker            *workspacejournal.ReadTracker
 	diagnostics            diagnostics.Runner

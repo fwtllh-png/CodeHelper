@@ -19,7 +19,6 @@ const (
 	FaultOriginRuntime      = runtimefault.OriginRuntime
 	FaultOriginProvider     = runtimefault.OriginProvider
 	FaultOriginTool         = runtimefault.OriginTool
-	FaultOriginHook         = runtimefault.OriginHook
 	FaultOriginVerification = runtimefault.OriginVerification
 	FaultOriginPersistence  = runtimefault.OriginPersistence
 	FaultOriginProjection   = runtimefault.OriginProjection

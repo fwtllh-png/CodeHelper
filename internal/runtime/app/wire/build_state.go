@@ -33,13 +33,13 @@ type buildState struct {
 }
 
 type configBuildState struct {
-	snapshot                                            config.Snapshot
-	execution                                           config.Execution
-	extensionPaths                                      ExtensionPaths
-	hookSessionID, workspaceStateID, workspaceStateRoot string
-	diagnosticCommands                                  map[string]diagnostics.Command
-	diagnosticReadRoots                                 []string
-	diagnosticReadFiles                                 []string
+	snapshot                                               config.Snapshot
+	execution                                              config.Execution
+	extensionPaths                                         ExtensionPaths
+	runtimeSessionID, workspaceStateID, workspaceStateRoot string
+	diagnosticCommands                                     map[string]diagnostics.Command
+	diagnosticReadRoots                                    []string
+	diagnosticReadFiles                                    []string
 }
 
 type toolBuildState struct {

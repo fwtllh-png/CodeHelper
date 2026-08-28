@@ -4,6 +4,7 @@
 >
 > 本文描述 CodeHelper 对副作用执行边界的目标设计和渐进迁移方案，不代表当前实现已经
 > 完成这些约束。当前已交付行为以[安全模型](./security.md)、源码和测试为准。
+> Repository Hook 已于后续精简中整体移除；下文 Hook 内容仅保留迁移历史。
 
 ## 一、目标
 
@@ -713,7 +714,7 @@ Lease 或 Broker。
 | 副作用 Inventory | `scripts/securityeffects` 与 `testdata/contracts/security-side-effect-entrypoints.json`，覆盖系统 API 和 `internal/platform/process` 构造入口 |
 | Workspace State Topology | `internal/runtime/app/wire/workspace_state.go` |
 | Journal 外移与绑定 | `internal/persist/workspacejournal`、`internal/runtime/app/wire/journal.go` |
-| Hook 止血 | `internal/adapter/hooks`、`internal/runtime/app/wire/contributors_capabilities.go` |
+| Hook 止血 | 历史实现，现已删除 |
 | stdio MCP 止血 | `internal/adapter/mcp/config.go` 与 MCP Contributor |
 | Process Smoke 关闭 | `internal/adapter/tool/quality/process_smoke.go` |
 
@@ -809,7 +810,7 @@ Manifest Digest 和 Generation，Process Broker 校验后单次消费 Lease，�
 | 短进程 Broker 与 Settlement | `internal/security/processbroker/command.go` |
 | 长生命周期 Handle 与 Settlement | `internal/security/processbroker/lifecycle.go` |
 | Broker-owned stdio 管道 | `internal/platform/process/stream_managed.go` |
-| Hook Broker 迁移 | `internal/adapter/hooks/executor.go` |
+| Hook Broker 迁移 | 历史实现，现已删除 |
 | stdio MCP Lifecycle 迁移 | `internal/adapter/mcp/runtime_authority.go`、`stdio.go` |
 
 Hook 不再调用 `process.NewCommand`，旧 Process Tree helper 已删除。Repository
