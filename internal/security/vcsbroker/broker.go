@@ -29,6 +29,7 @@ const (
 	IndexAdd       MutationKind = "index_add"
 	Commit         MutationKind = "commit"
 	ApplyPatch     MutationKind = "apply_patch"
+	SwitchBranch   MutationKind = "switch_branch"
 )
 
 type RepositoryState struct {
@@ -100,6 +101,19 @@ func (b *Broker) Read(
 		return "", errors.New("VCS Broker is required")
 	}
 	return runGit(ctx, dir, arguments...)
+}
+
+func (b *Broker) SwitchBranch(
+	ctx context.Context,
+	dir string,
+	branch string,
+) error {
+	_, err := b.Mutate(ctx, Mutation{
+		Kind: SwitchBranch,
+		Dir:  dir,
+		Args: []string{"switch", "--no-guess", "--", branch},
+	})
+	return err
 }
 
 func (b *Broker) Mutate(
@@ -289,6 +303,10 @@ func validateMutation(repository string, mutation Mutation) error {
 	if err != nil {
 		return err
 	}
+	directory, err = filepath.EvalSymlinks(directory)
+	if err != nil {
+		return err
+	}
 	if mutation.Kind == "" || len(mutation.Args) == 0 {
 		return errors.New("VCS mutation is incomplete")
 	}
@@ -324,6 +342,15 @@ func validateMutation(repository string, mutation Mutation) error {
 			mutation.Args[1] != "--whitespace=nowarn" {
 			return errors.New("invalid patch mutation")
 		}
+	case SwitchBranch:
+		if len(mutation.Args) != 4 ||
+			mutation.Args[0] != "switch" ||
+			mutation.Args[1] != "--no-guess" ||
+			mutation.Args[2] != "--" ||
+			!validBranch(mutation.Args[3]) ||
+			directory != repository {
+			return errors.New("invalid branch switch mutation")
+		}
 	default:
 		return errors.New("VCS mutation kind is not allowlisted")
 	}
@@ -331,6 +358,13 @@ func validateMutation(repository string, mutation Mutation) error {
 		return errors.New("VCS mutation directory is invalid")
 	}
 	return nil
+}
+
+func validBranch(branch string) bool {
+	branch = strings.TrimSpace(branch)
+	return branch != "" &&
+		!strings.HasPrefix(branch, "-") &&
+		!strings.ContainsAny(branch, "\x00\r\n")
 }
 
 func validCommitArguments(arguments []string) bool {

@@ -44,6 +44,56 @@ func run() {
 	}
 }
 
+func TestUnownedPlatformProcessEntryPointFails(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "internal/unsafe/run.go", `package unsafe
+
+import "github.com/fwtllh-png/CodeHelper/internal/platform/process"
+
+func run() {
+	_, _ = process.Run(nil, process.Options{})
+}
+`)
+	writeFixture(t, root, "policy.json", `{
+  "version": 1,
+  "id": "SEC-EXEC-BOUNDARY-001",
+  "rules": []
+}`)
+	var output bytes.Buffer
+	err := run(root, "policy.json", &output)
+	if err == nil ||
+		!strings.Contains(
+			err.Error(),
+			"internal/platform/process.Run",
+		) {
+		t.Fatalf("run() error = %v", err)
+	}
+}
+
+func TestPlatformProcessFunctionReferenceIsInventoried(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, root, "internal/unsafe/run.go", `package unsafe
+
+import "github.com/fwtllh-png/CodeHelper/internal/platform/process"
+
+var run = process.Run
+`)
+	writeFixture(t, root, "policy.json", `{
+  "version": 1,
+  "id": "SEC-EXEC-BOUNDARY-001",
+  "rules": []
+}`)
+	var output bytes.Buffer
+	err := run(root, "policy.json", &output)
+	if err == nil ||
+		!strings.Contains(
+			err.Error(),
+			"internal/platform/process.Run",
+		) {
+		t.Fatalf("run() error = %v", err)
+	}
+}
+
 func TestWorkspaceAndVCSWritersStayBrokered(t *testing.T) {
 	root := filepath.Clean("../..")
 	for path, forbidden := range map[string][]string{

@@ -68,6 +68,57 @@ func TestBrokerRejectsUnallowlistedGitMutation(t *testing.T) {
 	}
 }
 
+func TestBrokerSwitchesAllowlistedLocalBranch(t *testing.T) {
+	repository := gitRepository(t)
+	command := exec.Command("git", "branch", "feature")
+	command.Dir = repository
+	command.Env = append(
+		os.Environ(), "GIT_CONFIG_GLOBAL=", "GIT_CONFIG_SYSTEM=",
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("create branch: %v: %s", err, output)
+	}
+	broker, err := New(
+		repository,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := broker.SwitchBranch(t.Context(), repository, "feature"); err != nil {
+		t.Fatal(err)
+	}
+	branch, err := broker.Read(
+		t.Context(), repository, "symbolic-ref", "--short", "HEAD",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(branch) != "feature" {
+		t.Fatalf("branch = %q, want feature", branch)
+	}
+}
+
+func TestBrokerRejectsInvalidBranchSwitch(t *testing.T) {
+	repository := gitRepository(t)
+	broker, err := New(
+		repository,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := broker.Mutate(t.Context(), Mutation{
+		Kind: SwitchBranch,
+		Dir:  repository,
+		Args: []string{"switch", "--no-guess", "--", "--detach"},
+	}); err == nil || !strings.Contains(err.Error(), "invalid branch switch") {
+		t.Fatalf("invalid branch switch error = %v", err)
+	}
+}
+
 func TestBrokerRequiresExplicitLeaseTTL(t *testing.T) {
 	repository := gitRepository(t)
 	if _, err := New(

@@ -72,7 +72,7 @@ func TestValidateWebEditorContextRequiresEnumeratedResource(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	query, err := workspacequery.New(root, eventAuthorizationBackend{})
+	query, err := workspacequery.New(root, eventAuthorizationBackend{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func webContextWorkspace(
 			t.Fatal(err)
 		}
 	}
-	query, err := workspacequery.New(root, eventAuthorizationBackend{})
+	query, err := workspacequery.New(root, eventAuthorizationBackend{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

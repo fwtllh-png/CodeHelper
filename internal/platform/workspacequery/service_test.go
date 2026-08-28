@@ -6,10 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/security/vcsbroker"
 )
 
 func TestServiceBrowsesSearchesAndReadsWithinWorkspace(t *testing.T) {
@@ -25,7 +29,7 @@ func TestServiceBrowsesSearchesAndReadsWithinWorkspace(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	service, err := New(root, queryTestBackend{})
+	service, err := New(root, queryTestBackend{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,10 +81,27 @@ func TestServiceBrowsesSearchesAndReadsWithinWorkspace(t *testing.T) {
 	}
 }
 
+func TestSwitchBranchRequiresVCSBroker(t *testing.T) {
+	root := t.TempDir()
+	initRepository(t, root)
+	runGit(t, root, "commit", "--allow-empty", "-m", "initial")
+	runGit(t, root, "branch", "feature")
+	service, err := New(root, queryTestBackend{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SwitchBranch(
+		t.Context(),
+		"feature",
+	); err == nil || !strings.Contains(err.Error(), "VCS Broker") {
+		t.Fatalf("missing VCS Broker error = %v", err)
+	}
+}
+
 func TestServiceRejectsEscapesAndSkippedPaths(t *testing.T) {
 	root := t.TempDir()
 	initRepository(t, root)
-	service, err := New(root, queryTestBackend{})
+	service, err := New(root, queryTestBackend{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +139,7 @@ func TestServiceDoesNotExposeGitIgnoredFiles(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git add ignored file: %v: %s", err, output)
 	}
-	service, err := New(root, queryTestBackend{})
+	service, err := New(root, queryTestBackend{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +160,15 @@ func TestServiceReportsAndSwitchesCleanGitBranches(t *testing.T) {
 	initRepository(t, root)
 	runGit(t, root, "commit", "--allow-empty", "-m", "initial")
 	runGit(t, root, "branch", "feature")
-	service, err := New(root, queryTestBackend{})
+	broker, err := vcsbroker.New(
+		root,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := New(root, queryTestBackend{}, broker)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +204,7 @@ func TestServiceReportsGitStateWhenSandboxRejectsUnrelatedLinks(t *testing.T) {
 	initRepository(t, root)
 	runGit(t, root, "commit", "--allow-empty", "-m", "initial")
 	prepares := 0
-	service, err := New(root, rejectingQueryBackend{prepares: &prepares})
+	service, err := New(root, rejectingQueryBackend{prepares: &prepares}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +230,7 @@ func TestServiceReadsOnlyEnumeratedSupportedImages(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "fake.png"), []byte("not an image"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	service, err := New(root, queryTestBackend{})
+	service, err := New(root, queryTestBackend{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

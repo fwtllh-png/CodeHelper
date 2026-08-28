@@ -86,7 +86,10 @@ func (s *Service) SwitchBranch(ctx context.Context, branch string) (GitState, er
 		return GitState{}, fmt.Errorf("Git branch %q does not exist locally", branch)
 	}
 	if state.Branch != branch || state.Detached {
-		if _, err := s.git(ctx, false, "switch", "--no-guess", "--", branch); err != nil {
+		if s.vcs == nil {
+			return GitState{}, errors.New("workspace VCS Broker is unavailable")
+		}
+		if err := s.vcs.SwitchBranch(ctx, s.workspace.Root(), branch); err != nil {
 			return GitState{}, err
 		}
 	}
@@ -109,15 +112,13 @@ func (s *Service) git(
 		Path: process.GitExecutable(), Args: args,
 		Dir: root, DirFile: directory,
 	}
-	if readOnly {
-		// These fixed metadata queries cannot invoke hooks, filesystem monitors,
-		// maintenance, or network operations. Avoid a full workspace link audit
-		// before every Git metadata command.
-		options.Args = append([]string{"--no-optional-locks"}, args...)
-	} else {
-		options.Sandbox = s.backend
-		options.DenyNetwork = true
+	if !readOnly {
+		return "", errors.New("workspace Git mutations require the VCS Broker")
 	}
+	// These fixed metadata queries cannot invoke hooks, filesystem monitors,
+	// maintenance, or network operations. Avoid a full workspace link audit
+	// before every Git metadata command.
+	options.Args = append([]string{"--no-optional-locks"}, args...)
 	result, err := process.Run(ctx, options)
 	if err != nil {
 		return "", err

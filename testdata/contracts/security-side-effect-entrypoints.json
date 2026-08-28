@@ -7,7 +7,7 @@
       "prefix": true,
       "categories": ["process", "file"],
       "owner": "process runtime",
-      "reason": "Existing process construction, process-group lifecycle, and job journal boundary pending Broker migration."
+      "reason": "Low-level process construction and lifecycle owner; callers are inventoried separately."
     },
     {
       "path": "internal/security/sandbox",
@@ -79,9 +79,9 @@
     {
       "path": "internal/adapter/plugin",
       "prefix": true,
-      "categories": ["file", "network"],
+      "categories": ["process", "file", "network"],
       "owner": "plugin adapter",
-      "reason": "Verified artifact staging, trust state, and registry client."
+      "reason": "Guard-authorized plugin execution, verified artifact staging, trust state, and registry client."
     },
     {
       "path": "internal/adapter/skill",
@@ -93,15 +93,15 @@
     {
       "path": "internal/adapter/tool/content",
       "prefix": true,
-      "categories": ["file"],
+      "categories": ["process", "file"],
       "owner": "content tool",
-      "reason": "Bounded temporary conversion artifacts."
+      "reason": "Guard-authorized sandbox conversion and bounded temporary artifacts."
     },
     {
       "path": "internal/adapter/tool/github/github.go",
-      "categories": ["file", "network"],
+      "categories": ["process", "file", "network"],
       "owner": "github tool",
-      "reason": "Guarded GitHub transport and Runtime-owned cache."
+      "reason": "Guard-authorized Git preflight, GitHub transport, and Runtime-owned cache."
     },
     {
       "path": "internal/adapter/tool/git/hosted.go",
@@ -132,9 +132,9 @@
     {
       "path": "internal/adapter/tool/agent",
       "prefix": true,
-      "categories": ["file"],
+      "categories": ["process", "file"],
       "owner": "agent tool",
-      "reason": "Guarded child-agent workspace preparation."
+      "reason": "Guard-authorized child-agent merge checks and workspace preparation."
     },
     {
       "path": "internal/host/bench",
@@ -167,16 +167,16 @@
     {
       "path": "internal/runtime/agent/rlm",
       "prefix": true,
-      "categories": ["file", "network"],
+      "categories": ["process", "file", "network"],
       "owner": "rlm runtime",
-      "reason": "Sandboxed REPL state and loopback bridge."
+      "reason": "Guard-authorized sandboxed REPL process, state, and loopback bridge."
     },
     {
       "path": "internal/runtime/app/wire",
       "prefix": true,
-      "categories": ["file"],
+      "categories": ["process", "file"],
       "owner": "composition root",
-      "reason": "Construction and cleanup of Runtime-owned state directories."
+      "reason": "Construction and cleanup of Runtime-owned process managers and state directories."
     },
     {
       "path": "internal/runtime/protocol/schemagen",
@@ -191,6 +191,79 @@
       "categories": ["file", "network"],
       "owner": "security brokers",
       "reason": "Credential, permission, egress, sandbox state, and descriptor-relative File Broker primitives."
+    },
+    {
+      "path": "internal/adapter/lsp/check.go",
+      "categories": ["process"],
+      "owner": "lsp tool",
+      "reason": "Guard-authorized sandboxed language server lifecycle."
+    },
+    {
+      "path": "internal/adapter/tool/git/git.go",
+      "categories": ["process"],
+      "owner": "git tool",
+      "reason": "Guard-authorized read-only Git metadata commands."
+    },
+    {
+      "path": "internal/adapter/tool/quality/quality.go",
+      "categories": ["process"],
+      "owner": "quality tool",
+      "reason": "Guard-authorized sandboxed verification commands."
+    },
+    {
+      "path": "internal/adapter/tool/shell/shell.go",
+      "categories": ["process"],
+      "owner": "shell tool",
+      "reason": "Guard-authorized sandboxed foreground shell commands."
+    },
+    {
+      "path": "internal/adapter/tool/task/task.go",
+      "categories": ["process"],
+      "owner": "task tool",
+      "reason": "Guard-authorized sandboxed task gate commands."
+    },
+    {
+      "path": "internal/observability/diagnostics/diagnostics.go",
+      "categories": ["process"],
+      "owner": "diagnostics runner",
+      "reason": "Guard-triggered sandboxed post-edit diagnostics."
+    },
+    {
+      "path": "internal/observability/verify/verify.go",
+      "categories": ["process"],
+      "owner": "verification runner",
+      "reason": "Runtime-triggered sandboxed verification commands."
+    },
+    {
+      "path": "internal/orchestration/chatmerge/service.go",
+      "categories": ["process"],
+      "owner": "chat merge",
+      "reason": "Runtime-owned read-only Git merge calculations; mutations use File and VCS Brokers."
+    },
+    {
+      "path": "internal/platform/repowalk/repowalk.go",
+      "categories": ["process"],
+      "owner": "repository walker",
+      "reason": "Runtime-owned sandboxed read-only Git file enumeration."
+    },
+    {
+      "path": "internal/platform/workspacequery/git.go",
+      "categories": ["process"],
+      "owner": "workspace query",
+      "reason": "Runtime-owned fixed read-only Git metadata queries; mutations are delegated to VCS Broker."
+    },
+    {
+      "path": "internal/security/processbroker",
+      "prefix": true,
+      "categories": ["process"],
+      "owner": "process broker",
+      "reason": "Lease-consuming process start and lifecycle boundary."
+    },
+    {
+      "path": "internal/security/vcsbroker/broker.go",
+      "categories": ["process"],
+      "owner": "vcs broker",
+      "reason": "Lease-consuming Git mutation boundary and trusted repository identity checks."
     }
   ]
 }

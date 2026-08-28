@@ -73,9 +73,18 @@ type Service struct {
 	workspace *sandbox.Workspace
 	walker    *repowalk.Walker
 	backend   sandbox.Backend
+	vcs       VCSMutator
 }
 
-func New(root string, backend sandbox.Backend) (*Service, error) {
+type VCSMutator interface {
+	SwitchBranch(context.Context, string, string) error
+}
+
+func New(
+	root string,
+	backend sandbox.Backend,
+	vcs VCSMutator,
+) (*Service, error) {
 	workspace, err := sandbox.NewWorkspace(root)
 	if err != nil {
 		return nil, err
@@ -84,7 +93,12 @@ func New(root string, backend sandbox.Backend) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{workspace: workspace, walker: walker, backend: backend}, nil
+	return &Service{
+		workspace: workspace,
+		walker:    walker,
+		backend:   backend,
+		vcs:       vcs,
+	}, nil
 }
 
 func (s *Service) Browse(

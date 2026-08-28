@@ -28,8 +28,10 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/security/vcsbroker"
 )
 
 func TestBootstrapIsLoopbackFencedAndDoesNotCacheToken(t *testing.T) {
@@ -566,11 +568,11 @@ func TestRoutesSessionsAndEventsByWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	queryA, err := workspacequery.New(rootA, webTestBackend{})
+	queryA, err := workspacequery.New(rootA, webTestBackend{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	queryB, err := workspacequery.New(rootB, webTestBackend{})
+	queryB, err := workspacequery.New(rootB, webTestBackend{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,7 +969,15 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	runWorkspaceGit(t, root, "add", ".")
 	runWorkspaceGit(t, root, "commit", "-m", "initial")
 	runWorkspaceGit(t, root, "branch", "feature")
-	query, err := workspacequery.New(root, webTestBackend{})
+	vcs, err := vcsbroker.New(
+		root,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query, err := workspacequery.New(root, webTestBackend{}, vcs)
 	if err != nil {
 		t.Fatal(err)
 	}

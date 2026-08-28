@@ -75,6 +75,10 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   Command 共同产生 Effective Controls，Lease 只在每个要求都被满足时签发。
 - Backend 完成 `Prepare` 后，Process Owner 再次核对本次命令的 Prepared Controls。
   旧 `Strength` 能力与 Receipt 字段已删除，不能单独证明或授予执行权限。
+- 副作用 Inventory 同时检查系统进程 API 和 `internal/platform/process` 的构造入口；
+  新调用方必须登记为 Guard 授权执行、Lease-consuming Broker 或可信 Runtime/Host Owner。
+- Web 分支切换不直接执行 `git switch`，由 VCS Broker 校验固定参数、仓库身份和
+  Execution Lease；未注入 Broker 时 fail closed。
 - `file_write`、`file_edit`、`file_apply`、`file_patch`、`integrate_agent`、隔离
   Chat Merge 和 `document_convert` 的最终 Workspace 输出统一生成不可变 File Plan。
   Guard 或 Runtime Authority 签发绑定 Plan Digest、Workspace Generation 和精确

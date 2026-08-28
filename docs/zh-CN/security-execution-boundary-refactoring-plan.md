@@ -710,7 +710,7 @@ Lease 或 Broker。
 
 | 能力 | 当前实现 |
 | --- | --- |
-| 副作用 Inventory | `scripts/securityeffects` 与 `testdata/contracts/security-side-effect-entrypoints.json` |
+| 副作用 Inventory | `scripts/securityeffects` 与 `testdata/contracts/security-side-effect-entrypoints.json`，覆盖系统 API 和 `internal/platform/process` 构造入口 |
 | Workspace State Topology | `internal/runtime/app/wire/workspace_state.go` |
 | Journal 外移与绑定 | `internal/persist/workspacejournal`、`internal/runtime/app/wire/journal.go` |
 | Hook 止血 | `internal/adapter/hooks`、`internal/runtime/app/wire/contributors_capabilities.go` |

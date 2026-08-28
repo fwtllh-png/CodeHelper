@@ -41,6 +41,13 @@ type finding struct {
 }
 
 var sensitiveCalls = map[string]map[string]string{
+	"github.com/fwtllh-png/CodeHelper/internal/platform/process": {
+		"NewCommand":         "process",
+		"NewSessionManager":  "process",
+		"Run":                "process",
+		"StartManaged":       "process",
+		"StartStreamManaged": "process",
+	},
 	"os/exec": {
 		"Command": "process", "CommandContext": "process",
 	},
@@ -241,11 +248,25 @@ func scanFile(root, path string) ([]finding, error) {
 	relative = filepath.ToSlash(relative)
 	var findings []finding
 	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if ok {
+			if identifier, identifierOK := selector.X.(*ast.Ident); identifierOK {
+				importPath := imports[identifier.Name]
+				category := sensitiveCalls[importPath][selector.Sel.Name]
+				if category != "" {
+					findings = append(findings, finding{
+						Path: relative, Category: category,
+						Symbol: importPath + "." + selector.Sel.Name,
+					})
+				}
+			}
+			return true
+		}
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-		selector, ok := call.Fun.(*ast.SelectorExpr)
+		selector, ok = call.Fun.(*ast.SelectorExpr)
 		if !ok {
 			return true
 		}
@@ -258,18 +279,6 @@ func scanFile(root, path string) ([]finding, error) {
 				Symbol: "network-client." + selector.Sel.Name,
 			})
 			return true
-		}
-		identifier, ok := selector.X.(*ast.Ident)
-		if !ok {
-			return true
-		}
-		importPath := imports[identifier.Name]
-		category := sensitiveCalls[importPath][selector.Sel.Name]
-		if category != "" {
-			findings = append(findings, finding{
-				Path: relative, Category: category,
-				Symbol: importPath + "." + selector.Sel.Name,
-			})
 		}
 		return true
 	})
