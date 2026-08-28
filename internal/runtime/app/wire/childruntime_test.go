@@ -7,15 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/model"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -34,67 +31,6 @@ func (authorityTestTool) Execute(context.Context, json.RawMessage) (tool.Result,
 }
 
 type recoveredChildRuntimeHost struct{}
-
-type flakyWorkGraphController struct {
-	mu             sync.Mutex
-	graph          model.Graph
-	settleFailures int
-	settleCalls    int
-}
-
-type blockingWorkGraphController struct {
-	entered chan struct{}
-	release chan struct{}
-	once    sync.Once
-}
-
-func (c *blockingWorkGraphController) Execute(
-	context.Context,
-	kernel.Command,
-) (kernel.Result, error) {
-	return kernel.Result{}, nil
-}
-
-func (c *blockingWorkGraphController) Load(
-	_ context.Context,
-	runID protocol.RunID,
-) (model.Graph, error) {
-	c.once.Do(func() { close(c.entered) })
-	<-c.release
-	return model.Graph{Run: model.Run{ID: runID, Revision: 1}}, nil
-}
-
-func (c *flakyWorkGraphController) Execute(
-	_ context.Context,
-	command kernel.Command,
-) (kernel.Result, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if command.Kind == kernel.CommandSettleExecution {
-		c.settleCalls++
-		if c.settleFailures > 0 {
-			c.settleFailures--
-			return kernel.Result{}, errors.New("injected settlement failure")
-		}
-	}
-	result, err := kernel.Reduce(c.graph, command)
-	if err == nil {
-		c.graph = model.Clone(result.Graph)
-	}
-	return result, err
-}
-
-func (c *flakyWorkGraphController) Load(
-	_ context.Context,
-	runID protocol.RunID,
-) (model.Graph, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.graph.Run.ID == "" || c.graph.Run.ID != runID {
-		return model.Graph{}, kernel.ErrNotFound
-	}
-	return model.Clone(c.graph), nil
-}
 
 func (recoveredChildRuntimeHost) StartTurn(
 	context.Context, string, string,
@@ -143,130 +79,6 @@ func TestChildTurnIntentUsesEffectiveWorkspaceAuthority(t *testing.T) {
 				testCase.want,
 			)
 		}
-	}
-}
-
-func TestChildTerminalSettlementRetriesUntilDurable(t *testing.T) {
-	control, err := subagent.OpenControl(subagent.Options{
-		Root: t.TempDir(), Gate: recoveryToolGate{},
-		Runtime: recoveredChildRuntimeHost{}, Workspace: t.TempDir(), SessionID: "session-settlement-retry",
-	}, subagent.DelegationExplicit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	child, err := control.SpawnSystem(
-		"retry child settlement", "", subagent.RoleExplore, "inspect", "report",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := control.Takeover(
-		t.Context(),
-		child.ID,
-		"run",
-	); err != nil {
-		t.Fatal(err)
-	}
-	agent, _ := control.Agent(child.ID)
-	controller := &flakyWorkGraphController{settleFailures: 2}
-	children := newChildRuntime(
-		config.Subagent{},
-		t.TempDir(),
-		nil,
-		nil,
-		controller,
-	)
-	t.Cleanup(children.close)
-	children.manager = control
-	if err := children.agentGraphs.Declare(t.Context(), agent); err != nil {
-		t.Fatal(err)
-	}
-	turnID := protocol.TurnID(agent.TurnID)
-	attempt, err := children.agentGraphs.Claim(t.Context(), agent, turnID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	threadID := protocol.ThreadID(child.ThreadID)
-	terminal := make(chan struct{})
-	children.turns[threadID] = &childTurn{
-		agentID: child.ID, turnID: turnID, startedAt: time.Now(),
-		workAttempt: attempt, terminalSignal: terminal,
-		leaseRenewal: make(chan struct{}, 1),
-	}
-	children.observe(protocol.Event{
-		ThreadID: threadID, TurnID: turnID,
-		Data: &protocol.TurnCompletedData{Text: "done"},
-	})
-	select {
-	case <-terminal:
-	case <-time.After(time.Second):
-		t.Fatal("child settlement retry did not converge")
-	}
-	controller.mu.Lock()
-	settleCalls := controller.settleCalls
-	controller.mu.Unlock()
-	if settleCalls != 3 {
-		t.Fatalf("settle calls = %d, want 3", settleCalls)
-	}
-	result, ok := control.Result(child.ID)
-	if !ok || result.Status != subagent.StatusCompleted {
-		t.Fatalf("settled result = %+v, ok=%t", result, ok)
-	}
-	children.mu.Lock()
-	pending := len(children.settlementErrors)
-	children.mu.Unlock()
-	if pending != 0 {
-		t.Fatalf("pending settlement errors = %d", pending)
-	}
-}
-
-func TestChildTerminalObserverDoesNotBlockOnSettlement(t *testing.T) {
-	controller := &blockingWorkGraphController{
-		entered: make(chan struct{}),
-		release: make(chan struct{}),
-	}
-	children := newChildRuntime(
-		config.Subagent{}, t.TempDir(), nil, nil, controller,
-	)
-	t.Cleanup(children.close)
-	threadID := protocol.ThreadID("thread-agent-blocked")
-	turnID := protocol.TurnID("turn-agent-blocked")
-	terminal := make(chan struct{})
-	children.turns[threadID] = &childTurn{
-		agentID: "agent-blocked", turnID: turnID,
-		workAttempt: subagent.WorkAttempt{
-			Correlation: protocol.OrchestrationCorrelation{
-				RunID: "run-agent-blocked",
-			},
-		},
-		terminalSignal: terminal,
-		leaseRenewal:   make(chan struct{}, 1),
-	}
-	returned := make(chan struct{})
-	go func() {
-		children.observe(protocol.Event{
-			ThreadID: threadID, TurnID: turnID,
-			Data: &protocol.TurnCompletedData{Text: "done"},
-		})
-		close(returned)
-	}()
-	select {
-	case <-returned:
-	case <-time.After(time.Second):
-		close(controller.release)
-		t.Fatal("terminal observer blocked on child settlement")
-	}
-	select {
-	case <-controller.entered:
-	case <-time.After(time.Second):
-		close(controller.release)
-		t.Fatal("background child settlement did not start")
-	}
-	close(controller.release)
-	select {
-	case <-terminal:
-	case <-time.After(time.Second):
-		t.Fatal("background child settlement did not finish")
 	}
 }
 
@@ -729,17 +541,14 @@ func TestChildAgentRunsRealEngineTurn(t *testing.T) {
 			switch event.Kind {
 			case protocol.EventTurnStarted:
 				started, _ := event.Data.(*protocol.TurnStartedData)
-				if started == nil || started.Orchestration == nil ||
-					started.Orchestration.NodeID != protocol.NodeID("node_"+child.ID) {
-					t.Fatalf("child turn correlation = %+v", started)
+				if started == nil {
+					t.Fatal("child turn.started payload is missing")
 				}
 				sawStarted = true
 			case protocol.EventExecutionReceipt:
 				receipt, _ := event.Data.(*protocol.ExecutionReceiptData)
-				if receipt == nil || receipt.Orchestration == nil ||
-					receipt.Orchestration.RunID !=
-						protocol.RunID("run_agent_"+child.SessionID+"_"+child.ID) {
-					t.Fatalf("child receipt correlation = %+v", receipt)
+				if receipt == nil {
+					t.Fatal("child turn receipt is missing")
 				}
 				sawReceipt = true
 			case protocol.EventTurnCompleted:
@@ -753,53 +562,6 @@ func TestChildAgentRunsRealEngineTurn(t *testing.T) {
 				sawCompleted,
 			)
 		}
-	}
-}
-
-func TestChildFollowUpCreatesSecondDurableWorkGraphAttempt(t *testing.T) {
-	session := openChildSession(t, "subagent", nil)
-	manager := session.subagents
-	child, err := manager.Spawn("", subagent.RoleExplore, "count the packages")
-	if err != nil {
-		t.Fatal(err)
-	}
-	runID, nodeID := subagent.AgentWorkGraphIDs(*child)
-	graph, err := session.children.workGraphs.Load(t.Context(), runID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if graph.Nodes[nodeID].State != protocol.NodeStateReady ||
-		len(graph.Attempts) != 0 {
-		t.Fatalf("declared Agent WorkGraph = %+v", graph)
-	}
-	if _, err := manager.Takeover(t.Context(), child.ID, "count the packages"); err != nil {
-		t.Fatal(err)
-	}
-	waitForAgentStatus(t, manager, child.ID, subagent.StatusCompleted)
-	graph, err = session.children.workGraphs.Load(t.Context(), runID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if graph.Nodes[nodeID].State != protocol.NodeStateSucceeded ||
-		len(graph.Attempts) != 1 {
-		t.Fatalf("first Agent attempt = %+v", graph)
-	}
-	if _, err := manager.FollowUp(t.Context(), child.ID, "count the packages"); err != nil {
-		t.Fatal(err)
-	}
-	waited, err := manager.Wait(t.Context(), []string{child.ID}, 5*time.Second)
-	if err != nil || waited.TimedOut {
-		t.Fatalf("follow-up wait = %+v, err=%v", waited, err)
-	}
-	graph, err = session.children.workGraphs.Load(t.Context(), runID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := graph.Nodes[nodeID].State
-	if (state != protocol.NodeStateSucceeded &&
-		state != protocol.NodeStateFailed) ||
-		len(graph.Attempts) != 2 {
-		t.Fatalf("follow-up Agent attempts = %+v", graph)
 	}
 }
 

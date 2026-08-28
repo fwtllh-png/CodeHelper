@@ -76,16 +76,6 @@ execution.verify.mode
 execution.verify.on_failure
 execution.verify.scope
 execution.verify.timeout
-execution.worker.automation_interval
-execution.worker.claim_interval
-execution.worker.enabled
-execution.worker.lease
-execution.worker.max_attempts
-execution.worker.max_cost_usd
-execution.worker.max_parallel
-execution.worker.max_tokens
-execution.worker.retry_backoff
-execution.worker.retry_backoff_max
 execution.workspace
 memory.enabled
 memory.max_candidates

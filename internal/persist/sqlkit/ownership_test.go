@@ -10,23 +10,6 @@ import (
 func TestMigratedRepositoriesDoNotReimplementSQLKit(t *testing.T) {
 	root := filepath.Clean("../..")
 	files := map[string][]string{
-		"orchestration/task/repository.go": {
-			"func withTx(", "func normalizedObject(", "func normalizedJSON(",
-			"func nullable(", "func nullableTime(", "func timestamp(",
-		},
-		"orchestration/task/execution.go": {
-			"withTx(", "normalizedJSON(", "nullable(", "timestamp(",
-		},
-		"orchestration/task/session.go": {
-			"withTx(", "timestamp(",
-		},
-		"orchestration/automation/repository.go": {
-			"func withTx(", "func normalizedObject(", "func nullable(",
-			"func nullableTime(", "func timestamp(",
-		},
-		"orchestration/automation/session.go": {
-			"withTx(", "timestamp(",
-		},
 		"persist/session/lifecycle.go": {
 			".BeginTx(",
 		},

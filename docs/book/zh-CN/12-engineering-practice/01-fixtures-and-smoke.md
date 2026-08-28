@@ -29,7 +29,7 @@ last_verified: null
 ## Test Pyramid
 
 Provider Fixture 定义 Expected Prompt/Model 与 Replayable SSE，覆盖 Text、Tool、
-Malformed Call、Cancellation、Editor Context、Subagent、Workflow 和 Multi-sample，
+Malformed Call、Cancellation、Editor Context、Subagent 和 Multi-sample，
 不依赖网络/凭证。
 
 Live Smoke 只发一次有界真实请求，验证 Credential、Endpoint、TLS、Remote Protocol 与

@@ -117,10 +117,6 @@ type RuntimeHost interface {
 	CancelTurn(ctx context.Context, agentID, turnID string) error
 }
 
-type graphRuntimeHost interface {
-	DeclareAgent(context.Context, Agent) error
-}
-
 type Options struct {
 	Root      string
 	Workspace string
@@ -387,18 +383,6 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		TraceParent:       intent.TraceParent, TraceState: intent.TraceState,
 		RoleInstructions: spec.Instructions,
 		Budget:           requested,
-	}
-	if runtime, ok := m.runtime.(graphRuntimeHost); ok {
-		if err := runtime.DeclareAgent(context.Background(), *agent); err != nil {
-			discardErr := m.trees.Discard(wt)
-			if discardErr == nil {
-				_ = m.clearWorktreeAllocation(id)
-			}
-			return nil, errors.Join(
-				fmt.Errorf("declare agent WorkGraph node: %w", err),
-				discardErr,
-			)
-		}
 	}
 	if err := m.recordSpawnLocked(agent); err != nil {
 		discardErr := m.trees.Discard(wt)

@@ -26,11 +26,6 @@ var operationPayloads = []struct {
 	{OperationCompactThread, func() OperationPayload { return &CompactThreadPayload{} }},
 	{OperationForkThread, func() OperationPayload { return &ForkThreadPayload{} }},
 	{OperationRevertTurn, func() OperationPayload { return &RevertTurnPayload{} }},
-	{OperationSubmitRun, func() OperationPayload { return &SubmitRunPayload{} }},
-	{OperationCancelRun, func() OperationPayload { return &CancelRunPayload{} }},
-	{OperationResumeRun, func() OperationPayload { return &ResumeRunPayload{} }},
-	{OperationRetryNode, func() OperationPayload { return &RetryNodePayload{} }},
-	{OperationSkipNode, func() OperationPayload { return &SkipNodePayload{} }},
 }
 
 // eventData mirrors operationPayloads for the outbound direction.
@@ -77,15 +72,6 @@ var eventData = []struct {
 	{EventAgentStatus, func() EventData { return &AgentStatusData{} }},
 	{EventAgentMessage, func() EventData { return &AgentMessageData{} }},
 	{EventAgentIntegration, func() EventData { return &AgentIntegrationData{} }},
-	{EventRunStarted, func() EventData { return &RunStartedData{} }},
-	{EventRunStatus, func() EventData { return &RunStatusData{} }},
-	{EventRunCompleted, func() EventData { return &RunCompletedData{} }},
-	{EventRunFailed, func() EventData { return &RunFailedData{} }},
-	{EventRunCanceled, func() EventData { return &RunCanceledData{} }},
-	{EventNodeStatus, func() EventData { return &NodeStatusData{} }},
-	{EventAttemptStatus, func() EventData { return &AttemptStatusData{} }},
-	{EventExecutionBound, func() EventData { return &ExecutionBoundData{} }},
-	{EventBudgetUpdated, func() EventData { return &BudgetUpdatedData{} }},
 	{EventPlanDelta, func() EventData { return &PlanDeltaData{} }},
 	{EventCommandExecution, func() EventData { return &CommandExecutionData{} }},
 	{EventHostCommand, func() EventData { return &HostCommandData{} }},

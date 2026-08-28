@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestChildRuntimeUsesWorkGraphAndDirectEventObservation(t *testing.T) {
+func TestChildRuntimeUsesAgentGraphAndDirectEventObservation(t *testing.T) {
 	source, err := os.ReadFile("childruntime.go")
 	if err != nil {
 		t.Fatal(err)
@@ -28,8 +28,6 @@ func TestChildRuntimeUsesWorkGraphAndDirectEventObservation(t *testing.T) {
 	}
 	for _, required := range []string{
 		"runtime.ObserveEvents(c.observe)",
-		"c.agentGraphs.Claim",
-		"c.agentGraphs.Settle",
 		"manager.ActivateResident(agentID)",
 	} {
 		if !strings.Contains(text, required) {

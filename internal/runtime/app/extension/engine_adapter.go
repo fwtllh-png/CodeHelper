@@ -248,7 +248,6 @@ func (a *EngineAdapter) StartTurn(
 	}
 	receipt := executionreceipt.New(payload.Prompt)
 	receipt.Configure(
-		payload.Orchestration,
 		intent,
 		editorContext,
 	)
@@ -318,11 +317,8 @@ func (a *EngineAdapter) StartTurn(
 				QueueID: payload.QueueID, PlanID: planID,
 				PlanTransition:  planTransition,
 				ProfileRevision: event.ProfileRevision,
-				Orchestration: protocol.CloneOrchestrationCorrelation(
-					payload.Orchestration,
-				),
-				Intent: intent,
-				Mode:   event.Mode, Posture: event.Posture,
+				Intent:          intent,
+				Mode:            event.Mode, Posture: event.Posture,
 				Workspace:          event.Workspace,
 				WorkspaceIsolation: event.WorkspaceIsolation,
 				Sandbox:            event.Sandbox,
@@ -592,7 +588,7 @@ func (a *EngineAdapter) StartTurn(
 		agentengine.TurnRequest{
 			TurnID: string(payload.TurnID),
 			Prompt: modelPrompt, Intent: intent, Attachments: attachments,
-			Orchestration: payload.Orchestration, Recovery: payload.Recovery,
+			Recovery: payload.Recovery,
 		},
 		emit,
 	)
@@ -1010,6 +1006,17 @@ func nonEmpty(value, fallback string) string {
 	}
 	return value
 }
+
+func terminalIssues(source []agentengine.TerminalIssue) []protocol.TerminalIssue {
+	result := make([]protocol.TerminalIssue, len(source))
+	for index, issue := range source {
+		result[index] = protocol.TerminalIssue{
+			Phase: issue.Phase, Code: issue.Code, Message: issue.Message,
+		}
+	}
+	return result
+}
+
 func commandExecutionFromResult(callID string, result *tool.Result) (*protocol.CommandExecutionData, bool) {
 	if result == nil || result.Metadata == nil {
 		return nil, false

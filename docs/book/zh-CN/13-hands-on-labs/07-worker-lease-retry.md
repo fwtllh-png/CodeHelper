@@ -1,6 +1,6 @@
 ---
 id: lab-worker-retry
-title: 调试 Worker Lease 与 Retry
+title: 调试 Subagent 超时与恢复
 audience:
   - contributor
   - operator
@@ -8,87 +8,66 @@ prerequisites:
   - task-worker-executor
   - task-lease-retry
 code_paths:
-  - internal/orchestration/kernel
-  - internal/orchestration/store
-  - internal/orchestration/task
-  - internal/orchestration/worker
+  - internal/orchestration/admission
+  - internal/orchestration/subagent
+  - internal/runtime/app/wire
 test_paths:
-  - internal/orchestration/kernel/kernel_test.go
-  - internal/orchestration/store/store_test.go
-  - internal/orchestration/task/execution_test.go
-  - internal/orchestration/worker/worker_test.go
+  - internal/orchestration/admission/governor_test.go
+  - internal/orchestration/subagent/control_test.go
+  - internal/runtime/app/wire/childruntime_test.go
 source_of_truth:
-  - internal/orchestration/kernel/kernel.go
-  - internal/orchestration/store/store.go
-  - internal/orchestration/worker/worker.go
+  - internal/orchestration/admission/governor.go
+  - internal/orchestration/subagent/lifecycle.go
+  - internal/runtime/app/wire/childruntime.go
 status: verified
-last_verified: 2026-08-17
+last_verified: 2026-08-28
 ---
 
-# 调试 Worker Lease 与 Retry
+# 调试 Subagent 超时与恢复
 
 ## 目标与前置条件
 
-强制 Lease Expiry 并分类 Retry，同时保证至多一个 Active Claim 和 Idempotent Outcome。
+验证子 Agent 在超时、取消、进程重启和 Follow-up 情况下仍保持预算、Thread 与结果
+归属一致。
 
-## 步骤
+## 场景一：超时
 
-1. 创建确定性 Identity 的 Queued Task。
-2. Worker A Claim，Fake Clock 越过 Expiry。
-3. Worker B 以新 Lease Epoch Takeover。
-4. Worker A 提交 Late Heartbeat/Result。
-5. 注入 Retryable、Terminal、Canceled Outcome。
+1. 配置较短但显式的 Subagent Wall Time。
+2. 启动一个不会自行完成的测试 Provider Turn。
+3. 等待 Runtime 触发取消。
+4. 断言 Agent 进入终态，Admission Lease 被释放。
+
+超时必须来自公开配置，测试不得把生产行为绑定到隐藏常量。
+
+## 场景二：重启恢复
+
+1. 持久化一个处于 running 或 waiting 的 Agent Graph 节点；
+2. 关闭并重建 Runtime；
+3. 确认 Child Thread 重新注册；
+4. 确认已完成结果不会重新执行；
+5. 确认未完成 Turn 按 Runtime Recovery 规则处理。
+
+## 场景三：Follow-up
+
+对已完成 Agent 提交 Follow-up，确认：
+
+- 复用同一 Agent 身份与 Thread；
+- 创建新的 Turn；
+- 预算只预留剩余容量；
+- 新结果覆盖当前可见结果，但历史事件仍可回放。
+
+## 运行
 
 ```bash
-go test ./internal/orchestration/kernel ./internal/orchestration/store
-go test ./internal/orchestration/task ./internal/orchestration/worker
+go test ./internal/orchestration/admission
+go test ./internal/orchestration/subagent
+go test ./internal/runtime/app/wire -run 'TestChild|TestPersistent'
 ```
 
-## Timeline/Assertion
+## 诊断顺序
 
-```text
-t0 create queued task
-t1 A claims -> Attempt 1, owner A, epoch 1, expiry E1
-t2 clock > E1
-t3 B reclaims -> Attempt 2, owner B, epoch 2, expiry E2
-t4 A heartbeat/settle rejected
-t5 B settles exactly one terminal
-```
-
-每一步记录 WorkGraph Revision、Node State、Attempt Fact、Owner、Lease Epoch、
-Authority Digest、Expiry、Pending Effect、Failure 与 Executor Counter。Lease 是
-Repository Fence，不证明 A 已停止 External Effect。
-
-## Retry Control
-
-- Graceful Drain 返还 Attempt；
-- Lease Expiry 消耗 Attempt；
-- Retryable Failure 使用 Capped Backoff；
-- Attempts Exhausted 转 Terminal；
-- Non-idempotent Shell 拒绝 Auto Retry；
-- Healthy Foreign Lease 在 Recovery 中保留。
-
-Expiry/Backoff 使用 Fake Time，Takeover 使用 Channel，不以 Sleep 同步。
-
-## 预期结果
-
-拒绝 Stale Worker；Retryable Failure 有界 Backoff；Terminal 不循环；Duplicate Completion
-保持 Idempotent。
-
-## 失败诊断
-
-两个 Generation 都被接受表示 Lease Fencing Failure；Terminal 后 Retry 表示 State
-Machine Corruption。
-
-## 清理
-
-删除临时 Task DB，停止两个 Worker Loop。
-
-## 复习问题
-
-1. Drain/Expiry 的 Attempt Accounting 有何不同？
-2. Lease Fence 为什么不能撤销 External Effect？
-3. Completion 如何保持 Idempotent？
+先检查 Agent Graph Revision，再检查 Runtime Turn Event，最后检查预算与 Worktree
+清理。不要寻找 Worker Lease 或后台任务队列；这些组件不属于当前 Runtime。
 
 ## 事实来源与验证
 
@@ -96,4 +75,4 @@ Machine Corruption。
 | --- | --- |
 | Catalog ID | `lab-worker-retry` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-17 |
+| 最后验证 | 2026-08-28 |

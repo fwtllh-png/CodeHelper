@@ -63,16 +63,6 @@ func (e *Engine) prepareTurnSpec(
 			nil,
 		)
 	}
-	if request.Orchestration != nil {
-		if err := request.Orchestration.Validate(); err != nil {
-			return TurnSpec{}, "", protocol.NewProblem(
-				protocol.CodeInvalidArgument,
-				err.Error(),
-				false,
-				err,
-			)
-		}
-	}
 	if request.Recovery != nil {
 		if err := request.Recovery.Validate(); err != nil {
 			return TurnSpec{}, "", protocol.NewProblem(
@@ -220,7 +210,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		kernelDraftChanges,
 		kernelTransitionObserver(recorder, turnSpan.ID()),
 		e.options.TurnKernelObserver,
-		e.domainFactObserver(spec.Identity),
+		nil,
 		e.options.Metrics,
 		spec.Kernel,
 		e.options.TurnCoordinatorRuntime,

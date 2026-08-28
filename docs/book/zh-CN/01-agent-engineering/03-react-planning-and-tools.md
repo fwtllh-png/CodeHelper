@@ -178,7 +178,7 @@ Rejected/Failed Tool 是下一条 Observation，不自动构成 Bypass/Retry 理
 
 ## 下一章
 
-[Agent、Workflow 与 Automation 的边界](./04-agent-workflow-boundaries.md)解释何时适合
+[Agent、Plan 与外部自动化的边界](./04-agent-workflow-boundaries.md)解释何时适合
 Adaptive Loop，何时应使用 Deterministic Orchestration。
 
 ## 事实来源与验证

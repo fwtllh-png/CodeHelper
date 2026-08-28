@@ -42,7 +42,7 @@ State，或让 Restart Behavior 依赖 UI Process。
 | Protocol/Lifecycle | `internal/runtime` | Vendor Transport |
 | Integration | `internal/adapter` | Policy Authority |
 | Policy/Isolation | `internal/security` | UI Preference |
-| Scheduling | `internal/orchestration` | Second Agent Engine |
+| Subagent Collaboration | `internal/orchestration` | Second Agent Engine |
 | Durable Data | `internal/persist` | Arbitrary Global Store |
 | Usage/Trace/Verify | `internal/observability` | Execution Authority |
 | OS Behavior | `internal/platform` | Product Policy |
@@ -111,9 +111,9 @@ Observability 可以报告失败，但不应秘密改变 Authority；Persistence
 
 ## 7. Orchestration
 
-Orchestration 拥有 Durable WorkGraph、Task Projection、Worker Lease/Retry、
-Automation、Workflow DAG Compiler、Lane Placement、Fleet Projection 与 Subagent。
-它通过显式 Adapter 启动 Runtime Operation，不直接调用 Provider/Tool Executor。
+Orchestration 拥有 Subagent Agent Graph、Admission/Budget、Worktree 与 Chat Merge。
+Child Agent 执行普通 Runtime Turn，不维护后台 Task、Worker Lease 或 WorkGraph
+镜像，也不直接调用 Provider/Tool Executor。
 
 ## 8. Change 放置示例
 
@@ -126,7 +126,7 @@ Automation、Workflow DAG Compiler、Lane Placement、Fleet Projection 与 Subag
 | File Tool | `adapter/tool/file` | Descriptor/Guard/Journal |
 | Approval Rule | `security/policy` | Guard/Protocol |
 | Chat Merge 策略 | `runtime/app` | Journal/Guard/Baseline |
-| Worker Retry | `orchestration/task` | Persist/Executor |
+| Subagent Admission | `orchestration/admission` | Agent Graph/Budget |
 | SQLite Table | `persist/state/sqlite` | Repository/Schema |
 | Web Command | `web` | Web Transport/Trust |
 
@@ -140,7 +140,7 @@ Cross-cutting 不等于 Ownerless。先选定一个 Invariant Owner，再围绕�
 - `wire` 执行 Chat Merge Plan 或 Journaled Apply 逻辑；
 - Engine 直接写 SQLite Table；
 - Projection/UI State 授权 Action；
-- Orchestration 直接调用 Provider；
+- Subagent 直接调用 Provider；
 - Web Host 信任 Browser 提交的 Workspace Identity；
 - Protocol Import Host/Adapter。
 
@@ -168,7 +168,7 @@ go test ./internal/runtime/app/wire -run TestOnlyWireConstructsPlatformBackend
 1. 为什么 `wire` 拥有 Construction 而非 Behavior？
 2. 新 Tool 的 Authorization 由谁拥有？
 3. 为什么 Projection 不能授权？
-4. Workflow Retry 应位于哪里？
+4. Subagent 的 Budget Fence 应位于哪里？
 5. Architecture Test 如何将规则变为 Evidence？
 
 ## 下一章

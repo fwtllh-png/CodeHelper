@@ -50,18 +50,6 @@ type executionFileConfig struct {
 		WallTime    *string  `toml:"wall_time"`
 		Workspace   *string  `toml:"workspace"`
 	} `toml:"subagent"`
-	Worker struct {
-		Enabled            *bool    `toml:"enabled"`
-		MaxParallel        *int     `toml:"max_parallel"`
-		MaxAttempts        *int     `toml:"max_attempts"`
-		Lease              *string  `toml:"lease"`
-		ClaimInterval      *string  `toml:"claim_interval"`
-		AutomationInterval *string  `toml:"automation_interval"`
-		RetryBackoff       *string  `toml:"retry_backoff"`
-		RetryBackoffMax    *string  `toml:"retry_backoff_max"`
-		MaxTokens          *uint64  `toml:"max_tokens"`
-		MaxCostUSD         *float64 `toml:"max_cost_usd"`
-	} `toml:"worker"`
 	Journal struct {
 		Durable        *bool `toml:"durable"`
 		RecoverOnStart *bool `toml:"recover_on_start"`
@@ -397,27 +385,6 @@ func applyExecutionFile(
 	applyFloat64(input.Subagent.MaxCostUSD, &child.MaxCostUSD, fieldSubagentMaxCostUSD, source, provenance)
 	applyDurationString(input.Subagent.WallTime, &child.WallTime, fieldSubagentWallTime, source, provenance)
 	applyString(input.Subagent.Workspace, &child.Workspace, fieldSubagentWorkspace, source, provenance)
-	worker := &execution.Worker
-	applyBool(input.Worker.Enabled, &worker.Enabled, fieldWorkerEnabled, source, provenance)
-	applyInt(input.Worker.MaxParallel, &worker.MaxParallel, fieldWorkerMaxParallel, source, provenance)
-	applyInt(input.Worker.MaxAttempts, &worker.MaxAttempts, fieldWorkerMaxAttempts, source, provenance)
-	applyDurationString(input.Worker.Lease, &worker.Lease, fieldWorkerLease, source, provenance)
-	applyDurationString(
-		input.Worker.ClaimInterval, &worker.ClaimInterval, fieldWorkerClaimInterval, source, provenance,
-	)
-	applyDurationString(
-		input.Worker.AutomationInterval, &worker.AutomationInterval,
-		fieldWorkerAutomationTick, source, provenance,
-	)
-	applyDurationString(
-		input.Worker.RetryBackoff, &worker.RetryBackoff, fieldWorkerRetryBackoff, source, provenance,
-	)
-	applyDurationString(
-		input.Worker.RetryBackoffMax, &worker.RetryBackoffMax,
-		fieldWorkerRetryBackoffMax, source, provenance,
-	)
-	applyUint64(input.Worker.MaxTokens, &worker.MaxTokens, fieldWorkerMaxTokens, source, provenance)
-	applyFloat64(input.Worker.MaxCostUSD, &worker.MaxCostUSD, fieldWorkerMaxCostUSD, source, provenance)
 	journal := &execution.Journal
 	applyBool(input.Journal.Durable, &journal.Durable, fieldJournalDurable, source, provenance)
 	applyBool(

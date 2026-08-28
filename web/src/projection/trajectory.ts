@@ -310,15 +310,6 @@ export function projectTrajectory(
       case "mcp.health.changed":
       case "extension.control":
       case "hook.execution":
-      case "run.started":
-      case "run.status":
-      case "run.completed":
-      case "run.failed":
-      case "run.canceled":
-      case "node.status":
-      case "attempt.status":
-      case "execution.bound":
-      case "budget.updated":
       case "command.execution":
       case "host.command":
       case "turn.steered":

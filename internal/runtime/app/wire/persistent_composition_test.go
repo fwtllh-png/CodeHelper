@@ -30,8 +30,8 @@ func TestRepositoriesOwnDurableStores(t *testing.T) {
 		t.Fatal(err)
 	}
 	if repositories.Sessions == nil || repositories.Threads == nil ||
-		repositories.Lifecycle == nil || repositories.Tasks == nil ||
-		repositories.Snapshots == nil || repositories.Usage == nil ||
+		repositories.Lifecycle == nil || repositories.Snapshots == nil ||
+		repositories.Usage == nil ||
 		repositories.Trace == nil {
 		t.Fatalf("incomplete repositories: %+v", repositories)
 	}

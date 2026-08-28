@@ -439,34 +439,6 @@ CREATE TABLE event_index (
 CREATE INDEX event_index_thread_sequence ON event_index(thread_id, sequence);
 CREATE INDEX event_index_turn_sequence ON event_index(turn_id, sequence);
 
-CREATE TABLE tasks (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    thread_id TEXT REFERENCES threads(id) ON DELETE CASCADE,
-    turn_id TEXT REFERENCES turns(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL,
-    state TEXT NOT NULL,
-    payload_json TEXT NOT NULL,
-    result_json TEXT,
-    lease_owner TEXT,
-    lease_expires_at TEXT,
-    executor TEXT,
-    attempt INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 1,
-    next_attempt_at TEXT,
-    heartbeat_at TEXT,
-    lifecycle_sequence INTEGER NOT NULL DEFAULT 1 CHECK (lifecycle_sequence > 0),
-    failure_reason TEXT,
-    terminal_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    CHECK (json_valid(payload_json)),
-    CHECK (result_json IS NULL OR json_valid(result_json))
-);
-CREATE INDEX tasks_state_updated ON tasks(state, updated_at);
-CREATE INDEX tasks_claimable ON tasks(state, executor, next_attempt_at);
-CREATE INDEX tasks_lease ON tasks(state, lease_expires_at);
-
 CREATE TABLE snapshots (
     id TEXT PRIMARY KEY,
     thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
@@ -504,8 +476,8 @@ CREATE TABLE usage (
 CREATE INDEX usage_session_created ON usage(session_id, created_at);
 CREATE INDEX usage_turn ON usage(turn_id);
 
-` + taskLifecycleSchema + usageContextSchema + automationSchema +
-	agentTopologySchema + repositoryIndexSchema + backgroundExecutionSchema +
+` + usageContextSchema +
+	agentTopologySchema + repositoryIndexSchema +
 	traceSchema + providerCapabilitySchema + contextRebaseSchema + `
 `
 
@@ -532,19 +504,6 @@ CREATE TABLE context_current (
 );
 `
 
-const taskLifecycleSchema = `
-CREATE TABLE IF NOT EXISTS task_lifecycle (
-    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    sequence INTEGER NOT NULL CHECK (sequence > 0),
-    state TEXT NOT NULL,
-    reason TEXT,
-    created_at TEXT NOT NULL,
-    PRIMARY KEY (task_id, sequence)
-);
-CREATE INDEX IF NOT EXISTS task_lifecycle_task_sequence
-ON task_lifecycle(task_id, sequence);
-`
-
 const usageContextSchema = `
 CREATE TABLE IF NOT EXISTS usage_turn_context (
     turn_id TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
@@ -555,55 +514,6 @@ CREATE TABLE IF NOT EXISTS usage_turn_context (
     source_sequence INTEGER NOT NULL CHECK (source_sequence > 0),
     updated_at TEXT NOT NULL
 );
-`
-
-const automationSchema = `
-CREATE TABLE automations (
-    id TEXT PRIMARY KEY,
-    version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
-    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    thread_id TEXT REFERENCES threads(id) ON DELETE SET NULL,
-    turn_id TEXT REFERENCES turns(id) ON DELETE SET NULL,
-    name TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('active', 'paused', 'deleted')),
-    rrule TEXT NOT NULL,
-    timezone TEXT NOT NULL DEFAULT 'UTC' CHECK (timezone = 'UTC'),
-    task_kind TEXT NOT NULL,
-    task_payload_json TEXT NOT NULL DEFAULT '{}',
-    task_executor TEXT,
-    task_max_attempts INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    next_run_at TEXT,
-    last_run_at TEXT,
-    CHECK (json_valid(task_payload_json))
-);
-CREATE INDEX automations_status_next_run
-ON automations(status, next_run_at);
-CREATE INDEX automations_session_created
-ON automations(session_id, created_at);
-
-CREATE TABLE automation_runs (
-    id TEXT PRIMARY KEY,
-    version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
-    automation_id TEXT NOT NULL REFERENCES automations(id) ON DELETE CASCADE,
-    scheduled_for TEXT NOT NULL,
-    trigger TEXT NOT NULL CHECK (trigger IN ('scheduled', 'manual')),
-    status TEXT NOT NULL CHECK (
-        status IN ('queued', 'running', 'waiting', 'failed', 'canceled', 'completed')
-    ),
-    task_id TEXT UNIQUE REFERENCES tasks(id) ON DELETE SET NULL,
-    task_idempotency_key TEXT NOT NULL UNIQUE,
-    thread_id TEXT REFERENCES threads(id) ON DELETE SET NULL,
-    turn_id TEXT REFERENCES turns(id) ON DELETE SET NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE (automation_id, scheduled_for)
-);
-CREATE INDEX automation_runs_automation_scheduled
-ON automation_runs(automation_id, scheduled_for DESC);
-CREATE INDEX automation_runs_status_updated
-ON automation_runs(status, updated_at);
 `
 
 // Repository index rows are keyed by the canonical workspace root rather than a
@@ -646,22 +556,6 @@ CREATE TABLE repo_index_meta (
     truncated INTEGER NOT NULL DEFAULT 0,
     refreshed_at TEXT NOT NULL
 );
-`
-
-const backgroundExecutionSchema = `
-CREATE TABLE task_attempts (
-    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    attempt INTEGER NOT NULL CHECK (attempt > 0),
-    owner TEXT NOT NULL,
-    thread_id TEXT,
-    turn_id TEXT,
-    status TEXT NOT NULL,
-    reason TEXT,
-    started_at TEXT NOT NULL,
-    ended_at TEXT,
-    PRIMARY KEY (task_id, attempt)
-);
-CREATE INDEX task_attempts_owner ON task_attempts(owner, status);
 `
 
 // A local trace has one row per span, keyed by the turn it belongs to.

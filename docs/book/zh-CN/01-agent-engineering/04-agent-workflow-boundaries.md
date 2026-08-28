@@ -1,6 +1,6 @@
 ---
 id: agent-workflow-boundaries
-title: Agent、Workflow 与 Automation 的边界
+title: Agent、Plan 与外部自动化的边界
 audience:
   - learner
   - contributor
@@ -9,166 +9,80 @@ prerequisites:
   - agent-react-planning-tools
 code_paths:
   - internal/runtime/agent
-  - internal/orchestration/workflow
-  - internal/orchestration/automation
-  - internal/orchestration/task
+  - internal/runtime/app
+  - internal/orchestration/subagent
 test_paths:
-  - internal/orchestration/workflow/workflow_test.go
-  - internal/orchestration/automation/repository_test.go
-  - internal/orchestration/task/execution_test.go
+  - internal/runtime/app/application_e2e_test.go
+  - internal/runtime/app/session_artifacts_test.go
+  - internal/orchestration/subagent/control_plane_test.go
 source_of_truth:
-  - internal/orchestration/workflow/spec.go
-  - internal/orchestration/automation/types.go
-  - internal/orchestration/task/repository.go
+  - internal/runtime/agent/engine/engine.go
+  - internal/runtime/app/runtime.go
+  - internal/orchestration/subagent/control_plane.go
 status: draft
 last_verified: null
 ---
 
-# Agent、Workflow 与 Automation 的边界
+# Agent、Plan 与外部自动化的边界
 
 ## 学习目标
 
-能够在 Adaptive Agent、Deterministic Workflow、Scheduled Automation 与普通代码之间
-选择，并在组合时保留 Authority/Recovery Boundary。
+能够在单个 Agent Turn、可见 Plan、Subagent 与外部自动化之间选择，并避免在 Runtime
+中复制执行控制面。
 
-## 1. 四种不同机制
+## 四种机制
 
-| 机制 | 适用情况 | Control Flow | 主要风险 |
-| --- | --- | --- | --- |
-| Function/Script | Input/Algorithm 已知 | Deterministic Code | Implementation Defect |
-| Workflow | Step/Dependency 已知 | DAG/State Machine | Recovery/Idempotency |
-| Automation | Trigger/Repeated Operation 已知 | Schedule/Event → Task | Duplicate/Stale Run |
-| Agent | Next Step 依赖语义 Observation | Model/Action Loop | Uncertainty 下错误 Action |
-
-Parser 或 State Machine 足够时使用 Agent，会增加 Cost、Nondeterminism、Attack Surface；
-开放式 Repository Investigation 强行写成 Workflow，则产生脆弱分支。
-
-## 2. 选择顺序
-
-1. Ordinary Typed Code 能完整解决吗？
-2. Step 已知但 Long-running/Recoverable？使用 Workflow。
-3. 是否由 Schedule/Event 重复触发？使用 Automation 创建 Task。
-4. Next Step 是否需要 Semantic Interpretation？在 Bounded Step 内使用 Agent。
-
-```mermaid
-flowchart TD
-    P[Problem] --> K{Algorithm Known?}
-    K -->|single transaction| C[Code / Tool]
-    K -->|multiple durable steps| W[Workflow]
-    W --> T{Triggered?}
-    T -->|yes| A[Automation creates Task]
-    T -->|no| X[Run Workflow]
-    K -->|semantic exploration| G[Bounded Agent]
-    G --> W2[Typed Result to Workflow]
-```
-
-常见的最佳结构是 Hybrid：Deterministic Orchestration 拥有 Progress/Recovery，Agent
-只负责一个 Bounded Semantic Step。
-
-## 3. Determinism 的层次
-
-Static Graph 不代表整个 Workflow Deterministic，External Effect、Clock、Retry、Agent
-Node 仍可变化。应确定化：
-
-- Node Identity/Dependency；
-- Input/Output Schema；
-- Checkpoint/Transition；
-- Retry Classification/Backoff；
-- Idempotency/Fencing；
-- Terminal/Compensation。
-
-Nondeterminism 只存在于声明过的 Node，并记录 Input、Output、Route、Usage、Evidence。
-
-## 4. Task、Worker 与 Lease
-
-Long-running Work 需要 Durable Ownership：
-
-- **Task**：Desired Work/Lifecycle；
-- **Worker**：Claim/Execute；
-- **Lease**：Worker 消失后 Expire；
-- **Heartbeat**：证明 Ownership；
-- **Generation/Fencing Token**：拒绝 Stale Completion；
-- **Retry Policy**：分类可重试 Failure。
-
-即使只在单机，这也是 Distributed-systems Control，不是 Model Reasoning。
-
-## 5. Automation 只是 Trigger
-
-Automation 将 RRULE/Event 映射到 Task/Workflow，必须定义 Timezone、Missed Run、
-Dedup Slot、Overlap Policy、Enabled State、Catch-up Bound、Workspace/Authority、
-Observability/Cancellation。
-
-Schedule 不授予新 Permission；触发的工作仍通过同一 Guard/Policy。
-
-## 6. Human Interaction
-
-以下情况应暂停等待 Human：
-
-- Intent Ambiguous 且 Consequence 不同；
-- Policy 要求 Approval；
-- Credential/External Decision 缺失；
-- Destructive Recovery 无法安全推断。
-
-不要要求用户重复 Workspace 已提供的事实。Input Request 是 Durable Protocol State，
-不是藏在 Worker 内的 Blocking Terminal Prompt。
-
-## 7. Failure/Recovery Matrix
-
-| Failure | Agent-only | Workflow-owned |
+| 机制 | 适合场景 | 状态所有者 |
 | --- | --- | --- |
-| Model Timeout | Budget 内 Retry/Re-route | Node Retryable |
-| Process Crash | In-memory Plan 丢失 | Checkpoint 重建 |
-| Duplicate Trigger | 可能重复 Action | Slot/Idempotency 拒绝 |
-| Stale Worker | 难检测 | Lease Generation 拒绝 |
-| Approval Pending | Loop Block | Explicit Paused State |
-| Partial Effect | Model 猜测 | Journal/Compensation |
-| Graph Changed | Prompt Drift | Compatibility Fail |
+| 单个 Turn | 连续推理、局部修改、即时反馈 | Runtime + Turn Kernel |
+| Plan | 展示和约束多步骤目标 | Session Artifact |
+| Subagent | 边界清晰的并行调查或实现 | Agent Graph + Child Turn |
+| 外部自动化 | 定时或无人值守触发 | 外部 Host |
 
-## 8. CodeHelper 边界
+Plan 不是调度器。它记录目标和进度，但执行仍发生在当前 Turn。Subagent 也不是后台
+Worker：父 Agent 显式创建并等待它，用户能在同一会话中观察其状态。
 
-Agent Loop 位于 `internal/runtime/agent`。Durable Task、Worker、Automation、Workflow、
-Lane、Fleet、Subagent 位于 `internal/orchestration`。Host 只提交 Command、展示 State。
+## 选择原则
 
-这避免把未追踪 Agent Loop 嵌入 Worker/Host，也避免让模型用 Prose 实现 Lease、Retry、
-Checkpoint、DAG。
+保持在同一 Turn：
 
-## 9. 验证
+- 步骤之间存在强依赖；
+- 工作很短；
+- 会修改同一批文件；
+- 并行收益低于上下文和协调成本。
+
+使用 Subagent：
+
+- 子问题相互独立；
+- 需要独立审查；
+- 可以声明清晰的 Owned Paths；
+- 有足够 Token 与并发预算。
+
+使用外部自动化：
+
+- 必须按时间或外部事件触发；
+- 任务需要跨 Runtime 生命周期排队；
+- 调度系统已有自己的身份、重试和审计边界。
+
+外部系统应通过公开 Host Operation 启动普通 Turn，不应把调度状态注入 Runtime 数据库。
+
+## 安全边界
+
+无论入口来自用户还是外部自动化，Provider、Tool、Guard、Journal 与 Sandbox 路径保持
+一致。Host 只提交操作，不直接执行工具。
+
+## 验证
 
 ```bash
-go test ./internal/orchestration/task ./internal/orchestration/worker
-go test ./internal/orchestration/workflow/...
-go test ./internal/orchestration/automation
-sed -n '1,220p' internal/orchestration/workflow/spec.go
-sed -n '1,220p' internal/orchestration/task/repository.go
+go test ./internal/runtime/app ./internal/runtime/agent/...
+go test ./internal/orchestration/subagent
 ```
 
-观察 Typed State/Invariant，而非 Prompt Convention。
+## 复习问题
 
-## 10. 架构练习
-
-设计“每个工作日检查 Dependency Alert 并准备安全修复”：
-
-- Automation 为每个 Slot 创建 Deduplicated Task；
-- Workflow 加载 Alert、分组 Repository、Checkpoint；
-- Agent 调查每个 Bounded Repository Problem；
-- Guard 控制 Read/Write/Network/Approval；
-- Deterministic Verification/Review 决定完成；
-- Worker Crash 从最新 Checkpoint 恢复。
-
-说明哪些 Failure Retry Node、Restart Agent Step、Require Human 或 Terminate Workflow。
-
-## 11. 复习问题
-
-1. Workflow 何时优于 Agent？
-2. Static DAG 为什么不等于完全确定？
-3. Lease Generation 保护什么？
-4. Automation 能否授予 Authority？
-5. Bounded Agent Node 应返回到哪里？
-
-## 下一章
-
-[为什么 Agent 需要受治理的 Runtime](./05-why-governed-runtime.md)将 Model、Action Loop
-与 Orchestration Boundary 统一到本地控制面。
+1. Plan 为什么不应拥有执行权威？
+2. Subagent 与后台 Worker 的生命周期差异是什么？
+3. 外部自动化如何复用 Runtime 而不形成第二套执行路径？
 
 ## 事实来源与验证
 

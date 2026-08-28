@@ -58,7 +58,6 @@ git diff --check
 | `make web-parity-check` | 校验旧 Host 能力清单与迁移账本 |
 | `make web-parity-report` | 执行声明的资格测试并生成带输入和产物摘要的报告 |
 | `make protocol-schema` | 生成 Runtime Protocol Schema |
-| `make observation-traits` | 生成 Go、Web TypeScript 与 JSON Schema Trait |
 | `make web-experience-check` | 校验 Web 体验契约 |
 | `make host-journey-contract` | 校验 Runtime 与 Web 主旅程 |
 | `make architecture-ratchet` | 校验架构预算 |
@@ -99,15 +98,11 @@ Bundle Budget，并拒绝 npm Audit 报告中的 High 或 Critical 漏洞。
 不要手工编辑：
 
 - `docs/protocol/runtime-protocol.schema.json`
-- `docs/protocol/observation.schema.json`
-- `internal/observability/observation/traits.gen.go`
-- `web/src/protocol/observation.generated.ts`
 
 使用：
 
 ```bash
 make protocol-schema
-make observation-traits
 ```
 
 ## 架构约束

@@ -116,29 +116,6 @@ func TestOperationTaggedUnionRoundTrip(t *testing.T) {
 		&CompactThreadPayload{ThreadID: threadID, TurnID: turnID, ItemID: itemID},
 		&ForkThreadPayload{ThreadID: threadID, TurnID: turnID, ItemID: itemID, NewThreadID: "thread_fork"},
 		&RevertTurnPayload{ThreadID: threadID, TurnID: turnID, ItemID: itemID, TargetTurnID: "turn_previous"},
-		&SubmitRunPayload{
-			ThreadID: threadID, TurnID: turnID, ItemID: itemID,
-			RunID: "run", Kind: "workflow", Source: "host",
-			SessionID: "session", RootThreadID: threadID,
-			Nodes: []RunNodeSpec{{ID: "node", Kind: "agent_turn"}},
-		},
-		&CancelRunPayload{
-			ThreadID: threadID, TurnID: turnID, ItemID: itemID,
-			RunID: "run", ExpectedRevision: 1, Reason: "stop",
-		},
-		&ResumeRunPayload{
-			ThreadID: threadID, TurnID: turnID, ItemID: itemID,
-			RunID: "run", ExpectedRevision: 1,
-		},
-		&RetryNodePayload{
-			ThreadID: threadID, TurnID: turnID, ItemID: itemID,
-			RunID: "run", NodeID: "node", ExpectedRevision: 1,
-		},
-		&SkipNodePayload{
-			ThreadID: threadID, TurnID: turnID, ItemID: itemID,
-			RunID: "run", NodeID: "node", ExpectedRevision: 1,
-			Reason: "skip",
-		},
 	}
 	for _, payload := range payloads {
 		operation, err := NewOperation(payload)

@@ -15,7 +15,6 @@ code_paths:
   - internal/persist/snapshot
   - internal/persist/workspacejournal
   - internal/persist/state/turnstate
-  - internal/observability/journal
 test_paths:
   - internal/persist/history/reconstruct_test.go
   - internal/runtime/app/session_artifacts_test.go
@@ -106,9 +105,8 @@ Commit 后应用一次；Commit 失败时 Session Memory 保持不变。重启�
 从 `persist/state/turnstate` 恢复每个 Thread 的最新 Delta，使 Usage、Cost、Working
 Set、Evidence、Failures 与 Compaction 计数和 Committed History 一起跨 Crash 存活。
 
-Observation Journal 可通过 Correlated Evidence 帮助解释 Recovery，但不是
-Continuation Source。Missing/Failed Observation Export 不能授权 Effect Dispatch、
-合成 Domain Fact 或改变 Terminal Business Result。
+Trace 与 Usage 可帮助解释 Recovery，但不是 Continuation Source。Missing Trace
+不能授权 Effect Dispatch、合成 Domain Fact 或改变 Terminal Business Result。
 
 `durableCoordinatorRuntime` Claim 已过期的 Active-turn Lease，从严格有序的 Domain
 Facts 恢复每个 Coordinator，并在 Active 期间续租。Restore 先通过持久化
@@ -141,8 +139,8 @@ Target Session Idle、Active-thread Ownership 与新 Idempotency Key；不会复
 ## Session Checkpoint 与 State-only Restore
 
 Session Checkpoint 是由 Snapshot Metadata/CAS 支持的不可变 Artifact，绑定 Session、
-Thread、Turn、Profile Revision、Model-visible History 与 Integrity Data；它不同于
-Workflow Node Checkpoint。
+Thread、Turn、Profile Revision、Model-visible History 与 Integrity Data；它不是
+后台工作流进度。
 
 Restore 只恢复 State。Runtime 选择已验证的 History/Profile Baseline 并发出 Durable
 Restore Fact，不重新执行历史 Event/Effect。Fork 同样只恢复 State，再创建带 Parent
@@ -208,7 +206,7 @@ Idempotency 只在局部边界成立；一个 Key 不能使任意 Shell Command 
 | Checkpoint/Plan/Turn Recovery | `persist/artifact/service.go` |
 | Thread Session State Restore | `runtime/app/thread_manager.go` |
 | Terminal Turn State Store | `persist/state/turnstate` |
-| Observation Evidence（非 Recovery Authority） | `observability/journal` |
+| Trace Evidence（非 Recovery Authority） | `observability/trace` |
 | Workspace Recovery | `persist/workspacejournal` |
 
 ## 设计取舍与替代方案

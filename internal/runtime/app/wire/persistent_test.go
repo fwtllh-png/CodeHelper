@@ -13,7 +13,6 @@ import (
 
 	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
@@ -1084,95 +1083,6 @@ func TestPersistentRuntimeRestoresPendingWithoutReplayingEngine(t *testing.T) {
 	}
 	if runtime.Snapshot(t.Context()).LastSequence != 1 {
 		t.Fatal("pending duplicate emitted a new event")
-	}
-	closePersistentRuntime(t, runtime)
-}
-
-func TestPersistentRuntimeMarksInterruptedTaskFailed(t *testing.T) {
-	root := t.TempDir()
-	store := seedPersistentState(t, root)
-	repositories, err := apppersistence.NewPersistentRepositories(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repositories.Tasks.Create(t.Context(), taskstate.Task{
-		ID: "task-running", SessionID: "session-1", ThreadID: "thread-1", Kind: "agent",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repositories.Tasks.Update(t.Context(), "task-running", taskstate.Transition{
-		State: taskstate.StateRunning,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.CloseAll(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-
-	reopened, err := state.Open(t.Context(), state.Options{DataDir: root})
-	if err != nil {
-		t.Fatal(err)
-	}
-	runtime, err := newPersistentRuntime(t.Context(), PersistentRuntimeOptions{
-		Store: reopened, Engine: &persistentTestEngine{},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	recoveredRepositories, err := apppersistence.NewPersistentRepositories(reopened)
-	if err != nil {
-		t.Fatal(err)
-	}
-	recovered, err := recoveredRepositories.Tasks.Get(t.Context(), "task-running")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if recovered.State != taskstate.StateFailed ||
-		recovered.FailureReason != "interrupted" ||
-		recovered.LifecycleSequence != 3 {
-		t.Fatalf("recovered task = %+v", recovered)
-	}
-	closePersistentRuntime(t, runtime)
-}
-
-func TestPersistentRuntimeDoesNotRecoverAnotherWorkersLiveLease(t *testing.T) {
-	root := t.TempDir()
-	store := seedPersistentState(t, root)
-	repositories, err := apppersistence.NewPersistentRepositories(store)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repositories.Tasks.Create(t.Context(), taskstate.Task{
-		ID: "task-leased", SessionID: "session-1", ThreadID: "thread-1",
-		Kind: "agent", Executor: taskstate.ExecutorAgentTurn, MaxAttempts: 2,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	claimed, err := repositories.Tasks.Claim(t.Context(), taskstate.ClaimRequest{
-		Owner: "worker-live", Executors: []string{taskstate.ExecutorAgentTurn},
-		WorkspaceRoot: filepath.Join(root, "workspace"), Lease: time.Hour, Limit: 1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(claimed) != 1 {
-		t.Fatalf("claimed %d tasks, want 1", len(claimed))
-	}
-
-	runtime, err := newPersistentRuntime(t.Context(), PersistentRuntimeOptions{
-		Store: store, Engine: &persistentTestEngine{},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	leased, err := repositories.Tasks.Get(t.Context(), "task-leased")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if leased.State != taskstate.StateRunning ||
-		leased.LeaseOwner != "worker-live" ||
-		leased.LeaseExpiresAt == nil {
-		t.Fatalf("opening a runtime stole the live lease: %+v", leased)
 	}
 	closePersistentRuntime(t, runtime)
 }

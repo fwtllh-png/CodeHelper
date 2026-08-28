@@ -12,7 +12,7 @@
 5. Terminal State、Measurement、Session Delta、Final Output、Receipt、Event、
    Operation Receipt 与 Outbox 原子提交。
 6. Terminal Commit 成功前不修改 Engine Session State。
-7. Optional Observation、Narrative 或 Host Projection 失败不能改写业务终态。
+7. Optional Telemetry、Narrative 或 Host Projection 失败不能改写业务终态。
 8. Approval、Input、Cancel、Lease 和 Recovery 都携带稳定 Identity 与 Fence。
 9. Budget Exhaustion 保留可恢复状态，不伪装成未知内部错误。
 10. Runtime 关闭后不接受新工作，并等待或明确中断已拥有的资源。
@@ -97,7 +97,7 @@ Completed 改成 Failed。
 2. 恢复静态 Session/Thread/Artifact State；
 3. 刷新 MCP；
 4. 恢复 Terminal Outbox 与 Pending Turn；
-5. 启动 Prewarm、Automation 和 Worker。
+5. 启动 MCP Prewarm。
 
 只有同时存在 Accepted Start Operation 和非终态 Domain Fact 的 Turn 才自动恢复。
 Running Effect 先 Requeue，再从 Durable Payload 接续。Approval/Input 在执行前恢复原
@@ -113,7 +113,6 @@ Checkpoint Restore/Fork 只恢复 Context State，并重新核对 Workspace Bind
 | Thread Turn | `ActiveTurnRegistry` Lease Token |
 | Shared Workspace Write | Workspace Turn Gate |
 | Kernel Transition | Coordinator Revision |
-| WorkGraph Attempt | Lease Owner/Epoch |
 | Approval/Input | Request Ledger |
 | Event Sequence | `eventhub.Hub` |
 | Web Connection | Capacity Slot + Context |
@@ -141,10 +140,9 @@ Checkpoint Restore/Fork 只恢复 Context State，并重新核对 Workspace Bind
 Terminal Receipt、Trace 和 Event 共用同一份冻结 Measurement。Runtime Health 的活动
 状态来自 Active Registry 与 Engine Recorder；终态事实来自 Terminal Envelope。
 
-Observation Plane 在 Privacy Admission 后持久化和导出。Queue、Journal、CAS 或
-Exporter Failure 通过 Admission Receipt 或 `Flush`/`Shutdown` 暴露，但没有执行
-权威。判断泄漏时必须同时检查 Active Turn、Provider/Tool Recorder、Lease 和 Pending
-Interaction，不能只检查 `spans` 表。
+Trace、Usage 和 Receipt 只投影已有执行事实，不获得执行权威。判断泄漏时必须同时检查
+Active Turn、Provider/Tool Recorder、Lease 和 Pending Interaction，不能只检查
+`spans` 表。
 
 ## 验证矩阵
 
@@ -155,7 +153,7 @@ Interaction，不能只检查 `spans` 表。
 | Terminal/Recovery | `go test ./internal/runtime/app` |
 | Provider Stream | `go test ./internal/adapter/provider/assembly ./internal/adapter/provider/httpclient` |
 | Guard/Sandbox | `make security-test sandbox-attack-test` |
-| WorkGraph/Lease | `go test ./internal/orchestration/...` |
+| Subagent/Admission | `go test ./internal/orchestration/...` |
 | Persistence | `go test ./internal/persist/...` |
 | 并发 | `go test -race -p 1 ./...` |
 | 故障矩阵 | `make reliability-gate` |
@@ -171,6 +169,6 @@ Interaction，不能只检查 `spans` 表。
 - Deadline 是否区分连接、空闲、Lease 与清理？
 - 恢复是否复用原 Identity，而不是创建替代工作？
 - 终态失败是否可能留下未发布 Outbox、Lease 或 Journal？
-- Child、Workflow 和后台任务是否计入相应预算账本？
-- 新 Observation 是否通过 Privacy Admission 且不影响业务结果？
+- Child 是否计入 Agent Tree 的预算账本？
+- 新 Trace/Metric 是否有界、低基数且不影响业务结果？
 - 是否覆盖 Crash Point、Duplicate、Late Result、Cancel 和 Race？

@@ -2,13 +2,11 @@
 package view
 
 import (
-	"encoding/json"
 	"time"
 
 	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
@@ -34,30 +32,6 @@ type Turn struct {
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`
 	CompletedAt *time.Time             `json:"completed_at,omitempty"`
-}
-
-type Task struct {
-	ID                string          `json:"id"`
-	SessionID         string          `json:"session_id"`
-	ThreadID          string          `json:"thread_id,omitempty"`
-	TurnID            string          `json:"turn_id,omitempty"`
-	Kind              string          `json:"kind"`
-	State             taskstate.State `json:"state"`
-	LifecycleSequence uint64          `json:"lifecycle_sequence"`
-	Payload           json.RawMessage `json:"payload"`
-	Result            json.RawMessage `json:"result,omitempty"`
-	Reason            string          `json:"reason,omitempty"`
-	FailureReason     string          `json:"failure_reason,omitempty"`
-	Executor          string          `json:"executor,omitempty"`
-	Attempt           int             `json:"attempt"`
-	MaxAttempts       int             `json:"max_attempts"`
-	LeaseOwner        string          `json:"lease_owner,omitempty"`
-	LeaseExpiresAt    *time.Time      `json:"lease_expires_at,omitempty"`
-	NextAttemptAt     *time.Time      `json:"next_attempt_at,omitempty"`
-	HeartbeatAt       *time.Time      `json:"heartbeat_at,omitempty"`
-	TerminalAt        *time.Time      `json:"terminal_at,omitempty"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 type Agent struct {
@@ -137,19 +111,6 @@ func TurnFrom(value threadstate.Turn) Turn {
 		ID: value.ID, ThreadID: value.ThreadID, OperationID: value.OperationID,
 		Ordinal: value.Ordinal, Status: value.Status, CreatedAt: value.CreatedAt,
 		UpdatedAt: value.UpdatedAt, CompletedAt: value.CompletedAt,
-	}
-}
-
-func TaskFrom(value taskstate.Task) Task {
-	return Task{
-		ID: value.ID, SessionID: value.SessionID, ThreadID: value.ThreadID,
-		TurnID: value.TurnID, Kind: value.Kind, State: value.State,
-		LifecycleSequence: value.LifecycleSequence, Payload: value.Payload,
-		Result: value.Result, Reason: value.Reason, FailureReason: value.FailureReason,
-		Executor: value.Executor, Attempt: value.Attempt, MaxAttempts: value.MaxAttempts,
-		LeaseOwner: value.LeaseOwner, LeaseExpiresAt: value.LeaseExpiresAt,
-		NextAttemptAt: value.NextAttemptAt, HeartbeatAt: value.HeartbeatAt,
-		TerminalAt: value.TerminalAt, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
 }
 

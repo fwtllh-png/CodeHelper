@@ -278,9 +278,6 @@ func (s Snapshot) Validate() error {
 	if err := s.validateSubagent(); err != nil {
 		return err
 	}
-	if err := s.validateWorker(); err != nil {
-		return err
-	}
 	if err := s.validateVision(); err != nil {
 		return err
 	}
@@ -394,44 +391,6 @@ func (s Snapshot) validateSubagent() error {
 	}
 	if child.WallTime < 0 {
 		return fieldError(fieldSubagentWallTime, s.Provenance, "must be non-negative")
-	}
-	return nil
-}
-
-// validateWorker rejects a scheduler configuration that would either spin
-// (intervals at or below zero) or lose work: a lease shorter than the interval
-// at which it is renewed expires under a healthy worker, and the task is then
-// taken away from a process that is still running it.
-func (s Snapshot) validateWorker() error {
-	worker := s.Config.Execution.Worker
-	if worker.MaxParallel < 1 {
-		return fieldError(fieldWorkerMaxParallel, s.Provenance, "must be positive")
-	}
-	if worker.MaxAttempts < 1 {
-		return fieldError(fieldWorkerMaxAttempts, s.Provenance, "must be positive")
-	}
-	if worker.ClaimInterval <= 0 {
-		return fieldError(fieldWorkerClaimInterval, s.Provenance, "must be positive")
-	}
-	if worker.AutomationInterval <= 0 {
-		return fieldError(fieldWorkerAutomationTick, s.Provenance, "must be positive")
-	}
-	if worker.Lease <= 0 {
-		return fieldError(fieldWorkerLease, s.Provenance, "must be positive")
-	}
-	if worker.Lease <= worker.ClaimInterval {
-		return fieldError(fieldWorkerLease, s.Provenance,
-			"must exceed execution.worker.claim_interval so a live worker keeps its lease")
-	}
-	if worker.RetryBackoff < 0 {
-		return fieldError(fieldWorkerRetryBackoff, s.Provenance, "must be non-negative")
-	}
-	if worker.RetryBackoffMax < worker.RetryBackoff {
-		return fieldError(fieldWorkerRetryBackoffMax, s.Provenance,
-			"must be at least execution.worker.retry_backoff")
-	}
-	if worker.MaxCostUSD < 0 {
-		return fieldError(fieldWorkerMaxCostUSD, s.Provenance, "must be non-negative")
 	}
 	return nil
 }

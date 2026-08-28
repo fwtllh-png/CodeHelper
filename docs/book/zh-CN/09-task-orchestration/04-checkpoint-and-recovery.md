@@ -9,122 +9,83 @@ prerequisites:
   - task-automation-workflow
   - state-session-snapshot-journal
 code_paths:
-  - internal/orchestration/kernel
-  - internal/orchestration/store
-  - internal/orchestration/workflow
-  - internal/orchestration/projection
+  - internal/runtime/app
+  - internal/runtime/agent/turnkernel
+  - internal/persist/snapshot
+  - internal/persist/state/turnstate
 test_paths:
-  - internal/orchestration/store/store_test.go
-  - internal/orchestration/workflow/workgraph_test.go
+  - internal/runtime/app/session_artifacts_test.go
+  - internal/runtime/app/runtime_test.go
+  - internal/persist/snapshot/repository_test.go
+  - internal/persist/state/turnstate/store_test.go
 source_of_truth:
-  - internal/orchestration/store/store.go
-  - internal/orchestration/workflow/runtime.go
+  - internal/runtime/app/artifact_runtime.go
+  - internal/runtime/app/runtime.go
+  - internal/persist/snapshot/repository.go
 status: verified
-last_verified: 2026-08-16
+last_verified: 2026-08-28
 ---
 
 # Checkpoint 与恢复
 
 ## 学习目标
 
-理解 WorkGraph Fact、Snapshot、Command Receipt、Effect Outbox、Fingerprint
-校验与只恢复未完成节点的语义。
+理解 Session Checkpoint、Turn Domain Fact、Terminal Outbox 与 Workspace Journal
+分别恢复什么，以及为什么它们不需要后台 Workflow 状态机。
 
-## Durable Contract
+## 四类恢复事实
 
-Workflow Checkpoint 已退出生产架构。Workflow Spec 编译为一个 Durable WorkGraph，
-所有生命周期变化都通过 Kernel Command 完成。
+| 事实 | 用途 |
+| --- | --- |
+| Session History | 重建对话与模型上下文 |
+| Checkpoint | 恢复或 Fork 某个可见会话状态 |
+| Turn Domain Fact | 恢复未完成 Turn 的 Reducer 状态 |
+| Workspace Journal | 回滚中断写入并检查冲突 |
 
-```mermaid
-sequenceDiagram
-    participant R as Workflow Runtime
-    participant K as WorkGraph Kernel
-    participant S as SQLite Store
-    R->>K: Command(expected revision)
-    K-->>R: Facts + Effects + Aggregate
-    R->>S: atomic commit
-    S-->>R: Aggregate + Facts + Receipt + Outbox
-```
+这些事实按职责分离。Checkpoint 不是执行队列，Journal 也不是对话历史。
 
-同一事务提交 Aggregate Snapshot、Ordered Facts、Command Receipt 与 Effect Outbox。
-Snapshot 用于加速读取，Facts 是重建权威。同一 Run ID 搭配不同 Definition Digest
-时必须 Fail Closed。
-
-## Node Commit Window
+## 启动恢复顺序
 
 ```text
-Claim Node + create Attempt + queue Effect
- -> bind Runtime/Process execution
- -> validate output and usage
- -> settle Attempt and Node
- -> queue terminal Effect
+open durable stores
+    -> restore static session state
+    -> publish pending terminal outbox
+    -> recover pending turns
+    -> accept new operations
 ```
 
-事务提交前 Crash 不会留下局部生命周期状态。Claim 后、Settlement 前 Crash 会留下带
-Lease 的 Attempt；恢复过程依据 Lease Epoch、Retry 与 Effect Idempotency Policy
-处理。新的 Epoch 接管后，旧 Worker 不能再提交结果。
+Runtime 在恢复完成前不接受新 Operation，防止新工作与旧终态竞争。终态发布使用稳定
+身份关闭“已提交但尚未广播”的崩溃窗口。
 
-Node Result 与稳定的 `workgraph://.../nodes/...` 引用随 Settlement Fact 持久化。
-Fleet 和 Host 只能投影这些状态。
+## Checkpoint
 
-## Resume Decision
+Checkpoint 保存可恢复或可 Fork 的 Session Artifact。恢复必须校验：
 
-| Durable State | Resume Behavior |
-| --- | --- |
-| Succeeded Node | 复用，不再执行 |
-| Failed Retryable Node | 创建新 Attempt |
-| Active Attempt + Live Lease | 保留当前 Owner |
-| Expired Lease | 通过 Fenced Command Release/Reclaim |
-| Dependency-ready Node | 可进入 Claim |
-| Definition Digest Mismatch | 拒绝整个 Run |
-| Snapshot/Fact Drift | 报告 Drift，仅修复 Snapshot |
+- Checkpoint 属于当前 Session；
+- 引用的 Content Object 存在且摘要一致；
+- Profile 与历史版本可解释；
+- 恢复不会覆盖另一个活动 Turn。
 
-## Audit 与 Repair
+恢复产生新的可审计操作，不静默改写历史。
 
-`Store.Audit` 在同一 Read Transaction 中比较 Snapshot Digest 与 Replay Digest，并
-报告 Pending Effect。`RepairSnapshot` 在单个事务中只重建
-`work_runs.aggregate_json`、Revision、State 与更新时间，不改写 Fact、Command
-Receipt 或 Outbox。
+## 不再恢复后台任务
 
-## Recovery Layers
+当前 Runtime 不维护 Task、Workflow 或 Worker Lease，因此启动流程不会扫描后台队列、
+重领节点或重放定时任务。长任务的恢复边界是 Runtime Turn 和 Subagent Agent Graph。
 
-WorkGraph Recovery 恢复 Run/Node/Attempt/Effect；Runtime Event Recovery 恢复 Child
-Turn；Workspace Journal 恢复文件 Effect。Session Checkpoint 仍是独立的用户历史与
-Fork 能力，不是 Workflow 执行权威。
-
-## 失败与安全边界
-
-- Revision CAS 拒绝并发过期 Command。
-- Lease Epoch 拒绝过期 Settlement。
-- Definition Digest Drift 拒绝 Resume。
-- Terminal Settlement 与 Terminal Outbox 原子提交。
-- Snapshot Repair 不能改写 Durable Fact 或 Receipt。
-- Recovery 不会自动让 External Effect 幂等。
-
-## 测试与验证
+## 验证
 
 ```bash
-go test ./internal/orchestration/kernel ./internal/orchestration/store
-go test ./internal/orchestration/workflow -run 'TestDurable|TestSpecDrift'
+go test ./internal/runtime/app
+go test ./internal/runtime/agent/turnkernel
+go test ./internal/persist/snapshot ./internal/persist/state/turnstate
 ```
-
-## 动手实验
-
-让 Workflow 在一个 Node 成功后失败，重开 SQLite Store，以相同 Run ID Resume，
-确认只有失败节点获得新 Attempt。随后篡改 Aggregate Snapshot，通过 Audit/Repair
-从 Facts 重建。
 
 ## 复习问题
 
-1. Ordered Facts 为什么比 Snapshot 更权威？
-2. 哪些记录与生命周期 Command 原子提交？
-3. 过期 Lease Epoch 为什么不能 Settle？
-4. Snapshot Repair 可以修改哪些数据？
-5. Session Checkpoint 与 Workflow Recovery 有何区别？
-
-## 延伸阅读
-
-- [Lease、Heartbeat、Retry 与幂等性](./02-lease-heartbeat-retry.md)
+1. Checkpoint 与 Turn Domain Fact 分别解决什么问题？
+2. 为什么 Runtime 必须先完成终态恢复再接受新操作？
+3. 删除后台任务恢复后，哪些持久事实仍然属于 Coding 主线？
 
 ## 事实来源与验证
 
@@ -132,4 +93,4 @@ go test ./internal/orchestration/workflow -run 'TestDurable|TestSpecDrift'
 | --- | --- |
 | Catalog ID | `task-checkpoint-recovery` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-16 |
+| 最后验证 | 2026-08-28 |

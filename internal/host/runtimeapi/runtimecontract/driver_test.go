@@ -13,7 +13,6 @@ import (
 	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
@@ -284,15 +283,6 @@ func (h *runtimeContractHost) ReadState(
 		return result, err
 	}
 	result.Thread = runtimeview.ThreadFrom(current, turns)
-	tasks, err := h.repositories.Tasks.List(ctx, taskstate.Filter{
-		SessionID: h.sessionID, WorkspaceRoot: h.workspace,
-	}, 10)
-	if err != nil {
-		return result, err
-	}
-	for _, value := range tasks {
-		result.Tasks = append(result.Tasks, runtimeview.TaskFrom(value))
-	}
 	if h.agents != nil {
 		for _, value := range h.agents.List(subagent.ListFilter{
 			SessionID: h.sessionID, IncludeClosed: true,

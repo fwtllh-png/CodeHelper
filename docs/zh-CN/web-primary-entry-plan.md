@@ -13,8 +13,7 @@
 - Runtime 启动失败时仍可访问的 Boot Surface。
 
 Web 只绑定 `127.0.0.1`。当前不支持 LAN、公网部署、反向代理、多用户认证或通用
-REST/SSE Host。Worker/Automation 作为 Runtime 后台能力使用独立 Durable Lease，
-不构成额外产品入口。
+REST/SSE Host。定时或无人值守自动化由外部系统负责，不属于当前 Runtime 产品面。
 
 ## 组件边界
 

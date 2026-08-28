@@ -15,7 +15,6 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/kernel"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
@@ -96,10 +95,6 @@ type SessionToolCatalog interface {
 	Snapshot() (tool.CatalogSnapshot, error)
 }
 
-type OrchestrationController interface {
-	Execute(context.Context, kernel.Command) (kernel.Result, error)
-}
-
 type SessionLifecycleStore interface {
 	ListLifecycle(
 		context.Context,
@@ -165,8 +160,6 @@ type Options struct {
 	SessionArtifacts    SessionArtifactStore
 	TerminalStore       turnkernel.TerminalEnvelopeStore
 	ContextRebaseStore  ContextRebaseStore
-	Orchestration       OrchestrationController
-	SkipRuntimeRecovery bool
 }
 
 type Snapshot struct {
@@ -190,32 +183,30 @@ type acceptedOperation struct {
 }
 
 type Runtime struct {
-	ctx                  context.Context
-	cancel               context.CancelFunc
-	opts                 Options
-	engine               Engine
-	events               EventStore
-	hub                  *eventhub.Hub
-	content              ContentStore
-	lifecycle            DurableLifecycle
-	metrics              *telemetry.Metrics
-	logger               *slog.Logger
-	profiles             SessionProfileStore
-	agentPresets         AgentPresetStore
-	defaultProfile       protocol.SessionProfile
-	profileCapabilities  protocol.SessionProfileCapabilities
-	profileModels        map[string]protocol.ModelCapabilities
-	toolCatalog          SessionToolCatalog
-	sessionLifecycle     SessionLifecycleStore
-	sessionWorkspaces    SessionWorkspaceManager
-	sessionArtifacts     SessionArtifactStore
-	terminalStore        turnkernel.TerminalEnvelopeStore
-	contextRebaseStore   ContextRebaseStore
-	terminal             *TerminalPublisher
-	orchestration        OrchestrationController
-	workspaceRoot        string
-	orchestrationEffects sync.Mutex
-	lifecycleMu          sync.Mutex
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	opts                Options
+	engine              Engine
+	events              EventStore
+	hub                 *eventhub.Hub
+	content             ContentStore
+	lifecycle           DurableLifecycle
+	metrics             *telemetry.Metrics
+	logger              *slog.Logger
+	profiles            SessionProfileStore
+	agentPresets        AgentPresetStore
+	defaultProfile      protocol.SessionProfile
+	profileCapabilities protocol.SessionProfileCapabilities
+	profileModels       map[string]protocol.ModelCapabilities
+	toolCatalog         SessionToolCatalog
+	sessionLifecycle    SessionLifecycleStore
+	sessionWorkspaces   SessionWorkspaceManager
+	sessionArtifacts    SessionArtifactStore
+	terminalStore       turnkernel.TerminalEnvelopeStore
+	contextRebaseStore  ContextRebaseStore
+	terminal            *TerminalPublisher
+	workspaceRoot       string
+	lifecycleMu         sync.Mutex
 	*SessionService
 	*OperationService
 	*EventService
@@ -225,8 +216,7 @@ type Runtime struct {
 	*AgentPresetService
 	*TurnService
 	*TurnQueueService
-	TraceQuery  RuntimeTraceQuery
-	TraceExport RuntimeTraceExport
+	TraceQuery RuntimeTraceQuery
 
 	done      chan struct{}
 	startOnce sync.Once
@@ -1526,7 +1516,6 @@ func (s *TurnService) Start(operation protocol.Operation, payload *protocol.Star
 		cancel()
 		return finishOutcome(err)
 	}
-	(StartTurnHandler{Runtime: r}).observeRecovery(turnContext, operation.ID, payload)
 	r.workers.Add(1)
 	go s.run(turnContext, cancel, lease, operation, payload)
 	return OperationOutcome{
@@ -1832,8 +1821,7 @@ func (r *RecoveryService) recoverPendingTurns(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if operation.Kind != protocol.OperationStartTurn &&
-			!protocol.IsWorkGraphOperation(operation.Kind) {
+		if operation.Kind != protocol.OperationStartTurn {
 			continue
 		}
 		if operation.Kind == protocol.OperationStartTurn {

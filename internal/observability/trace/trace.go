@@ -9,10 +9,14 @@ package trace
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/observation"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 )
 
@@ -121,69 +125,45 @@ type Recorder struct {
 	spans            []*Record
 	byID             map[uint64]*Record
 	spanIDs          map[uint64]string
-	observed         map[uint64]observation.ObservationID
 	traceID          string
 	traceState       string
 	traceFlags       byte
 	remoteParentSpan string
-	observer         observation.Recorder
-	identity         observation.Identity
 	root             uint64
 	firstToken       time.Time
 	frozen           FrozenMeasurement
 	cleanup          bool
-	onRoot           func(observation.TraceContext)
 	onClose          func()
 	closed           bool
 }
 
+var fallbackTraceID atomic.Uint64
+
 // NewRecorder returns a recorder that reads time from now. A nil clock means
 // time.Now, and tests pass their own.
 func NewRecorder(now func() time.Time) *Recorder {
-	return NewObservedRecorder(now, nil, observation.Identity{})
+	return NewRecorderContext(context.Background(), now)
 }
 
-// NewObservedRecorder mirrors supported span lifecycle boundaries into the
-// incremental observation journal. The in-memory span tree remains the latency
-// authority until SO4 freezes terminal measurements.
-func NewObservedRecorder(
-	now func() time.Time,
-	observer observation.Recorder,
-	identity observation.Identity,
-) *Recorder {
-	return NewObservedRecorderContext(
-		context.Background(),
-		now,
-		observer,
-		identity,
-	)
-}
-
-func NewObservedRecorderContext(
+func NewRecorderContext(
 	ctx context.Context,
 	now func() time.Time,
-	observer observation.Recorder,
-	identity observation.Identity,
 ) *Recorder {
 	if now == nil {
 		now = time.Now
 	}
 	recorder := &Recorder{
 		now: now, byID: make(map[uint64]*Record),
-		observer: observer, identity: identity,
+		spanIDs: make(map[uint64]string),
 	}
-	if observer != nil {
-		recorder.spanIDs = make(map[uint64]string)
-		recorder.observed = make(map[uint64]observation.ObservationID)
-		if parent, ok := tracecontext.Current(ctx); ok {
-			recorder.traceID = parent.TraceID
-			recorder.traceState = parent.TraceState
-			recorder.traceFlags = parent.TraceFlags
-			recorder.remoteParentSpan = parent.SpanID
-		} else {
-			recorder.traceID = newTraceHex(16)
-			recorder.traceFlags = 1
-		}
+	if parent, ok := tracecontext.Current(ctx); ok {
+		recorder.traceID = parent.TraceID
+		recorder.traceState = parent.TraceState
+		recorder.traceFlags = parent.TraceFlags
+		recorder.remoteParentSpan = parent.SpanID
+	} else {
+		recorder.traceID = newTraceHex(16)
+		recorder.traceFlags = 1
 	}
 	return recorder
 }
@@ -219,39 +199,14 @@ func (r *Recorder) Start(name string, parent uint64, attributes map[string]any) 
 		ID: r.next, ParentID: parent, Name: name,
 		Started: r.now(), Status: StatusOpen, Attributes: copyAttributes(attributes),
 	}
-	rootStarted := r.root == 0
-	if rootStarted {
+	if r.root == 0 {
 		r.root = record.ID
 		record.ParentID = 0
 	}
 	r.spans = append(r.spans, record)
 	r.byID[record.ID] = record
-	if r.observer != nil {
-		r.spanIDs[record.ID] = newTraceHex(8)
-	}
-	observed := r.observer != nil
-	var snapshot Record
-	if observed {
-		snapshot = *record
-	}
-	var rootContext observation.TraceContext
-	if rootStarted && r.onRoot != nil {
-		rootContext = observation.TraceContext{
-			TraceID:    r.traceID,
-			SpanID:     r.spanIDs[record.ID],
-			ParentSpan: r.remoteParentSpan,
-			TraceFlags: r.traceFlags,
-			TraceState: r.traceState,
-		}
-	}
-	onRoot := r.onRoot
+	r.spanIDs[record.ID] = newTraceHex(8)
 	r.mu.Unlock()
-	if rootContext.TraceID != "" {
-		onRoot(rootContext)
-	}
-	if observed {
-		r.observeStart(snapshot)
-	}
 	return &Span{recorder: r, id: record.ID}
 }
 
@@ -285,19 +240,8 @@ func (r *Recorder) Add(
 	}
 	r.spans = append(r.spans, record)
 	r.byID[record.ID] = record
-	if r.observer != nil {
-		r.spanIDs[record.ID] = newTraceHex(8)
-	}
-	observed := r.observer != nil
-	var snapshot Record
-	if observed {
-		snapshot = *record
-	}
+	r.spanIDs[record.ID] = newTraceHex(8)
 	r.mu.Unlock()
-	if observed {
-		r.observeStart(snapshot)
-		r.observeEnd(snapshot)
-	}
 }
 
 // End closes the span. Ending twice keeps the first ending: the first one is
@@ -314,15 +258,7 @@ func (s *Span) End(status Status) {
 		return
 	}
 	record.Ended, record.Status = recorder.now(), status
-	observed := recorder.observer != nil
-	var snapshot Record
-	if observed {
-		snapshot = *record
-	}
 	recorder.mu.Unlock()
-	if observed {
-		recorder.observeEnd(snapshot)
-	}
 }
 
 // Set attaches an attribute to the span.
@@ -546,4 +482,14 @@ func copyAttributes(attributes map[string]any) map[string]any {
 		copied[key] = value
 	}
 	return copied
+}
+
+func newTraceHex(bytes int) string {
+	value := make([]byte, bytes)
+	if _, err := rand.Read(value); err == nil {
+		return hex.EncodeToString(value)
+	}
+	seed := fmt.Sprintf("%d:%d", time.Now().UnixNano(), fallbackTraceID.Add(1))
+	sum := sha256.Sum256([]byte(seed))
+	return hex.EncodeToString(sum[:bytes])
 }

@@ -1011,20 +1011,6 @@ export function App({client}: Props) {
     }
   };
 
-  const exportTrace = async () => {
-    try {
-      const blob = await client.exportTrace();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${safeFilename(selected?.title ?? "session")}.trace.ndjson`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      reportLocalError(error);
-    }
-  };
-
   const composerCommands: ComposerCommand[] = [
     {
       id: "attach",
@@ -1062,13 +1048,6 @@ export function App({client}: Props) {
       description: "Download this Session log as JSON",
       icon: Download,
       run: exportSession
-    },
-    {
-      id: "trace",
-      label: "trace",
-      description: "Download the redacted Observation trace as NDJSON",
-      icon: Download,
-      run: exportTrace
     },
     {
       id: "plan",
@@ -1740,12 +1719,10 @@ export function App({client}: Props) {
                 ))}
               </div>
             )}
-            {(snapshot.plan || snapshot.tasks.length > 0 ||
-              snapshot.agents.length > 0) && (
+            {(snapshot.plan || snapshot.agents.length > 0) && (
               <Suspense fallback={null}>
                 <SessionProgress
                   plan={snapshot.plan}
-                  tasks={snapshot.tasks}
                   agents={snapshot.agents}
                   onOpenTrajectory={() => {
                     switchConversationView("trajectory");

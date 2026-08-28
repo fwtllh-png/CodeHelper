@@ -23,22 +23,7 @@ const (
 	OperationCompactThread     OperationKind = "thread.compact"
 	OperationForkThread        OperationKind = "thread.fork"
 	OperationRevertTurn        OperationKind = "turn.revert"
-	OperationSubmitRun         OperationKind = "run.submit"
-	OperationCancelRun         OperationKind = "run.cancel"
-	OperationResumeRun         OperationKind = "run.resume"
-	OperationRetryNode         OperationKind = "node.retry"
-	OperationSkipNode          OperationKind = "node.skip"
 )
-
-func IsWorkGraphOperation(kind OperationKind) bool {
-	switch kind {
-	case OperationSubmitRun, OperationCancelRun, OperationResumeRun,
-		OperationRetryNode, OperationSkipNode:
-		return true
-	default:
-		return false
-	}
-}
 
 type ApprovalDecision string
 
@@ -112,19 +97,18 @@ type OperationPayload interface {
 }
 
 type StartTurnPayload struct {
-	ThreadID          ThreadID                  `json:"thread_id"`
-	TurnID            TurnID                    `json:"turn_id"`
-	ItemID            ItemID                    `json:"item_id"`
-	Prompt            string                    `json:"prompt"`
-	DisplayPrompt     string                    `json:"display_prompt,omitempty"`
-	Intent            TurnIntent                `json:"intent,omitempty"`
-	Orchestration     *OrchestrationCorrelation `json:"orchestration,omitempty"`
-	WorkspaceIdentity *WorkspaceIdentity        `json:"workspace_identity,omitempty"`
-	Context           []EditorContextReference  `json:"context,omitempty"`
-	Recovery          *TurnRecoveryContext      `json:"recovery,omitempty"`
-	QueueID           string                    `json:"queue_id,omitempty"`
-	Idle              bool                      `json:"idle,omitempty"` // Plan mode rejects automatic idle work.
-	PlanExecution     *PlanTransitionRequest    `json:"plan_execution,omitempty"`
+	ThreadID          ThreadID                 `json:"thread_id"`
+	TurnID            TurnID                   `json:"turn_id"`
+	ItemID            ItemID                   `json:"item_id"`
+	Prompt            string                   `json:"prompt"`
+	DisplayPrompt     string                   `json:"display_prompt,omitempty"`
+	Intent            TurnIntent               `json:"intent,omitempty"`
+	WorkspaceIdentity *WorkspaceIdentity       `json:"workspace_identity,omitempty"`
+	Context           []EditorContextReference `json:"context,omitempty"`
+	Recovery          *TurnRecoveryContext     `json:"recovery,omitempty"`
+	QueueID           string                   `json:"queue_id,omitempty"`
+	Idle              bool                     `json:"idle,omitempty"` // Plan mode rejects automatic idle work.
+	PlanExecution     *PlanTransitionRequest   `json:"plan_execution,omitempty"`
 }
 
 func (*StartTurnPayload) operationKind() OperationKind { return OperationStartTurn }
@@ -142,11 +126,6 @@ func (p *StartTurnPayload) validate() error {
 	}
 	if !NormalizeTurnIntent(p.Intent).Valid() {
 		return fmt.Errorf("start turn intent %q is invalid", p.Intent)
-	}
-	if p.Orchestration != nil {
-		if err := p.Orchestration.Validate(); err != nil {
-			return err
-		}
 	}
 	if p.WorkspaceIdentity != nil {
 		if err := p.WorkspaceIdentity.Validate(); err != nil {
@@ -465,164 +444,6 @@ func (p *RevertTurnPayload) validate() error {
 	}
 	if p.TargetTurnID == "" {
 		return errors.New("revert target_turn_id is required")
-	}
-	return nil
-}
-
-type RunNodeSpec struct {
-	ID              NodeID   `json:"id"`
-	Kind            string   `json:"kind"`
-	Dependencies    []NodeID `json:"dependencies,omitempty"`
-	AuthorityDigest string   `json:"authority_digest,omitempty"`
-}
-
-type SubmitRunPayload struct {
-	ThreadID        ThreadID      `json:"thread_id"`
-	TurnID          TurnID        `json:"turn_id"`
-	ItemID          ItemID        `json:"item_id"`
-	RunID           RunID         `json:"run_id"`
-	Kind            string        `json:"kind"`
-	Source          string        `json:"source"`
-	SessionID       string        `json:"session_id"`
-	Workspace       string        `json:"workspace,omitempty"`
-	RootThreadID    ThreadID      `json:"root_thread_id"`
-	AuthorityDigest string        `json:"authority_digest,omitempty"`
-	Nodes           []RunNodeSpec `json:"nodes"`
-}
-
-func (*SubmitRunPayload) operationKind() OperationKind { return OperationSubmitRun }
-
-func (p *SubmitRunPayload) references() (*ThreadID, *TurnID, *ItemID) {
-	return &p.ThreadID, &p.TurnID, &p.ItemID
-}
-
-func (p *SubmitRunPayload) validate() error {
-	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
-		return err
-	}
-	if p.RunID == "" || strings.TrimSpace(p.Kind) == "" ||
-		strings.TrimSpace(p.Source) == "" || strings.TrimSpace(p.SessionID) == "" ||
-		p.RootThreadID == "" || len(p.Nodes) == 0 {
-		return errors.New(
-			"run submit requires run_id, kind, source, session_id, root_thread_id, and nodes",
-		)
-	}
-	if p.AuthorityDigest != "" && !validSHA256(p.AuthorityDigest) {
-		return errors.New("run submit authority_digest must be a lowercase SHA-256")
-	}
-	seen := make(map[NodeID]bool, len(p.Nodes))
-	for _, node := range p.Nodes {
-		if node.ID == "" || strings.TrimSpace(node.Kind) == "" || seen[node.ID] {
-			return errors.New("run submit node id and kind must be unique")
-		}
-		if node.AuthorityDigest != "" && !validSHA256(node.AuthorityDigest) {
-			return errors.New("run submit node authority_digest must be a lowercase SHA-256")
-		}
-		seen[node.ID] = true
-	}
-	return nil
-}
-
-type CancelRunPayload struct {
-	ThreadID         ThreadID `json:"thread_id"`
-	TurnID           TurnID   `json:"turn_id"`
-	ItemID           ItemID   `json:"item_id"`
-	RunID            RunID    `json:"run_id"`
-	ExpectedRevision uint64   `json:"expected_revision"`
-	Reason           string   `json:"reason"`
-}
-
-func (*CancelRunPayload) operationKind() OperationKind { return OperationCancelRun }
-
-func (p *CancelRunPayload) references() (*ThreadID, *TurnID, *ItemID) {
-	return &p.ThreadID, &p.TurnID, &p.ItemID
-}
-
-func (p *CancelRunPayload) validate() error {
-	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
-		return err
-	}
-	if p.RunID == "" || p.ExpectedRevision == 0 ||
-		strings.TrimSpace(p.Reason) == "" {
-		return errors.New("run cancel requires run_id, expected_revision, and reason")
-	}
-	return nil
-}
-
-type ResumeRunPayload struct {
-	ThreadID         ThreadID `json:"thread_id"`
-	TurnID           TurnID   `json:"turn_id"`
-	ItemID           ItemID   `json:"item_id"`
-	RunID            RunID    `json:"run_id"`
-	ExpectedRevision uint64   `json:"expected_revision"`
-}
-
-func (*ResumeRunPayload) operationKind() OperationKind { return OperationResumeRun }
-
-func (p *ResumeRunPayload) references() (*ThreadID, *TurnID, *ItemID) {
-	return &p.ThreadID, &p.TurnID, &p.ItemID
-}
-
-func (p *ResumeRunPayload) validate() error {
-	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
-		return err
-	}
-	if p.RunID == "" || p.ExpectedRevision == 0 {
-		return errors.New("run resume requires run_id and expected_revision")
-	}
-	return nil
-}
-
-type RetryNodePayload struct {
-	ThreadID         ThreadID `json:"thread_id"`
-	TurnID           TurnID   `json:"turn_id"`
-	ItemID           ItemID   `json:"item_id"`
-	RunID            RunID    `json:"run_id"`
-	NodeID           NodeID   `json:"node_id"`
-	ExpectedRevision uint64   `json:"expected_revision"`
-}
-
-func (*RetryNodePayload) operationKind() OperationKind { return OperationRetryNode }
-
-func (p *RetryNodePayload) references() (*ThreadID, *TurnID, *ItemID) {
-	return &p.ThreadID, &p.TurnID, &p.ItemID
-}
-
-func (p *RetryNodePayload) validate() error {
-	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
-		return err
-	}
-	if p.RunID == "" || p.NodeID == "" || p.ExpectedRevision == 0 {
-		return errors.New("node retry requires run_id, node_id, and expected_revision")
-	}
-	return nil
-}
-
-type SkipNodePayload struct {
-	ThreadID         ThreadID `json:"thread_id"`
-	TurnID           TurnID   `json:"turn_id"`
-	ItemID           ItemID   `json:"item_id"`
-	RunID            RunID    `json:"run_id"`
-	NodeID           NodeID   `json:"node_id"`
-	ExpectedRevision uint64   `json:"expected_revision"`
-	Reason           string   `json:"reason"`
-}
-
-func (*SkipNodePayload) operationKind() OperationKind { return OperationSkipNode }
-
-func (p *SkipNodePayload) references() (*ThreadID, *TurnID, *ItemID) {
-	return &p.ThreadID, &p.TurnID, &p.ItemID
-}
-
-func (p *SkipNodePayload) validate() error {
-	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
-		return err
-	}
-	if p.RunID == "" || p.NodeID == "" || p.ExpectedRevision == 0 ||
-		strings.TrimSpace(p.Reason) == "" {
-		return errors.New(
-			"node skip requires run_id, node_id, expected_revision, and reason",
-		)
 	}
 	return nil
 }

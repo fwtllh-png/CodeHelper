@@ -318,11 +318,11 @@ func TestProjectMapBounded(t *testing.T) {
 func TestProjectMapSharesTheSearchEnumeration(t *testing.T) {
 	root := t.TempDir()
 	for name, content := range map[string]string{
-		"main.go":                        "package main\n",
-		"pkg/a/x.go":                     "package a\n",
-		"pkg/a/deep/deeper/y.go":         "package deeper\n",
-		"node_modules/dep/index.js":      "module.exports = 1\n",
-		".codehelper/tasks-ephemeral.db": "state\n",
+		"main.go":                      "package main\n",
+		"pkg/a/x.go":                   "package a\n",
+		"pkg/a/deep/deeper/y.go":       "package deeper\n",
+		"node_modules/dep/index.js":    "module.exports = 1\n",
+		".codehelper/runtime-state.db": "state\n",
 	} {
 		path := filepath.Join(root, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

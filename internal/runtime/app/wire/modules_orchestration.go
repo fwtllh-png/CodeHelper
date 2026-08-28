@@ -11,9 +11,6 @@ func (orchestrationModule) Build(
 	state *buildState,
 ) error {
 	output := orchestrationBuildState{}
-	if err := buildWorkGraphStore(ctx, state, &output); err != nil {
-		return err
-	}
 	if !state.config.execution.Tools {
 		state.orchestration = output
 		return nil
@@ -23,7 +20,6 @@ func (orchestrationModule) Build(
 		*buildState,
 		*orchestrationBuildState,
 	) error{
-		buildOrchestrationRepositories,
 		buildChildOrchestration,
 		buildInteractionOrchestration,
 	} {
@@ -31,7 +27,6 @@ func (orchestrationModule) Build(
 			return err
 		}
 	}
-	output.scheduler = newSchedulerFactory(state, output)
 	state.orchestration = output
 	return nil
 }

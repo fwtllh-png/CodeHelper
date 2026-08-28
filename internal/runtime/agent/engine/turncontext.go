@@ -25,12 +25,11 @@ type TurnIdentity struct {
 
 // TurnRequest is the host input frozen before a Scope starts.
 type TurnRequest struct {
-	TurnID        string
-	Prompt        string
-	Intent        protocol.TurnIntent
-	Orchestration *protocol.OrchestrationCorrelation
-	Attachments   []provider.Attachment
-	Recovery      *protocol.TurnRecoveryContext
+	TurnID      string
+	Prompt      string
+	Intent      protocol.TurnIntent
+	Attachments []provider.Attachment
+	Recovery    *protocol.TurnRecoveryContext
 }
 
 // TurnLimits freezes the budgets that bound one Scope.
@@ -139,9 +138,6 @@ func SnapshotTurnSpec(
 		return TurnSpec{}, fmt.Errorf("snapshot turn tool catalog: %w", err)
 	}
 	request.Intent = protocol.NormalizeTurnIntent(request.Intent)
-	request.Orchestration = protocol.CloneOrchestrationCorrelation(
-		request.Orchestration,
-	)
 	request.Attachments = append([]provider.Attachment(nil), request.Attachments...)
 	if request.Recovery != nil {
 		recovery := *request.Recovery

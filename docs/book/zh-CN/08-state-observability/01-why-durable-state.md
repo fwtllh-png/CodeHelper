@@ -18,13 +18,11 @@ test_paths:
   - internal/runtime/agent/turnkernel/runtime_test.go
   - internal/persist/state/store_test.go
   - internal/persist/state/turnstate/store_test.go
-  - internal/observability/router/router_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/eventhub/terminal.go
   - internal/runtime/app/extension/terminal_measurement.go
   - internal/runtime/agent/turnkernel/terminal_envelope.go
-  - internal/observability/observation/envelope.go
   - internal/persist/state/store.go
 status: verified
 last_verified: 2026-08-17
@@ -61,8 +59,7 @@ Lease 区分 Live Owner 与 Abandoned Work；Domain Fact 以 State Digest 记录
 Kernel Transition；Effect 持有 Durable Payload、Lifecycle、Attempt 与 Idempotency
 Identity；带 Digest 的 `TerminalMeasurementSnapshot` 只冻结一次 Usage/Latency；
 Terminal Envelope 原子封存 Final Kernel State、Domain Facts、Measurement、Session
-Delta、Receipt、Operation Commit 与 Projection Outbox；版本化 Observation Envelope
-保存脱敏因果证据，但不获得执行权威。
+Delta、Receipt、Operation Commit 与 Projection Outbox。
 
 ## Authority/Lifetime Matrix
 
@@ -73,16 +70,15 @@ Delta、Receipt、Operation Commit 与 Projection Outbox；版本化 Observation
 | Pending Effect | Executable Intent/Payload/Idempotency | Conditional Continuation |
 | Terminal Measurement | Frozen Usage/Latency Fact | Receipt/Trace/Terminal 一致性 |
 | Event Sequence | Canonical Lifecycle Fact | Replay/Host/Audit |
-| Observation Journal | 脱敏因果证据 | Diagnosis/Telemetry/Cursor Replay |
 | SQLite Projection | Derived Query View | List/Filter/Aggregate |
 | Snapshot | Integrity-checked Checkpoint | Accelerate Reconstruction |
 | Workspace Journal | Filesystem Effect Evidence | Rollback/Recovery |
-| Trace/Usage | Measured Observation | Diagnosis/Accounting |
+| Trace/Usage | Measured Projection | Diagnosis/Accounting |
 | Execution Receipt | Turn-level Joined Projection | Explanation |
 
 Derived Record 不高于 Source：Projection 可从 Event 重建；Snapshot 不覆盖 Later Event；
-Receipt 不能让 Unobserved Effect 消失。Observation Writer/Exporter Failure 会通过
-Admission Receipt 或 `Flush`/`Shutdown` 暴露，但不能改写业务 Turn Result。
+Receipt 不能让 Unobserved Effect 消失。Trace、Usage 或 Metrics 写入失败不能改写
+业务 Turn Result。
 
 ## Acceptance 不等于 Completion
 
@@ -118,7 +114,7 @@ Event、Typed Projection、Integrity-checked Snapshot 与 Side-effect Journal。
 - Recovery 保留健康 Foreign Lease。
 - Missing Measurement 不解释为零。
 - Receipt、Trace 与 Terminal Envelope 共享同一 Measurement Digest。
-- Observation Failure 与业务执行隔离。
+- Trace 与 Telemetry Failure 与业务执行隔离。
 - Rollback 不覆盖后续 External Edit。
 
 ## 测试与验证

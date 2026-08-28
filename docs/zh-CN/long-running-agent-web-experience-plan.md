@@ -141,17 +141,17 @@ Composer 上方使用同一窄列依次展示 Todo、Goal、Queue：
 - Todo 显示步骤、当前项和进度，不展示无意义的完成噪声；
 - Subagent 显示角色、任务、运行状态、等待原因和合并状态；
 - Chat 只展示摘要，点击后定位 Trajectory 或专用详情；
-- 所有状态来自 WorkGraph、Plan Artifact 和 Agent Graph。
+- 所有状态来自 Plan Artifact 和 Agent Graph。
 
 ### 已实现
 
 - Composer 上方新增可折叠 Session Progress 窄列；
 - Goal 直接投影当前 Session Plan Artifact，不解析对话正文；
-- Todo 直接投影 Task Read Model，运行项优先并显示完成计数、状态和原因；
+- Todo 直接投影 Plan Step，显示当前步骤与完成进度；
 - Subagent 直接投影 Agent Graph，显示角色、状态和最后消息；
 - Subagent 区可一键进入当前 Session 的 Trajectory；
-- `plan.delta`、Agent、Run、Node、Attempt 和 Turn 终态触发权威读模型刷新；
-- Session 切换和 Runtime 重连仍以 `plan/get`、`task/list`、`agent/list`
+- `plan.delta`、Agent 和 Turn 终态触发权威读模型刷新；
+- Session 切换和 Runtime 重连仍以 `plan/get`、`agent/list`
   的结果重建，不持久化浏览器侧副本；
 - 移动端自动切为单列，避免 Goal、Todo 和 Subagent 相互挤压。
 

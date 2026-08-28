@@ -248,7 +248,7 @@ func TestNewExecRemainsConstructionOnlyOrchestration(t *testing.T) {
 	}
 }
 
-func TestWireUsesOneOrchestrationToolContributor(t *testing.T) {
+func TestWireDoesNotRegisterBackgroundOrchestrationTools(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join("orchestration_components.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -263,9 +263,6 @@ func TestWireUsesOneOrchestrationToolContributor(t *testing.T) {
 		if strings.Contains(text, forbidden) {
 			t.Errorf("wire reintroduced orchestration tool owner %q", forbidden)
 		}
-	}
-	if !strings.Contains(text, "orchestrationextension.Contribute(") {
-		t.Fatal("wire does not use the orchestration tool contributor")
 	}
 }
 
@@ -363,9 +360,6 @@ func TestBackgroundModuleOwnsRuntimeActivityStart(t *testing.T) {
 		"prewarm.RefreshNow(ctx)",
 		"state.runtime.application.Start(ctx)",
 		"prewarm.Start(ctx)",
-		"automations.Tick(ctx",
-		"state.orchestration.scheduler.Build(",
-		"scheduler.Start(ctx)",
 	}
 	last := -1
 	for _, fragment := range required {
@@ -398,7 +392,7 @@ func TestModulesFailClosedOnMissingRequirements(t *testing.T) {
 		module buildModule
 	}{
 		{name: "extension registry", module: newExtensionToolsModule()},
-		{name: "orchestration store", module: orchestrationModule{}},
+		{name: "child orchestration", module: orchestrationModule{}},
 		{name: "prepared runtime", module: backgroundModule{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {

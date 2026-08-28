@@ -9,7 +9,6 @@ prerequisites:
   - state-trace-usage-cost
   - state-reconstruct-failure
 code_paths:
-  - internal/observability/journal
   - internal/observability/trace
   - internal/observability/usage
   - internal/persist/state/eventlog
@@ -18,7 +17,6 @@ test_paths:
   - internal/observability/usage/repository_test.go
   - internal/persist/state/eventlog/log_test.go
 source_of_truth:
-  - internal/observability/journal/journal.go
   - internal/observability/trace/trace.go
   - internal/observability/usage/repository.go
   - internal/persist/state/eventlog/log.go
@@ -30,21 +28,19 @@ last_verified: 2026-08-17
 
 ## 目标与前置条件
 
-用 Runtime Event、Observation Envelope、Span、Usage、Receipt 与
-Durable State 重建 Failed Turn，不依赖截图。
+用 Runtime Event、Span、Usage、Receipt 与 Durable State 重建 Failed Turn，不依赖截图。
 
 ## 步骤
 
 1. 运行 Malformed-tool Fixture 并保留临时 State。
 2. 从 Terminal Event 记录 Operation/Thread/Turn/Item ID。
-3. 找到 Correlated Observation ID，按 Cursor Replay Observation Journal。
+3. 按 Cursor Replay Runtime Event Log。
 4. 跟随 Parent/Child Span 和 Provider/Tool Attempt。
-5. 关联 Catalog、Policy/Approval、Sandbox、Journal、Verify Receipt。
-6. 从前一 Cursor Replay Runtime Event Log 并比较 Projection。
+5. 关联 Catalog、Policy/Approval、Sandbox、Workspace Journal、Verify Receipt。
+6. 比较 Event 与 SQLite Projection。
 7. 给出最早有证据的 Fault，排除下游 Symptom。
 
 ```bash
-go test ./internal/observability/journal
 go test ./internal/observability/trace ./internal/observability/usage
 go test ./internal/persist/state/eventlog
 go test ./internal/adapter/provider/openai -run TestChatStreamRejectsMalformedAndAbruptStreams
@@ -57,14 +53,13 @@ go test ./internal/adapter/tool/guard -run TestMalformedArgumentsFailBeforePolic
 | --- | --- |
 | Accepted？ | Operation ID/Admission Event |
 | Canonical Order？ | Cursor/Hash Evidence |
-| 哪些 Causal Record 关联？ | Observation/Trace/Span/Parent ID |
+| 哪些 Causal Record 关联？ | Turn/Call/Trace/Span/Parent ID |
 | First Failed Phase？ | Provider/Tool/Approval/Verify Span |
 | Effect？ | Tool Pair/Journal/Observed Change |
 | Authorized？ | Catalog/Policy/Approval |
 | Reverted？ | Fingerprint/Recovery Receipt |
 | Measured？ | Usage/Cost/Latency Known Flag |
 | Unknown？ | Gap/Open Span/Missing Output/Conflict |
-| Evidence 是否有意省略？ | Capture Mode/Retention/Admission Receipt |
 
 先按 Cursor 构造 Timeline，再附 Timestamp。每项结论标记 **Evidence**、**Inference** 或
 **Unknown**。
@@ -76,9 +71,6 @@ Byte 改变必须 Fail Closed。不要通过重跑 Agent “发现”发生了�
 
 Incident Report 包含 Impact、Earliest Fault、Propagation、Terminal、Recovery、Residual
 Uncertainty 与 Regression Test。
-
-导出诊断材料前重新经过 Privacy Policy，验证不包含 Secret 或 Raw Sensitive Payload；
-外部材料只是 Selected Evidence Transport，不是 Lifecycle Authority。
 
 ## 预期结果
 

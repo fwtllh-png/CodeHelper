@@ -2,67 +2,21 @@ package wire
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	orchestrationextension "github.com/fwtllh-png/CodeHelper/internal/adapter/extension/orchestration"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	agenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/agent"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
-	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
+	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	persiststate "github.com/fwtllh-png/CodeHelper/internal/persist/state"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
-
-func buildWorkGraphStore(
-	ctx context.Context,
-	state *buildState,
-	output *orchestrationBuildState,
-) error {
-	if state.persistence.taskStore == nil {
-		return errors.New("work graph SQLite store is required")
-	}
-	value, err := orchestrationstore.Open(ctx, state.persistence.taskStore)
-	if err != nil {
-		return fmt.Errorf("open work graph store: %w", err)
-	}
-	output.workGraph = value
-	output.workBudget = workbudget.NewLedger()
-	return nil
-}
-
-func buildOrchestrationRepositories(
-	_ context.Context,
-	state *buildState,
-	output *orchestrationBuildState,
-) error {
-	if state.persistence.taskStore == nil {
-		return errors.New("orchestration store is required")
-	}
-	tasks := taskstate.NewSQLiteRepository(state.persistence.taskStore)
-	automations := automation.NewSQLiteRepository(state.persistence.taskStore)
-	if err := orchestrationextension.Contribute(
-		state.tools.registry,
-		orchestrationextension.Options{
-			Tasks: tasks, Automations: automations,
-
-			Backend: state.platform.backend, Workspace: state.config.execution.Workspace, SessionID: state.config.hookSessionID,
-		},
-	); err != nil {
-		return err
-	}
-	state.session.tasks, state.session.automations = tasks, automations
-	output.tasks, output.automations = tasks, automations
-	return nil
-}
 
 func buildChildOrchestration(
 	ctx context.Context,
@@ -72,8 +26,8 @@ func buildChildOrchestration(
 	session, execution := state.session, state.config.execution
 	limits := effectiveSubagentLimits(execution.Subagent, execution.TurnBudgetTokens)
 	output.childGovernor = newChildGovernor(limits)
-	orchestrationRoot := childOrchestrationRoot(state)
-	agentRoot := filepath.Join(orchestrationRoot, "agents")
+	childRoot := childStateRoot(state)
+	agentRoot := filepath.Join(childRoot, "agents")
 	if err := os.MkdirAll(agentRoot, 0o700); err != nil {
 		return fmt.Errorf("agent root: %w", err)
 	}
@@ -96,7 +50,7 @@ func buildChildOrchestration(
 		state.config.workspaceStateRoot,
 	)
 	session.childTools = output.childToolsets
-	chatRoot := filepath.Join(orchestrationRoot, "chats")
+	chatRoot := filepath.Join(childRoot, "chats")
 	if err := os.MkdirAll(chatRoot, 0o700); err != nil {
 		return fmt.Errorf("Chat worktree root: %w", err)
 	}
@@ -109,10 +63,10 @@ func buildChildOrchestration(
 	}
 	output.children = newChildRuntime(
 		limits, execution.Workspace, output.childGovernor, output.childToolsets,
-		output.workGraph,
 	)
+	output.workBudget = workbudget.NewLedger()
 	output.children.useBudget(output.workBudget)
-	workspaceIdentity, err := taskstate.NormalizeWorkspaceRoot(execution.Workspace)
+	workspaceIdentity, err := sessionstate.NormalizeWorkspaceRoot(execution.Workspace)
 	if err != nil {
 		return fmt.Errorf("normalize agent workspace: %w", err)
 	}
@@ -185,24 +139,4 @@ func buildInteractionOrchestration(
 		tools.bindInteractions(vision, applyPlan)
 	}
 	return nil
-}
-
-func newSchedulerFactory(
-	state *buildState,
-	output orchestrationBuildState,
-) schedulerFactory {
-	return schedulerFactory{
-		settings:  state.config.execution.Worker,
-		owner:     state.config.hookSessionID,
-		workspace: state.config.execution.Workspace,
-		registry:  state.tools.registry, guard: state.security.guard,
-		journal:    state.security.journal,
-		workGraphs: output.workGraph,
-		workBudget: output.workBudget,
-		persistent: state.options.PersistentStore,
-		tasks:      output.tasks, automations: output.automations,
-		subagents: output.subagents, children: output.children,
-		security: state.security.runtime, hooks: state.session.hooks,
-		logger: state.session.logger,
-	}
 }

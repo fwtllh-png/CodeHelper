@@ -34,10 +34,8 @@ type childRuntime struct {
 	governor *admission.Governor
 	// tools owns the isolated tool planes; a closed child's is dropped here
 	// because this is where a child's lifetime ends.
-	tools       *childToolsets
-	workGraphs  subagent.WorkGraphController
-	agentGraphs *subagent.WorkGraph
-	budget      *workbudget.Ledger
+	tools  *childToolsets
+	budget *workbudget.Ledger
 
 	mu               sync.Mutex
 	runtime          *app.Runtime
@@ -71,7 +69,6 @@ type childTurn struct {
 	startedAt         time.Time
 	lease             admission.Lease
 	leased            bool
-	workAttempt       subagent.WorkAttempt
 	budgetReservation string
 	releasePending    bool
 	startedSignal     chan struct{}
@@ -85,8 +82,10 @@ func (c *childRuntime) useBudget(ledger *workbudget.Ledger) {
 }
 
 func newChildRuntime(
-	limits config.Subagent, workspace string, governor *admission.Governor, tools *childToolsets,
-	controllers ...subagent.WorkGraphController,
+	limits config.Subagent,
+	workspace string,
+	governor *admission.Governor,
+	tools *childToolsets,
 ) *childRuntime {
 	if governor == nil {
 		governor = admission.NewGovernor(admission.Limits{})
@@ -97,10 +96,6 @@ func newChildRuntime(
 		settlementErrors: make(map[protocol.TurnID]error),
 		stop:             make(chan struct{}),
 	}
-	if len(controllers) > 0 {
-		value.workGraphs = controllers[0]
-	}
-	value.agentGraphs = subagent.NewWorkGraph(value.workGraphs)
 	return value
 }
 
@@ -111,7 +106,7 @@ func newChildGovernor(limits config.Subagent) *admission.Governor {
 	})
 }
 
-func childOrchestrationRoot(state *buildState) string {
+func childStateRoot(state *buildState) string {
 	// Worktrees must remain inside the guarded workspace so their paths can be
 	// represented by the resource resolver and enforced by the OS sandbox.
 	root := filepath.Clean(state.config.execution.Workspace)
@@ -143,9 +138,6 @@ func (c *childRuntime) bind(
 		turnID   protocol.TurnID
 	}
 	for _, agent := range manager.List(subagent.ListFilter{}) {
-		if err := c.DeclareAgent(context.Background(), agent); err != nil {
-			return fmt.Errorf("restore Agent WorkGraph for %s: %w", agent.ID, err)
-		}
 		switch agent.Status {
 		case subagent.StatusStarting, subagent.StatusRunning,
 			subagent.StatusWaiting:
@@ -181,16 +173,6 @@ func (c *childRuntime) bind(
 			leaseRenewal:   make(chan struct{}, 1),
 			startedSignal:  make(chan struct{}),
 			terminalSignal: make(chan struct{}),
-		}
-		attempt, found, restoreErr := c.agentGraphs.Restore(
-			context.Background(),
-			agent,
-		)
-		if restoreErr != nil {
-			return fmt.Errorf("restore child WorkGraph for %s: %w", agent.ID, restoreErr)
-		}
-		if found {
-			recoveredTurn.workAttempt = attempt
 		}
 		c.mu.Lock()
 		if _, tracked := c.turns[threadID]; !tracked {
@@ -230,13 +212,6 @@ func (c *childRuntime) close() {
 	c.settlers.Wait()
 }
 
-func (c *childRuntime) DeclareAgent(
-	ctx context.Context,
-	agent subagent.Agent,
-) error {
-	return c.agentGraphs.Declare(ctx, agent)
-}
-
 // StartTurn submits a real turn for the child agent and returns as soon as the
 // runtime accepted it. Blocking until the child finishes would make wait_agent
 // pointless and would deadlock the parent turn that called the agent tool.
@@ -265,9 +240,6 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 	agent, ok := manager.Agent(agentID)
 	if !ok {
 		return "", fmt.Errorf("agent %s is unavailable", agentID)
-	}
-	if err := c.DeclareAgent(ctx, agent); err != nil {
-		return "", err
 	}
 	spec, err := c.specFor(agent)
 	if err != nil {
@@ -329,35 +301,21 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 			return "", fmt.Errorf("restore child session profile: %w", err)
 		}
 	}
-	workAttempt, err := c.agentGraphs.Claim(ctx, agent, turnID)
+	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
+		ThreadID: threadID, TurnID: turnID, ItemID: itemID, Prompt: prompt,
+		Intent: childTurnIntent(agent.Role, spec.ReadOnly),
+	})
 	if err != nil {
 		refundBudget()
 		rollbackResident()
 		c.governor.Release(lease)
 		return "", err
 	}
-	operation, err := protocol.NewOperation(&protocol.StartTurnPayload{
-		ThreadID: threadID, TurnID: turnID, ItemID: itemID, Prompt: prompt,
-		Intent:        childTurnIntent(agent.Role, spec.ReadOnly),
-		Orchestration: &workAttempt.Correlation,
-	})
-	if err != nil {
-		releaseErr := c.agentGraphs.Release(
-			ctx,
-			workAttempt,
-			"operation_invalid",
-		)
-		refundBudget()
-		rollbackResident()
-		c.governor.Release(lease)
-		return "", errors.Join(err, releaseErr)
-	}
 	c.mu.Lock()
 	c.turns[threadID] = &childTurn{
 		agentID: agentID, turnID: turnID, startOperation: operation.ID,
 		startedAt: time.Now(),
 		lease:     lease, leased: true,
-		workAttempt:       workAttempt,
 		budgetReservation: budgetReservation,
 		leaseRenewal:      make(chan struct{}, 1),
 		startedSignal:     make(chan struct{}),
@@ -369,15 +327,10 @@ func (c *childRuntime) StartTurn(ctx context.Context, agentID, prompt string) (s
 		c.mu.Lock()
 		delete(c.turns, threadID)
 		c.mu.Unlock()
-		releaseErr := c.agentGraphs.Release(
-			ctx,
-			workAttempt,
-			"submit_rejected",
-		)
 		refundBudget()
 		rollbackResident()
 		c.governor.Release(lease)
-		return "", errors.Join(err, releaseErr)
+		return "", err
 	}
 	c.armDeadline(threadID, turnID)
 	return string(turnID), nil
@@ -919,17 +872,10 @@ func (c *childRuntime) settleChild(
 }
 
 func (c *childRuntime) settleChildAttempt(
-	turn *childTurn,
+	_ *childTurn,
 	result subagent.Result,
 	manager *subagent.AgentControl,
 ) error {
-	if err := c.agentGraphs.Settle(
-		context.Background(),
-		turn.workAttempt,
-		result,
-	); err != nil {
-		return err
-	}
 	if manager != nil {
 		return manager.Settle(result)
 	}

@@ -25,7 +25,6 @@ func costMicrounits(costUSD float64) uint64 {
 // check that did not run.
 type Recorder struct {
 	goal               string
-	orchestration      *protocol.OrchestrationCorrelation
 	intent             protocol.TurnIntent
 	outcome            protocol.TurnOutcome
 	plan               string
@@ -96,14 +95,12 @@ func New(goal string) *Recorder {
 }
 
 func (r *Recorder) Configure(
-	orchestration *protocol.OrchestrationCorrelation,
 	intent protocol.TurnIntent,
 	editorContext []protocol.EditorContextReceipt,
 ) {
 	if r == nil {
 		return
 	}
-	r.orchestration = protocol.CloneOrchestrationCorrelation(orchestration)
 	r.intent = intent
 	r.editorContext = append(
 		[]protocol.EditorContextReceipt(nil),
@@ -380,9 +377,8 @@ func (r *Recorder) Build(
 	}
 	usage := measurement.Usage
 	receipt := &protocol.ExecutionReceiptData{
-		Goal:          r.goal,
-		Orchestration: protocol.CloneOrchestrationCorrelation(r.orchestration),
-		Intent:        r.intent, Outcome: r.outcome,
+		Goal:   r.goal,
+		Intent: r.intent, Outcome: r.outcome,
 		Plan: r.plan, Mode: r.mode, Posture: r.posture,
 		Sandbox: r.sandbox, Workspace: r.workspace,
 		WorkspaceIsolation: r.workspaceIsolation,

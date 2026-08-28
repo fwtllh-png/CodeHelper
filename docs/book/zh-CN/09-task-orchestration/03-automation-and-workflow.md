@@ -1,6 +1,6 @@
 ---
 id: task-automation-workflow
-title: Automation 与 Workflow
+title: Plan 与 Subagent 协作
 audience:
   - learner
   - contributor
@@ -8,117 +8,86 @@ audience:
 prerequisites:
   - task-worker-executor
 code_paths:
-  - internal/orchestration/automation
-  - internal/orchestration/kernel
-  - internal/orchestration/store
-  - internal/orchestration/workflow
+  - internal/runtime/app
+  - internal/orchestration/subagent
+  - internal/adapter/tool/agent
 test_paths:
-  - internal/orchestration/automation/repository_test.go
-  - internal/orchestration/store/store_test.go
-  - internal/orchestration/workflow/dag_test.go
-  - internal/orchestration/workflow/workgraph_test.go
+  - internal/runtime/app/session_artifacts_test.go
+  - internal/orchestration/subagent/control_plane_test.go
+  - internal/adapter/tool/agent/agent_test.go
 source_of_truth:
-  - internal/orchestration/automation/repository.go
-  - internal/orchestration/workflow/compiler.go
-  - internal/orchestration/workflow/runtime.go
+  - internal/runtime/app/runtime.go
+  - internal/orchestration/subagent/control_plane.go
+  - internal/adapter/tool/agent/agent.go
 status: draft
 last_verified: null
 ---
 
-# Automation 与 Workflow
+# Plan 与 Subagent 协作
 
 ## 学习目标
 
-理解 Recurring Automation Slot、DAG Workflow、Capability Default、Structured Output
-与 Deterministic JavaScript Host。
+理解如何用可见 Plan 和受控 Subagent 完成多步骤 Coding 工作，而不引入通用 Workflow
+引擎或定时 Automation。
 
-## Automation
+## Plan 是用户可见状态
 
-Automation 保存 Trigger、Canonical RRULE Subset、Creation Anchor、Next Run、Status、
-Payload、Version 与 Run Record。`Tick` 在 Transaction 中为每个 Due Slot 只创建一次，
-即使 Concurrent Process/Restart；Resume 使用 Persisted Creation Anchor，不漂移 Schedule。
+Plan 描述当前目标、步骤和状态，但不拥有第二套执行状态机。它的作用是：
 
-Logical Dedup Key 是 Automation Identity + Scheduled Slot，而不是 Worker Tick Time。
-Pause/Resume 改 Eligibility，不改变 Anchor；`RunNow` 创建 Explicit Run Identity。
+- 让用户看见工作分解；
+- 约束当前 Turn 的完成条件；
+- 为恢复和交接提供稳定摘要；
+- 将实现与验证步骤显式区分。
 
-## Workflow
+Plan Step 的推进来自 Agent 的明确更新。它不自动调度命令，也不绕过 Tool Guard。
 
-```mermaid
-flowchart LR
-    A[Automation Slot] --> T[WorkGraph Run]
-    T --> W[Workflow Spec]
-    W --> C[Compiled Nodes / Definition Digest]
-    C --> D[DAG Waves]
-    D --> X[Runtime Driver]
-    X --> S[Attempt Settlement / Output]
+## Subagent 是受控并行单元
+
+独立、可并行且边界清晰的工作可以交给 Subagent。每个子 Agent：
+
+- 获得裁剪后的 Context Capsule；
+- 使用独立 Thread 和 Runtime Turn；
+- 遵守 Role、Tool Allowlist 与预算；
+- 通过 Worktree 隔离写入；
+- 将结构化结果交回父 Agent。
+
+父 Agent仍是协调者。它决定何时创建、等待、追问、关闭和集成子 Agent，不能把责任
+转交给不可见的后台调度器。
+
+## 顺序与并行
+
+```text
+Plan
+  -> local step
+  -> spawn independent children
+  -> wait for terminal results
+  -> review and integrate
+  -> verify
+  -> complete
 ```
 
-Workflow `Spec` 校验 Unique Node、Dependency、Acyclicity、Condition、Retry、Timeout、
-Permission 与 Budget。Ready Independent Node 以 Bounded Parallel Wave 运行；Join 等待，
-Failed Dependency 跳过 Descendant，Compensation 可按 Condition 运行。
+只有互不依赖且写入范围不重叠的工作适合并行。存在数据依赖、同文件写冲突或需要连续
+推理时，应在同一 Turn 中顺序执行。
 
-Spec 会编译成带 Stable Digest 的 WorkGraph Definition。Workflow Checkpoint 已退休：
-每个 Claim、Attempt、Effect、Result 与 Terminal Transition 都是 Revision-checked
-Kernel Command。Store 原子提交 Aggregate Snapshot、Ordered Fact、Command Receipt、
-Effect Outbox 与兼容 Projection。
+## 为什么没有 Automation
 
-Permission 默认 Deny Host Capability。Task Response Schema 不允许 External Reference。
-JS VM 移除 Nondeterministic Host Access，限制 Environment/Workspace Read，强制 Timeout，
-并 Cancel Outstanding Task。
+定时任务和无人值守工作不属于当前本地 Coding 主线。删除 Automation 后，Runtime
+不再维护 RRULE、后台队列或定时 Tick。外部系统需要自动触发时，应在明确的 Host
+边界提交普通 Operation，而不是在 Runtime 内建立第二套控制面。
 
-## DAG Semantics
-
-Node Array Order 不是 Execution Order，Dependency Edge 决定 Ready。Bounded Wave 包含当前
-Ready Independent Node，受 `MaxParallel` 限制。Join 观察 Terminal Dependency Result。
-Failed Dependency 跳过普通 Descendant，Explicit Failure Condition 可触发 Compensation。
-
-Node 有独立 Attempt/Timeout/Retry，但共享 Workflow Budget。Retry 不擦除 Earlier Attempt
-Evidence。Structured Output 验证后才能进入 Downstream Node。
-
-Resume Replay Ordered Fact，只执行未完成 Node。Succeeded Node 复用稳定
-`workgraph://.../nodes/...` Result Reference；同一 Run ID 携带不同 Definition Digest
-会在执行前失败。
-
-## Determinism Boundary
-
-Definition Digest 覆盖 Executable Graph Semantics。JS Host 移除 Clock/Random/Global Process，
-只开放 Allowlisted Env/Workspace Read，并通过 Driver Spawn。External Task 仍可能
-Nondeterministic，其 Durable WorkGraph Result 与 Effect-specific Idempotency Evidence
-才是 Replay Boundary。
-
-## 失败与安全边界
-
-- Concurrent Tick 不重复 Schedule Slot。
-- Invalid Graph/Fingerprint 在 Run/Resume 前拒绝。
-- Snapshot/Fact Drift 显式报告，Repair 只能重建 Snapshot。
-- Node Retry/Timeout 有界。
-- Failed Dependency 不被当作 Empty Output。
-- Secret Environment/Workspace Escape 被拒绝。
-- Unsupported Profile/Schema 在 Production Turn 前失败。
-
-## 测试与验证
+## 验证
 
 ```bash
-go test ./internal/orchestration/automation
-go test ./internal/orchestration/kernel ./internal/orchestration/store
-go test ./internal/orchestration/workflow/...
+go test ./internal/runtime/app
+go test ./internal/orchestration/subagent
+go test ./internal/adapter/tool/agent
 ```
-
-## 动手实验
-
-运行 Parallel Wave、Failed Dependency 与 Compensation Test，画出 Node Status Graph。
 
 ## 复习问题
 
-1. Automation 如何防止 Duplicate Slot？
-2. Workflow Permission 为什么 Default Deny？
-3. JS Host 如何支持确定性恢复？
-4. 什么 Key 防止 Duplicate Automation Slot？
-5. Structured Output 为什么在 Downstream 前验证？
-
-## 延伸阅读
-
-- [Checkpoint 与恢复](./04-checkpoint-and-recovery.md)
+1. Plan 与 Workflow 状态机的职责差异是什么？
+2. 哪些工作适合交给 Subagent 并行执行？
+3. 为什么外部自动化应提交普通 Operation？
 
 ## 事实来源与验证
 

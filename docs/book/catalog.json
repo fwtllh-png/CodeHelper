@@ -45,7 +45,7 @@
           "slug": "04-agent-workflow-boundaries",
           "status": "draft",
           "titles": {
-            "zh-CN": "Agent、Workflow 与 Automation 的边界"
+            "zh-CN": "Agent、Plan 与外部自动化的边界"
           }
         },
         {
@@ -482,7 +482,7 @@
           "slug": "01-task-worker-executor",
           "status": "draft",
           "titles": {
-            "zh-CN": "Task、Worker 与 Executor"
+            "zh-CN": "前台任务与执行边界"
           }
         },
         {
@@ -490,7 +490,7 @@
           "slug": "02-lease-heartbeat-retry",
           "status": "verified",
           "titles": {
-            "zh-CN": "Lease、Heartbeat、Retry 与幂等性"
+            "zh-CN": "Turn 生命周期、取消与幂等性"
           }
         },
         {
@@ -498,7 +498,7 @@
           "slug": "03-automation-and-workflow",
           "status": "draft",
           "titles": {
-            "zh-CN": "Automation 与 Workflow"
+            "zh-CN": "Plan 与 Subagent 协作"
           }
         },
         {
@@ -514,7 +514,7 @@
           "slug": "05-lane-fleet-scheduling",
           "status": "verified",
           "titles": {
-            "zh-CN": "Lane、Fleet 与调度"
+            "zh-CN": "前台并发与工作区隔离"
           }
         },
         {
@@ -735,7 +735,7 @@
           "slug": "06-recoverable-workflow",
           "status": "verified",
           "titles": {
-            "zh-CN": "构建可恢复 Workflow"
+            "zh-CN": "验证可恢复 Turn"
           }
         },
         {
@@ -743,7 +743,7 @@
           "slug": "07-worker-lease-retry",
           "status": "verified",
           "titles": {
-            "zh-CN": "调试 Worker Lease 与 Retry"
+            "zh-CN": "调试 Subagent 超时与恢复"
           }
         },
         {

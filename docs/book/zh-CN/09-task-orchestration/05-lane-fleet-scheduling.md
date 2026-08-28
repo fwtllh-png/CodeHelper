@@ -1,6 +1,6 @@
 ---
 id: task-lane-fleet
-title: Lane、Fleet 与调度
+title: 前台并发与工作区隔离
 audience:
   - contributor
   - operator
@@ -8,107 +8,82 @@ prerequisites:
   - task-worker-executor
   - task-automation-workflow
 code_paths:
-  - internal/orchestration/lane
-  - internal/orchestration/fleet
-  - internal/orchestration/projection
-  - internal/orchestration/workflow/orchestrate
+  - internal/orchestration/admission
+  - internal/orchestration/subagent
+  - internal/runtime/app/wire
 test_paths:
-  - internal/orchestration/lane/lane_test.go
-  - internal/orchestration/fleet/ledger_test.go
-  - internal/orchestration/workflow/orchestrate/orchestrate_test.go
+  - internal/orchestration/admission/governor_test.go
+  - internal/orchestration/subagent/worktree_allocation_test.go
+  - internal/runtime/app/wire/childworktree_test.go
 source_of_truth:
-  - internal/orchestration/lane/lane.go
-  - internal/orchestration/fleet/ledger.go
+  - internal/orchestration/admission/governor.go
+  - internal/orchestration/subagent/worktree.go
+  - internal/runtime/app/wire/childruntime.go
 status: verified
-last_verified: 2026-08-16
+last_verified: 2026-08-28
 ---
 
-# Lane、Fleet 与调度
+# 前台并发与工作区隔离
 
 ## 学习目标
 
-理解 Lane Placement、Fleet WorkGraph Projection、Profile Limit 与唯一执行权威。
+理解删除 Lane、Fleet 和后台 Scheduler 后，CodeHelper 如何约束前台并发与写入隔离。
 
-## Responsibilities
+## 并发来源
 
-- **Lane**：记录 Durable Placement Metadata；受控 Process Adapter 可启动或控制
-  Inline/Tmux Process。
-- **Fleet**：读取 WorkGraph Aggregate/Facts，构建 Host View，审计 Snapshot Drift，
-  并且只修复可重建 Snapshot。
-- **Profile**：声明 Concurrency、Lease、Heartbeat 与 Worker Setting。
-- **Orchestrate Session**：把 Workflow Run 绑定到一个 WorkGraph Controller、Budget
-  Ledger 与 Lane Placement。
+当前 Runtime 的并发来自两处：
 
-```mermaid
-flowchart LR
-    W[Workflow Runtime] --> K[WorkGraph Kernel]
-    K --> S[(SQLite Facts / Snapshot / Outbox)]
-    S --> F[Fleet Projection]
-    F --> H[Web Host View]
-    W --> L[Lane Placement]
+- 单个 Turn 内可并行的只读 Tool Call；
+- 父 Agent 显式创建的多个 Subagent。
+
+两者都由当前用户工作触发，不存在独立后台 Worker 抢占队列。
+
+## Admission Governor
+
+Subagent Admission 同时约束：
+
+- 最大递归深度；
+- 最大并发数；
+- Token 总预算；
+- Cost 总预算。
+
+零值不代表隐藏的固定档位。生产限制来自显式配置和模型能力，避免因经验常量导致不同
+模型或环境下的错误拒绝。
+
+## 工作区隔离
+
+写入型子 Agent 优先使用独立 Git Worktree。只读子 Agent 可以共享工作区；显式选择
+Serialized 模式时，写入型子 Agent必须持有整个 Workspace Turn Gate。
+
+```text
+Parent Workspace
+    +-> read-only child: shared read
+    +-> writing child: isolated worktree
+    +-> serialized child: exclusive turn gate
 ```
 
-Fleet 不提供 Append、Enqueue、Claim、Settle 或 Resume Writer。Inspection 与 Logs
-只是 WorkGraph State 和 Ordered Facts 的 Projection。`Audit` 比较 Snapshot 与 Fact
-Replay；`Repair` 不能修改 Facts、Command Receipts 或 Outbox。
+写入路径声明和集成候选会进入 Agent Graph。父 Agent 在集成前检查冲突、基线与验证
+结果，不能依赖调度顺序假设。
 
-Workflow Orchestrate 使用 `Lane.Place`：同一 Run 与 Placement 幂等，冲突 Placement
-Fail Closed；它不会启动 Dummy Process，也不会创建第二 Scheduler。
+## 为什么没有 Lane 与 Fleet
 
-## Control Plane、Placement 与 Evidence
+Lane 原本描述进程放置，Fleet 原本提供后台运行投影。它们要求额外的进程生命周期、
+状态同步和恢复协议。对本地 Coding 主线，Subagent Thread、Worktree 和 Runtime
+Event 已提供足够的执行与观察边界。
 
-| Component | Owns | Does Not Prove |
-| --- | --- | --- |
-| WorkGraph Kernel | Lifecycle Transition | External Process Liveness |
-| Worker Claim | 当前 Lease/Epoch Ownership | Future Progress |
-| Lane Registry | Placement 与显式 Process Adapter Metadata | Lifecycle Authority |
-| Fleet | Read Model、Audit、Snapshot Repair | Execution Authority |
-| Profile | Desired Limit/Timeout | Active Lease Ownership |
-
-Task Projection 可以与 WorkGraph Facts 在同一 SQLite 事务更新，但不能独立 Transition。
-Host 读取同一个 Run View：Run、Node、Attempt、Effect、Authority Digest、Permission
-Digest、Lane ID 与稳定 Result Reference。
-
-## Scheduling Layer
-
-Kernel 推导 Dependency-ready Node；Hierarchical Fair Selector 对
-Workspace/Session/Run Candidate 排序；Worker 保持唯一 Claim Authority。Budget
-Admission 与 Profile Capacity 可以降低并发，但不能扩大 WorkGraph Command 或
-Security Profile 授予的 Authority。
-
-## 失败与安全边界
-
-- 显式 tmux 执行缺少 tmux 时 Fail Closed。
-- 冲突 Durable Lane Placement 被拒绝。
-- Fleet 不能创建或修改 Run。
-- Snapshot Drift 可见，Repair 只修改 Snapshot Cache。
-- 过期 Revision 或 Lease Epoch 不能 Settle。
-- Profile Limit 是配置，不证明 Live Lease。
-
-## 测试与验证
+## 验证
 
 ```bash
-go test ./internal/orchestration/lane ./internal/orchestration/fleet
-go test ./internal/orchestration/workflow/orchestrate
+go test ./internal/orchestration/admission
+go test ./internal/orchestration/subagent
+go test ./internal/runtime/app/wire -run Child
 ```
-
-## 动手实验
-
-使用持久化 Data Directory 运行 Workflow，通过 Fleet Inspect；然后以相同 Run
-重新打开，验证 Lane Placement 幂等及 Node Attempt 可恢复。只篡改 Snapshot，
-确认 Audit 检出并修复 Drift。
 
 ## 复习问题
 
-1. 哪个 Component 拥有 Lifecycle Transition？
-2. Fleet Inspection 为什么不是 Authority？
-3. Lane Placement 在什么条件下幂等？
-4. 哪个 Component 授予 Durable Task Ownership？
-5. Snapshot Repair 可以修改哪些 Evidence？
-
-## 延伸阅读
-
-- [Subagent、Worktree 与拓扑关系](./06-subagent-worktree-topology.md)
+1. Tool 并发与 Subagent 并发的所有者分别是谁？
+2. 为什么写入型子 Agent 需要 Worktree 或串行门禁？
+3. Admission 的零值为何不能解释成私有固定阈值？
 
 ## 事实来源与验证
 
@@ -116,4 +91,4 @@ go test ./internal/orchestration/workflow/orchestrate
 | --- | --- |
 | Catalog ID | `task-lane-fleet` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-16 |
+| 最后验证 | 2026-08-28 |

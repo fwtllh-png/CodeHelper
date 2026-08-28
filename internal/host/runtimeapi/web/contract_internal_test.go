@@ -70,7 +70,6 @@ func TestUnaryRouteRegistryMatchesDispatcher(t *testing.T) {
 		}
 	}
 	for path, request := range map[string]string{
-		"task/list":                "task_query",
 		"agent/list":               "agent_query",
 		"agent-preset/list":        "agent_preset_list",
 		"agent-preset/save":        "agent_preset_save",
@@ -202,7 +201,7 @@ func TestHostContractReturnsDetachedSortedRoutes(t *testing.T) {
 
 func TestWebDependenciesExposeNarrowQueryPorts(t *testing.T) {
 	dependencies := reflect.TypeOf(Dependencies{})
-	for _, name := range []string{"Tasks", "Usage", "RepositoryIndex"} {
+	for _, name := range []string{"Usage", "RepositoryIndex"} {
 		field, exists := dependencies.FieldByName(name)
 		if !exists {
 			t.Fatalf("Dependencies.%s is missing", name)

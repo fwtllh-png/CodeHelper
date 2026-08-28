@@ -251,31 +251,13 @@ Repository Permission Hook 只能返回 Deny 或 Ask，不能把 Guard 的决定
 Redaction 降低意外泄漏，但不会让 Log 变成公开数据。应限制访问并设置 Retention。结构化
 Error 在 Remote/Filesystem Error 可能含 Secret 时，不应原样输出。
 Attempt Receipt 包含 Canonical Path 和 Network Target；即使其中没有 Credential
-Value，也必须作为受限 Audit Record 处理。Runtime Capture 会包含
-`tool.result.execution`，因此 Capture 与 Event Log 必须采用相同的访问控制和
-Retention。
+Value，也必须作为受限 Audit Record 处理。Runtime Event、Receipt、Trace、Usage、
+Job Log 与 Workspace Journal 必须采用各自既有的访问控制和 Retention。
 
-Durable Observation Router 会在任何 Observation Journal 或 CAS 写入前应用 Capture
-Policy：
-
-- `off`：不持久化 Observation；
-- `metadata`：默认值，只保留脱敏 Summary；
-- `failure`：为 Failure-like Observation 保留符合条件的脱敏 Payload；
-- `full`：为 Trait 允许的 Observation Kind 保留符合条件的脱敏 Payload。
-
-所有模式都禁止 Credential 与 Restricted Payload。Secret-bearing JSON Key、配置
-Credential Value、State Root 与 Config Path 会在持久化前脱敏。Sensitive Payload
-Reference 比 Audit Metadata 更早过期；只有 Reference Count 降为 0 后，CAS GC 才会
-删除 Object。
-
-OTLP Export 是脱敏 Observation Envelope 的独立有界 Projection。Metric Label 使用
-固定低基数 Allowlist，绝不能包含 Prompt、Path、Argument、Resource ID 或 Raw Error。
-Collector Endpoint 与 Header 是安全敏感环境配置。Exporter Failure 会通过
-`Flush`/`Shutdown` 返回，但不能改变业务 Turn Result。
-
-导出 Observation Journal 诊断材料前必须再次经过 Privacy Policy，默认不包含
-Payload，并以独占方式创建 mode `0600` 的文件。导出结果仍是敏感数据，分享前必须
-人工检查。
+Trace Attribute 与 Metric Label 只能使用固定低基数集合，绝不能包含 Prompt、Path、
+Argument、Resource ID、Credential 或 Raw Error。Provider Debug Dump 默认关闭；启用
+时必须继续经过专用脱敏与本地文件权限边界。CodeHelper 不持久化独立 Observation
+Payload，也不提供 OTLP 或 Observation Journal 导出。
 
 ## 安全测试
 

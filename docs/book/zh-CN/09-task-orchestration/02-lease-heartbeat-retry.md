@@ -1,6 +1,6 @@
 ---
 id: task-lease-retry
-title: Lease、Heartbeat、Retry 与幂等性
+title: Turn 生命周期、取消与幂等性
 audience:
   - contributor
   - operator
@@ -9,119 +9,80 @@ prerequisites:
   - task-worker-executor
   - runtime-resume-recovery
 code_paths:
-  - internal/orchestration/kernel
-  - internal/orchestration/store
-  - internal/orchestration/task
-  - internal/orchestration/worker
+  - internal/runtime/app
+  - internal/runtime/agent/turnkernel
+  - internal/persist/state/turnstate
 test_paths:
-  - internal/orchestration/kernel/kernel_test.go
-  - internal/orchestration/store/store_test.go
-  - internal/orchestration/task/execution_test.go
-  - internal/orchestration/worker/worker_test.go
+  - internal/runtime/app/runtime_test.go
+  - internal/runtime/agent/turnkernel/reducer_test.go
+  - internal/persist/state/turnstate/store_test.go
 source_of_truth:
-  - internal/orchestration/kernel/kernel.go
-  - internal/orchestration/store/store.go
-  - internal/orchestration/worker/worker.go
+  - internal/runtime/app/service_facade.go
+  - internal/runtime/app/operation_dispatch.go
+  - internal/runtime/agent/turnkernel/reducer.go
 status: verified
-last_verified: 2026-08-17
+last_verified: 2026-08-28
 ---
 
-# Lease、Heartbeat、Retry 与幂等性
+# Turn 生命周期、取消与幂等性
 
 ## 学习目标
 
-理解 Ownership Fencing、Lease Loss、Attempt Accounting、Bounded Backoff 与 Retry
-Safety 的边界。
+理解前台 Turn 如何在没有后台 Worker Lease 的情况下维持唯一执行、取消、恢复和幂等。
 
-## Ownership Protocol
+## Operation 是入口
 
-```mermaid
-sequenceDiagram
-    participant W as Worker
-    participant R as WorkGraph Store
-    W->>R: Claim(expected revision, owner, authority, lease)
-    R-->>W: running Node + Attempt + Lease Epoch
-    loop executing
-      W->>R: Heartbeat(owner, epoch, expiry)
-    end
-    W->>R: Settle(owner, epoch, authority digest, result)
-```
+Host 提交带唯一 ID 的 Operation。Runtime 负责：
 
-Running Work 的每次 Mutation 都校验 Current Owner、Lease Epoch、Authority Digest 与
-Expected Revision。Expired Lease 可由新 Owner 以新 Epoch Reclaim/Requeue；旧 Owner
-被 Fence，下一次 Heartbeat/Settle 失败，并触发 Worker Cancellation。
+- 校验 Session、Thread 和 Turn 归属；
+- 持久化接受事实；
+- 拒绝冲突或重复请求；
+- 只把已接受的请求交给 Engine；
+- 通过稳定终态关闭生命周期。
 
-普通 Retry 与 Lease Expiry 消耗 Attempt；Graceful Drain 返还 Attempt。Backoff 递增并
-封顶；Attempt 用尽后 Requeue 转为 Failed。
+幂等性发生在 Operation 边界，而不是依赖模型输出文本。相同 Idempotency Key 与相同
+请求可返回既有结果；相同 Key 对应不同请求必须拒绝。
 
-Lease Fence 防止两个 Owner 提交 Task State，却不能撤销 Lease Loss 前已产生的 External
-Side Effect。Retried Executor 必须 Intrinsically Idempotent、使用 Idempotency Key，
-或拒绝 Retry。Shell Background Task 明确要求 Idempotent Declaration。
+## Active Turn Fence
 
-## Idempotency
-
-Recovery Requeue 可执行 Interrupted Work，Fail 无有效 Executor/Retry Path 的 Work，
-并保留 Healthy Foreign Lease。
-
-## Lease 是 Time-bounded Fence
-
-Lease 只证明 Repository 在 Stored Expiry 前承认一个 Owner；不证明 Process Alive、Work
-Progress，也不保证 External System 遵守 Fence。
+`ActiveTurnRegistry` 确保同一 Thread 同时只有一个活动 Turn。内存 Token 防止旧 goroutine
+释放新 Turn，持久化 Operation ID 则支持进程重启后的恢复判断。
 
 ```text
-claim: ready -> running, owner, epoch, expiry, Attempt + Effect
-heartbeat: require owner + epoch + unexpired lease, extend expiry
-settle: require owner + epoch + authority digest, append one transition
-reclaim: require expired lease, close Attempt, increment epoch, fence old owner
+reserve(thread, turn)
+    -> execute
+    -> terminal commit
+    -> release(exact token)
 ```
 
-Heartbeat Cadence 必须显著短于 Lease Duration。另一个 Owner Reclaim 后，Late Heartbeat
-不能恢复 Ownership。
+取消通过 Runtime ControlPort 进入当前 Turn。它不会绕过 Reducer，也不会直接把数据库
+状态改成 canceled。最终状态必须由同一 Turn 生命周期提交。
 
-## Retry Safety Matrix
+## 重试边界
 
-| Effect | Safe Retry Condition |
-| --- | --- |
-| Pure Read/Compute | Deterministic/Harmless Repeat |
-| Runtime Turn | Durable Idempotency/Admission |
-| File Write | Journal/Transaction 证明 Rollback/Target State |
-| Remote API | Service Idempotency Key/Stable Request ID |
-| Shell | Explicit Idempotency Contract |
-| Unknown/Partial Effect | 不自动 Retry |
+CodeHelper 不提供后台 Worker Retry。需要重试时：
 
-## 失败与安全边界
+- Provider 瞬时错误由 Provider 策略处理；
+- Tool 重试必须符合 Tool 的重复执行契约；
+- Turn 恢复使用持久化 Domain Fact；
+- Subagent 后续工作通过 `followup_task` 创建新 Turn；
+- 用户可显式重新提交失败操作。
 
-- Stale Owner 的 Heartbeat/Settle 被拒绝。
-- Stale Lease Epoch/Authority Digest 的 Heartbeat/Settle 被拒绝。
-- Claim 不跨 Normalized Workspace。
-- Healthy Lease 不被抢占。
-- Retry Count/Delay 有界。
-- Task Durability 不自动证明 Side-effect Idempotency。
-- Duplicate Settlement 不产生两个 Terminal。
+每种重试都必须有自己的幂等依据，不能用一个通用重试循环覆盖不同副作用。
 
-## 测试与验证
+## 验证
 
 ```bash
-go test ./internal/orchestration/kernel ./internal/orchestration/store
-go test ./internal/orchestration/task -run 'Test(Claim|Settle|Reclaim|Recovery|Backoff)'
-go test ./internal/orchestration/worker -run 'Test.*(Lease|Retry|Takeover)'
+go test ./internal/runtime/app
+go test ./internal/runtime/agent/turnkernel
+go test ./internal/persist/state/turnstate
 ```
-
-## 动手实验
-
-让第二个 Owner Reclaim Expired Lease，再用旧 Owner Heartbeat/Settle，解释每个 Fence。
 
 ## 复习问题
 
-1. Lease 能证明什么？
-2. Graceful Drain 为什么返还 Attempt？
-3. Fence 为什么不足以保证 External Side-effect Idempotency？
-4. Late Heartbeat 为什么不能恢复 Ownership？
-5. Retry Partial Effect 前需要什么 Evidence？
-
-## 延伸阅读
-
-- [Checkpoint 与恢复](./04-checkpoint-and-recovery.md)
+1. 为什么 Active Turn Token 和 Operation ID 解决不同问题？
+2. 为什么取消必须经过 Reducer 和终态提交？
+3. Provider、Tool、Turn 与 Subagent 重试为何不能共享一个通用策略？
 
 ## 事实来源与验证
 
@@ -129,4 +90,4 @@ go test ./internal/orchestration/worker -run 'Test.*(Lease|Retry|Takeover)'
 | --- | --- |
 | Catalog ID | `task-lease-retry` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-17 |
+| 最后验证 | 2026-08-28 |

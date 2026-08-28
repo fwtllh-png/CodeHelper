@@ -12,10 +12,7 @@ import (
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/worker"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
@@ -56,23 +53,20 @@ type extensionBundle struct {
 }
 
 type orchestrationBundle struct {
-	automations      *automation.Repository
-	tasks            *taskstate.Repository
 	inputHost        *interacttool.Host
 	applyPlan        func(interacttool.Plan) error
 	children         *childRuntime
 	childTools       *childToolsets
 	chatWorkspaces   *chatWorkspaces
 	subagents        *subagent.AgentControl
-	scheduler        *worker.Scheduler
 	turnCoordinators *durableCoordinatorRuntime
 }
 
 type persistenceBundle struct {
 	content           *contentstore.Memory
 	jobLogs           *joblog.Store
-	ephemeralTasks    *sqlitestate.Store
-	ephemeralTasksDir string
+	ephemeralState    *sqlitestate.Store
+	ephemeralStateDir string
 	journal           *workspacejournal.Manager
 	journalRecovery   workspacejournal.Recovery
 }
@@ -84,11 +78,11 @@ type securityBundle struct {
 }
 
 type observabilityBundle struct {
-	metrics       *telemetry.Metrics
-	metricsPath   string
-	logger        *slog.Logger
-	logFile       *os.File
-	observability observationSession
+	metrics     *telemetry.Metrics
+	metricsPath string
+	logger      *slog.Logger
+	logFile     *os.File
+	traces      traceSession
 }
 
 type runtimeBundle struct {

@@ -1,11 +1,13 @@
 package trace_test
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
 )
 
 // clock is the injected time source. Latency assertions have to be exact, and a
@@ -63,6 +65,16 @@ func TestRecorderNestsSpansUnderTheTurn(t *testing.T) {
 	}
 	_ = call
 	_ = approval
+}
+
+func TestRecorderPropagatesLocalSpanContextWithoutExporter(t *testing.T) {
+	recorder := trace.NewRecorder(newClock().now)
+	root := recorder.Start(trace.NameTurn, 0, nil)
+	ctx := recorder.Context(context.Background(), root.ID())
+	link, ok := tracecontext.Current(ctx)
+	if !ok || len(link.TraceID) != 32 || len(link.SpanID) != 16 {
+		t.Fatalf("trace context = %+v, present=%v", link, ok)
+	}
 }
 
 // TestLatencySumsEachPhase is the receipt's arithmetic. Provider time adds up

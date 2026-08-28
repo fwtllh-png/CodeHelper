@@ -27,7 +27,7 @@ func newPlatformBackend(options sandbox.Options) (sandbox.Backend, error) {
 	return sandbox.NewPlatformBackend(options)
 }
 
-func openOrchestrationStore(
+func openRuntimeStateStore(
 	ctx context.Context,
 	persistent *state.Store,
 	workspace string,
@@ -48,12 +48,12 @@ func openOrchestrationStore(
 			return nil, nil, "", err
 		}
 	} else {
-		dir, err = os.MkdirTemp("", "codehelper-orchestration-")
+		dir, err = os.MkdirTemp("", "codehelper-state-")
 		if err != nil {
 			return nil, nil, "", err
 		}
 	}
-	store, err := sqlitestate.Open(ctx, filepath.Join(dir, "tasks-ephemeral.db"))
+	store, err := sqlitestate.Open(ctx, filepath.Join(dir, "runtime-state.db"))
 	if err != nil {
 		if !workspaceScoped {
 			_ = os.RemoveAll(dir)

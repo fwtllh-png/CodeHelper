@@ -5,14 +5,13 @@ package tracecontext
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
-
-	"github.com/fwtllh-png/CodeHelper/internal/observability/observation"
-	"go.opentelemetry.io/otel/propagation"
-	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -22,6 +21,11 @@ const (
 	EnvironmentTraceState  = "TRACESTATE"
 )
 
+var (
+	simpleStateKey = regexp.MustCompile(`^[a-z][a-z0-9_\-*/]{0,255}$`)
+	tenantStateKey = regexp.MustCompile(`^[a-z0-9][a-z0-9_\-*/]{0,240}@[a-z][a-z0-9_\-*/]{0,13}$`)
+)
+
 type Link struct {
 	TraceID    string `json:"trace_id"`
 	SpanID     string `json:"span_id"`
@@ -29,118 +33,86 @@ type Link struct {
 	TraceFlags byte   `json:"trace_flags,omitempty"`
 }
 
+type linkKey struct{}
+
 func NewRoot(ctx context.Context) (context.Context, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	parent := oteltrace.SpanContextFromContext(ctx)
-	traceID := parent.TraceID()
-	if !traceID.IsValid() {
+	parent, _ := Current(ctx)
+	traceID := parent.TraceID
+	if traceID == "" {
 		var err error
-		traceID, err = newTraceID()
-		if err != nil {
-			return ctx, err
+		if traceID, err = randomHex(16); err != nil {
+			return ctx, fmt.Errorf("generate trace id: %w", err)
 		}
 	}
-	spanID, err := newSpanID()
+	spanID, err := randomHex(8)
 	if err != nil {
-		return ctx, err
+		return ctx, fmt.Errorf("generate span id: %w", err)
 	}
-	state := parent.TraceState()
-	flags := parent.TraceFlags()
-	if !parent.IsValid() {
-		flags = oteltrace.FlagsSampled
+	flags := parent.TraceFlags
+	if parent.TraceID == "" {
+		flags = 1
 	}
-	current := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
+	return context.WithValue(ctx, linkKey{}, Link{
 		TraceID: traceID, SpanID: spanID,
-		TraceFlags: flags, TraceState: state,
-	})
-	return oteltrace.ContextWithSpanContext(ctx, current), nil
+		TraceState: parent.TraceState, TraceFlags: flags,
+	}), nil
 }
 
-func Child(ctx context.Context) (context.Context, error) {
-	return NewRoot(ctx)
-}
+func Child(ctx context.Context) (context.Context, error) { return NewRoot(ctx) }
 
 func Current(ctx context.Context) (Link, bool) {
 	if ctx == nil {
 		return Link{}, false
 	}
-	current := oteltrace.SpanContextFromContext(ctx)
-	if !current.IsValid() {
+	link, ok := ctx.Value(linkKey{}).(Link)
+	if !ok || validateLink(link) != nil {
 		return Link{}, false
 	}
-	return Link{
-		TraceID:    current.TraceID().String(),
-		SpanID:     current.SpanID().String(),
-		TraceState: current.TraceState().String(),
-		TraceFlags: byte(current.TraceFlags()),
-	}, true
+	return link, true
 }
 
-func WithLink(
-	ctx context.Context,
-	link Link,
-	remote bool,
-) (context.Context, error) {
-	traceID, err := oteltrace.TraceIDFromHex(link.TraceID)
-	if err != nil || !traceID.IsValid() {
-		return ctx, errors.New("trace context trace id is invalid")
+func WithLink(ctx context.Context, link Link, _ bool) (context.Context, error) {
+	if err := validateLink(link); err != nil {
+		return ctx, err
 	}
-	spanID, err := oteltrace.SpanIDFromHex(link.SpanID)
-	if err != nil || !spanID.IsValid() {
-		return ctx, errors.New("trace context span id is invalid")
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	state, err := oteltrace.ParseTraceState(link.TraceState)
-	if err != nil {
-		return ctx, fmt.Errorf("trace context tracestate: %w", err)
-	}
-	current := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
-		TraceID: traceID, SpanID: spanID,
-		TraceFlags: oteltrace.TraceFlags(link.TraceFlags),
-		TraceState: state, Remote: remote,
-	})
-	return oteltrace.ContextWithSpanContext(ctx, current), nil
+	return context.WithValue(ctx, linkKey{}, link), nil
 }
 
 func InjectHTTP(ctx context.Context, header http.Header) bool {
-	if header == nil {
+	link, ok := Current(ctx)
+	if header == nil || !ok {
 		return false
 	}
-	if _, ok := Current(ctx); !ok {
-		return false
+	header.Set(HeaderTraceParent,
+		fmt.Sprintf("00-%s-%s-%02x", link.TraceID, link.SpanID, link.TraceFlags))
+	if link.TraceState == "" {
+		header.Del(HeaderTraceState)
+	} else {
+		header.Set(HeaderTraceState, link.TraceState)
 	}
-	propagation.TraceContext{}.Inject(
-		ctx,
-		propagation.HeaderCarrier(header),
-	)
 	return true
 }
 
-func ExtractHTTP(
-	ctx context.Context,
-	header http.Header,
-) (context.Context, error) {
-	traceParent := headerValue(header, HeaderTraceParent)
-	if header == nil || strings.TrimSpace(traceParent) == "" {
+func ExtractHTTP(ctx context.Context, header http.Header) (context.Context, error) {
+	parent := strings.TrimSpace(headerValue(header, HeaderTraceParent))
+	if parent == "" {
 		return ctx, nil
 	}
-	traceState := headerValue(header, HeaderTraceState)
-	if err := validateTraceState(traceState); err != nil {
+	link, err := parseTraceParent(parent)
+	if err != nil {
 		return ctx, err
 	}
-	carrier := make(http.Header, 2)
-	carrier.Set(HeaderTraceParent, traceParent)
-	carrier.Set(HeaderTraceState, traceState)
-	extracted := propagation.TraceContext{}.Extract(
-		ctx,
-		propagation.HeaderCarrier(carrier),
-	)
-	current := oteltrace.SpanContextFromContext(extracted)
-	if !current.IsValid() {
-		return ctx, errors.New("traceparent is invalid")
+	link.TraceState = strings.TrimSpace(headerValue(header, HeaderTraceState))
+	if err := validateTraceState(link.TraceState); err != nil {
+		return ctx, err
 	}
-	return extracted, nil
+	return WithLink(ctx, link, true)
 }
 
 func headerValue(header http.Header, name string) string {
@@ -150,31 +122,30 @@ func headerValue(header http.Header, name string) string {
 	if value := header.Get(name); value != "" {
 		return value
 	}
-	values := header[name]
-	if len(values) == 0 {
-		return ""
+	if values := header[name]; len(values) != 0 {
+		return values[0]
 	}
-	return values[0]
+	return ""
 }
 
 func InjectMap(ctx context.Context, target map[string]string) bool {
 	if target == nil {
 		return false
 	}
-	if _, ok := Current(ctx); !ok {
+	header := make(http.Header, 2)
+	if !InjectHTTP(ctx, header) {
 		return false
 	}
-	propagation.TraceContext{}.Inject(
-		ctx,
-		propagation.MapCarrier(target),
-	)
+	target[HeaderTraceParent] = header.Get(HeaderTraceParent)
+	if state := header.Get(HeaderTraceState); state != "" {
+		target[HeaderTraceState] = state
+	} else {
+		delete(target, HeaderTraceState)
+	}
 	return true
 }
 
-func ExtractMap(
-	ctx context.Context,
-	source map[string]string,
-) (context.Context, error) {
+func ExtractMap(ctx context.Context, source map[string]string) (context.Context, error) {
 	header := make(http.Header, 2)
 	if source != nil {
 		header.Set(HeaderTraceParent, source[HeaderTraceParent])
@@ -188,27 +159,54 @@ func Environment(ctx context.Context) []string {
 	if !InjectMap(ctx, values) {
 		return nil
 	}
-	result := []string{
-		EnvironmentTraceParent + "=" + values[HeaderTraceParent],
-	}
+	result := []string{EnvironmentTraceParent + "=" + values[HeaderTraceParent]}
 	if values[HeaderTraceState] != "" {
-		result = append(
-			result,
-			EnvironmentTraceState+"="+values[HeaderTraceState],
-		)
+		result = append(result, EnvironmentTraceState+"="+values[HeaderTraceState])
 	}
 	return result
 }
 
-func ToObservation(ctx context.Context) *observation.TraceContext {
-	link, ok := Current(ctx)
-	if !ok {
-		return nil
+func parseTraceParent(value string) (Link, error) {
+	if len(value) != 55 || value[2] != '-' || value[35] != '-' || value[52] != '-' ||
+		value[:2] != "00" || !validID(value[3:35], 32) || !validID(value[36:52], 16) {
+		return Link{}, errors.New("traceparent is invalid")
 	}
-	return &observation.TraceContext{
-		TraceID: link.TraceID, SpanID: link.SpanID,
-		TraceFlags: link.TraceFlags, TraceState: link.TraceState,
+	flags, err := strconv.ParseUint(value[53:], 16, 8)
+	if err != nil || strings.ToLower(value[53:]) != value[53:] {
+		return Link{}, errors.New("traceparent is invalid")
 	}
+	return Link{
+		TraceID: value[3:35], SpanID: value[36:52], TraceFlags: byte(flags),
+	}, nil
+}
+
+func validateLink(link Link) error {
+	if !validID(link.TraceID, 32) {
+		return errors.New("trace context trace id is invalid")
+	}
+	if !validID(link.SpanID, 16) {
+		return errors.New("trace context span id is invalid")
+	}
+	if err := validateTraceState(link.TraceState); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validID(value string, size int) bool {
+	if len(value) != size || strings.ToLower(value) != value {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	if err != nil {
+		return false
+	}
+	for _, item := range decoded {
+		if item != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func validateTraceState(value string) error {
@@ -218,30 +216,39 @@ func validateTraceState(value string) error {
 	if value == "" {
 		return nil
 	}
-	if _, err := oteltrace.ParseTraceState(value); err != nil {
-		return fmt.Errorf("tracestate is invalid: %w", err)
+	members := strings.Split(value, ",")
+	if len(members) > 32 {
+		return errors.New("tracestate has too many members")
+	}
+	seen := make(map[string]struct{}, len(members))
+	for _, member := range members {
+		key, item, ok := strings.Cut(strings.TrimSpace(member), "=")
+		validKey := simpleStateKey.MatchString(key) || tenantStateKey.MatchString(key)
+		validValue := item != "" && len(item) <= 256 && item[len(item)-1] != ' '
+		for _, char := range item {
+			validValue = validValue && char >= 0x20 && char <= 0x7e &&
+				char != ',' && char != '='
+		}
+		if !ok || !validKey || !validValue {
+			return errors.New("tracestate is invalid")
+		}
+		if _, duplicate := seen[key]; duplicate {
+			return errors.New("tracestate contains duplicate keys")
+		}
+		seen[key] = struct{}{}
 	}
 	return nil
 }
 
-func newTraceID() (oteltrace.TraceID, error) {
-	var value oteltrace.TraceID
-	if _, err := rand.Read(value[:]); err != nil {
-		return value, fmt.Errorf("generate trace id: %w", err)
+func randomHex(bytes int) (string, error) {
+	for {
+		value := make([]byte, bytes)
+		if _, err := rand.Read(value); err != nil {
+			return "", err
+		}
+		encoded := hex.EncodeToString(value)
+		if validID(encoded, bytes*2) {
+			return encoded, nil
+		}
 	}
-	if !value.IsValid() {
-		return newTraceID()
-	}
-	return value, nil
-}
-
-func newSpanID() (oteltrace.SpanID, error) {
-	var value oteltrace.SpanID
-	if _, err := rand.Read(value[:]); err != nil {
-		return value, fmt.Errorf("generate span id: %w", err)
-	}
-	if !value.IsValid() {
-		return newSpanID()
-	}
-	return value, nil
 }

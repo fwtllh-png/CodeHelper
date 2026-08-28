@@ -375,7 +375,6 @@ func (runtimeModule) Build(
 			ProfileCapabilities: state.agent.profileCapabilities,
 			ProfileModels:       state.agent.profileModels,
 			SessionWorkspaces:   session.chatWorkspaces,
-			SkipRuntimeRecovery: state.options.RuntimeRole == RuntimeRoleWorker,
 		})
 		if err != nil {
 			return fmt.Errorf("create persistent runtime: %w", err)
@@ -386,7 +385,7 @@ func (runtimeModule) Build(
 			Engine:        state.agent.threads,
 			WorkspaceRoot: state.config.execution.Workspace,
 			ContentStore:  session.content,
-			Orchestration: state.orchestration.workGraph, Observability: runtimeObservability(state),
+			Observability: runtimeObservability(state),
 		})
 		if err != nil {
 			return fmt.Errorf("prepare runtime: %w", err)

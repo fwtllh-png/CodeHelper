@@ -742,7 +742,6 @@ func prepareWebRuntime(
 		PersistentStore:   store,
 		CredentialControl: credentialControl,
 		WorkspaceIdentity: workspaceIdentity,
-		RuntimeRole:       wire.RuntimeRoleInteractive,
 		Extensions:        extensionOptions,
 		ModelMetadata:     setupModelMetadata(selection),
 	})
@@ -825,7 +824,7 @@ func prepareWebRuntime(
 			ProviderCatalog:   application.ProviderCatalog(),
 			ModelCatalog:      application.ModelCatalog(), Connection: connection,
 			MCPHealth:   application.MCPHealth,
-			Diagnostics: stderr, Tasks: repositories.Tasks, Usage: repositories.Usage,
+			Diagnostics: stderr, Usage: repositories.Usage,
 			Agents: application.Subagents(), Extensions: extensions.Plane,
 			SessionWorkspaces: application.SessionWorkspaces(),
 			Workspace:         application.WorkspaceQuery(),

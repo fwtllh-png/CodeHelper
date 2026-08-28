@@ -890,12 +890,6 @@ describe("projectTranscript", () => {
 
   it("renders detailed activity artifacts and extension controls", async () => {
     const value = snapshot();
-    value.tasks = [{
-      id: "task-1",
-      kind: "verification",
-      state: "failed",
-      failure_reason: "tests failed"
-    }];
     value.agents = [{
       id: "agent-1",
       role: "reviewer",
@@ -963,7 +957,6 @@ describe("projectTranscript", () => {
     expect(screen.getByLabelText("Usage").textContent).toContain(
       "Turns2Calls3Tokens144"
     );
-    expect(screen.getAllByText("tests failed").length).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByText("reviewing diff").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Implement the verified change")).toBeTruthy();
     expect(screen.getByText("Before implementation")).toBeTruthy();
@@ -2456,7 +2449,6 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
       guarded: true
     }],
     checkpoints: [],
-    tasks: [],
     agents: [],
     extensions: [],
     tracePhase: "idle",
@@ -2595,7 +2587,6 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
       throw new Error("image not configured");
     }),
     downloadWorkspaceContent: vi.fn(async () => new Blob()),
-    exportTrace: vi.fn(async () => new Blob()),
     workspaceDiff: vi.fn(async () => ({
       session_id: "session",
       thread_id: "thread",

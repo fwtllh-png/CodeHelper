@@ -33,7 +33,7 @@ last_verified: null
 
 CodeHelper 同时是：
 
-1. 被 Web、Worker 与 Orchestration 共享的**本地受治理 Coding Agent Runtime**；
+1. 被 Web、主 Agent 与 Subagent 共享的**本地受治理 Coding Agent Runtime**；
 2. 所有结论都连接同一套 Source、Test、Fixture、Failure Mode 的**可执行 Agent 工程
    知识书籍**。
 
@@ -75,7 +75,7 @@ Source 与 Execution 留在 Workspace；Network Access 显式，Listening Servic
 
 ### 一个 Runtime，一个产品 Host
 
-Web、Worker、Child Agent 共享 Operation/Event；Web 是唯一产品 Host。
+Web、主 Agent 与 Child Agent 共享 Operation/Event；Web 是唯一产品 Host。
 
 ### Evidence 优先
 
@@ -100,7 +100,7 @@ flowchart TB
     R --> M[Model / Provider Routing]
     R --> T[Governed Tools]
     R --> D[Durable State / Evidence]
-    R --> O[Tasks / Workflows / Subagents]
+    R --> O[Plan / Subagents / Worktrees]
     T --> S[Policy / Approval / Journal / Sandbox]
 ```
 

@@ -8,27 +8,18 @@ prerequisites:
   - model-stream-reasoning-usage
   - context-quality
 code_paths:
-  - internal/observability/observation
-  - internal/observability/router
   - internal/observability/trace
   - internal/observability/tracecontext
   - internal/observability/usage
   - internal/observability/telemetry
-  - internal/observability/otel
   - internal/runtime/agent/turnkernel
 test_paths:
-  - internal/observability/observation/envelope_test.go
-  - internal/observability/router/router_test.go
   - internal/observability/trace/trace_test.go
   - internal/observability/trace/rollup_test.go
-  - internal/observability/otel/projector_test.go
   - internal/runtime/agent/turnkernel/measurement_test.go
   - internal/observability/usage/repository_test.go
 source_of_truth:
-  - internal/observability/observation/envelope.go
-  - internal/observability/router/router.go
   - internal/observability/trace/trace.go
-  - internal/observability/otel/projector.go
   - internal/runtime/agent/turnkernel/measurement.go
   - internal/observability/usage/repository.go
 status: verified
@@ -39,10 +30,10 @@ last_verified: 2026-08-17
 
 ## 学习目标
 
-理解版本化 Observation、冻结终态 Measurement、Phase Span、Multi-sample Usage、
-W3C Propagation、Pricing Provenance 与有界 OTLP Projection。
+理解冻结终态 Measurement、Phase Span、Multi-sample Usage、W3C Propagation 与
+Pricing Provenance。
 
-## Observation Model
+## Measurement Model
 
 ```mermaid
 flowchart LR
@@ -53,8 +44,6 @@ flowchart LR
     P --> L[Latency Partition]
     U[Usage per Call/Sample] --> A[SQLite Aggregate]
     A --> C[Cost Rollup]
-    O[Observation Envelope] --> J[Observation Router / Journal]
-    J --> X[Semantic Graph / OTLP]
     L --> R
     C --> R
 ```
@@ -82,37 +71,21 @@ Envelope 都投影同一 Snapshot，不能在终态决定后再次采样 Mutable
 Missing Usage、Unknown Price 与 Absent Latency 保持 Unknown。Tool-side Model Usage
 进入同一 Domain Fact，而不是由 Observability 路径事后补加。
 
-## Observation Envelope 与 Routing
+## W3C Trace Context
 
-每条获准 Observation 包含 Schema Version、稳定 Observation ID、Sequence、
-Runtime/Domain Identity、可选 Trace/Span/Parent ID、Causality Link、Data Policy、
-有界 Summary 与可选 CAS Payload Reference。
-`internal/observability/schema/observation_traits.json` 生成的 Trait 定义 Owner、
-Durability、必需 Correlation、Retention Class、Priority 与 OTLP Mapping。
-
-Privacy Admission 先于 Journal/CAS Persistence。Critical Evidence 同步写入；Normal 与
-Bulk Evidence 使用有界 Queue。Capture 默认只保留 Metadata。Writer、Queue 与 Exporter
-Failure 通过 Admission Receipt 或 `Flush`/`Shutdown` 暴露，但绝不改变业务 Turn
-Result。
-
-## W3C Trace Context 与 OTLP
-
-W3C `traceparent`/`tracestate` 跨 Provider HTTP、MCP HTTP/stdio、Process、Workflow 与
+W3C `traceparent`/`tracestate` 跨 Provider HTTP、MCP HTTP/stdio、Process 与
 Subagent 传播。Malformed 或 All-zero Context 在解析边界 Fail Closed。
 
-OTLP Projector 支持 In-memory、HTTP/protobuf 与 gRPC Exporter。Span Attribute 与
-Metric Label 来自固定低基数 Allowlist；Path、Prompt、Tool Argument、Resource ID 与
-Raw Error 不会成为 Metric Label。Export Queue 有界，`Flush`/`Shutdown` 不会把执行
-权威转交给 Telemetry。
+CodeHelper 不提供 OTLP Exporter。W3C Context 仅用于跨组件关联本地 Trace，不能授权
+执行或恢复。
 
-## Observation Type 与 Cardinality
+## Signal Type 与 Cardinality
 
 | Signal | Identity/Cardinality | Suitable Use |
 | --- | --- | --- |
 | Metric | Bounded Label/Counter | Health/Rate/Saturation |
 | Log | Timestamp + Structured Field | Sanitized Diagnosis |
 | Span | Turn/Parent/Phase ID | Causal Timing |
-| Observation | Stable ID/Sequence + Domain Correlation | 脱敏因果证据 |
 | Usage Row | Turn/Call/Sample/Purpose/Route | Accounting |
 | Receipt | One Terminal Turn Projection | User-facing Audit |
 
@@ -143,17 +116,15 @@ Actual Route 解释 Spend 来源。
 - Unknown Pricing 不变成 Known Cost。
 - Raw Secret 不进入 Log/Attribute。
 - Receipt、Trace 与 Terminal Envelope 必须共享同一 Measurement Digest。
-- Exporter Failure 不能改变 Completed/Failed/Canceled Turn Outcome。
+- Trace 或 Metrics Failure 不能改变 Completed/Failed/Canceled Turn Outcome。
 - High-cardinality/Sensitive Field 不能成为 Metric Label。
 
 ## 测试与验证
 
 ```bash
-go test ./internal/observability/observation ./internal/observability/router
 go test ./internal/observability/trace ./internal/observability/tracecontext
 go test ./internal/observability/usage
 go test ./internal/observability/telemetry
-go test ./internal/observability/otel
 go test ./internal/runtime/agent/turnkernel
 ```
 

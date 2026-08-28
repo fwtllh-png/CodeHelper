@@ -7,7 +7,7 @@ This file is the repository entry point for coding agents.
 ## Objective
 
 Maintain CodeHelper as one local, guarded coding-agent runtime exposed through
-Web and shared by workers and orchestration.
+Web and shared by the main agent and subagents.
 
 ## Read Before Editing
 

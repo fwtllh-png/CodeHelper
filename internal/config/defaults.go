@@ -73,12 +73,6 @@ func Defaults() Config {
 				Workspace: SubagentWorkspaceAuto,
 			},
 
-			Worker: Worker{
-				MaxParallel: 2, MaxAttempts: 1, Lease: 30 * time.Second,
-				ClaimInterval: time.Second, AutomationInterval: 30 * time.Second,
-				RetryBackoff: 15 * time.Second, RetryBackoffMax: 10 * time.Minute,
-			},
-
 			Journal: Journal{Durable: true, RecoverOnStart: true},
 		},
 	}

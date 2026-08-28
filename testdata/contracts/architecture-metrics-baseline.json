@@ -3,89 +3,12 @@
   "requirement_id": "ARCH-RATCHET-001",
   "targets": [
     {
-      "id": "orchestration_task_package",
-      "kind": "package",
-      "path": "internal/orchestration/task",
-      "limits": {
-        "internal_fanout": 8,
-        "production_lines": 1869,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "orchestration_worker_package",
-      "kind": "package",
-      "path": "internal/orchestration/worker",
-      "limits": {
-        "internal_fanout": 3,
-        "production_lines": 551,
-        "options_fields": 16,
-        "mutex_fields": 1
-      }
-    },
-    {
-      "id": "orchestration_automation_package",
-      "kind": "package",
-      "path": "internal/orchestration/automation",
-      "limits": {
-        "internal_fanout": 6,
-        "production_lines": 1084,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "orchestration_model_package",
-      "kind": "package",
-      "path": "internal/orchestration/model",
-      "limits": {
-        "internal_fanout": 1,
-        "production_lines": 531,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "orchestration_kernel_package",
-      "kind": "package",
-      "path": "internal/orchestration/kernel",
-      "limits": {
-        "internal_fanout": 2,
-        "production_lines": 980,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "orchestration_store_package",
-      "kind": "package",
-      "path": "internal/orchestration/store",
-      "limits": {
-        "internal_fanout": 5,
-        "production_lines": 748,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "orchestration_workflow_package",
-      "kind": "package",
-      "path": "internal/orchestration/workflow",
-      "limits": {
-        "internal_fanout": 5,
-        "production_lines": 1976,
-        "options_fields": 13,
-        "mutex_fields": 2
-      }
-    },
-    {
       "id": "orchestration_subagent_package",
       "kind": "package",
       "path": "internal/orchestration/subagent",
       "limits": {
-        "internal_fanout": 7,
-        "production_lines": 4452,
+        "internal_fanout": 5,
+        "production_lines": 4126,
         "options_fields": 8,
         "mutex_fields": 3
       }
@@ -95,7 +18,7 @@
       "kind": "package",
       "path": "internal/runtime/app/eventhub",
       "limits": {
-        "internal_fanout": 4,
+        "internal_fanout": 3,
         "production_lines": 814,
         "options_fields": 0,
         "mutex_fields": 2
@@ -108,50 +31,6 @@
       "limits": {
         "internal_fanout": 0,
         "production_lines": 320,
-        "options_fields": 0,
-        "mutex_fields": 1
-      }
-    },
-    {
-      "id": "orchestration_fairqueue_package",
-      "kind": "package",
-      "path": "internal/orchestration/fairqueue",
-      "limits": {
-        "internal_fanout": 0,
-        "production_lines": 128,
-        "options_fields": 0,
-        "mutex_fields": 1
-      }
-    },
-    {
-      "id": "orchestration_projection_package",
-      "kind": "package",
-      "path": "internal/orchestration/projection",
-      "limits": {
-        "internal_fanout": 2,
-        "production_lines": 139,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "orchestration_fleet_package",
-      "kind": "package",
-      "path": "internal/orchestration/fleet",
-      "limits": {
-        "internal_fanout": 5,
-        "production_lines": 371,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "orchestration_lane_package",
-      "kind": "package",
-      "path": "internal/orchestration/lane",
-      "limits": {
-        "internal_fanout": 1,
-        "production_lines": 477,
         "options_fields": 0,
         "mutex_fields": 1
       }
@@ -329,10 +208,10 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 71,
-        "production_lines": 8775,
-        "options_fields": 64,
-        "mutex_fields": 7
+        "internal_fanout": 65,
+        "production_lines": 7463,
+        "options_fields": 62,
+        "mutex_fields": 6
       }
     },
     {
@@ -351,8 +230,8 @@
       "kind": "package",
       "path": "internal/runtime/app/extension",
       "limits": {
-        "internal_fanout": 18,
-        "production_lines": 2087,
+        "internal_fanout": 17,
+        "production_lines": 2039,
         "options_fields": 0,
         "mutex_fields": 3
       }
@@ -428,41 +307,8 @@
       "kind": "package",
       "path": "internal/observability/tracecontext",
       "limits": {
-        "internal_fanout": 1,
+        "internal_fanout": 0,
         "production_lines": 257,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "observability_otel_package",
-      "kind": "package",
-      "path": "internal/observability/otel",
-      "limits": {
-        "internal_fanout": 1,
-        "production_lines": 1001,
-        "options_fields": 5,
-        "mutex_fields": 3
-      }
-    },
-    {
-      "id": "observability_privacy_package",
-      "kind": "package",
-      "path": "internal/observability/privacy",
-      "limits": {
-        "internal_fanout": 2,
-        "production_lines": 241,
-        "options_fields": 3,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "observability_retention_package",
-      "kind": "package",
-      "path": "internal/observability/retention",
-      "limits": {
-        "internal_fanout": 3,
-        "production_lines": 139,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -472,8 +318,8 @@
       "kind": "package",
       "path": "internal/runtime/app/persistence",
       "limits": {
-        "internal_fanout": 12,
-        "production_lines": 725,
+        "internal_fanout": 11,
+        "production_lines": 660,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -496,17 +342,6 @@
       "limits": {
         "lines": 28,
         "max_function_lines": 14
-      }
-    },
-    {
-      "id": "orchestration_contributor_package",
-      "kind": "package",
-      "path": "internal/adapter/extension/orchestration",
-      "limits": {
-        "internal_fanout": 6,
-        "production_lines": 44,
-        "options_fields": 5,
-        "mutex_fields": 0
       }
     },
     {
@@ -536,10 +371,10 @@
       "kind": "package",
       "path": "internal/runtime/app",
       "limits": {
-        "internal_fanout": 20,
-        "production_lines": 6797,
-        "options_fields": 23,
-        "mutex_fields": 10
+        "internal_fanout": 17,
+        "production_lines": 6462,
+        "options_fields": 21,
+        "mutex_fields": 9
       }
     },
     {
@@ -568,7 +403,7 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6999,
+        "production_lines": 6405,
         "options_fields": 0,
         "mutex_fields": 0
       }
@@ -578,7 +413,7 @@
       "kind": "file",
       "path": "internal/runtime/app/runtime.go",
       "limits": {
-        "lines": 2265,
+        "lines": 2255,
         "max_function_lines": 119
       }
     },
@@ -632,8 +467,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_orchestration.go",
       "limits": {
-        "lines": 38,
-        "max_function_lines": 30
+        "lines": 32,
+        "max_function_lines": 24
       }
     },
     {
@@ -731,17 +566,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/orchestration_components.go",
       "limits": {
-        "lines": 208,
+        "lines": 142,
         "max_function_lines": 84
-      }
-    },
-    {
-      "id": "wire_scheduler_factory_file",
-      "kind": "file",
-      "path": "internal/runtime/app/wire/scheduler_factory.go",
-      "limits": {
-        "lines": 108,
-        "max_function_lines": 62
       }
     },
     {
@@ -883,7 +709,7 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 23,
+        "event_switch_sites": 20,
         "runtime_package_dirs": 19,
         "runtime_one_file_packages": 6,
         "runtime_agent_package_dirs": 6,
@@ -940,6 +766,22 @@
     "adapter_extension_plugin_package": "Plugin capability projection was removed with the Plugin system.",
     "persist_extensionlifecycle_package": "The Plugin effect-lifecycle persistence package was removed.",
     "runtime_app_extension_lifecycle_file": "The shared effect lifecycle existed only for Plugin capabilities and was removed.",
-    "persist_extensionlifecycle_store_file": "Plugin capability lifecycle receipts are no longer produced."
+    "persist_extensionlifecycle_store_file": "Plugin capability lifecycle receipts are no longer produced.",
+    "orchestration_task_package": "The background task repository and execution projection were removed.",
+    "orchestration_worker_package": "The durable worker claim and lease loop was removed.",
+    "orchestration_automation_package": "The in-process automation scheduler was removed.",
+    "orchestration_model_package": "The WorkGraph run, node, attempt, and effect model was removed.",
+    "orchestration_kernel_package": "The durable WorkGraph state machine was removed.",
+    "orchestration_store_package": "The WorkGraph transactional store was removed.",
+    "orchestration_workflow_package": "The internal workflow DAG and JavaScript runtime were removed.",
+    "orchestration_fairqueue_package": "The background worker fair queue was removed.",
+    "orchestration_projection_package": "The WorkGraph read projection was removed.",
+    "orchestration_fleet_package": "The background fleet projection was removed.",
+    "orchestration_lane_package": "The background execution lane abstraction was removed.",
+    "orchestration_contributor_package": "Task and automation model tools were removed.",
+    "wire_scheduler_factory_file": "The background worker scheduler factory was removed.",
+    "observability_otel_package": "The Observation-to-OTLP projection and remote exporters were removed.",
+    "observability_privacy_package": "The Observation payload capture policy was removed with the independent evidence plane.",
+    "observability_retention_package": "Observation payload retention was removed with the independent evidence plane."
   }
 }

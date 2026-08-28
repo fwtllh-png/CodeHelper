@@ -1,28 +1,10 @@
 package app
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
-
-func (r StartTurnHandler) observeRecovery(
-	ctx context.Context,
-	resumeID protocol.OperationID,
-	payload *protocol.StartTurnPayload,
-) {
-	if payload.Recovery == nil {
-		return
-	}
-	r.opts.Observability.Runtime.ObserveRecovery(
-		ctx,
-		payload.ThreadID,
-		payload.TurnID,
-		resumeID,
-		payload.Recovery.SourceTurnID,
-	)
-}
 
 func (r StartTurnHandler) validateStart(payload *protocol.StartTurnPayload) error {
 	if payload.Idle {

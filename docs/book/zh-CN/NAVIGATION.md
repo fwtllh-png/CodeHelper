@@ -26,7 +26,7 @@
 - [从 Chatbot 到 Agent](./01-agent-engineering/01-from-chatbot-to-agent.md) — `agent-from-chatbot-to-agent` — `draft` — 规划路径: `01-agent-engineering/01-from-chatbot-to-agent.md`
 - [LLM、Token、Context Window 与 Sampling](./01-agent-engineering/02-llm-token-and-context.md) — `agent-llm-token-context` — `draft` — 规划路径: `01-agent-engineering/02-llm-token-and-context.md`
 - [ReAct、Planning、Tool Calling 与 Reflection](./01-agent-engineering/03-react-planning-and-tools.md) — `agent-react-planning-tools` — `draft` — 规划路径: `01-agent-engineering/03-react-planning-and-tools.md`
-- [Agent、Workflow 与 Automation 的边界](./01-agent-engineering/04-agent-workflow-boundaries.md) — `agent-workflow-boundaries` — `draft` — 规划路径: `01-agent-engineering/04-agent-workflow-boundaries.md`
+- [Agent、Plan 与外部自动化的边界](./01-agent-engineering/04-agent-workflow-boundaries.md) — `agent-workflow-boundaries` — `draft` — 规划路径: `01-agent-engineering/04-agent-workflow-boundaries.md`
 - [为什么 Agent 需要受治理的 Runtime](./01-agent-engineering/05-why-governed-runtime.md) — `agent-why-governed-runtime` — `draft` — 规划路径: `01-agent-engineering/05-why-governed-runtime.md`
 
 ### 部分 2: 认识 CodeHelper
@@ -95,11 +95,11 @@
 
 ### 部分 9: Task 与编排
 
-- [Task、Worker 与 Executor](./09-task-orchestration/01-task-worker-executor.md) — `task-worker-executor` — `draft` — 规划路径: `09-task-orchestration/01-task-worker-executor.md`
-- [Lease、Heartbeat、Retry 与幂等性](./09-task-orchestration/02-lease-heartbeat-retry.md) — `task-lease-retry` — `verified` — 规划路径: `09-task-orchestration/02-lease-heartbeat-retry.md`
-- [Automation 与 Workflow](./09-task-orchestration/03-automation-and-workflow.md) — `task-automation-workflow` — `draft` — 规划路径: `09-task-orchestration/03-automation-and-workflow.md`
+- [前台任务与执行边界](./09-task-orchestration/01-task-worker-executor.md) — `task-worker-executor` — `draft` — 规划路径: `09-task-orchestration/01-task-worker-executor.md`
+- [Turn 生命周期、取消与幂等性](./09-task-orchestration/02-lease-heartbeat-retry.md) — `task-lease-retry` — `verified` — 规划路径: `09-task-orchestration/02-lease-heartbeat-retry.md`
+- [Plan 与 Subagent 协作](./09-task-orchestration/03-automation-and-workflow.md) — `task-automation-workflow` — `draft` — 规划路径: `09-task-orchestration/03-automation-and-workflow.md`
 - [Checkpoint 与恢复](./09-task-orchestration/04-checkpoint-and-recovery.md) — `task-checkpoint-recovery` — `verified` — 规划路径: `09-task-orchestration/04-checkpoint-and-recovery.md`
-- [Lane、Fleet 与调度](./09-task-orchestration/05-lane-fleet-scheduling.md) — `task-lane-fleet` — `verified` — 规划路径: `09-task-orchestration/05-lane-fleet-scheduling.md`
+- [前台并发与工作区隔离](./09-task-orchestration/05-lane-fleet-scheduling.md) — `task-lane-fleet` — `verified` — 规划路径: `09-task-orchestration/05-lane-fleet-scheduling.md`
 - [Subagent、Worktree 与拓扑关系](./09-task-orchestration/06-subagent-worktree-topology.md) — `task-subagent-worktree` — `draft` — 规划路径: `09-task-orchestration/06-subagent-worktree-topology.md`
 
 ### 部分 10: Host 与协议
@@ -134,8 +134,8 @@
 - [实现 Provider Adapter](./13-hands-on-labs/03-provider-adapter.md) — `lab-provider-adapter` — `draft` — 规划路径: `13-hands-on-labs/03-provider-adapter.md`
 - [实现通过 Guard 的 Tool](./13-hands-on-labs/04-governed-tool.md) — `lab-governed-tool` — `draft` — 规划路径: `13-hands-on-labs/04-governed-tool.md`
 - [构造 Approval 与 Denial](./13-hands-on-labs/05-approval-and-denial.md) — `lab-approval-denial` — `draft` — 规划路径: `13-hands-on-labs/05-approval-and-denial.md`
-- [构建可恢复 Workflow](./13-hands-on-labs/06-recoverable-workflow.md) — `lab-recoverable-workflow` — `verified` — 规划路径: `13-hands-on-labs/06-recoverable-workflow.md`
-- [调试 Worker Lease 与 Retry](./13-hands-on-labs/07-worker-lease-retry.md) — `lab-worker-retry` — `verified` — 规划路径: `13-hands-on-labs/07-worker-lease-retry.md`
+- [验证可恢复 Turn](./13-hands-on-labs/06-recoverable-workflow.md) — `lab-recoverable-workflow` — `verified` — 规划路径: `13-hands-on-labs/06-recoverable-workflow.md`
+- [调试 Subagent 超时与恢复](./13-hands-on-labs/07-worker-lease-retry.md) — `lab-worker-retry` — `verified` — 规划路径: `13-hands-on-labs/07-worker-lease-retry.md`
 - [完成 Web 端到端功能](./13-hands-on-labs/08-web-feature.md) — `lab-web-feature` — `draft` — 规划路径: `13-hands-on-labs/08-web-feature.md`
 - [从 Trace 复盘一次失败](./13-hands-on-labs/09-trace-failure.md) — `lab-trace-failure` — `verified` — 规划路径: `13-hands-on-labs/09-trace-failure.md`
 - [设计并验证新的 Agent 能力](./13-hands-on-labs/10-new-agent-capability.md) — `lab-new-capability` — `draft` — 规划路径: `13-hands-on-labs/10-new-agent-capability.md`

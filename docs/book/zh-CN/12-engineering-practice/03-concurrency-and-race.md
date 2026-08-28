@@ -12,7 +12,7 @@ code_paths:
   - internal/adapter/tool
 test_paths:
   - internal/runtime/app/runtime_test.go
-  - internal/orchestration/task/execution_test.go
+  - internal/orchestration/subagent/mailbox_concurrency_test.go
 source_of_truth:
   - Makefile
 status: draft
@@ -26,8 +26,7 @@ last_verified: null
 确定性构造 Interleaving，并正确理解 Race Detector 的证据边界。
 
 并发风险包括 Submit/Close、Strict Event Sequence、Unique Terminal、Tool Claim、
-Catalog Replace During Load、Lease Takeover、Automation Tick、CAS Lock、Hook State 与
-Child Budget。
+Catalog Replace During Load、Active Turn Fence、CAS Lock、Hook State 与 Child Budget。
 
 ```mermaid
 flowchart LR
@@ -46,9 +45,9 @@ flowchart LR
 | --- | --- |
 | Runtime Submit | Accepted Operation 的 Unique Sequence |
 | Tool Claim | Claim Table 的单一 Owner |
-| Task Claim | Transactional Queued-to-running Lease |
+| Active Turn | Thread/Turn Reservation Token |
 | Catalog Replace | Generation Compare-and-swap |
-| Automation Tick | Unique Automation/Slot Insert |
+| Child Budget | Durable Reservation Revision |
 | Event Append | Durable Sequence/Evidence Commit |
 
 Test 在该点前后 Pause，并强制 Competitor 进入同一 Window。既断言 Safety（无双 Owner/

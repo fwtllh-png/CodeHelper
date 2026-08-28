@@ -340,7 +340,7 @@ func (l *Lifecycle) Accept(
 			if err := acceptTurn(ctx, tx, operation, threadID, turnID, itemID, canonical, now); err != nil {
 				return err
 			}
-		} else if !protocol.IsWorkGraphOperation(operation.Kind) {
+		} else {
 			if err := acceptItem(ctx, tx, turnID, itemID, string(operation.Kind), canonical, now); err != nil {
 				return err
 			}

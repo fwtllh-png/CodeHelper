@@ -1,83 +1,74 @@
 ---
 id: lab-recoverable-workflow
-title: 构建可恢复 Workflow
+title: 验证可恢复 Turn
 audience:
   - contributor
 prerequisites:
   - task-automation-workflow
   - task-checkpoint-recovery
 code_paths:
-  - internal/orchestration/workflow
-  - internal/orchestration/kernel
-  - internal/orchestration/store
+  - internal/runtime/app
+  - internal/runtime/agent/turnkernel
+  - internal/persist/state/turnstate
 test_paths:
-  - internal/orchestration/workflow/workgraph_test.go
-  - internal/orchestration/store/store_test.go
+  - internal/runtime/app/runtime_test.go
+  - internal/runtime/app/wire/persistent_test.go
+  - internal/persist/state/turnstate/store_test.go
 source_of_truth:
-  - internal/orchestration/workflow/runtime.go
-  - internal/orchestration/store/store.go
+  - internal/runtime/app/runtime.go
+  - internal/runtime/app/runtime_start.go
+  - internal/runtime/agent/turnkernel/reducer.go
 status: verified
-last_verified: 2026-08-16
+last_verified: 2026-08-28
 ---
 
-# 构建可恢复 Workflow
+# 验证可恢复 Turn
 
 ## 目标与前置条件
 
-运行小型 DAG，在 Durable WorkGraph Settlement 后失败并恢复，避免重复已完成工作。
+验证 Runtime 在接受 Turn 后崩溃时，可以从持久化 Operation、Domain Fact 和 Terminal
+Outbox 恢复，而不会重复已经确认的副作用。
 
 ## 步骤
 
-1. 定义 Prepare、Execute、Verify 三个 Node。
-2. 每个成功 Node 通过 WorkGraph Settlement Command 持久化。
-3. 在 Verify 完成前注入确定性失败。
-4. 从 Ordered WorkGraph Facts 重建。
-5. Resume 并断言 Prepare/Execute 不重复。
+1. 使用持久化 State Store 构造 Runtime。
+2. 提交一个会进入 Tool 或交互等待状态的 Turn。
+3. 在终态提交前关闭 Runtime。
+4. 使用相同 State Store 重建 Runtime。
+5. 检查恢复后的 Turn 状态与事件序列。
+6. 再次提交同一 Idempotency Key，确认不会重复执行。
+
+## 运行
 
 ```bash
-go test ./internal/orchestration/workflow ./internal/orchestration/store
+go test ./internal/runtime/app -run 'Test.*Recover|Test.*Pending'
+go test ./internal/runtime/app/wire -run 'TestPersistent'
+go test ./internal/persist/state/turnstate
 ```
 
-## Crash-window Matrix
+## 必须检查的证据
 
-为每个 Node 增加 Durable Invocation Counter：
+- Operation 只有一个接受记录；
+- Domain Fact Sequence 连续；
+- Terminal Event 至多发布一次；
+- 重启后不会重复调用 Provider 或 Tool；
+- Workspace Journal 不留下未解释的写入；
+- Session 与 Thread Projection 可从持久事实重建。
 
-| Stop Point | Resume |
-| --- | --- |
-| Claim Commit 前 | Node 保持 Eligible |
-| Claim 后/Effect Bind 前 | 按 Lease/Epoch Policy 恢复 |
-| After Effect/Before Settle | 需 Idempotency/Journal，否则 Indeterminate |
-| Terminal Transaction 中 | Settlement 与 Outbox 同时 Commit 或 Rollback |
-| After Settlement | Reuse/Never Rerun |
+## 故障解释
 
-```bash
-go test ./internal/orchestration/workflow -run 'Test(DurableWorkGraph|NodeTimeout|SpecDrift)'
-go test ./internal/orchestration/store -run 'Test(StoreTerminalCommit|AuditDetects)'
-```
-
-## Graph-drift Control
-
-首个 Settlement 后修改 Dependency/Prompt，并用相同 Run ID Resume。Fingerprint Mismatch
-必须在 Node 执行前停止。记录前后的 Run/Node Status、Attempt、Output Handle、Counter。
-
-## 预期结果
-
-DAG 只推进 Ready Node；Failed Node 可诊断；Resume 使用同一个 Fact-replayed WorkGraph；
-Terminal State 唯一。
-
-## 失败诊断
-
-Execute 重复表示 Idempotency/Settlement 缺失；Graph 不兼容必须显式失败。
+如果事件重复，先检查 Terminal Outbox 的稳定 ID；如果 Turn 被重新执行，检查 Pending
+Operation 与 Domain Fact 的恢复顺序；如果工作区不一致，检查 Journal Recovery，而
+不是增加后台重试循环。
 
 ## 清理
 
-删除临时 State Directory，不复用 Run ID。
+测试使用临时目录，不应修改真实工作区。完成后运行：
 
-## 复习问题
-
-1. 哪个 Crash Window 需要 Effect-specific Recovery？
-2. Graph Drift 如何被检测？
-3. Missing Output 为什么不等于 Node 未执行？
+```bash
+git diff --check
+go test ./internal/runtime/app/... ./internal/persist/state/turnstate
+```
 
 ## 事实来源与验证
 
@@ -85,4 +76,4 @@ Execute 重复表示 Idempotency/Settlement 缺失；Graph 不兼容必须显式
 | --- | --- |
 | Catalog ID | `lab-recoverable-workflow` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-16 |
+| 最后验证 | 2026-08-28 |

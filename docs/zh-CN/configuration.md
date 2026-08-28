@@ -98,18 +98,6 @@ max_cost_usd = 0
 wall_time = "0s"                # 0 = 不设置子 Agent 执行 Lease
 workspace = "auto"           # auto | read_only | worktree | same_workspace_serialized
 
-[execution.worker]
-enabled = false
-max_parallel = 2
-max_attempts = 1
-lease = "30s"
-claim_interval = "1s"
-automation_interval = "30s"
-retry_backoff = "15s"
-retry_backoff_max = "10m"
-max_tokens = 0
-max_cost_usd = 0
-
 [context.index]
 enabled = true
 max_file_bytes = 1048576
@@ -203,7 +191,7 @@ DeepSeek 的默认值为 High，可选档位为 Off、Low、High、Max。未声�
 
 `delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
 `spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。
-`disabled` 对模型隐藏 Agent Lifecycle Tool，但保留内部授权的 Durable Worker 执行。
+`disabled` 对模型隐藏 Agent Lifecycle Tool。
 
 `spawn_agent` 从当前 Runtime Turn 自动捕获 Parent Context。`context_mode` 默认是
 `task_capsule`；`fresh` 不继承 Parent Context，`last_n_turns` 最多加入
@@ -281,12 +269,11 @@ Executor/Broker 生命周期负责，不能因为 Lease 到期而放弃回收。
 Token/Cost Ceiling，不会猜测半截 Tool Call，不会绕过 Content Filter，也不会在安全
 Compaction 后请求仍无法放入 Context 的 Sample。
 
-显式 `budget_tokens`、`budget_usd`、Subagent 或 Workflow Token/Cost Budget 耗尽时，
+显式 `budget_tokens`、`budget_usd` 或 Subagent Token/Cost Budget 耗尽时，
 Runtime 返回包含 Scope、资源类型和 Used/Limit 的结构化 `resource_exhausted` Fault。
 准入检查改用 Projected/Limit，避免把预留容量误报为已提交消耗。`resume_turn` 保留
-继续入口。Main Turn 保留可恢复状态，Workflow/后台 Task 进入 Durable
-`blocked`/`waiting`，Child 在提交新 Turn 前拒绝准入。预算未提高或补充前不会自动
-重试；恢复后不会重跑已完成的 WorkGraph Node 或已闭合 Tool Effect。
+继续入口。Main Turn 保留可恢复状态，Child 在提交新 Turn 前拒绝准入。预算未提高或
+补充前不会自动重试；恢复后不会重跑已闭合 Tool Effect。
 
 `execution.subagent.max_tokens` 与 `max_cost_usd` 是整棵 Agent Tree 的共享上限。
 `spawn_agent` 中的 `max_tokens` 或 `max_cost_usd` 是 resident Agent 跨初始 Turn 与
@@ -427,31 +414,10 @@ stdio MCP 配置示例：
 `host_trusted` 只承认位于外部 State Directory 的 Operator 配置。它表示 MCP Server
 当前以宿主进程权限运行，不表示 MCP Tool Call 绕过 Guard。
 
-## Observation Capture 与 Export
+## Telemetry
 
-`[telemetry].log_level` 控制结构化 Runtime Log。Observation Capture 与 OTLP Export
-属于进程级运维设置，不是 TOML Field：
-
-| 变量 | 取值 | 行为 |
-| --- | --- | --- |
-| `CODEHELPER_OBSERVATION_CAPTURE` | `off`、`metadata`、`failure`、`full` | 控制 Durable Observation Admission；默认为 `metadata` |
-| `CODEHELPER_OTEL_EXPORTER` | `memory`、`off`、`http/protobuf`、`grpc` | 选择 Observation OTLP Projector；未配置 Endpoint 时默认 `off` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector Endpoint | 使用标准 OTLP Endpoint 配置 |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` 或 `http/protobuf` | 配置 Endpoint 时选择标准 Protocol |
-
-`metadata` 只保留脱敏 Summary，并丢弃 Raw Payload。`failure` 仅为 Failure-like
-Observation 保留符合条件的脱敏 Payload。即使使用 `full`，Credential 与 Restricted
-Payload 仍会被拒绝；配置 Secret、State Path 与 Config Path 会在任何 Journal/CAS
-写入前脱敏，Workspace Root 也作为受限路径处理。
-
-Observation Payload Retention 与 `[state].event_retention` 不同。
-`event_retention` 按条数限制 Runtime Event History；Observation Payload Reference
-按内部时间类别管理：Audit/Diagnostic 默认 30 天，Sensitive 24 小时，Ephemeral
-1 小时。启动清理释放过期 Reference，只删除已无引用的 CAS Object。
-
-Remote OTLP 构造失败时，Runtime 会关闭 OTLP Projection，避免无界本地累积。
-Observation Queue、Journal 或 Exporter Failure 会通过 Admission Receipt 或
-`Flush`/`Shutdown` 返回，但绝不会改变 Turn 的业务结果。
+`[telemetry].log_level` 控制本地结构化 Runtime Log。Trace Span、Usage 与 Receipt
+使用 Runtime 自身的 SQLite 和终态存储，不需要独立 Capture 或 OTLP 配置。
 
 ## 上下文控制
 
@@ -484,7 +450,6 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | `CODEHELPER_VERIFY_*` | 验证行为 |
 | `CODEHELPER_STATE_*` | 持久化 |
 | `CODEHELPER_LOG_LEVEL` | 结构化 Runtime Log |
-| `CODEHELPER_OBSERVATION_CAPTURE`、`CODEHELPER_OTEL_EXPORTER`、`OTEL_EXPORTER_OTLP_*` | Observation Capture 与 OTLP Export |
 | `CODEHELPER_CREDENTIAL_KIND`、`CODEHELPER_CREDENTIAL_NAME` | Secret 引用 |
 | `CODEHELPER_INDEX_*`、`CODEHELPER_REPO_MAP_*` | 仓库上下文 |
 | `CODEHELPER_WORKING_SET_*`、`CODEHELPER_EVIDENCE_*` | 会话上下文 |
@@ -500,4 +465,4 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 - 生产凭证必须位于仓库外。
 - 每次修改配置后重启 Web，并检查 Boot/Settings 中的结构化状态。
 - 启动参数、环境变量和 TOML 行为不一致时，以 Runtime 发布的有效配置为准。
-- Hard Verify、启用 Worker 和自定义 Shell Command 都应经过 Review。
+- Hard Verify、启用写能力和自定义 Shell Command 都应经过 Review。

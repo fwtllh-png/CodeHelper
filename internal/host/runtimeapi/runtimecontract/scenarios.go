@@ -531,10 +531,10 @@ func readModelsExposeCompletedThread(t *testing.T, host Host, setup Setup) {
 		state.Thread.Turns[0].Status != "completed" {
 		t.Fatalf("%s: thread detail = %+v", host.Transport(), state.Thread)
 	}
-	if len(state.Tasks) != 0 || len(state.Agents) != 0 {
+	if len(state.Agents) != 0 {
 		t.Fatalf(
-			"%s: unexpected tasks/agents = %+v / %+v",
-			host.Transport(), state.Tasks, state.Agents,
+			"%s: unexpected agents = %+v",
+			host.Transport(), state.Agents,
 		)
 	}
 	if len(state.Usage) != 1 || state.Usage[0].ThreadID != started.ThreadID ||

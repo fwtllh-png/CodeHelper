@@ -105,7 +105,7 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 	index, status := openRepositoryIndex(
 		execution.Workspace,
 		backend,
-		state.persistence.taskStore,
+		state.persistence.runtimeStore,
 		state.config.snapshot.Config.Context.Index,
 	)
 	session.repositoryIndex = index
@@ -147,19 +147,19 @@ func (persistenceModule) Build(
 	state.session.content = content
 	state.persistence.content = content
 	openJobLog(state)
-	store, ephemeral, cleanupDir, err := openOrchestrationStore(
+	store, ephemeral, cleanupDir, err := openRuntimeStateStore(
 		ctx,
 		state.options.PersistentStore,
 		state.config.execution.Workspace,
 		state.config.execution.Tools,
 	)
 	if err != nil {
-		return fmt.Errorf("orchestration store: %w", err)
+		return fmt.Errorf("runtime state store: %w", err)
 	}
-	state.persistence.taskStore = store
-	state.persistence.ephemeralTask = ephemeral
-	state.session.ephemeralTasks = ephemeral
-	state.session.ephemeralTasksDir = cleanupDir
+	state.persistence.runtimeStore = store
+	state.persistence.ephemeralState = ephemeral
+	state.session.ephemeralState = ephemeral
+	state.session.ephemeralStateDir = cleanupDir
 	return nil
 }
 

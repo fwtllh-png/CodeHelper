@@ -189,14 +189,6 @@ describe("RuntimeClient", () => {
           headers: {"Content-Type": "text/plain; charset=utf-8"}
         });
       }
-      if (route.endsWith("/trace/export")) {
-        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-        requests.push({route, body, headers: new Headers(init?.headers)});
-        return new Response('{"record_type":"manifest"}\n', {
-          status: 200,
-          headers: {"Content-Type": "application/x-ndjson; charset=utf-8"}
-        });
-      }
       const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
       requests.push({route, body, headers: new Headers(init?.headers)});
       if (route.endsWith("/setup/apply")) {
@@ -462,9 +454,6 @@ describe("RuntimeClient", () => {
             created_at: "2026-01-01T00:00:00Z"
           }
         } : {version: 1});
-      }
-      if (route.endsWith("/task/list")) {
-        return envelope({tasks: []});
       }
       if (route.endsWith("/agent/list")) {
         return envelope({agents: []});
@@ -1097,7 +1086,7 @@ describe("RuntimeClient", () => {
 
     const hydrationRoutes = new Set([
       "/session/activate", "/session/snapshot", "/profile/get", "/tool/catalog",
-      "/checkpoint/list", "/plan/get", "/task/list", "/agent/list",
+      "/checkpoint/list", "/plan/get", "/agent/list",
       "/usage/query", "/extension/list", "/turn/queue"
     ]);
     const hydration = requests.slice(before).filter((request) =>
@@ -1631,21 +1620,6 @@ describe("RuntimeClient", () => {
     const request = requests.find((item) => item.route.includes("/api/v1/content/"));
     expect(request?.route).toContain("signed.handle");
     expect(request?.headers.get("Authorization")).toBe("Bearer token");
-    client.stop();
-  });
-
-  it("downloads the selected Session trace with capability and Workspace scope", async () => {
-    const client = new RuntimeClient();
-    await startClient(client);
-
-    const content = await client.exportTrace();
-
-    expect(content.type).toBe("application/x-ndjson;charset=utf-8");
-    expect(content.size).toBe(27);
-    const request = requests.find((item) => item.route.endsWith("/trace/export"));
-    expect(request?.body).toEqual({session_id: "session"});
-    expect(request?.headers.get("Authorization")).toBe("Bearer token");
-    expect(request?.headers.get("X-CodeHelper-Workspace-ID")).toBe("workspace-id");
     client.stop();
   });
 

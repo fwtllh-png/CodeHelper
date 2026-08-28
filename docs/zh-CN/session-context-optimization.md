@@ -24,7 +24,7 @@ Token 降低不是单独成功标准。正确完成率、Authority 完整性、�
 | Live Context | History、Working Set、Evidence、Failures、Plan、World、Window | 当前模型继续任务的 Runtime 状态 |
 | Workspace Binding | Workspace Identity、Journal Revision、Repository Head、Bound Path Digest | 文件相关声明的新鲜度依据 |
 | Accounting | Usage、Cost、Budget Ledger | 单调事实，不随 Restore 回退 |
-| Audit | Event、Receipt、Domain Fact、Observation、CAS Payload | 可重建证据，按 Retention 增长 |
+| Audit | Event、Receipt、Domain Fact、Trace、CAS Payload | 可重建证据，按 Retention 增长 |
 
 这四个平面不能合并成一段 Summary。Context 可以被压缩，Accounting 不能回退，Audit
 也不能自动重新进入模型输入。

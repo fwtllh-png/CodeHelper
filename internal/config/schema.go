@@ -161,7 +161,6 @@ type Execution struct {
 	NativeSearch     bool     `json:"native_search" toml:"native_search"`
 	Verify           Verify   `json:"verify" toml:"verify"`
 	Subagent         Subagent `json:"subagent" toml:"subagent"`
-	Worker           Worker   `json:"worker" toml:"worker"`
 	Journal          Journal  `json:"journal" toml:"journal"`
 }
 
@@ -176,32 +175,6 @@ type Journal struct {
 	// RecoverOnStart undoes interrupted turns found at startup. Off leaves them
 	// in the ledger for a later, explicit recovery.
 	RecoverOnStart bool `json:"recover_on_start" toml:"recover_on_start"`
-}
-
-// Worker bounds the scheduler that executes durable background tasks. It is off
-// for one-shot hosts: a process that exists to run one command should not pick
-// up background work it would then have to finish before exiting.
-type Worker struct {
-	Enabled     bool `json:"enabled" toml:"enabled"`
-	MaxParallel int  `json:"max_parallel" toml:"max_parallel"`
-	// MaxAttempts is the default attempt budget for tasks that do not set one.
-	MaxAttempts int `json:"max_attempts" toml:"max_attempts"`
-	// Lease is how long a claim survives without a heartbeat. Shorter means a
-	// dead worker's task is taken over sooner, and a slow one loses it sooner.
-	Lease time.Duration `json:"lease" toml:"-"`
-	// ClaimInterval is how often the scheduler looks for runnable work, and
-	// AutomationInterval how often it checks for due schedules.
-	ClaimInterval      time.Duration `json:"claim_interval" toml:"-"`
-	AutomationInterval time.Duration `json:"automation_interval" toml:"-"`
-	// RetryBackoff is the first delay after a retryable failure; each further
-	// attempt doubles it up to RetryBackoffMax.
-	RetryBackoff    time.Duration `json:"retry_backoff" toml:"-"`
-	RetryBackoffMax time.Duration `json:"retry_backoff_max" toml:"-"`
-	// MaxTokens and MaxCostUSD bound all background tasks in this process
-	// together, separately from the session and child-agent ledgers, so that an
-	// operator can tell which pot was spent.
-	MaxTokens  uint64  `json:"max_tokens" toml:"max_tokens"`
-	MaxCostUSD float64 `json:"max_cost_usd" toml:"max_cost_usd"`
 }
 
 // Subagent bounds what a spawned child agent may spend and where it may write.
@@ -411,17 +384,6 @@ type Overrides struct {
 	SubagentMaxCostUSD  *float64
 	SubagentWallTime    *time.Duration
 	SubagentWorkspace   *string
-
-	WorkerEnabled            *bool
-	WorkerMaxParallel        *int
-	WorkerMaxAttempts        *int
-	WorkerLease              *time.Duration
-	WorkerClaimInterval      *time.Duration
-	WorkerAutomationInterval *time.Duration
-	WorkerRetryBackoff       *time.Duration
-	WorkerRetryBackoffMax    *time.Duration
-	WorkerMaxTokens          *uint64
-	WorkerMaxCostUSD         *float64
 
 	VisionEnabled    *bool
 	VisionProvider   *string

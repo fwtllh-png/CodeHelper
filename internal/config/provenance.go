@@ -103,17 +103,6 @@ const (
 	fieldSubagentWallTime    = "execution.subagent.wall_time"
 	fieldSubagentWorkspace   = "execution.subagent.workspace"
 
-	fieldWorkerEnabled         = "execution.worker.enabled"
-	fieldWorkerMaxParallel     = "execution.worker.max_parallel"
-	fieldWorkerMaxAttempts     = "execution.worker.max_attempts"
-	fieldWorkerLease           = "execution.worker.lease"
-	fieldWorkerClaimInterval   = "execution.worker.claim_interval"
-	fieldWorkerAutomationTick  = "execution.worker.automation_interval"
-	fieldWorkerRetryBackoff    = "execution.worker.retry_backoff"
-	fieldWorkerRetryBackoffMax = "execution.worker.retry_backoff_max"
-	fieldWorkerMaxTokens       = "execution.worker.max_tokens"
-	fieldWorkerMaxCostUSD      = "execution.worker.max_cost_usd"
-
 	fieldJournalDurable        = "execution.journal.durable"
 	fieldJournalRecoverOnStart = "execution.journal.recover_on_start"
 
@@ -244,17 +233,6 @@ func defaultProvenance() map[string]Source {
 
 		fieldJournalDurable:        SourceDefault,
 		fieldJournalRecoverOnStart: SourceDefault,
-
-		fieldWorkerEnabled:         SourceDefault,
-		fieldWorkerMaxParallel:     SourceDefault,
-		fieldWorkerMaxAttempts:     SourceDefault,
-		fieldWorkerLease:           SourceDefault,
-		fieldWorkerClaimInterval:   SourceDefault,
-		fieldWorkerAutomationTick:  SourceDefault,
-		fieldWorkerRetryBackoff:    SourceDefault,
-		fieldWorkerRetryBackoffMax: SourceDefault,
-		fieldWorkerMaxTokens:       SourceDefault,
-		fieldWorkerMaxCostUSD:      SourceDefault,
 
 		fieldVisionEnabled:    SourceDefault,
 		fieldVisionProvider:   SourceDefault,

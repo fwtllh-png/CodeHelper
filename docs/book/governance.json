@@ -102,8 +102,7 @@
       ],
       "source_patterns": [
         "internal/observability/**",
-        "internal/persist/**",
-        "docs/protocol/observation.schema.json"
+        "internal/persist/**"
       ]
     },
     {
@@ -201,13 +200,6 @@
         "./internal/runtime/protocol",
         "-run",
         "TestTheCommittedSchemaMatchesThisBuild"
-      ]
-    },
-    {
-      "id": "observation-traits",
-      "command": [
-        "make",
-        "observation-traits-check"
       ]
     },
     {

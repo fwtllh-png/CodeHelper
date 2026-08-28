@@ -27,14 +27,14 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 
 	wantTables := []string{
 		"workspaces", "sessions", "threads", "turns", "items", "operations",
-		"event_reservations", "event_index", "tasks", "task_lifecycle",
+		"event_reservations", "event_index",
 		"turn_domain_facts", "turn_terminal_envelopes",
 		"turn_terminal_outbox", "turn_coordinator_leases",
-		"snapshots", "usage", "usage_turn_context", "automations", "automation_runs",
+		"snapshots", "usage", "usage_turn_context",
 		"agent_nodes", "agent_messages", "agent_results", "agent_budget_ledger",
 		"agent_integrations",
 		"repo_index_files", "repo_index_symbols", "repo_index_meta",
-		"task_attempts", "spans",
+		"spans",
 		"provider_capabilities",
 		"context_rebases", "context_current",
 	}
@@ -54,12 +54,8 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 	}
 
 	assertTableColumns(t, store.DB(), "threads", "source_cursor")
-	assertTableColumns(t, store.DB(), "tasks",
-		"executor", "attempt", "max_attempts", "next_attempt_at", "heartbeat_at")
 	assertTableColumns(t, store.DB(), "usage",
 		"sample", "source_sequence", "cost_known")
-	assertTableColumns(t, store.DB(), "automations",
-		"task_executor", "task_max_attempts")
 	assertTableColumns(t, store.DB(), "agent_nodes",
 		"workspace_root", "session_id", "path", "execution_root", "revision",
 		"owned_paths_json",

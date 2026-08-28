@@ -13,7 +13,6 @@ import (
 	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
 	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/agentpreset"
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
 	snapshotstate "github.com/fwtllh-png/CodeHelper/internal/persist/snapshot"
@@ -25,7 +24,6 @@ type PersistentRepositories struct {
 	Sessions  *sessionstate.Repository
 	Threads   *threadstate.Repository
 	Lifecycle *threadstate.Lifecycle
-	Tasks     *taskstate.Repository
 	Snapshots *snapshotstate.Repository
 	Usage     *usagestate.Repository
 	Trace     *tracestate.Repository
@@ -46,7 +44,6 @@ func NewPersistentRepositories(
 		Sessions:  sessionstate.NewSQLiteRepository(store.SQLite()),
 		Threads:   threadstate.NewSQLiteRepository(store.SQLite()),
 		Lifecycle: lifecycle,
-		Tasks:     taskstate.NewSQLiteRepository(store.SQLite()),
 		Snapshots: snapshotstate.NewSQLiteRepository(store.SQLite(), store.Content()),
 		Usage:     usagestate.NewSQLiteRepository(store.SQLite()),
 		Trace:     tracestate.NewSQLiteRepository(store.SQLite()),

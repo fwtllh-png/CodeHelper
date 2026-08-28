@@ -89,7 +89,6 @@ func prepareRuntime(
 		sessionArtifacts:   options.SessionArtifacts,
 		terminalStore:      options.TerminalStore,
 		contextRebaseStore: options.ContextRebaseStore,
-		orchestration:      options.Orchestration,
 		workspaceRoot:      strings.TrimSpace(options.WorkspaceRoot),
 		done:               make(chan struct{}),
 		durable:            recoverDurable,
@@ -115,16 +114,11 @@ func (r *Runtime) Start(ctx context.Context) error {
 	return r.startErr
 }
 func (r *Runtime) activate(ctx context.Context) error {
-	if r.durable && !r.opts.SkipRuntimeRecovery {
+	if r.durable {
 		if err := r.terminal.Recover(ctx); err != nil {
 			go r.loop()
 			close(r.operations)
 			return fmt.Errorf("recover terminal projections: %w", err)
-		}
-		if err := r.DrainWorkGraphEffects(ctx); err != nil {
-			go r.loop()
-			close(r.operations)
-			return fmt.Errorf("recover WorkGraph effects: %w", err)
 		}
 	}
 	r.lifecycleMu.Lock()
@@ -137,7 +131,7 @@ func (r *Runtime) activate(ctx context.Context) error {
 	r.OperationService.accepting = true
 	r.OperationService.mu.Unlock()
 	go r.loop()
-	if !r.durable || r.opts.SkipRuntimeRecovery {
+	if !r.durable {
 		return nil
 	}
 	if err := r.recoverPendingTurns(ctx); err != nil {

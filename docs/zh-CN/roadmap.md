@@ -12,7 +12,7 @@
 4. 自动诊断和相关测试；
 5. 验证失败后的修复或回滚；
 6. 解释上下文、动作、成本和结果的 Durable Receipt；
-7. Web 与后台自动化中一致的语义。
+7. 主 Agent 与 Subagent 中一致的语义。
 
 ## 近期：稳定初始发布
 
@@ -51,12 +51,12 @@
 
 ## 中期：执行可靠性
 
-- 扩大 Durable WorkGraph Recovery 与 Lease 故障注入覆盖；
-- 改进 Workflow Cancel、Retry、Blocked/Waiting 和 Effect 恢复的运维可见性；
+- 扩大 Pending Turn、Terminal Outbox 与 Journal Recovery 的故障注入覆盖；
+- 改进 Turn Cancel、Resume、Blocked/Waiting 和 Effect 恢复的可见性；
 - 更清晰的 Subagent Merge/Conflict 语义；
 - 持续评估[有界 Session Context](./session-context-optimization.md)的事实保留质量、
   重复工作率和持久化写放大；
-- 并发 Provider、Tool 与 Worker 的资源隔离。
+- 并发 Provider、Tool 与 Subagent 的资源隔离。
 
 当前可靠性边界和验证入口见 [Runtime 可靠性契约](./reliability-hardening.md)。
 
@@ -89,7 +89,7 @@
 ## 长期：生态
 
 - 契约稳定后提供 Extension SDK；
-- MCP、Skill、Hook 与 Workflow Spec 模板；
+- MCP、Skill 与 Hook 模板；
 - Signed Registry Operation 与 Offline Mirror；
 - 不分叉 Core Runtime 的可选企业治理能力。
 

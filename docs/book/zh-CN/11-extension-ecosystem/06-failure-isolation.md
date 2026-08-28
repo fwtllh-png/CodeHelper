@@ -85,8 +85,8 @@ Record 保留 Extension Identity、Source、Plan Revision、Permission Digest、
 Transition、Bounded Cause 与 Affected Call。Unknown、Tamper、
 Partial-effect Failure 不转成 Retry Advice。
 
-Lifecycle Fact 也以脱敏 Evidence 进入 Observation Router。Observation/Exporter Failure
-不能让 Failed Extension 变成 Healthy，也不能改变 Call 的业务结果。
+Lifecycle Fact 通过 Runtime Event 与控制 Receipt 保留。Trace/Telemetry Failure 不能
+让 Failed Extension 变成 Healthy，也不能改变 Call 的业务结果。
 
 Health 不是 Authority。Healthy Process + Revoked Generation 仍不可运行；Optional
 Extension Unhealthy 不影响无关 Runtime Function。
@@ -100,7 +100,7 @@ Extension Unhealthy 不影响无关 Runtime Function。
 - Source Reconcile 不替换其他 Source Tool。
 - Error/Log Bounded/Redacted。
 - Disable 不能遗留无归属 Live Effect。
-- Receipt/Observation Projection 不能成为 Lifecycle Authority。
+- Receipt/Trace Projection 不能成为 Lifecycle Authority。
 
 ## 测试与验证
 

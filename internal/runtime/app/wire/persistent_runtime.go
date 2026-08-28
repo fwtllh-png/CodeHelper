@@ -4,7 +4,6 @@ package wire
 import (
 	"context"
 	"fmt"
-	"time"
 
 	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 
@@ -27,7 +26,6 @@ type PersistentRuntimeOptions struct {
 	ProfileModels       map[string]protocol.ModelCapabilities
 	ToolCatalog         *tool.Registry
 	SessionWorkspaces   app.SessionWorkspaceManager
-	SkipRuntimeRecovery bool
 }
 
 // PreparePersistentRuntime restores static durable state without starting
@@ -47,44 +45,25 @@ func PreparePersistentRuntime(
 	if err != nil {
 		return nil, fmt.Errorf("open agent presets: %w", err)
 	}
-	if _, recoverErr := repositories.Tasks.RecoverInterrupted(
-		ctx,
-		time.Time{},
-	); recoverErr != nil {
-		return nil, fmt.Errorf("recover interrupted tasks: %w", recoverErr)
-	}
 	terminalStore := state.NewWorkspaceTerminalStore(options.Store.SQLite(), options.WorkspaceRoot)
 	contextRebases := apppersistence.NewContextRebaseRepository(options.Store)
-	orchestration, err := state.OpenWorkspaceOrchestrationStore(
-		ctx, options.Store.SQLite(), options.WorkspaceRoot,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("open work graph orchestration: %w", err)
-	}
 	options.Observability.TraceQuery = tracestate.NewQueryService(
 		repositories.Sessions,
 		repositories.Trace,
 		options.Observability.Runtime,
 	)
-	options.Observability.TraceExport = tracestate.NewExportService(
-		repositories.Sessions,
-		options.Observability.ObservationSnapshot,
-		repositories.Usage,
-		options.WorkspaceRoot,
-	)
 	runtimeOptions := app.Options{
-		Engine:              options.Engine,
-		WorkspaceRoot:       options.WorkspaceRoot,
-		EventStore:          state.NewWorkspaceEventStore(options.Store, options.WorkspaceRoot),
-		ContentStore:        state.NewSharedContentStore(options.Store.Content()),
-		Lifecycle:           repositories.Lifecycle,
-		OperationBuffer:     options.OperationBuffer,
-		SubscriberBuffer:    options.SubscriberBuffer,
-		TerminalStore:       terminalStore,
-		ContextRebaseStore:  contextRebases,
-		AgentPresets:        presets,
-		Orchestration:       orchestration,
-		SkipRuntimeRecovery: options.SkipRuntimeRecovery, Observability: options.Observability,
+		Engine:             options.Engine,
+		WorkspaceRoot:      options.WorkspaceRoot,
+		EventStore:         state.NewWorkspaceEventStore(options.Store, options.WorkspaceRoot),
+		ContentStore:       state.NewSharedContentStore(options.Store.Content()),
+		Lifecycle:          repositories.Lifecycle,
+		OperationBuffer:    options.OperationBuffer,
+		SubscriberBuffer:   options.SubscriberBuffer,
+		TerminalStore:      terminalStore,
+		ContextRebaseStore: contextRebases,
+		AgentPresets:       presets,
+		Observability:      options.Observability,
 	}
 	if options.DefaultProfile.Version != 0 {
 		runtimeOptions.SessionProfiles = repositories.Sessions

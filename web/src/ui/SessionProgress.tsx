@@ -2,36 +2,27 @@ import {
   Bot,
   CheckCircle2,
   ChevronDown,
-  Circle,
   CircleDashed,
   ListChecks,
   LoaderCircle
 } from "lucide-react";
-import {useMemo, useState} from "react";
+import {useState} from "react";
 
 import type {
   AgentSummary,
-  SessionPlanArtifact,
-  TaskSummary
+  SessionPlanArtifact
 } from "../protocol";
 
 export function SessionProgress({
   plan,
-  tasks,
   agents,
   onOpenTrajectory
 }: {
   plan?: SessionPlanArtifact;
-  tasks: readonly TaskSummary[];
   agents: readonly AgentSummary[];
   onOpenTrajectory: () => void;
 }) {
   const [planExpanded, setPlanExpanded] = useState(true);
-  const orderedTasks = useMemo(() => [...tasks].sort((left, right) =>
-    taskRank(left.state) - taskRank(right.state)
-  ), [tasks]);
-  const activeTasks = orderedTasks.filter((task) => !isDone(task.state));
-  const done = orderedTasks.length - activeTasks.length;
   const planSteps = plan?.document?.steps ?? [];
   const planDone = planSteps.filter((step) => step.status === "done").length;
   const planActive = planSteps.filter(
@@ -39,7 +30,7 @@ export function SessionProgress({
   ).length;
   const planPending = planSteps.length - planDone - planActive;
   const hasPlanContent = Boolean(plan?.document?.steps.length);
-  if (!hasPlanContent && tasks.length === 0 && agents.length === 0) return null;
+  if (!hasPlanContent && agents.length === 0) return null;
 
   return (
     <section className="sessionProgress" aria-label="Session progress">
@@ -82,30 +73,6 @@ export function SessionProgress({
             )}
           </div>
         )}
-        {tasks.length > 0 && (
-          <div className="progressSection">
-            <div className="progressLabel">
-              <ListChecks size={13} /> Tasks
-              <small>{done}/{tasks.length} complete</small>
-            </div>
-            <ol className="progressTasks">
-              {orderedTasks.map((task) => (
-                <li key={task.id} data-state={task.state}>
-                  {isDone(task.state)
-                    ? <CheckCircle2 size={14} />
-                    : <Circle size={14} />}
-                  <span>
-                    <strong>{task.kind}</strong>
-                    {(task.failure_reason || task.reason) && (
-                      <small>{task.failure_reason || task.reason}</small>
-                    )}
-                  </span>
-                  <b>{task.state.replaceAll("_", " ")}</b>
-                </li>
-              ))}
-            </ol>
-          </div>
-        )}
         {agents.length > 0 && (
           <div className="progressSection">
             <div className="progressLabel">
@@ -129,15 +96,4 @@ export function SessionProgress({
       </div>
     </section>
   );
-}
-
-function isDone(state: string): boolean {
-  return state === "succeeded" || state === "completed" || state === "canceled";
-}
-
-function taskRank(state: string): number {
-  if (state === "running" || state === "claimed") return 0;
-  if (state === "pending" || state === "retry_wait") return 1;
-  if (state === "failed") return 2;
-  return 3;
 }

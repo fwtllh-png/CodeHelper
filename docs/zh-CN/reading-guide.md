@@ -27,7 +27,7 @@ Host 提交 Operation
 ```
 
 CodeHelper 不是“页面调模型再运行命令”的脚本。它是一个本地、持久、受治理的 Agent
-Runtime；Web、Worker 和 Subagent 共享同一组执行与安全语义。
+Runtime；Web、主 Agent 和 Subagent 共享同一组执行与安全语义。
 
 ### 1.2 五条权威链
 
@@ -41,20 +41,20 @@ Runtime；Web、Worker 和 Subagent 共享同一组执行与安全语义。
 | Side Effect | Kernel Effect | Provider/Tool/Journal Executor | Effect Result Command |
 | Terminal | Frozen Terminal Material | `eventhub.TerminalPublisher` | Terminal Envelope + Outbox |
 
-如果同一事实在两处都可写，通常就是架构问题。Host、Web Store、Observation 和 Exporter
+如果同一事实在两处都可写，通常就是架构问题。Host、Web Store、Trace 和 Metrics
 都是 Projection 或 Evidence，不是这些链的替代 Authority。
 
-### 1.3 两个状态机不要混淆
+### 1.3 Turn 与 Agent Graph 不要混淆
 
-仓库中有两套重要但用途不同的状态机：
+仓库中有两类用途不同的持久状态：
 
 - **Turn Kernel**：`internal/runtime/agent/turnkernel`，管理一次 Agent Turn 内的
   Sampling、Tool、Approval、Input、Verification、Commit 和 Terminal。
-- **WorkGraph Kernel**：`internal/orchestration/kernel`，管理跨 Turn 的 Run、Node、
-  Attempt、Lease 和 Effect。
+- **Agent Graph**：`internal/orchestration/subagent`，记录 Child Agent 的 Spawn、
+  Transition、Result、Mailbox、Budget 与 Integration。
 
-Turn Kernel 解决“一个回合如何正确结束”；WorkGraph 解决“多个持久工作如何被调度和
-恢复”。Workflow、Worker 和 Subagent 不能另建第三套生命周期权威。
+Turn Kernel 解决“一个回合如何正确结束”；Agent Graph 解决“父子 Agent 如何协作”。
+Child 的实际执行仍是普通 Runtime Turn，不建立后台 WorkGraph 镜像。
 
 ### 1.4 代码事实的优先级
 
@@ -80,9 +80,9 @@ Turn Kernel 解决“一个回合如何正确结束”；WorkGraph 解决“多�
 | Agent | `internal/runtime/agent` | Turn Kernel、Engine、Context、Prompt |
 | Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Hook |
 | Security | `internal/security` | Policy、Permission、Constitution、Credential、Sandbox |
-| Orchestration | `internal/orchestration` | WorkGraph、Task、Worker、Workflow、Subagent |
+| Orchestration | `internal/orchestration` | Subagent、Admission/Budget、Worktree、Chat Merge |
 | Persistence | `internal/persist` | SQLite、CAS、Event、Session、Snapshot、Journal |
-| Observability | `internal/observability` | Receipt、Usage、Trace、Diagnostics、Observation |
+| Observability | `internal/observability` | Receipt、Usage、Trace、Diagnostics、Verification |
 | Platform | `internal/platform` | Process、PTY、Repository Walk、OS 差异 |
 | Config | `internal/config` | Schema、默认值、环境覆盖、Provenance |
 | Web | `web/src` | Browser Runtime Client、Projection、React UI |
@@ -98,7 +98,7 @@ Turn Kernel 解决“一个回合如何正确结束”；WorkGraph 解决“多�
 
 1. `internal/runtime/protocol/identity.go`：Session、Thread、Turn、Item、Operation 等
    稳定 Identity。
-2. `internal/runtime/protocol/operation.go`：13 类 `OperationKind`、Payload Validation、
+2. `internal/runtime/protocol/operation.go`：`OperationKind`、Payload Validation、
    Turn Intent、Recovery Context。
 3. `internal/runtime/protocol/event.go`：Event Kind、Typed Event Data、Usage 与
    Terminal Data。
@@ -120,7 +120,6 @@ Turn Kernel 解决“一个回合如何正确结束”；WorkGraph 解决“多�
 
 - `docs/protocol/runtime-protocol.schema.json`；
 - `internal/runtime/protocol/event_traits.gen.go`；
-- `web/src/protocol/observation.generated.ts`；
 - `web/src/protocol/web-host.generated.ts`。
 
 配套验证：
@@ -182,18 +181,17 @@ config
 - `modules_core.go`：Config、Persistence、Platform 和 Builtin Tool；
 - `modules_provider.go`：Model Catalog、Route 与 Provider；
 - `modules_security.go`：Policy、Permission、Journal、Guard Factory；
-- `modules_orchestration.go`：Task、Workflow、Subagent、Scheduler；
-- `modules_observability.go`：Observation/Telemetry；
+- `modules_orchestration.go`：Subagent、Admission/Budget、Worktree 与 Chat Merge；
+- `modules_observability.go`：Trace/Telemetry；
 - `modules_runtime.go`：Engine Seed、ThreadManager 和 Application Runtime；
-- `module_background.go`：MCP Refresh、Runtime Recovery、Automation Reconcile、
-  Worker Start；
+- `module_background.go`：MCP Refresh、Runtime Recovery 与 Prewarm；
 - `resource_stack.go`：部分构造失败与正常关闭共用的逆序清理。
 
 重要边界：
 
 - `agentModule` 构造 `agentengine.Options`，但不执行 Turn；
 - `runtimeModule` 构造 Facade，但不接受 Operation；
-- `backgroundModule` 完成恢复后才启动 Admission 和 Worker；
+- `backgroundModule` 完成恢复后才允许 Runtime 接受 Operation；
 - Child Engine 从冻结的 Seed 派生，并只能收窄父级 Authority 与 Budget。
 
 建议先运行：
@@ -582,12 +580,11 @@ Terminal Envelope
 
 1. `runtime_start.go`：Prepared Runtime 与 `Runtime.Start`；
 2. `eventhub.TerminalPublisher.Recover`：Terminal Outbox；
-3. `orchestration.go`：WorkGraph Effect；
-4. `turn_recovery.go`：Recovery Source 校验；
-5. `startup_terminal.go`：启动期失败的终态收敛；
-6. `wire/turn_coordinator.go`：Durable Coordinator、Turn Lease 和 Fact Restore；
-7. `turnkernel.RestoreTurnCoordinator`：校验 Sequence/Digest、Requeue Running Effect；
-8. `runtime.go` 的 `recoverPendingTurns`：恢复 Approval/Input 和未终态 Turn。
+3. `turn_recovery.go`：Recovery Source 校验；
+4. `startup_terminal.go`：启动期失败的终态收敛；
+5. `wire/turn_coordinator.go`：Durable Coordinator、Turn Lease 和 Fact Restore；
+6. `turnkernel.RestoreTurnCoordinator`：校验 Sequence/Digest、Requeue Running Effect；
+7. `runtime.go` 的 `recoverPendingTurns`：恢复 Approval/Input 和未终态 Turn。
 
 自动恢复要求 Accepted Start Operation、非终态 Domain Facts 和有效 Lease/Identity。
 Checkpoint Restore 是 Context 恢复；Pending Turn Recovery 是执行生命周期恢复，两者
@@ -603,67 +600,41 @@ go test ./internal/persist/...
 
 读完应能回答：如果 Terminal 已提交但 Web 尚未收到 Event，重启后哪一层负责补发？
 
-## 十一、路线 8：WorkGraph、Worker、Workflow 与 Subagent
+## 十一、路线 8：Subagent、Budget 与 Worktree
 
-**目标：** 理解跨 Turn 的持久任务如何保持唯一状态机和 Lease Fence。
+**目标：** 理解 Child Agent 如何复用普通 Runtime Turn，同时保持父子权限、预算和
+工作区隔离。
 
-### 11.1 WorkGraph
-
-- `internal/orchestration/model`：Run、Node、Attempt、Effect；
-- `kernel/kernel.go`：`Reduce` / `ReduceOwned`；
-- `store/store.go`：Snapshot、Fact、Command Receipt、Effect Outbox 的单事务提交；
-- `runtime/app/orchestration.go`：Runtime Operation 与 WorkGraph Projection。
-
-`kernel.Command` 必须携带 Command ID、Run ID、Expected Revision 和时间。Claim、
-Heartbeat、Release、Settlement 还必须携带 Lease Owner/Epoch 与 Authority Digest。
-
-### 11.2 Worker
-
-`internal/orchestration/worker/worker.go` 是唯一 Claim Authority：
-
-- `Start` 启动 Claim、Reclaim 和 Automation Loop；
-- `Dispatch` 按剩余并发容量认领；
-- Heartbeat 保持 Lease；
-- 丢失 Lease 会取消执行；
-- `Close` 停止认领并把未完成工作归还队列；
-- 不确定副作用的错误不能自动标成 Retryable。
-
-### 11.3 Workflow
-
-- `workflow/spec.go`：DAG 与 Node Contract；
-- `workflow/compiler.go`：编译；
-- `workflow/runtime.go`：Run 入口；
-- `workflow/controller.go`：执行协调；
-- `workflow/orchestrate/runtime_driver.go`：Task/Turn Driver；
-- `workflow/jsvm`：受限脚本执行。
-
-Workflow 将 DAG 编译成 WorkGraph Node，不拥有第二套 Checkpoint/Lease 状态机。
-
-### 11.4 Subagent
+### 11.1 Subagent
 
 - `subagent/control_plane.go`：Delegation Intent、Role、Spawn Contract；
 - `subagent/subagent.go`：Manager、Tool Execution、Mailbox；
 - `subagent/context_fork.go`：Task Capsule 与 Context Mode；
-- `subagent/workgraph.go`：Agent Attempt 和恢复；
+- `subagent/graph.go`：Agent 生命周期与结果事实；
 - `subagent/worktree.go`：隔离工作区；
 - `runtime/app/wire/childruntime.go`：真实 Child Engine；
-- `runtime/app/wire/agentexecutor.go`：Worker Task 到 Child Turn；
+- `orchestration/admission/governor.go`：并发与 Token/Cost Admission；
 - `orchestration/budget/ledger.go`：整棵 Agent Tree 的 Reservation 与结算。
 
 Child Authority 是父级 Authority 与 Role Policy 的交集。默认 Token Budget 按父级剩余
 容量和并发槽位派生；嵌套 Child 只能继续收窄。写入型并发 Child 使用 Worktree，合并由
 `orchestration/chatmerge.Service` 处理。
 
+### 11.2 为什么没有后台编排平面
+
+通用 Task Queue、Worker Lease、Workflow DAG、Automation、Lane 和 Fleet 已从 Runtime
+移除。需要定时或无人值守执行时，由外部系统通过受支持的 Host 启动普通 Turn；Runtime
+内部只维护一套 Turn 执行和恢复语义。
+
 关键测试：
 
 ```bash
-go test ./internal/orchestration/kernel ./internal/orchestration/store
-go test ./internal/orchestration/worker ./internal/orchestration/workflow
-go test ./internal/orchestration/subagent ./internal/orchestration/budget
-go test -run 'TestChildAgent|TestSchedulerRunsAQueuedTask' ./internal/runtime/app/wire
+go test ./internal/orchestration/subagent ./internal/orchestration/admission
+go test ./internal/orchestration/budget ./internal/orchestration/chatmerge
+go test -run 'TestChildAgent' ./internal/runtime/app/wire
 ```
 
-读完应能回答：Worker 崩溃后，为什么旧进程不能用过期 Attempt 结算新 Owner 的工作？
+读完应能回答：为什么 Child Agent 不需要后台 Task 或 WorkGraph 镜像？
 
 ## 十二、路线 9：Web Projection
 
@@ -733,7 +704,7 @@ make web-parity-check
 
 ## 十三、路线 10：可观测性与证据
 
-**目标：** 区分业务事实、终态证据和可丢失 Observation。
+**目标：** 区分业务事实、终态证据和辅助诊断投影。
 
 按顺序阅读：
 
@@ -742,10 +713,6 @@ make web-parity-check
 - `internal/observability/trace`：Span 与 Frozen Latency；
 - `internal/observability/verify`：Verification Evidence；
 - `internal/observability/diagnostics`：诊断命令；
-- `internal/observability/observation`：版本化 Envelope；
-- `internal/observability/privacy`：写入前 Admission；
-- `internal/observability/router`：Journal/CAS/Exporter 路由；
-- `internal/observability/journal`：按 Cursor 保留可重放证据；
 - `internal/observability/telemetry`：低基数指标。
 
 三个容易混淆的数据源：
@@ -754,7 +721,7 @@ make web-parity-check
 | --- | --- | --- |
 | Domain Fact / Terminal Envelope | 是 | 阻止或恢复业务提交 |
 | Execution Receipt / Frozen Measurement | 终态证据 | 必须与终态原子一致 |
-| Observation / Exporter | 否 | 记录 Health，不改写业务结果 |
+| Trace / Usage / Metrics | 否 | 提供诊断，不改写业务结果 |
 
 Runtime Health 的活动状态来自 `ActiveTurnRegistry` 和 Engine Recorder，终态来自
 Terminal Envelope。`spans` 表为空不能单独证明没有泄漏，还要检查 Lease、Pending
@@ -763,13 +730,12 @@ Interaction、Provider Call 和 Tool Execution。
 验证：
 
 ```bash
-make observation-traits-check
 go test ./internal/observability/...
 go test -run TestSystemDiagnosticsReportsAuthoritativeRuntimeHealth \
   ./internal/host/runtimeapi/web
 ```
 
-读完应能回答：为什么 OTLP Export 失败不能把一个已经完成的 Turn 改成 Failed？
+读完应能回答：为什么 Trace 或 Metrics 写入失败不能把已完成的 Turn 改成 Failed？
 
 ## 十四、五种实战追踪方法
 
@@ -822,7 +788,6 @@ ResponseAssembly checkpoint
 ```text
 Runtime.Start
 -> Terminal Outbox Recovery
--> WorkGraph Effect Drain
 -> Pending Turn Scan
 -> RestoreTurnCoordinator
 -> Requeue Running Effect
@@ -832,7 +797,7 @@ Runtime.Start
 ### 14.5 跟踪 Child Agent
 
 从 `agent` Tool 进入 `AgentControl.SpawnIntent`，再跟到 Budget Reservation、
-WorkGraph Attempt、`childRuntime.StartTurn`、Child Engine、Terminal Settlement 和
+Agent Graph、`childRuntime.StartTurn`、Child Engine、Terminal Settlement 和
 Chat Merge。检查 Agent Path、Trace、Usage 和 Permission Digest 是否保持父子归属。
 
 ## 十五、按变更类型定位代码
@@ -848,11 +813,10 @@ Chat Merge。检查 Agent Path、Trace、Usage 和 Permission Digest 是否保�
 | 改权限 | `security`、`tool/guard` | Allow/Deny/Approval/Cleanup/Race |
 | 改终态 | `app/eventhub/terminal.go` | Turnstate Transaction、Outbox Recovery |
 | 改 Session | `runtime/app/service_facade.go` | Lifecycle Store、Web Query |
-| 改 Workflow | `orchestration/workflow` | WorkGraph Command/Store/Worker |
 | 改 Subagent | `orchestration/subagent` | Child Runtime、Budget、Worktree、Merge |
 | 改 Web API | `host/runtimeapi/web` | Contract JSON、Generated TS、Client |
 | 改 Web 展示 | `web/src/runtime/client.ts`、`ui/App.tsx` | Hydration、Cursor、Projection Test |
-| 改 Observation | `observability/schema` | Privacy、Router、Trait Generation |
+| 改 Trace/Usage | `observability/trace`、`observability/usage` | Measurement、Query、Receipt |
 
 ## 十六、推荐阅读节奏
 
@@ -878,8 +842,8 @@ TerminalPublisher 画出真实调用图。
 
 ### 第五轮：理解扩展面，约 2 小时
 
-阅读 WorkGraph、Worker、Workflow、Subagent 和 Web Hydration。确认这些子系统只通过
-Runtime/Kernel Contract 扩展，而不是复制核心循环。
+阅读 Subagent、Admission/Budget、Worktree、Chat Merge 和 Web Hydration。确认 Child
+只通过 Runtime/Kernel Contract 扩展，而不是复制核心循环。
 
 ## 十七、阅读与验证工具
 
@@ -932,10 +896,10 @@ go test -race -p 1 ./internal/runtime/agent/... ./internal/runtime/app/...
 - Session Delta、Context Manifest 和 Checkpoint 分别表示什么？
 - Terminal Commit 与 Event Publish 为什么分成事务和 Outbox 两步？
 - Approval、Input、Cancel 和 Steer 如何进入正在运行的 Scope？
-- WorkGraph Revision 与 Lease Epoch 分别防止哪种竞态？
+- Active Turn Fence 与 Agent Graph Revision 分别防止哪种竞态？
 - Child Agent 的预算、权限、Context 和 Workspace 如何从父级收窄？
 - Web Hydration 如何处理 Snapshot 与并发 Live Event？
-- 哪些故障可以改变业务结果，哪些只影响 Observation Admission/Flush？
+- 哪些故障可以改变业务结果，哪些只影响 Trace、Usage 或 Metrics？
 
 这些问题都能从上述代码与测试中得到确定答案；如果答案只能来自文档措辞而无法由测试
 证明，应继续追到对应的 Authority 和持久化边界。

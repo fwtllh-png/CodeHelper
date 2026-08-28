@@ -12,22 +12,16 @@ code_paths:
   - internal/persist/state/eventlog
   - internal/persist/state
   - internal/persist/sqlkit
-  - internal/observability/journal
-  - internal/observability/router
 test_paths:
   - internal/persist/state/sqlite/store_test.go
   - internal/persist/state/eventlog/log_test.go
   - internal/persist/state/store_test.go
   - internal/persist/sqlkit/sqlkit_test.go
   - internal/persist/sqlkit/ownership_test.go
-  - internal/observability/journal/journal_test.go
-  - internal/observability/router/router_test.go
 source_of_truth:
   - internal/persist/state/sqlite/store.go
   - internal/persist/state/eventlog/log.go
   - internal/persist/sqlkit/sqlkit.go
-  - internal/observability/journal/journal.go
-  - internal/observability/router/router.go
 status: draft
 last_verified: null
 ---
@@ -36,8 +30,7 @@ last_verified: null
 
 ## 学习目标
 
-理解 SQLite Schema、权威 Runtime Event Evidence、Transactional Projection，以及
-独立的 Observation Journal。
+理解 SQLite Schema、权威 Runtime Event Evidence 与 Transactional Projection。
 
 ## Storage Roles
 
@@ -46,16 +39,13 @@ flowchart LR
     E[Protocol Event] --> L[Durable JSONL Event Log]
     L --> V[Sequence / Hash Evidence]
     E --> T[SQLite Transaction]
-    T --> P[Thread / Usage / Trace / Task Projections]
-    O[Observation Envelope] --> J[Observation Journal]
-    J --> X[Semantic / OTLP Projections]
+    T --> P[Thread / Usage / Trace / Agent Projections]
     V --> R[Recovery Cross-check]
     P --> R
 ```
 
 SQLite 负责 Relational Query State；Event Log 负责 Ordered Durable Evidence；
-Projection 将 Event 转为当前查询视图，不改变 Event 语义。Observation Journal 是
-独立版本化证据流，用于 Diagnosis/Telemetry，但不授权 Runtime Continuation。
+Projection 将 Event 转为当前查询视图，不改变 Event 语义。
 
 ## SQLite Store
 
@@ -75,10 +65,11 @@ Rollback 失败会 Join 进 Error）。`ScanAll` 逐行 Scan 并验证迭代错�
 分类冲突。
 
 SQL 文本、状态转换与领域错误仍归各 Repository 所有。`sqlite.Store.WithTx` 委托给
-`sqlkit.WithTx` 并保留其错误分类。Session、Task、Automation Repository 共享同一套
-Helper，Migration-guard Test（`ownership_test.go`）在它们重新实现时会失败。
+`sqlkit.WithTx` 并保留其错误分类。Session、Agent Topology、Repository Index 与
+Context Rebase Repository 共享同一套 Helper，Migration-guard Test
+（`ownership_test.go`）在它们重新实现时会失败。
 
-Repository Read 也属于 Contract：Task、Automation、Snapshot 与 Session 读路径会
+Repository Read 也属于 Contract：Agent Topology、Snapshot 与 Session 读路径会
 Canonicalize 并校验其返回的存储 JSON，遇到 Malformed Stored Value 时 Fail Closed
 （绝不静默修复）——Migration-guard Test（`TestRepositoryFailsClosedOnMalformedStoredJSON`）
 用 `PRAGMA ignore_check_constraints` 注入损坏行并断言所有读路径报错。
@@ -90,24 +81,6 @@ Bytes。Torn Final Write 可以安全截断，Committed Region Corruption 必须
 Append Rollback 也失败时返回 Indeterminate。
 
 `ShouldPersist` 省略部分 Noise Stream Event，但保留 Lifecycle/Audit Fact。
-
-## Observation Journal 与 Router
-
-Observation Router 只有在 Privacy Policy 完成 Summary/Payload 分类后才接收版本化
-Envelope。Critical Observation 在脱离业务 Cancellation 的路径同步 Append；Normal 与
-Bulk Observation 使用有界 Queue。每条记录具有稳定 Observation ID 与单调 Sequence。
-Journal Rewrite 保持 Metadata 顺序，Retention 只释放过期 Payload Reference。
-
-Runtime Event 与 Observation 回答不同问题：
-
-| Stream | Authority | Primary Consumer |
-| --- | --- | --- |
-| Runtime Event Log | Lifecycle 与 Host Replay | Runtime Recovery/Host |
-| Observation Journal | 脱敏因果证据 | Diagnostics、Cursor Replay、OTLP |
-
-Observation Queue、Journal 或 Exporter Failure 会通过 Admission Receipt 或
-`Flush`/`Shutdown` 暴露，但不能合成 Runtime Event、修改 Receipt Outcome 或回滚已
-完成的业务 Transition。
 
 ## Projection Rules
 
@@ -148,8 +121,7 @@ Ownership、Effect、Accounting、Outcome 所需的信息。
 - Duplicate/Out-of-order Cursor 被拒绝。
 - Torn Tail 只在 Uncommitted End 修复。
 - Projection Replay 不填补 Sequence Gap。
-- Observation Queue Pressure/Writer Failure 保持为显式 Health Fact。
-- Observation Evidence 不能成为执行权威。
+- Trace 与 Usage Projection 不能成为执行权威。
 
 ## 测试与验证
 
@@ -158,7 +130,7 @@ go test ./internal/persist/state/sqlite
 go test ./internal/persist/state/eventlog
 go test ./internal/persist/state
 go test ./internal/persist/sqlkit
-go test ./internal/observability/journal ./internal/observability/router
+go test ./internal/observability/trace ./internal/observability/usage
 ```
 
 ## 动手实验

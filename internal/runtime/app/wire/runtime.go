@@ -3,7 +3,6 @@ package wire
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -21,11 +20,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/credential"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
-
-type RuntimeRole string
-
-const RuntimeRoleInteractive RuntimeRole = "interactive"
-const RuntimeRoleWorker RuntimeRole = "worker"
 
 type ExecOptions struct {
 	ConfigPath          string
@@ -56,7 +50,6 @@ type ExecOptions struct {
 	// WorkspaceIdentity binds editor-visible URI identity for editor hosts.
 	// Non-editor hosts leave it empty and retain local file URI behavior.
 	WorkspaceIdentity protocol.WorkspaceIdentity
-	RuntimeRole       RuntimeRole
 }
 
 // ContextFile is a file a host named for the session (`exec --file`, an editor
@@ -116,13 +109,6 @@ func newExec(
 ) (_ *Session, resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	if options.RuntimeRole == "" {
-		options.RuntimeRole = RuntimeRoleInteractive
-	}
-	if options.RuntimeRole != RuntimeRoleInteractive &&
-		options.RuntimeRole != RuntimeRoleWorker {
-		return nil, fmt.Errorf("unsupported Runtime role %q", options.RuntimeRole)
 	}
 	session := &Session{
 		observabilityBundle: observabilityBundle{

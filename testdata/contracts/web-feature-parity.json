@@ -475,7 +475,6 @@
       "runtime_owner": "internal/persist/artifact/service.go",
       "web_api": [
         "plan/get",
-        "plan/transition",
         "turn/recover"
       ],
       "web_surface": [
@@ -622,15 +621,13 @@
       "id": "task-agent",
       "disposition": "required",
       "legacy_inventory_ids": [
-        "acp_method.agent-list",
-        "acp_method.task-list"
+        "acp_method.agent-list"
       ],
       "legacy_evidence": [
         "internal/host/runtimeapi/acp/server.go"
       ],
       "runtime_owner": "internal/orchestration",
       "web_api": [
-        "task/list",
         "agent/list"
       ],
       "web_surface": [
@@ -709,7 +706,6 @@
       ],
       "runtime_owner": "internal/orchestration",
       "web_api": [
-        "task/list",
         "agent/list"
       ],
       "web_surface": [

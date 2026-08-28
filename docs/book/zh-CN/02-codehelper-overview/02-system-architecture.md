@@ -34,8 +34,8 @@ last_verified: null
 
 ## 学习目标
 
-理解主要分层、依赖方向、Runtime Protocol，以及 CodeHelper 如何让 Web 与后台工作
-共享同一个执行核心。
+理解主要分层、依赖方向、Runtime Protocol，以及 CodeHelper 如何让主 Agent 与
+Subagent 共享同一个执行核心。
 
 ## 前置知识
 
@@ -43,7 +43,7 @@ last_verified: null
 
 ## 问题背景
 
-Coding Agent 会逐渐拥有 Web、后台 Worker 和 Child Agent。若这些入口分别构造
+Coding Agent 会逐渐拥有 Web 和 Child Agent。若这些入口分别构造
 Provider、执行 Tool 或保存 State，安全、取消、恢复和证据语义必然分叉。因此架构
 需要定义权限与依赖方向，而不只是列出目录。
 
@@ -67,7 +67,7 @@ Control Path，以及通过 Event/Receipt 的 Evidence Path；只实现 Executor
 - **Adapter** 连接外部 Model、Tool 和扩展生态。
 - **Security** 决策并实施权限。
 - **Persistence/Observability** 保存事实与证据。
-- **Orchestration** 调度持久或多步骤工作。
+- **Orchestration** 管理 Subagent 协作、预算与隔离工作区。
 - **Platform** 实现 OS Process 与 Sandbox 能力。
 
 ## CodeHelper 设计
@@ -83,9 +83,9 @@ flowchart TB
     ENG[Agent Engine]
     ADP[Provider / Tool / Extension Adapters]
     SEC[Policy / Guard / Sandbox]
-    ORC[WorkGraph / Worker / Workflow / Fleet]
+    ORC[Subagent / Admission / Worktree / Chat Merge]
     PER[SQLite / Domain Facts / Events / CAS / Journal]
-    OBS[Observation / Trace / Usage / OTLP]
+    OBS[Trace / Usage / Receipt / Telemetry]
     PLT[Process / OS]
     Hosts --> P --> APP --> ENG
     ENG --> ADP
@@ -112,9 +112,9 @@ loopback HTTP/WebSocket 连接 Embedded UI 与共享 Runtime；Provider HTTP、M
 | Runtime | `internal/runtime` | Protocol、Lifecycle、Agent Loop、Wiring |
 | Adapter | `internal/adapter` | Provider、Tool、MCP、Skill、Hook |
 | Security | `internal/security` | Policy、Permission、Constitution、Sandbox |
-| Orchestration | `internal/orchestration` | WorkGraph、Worker、Automation、Workflow、Lane、Fleet、Subagent |
+| Orchestration | `internal/orchestration` | Subagent、Admission/Budget、Worktree、Chat Merge |
 | Persistence | `internal/persist` | SQLite、Event、CAS、Session、Journal |
-| Observability | `internal/observability` | 版本化 Observation、Trace、Usage、Diagnostics、Verification、OTLP |
+| Observability | `internal/observability` | Trace、Usage、Receipt、Diagnostics、Verification、Telemetry |
 | Platform | `internal/platform` | Process 与 OS Integration |
 | Web | `web` | Browser UI、Projection 与 Web Transport Client |
 
@@ -169,20 +169,19 @@ config -> provider -> persistence -> platform -> builtin tools
 每个 Module 只拥有一个构造边界，仅向后续 Module 发布必要结果。Runtime、Engine 和
 Session Service 都不得持有 `buildState`。Persistence 拥有 Content、Job Log 与
 SQLite 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchestration
-拥有 Task/Automation Repository、Workflow Executor、Scheduler 构造、Subagent 与
-Child Worktree/Toolset。Provider 发布所选 Provider/Model Catalog，Security 发布
-Permission Store 与 Guard Factory。
+拥有 Subagent、Admission/Budget、Child Worktree/Toolset 与 Chat Merge 构造。
+Provider 发布所选 Provider/Model Catalog，Security 发布 Permission Store 与
+Guard Factory。
 
 Builtin 与 Extension Tool 共享同一个 Registry。Skill、Memory、Dynamic
 Tool、Hook 和 MCP Contributor 注册 Typed Contract，只接收显式 Capability，并返回
-有界 Receipt。随后 Source Resolution 生成 Digested Extension Plan。Task/Automation
-注册归 Orchestration，而非 Extension Contributor Chain。
+有界 Receipt。随后 Source Resolution 生成 Digested Extension Plan。Subagent 工具
+由 Orchestration Module 装配，而非 Extension Contributor Chain。
 
 Runtime 构造具有 Prepared 状态：`RuntimeModule` 只构造 Facade 并恢复静态 Durable
 State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh、启动
-Runtime 的 Terminal Outbox/Pending Turn Recovery、启动 MCP Prewarm、协调
-Automation，最后启动 Worker Scheduler。任一步失败都会终止构造并由 ResourceStack
-回滚；Runtime Recovery 成功前不会启动后台 Worker。
+Runtime 的 Terminal Outbox/Pending Turn Recovery，再启动 MCP Prewarm。任一步失败
+都会终止构造并由 ResourceStack 回滚；Runtime Recovery 成功前不会接受 Operation。
 
 构造与关闭共享 `wire.ResourceStack`，部分构造失败按注册逆序回滚，不泄漏资源。
 
@@ -197,9 +196,9 @@ Automation，最后启动 Worker Scheduler。任一步失败都会终止构造�
 | Chat Merge | `runtime/app` | Preview 并 Journal-apply 隔离 Worktree Change |
 | Operation | `runtime/app` | Dispatch、Reservation、Event Hub、Terminal Commit |
 | Turn | `runtime/agent` | Coordinator、Scope、Effect、Control、Verification |
-| Work Lifecycle | `orchestration/kernel`、`orchestration/store` | Run/Node/Attempt/Lease/Effect Transition 与 Atomic Fact |
+| Subagent Control | `orchestration/subagent`、`orchestration/admission` | Agent Graph、Budget、Concurrency 与 Worktree Authority |
 | Extension Lifecycle | `runtime/extension`、`runtime/app/extension` | Plan、Generation、Effect Ownership、Control Receipt |
-| Observation Plane | `observability/observation`、`observability/router` | Privacy Admission、Evidence Routing、Exporter Isolation |
+| Trace/Usage Plane | `observability/trace`、`observability/usage` | Span、Latency、Token 与 Cost Projection |
 | Go Projection | `runtime/eventview` | Go Host 共享的 Typed Event Interpretation |
 | Web Projection | `web/src/chat/projector` | Exhaustive Generated Event Class Dispatch |
 
@@ -208,16 +207,16 @@ Automation，最后启动 Worker Scheduler。任一步失败都会终止构造�
 Chat Merge 与 Durable Repository 行为成为可独立测试的 Service，不再混在 `wire`
 构造逻辑中。
 
-## Persistence 与 Orchestration
+## Persistence 与 Subagent 协作
 
-SQLite 保存关系 Projection 与 WorkGraph/Turn Fact；Runtime Event Log 保存 Host-facing
+SQLite 保存关系 Projection 与 Turn/Agent Fact；Runtime Event Log 保存 Host-facing
 Lifecycle Evidence；CAS 保存不可变 Payload；Snapshot 加速恢复；Workspace Journal
-记录 Edit Before-image。独立 Observation Journal 保存通过 Privacy Admission 的因果
-证据，用于按 Cursor 重放和 OTLP 投影，但不获得执行权威。
+记录 Edit Before-image。Trace 与 Usage 作为辅助投影保存耗时和成本，但不获得执行
+权威。
 
-Task、Workflow、Automation、Background Command、Verification 与 Agent Work 编译为
-统一 Durable WorkGraph。Worker 是唯一 Claim Authority；Fleet 是 Read/Audit
-Projection，Lane 是 Placement。所有执行最终回到 Runtime、Guard 与 Sandbox。
+CodeHelper 不维护通用后台 Task Queue、Worker Lease、Workflow DAG 或 Automation。
+前台工作由 Runtime Turn 承载；Subagent 通过 Agent Graph、Admission/Budget 和
+Worktree 隔离扩展同一执行路径。所有执行最终回到 Runtime、Guard 与 Sandbox。
 
 ## 设计取舍与替代方案
 

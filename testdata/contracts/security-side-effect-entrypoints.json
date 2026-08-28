@@ -30,13 +30,6 @@
       "reason": "MCP HTTP transport and OAuth callback listener."
     },
     {
-      "path": "internal/orchestration/lane",
-      "prefix": true,
-      "categories": ["process", "file"],
-      "owner": "orchestration lane",
-      "reason": "Existing command and tmux lifecycle pending Process Broker migration."
-    },
-    {
       "path": "internal/host/runtimeapi/web/native_directory.go",
       "categories": ["process"],
       "owner": "web host",
@@ -142,7 +135,7 @@
       "prefix": true,
       "categories": ["file"],
       "owner": "observability",
-      "reason": "Runtime-owned observation journals, exports, and dumps."
+      "reason": "Runtime-owned logs, metrics, traces, and provider debug dumps."
     },
     {
       "path": "internal/orchestration",
@@ -195,12 +188,6 @@
       "categories": ["process"],
       "owner": "shell tool",
       "reason": "Guard-authorized sandboxed foreground shell commands."
-    },
-    {
-      "path": "internal/adapter/tool/task/task.go",
-      "categories": ["process"],
-      "owner": "task tool",
-      "reason": "Guard-authorized sandboxed task gate commands."
     },
     {
       "path": "internal/observability/diagnostics/diagnostics.go",

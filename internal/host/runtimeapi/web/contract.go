@@ -75,7 +75,6 @@ var unaryRouteContracts = []RouteContract{
 	rpc("turn/recover", "turn_recover", "operation_receipt", true, true),
 	rpc("turn/queue", "session_identity", "turn_queue", false, false),
 	rpc("plan/get", "session_identity", "session_plan", false, false),
-	rpc("task/list", "task_query", "task_list", false, false),
 	rpc("agent/list", "agent_query", "agent_list", false, false),
 	rpc("trace/query", "trace_query", "trace_snapshot", false, false),
 	rpc("usage/query", "usage_query", "usage_summary", false, false),
@@ -144,11 +143,6 @@ func Contract() HostContract {
 		{
 			Path: "/api/v1/content/{handle}", Method: "GET", Request: "content_handle",
 			Response: "content_download", RequiresRuntime: true, RequiresCapability: true,
-		},
-		{
-			Path: "/api/v1/trace/export", Method: "POST", Request: "trace_export",
-			Response: "trace_export_download", RequiresRuntime: true,
-			RequiresCapability: true,
 		},
 	}
 	for _, route := range unaryRouteContracts {

@@ -36,9 +36,9 @@ Web
 | Runtime | `internal/runtime` | 协议、应用状态、Agent 循环、装配 |
 | Adapter | `internal/adapter` | 模型、Provider、Tool、MCP、Skill、Hook |
 | Security | `internal/security` | Policy、Permission、Constitution、Sandbox |
-| Orchestration | `internal/orchestration` | Task、Worker、Automation、Workflow、Lane、Fleet |
+| Orchestration | `internal/orchestration` | Subagent、Admission/Budget、Chat Merge |
 | Persistence | `internal/persist` | 关系状态、Event、CAS、Session、Snapshot、Journal |
-| Observability | `internal/observability` | 版本化 Observation、Usage、Trace、Diagnostics、Verify、Telemetry |
+| Observability | `internal/observability` | Usage、Trace、Receipt、Diagnostics、Verify、Telemetry |
 | Platform | `internal/platform` | 进程、PTY、操作系统差异 |
 | Configuration | `internal/config` | 默认值、TOML、环境变量、校验、Provenance |
 
@@ -71,9 +71,9 @@ config -> provider -> persistence -> platform -> builtin tools
 每个 Module 只拥有一个构造边界，并仅向后续 Module 暴露必要结果。Runtime、Engine 和
 Session Service 都不得持有 `buildState`。Persistence 拥有 Content、Job Log 和
 SQLite 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchestration
-拥有 Task/Automation Repository、Workflow Executor、Scheduler 构造、Subagent 与
-Child Worktree/Toolset。Provider 显式输出 Provider/Model Catalog，Security 显式
-输出 Permission Store 与 Guard Factory。
+拥有 Subagent、Admission/Budget、Child Worktree/Toolset 与 Chat Merge 构造。
+Provider 显式输出 Provider/Model Catalog，Security 显式输出 Permission Store 与
+Guard Factory。
 
 `internal/security/authority` 拥有执行授权数据模型。它把已验证的 Tool Invocation
 规范化为带 Resource Namespace、Root Generation、Subject、Effect Contract 和
@@ -88,7 +88,7 @@ MCP 生命周期；File/VCS Broker 接管模型文件工具、Agent/Chat Merge�
 Builtin 与 Extension Tool 共享同一个 Registry 实例。Skill、Memory、
 Dynamic Tool、Hook 与 MCP Contributor 只接收其显式构造能力和共享 Registry，不接收
 `buildState`；每个 Contributor 返回确定性的 `ContributionReceipt`，记录新增 Tool
-Identity 与命名输出。Task/Automation 注册归 Orchestration，而非 Extension
+Identity 与命名输出。Subagent 工具由 Orchestration Module 装配，而非 Extension
 Contributor Chain。
 
 Registry 分别冻结模型可见的 `ExternalDescriptor` 与执行权威
@@ -103,9 +103,8 @@ Process Owner 在 Backend `Prepare` 后再次校验本次命令的 Prepared Cont
 
 Runtime 构造具有 Prepared 状态。`RuntimeModule` 只构造 Facade 并恢复静态 Durable
 State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh、启动 Runtime
-的 Terminal Outbox/Pending Turn Recovery、启动 MCP Prewarm、协调 Automation，最后
-启动 Worker Scheduler。任一步失败都会终止构造并由 ResourceStack 回滚；Runtime
-Recovery 成功前不会启动后台 Worker。
+的 Terminal Outbox/Pending Turn Recovery，再启动 MCP Prewarm。任一步失败都会终止
+构造并由 ResourceStack 回滚；Runtime Recovery 成功前不会接受 Operation。
 
 当 Web 启动时没有显式或已保存的 Provider/Model，Host 先进入受限 Setup 状态，不构造
 默认 Runtime。该状态只暴露受同源 Capability Token 保护的 `setup/apply`；用户提交的
@@ -116,15 +115,15 @@ API Key 写入操作系统 Keyring，Provider、Model、Endpoint 与协议写入
 Web 进程持有一个全局 Owner Lease 和持久化 Workspace Registry。首次启动创建
 Supervisor；其他目录再次执行 `codehelper` 时，通过 Lease 中仅对当前用户可读的
 Capability Token 调用已有 Host 的 `workspace/add`，不会启动第二套控制面。每个
-Workspace 单独拥有 `wire.Session`、Sandbox、Tool Registry、Repository Index、
-Extension 生命周期和后台 Scheduler。共享 SQLite 中的 Session、Event Recovery、
-Terminal Outbox 与 WorkGraph Outbox 按规范化 Workspace Root 过滤；关闭一个 Runtime
-不能关闭 Supervisor 持有的共享 Store。
+Workspace 单独拥有 `wire.Session`、Sandbox、Tool Registry、Repository Index 和
+Extension 生命周期。共享 SQLite 中的 Session、Event Recovery 与 Terminal Outbox
+按规范化 Workspace Root 过滤；关闭一个 Runtime 不能关闭 Supervisor 持有的共享
+Store。
 
 构造与关闭共享 `wire.ResourceStack`。Session 只注册一次资源关闭函数；部分构造
 失败回滚与正常关闭都按注册逆序关闭同一 Stack。每项资源最多关闭一次，单项关闭失败
-不会跳过后续资源，调用方会收到带资源标识的聚合错误。因此 Runtime 或 Scheduler 等
-后段构造失败也不会泄漏已创建资源。
+不会跳过后续资源，调用方会收到带资源标识的聚合错误。因此 Runtime 等后段构造失败
+也不会泄漏已创建资源。
 
 ## Runtime 所有权图
 
@@ -159,9 +158,9 @@ eventview + Web Projection -> 仅负责 Host Presentation
 | Event/Recovery Service | `internal/runtime/app` | Event Projection 索引、Observer 与 Durable Recovery |
 | Turn Coordinator/Scope | `internal/runtime/agent` | Reducer Authority、Effect、Control 与 Turn-local State |
 | Event Hub/Terminal Publisher | `internal/runtime/app/eventhub`、`internal/runtime/app` | Sequence/Fanout 与 Atomic Terminal Publication |
-| WorkGraph Kernel/Store | `internal/orchestration/kernel`、`internal/orchestration/store` | Durable Run、Node、Attempt、Lease 与 Effect Transition |
+| Subagent Control | `internal/orchestration/subagent`、`internal/orchestration/admission` | Agent Graph、Budget、Concurrency 与 Worktree Authority |
 | Extension Runtime | `internal/runtime/extension`、`internal/runtime/app/extension` | Typed Contributor、Source Plan、Generation、Lifecycle Effect 与 Control Receipt |
-| Observation Plane | `internal/observability/observation`、`internal/observability/router` | Evidence Schema、Privacy Admission、Durable Routing 与 Exporter Isolation |
+| Trace/Usage Plane | `internal/observability/trace`、`internal/observability/usage` | Span、Latency、Token、Cost 与查询投影 |
 | Session/Artifact/Trace Service | `internal/runtime/app` | Runtime-owned Port 上的 Host-facing Query 行为 |
 | Agent Preset Service | `internal/runtime/app`、`internal/persist/agentpreset` | Workspace 范围的版本化 Preset 校验、原子持久化与 Session 应用 |
 | Benchmark Projection | `internal/runtime/eventview` | Go Benchmark 的 Typed Event Interpretation |
@@ -346,7 +345,7 @@ Result 不被改写。
 不改变 Authority、Workspace Binding、审批、Sandbox 或 Verification 事实。
 
 OpenAI-compatible Adapter 的回归测试在最终 JSON 序列化后逐消息进行字节比较；
-Observation 同时保留逻辑公共前缀指标和最终 Transport Payload Digest，不记录消息
+Trace 与 Receipt 保留逻辑公共前缀指标和最终 Transport Payload Digest，不记录消息
 内容。非 TTY Process 在首次 yield 后由 Runtime 订阅 Session 通知直到终态；TTY
 仍通过 `write_stdin` 支持交互，Cancel 会终止等待并回收进程组。
 
@@ -368,7 +367,7 @@ Durable State 由多个明确组件组合：
 
 | 组件 | 用途 |
 | --- | --- |
-| SQLite | Session、Turn、Task、Usage、Trace、Workflow 关系 Projection |
+| SQLite | Session、Turn、Agent、Usage、Trace 与 Repository 关系 Projection |
 | Event Log | 有序 Runtime 事实 |
 | CAS | 不可变内容寻址 Payload |
 | Session Metadata | 面向用户的 Session/Thread 组织 |
@@ -429,43 +428,22 @@ Manifest。CAS 先按 Digest 幂等 Stage，SQLite 再提交 Manifest 可达性�
 事实。Inline Narrative 使用 `generate_narrative` 与 `commit_context_rebase` Durable
 Effect；Rebase 由 `runtime/app/persistence` 单点提交，提交成功后 Engine 才替换 History。
 
-## Observation 架构
+## 可观测性架构
 
-Runtime Event 继续作为 Host Protocol。Observation Plane 是独立且不具执行权威的证据
-系统，用于因果诊断、Telemetry Export 与 Retention。每条获准记录都会成为版本化
-`ObservationEnvelope`，包含稳定 Observation ID、有序 Sequence、Runtime/Domain
-Identity、可选 W3C Trace Context、Causality Link、Data Policy、有界 Summary，以及
-可选 CAS Payload Reference。
+Runtime Event 是 Host Protocol，也是生命周期回放的权威记录。Terminal Envelope
+原子保存冻结 Measurement、Receipt、Session Delta 与 Projection Outbox。除此之外，
+系统只维护面向 Coding 主线的轻量可观测数据：
 
-`observation_traits.json` 是每种 Observation Kind 的 Owner、Durability、Payload
-Policy、Retention Class、必需 Correlation、OpenTelemetry Mapping 与 Queue Priority
-的事实来源，并生成 Go Trait Table、TypeScript Table 与
-`docs/protocol/observation.schema.json`。
+- **Trace**：Turn 内存 Span Tree 在结束时写入 SQLite，用于 Phase Latency 与查询；
+- **Usage**：按 Provider、Model、Session、Thread 和 Turn 聚合 Token 与 Cost；
+- **Receipt**：记录最终变更、验证、预算、缓存和 Measurement Digest；
+- **Telemetry**：本地结构化日志与低基数指标；
+- **Diagnostics/Verification**：提供环境诊断和完成门禁证据。
 
-Router 会在任何 Journal 或 CAS 写入前应用 Privacy Policy。Critical Evidence 在脱离
-业务 Cancellation 的同步路径持久化；Normal 与 Bulk Record 进入有界 Queue。Queue
-Pressure、Privacy Error 和 Payload Drop 由 Admission Receipt 显式返回，Journal 或
-Exporter Failure 由 `Flush`/`Shutdown` 返回；这些故障绝不改写业务 Turn 的成功或
-失败结果。Observation Plane 不获得执行权威。
-
-Capture 由 `CODEHELPER_OBSERVATION_CAPTURE` 控制：
-
-- `off`：关闭 Observation Admission；
-- `metadata`：默认值，只保留脱敏 Summary，不保留 Raw Payload；
-- `failure`：仅为 Failure-like Observation 保留可接受的脱敏 Payload；
-- `full`：为符合策略的 Observation 保留脱敏 Payload。
-
-Credential 与 Restricted Payload 永不持久化。配置的 Secret Value 以及 State/Config
-Root 会在写入前脱敏。Payload 复用 Content Store，并按 Retention Class 管理：Audit
-与 Diagnostic 默认保留 30 天，Sensitive 保留 24 小时，Ephemeral 保留 1 小时。启动
-清理会释放过期 Reference，只删除已无引用的 CAS Object；Observation Metadata 仍可
-用于解释。
-
-W3C Trace Context 会跨 Provider HTTP、MCP HTTP/stdio、Process、Workflow 与
-Subagent 传播。OTLP Projector 默认关闭，可通过环境变量选择 In-memory、HTTP/protobuf 和
-gRPC Exporter。Metric Label 来自固定的低基数 Allowlist，不能包含 Path、Prompt、
-Tool Argument 或 Resource ID。故障分析直接按 Cursor 重放 Raw Journal，并与 Runtime
-Event、Trace、Usage、Receipt 和 Workspace Journal 交叉核对。
+CodeHelper 不维护第二份 Durable Observation Journal、CAS Payload、Retention Policy
+或 OTLP Exporter。W3C Trace Context 仍跨 Provider HTTP、MCP HTTP/stdio、Process 与
+Subagent 传播，用于关联调用；它不获得执行权威。故障分析以 Runtime Event、Terminal
+Envelope、Trace、Usage、Receipt、Job Log 与 Workspace Journal 交叉核对。
 
 ## 上下文架构
 
@@ -594,35 +572,28 @@ Hook 观察或拦截生命周期点，必须有界。Repository Hook 不再从 W
 隐式启用；显式启用的 Hook 在只读、禁网 Sandbox 中运行，且不能通过 Permission
 Decision 扩大 Guard 权限。
 
-## 编排架构
+## Subagent 协作架构
 
-Task、Workflow、Automation、Background Command、Verification 与 Agent Work 已收敛
-到 Durable WorkGraph Model：
+CodeHelper 不维护通用后台 Task Queue、Worker Lease、Workflow DAG、Automation、
+Lane 或 Fleet。前台工作由 Runtime Turn 承载；多 Agent 协作通过 Subagent
+Control Plane 扩展，但不建立第二套执行生命周期：
 
 ```text
-Command(expected revision)
-  -> pure WorkGraph Kernel
-  -> Aggregate + ordered Facts + Effects
-  -> one SQLite transaction
-     (snapshot + facts + command receipt + effect outbox + projections)
+Parent Turn
+  -> Agent Graph + Admission/Budget
+  -> Child Runtime Turn
+  -> Guarded Tool + Worktree
+  -> Result + Journaled Integration
 ```
 
-- **WorkGraph Kernel**：拥有 Run、Node、Attempt、Lease Epoch 与 Effect State
-  Transition，不执行 I/O。
-- **WorkGraph Store**：原子提交 Transition、按 Command ID 去重，并检测
-  Snapshot/Fact Drift。
-- **Worker**：唯一 Claim Authority；Heartbeat 与 Settlement 受 Owner、Lease Epoch、
-  Authority Digest 和 Revision Fence。
-- **Automation/Workflow**：将 Schedule 或 DAG 编译为 WorkGraph Node，不维护第二套
-  Checkpoint State Machine。
-- **Lane**：记录 Durable Placement，并显式管理 Inline/tmux Process Adapter；
-  Placement 不是 Lifecycle Authority。
-- **Fleet**：投影并审计 WorkGraph State，不能 Enqueue、Claim、Settle 或 Resume；
-  Repair 只能从 Ordered Fact 重建 Snapshot Cache。
-- **Subagent**：运行有界 Child Runtime，并持久化 Agent Tree、Mailbox、Result、Budget
-  Ledger、Worktree Ownership、Approval Routing 与 Journaled Integration。
+- **Agent Graph**：持久化 Spawn、Transition、Result、Mailbox 与 Integration 事实。
+- **Admission/Budget**：约束 Depth、Concurrency、Token、Cost 和 Resident Agent。
+- **Child Runtime**：执行普通 Runtime Turn，共享 Operation/Event、Guard、Journal
+  与恢复语义。
+- **Worktree/Chat Merge**：隔离并集成写入，不允许 Child 扩大 Parent Authority。
 
-所有编排最终仍回到 Runtime、Tool 和 Security 边界。
+外部定时或流水线系统可以调用受支持的 Web 入口，但不进入 Runtime 内部建立后台
+Scheduler。
 
 ## 架构变更检查表
 
@@ -632,4 +603,4 @@ Command(expected revision)
 4. 保持 Guard 与 Sandbox 路径。
 5. 增加 Contract 或 Architecture Test。
 6. 同步更新中文文档。
-7. 必要时重新生成 Protocol、Observation Trait 与 Compatibility Artifact。
+7. 必要时重新生成 Protocol 与 Compatibility Artifact。

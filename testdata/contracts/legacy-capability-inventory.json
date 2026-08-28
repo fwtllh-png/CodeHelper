@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "source_hash": "d09495c7a1ae0f5ec70f9f3c36d132d7ad3f529b5129d61d749c7909340f26f4",
+  "source_hash": "aab99263e8742b4eae4d32a1d33f406fe27f110c26757643df987e0d1b267d7e",
   "items": [
     {
       "id": "acp_dynamic_method.tool-call-result",
@@ -251,13 +251,6 @@
       "id": "acp_method.shutdown",
       "kind": "acp_method",
       "name": "shutdown",
-      "source": "internal/host/runtimeapi/acp/server.go",
-      "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
-    },
-    {
-      "id": "acp_method.task-list",
-      "kind": "acp_method",
-      "name": "task/list",
       "source": "internal/host/runtimeapi/acp/server.go",
       "source_hash": "c18204934afe405dc904e76a5803821c98d9bb5edfa78bc96289173dc60fc371"
     },

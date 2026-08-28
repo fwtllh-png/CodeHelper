@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -32,16 +31,6 @@ type TerminalRuntime interface {
 		protocol.ThreadID,
 	) (agentcontext.ContextManifest, bool)
 	StoreContextManifest(protocol.ThreadID, agentcontext.ContextManifest)
-	ObserveTerminal(
-		trace.TerminalPhase,
-		protocol.ThreadID,
-		protocol.TurnID,
-		protocol.OperationID,
-		string,
-		string,
-		string,
-		trace.TerminalOutcome,
-	) string
 	PublishTerminalProjection(
 		context.Context,
 		turnkernel.ProjectionOutboxEntry,
@@ -165,17 +154,6 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 	committed := CommittedTerminal{
 		Operation: request.Operation, OperationID: projectionOperationID, ItemID: itemID,
 	}
-	observationOutcome := TerminalObservationOutcome(decision)
-	preparedObservation := p.runtime.ObserveTerminal(
-		trace.TerminalPrepared,
-		threadID,
-		turnID,
-		request.Operation.ID,
-		envelope.EffectID,
-		"",
-		envelope.Measurement.Digest,
-		observationOutcome,
-	)
 	if p.runtime.DurableTerminal() {
 		atomicStore, ok := p.runtime.TerminalStore().(turnkernel.AtomicTerminalOperationStore)
 		if !ok {
@@ -193,16 +171,6 @@ func (p *TerminalPublisher) Commit(ctx context.Context, request TerminalRequest)
 		if manifest != nil {
 			p.runtime.StoreContextManifest(threadID, *manifest)
 		}
-		p.runtime.ObserveTerminal(
-			trace.TerminalCommitted,
-			threadID,
-			turnID,
-			request.Operation.ID,
-			envelope.EffectID,
-			preparedObservation,
-			envelope.Measurement.Digest,
-			observationOutcome,
-		)
 	}
 	if err != nil {
 		releaseStaged()

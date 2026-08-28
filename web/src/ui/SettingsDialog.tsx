@@ -1320,7 +1320,7 @@ function AgentSettings({
         disabled={!mutable(snapshot, "max_steps")}
         onChange={(maxSteps) => onDraftChange({maxSteps})}
       />
-      {(snapshot.tasks.length > 0 || snapshot.agents.length > 0 || snapshot.usage) && (
+      {(snapshot.agents.length > 0 || snapshot.usage) && (
         <div className="settingsBlock">
           <div className="settingsBlockTitle">Current activity</div>
           {snapshot.usage && (
@@ -1331,18 +1331,6 @@ function AgentSettings({
             </dl>
           )}
           <div className="settingsActivity">
-            {snapshot.tasks.map((task) => (
-              <div key={task.id}>
-                <span>
-                  <strong>{task.kind}</strong>
-                  <small>{task.id}</small>
-                </span>
-                <b>{task.state}</b>
-                {(task.failure_reason || task.reason) && (
-                  <small>{task.failure_reason || task.reason}</small>
-                )}
-              </div>
-            ))}
             {snapshot.agents.map((agent) => (
               <div key={agent.id}>
                 <span>

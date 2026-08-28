@@ -14,8 +14,7 @@ code_paths:
   - internal/runtime/agent/turnkernel
   - internal/adapter/provider/assembly
   - internal/adapter/tool
-  - internal/observability/observation
-  - internal/observability/router
+  - internal/observability/trace
 test_paths:
   - internal/runtime/protocol/message_test.go
   - internal/runtime/app/runtime_test.go
@@ -23,14 +22,13 @@ test_paths:
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/turnkernel/coordinator_test.go
   - internal/runtime/agent/turnkernel/measurement_test.go
-  - internal/observability/router/router_test.go
 source_of_truth:
   - docs/protocol/runtime-protocol.schema.json
   - internal/runtime/protocol/message.go
   - internal/runtime/agent/turnkernel/coordinator.go
   - internal/runtime/agent/turnkernel/command.go
   - internal/runtime/agent/turnkernel/measurement.go
-  - internal/observability/observation/envelope.go
+  - internal/observability/trace/trace.go
 status: verified
 last_verified: 2026-08-23
 ---
@@ -172,9 +170,8 @@ Envelope 都引用同一 Measurement。Runtime 将它们与 Frozen Kernel State�
 Domain Fact、Final Output、Operation Receipt、Terminal Event 与 Projection Outbox
 原子提交。Engine 只在 Durable Commit 成功后幂等 Apply。
 
-Lifecycle 中通过 Privacy Admission 的 `ObservationEnvelope` 会关联 Provider、Tool、
-Approval、Verification、Process 与 Terminal Evidence。Critical Evidence 同步写入，
-低优先级使用有界 Queue。Observation/Exporter Failure 只更新 Health，不改变 Turn 的
+Trace Recorder 关联 Provider、Tool、Approval 与 Verification Span，并在 Turn 结束后
+投影到 SQLite。Trace、Log 或 Metrics Failure 不改变 Turn 的
 Completed/Failed/Canceled 业务结果。
 
 ## Control Operation
@@ -202,7 +199,7 @@ Overflow、Late、Duplicate、Kind Mismatch 都返回结构化错误。
 | Model/Tool Executor | `internal/runtime/agent/engine` |
 | Receipt | `internal/observability/receipt/receipt.go` |
 | Frozen Terminal Measurement | `internal/runtime/agent/turnkernel/measurement.go` |
-| Observation Evidence | `internal/observability/observation`、`internal/observability/router` |
+| Trace Evidence | `internal/observability/trace` |
 | Durable Runtime Assembly | `internal/runtime/app/wire/persistent_runtime.go` |
 | Turn Domain Fact 与 Lease | `internal/persist/state/turnstate` |
 

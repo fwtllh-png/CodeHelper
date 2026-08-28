@@ -62,8 +62,8 @@ func (e *Engine) beginTrace(
 	return recorder.Context(ctx, span.ID()), recorder, span
 }
 
-// endTrace closes the in-memory turn recorder. Durable observation is emitted
-// incrementally by the recorder; there is no second end-of-turn Trace writer.
+// endTrace closes the in-memory turn recorder. The engine persists the returned
+// span snapshot through its trace sink.
 func (e *Engine) endTrace(
 	_ context.Context,
 	recorder *trace.Recorder,

@@ -16,12 +16,6 @@ type TurnID string
 
 type ItemID string
 
-type RunID string
-
-type NodeID string
-
-type AttemptID string
-
 type EffectID string
 
 type Cursor uint64
@@ -47,21 +41,6 @@ func NewTurnID() (TurnID, error) {
 func NewItemID() (ItemID, error) {
 	value, err := newID("item")
 	return ItemID(value), err
-}
-
-func NewRunID() (RunID, error) {
-	value, err := newID("run")
-	return RunID(value), err
-}
-
-func NewNodeID() (NodeID, error) {
-	value, err := newID("node")
-	return NodeID(value), err
-}
-
-func NewAttemptID() (AttemptID, error) {
-	value, err := newID("attempt")
-	return AttemptID(value), err
 }
 
 func NewEffectID() (EffectID, error) {

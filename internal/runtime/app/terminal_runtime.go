@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
@@ -58,29 +57,6 @@ func (r *Runtime) StoreContextManifest(
 	manifest agentcontext.ContextManifest,
 ) {
 	r.contextManifests.Store(threadID, manifest)
-}
-
-func (r *Runtime) ObserveTerminal(
-	phase trace.TerminalPhase,
-	threadID protocol.ThreadID,
-	turnID protocol.TurnID,
-	operationID protocol.OperationID,
-	effectID string,
-	parent string,
-	measurementDigest string,
-	outcome trace.TerminalOutcome,
-) string {
-	return r.opts.Observability.Runtime.ObserveTerminal(
-		context.Background(),
-		phase,
-		threadID,
-		turnID,
-		operationID,
-		effectID,
-		parent,
-		measurementDigest,
-		outcome,
-	)
 }
 
 func (r *Runtime) PublishTerminalProjection(

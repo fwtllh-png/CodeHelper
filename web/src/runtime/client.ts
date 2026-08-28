@@ -43,8 +43,6 @@ import type {
   SetupCatalog,
   SetupRequest,
   SetupResult,
-  TaskList,
-  TaskSummary,
   TraceSnapshot,
   ToolCatalog,
   TurnQueue,
@@ -128,7 +126,6 @@ export interface RuntimeSnapshot {
   tools: Readonly<ToolCatalog["tools"]>;
   checkpoints: Readonly<CheckpointList["checkpoints"]>;
   plan?: SessionPlanArtifact;
-  tasks: readonly TaskSummary[];
   agents: readonly AgentSummary[];
   usage?: UsageRollup;
   trace?: TraceSnapshot;
@@ -168,7 +165,6 @@ const emptySnapshot: RuntimeSnapshot = {
   selectedWorkspaceID: "",
   tools: [],
   checkpoints: [],
-  tasks: [],
   agents: [],
   extensions: [],
   tracePhase: "idle",
@@ -197,14 +193,7 @@ const progressEventKinds = new Set([
   "agent.spawned",
   "agent.status",
   "agent.message",
-  "agent.integration",
-  "run.started",
-  "run.status",
-  "run.completed",
-  "run.failed",
-  "run.canceled",
-  "node.status",
-  "attempt.status"
+  "agent.integration"
 ]);
 
 const sessionActivityEventKinds = new Set([
@@ -492,9 +481,7 @@ export class RuntimeClient {
       tools: [],
       checkpoints: [],
       plan: undefined,
-      tasks: [],
       agents: [],
-      usage: undefined,
       trace: undefined,
       tracePhase: "idle",
       traceProblem: undefined,
@@ -574,7 +561,6 @@ export class RuntimeClient {
       tools: [],
       checkpoints: [],
       plan: undefined,
-      tasks: [],
       agents: [],
       usage: undefined,
       trace: undefined,
@@ -668,7 +654,6 @@ export class RuntimeClient {
         tools: [],
         checkpoints: [],
         plan: undefined,
-        tasks: [],
         agents: [],
         usage: undefined,
         trace: undefined,
@@ -707,7 +692,6 @@ export class RuntimeClient {
       tools: [],
       checkpoints: [],
       plan: undefined,
-      tasks: [],
       agents: [],
       usage: undefined,
       trace: undefined,
@@ -738,9 +722,6 @@ export class RuntimeClient {
         "checkpoint/list", {session_id: sessionID, limit: 20}, {workspaceID}
       ),
       this.call<SessionPlanSnapshot>("plan/get", {session_id: sessionID}, {workspaceID}),
-      this.call<TaskList>(
-        "task/list", {session_id: sessionID, limit: 20}, {workspaceID}
-      ),
       this.call<AgentList>(
         "agent/list", {session_id: sessionID, limit: 20}, {workspaceID}
       ),
@@ -769,12 +750,11 @@ export class RuntimeClient {
     const catalog = fulfilled(details[1]);
     const checkpoints = fulfilled(details[2]);
     const plan = fulfilled(details[3]);
-    const tasks = fulfilled(details[4]);
-    const agents = fulfilled(details[5]);
-    const usage = fulfilled(details[6]);
-    const extensions = fulfilled(details[7]);
-    const trace = fulfilled(details[8]);
-    const queue = fulfilled(details[9]);
+    const agents = fulfilled(details[4]);
+    const usage = fulfilled(details[5]);
+    const extensions = fulfilled(details[6]);
+    const trace = fulfilled(details[7]);
+    const queue = fulfilled(details[8]);
     const liveEvents = hydration.events
       .filter(({event, sessionID: owner}) =>
         owner === sessionID && event.sequence > snapshot.through_sequence
@@ -807,13 +787,12 @@ export class RuntimeClient {
       checkpoints: checkpoints?.checkpoints ?? [],
       plan: hydratePlanArtifact(plan?.artifact),
       mergePlan: undefined,
-      tasks: tasks?.tasks ?? [],
       agents: agents?.agents ?? [],
       usage: usage?.rollup,
       trace,
       tracePhase: trace ? "ready" : "unavailable",
-      traceProblem: details[8]?.status === "rejected"
-        ? errorMessage(details[8].reason)
+      traceProblem: details[7]?.status === "rejected"
+        ? errorMessage(details[7].reason)
         : undefined,
       extensions: extensions?.extensions ?? [],
       queuedTurns: projectTurnQueue(queue?.items ?? [], liveEvents),
@@ -1483,35 +1462,6 @@ export class RuntimeClient {
     });
   }
 
-  async exportTrace(): Promise<Blob> {
-    const response = await fetch("/api/v1/trace/export", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.token}`,
-        "Accept": "application/x-ndjson",
-        "Content-Type": "application/json",
-        "X-CodeHelper-Request-ID": crypto.randomUUID(),
-        "X-CodeHelper-Workspace-ID": this.state.selectedWorkspaceID
-      },
-      credentials: "same-origin",
-      body: JSON.stringify({session_id: this.requireSession()})
-    });
-    if (!response.ok) {
-      const envelope = await response.json().catch(() => undefined) as
-        | Envelope<never>
-        | undefined;
-      throw new RuntimeProblem(
-        envelope?.problem ?? {
-          version: 1,
-          code: "internal",
-          message: `Trace export failed (${response.status})`,
-          retryable: false
-        }
-      );
-    }
-    return response.blob();
-  }
-
   async diagnostics(): Promise<Record<string, unknown>> {
     return this.call<Record<string, unknown>>("system/diagnostics", {});
   }
@@ -1718,7 +1668,6 @@ export class RuntimeClient {
       tools: [],
       checkpoints: [],
       plan: undefined,
-      tasks: [],
       agents: [],
       usage: undefined,
       trace: undefined,
@@ -1808,9 +1757,8 @@ export class RuntimeClient {
   private async refreshProgress(sessionID: string): Promise<void> {
     const generation = this.selectionGeneration;
     try {
-      const [plan, tasks, agents] = await Promise.all([
+      const [plan, agents] = await Promise.all([
         this.call<SessionPlanSnapshot>("plan/get", {session_id: sessionID}),
-        this.call<TaskList>("task/list", {session_id: sessionID, limit: 20}),
         this.call<AgentList>("agent/list", {session_id: sessionID, limit: 20})
       ]);
       if (
@@ -1819,7 +1767,6 @@ export class RuntimeClient {
       ) {
         this.update({
           plan: hydratePlanArtifact(plan.artifact),
-          tasks: tasks.tasks ?? [],
           agents: agents.agents ?? []
         });
       }
@@ -1940,7 +1887,6 @@ export class RuntimeClient {
       tools: [],
       checkpoints: [],
       plan: undefined,
-      tasks: [],
       agents: [],
       usage: undefined,
       trace: undefined,

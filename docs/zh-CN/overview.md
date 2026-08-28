@@ -36,7 +36,7 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 - 编辑器与 Agent 客户端可嵌入的 Web Transport Runtime；
 - 用于观测、评估和策略治理的结构化事件；
 - Hermetic Fixture 与契约测试支持可重复集成；
-- 通过 MCP、Skill、Hook 和 Workflow 扩展。
+- 通过 MCP、Skill 和 Hook 扩展。
 
 ### 对 AI Agent
 
@@ -55,8 +55,8 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 | 验证 | diagnostics/repository/affected 范围，soft/hard Gate，修复预算 |
 | 安全 | Posture、审批、工作区权限、Constitution、OS Sandbox |
 | 持久化 | SQLite Projection、Domain Fact、Terminal Envelope、Event Log、CAS、Snapshot、Journal |
-| 可观测性 | 版本化 Observation Envelope、冻结终态 Measurement、Trace、Usage、Redaction、Retention、OTLP |
-| 编排 | 统一 Durable WorkGraph 的 Run/Node/Attempt/Effect、Worker、Workflow、Lane、Fleet、Subagent |
+| 可观测性 | 冻结终态 Measurement、Trace、Usage、Receipt、Diagnostics、结构化日志与指标 |
+| 多 Agent 协作 | Agent Graph、Subagent Admission/Budget、Worktree 隔离与 Chat Merge |
 | 生态 | Typed Extension Plan、Model Catalog、MCP、Skill、Hook、Memory |
 | Host | 本机 Web |
 
@@ -86,11 +86,11 @@ CodeHelper 不是：
   -> Policy + Approval + Journal + Sandbox
   -> 副作用
   -> Event + Receipt + Verify Evidence
-  -> 脱敏 Observation + 有界 Telemetry Projection
+  -> Trace / Usage / Receipt + 本地 Telemetry
 ```
 
-Web 与后台执行都应观察到相同语义。浏览器不能拥有私有文件写路径，后台 Worker 也
-不能绕过交互 Turn 使用的 Guard。
+主 Agent 与 Subagent 都观察相同语义。浏览器不能拥有私有文件写路径，Child Runtime
+也不能绕过交互 Turn 使用的 Guard。
 
 ## 当前成熟度
 

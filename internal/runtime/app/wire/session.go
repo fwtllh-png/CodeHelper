@@ -8,10 +8,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	dynamictool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dynamic"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/worker"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
@@ -82,16 +79,6 @@ func (s *Session) SessionWorkspaces() app.SessionWorkspaceManager {
 	}
 	return s.chatWorkspaces
 }
-
-func (s *Session) Tasks() *taskstate.Repository { return s.tasks }
-
-func (s *Session) Automations() *automation.Repository { return s.automations }
-
-// Scheduler reports the durable task scheduler, or nil when this host runs none.
-// A host uses it to say whether background work is being executed at all, which
-// is otherwise invisible: a queued task in a process without a scheduler simply
-// waits.
-func (s *Session) Scheduler() *worker.Scheduler { return s.scheduler }
 
 // JournalRecovery reports what interrupted turns this process found at startup
 // and what it did with them. It is empty in the normal case and for hosts running
@@ -212,16 +199,16 @@ func (s *Session) registerResourceClosers() error {
 			s.sandbox = nil
 			return err
 		}},
-		{name: "ephemeral-tasks", close: func(context.Context) error {
+		{name: "ephemeral-state", close: func(context.Context) error {
 			var closeErr error
-			if s.ephemeralTasks != nil {
-				closeErr = s.ephemeralTasks.Close()
-				s.ephemeralTasks = nil
+			if s.ephemeralState != nil {
+				closeErr = s.ephemeralState.Close()
+				s.ephemeralState = nil
 			}
 			var cleanupErr error
-			if s.ephemeralTasksDir != "" {
-				cleanupErr = os.RemoveAll(s.ephemeralTasksDir)
-				s.ephemeralTasksDir = ""
+			if s.ephemeralStateDir != "" {
+				cleanupErr = os.RemoveAll(s.ephemeralStateDir)
+				s.ephemeralStateDir = ""
 			}
 			return errors.Join(closeErr, cleanupErr)
 		}},
@@ -230,12 +217,6 @@ func (s *Session) registerResourceClosers() error {
 				return nil
 			}
 			return s.content.Close(ctx)
-		}},
-		{name: "observation-router", close: func(ctx context.Context) error {
-			if s.observability.router == nil {
-				return nil
-			}
-			return s.observability.router.Close(ctx)
 		}},
 		{name: "workspace-journal", close: func(ctx context.Context) error {
 			if s.journal == nil {
@@ -295,12 +276,6 @@ func (s *Session) registerResourceClosers() error {
 				s.children.close()
 			}
 			return nil
-		}},
-		{name: "scheduler", close: func(context.Context) error {
-			if s.scheduler == nil {
-				return nil
-			}
-			return s.scheduler.Close()
 		}},
 	}
 	for _, resource := range resources {

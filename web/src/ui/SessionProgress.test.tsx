@@ -6,7 +6,7 @@ import {SessionProgress} from "./SessionProgress";
 afterEach(cleanup);
 
 describe("SessionProgress", () => {
-  it("renders plan items, ordered tasks, subagents, and trajectory navigation", () => {
+  it("renders plan items, subagents, and trajectory navigation", () => {
     const onOpenTrajectory = vi.fn();
     render(
       <SessionProgress
@@ -43,10 +43,6 @@ describe("SessionProgress", () => {
           can_autopilot: false,
           created_at: "2026-01-01T00:00:00Z"
         }}
-        tasks={[
-          {id: "done", kind: "Inspect parser", state: "succeeded"},
-          {id: "active", kind: "Run tests", state: "running", reason: "focused suite"}
-        ]}
         agents={[
           {
             id: "agent",
@@ -65,7 +61,6 @@ describe("SessionProgress", () => {
     expect(screen.getByText("Implement parser")).toBeTruthy();
     expect(screen.getByText("1 completed · 1 active · 1 pending")).toBeTruthy();
     expect(screen.queryByText("Focused tests pass")).toBeNull();
-    expect(screen.getByText("1/2 complete")).toBeTruthy();
     expect(screen.getByText("Checking the diff")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Collapse plan"}));
     expect(screen.queryByText("Implement parser")).toBeNull();
@@ -98,7 +93,6 @@ describe("SessionProgress", () => {
           can_autopilot: true,
           created_at: "2026-01-01T00:00:00Z"
         }}
-        tasks={[]}
         agents={[]}
         onOpenTrajectory={vi.fn()}
       />

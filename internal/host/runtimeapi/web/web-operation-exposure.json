@@ -108,51 +108,6 @@
       "admission_policy": "deny",
       "required_surface": "",
       "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
-    },
-    {
-      "operation_kind": "run.submit",
-      "disposition": "denied",
-      "web_intent_schema": "",
-      "identity_binding": "none",
-      "admission_policy": "deny",
-      "required_surface": "",
-      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
-    },
-    {
-      "operation_kind": "run.cancel",
-      "disposition": "denied",
-      "web_intent_schema": "",
-      "identity_binding": "none",
-      "admission_policy": "deny",
-      "required_surface": "",
-      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
-    },
-    {
-      "operation_kind": "run.resume",
-      "disposition": "denied",
-      "web_intent_schema": "",
-      "identity_binding": "none",
-      "admission_policy": "deny",
-      "required_surface": "",
-      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
-    },
-    {
-      "operation_kind": "node.retry",
-      "disposition": "denied",
-      "web_intent_schema": "",
-      "identity_binding": "none",
-      "admission_policy": "deny",
-      "required_surface": "",
-      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
-    },
-    {
-      "operation_kind": "node.skip",
-      "disposition": "denied",
-      "web_intent_schema": "",
-      "identity_binding": "none",
-      "admission_policy": "deny",
-      "required_surface": "",
-      "qualification": "TestWebOperationExposureClassifiesEveryProtocolOperation"
     }
   ]
 }

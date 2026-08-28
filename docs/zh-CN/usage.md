@@ -133,19 +133,6 @@ Runtime 连接中断时，页面立即停止当前 Turn 的运行计时和操作
 并禁止继续提交。自动重连会重新读取 Runtime 的持久化状态，以确认该 Turn 实际为
 继续、完成或失败；Browser 不会自行伪造业务终态。
 
-### 导出 Observation Trace
-
-Composer 命令菜单中的 `/trace` 会下载当前 Session 的
-`*.trace.ndjson`。首行是 `codehelper.observation-jsonl` v1 Manifest，后续每行是一条
-Observation 或 Usage 聚合。Manifest 固定本次读取的 Journal 水位、记录数量和
-Manifest 后全部原始行的 SHA-256，
-消费者应先校验这些字段再导入。
-
-导出只包含当前 Workspace 中指定 Session 的记录。Payload 始终省略；
-Credential、Restricted、Workspace Content 和 Conversation Content 的 Summary 也会
-省略，并通过 `payload_omitted`、`summary_omitted` 明确标记。导出接口只接受带当前
-Capability Token 与 Workspace ID 的本机请求，不修改 Session 或 Turn。
-
 ## Session 与恢复
 
 Browser State 是可丢弃 Projection，不是事实来源。页面先为当前 Workspace 建立

@@ -33,8 +33,8 @@ Runtime 已完成以下收敛：
 | Tool Runtime | `internal/adapter/tool` | Catalog Binding、Batch、Result、Surface Projection |
 | Tool Guard | `internal/adapter/tool/guard` | Policy、Approval、Journal、Sandbox 与授权执行 |
 | Durable Assembly | `internal/runtime/app/persistence`、`internal/persist` | Repository、CAS、Context Commit、恢复与持久化事务 |
-| WorkGraph | `internal/orchestration/kernel`、`internal/orchestration/store` | Run、Node、Attempt、Lease、Effect 与幂等 Transition |
-| Observation | `internal/observability` | 非权威证据、Usage、Trace、Diagnostics 与 Export |
+| Subagent Control | `internal/orchestration/subagent`、`internal/orchestration/admission` | Agent Graph、Budget、Concurrency 与 Worktree Authority |
+| Observability | `internal/observability` | Usage、Trace、Receipt、Diagnostics 与本地 Telemetry |
 
 可变状态只能由表中的 Owner 修改。Host、Web Projection、Exporter 和 Compatibility
 Facade 都不能成为平行写入路径。
@@ -99,7 +99,7 @@ Engine 仍拥有何时调用这些能力以及如何把结果提交给 Kernel �
 ## 组合根约束
 
 `wire.NewExec` 通过封闭 Module 序列构造 Runtime。`buildState` 只在构造期存在，下游
-Runtime、Engine、Scheduler 和 Contributor 不得保留它。
+Runtime、Engine 和 Contributor 不得保留它。
 
 资源进入 `ResourceStack` 后按逆序关闭；部分构造失败和正常关闭共用同一套逻辑。新增
 Module 必须：
@@ -145,7 +145,7 @@ go test -race -p 1 ./internal/runtime/agent/... ./internal/runtime/app/...
 - 是否有人绕过 `TurnCoordinator` 调用 `Reducer.Apply`？
 - 是否在 Host、Wire 或 Adapter 中复制了业务状态机？
 - 是否让 Context、Terminal、Lease 或 Journal 出现双写？
-- 是否让 Optional Observation/Narrative Failure 改写业务结果？
+- 是否让 Optional Trace/Telemetry/Narrative Failure 改写业务结果？
 - 是否让配置默认值变成与模型容量无关的隐式执行终止器？
 - 是否为新 Owner 增加了恢复、并发和失败测试？
 - 是否同步更新架构、源码导读和相关书籍章节？

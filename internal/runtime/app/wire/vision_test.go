@@ -2,17 +2,13 @@ package wire
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
-	observationjournal "github.com/fwtllh-png/CodeHelper/internal/observability/journal"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/observation"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
@@ -159,76 +155,5 @@ model = "fixture-model"
 	}
 	if modelSpans != 1 {
 		t.Fatalf("measurement model spans = %d, want 1: %+v", modelSpans, spans)
-	}
-
-	if err := session.observability.router.Flush(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	observations, err := observationjournal.ReadAll(filepath.Join(
-		store.Root(), "observability", "journal-v1",
-	))
-	if err != nil {
-		t.Fatal(err)
-	}
-	kinds := make(map[observation.Kind]int)
-	for _, record := range observations {
-		kinds[record.Envelope.Kind]++
-		if record.Envelope.Kind ==
-			observation.KindTurnTerminalPrepared ||
-			record.Envelope.Kind ==
-				observation.KindTurnTerminalCommitted {
-			var summary struct {
-				MeasurementDigest string `json:"measurement_digest"`
-			}
-			if err := json.Unmarshal(
-				record.Envelope.Summary,
-				&summary,
-			); err != nil ||
-				summary.MeasurementDigest !=
-					receipt.MeasurementDigest {
-				t.Fatalf(
-					"terminal observation summary=%s error=%v",
-					record.Envelope.Summary,
-					err,
-				)
-			}
-		}
-	}
-	for _, kind := range []observation.Kind{
-		observation.KindTurnStarted,
-		observation.KindTurnTransitionCommitted,
-		observation.KindModelRequestSent,
-		observation.KindModelResponseCompleted,
-		observation.KindToolStarted,
-		observation.KindToolFinished,
-		observation.KindTurnTerminalPrepared,
-		observation.KindTurnTerminalCommitted,
-	} {
-		if kinds[kind] == 0 {
-			t.Fatalf("observation %q is missing: %+v", kind, kinds)
-		}
-	}
-	exported, err := session.Runtime.TraceExport.Export(
-		t.Context(),
-		trace.ExportRequest{
-			SessionID: "session-vision", ProducerVersion: "test",
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if exported.Manifest.EventCount == 0 ||
-		exported.Manifest.UsageCount == 0 ||
-		exported.Manifest.ThroughSequence == 0 ||
-		!strings.HasPrefix(
-			string(exported.Content),
-			`{"record_type":"manifest","format":"codehelper.observation-jsonl"`,
-		) ||
-		strings.Contains(string(exported.Content), workspace) {
-		t.Fatalf(
-			"trace export manifest=%+v content=%s",
-			exported.Manifest,
-			exported.Content,
-		)
 	}
 }

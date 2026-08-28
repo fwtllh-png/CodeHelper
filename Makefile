@@ -22,7 +22,6 @@ LDFLAGS := -s -w \
 	docs-check book-check web-experience-check \
 	host-journey-contract \
 	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
-	observation-traits observation-traits-check \
 	web-protocol web-protocol-check \
 	provider-deepseek-live-control provider-deepseek-live-ce7 \
 	architecture-ratchet architecture-freeze \
@@ -258,7 +257,7 @@ test-platform-capability:
 		-- $(GO) test -tags=capability -count=1 \
 			./internal/security/sandbox/... ./internal/platform/process/...
 
-reliability-gate: observation-traits-check
+reliability-gate:
 	python3 scripts/check-reliability-matrix.py \
 		'$(RELIABILITY_MATRIX)' --run
 
@@ -529,21 +528,6 @@ web-protocol:
 
 web-protocol-check:
 	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) -typescript $(WEB_HOST_TYPES) -check
-
-observation-traits:
-	$(GO) run ./scripts/observationtraitgen \
-		-manifest internal/observability/schema/observation_traits.json \
-		-go internal/observability/observation/traits.gen.go \
-		-typescript web/src/protocol/observation.generated.ts \
-		-schema docs/protocol/observation.schema.json
-
-observation-traits-check:
-	$(GO) run ./scripts/observationtraitgen \
-		-manifest internal/observability/schema/observation_traits.json \
-		-go internal/observability/observation/traits.gen.go \
-		-typescript web/src/protocol/observation.generated.ts \
-		-schema docs/protocol/observation.schema.json \
-		-check
 
 deepseek-init:
 	./scripts/deepseek-local.sh init

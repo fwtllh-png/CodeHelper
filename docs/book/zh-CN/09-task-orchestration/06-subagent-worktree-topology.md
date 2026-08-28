@@ -24,7 +24,6 @@ source_of_truth:
   - internal/orchestration/subagent/control_plane.go
   - internal/orchestration/subagent/lifecycle.go
   - internal/orchestration/subagent/result.go
-  - internal/orchestration/subagent/workgraph.go
 status: draft
 last_verified: null
 ---

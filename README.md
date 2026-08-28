@@ -9,8 +9,8 @@
 **一个使用 Go 实现的、本地运行、受控执行的 AI Coding Agent Runtime，也是一套
 可执行的 Agent 工程知识书籍。**
 
-CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、持久化会话与编排统一放在
-一套 Runtime 协议之后，并通过本机 Web 这一产品入口服务交互式使用、自动化与 Worker。
+CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、持久化会话与 Subagent
+协作统一放在一套 Runtime 协议之后，并通过本机 Web 这一产品入口服务交互式使用。
 
 > 项目状态：初始开发版本。首次公开稳定发布前，接口和持久化格式仍可能调整。
 
@@ -18,7 +18,7 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 
 | 交付物 | 提供的价值 |
 | --- | --- |
-| **面向真实工程的 Agent Runtime** | 模型接入、上下文工程、受控工具、持久化状态、任务编排、可观测性和本机 Web |
+| **面向真实工程的 Agent Runtime** | 模型接入、上下文工程、受控工具、持久化状态、Subagent 协作、可观测性和本机 Web |
 | **可执行的 Agent 工程知识书籍** | 从基础原理进入真实源码、测试、架构图、失败模式和可复现实验的中文路径 |
 
 `docs/zh-CN` 下的中文产品手册描述已交付行为。
@@ -32,13 +32,13 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 的工程属性：
 
 - **本地控制权**：源码和执行仍在用户工作区中。
-- **一个 Web 入口，一套 Runtime**：交互界面、自动化和后台工作共享同一套
-  Operation/Event 模型。
+- **一个 Web 入口，一套 Runtime**：主 Agent 与 Subagent 共享同一套
+  Operation/Event 和安全语义。
 - **受控执行**：所有修改型工具都经过 policy、permission、constitution、journal
   与操作系统沙箱检查。
 - **证据优先**：搜索、编辑、审批、验证、用量和 trace 都形成可检查的运行事实。
-- **扩展但不分叉控制面**：MCP、Skill、Hook、后台 Worker、Workflow 和
-  Subagent 都通过受治理的 Adapter 接入。
+- **扩展但不分叉控制面**：MCP、Skill、Hook 和 Subagent 都通过受治理的
+  Adapter 接入。
 - **默认关闭而不是假装安全**：安全能力不可用时明确报告，不静默降级为“看起来已隔离”。
 
 ## 快速开始
@@ -88,7 +88,7 @@ Runtime 完成恢复的 URL。
 
 | 入口 | 命令或路径 | 主要用途 |
 | --- | --- | --- |
-| 本机 Web | `codehelper` | 唯一产品入口，覆盖会话、审批、变更、编排与运行状态 |
+| 本机 Web | `codehelper` | 唯一产品入口，覆盖会话、审批、变更、Subagent 与运行状态 |
 
 ## 一分钟理解安全模型
 
@@ -115,7 +115,7 @@ internal/host/           Web Host 与 Runtime Transport
 internal/runtime/        Operation/Event Runtime 与 Agent Engine
 internal/adapter/        Provider、Model、Tool、MCP、Skill、Hook
 internal/security/       Policy、Permission、Constitution、Sandbox
-internal/orchestration/  Task、Worker、Workflow、Lane、Fleet、Subagent
+internal/orchestration/  Subagent、Admission/Budget、Chat Merge
 internal/persist/        SQLite、Event Log、Session、Snapshot、Journal
 internal/observability/  Usage、Trace、Verify、Diagnostics、Telemetry
 internal/platform/       进程和操作系统集成

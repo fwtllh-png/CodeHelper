@@ -53,15 +53,6 @@ const (
 	EventAgentStatus        EventKind = "agent.status"
 	EventAgentMessage       EventKind = "agent.message"
 	EventAgentIntegration   EventKind = "agent.integration"
-	EventRunStarted         EventKind = "run.started"
-	EventRunStatus          EventKind = "run.status"
-	EventRunCompleted       EventKind = "run.completed"
-	EventRunFailed          EventKind = "run.failed"
-	EventRunCanceled        EventKind = "run.canceled"
-	EventNodeStatus         EventKind = "node.status"
-	EventAttemptStatus      EventKind = "attempt.status"
-	EventExecutionBound     EventKind = "execution.bound"
-	EventBudgetUpdated      EventKind = "budget.updated"
 	EventPlanDelta          EventKind = "plan.delta"
 	EventCommandExecution   EventKind = "command.execution"
 	EventHostCommand        EventKind = "host.command"
@@ -108,19 +99,18 @@ func (d UnknownEventData) MarshalJSON() ([]byte, error) {
 }
 
 type TurnStartedData struct {
-	Provider           string                    `json:"provider"`
-	Model              string                    `json:"model"`
-	QueueID            string                    `json:"queue_id,omitempty"`
-	PlanID             string                    `json:"plan_id,omitempty"`
-	PlanTransition     PlanTransition            `json:"plan_transition,omitempty"`
-	ProfileRevision    uint64                    `json:"profile_revision,omitempty"`
-	Orchestration      *OrchestrationCorrelation `json:"orchestration,omitempty"`
-	Intent             TurnIntent                `json:"intent,omitempty"`
-	Mode               string                    `json:"mode,omitempty"`
-	Posture            string                    `json:"posture,omitempty"`
-	Workspace          string                    `json:"workspace,omitempty"`
-	WorkspaceIsolation string                    `json:"workspace_isolation,omitempty"`
-	Sandbox            string                    `json:"sandbox,omitempty"`
+	Provider           string         `json:"provider"`
+	Model              string         `json:"model"`
+	QueueID            string         `json:"queue_id,omitempty"`
+	PlanID             string         `json:"plan_id,omitempty"`
+	PlanTransition     PlanTransition `json:"plan_transition,omitempty"`
+	ProfileRevision    uint64         `json:"profile_revision,omitempty"`
+	Intent             TurnIntent     `json:"intent,omitempty"`
+	Mode               string         `json:"mode,omitempty"`
+	Posture            string         `json:"posture,omitempty"`
+	Workspace          string         `json:"workspace,omitempty"`
+	WorkspaceIsolation string         `json:"workspace_isolation,omitempty"`
+	Sandbox            string         `json:"sandbox,omitempty"`
 	// Prompt is model-visible durable reconstruction input. Optional for older events.
 	Prompt string `json:"prompt,omitempty"`
 	// DisplayPrompt omits expanded editor context and is safe for chat projection.
@@ -134,10 +124,6 @@ type TurnStartedData struct {
 func (*TurnStartedData) eventKind() EventKind { return EventTurnStarted }
 
 func (d *TurnStartedData) validate() error {
-	var orchestrationErr error
-	if d.Orchestration != nil {
-		orchestrationErr = d.Orchestration.Validate()
-	}
 	var planErr error
 	if d.PlanID != "" || d.PlanTransition != "" {
 		if !validProfileIdentifier(d.PlanID) {
@@ -151,7 +137,6 @@ func (d *TurnStartedData) validate() error {
 	}
 	return errors.Join(
 		require(d.Provider != "" && d.Model != "", "turn started provider and model are required"),
-		orchestrationErr,
 		planErr,
 		require(NormalizeTurnIntent(d.Intent).Valid(), "turn started intent is invalid"),
 		require(slices.Contains([]string{"", "shared", "worktree"}, d.WorkspaceIsolation), "turn started workspace isolation is invalid"),

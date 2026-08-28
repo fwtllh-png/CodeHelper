@@ -45,7 +45,6 @@ type Refusal struct {
 type ReadState struct {
 	Threads []runtimeview.Thread
 	Thread  runtimeview.Thread
-	Tasks   []runtimeview.Task
 	Agents  []runtimeview.Agent
 	Usage   []runtimeview.Usage
 	Rollup  runtimeview.UsageRollup

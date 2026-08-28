@@ -283,21 +283,20 @@ type ReceiptModelExecution struct {
 // Every field reflects observed execution. Sections the runtime cannot yet
 // determine are listed in NotCollected rather than left silently empty.
 type ExecutionReceiptData struct {
-	Goal               string                    `json:"goal"`
-	Orchestration      *OrchestrationCorrelation `json:"orchestration,omitempty"`
-	Intent             TurnIntent                `json:"intent,omitempty"`
-	Outcome            TurnOutcome               `json:"outcome,omitempty"`
-	Plan               string                    `json:"plan,omitempty"`
-	Mode               string                    `json:"mode,omitempty"`
-	Posture            string                    `json:"posture,omitempty"`
-	Sandbox            string                    `json:"sandbox,omitempty"`
-	Workspace          string                    `json:"workspace,omitempty"`
-	WorkspaceIsolation string                    `json:"workspace_isolation,omitempty"`
-	Completion         *CompletionDeclaration    `json:"completion,omitempty"`
-	Convergence        *TurnConvergence          `json:"convergence,omitempty"`
-	ProviderRetry      *ReceiptProviderRetry     `json:"provider_retry,omitempty"`
-	ModelExecution     ReceiptModelExecution     `json:"model_execution"`
-	ToolExecution      map[string]int            `json:"tool_execution"`
+	Goal               string                 `json:"goal"`
+	Intent             TurnIntent             `json:"intent,omitempty"`
+	Outcome            TurnOutcome            `json:"outcome,omitempty"`
+	Plan               string                 `json:"plan,omitempty"`
+	Mode               string                 `json:"mode,omitempty"`
+	Posture            string                 `json:"posture,omitempty"`
+	Sandbox            string                 `json:"sandbox,omitempty"`
+	Workspace          string                 `json:"workspace,omitempty"`
+	WorkspaceIsolation string                 `json:"workspace_isolation,omitempty"`
+	Completion         *CompletionDeclaration `json:"completion,omitempty"`
+	Convergence        *TurnConvergence       `json:"convergence,omitempty"`
+	ProviderRetry      *ReceiptProviderRetry  `json:"provider_retry,omitempty"`
+	ModelExecution     ReceiptModelExecution  `json:"model_execution"`
+	ToolExecution      map[string]int         `json:"tool_execution"`
 
 	// Routes are the routes the turn actually sampled on, one entry per purpose.
 	// It is what the turn did, not the table it could have used: a slot the turn
@@ -392,11 +391,6 @@ func (*ExecutionReceiptData) eventKind() EventKind { return EventExecutionReceip
 
 func (d *ExecutionReceiptData) validate() error {
 	d.Verification.normalize()
-	if d.Orchestration != nil {
-		if err := d.Orchestration.Validate(); err != nil {
-			return err
-		}
-	}
 	if !NormalizeTurnIntent(d.Intent).Valid() {
 		return errors.New("receipt turn intent is invalid")
 	}

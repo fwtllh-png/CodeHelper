@@ -472,14 +472,6 @@ export interface SessionPlanSnapshot {
   artifact?: SessionPlanArtifact;
 }
 
-export interface TaskSummary {
-  id: string;
-  kind: string;
-  state: string;
-  reason?: string;
-  failure_reason?: string;
-}
-
 export interface AgentSummary {
   id: string;
   role: string;
@@ -493,10 +485,6 @@ export interface UsageRollup {
   total_tokens: number;
   cost_microunits: number;
   cost_known: boolean;
-}
-
-export interface TaskList {
-  tasks: TaskSummary[];
 }
 
 export interface AgentList {

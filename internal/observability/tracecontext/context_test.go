@@ -81,6 +81,22 @@ func TestEnvironmentRequiresValidContext(t *testing.T) {
 	}
 }
 
+func TestTraceContextRejectsInvalidIdentifiersAndTraceState(t *testing.T) {
+	validParent := "00-" + strings.Repeat("1", 32) + "-" + strings.Repeat("2", 16) + "-01"
+	tests := []http.Header{
+		{HeaderTraceParent: []string{"01-" + strings.Repeat("1", 32) + "-" + strings.Repeat("2", 16) + "-01"}},
+		{HeaderTraceParent: []string{"00-" + strings.Repeat("0", 32) + "-" + strings.Repeat("2", 16) + "-01"}},
+		{HeaderTraceParent: []string{"00-" + strings.Repeat("1", 32) + "-" + strings.Repeat("0", 16) + "-01"}},
+		{HeaderTraceParent: []string{validParent}, HeaderTraceState: []string{"vendor=value,vendor=other"}},
+		{HeaderTraceParent: []string{validParent}, HeaderTraceState: []string{"Vendor=value"}},
+	}
+	for _, header := range tests {
+		if _, err := ExtractHTTP(t.Context(), header); err == nil {
+			t.Fatalf("accepted invalid trace context: %v", header)
+		}
+	}
+}
+
 func BenchmarkSO5W3CInjectExtract(b *testing.B) {
 	root, err := NewRoot(b.Context())
 	if err != nil {

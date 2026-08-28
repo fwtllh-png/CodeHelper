@@ -109,8 +109,8 @@ func newWebContractHost(t *testing.T, setup contract.Setup) contract.Host {
 		Runtime: session.Runtime, WorkspaceRoot: workspace,
 		WorkspaceIdentity: identity, DefaultProfile: session.DefaultProfile(),
 		ProviderCatalog: session.ProviderCatalog(), ModelCatalog: session.ModelCatalog(),
-		MCPHealth: session.MCPHealth, Tasks: repositories.Tasks,
-		Usage: repositories.Usage, Agents: session.Subagents(),
+		MCPHealth: session.MCPHealth,
+		Usage:     repositories.Usage, Agents: session.Subagents(),
 		SessionWorkspaces: session.SessionWorkspaces(),
 		Workspace:         session.WorkspaceQuery(),
 		RepositoryIndex:   session.RepositoryIndex(),
@@ -358,15 +358,6 @@ func (h *webContractHost) ReadState(
 	}
 	result.Threads = []runtimeview.Thread{thread}
 	result.Thread = thread
-	var tasks struct {
-		Tasks []runtimeview.Task `json:"tasks"`
-	}
-	if err := h.call(ctx, "task/list", map[string]any{
-		"session_id": h.sessionID, "limit": 10,
-	}, &tasks, ""); err != nil {
-		return result, err
-	}
-	result.Tasks = tasks.Tasks
 	var agents struct {
 		Agents []runtimeview.Agent `json:"agents"`
 	}

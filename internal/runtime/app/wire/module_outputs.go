@@ -14,11 +14,8 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/admission"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/automation"
 	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
-	orchestrationstore "github.com/fwtllh-png/CodeHelper/internal/orchestration/store"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
@@ -57,10 +54,10 @@ type platformBuildState struct {
 }
 
 type persistenceBuildState struct {
-	content       *contentstore.Memory
-	jobLogs       *joblog.Store
-	taskStore     *sqlitestate.Store
-	ephemeralTask *sqlitestate.Store
+	content        *contentstore.Memory
+	jobLogs        *joblog.Store
+	runtimeStore   *sqlitestate.Store
+	ephemeralState *sqlitestate.Store
 }
 
 type extensionBuildState struct {
@@ -86,7 +83,6 @@ type securityBuildState struct {
 }
 
 type orchestrationBuildState struct {
-	workGraph     *orchestrationstore.Store
 	workBudget    *workbudget.Ledger
 	childGovernor *admission.Governor
 	children      *childRuntime
@@ -94,7 +90,4 @@ type orchestrationBuildState struct {
 	chatTrees     *childWorktrees
 	parentFiles   *filetool.Tools
 	subagents     *subagent.AgentControl
-	tasks         *taskstate.Repository
-	automations   *automation.Repository
-	scheduler     schedulerFactory
 }

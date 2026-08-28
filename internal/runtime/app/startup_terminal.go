@@ -65,10 +65,7 @@ func (r *Runtime) commitStartupTerminal(
 		DomainFacts: domainFacts,
 		Measurement: measurement,
 		Receipt: &protocol.ExecutionReceiptData{
-			Goal: payload.Prompt,
-			Orchestration: protocol.CloneOrchestrationCorrelation(
-				payload.Orchestration,
-			),
+			Goal:              payload.Prompt,
 			Intent:            protocol.NormalizeTurnIntent(payload.Intent),
 			Mode:              frozen.Mode,
 			MeasurementDigest: measurement.Digest,

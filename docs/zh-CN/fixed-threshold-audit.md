@@ -136,8 +136,8 @@ Prompt 各 Partition 不应各自持有模型无关的 Token 档位。应先预�
 | `internal/runtime/agent/turnkernel/runtime_control.go:46` | Mailbox 默认 64 | 应统一 | 从 Runtime Subscriber/Operation Capacity 派生或显式配置 |
 | `internal/runtime/agent/engine/cancel_handler.go:13` | Backlog 为 Mailbox 的 2 倍 | 可接受派生 | 保持相对关系，但将关系写入契约测试 |
 | `internal/orchestration/subagent/context_fork.go` | Capsule 从父 Turn 剩余容量和 Child Budget 派生 | 已改善 | `task_capsule` 默认仍只携带任务相关事实 |
-| `internal/orchestration/workflow/jsvm/vm.go:24` | 生命周期与并行项固定 1000/16 | 应配置化 | 从 Workflow Spec、宿主资源和全局 Governor 共同约束 |
-| `internal/orchestration/task/execution.go:58` | 默认退避 15s、封顶 10m | 可配置化 | Worker Config 已有对应字段，底层不得维护第二套默认 |
+| 已移除的 Workflow JS VM | 生命周期与并行项曾固定为 1000/16 | 已消除 | 后台 Workflow 平面已删除 |
+| 已移除的后台 Task Executor | 退避曾固定为 15s、封顶 10m | 已消除 | 后台 Worker 与 Task Queue 已删除 |
 | `web/src/ui/App.tsx` | Workspace/Session 在页面重新可见时刷新 | 已改善 | 当前 Workspace 继续依赖 WebSocket |
 | `web/src/ui/App.tsx` | Trajectory 由会改变 Trace 的 Runtime Event 触发查询 | 已改善 | 使用服务端已确认的 watermark，文本 Delta 不触发查询 |
 
@@ -147,9 +147,7 @@ Prompt 各 Partition 不应各自持有模型无关的 Token 档位。应先预�
 | --- | --- | --- | --- |
 | `internal/persist/history/service.go:16` | Presentation Snapshot 固定 8 MiB | 应取消 | 图片等大对象迁移到 CAS，Snapshot 只保留引用 |
 | `internal/persist/contentstore/store.go:50` | 内存 Store 默认 64 MiB/2048 项 | 应配置化 | 从 Runtime 内存预算分配并暴露使用率 |
-| `internal/observability/router/router.go:17` | Queue/Payload 使用固定容量 | 应配置化 | 接入 Telemetry Config，按优先级保留并报告丢弃 |
-| `internal/observability/journal/journal.go:30` | Segment 16 MiB、Record 1 MiB | 分开治理 | Segment 是运维配置；Record 是格式/安全合同 |
-| `internal/observability/retention/retention.go:31` | Audit/Diagnostic 30 天、Sensitive 24 小时 | 应配置化 | Retention 是合规策略，必须可配置且保留来源 |
+| 已移除的 Observation/OTLP 平面 | Queue、Journal 与 Retention 曾使用固定容量 | 已消除 | 独立证据平面已删除 |
 | `internal/persist/state/sqlite/store.go:131` | Busy Timeout 默认 5 秒 | 已配置化 | 保持；优先继承调用 Deadline，不允许覆盖更短 Deadline |
 
 ### 安全与协议边界

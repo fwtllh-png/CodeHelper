@@ -29,7 +29,6 @@ import (
 	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
 	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	taskstate "github.com/fwtllh-png/CodeHelper/internal/orchestration/task"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
@@ -53,14 +52,6 @@ type Options struct {
 	PickDirectory func(context.Context, string) (string, bool, error)
 	Setup         *SetupOptions
 	Workspaces    WorkspaceController
-}
-
-type TaskQuery interface {
-	List(
-		context.Context,
-		taskstate.Filter,
-		int,
-	) ([]taskstate.Task, error)
 }
 
 type UsageQuery interface {
@@ -87,7 +78,6 @@ type Dependencies struct {
 	Connection        WorkspaceConnection
 	MCPHealth         func() []mcp.HealthSnapshot
 	Diagnostics       io.Writer
-	Tasks             TaskQuery
 	Usage             UsageQuery
 	Agents            *subagent.AgentControl
 	SessionWorkspaces app.SessionWorkspaceManager
@@ -301,7 +291,6 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/bootstrap", s.bootstrap)
 	mux.HandleFunc("/api/v1/events", s.events)
 	mux.HandleFunc("/api/v1/content/", s.content)
-	mux.HandleFunc("/api/v1/trace/export", s.traceExport)
 	mux.HandleFunc("/api/v1/", s.unary)
 	mux.HandleFunc("/", s.static)
 	return s.recoverPanics(s.securityHeaders(s.browserFence(mux)))
@@ -546,8 +535,6 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.turnQueue(r, dependencies)
 	case "plan/get":
 		result, err = s.planGet(r, dependencies)
-	case "task/list":
-		result, err = s.taskList(r, dependencies)
 	case "agent/list":
 		result, err = s.agentList(r, dependencies)
 	case "trace/query":
@@ -1277,49 +1264,6 @@ func (s *Server) planGet(
 		return nil, err
 	}
 	return dependencies.Runtime.SessionPlan(r.Context(), request.SessionID)
-}
-
-func (s *Server) taskList(
-	r *http.Request,
-	dependencies Dependencies,
-) (any, error) {
-	if dependencies.Tasks == nil {
-		return nil, protocol.NewProblem(
-			protocol.CodeUnavailable,
-			"task read model is unavailable",
-			false,
-			nil,
-		)
-	}
-	var request struct {
-		SessionID string          `json:"session_id,omitempty"`
-		ThreadID  string          `json:"thread_id,omitempty"`
-		TurnID    string          `json:"turn_id,omitempty"`
-		State     taskstate.State `json:"state,omitempty"`
-		Limit     int             `json:"limit,omitempty"`
-	}
-	if err := s.decodeRequest(r, &request); err != nil {
-		return nil, err
-	}
-	limit, err := boundedLimit(request.Limit, 100)
-	if err != nil {
-		return nil, err
-	}
-	values, err := dependencies.Tasks.List(r.Context(), taskstate.Filter{
-		SessionID:     request.SessionID,
-		ThreadID:      request.ThreadID,
-		TurnID:        request.TurnID,
-		State:         request.State,
-		WorkspaceRoot: dependencies.WorkspaceRoot,
-	}, limit)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]runtimeview.Task, 0, len(values))
-	for _, value := range values {
-		result = append(result, runtimeview.TaskFrom(value))
-	}
-	return map[string]any{"tasks": result}, nil
 }
 
 func (s *Server) agentList(
@@ -2854,11 +2798,6 @@ var webOperationExposure = map[protocol.OperationKind]bool{
 	protocol.OperationCompactThread:     true,
 	protocol.OperationForkThread:        false,
 	protocol.OperationRevertTurn:        false,
-	protocol.OperationSubmitRun:         false,
-	protocol.OperationCancelRun:         false,
-	protocol.OperationResumeRun:         false,
-	protocol.OperationRetryNode:         false,
-	protocol.OperationSkipNode:          false,
 }
 
 func webOperationExposed(kind protocol.OperationKind) bool {

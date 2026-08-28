@@ -11,8 +11,7 @@ prerequisites:
 code_paths:
   - internal/security
   - internal/adapter/tool/guard
-  - internal/observability/privacy
-  - internal/observability/retention
+  - internal/observability/telemetry
 test_paths:
   - internal/security/policy/policy_test.go
   - internal/security/sandbox/workspace_test.go
@@ -39,7 +38,7 @@ Boundary、Attacker Goal 与 Residual Risk。
 | User Intent/Approval | Integrity/Narrow Scope |
 | Policy/Constitution | Non-bypassable Enforcement |
 | Event/Journal/Receipt | Integrity/Recovery |
-| Observation Journal/CAS Payload | Privacy/Bounded Retention/Causal Integrity |
+| Log/Trace/Provider Dump | Redaction/Access Control/Bounded Retention |
 | Host Process/Network | Model-selected Effect Isolation |
 | MCP/Skill | Identity/Integrity/Revocation |
 
@@ -59,7 +58,7 @@ flowchart LR
     C --> G[Identity / Schema / Resource / Policy]
     G --> S[Sandbox / Egress / Journal]
     S --> E[Effect]
-    E --> R[Observation / Receipt / Verification]
+    E --> R[Trace / Receipt / Verification]
 ```
 
 Prompt Role 不产生 Authority。即使 Repository Instruction 被渲染为 System Message，它

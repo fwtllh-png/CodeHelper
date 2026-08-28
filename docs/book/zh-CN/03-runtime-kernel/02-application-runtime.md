@@ -9,8 +9,7 @@ prerequisites:
   - runtime-protocol
 code_paths:
   - internal/runtime/app
-  - internal/observability/observation
-  - internal/observability/router
+  - internal/observability/trace
 test_paths:
   - internal/runtime/app/runtime_test.go
   - internal/runtime/app/pendingwork_test.go
@@ -22,8 +21,6 @@ test_paths:
   - internal/runtime/app/wire/persistent_composition_test.go
   - internal/runtime/app/turn_kernel_convergence_test.go
   - internal/runtime/agent/turnkernel/convergence_baseline_test.go
-  - internal/runtime/app/terminal_measurement_test.go
-  - internal/observability/router/router_test.go
 source_of_truth:
   - internal/runtime/app/runtime.go
   - internal/runtime/app/operation_dispatch.go
@@ -148,10 +145,8 @@ Checkpoint、Plan、Turn Recovery 与 Artifact Persistence。Runtime 直接通�
 Runtime-owned Port 暴露窄化的 Host Query Method，不再保留平行的 Interface-only
 Package，也不复制 Host Execution Logic。
 
-Observation Plane 通过窄 Runtime Hook 接入，接收版本化、通过 Privacy Admission 的
-Lifecycle Evidence，并导出有界 Semantic/OTLP Projection。Observation Queue、
-Journal、Payload 或 Exporter Failure 更新独立 Health State，但不改变 Operation
-Commit 或 Terminal Outcome。
+Trace Runtime 通过窄接口接入，记录 Turn 内 Span 并向 SQLite Trace Repository 投影。
+Trace、Usage、Log 或 Metrics Failure 不改变 Operation Commit 或 Terminal Outcome。
 
 ## Chat Merge 与 Durable Assembly
 
@@ -202,7 +197,7 @@ Stream、不授权 Tool，也不调用 `turnkernel.Reducer.Apply`。Turn Coordin
 | Event Sequence/Replay/Subscriber | `eventhub/hub.go` |
 | Atomic Terminal/Outbox Recovery | `terminal_runtime.go`、`eventhub/terminal.go` |
 | Frozen Terminal Usage/Latency | `extension/terminal_measurement.go` |
-| Observation Admission/Routing | `internal/observability/observation`、`internal/observability/router` |
+| Trace/Usage Query | `internal/observability/trace`、`internal/observability/usage` |
 | Session/Artifact Service | `service_facade.go`、`artifact_runtime.go` |
 | Engine Adapter | `extension/engine_adapter.go` |
 | Turn 状态机权威 | `agent/turnkernel/coordinator.go` |

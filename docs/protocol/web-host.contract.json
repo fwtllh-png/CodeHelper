@@ -425,30 +425,10 @@
       "requires_capability": true
     },
     {
-      "path": "/api/v1/task/list",
-      "method": "POST",
-      "request": "task_query",
-      "response": "task_list",
-      "mutation": false,
-      "idempotency_key": false,
-      "requires_runtime": true,
-      "requires_capability": true
-    },
-    {
       "path": "/api/v1/tool/catalog",
       "method": "POST",
       "request": "session_identity",
       "response": "tool_catalog",
-      "mutation": false,
-      "idempotency_key": false,
-      "requires_runtime": true,
-      "requires_capability": true
-    },
-    {
-      "path": "/api/v1/trace/export",
-      "method": "POST",
-      "request": "trace_export",
-      "response": "trace_export_download",
       "mutation": false,
       "idempotency_key": false,
       "requires_runtime": true,

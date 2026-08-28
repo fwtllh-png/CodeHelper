@@ -33,7 +33,6 @@ source_of_truth:
   - internal/runtime/app/wire/modules_orchestration.go
   - internal/runtime/app/wire/modules_observability.go
   - internal/runtime/app/wire/orchestration_components.go
-  - internal/runtime/app/wire/scheduler_factory.go
   - internal/runtime/app/wire/modules_runtime.go
   - internal/runtime/app/wire/resource_stack.go
   - internal/runtime/app/runtime_start.go
@@ -90,8 +89,8 @@ flowchart TD
 - 连接 Journal、Diagnostics、Verify、Trace、Usage 和 Store；
 - 初始化 MCP、Skill、Hook、Dynamic Tool；
 - 解析统一 Typed Extension Plan；
-- 装配 Observation Privacy、Journal、Router、Retention 与 OTLP Projection；
-- 构建 Child Runtime、Worktree 与 Background Executor；
+- 装配 Trace、Usage、Receipt、Metrics 与 Logger；
+- 构建 Child Runtime、Worktree 与 Subagent Admission；
 - 选择 Persistent 或 In-memory Application Runtime；
 - 构造 `orchestration/chatmerge.Service` 与 Durable Assembly；Merge、Journal、Git
   行为保留在被构造的 Service 中。
@@ -112,9 +111,9 @@ config -> provider -> persistence -> platform -> builtin tools
 并通过 `buildState` 仅向后续 Module 发布必要结果。Runtime、Engine 和 Session
 Service 都不得持有 `buildState`。Persistence 拥有 Content、Job Log 与 SQLite
 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchestration 拥有
-Task/Automation Repository、Workflow Executor、Scheduler 构造、Subagent 与
-Child Worktree/Toolset。Provider 发布所选 Provider/Model Catalog，Security
-发布 Permission Store 与 Guard Factory。Module 失败时以 `moduleBuildError` 中止
+Subagent、Admission/Budget、Child Worktree/Toolset 与 Chat Merge 构造。Provider
+发布所选 Provider/Model Catalog，Security 发布 Permission Store 与 Guard Factory。
+Module 失败时以 `moduleBuildError` 中止
 并带上 Module 名，已打开资源通过共享 Resource Stack 关闭。Durable Assembly 与 Chat
 Merge 同样是构造模块：`app/persistence` 组合 Repository 与 Recovery，
 `orchestration/chatmerge.Service` 拥有隔离 Workspace 的 Baseline、Preview 与
@@ -123,13 +122,13 @@ Journaled Apply。
 Builtin 与 Extension Tool 共享同一个 `Registry` 实例。Skill、Memory、
 Dynamic Tool、Hook 和 MCP 注册 Typed Contributor，只接收显式 Capability，不接收
 `buildState`，并返回有界 Receipt。Sealed Registry 将 Source State 确定性解析为绑定
-Permission Digest 的 Digested Plan。Task/Automation 注册归 Orchestration Module，
+Permission Digest 的 Digested Plan。Subagent 工具由 Orchestration Module 装配，
 而非 Extension Contributor Chain。
 
 构造与关闭共享 `wire.ResourceStack`。`NewExec` 只注册一次资源关闭函数；
 部分构造失败回滚与正常关闭都按注册逆序关闭同一 Stack。每项资源最多关闭一次，
 单项关闭失败不会跳过后续资源，调用方会收到带资源标识的聚合错误。因此 Runtime
-或 Scheduler 等后段构造失败也不会泄漏资源。
+等后段构造失败也不会泄漏资源。
 
 ## Startup Invariant
 
@@ -148,18 +147,18 @@ Construction 遵循 Dependency Order，而不是简单 Constructor List。上面
 4. Probe Platform/Sandbox；
 5. 构建 Policy、Permission、Constitution、Registry、Guard；
 6. 初始化 Typed Contributor 并解析 Extension Plan；
-7. 构建 WorkGraph/Worker Ownership 与 Observation Routing/Export；
+7. 构建 Subagent Admission/Worktree 与 Trace/Telemetry；
 8. 连接 Context、Evidence、Diagnostics、Verify、Usage、Trace；
 9. 创建 Thread/Engine Factory；
 10. `RuntimeModule` 以 Prepared 状态构造 Runtime Facade 并恢复静态 Durable State，
    不接受 Operation；
 11. `BackgroundModule` 依次执行 MCP 初次 Refresh、Terminal Outbox/Pending Turn
-    Recovery、MCP Prewarm、Automation 协调，最后启动 Worker Scheduler；
+    Recovery 与 MCP Prewarm；
 12. Runtime 开始接受 Operation 后，最后才暴露 Host Facade。
 
 每步成功后 Ownership 转移。后续步骤失败时，已打开 Store、Transport、Extension
 Process、Background Manager 由共享 `ResourceStack` 按注册逆序 Close；任一步失败
-都终止构造，Runtime Recovery 成功前不会启动后台 Worker。即使 Turn 尚未开始，
+都终止构造，Runtime Recovery 成功前不会接受 Operation。即使 Turn 尚未开始，
 Constructor Failure 泄漏 Process 也违反 Runtime Contract。
 
 ## Capability Provenance
@@ -187,9 +186,8 @@ Configuration 表达 Intent，不能制造 Environment Capability。
 | Extension Contributor 与 Receipt | `modules_extensions.go`、`contributors_extensions.go` |
 | Extension Source Plan | `extension_plan.go`、`internal/runtime/extension` |
 | Security Module 与 Guard Factory | `modules_security.go`、`security_factory.go` |
-| Orchestration Module、组件与 Task/Automation 注册 | `modules_orchestration.go`、`orchestration_components.go` |
-| Observation Journal/Router/Retention/OTLP | `modules_observability.go`、`internal/observability` |
-| Scheduler 构造 | `scheduler_factory.go` |
+| Orchestration Module、Subagent 与 Worktree | `modules_orchestration.go`、`orchestration_components.go` |
+| Trace/Usage/Receipt/Telemetry | `modules_observability.go`、`internal/observability` |
 | Agent Engine/Runtime/Background | `modules_runtime.go` |
 | 资源生命周期 | `assembly/resources.go` |
 | Route/Budget | `route.go`、`routeset.go` |
@@ -198,7 +196,7 @@ Configuration 表达 Intent，不能制造 Environment Capability。
 | Chat Merge 构造 | `chatworktree.go`、`chatmerge/service.go` |
 | Sandbox Fact | `internal/security/sandbox/backend.go` |
 | MCP/Extension | `mcp.go`、`extensions.go` |
-| Child/Background | `childruntime.go`、`background_executors.go` |
+| Child/Background | `childruntime.go`、`module_background.go` |
 | Runtime Facade 构造与启动 | `internal/runtime/app/runtime_start.go` |
 
 ## 实现导读
@@ -207,11 +205,11 @@ Configuration 表达 Intent，不能制造 Environment Capability。
 加载 Constitution，合并 Policy，创建 Registry/Guard，组装 Prompt Context，再通过
 Thread Manager 构造 Agent Engine。每步向 `buildState` 发布结果，Ownership 逐
 Module 前移。Runtime 构造以 Prepared 状态收尾：`runtime` Module 构造 Facade 并
-恢复静态 Durable State，不接受 Operation；只有最后的 `background` Module 才启动
-Terminal Outbox/Pending Turn Recovery、MCP Prewarm、Automation 协调与 Worker
-Scheduler。此前任何失败都会回滚 Resource Stack，且不会启动后台 Worker。Application
-Runtime 只接收 Engine Interface 与 Durable Facility；Host 不获得 Provider、Guard
-实例，也拿不到 `buildState`。
+恢复静态 Durable State，不接受 Operation；只有最后的 `background` Module 才执行
+MCP 初次 Refresh、启动 Terminal Outbox/Pending Turn Recovery 与 MCP Prewarm。
+此前任何失败都会回滚 Resource Stack，且不会接受 Operation。Application Runtime
+只接收 Engine Interface 与 Durable Facility；Host 不获得 Provider、Guard 实例，
+也拿不到 `buildState`。
 
 ## 设计取舍与替代方案
 

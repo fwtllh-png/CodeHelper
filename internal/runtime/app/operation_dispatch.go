@@ -1,8 +1,6 @@
 package app
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -50,18 +48,6 @@ func (d operationDispatcher) Dispatch(accepted acceptedOperation) OperationOutco
 		}
 	}
 	operation := accepted.operation
-	switch payload := operation.Payload.(type) {
-	case *protocol.SubmitRunPayload:
-		return (OrchestrationHandler{d.runtime}).Submit(operation, payload)
-	case *protocol.CancelRunPayload:
-		return (OrchestrationHandler{d.runtime}).Cancel(operation, payload)
-	case *protocol.ResumeRunPayload:
-		return (OrchestrationHandler{d.runtime}).Resume(operation, payload)
-	case *protocol.RetryNodePayload:
-		return (OrchestrationHandler{d.runtime}).RetryNode(operation, payload)
-	case *protocol.SkipNodePayload:
-		return (OrchestrationHandler{d.runtime}).SkipNode(operation, payload)
-	}
 	if d.runtime.engine == nil {
 		return OperationOutcome{
 			Kind:       OutcomeRejected,
@@ -151,43 +137,13 @@ func (s *OperationService) Apply(operation protocol.Operation, outcome Operation
 	}
 	if outcome.Kind == OutcomeCommitted {
 		sink := &runtimeSink{runtime: s.Runtime, operation: operation}
-		for index, event := range outcome.Events {
-			var err error
-			if protocol.IsWorkGraphOperation(operation.Kind) {
-				err = sink.EmitStable(
-					workGraphEventID(operation.ID, index),
-					event,
-				)
-			} else {
-				err = sink.Emit(event)
-			}
-			if err != nil {
+		for _, event := range outcome.Events {
+			if err := sink.Emit(event); err != nil {
 				return
 			}
 		}
 		s.commit(operation.ID)
-		if protocol.IsWorkGraphOperation(operation.Kind) {
-			if err := s.DrainWorkGraphEffects(s.ctx); err != nil {
-				s.logger.Warn(
-					"drain WorkGraph effects after operation",
-					"operation", operation.ID,
-					"error", err,
-				)
-			}
-		}
 	}
-}
-
-func workGraphEventID(
-	operationID protocol.OperationID,
-	index int,
-) protocol.EventID {
-	sum := sha256.Sum256([]byte(fmt.Sprintf(
-		"work-graph-event\x00%s\x00%d",
-		operationID,
-		index,
-	)))
-	return protocol.EventID("evt_" + hex.EncodeToString(sum[:]))
 }
 func validateOperationOutcome(outcome OperationOutcome) error {
 	noProblem, noAsync, noEvents := outcome.Problem == nil, outcome.Async == nil, len(outcome.Events) == 0

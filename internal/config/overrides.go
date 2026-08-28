@@ -162,27 +162,6 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyFloat64(overrides.SubagentMaxCostUSD, &child.MaxCostUSD, fieldSubagentMaxCostUSD, SourceStartup, provenance)
 	applyDuration(overrides.SubagentWallTime, &child.WallTime, fieldSubagentWallTime, SourceStartup, provenance)
 	applyString(overrides.SubagentWorkspace, &child.Workspace, fieldSubagentWorkspace, SourceStartup, provenance)
-	worker := &execution.Worker
-	applyBool(overrides.WorkerEnabled, &worker.Enabled, fieldWorkerEnabled, SourceStartup, provenance)
-	applyInt(overrides.WorkerMaxParallel, &worker.MaxParallel, fieldWorkerMaxParallel, SourceStartup, provenance)
-	applyInt(overrides.WorkerMaxAttempts, &worker.MaxAttempts, fieldWorkerMaxAttempts, SourceStartup, provenance)
-	applyDuration(overrides.WorkerLease, &worker.Lease, fieldWorkerLease, SourceStartup, provenance)
-	applyDuration(
-		overrides.WorkerClaimInterval, &worker.ClaimInterval, fieldWorkerClaimInterval, SourceStartup, provenance,
-	)
-	applyDuration(
-		overrides.WorkerAutomationInterval, &worker.AutomationInterval,
-		fieldWorkerAutomationTick, SourceStartup, provenance,
-	)
-	applyDuration(
-		overrides.WorkerRetryBackoff, &worker.RetryBackoff, fieldWorkerRetryBackoff, SourceStartup, provenance,
-	)
-	applyDuration(
-		overrides.WorkerRetryBackoffMax, &worker.RetryBackoffMax,
-		fieldWorkerRetryBackoffMax, SourceStartup, provenance,
-	)
-	applyUint64(overrides.WorkerMaxTokens, &worker.MaxTokens, fieldWorkerMaxTokens, SourceStartup, provenance)
-	applyFloat64(overrides.WorkerMaxCostUSD, &worker.MaxCostUSD, fieldWorkerMaxCostUSD, SourceStartup, provenance)
 	applyBool(overrides.VisionEnabled, &config.Vision.Enabled, fieldVisionEnabled, SourceStartup, provenance)
 	applyString(overrides.VisionProvider, &config.Vision.Provider, fieldVisionProvider, SourceStartup, provenance)
 	applyString(overrides.VisionModel, &config.Vision.Model, fieldVisionModel, SourceStartup, provenance)
