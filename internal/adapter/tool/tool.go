@@ -169,6 +169,9 @@ type ResourceResolver struct {
 	PathsField string `json:"paths_field,omitempty"`
 	// ReadPathsField binds read-only verification coverage.
 	ReadPathsField string `json:"read_paths_field,omitempty"`
+	// TrustedHostPathField resolves one exact read-only path under either the
+	// Workspace or its policy-owned private home.
+	TrustedHostPathField string `json:"trusted_host_path_field,omitempty"`
 	// ChangesField resolves transaction "path" and "to" entries.
 	ChangesField        string `json:"changes_field,omitempty"`
 	NetworkTargetsField string `json:"network_targets_field,omitempty"`

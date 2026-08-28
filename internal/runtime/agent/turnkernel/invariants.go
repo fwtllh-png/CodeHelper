@@ -128,12 +128,13 @@ func Validate(state State) error {
 		return errors.New("usage and context freeze state disagree")
 	}
 	convergence := state.Policy.Convergence
-	if convergence.ProgressConverge == 0 ||
-		convergence.ProgressConverge >= convergence.ProgressFinishOnly ||
-		convergence.ProgressFinishOnly >= convergence.ProgressLimit ||
-		convergence.ResearchConverge == 0 ||
-		convergence.ResearchConverge >= convergence.ResearchFinishOnly ||
-		convergence.ResearchFinishOnly >= convergence.ResearchLimit {
+	if convergence != (ConvergencePolicy{}) &&
+		(convergence.ProgressConverge == 0 ||
+			convergence.ProgressConverge > convergence.ProgressFinishOnly ||
+			convergence.ProgressFinishOnly > convergence.ProgressLimit ||
+			convergence.ResearchConverge == 0 ||
+			convergence.ResearchConverge > convergence.ResearchFinishOnly ||
+			convergence.ResearchFinishOnly > convergence.ResearchLimit) {
 		return errors.New("convergence policy is invalid")
 	}
 	for kind, budget := range state.RepairBudgets {
@@ -164,9 +165,10 @@ func Validate(state State) error {
 		return errors.New("no-progress samples exceed observed samples")
 	}
 	if state.Convergence != nil {
-		if state.Convergence.Used < state.Convergence.Limit ||
-			state.Convergence.Limit == 0 && (state.Convergence.Used != 0 ||
-				state.Convergence.Cause != ConvergenceRepairBudget) {
+		if state.Convergence.Cause != ConvergenceIncomplete &&
+			(state.Convergence.Used < state.Convergence.Limit ||
+				state.Convergence.Limit == 0 && (state.Convergence.Used != 0 ||
+					state.Convergence.Cause != ConvergenceRepairBudget)) {
 			return errors.New("convergence budget is invalid")
 		}
 		switch state.Convergence.Cause {
@@ -179,6 +181,13 @@ func Validate(state State) error {
 		case ConvergenceRepairBudget:
 			if !validRepairKind(state.Convergence.RepairKind) {
 				return errors.New("repair convergence kind is invalid")
+			}
+		case ConvergenceIncomplete:
+			if state.Convergence.Used != 0 ||
+				state.Convergence.Limit != 0 ||
+				state.Convergence.RepairKind != "" ||
+				!state.Convergence.FinalizationAttempted {
+				return errors.New("declared incomplete convergence is invalid")
 			}
 		default:
 			return errors.New("convergence cause is invalid")

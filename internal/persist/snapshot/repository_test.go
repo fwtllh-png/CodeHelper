@@ -159,13 +159,15 @@ func TestSessionCheckpointAndPlanArtifactsAreImmutableAndVerified(t *testing.T) 
 	}
 
 	document := json.RawMessage(`{"version":1,"revision":1,"steps":[{"id":"implement","title":"Update parser","status":"pending"}]}`)
+	executionDigest := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	plan, err := repository.SavePlan(t.Context(), protocol.SessionPlanArtifact{
 		Version: protocol.CheckpointProtocolVersion,
 		ID:      "plan-1", SessionID: "session-1",
 		ThreadID: "thread-1", TurnID: "turn-1", Cursor: 6,
 		Status: protocol.PlanArtifactReady, Body: string(document),
-		ProfileRevision: profile.Revision,
-		CanImplement:    true, CanAutopilot: true,
+		ProfileRevision:        profile.Revision,
+		ExecutionProfileDigest: executionDigest,
+		CanImplement:           true, CanAutopilot: true,
 		CreatedAt: time.Now().UTC(),
 	})
 	if err != nil {
@@ -178,6 +180,7 @@ func TestSessionCheckpointAndPlanArtifactsAreImmutableAndVerified(t *testing.T) 
 		t.Fatal(err)
 	}
 	if !found || latest.ID != plan.ID || latest.Body != plan.Body ||
+		latest.ExecutionProfileDigest != executionDigest ||
 		!json.Valid([]byte(latest.Body)) {
 		t.Fatalf("latest plan = %+v", latest)
 	}

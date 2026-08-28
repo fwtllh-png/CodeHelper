@@ -889,6 +889,8 @@ func projectLatestTurn(
 		summary.Status = protocol.SessionStatusRunning
 	case "completed", "reverted":
 		summary.Status = protocol.SessionStatusCompleted
+	case "blocked":
+		summary.Status = protocol.SessionStatusBlocked
 	case "failed":
 		summary.Status = protocol.SessionStatusFailed
 	case "canceled":

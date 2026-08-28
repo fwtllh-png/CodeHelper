@@ -248,13 +248,13 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
     正文措辞推断必需输入。Child Executor 没有 Input Host，不能等待用户
     输入，但仍必须通过 Tool Call 继续或通过 `turn_complete` 完成。
 11. `EvaluateTurnStep` 由 Reducer 选择 Repair、Verification、Finalize、Block 或
-    Complete。Repair、连续 No-progress 与显式普通 Work Step Limit 只会请求类型化
-    Kernel Convergence，不会由 Engine 或 Provider 局部循环直接决定终态错误。
-    Provider 输出不完整时没有默认续写次数上限，只要 Context 与显式 Budget 允许就继续。
-    对非零 `MaxSteps`，Runtime 在进入最后四分之一步骤预算时注入一次结构化执行证据，
-    包含已完成 Sample、连续无进展 Sample、工具成功/失败、已改路径、验证状态和已抑制调用；
-    已读路径、Plan 进度、验证风险和重复调用提醒继续由同一请求的 Working Set 与 Evidence 提供。
-    该提醒完全由调用方显式步骤预算按比例推导，不使用模型档位或绝对经验阈值。
+    Complete。Repair 与连续 No-progress 只会请求类型化 Kernel Convergence，不会由
+    Engine 或 Provider 局部循环直接决定终态错误。Provider 输出不完整时没有默认累计
+    Sample 上限，只要 Context 与显式 Token/Cost Budget 允许且持续产生结构化进展就继续。
+    非零 `MaxSteps` 是连续无进展的 Progress Lease：Plan 状态、Workspace Mutation、
+    新 Evidence、验证和 Completion 等进展会续期；约三分之一时提示收敛，约三分之二时
+    收窄为完成相关能力，完整 Lease 耗尽后进入一次受限 Finalization。该策略完全由调用方
+    显式预算按比例派生，不使用模型档位或绝对经验阈值。
     Tool Result 明确声明 `retry_original=false` 时，同一 Turn、同一 Workspace Revision
     下的完全相同调用会直接回放该失败事实；Workspace 发生变更后缓存失效，允许根据新状态重试。
     Kernel 允许一次只保留 Terminal/Input 能力的 Finalization Sample。Complete 进入
@@ -357,17 +357,19 @@ Active Session Thread 属于关系型 Lifecycle State，而不是 Host-local Sta
 Plan Mode 的 Workspace 只读性由 Policy Effect 强制：普通 Write/Process/Network
 继续拒绝，只有 Resource 为 Session Plan 的低风险状态更新可通过。`submit_plan`
 生成版本化 JSON Artifact，并在 Artifact Body 内记录 Revision、Supersedes Identity、
-步骤依赖、验证证据与文件摘要。批准操作作为已持久化的 `turn.start` Payload 接受，
-Runtime 在 Dispatch 时重新校验 Session/Thread/Profile 和文件摘要，再将执行 Prompt
-及 Turn-scoped Act/Autopilot Policy 注入 Engine。Host 不先修改 Profile，因此不存在
-“Profile 已切换但 Turn 未接受”的两阶段窗口；重启恢复仍重放同一 Accepted Operation。
+步骤依赖、验证证据与文件摘要。Plan 在提交后自动批准并继续当前 Turn，不经过独立的
+用户审批或执行按钮。Runtime 在恢复时重新校验 Session/Thread/Profile 和文件摘要。
+Plan Artifact 同时保存执行配置摘要；摘要覆盖 Mode、模型、工具集、审批姿态、执行目标
+和步骤预算，但不包含 Planning Policy。Planning Policy 变化不会让已提交计划失效，
+执行能力发生变化时仍会 Fail Closed 并要求重新规划。
 
 产品只暴露 `plan`、`act`、`operate` 三种 Mode。`act` 与 `operate` 固定采用
 `adaptive` Planning Policy；Guard 在 Capability、Resource、Effect 和 Risk 已规范化后，
 至少拦截高风险、网络写、外部写、Agent Lifecycle 和同次调用中的多文件写。成功的
 `submit_plan` Tool Result 才能推进 Turn-scoped `submitted/approved` 状态；文本声明不能
-解锁工具。`plan_approval=auto` 只解锁当前 Turn，`manual` 必须通过已有的 Durable Plan
-Execution 启动批准后的新 Turn。每个 Turn 结束时状态归零。
+解锁工具。Plan 只采用自动执行语义，每个 Turn 结束时状态归零。Continue 恢复自动批准
+的 Plan 时，必须由同一源 Turn 的 `plan.delta`、Execution Receipt Plan 与匹配的
+Profile Revision 共同证明，不能仅凭恢复 Prompt 中的 Plan 文本重新授权。
 
 Turn 的 Model Route 继续在 Scope 创建时冻结。独立 Plan Mode 选择 `PurposePlan`；
 Act 内规划选择 `PurposeAct`，因此 Auto 流程可以在同一 Turn 中从规划继续执行，而不会
@@ -491,6 +493,16 @@ Execution Receipt 会保留每次 Verification Attempt、命令推导原因、�
 
 在操作系统边界限制进程、文件系统和网络。不同平台 Backend 强度不同；所需边界不可用
 时，执行必须 fail closed。
+
+每个 Workspace 使用位于 State Data Directory 下、权限为 `0700` 的持久私有 Home。
+它跨 Turn 和进程重启保留编译缓存与 Agent 安装的工具，但不与其他 Workspace 或宿主
+Home 混用。Sandbox 还通过统一的 Toolchain Exposure 发现宿主 PATH 中的 Go、Rust、
+Node.js、Python 等安装，将已校验的可执行目录和依赖根只读挂载，并只投影运行所需的
+环境变量。平台适配器还会解析可执行文件的传递运行时依赖；例如 macOS 会读取 Mach-O
+依赖和 RPATH，并将经过校验的动态库、包版本根、共享资源目录和顶层配置文件精确地
+只读暴露，而不是开放整个包管理器配置目录或包内私有子目录。凭证目录和整个宿主 Home
+始终不开放。主 Agent 与子 Agent 使用同一模型，但各自拥有独立的 Workspace 范围私有
+Home。
 
 ## Secret 与网络边界
 

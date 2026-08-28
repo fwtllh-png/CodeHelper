@@ -8,22 +8,16 @@ import (
 )
 
 type PlanningPolicy string
-type PlanApproval string
 
 const (
 	PlanningOff      PlanningPolicy = "off"
 	PlanningAdaptive PlanningPolicy = "adaptive"
 	PlanningRequired PlanningPolicy = "required"
-
-	PlanApprovalManual PlanApproval = "manual"
-	PlanApprovalAuto   PlanApproval = "auto"
 )
 
 type PlanningSnapshot struct {
 	Planning      string `json:"planning,omitempty"`
-	PlanApproval  string `json:"plan_approval,omitempty"`
 	PlanSubmitted bool   `json:"plan_submitted,omitempty"`
-	PlanApproved  bool   `json:"plan_approved,omitempty"`
 }
 
 func (r *Runtime) PlanningSnapshot() PlanningSnapshot {
@@ -33,8 +27,8 @@ func (r *Runtime) PlanningSnapshot() PlanningSnapshot {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return PlanningSnapshot{
-		Planning: string(r.PlanningPolicy), PlanApproval: string(r.PlanApproval),
-		PlanSubmitted: r.PlanSubmitted, PlanApproved: r.PlanApproved,
+		Planning:      string(r.PlanningPolicy),
+		PlanSubmitted: r.PlanSubmitted,
 	}
 }
 
@@ -43,17 +37,12 @@ func (s PlanningSnapshot) Guidance() string {
 		return ""
 	}
 	var b strings.Builder
-	fmt.Fprintf(
-		&b, "- planning=%s approval=%s submitted=%t approved=%t\n",
-		s.Planning, s.PlanApproval, s.PlanSubmitted, s.PlanApproved,
-	)
+	fmt.Fprintf(&b, "- planning=%s submitted=%t\n",
+		s.Planning, s.PlanSubmitted)
 	if s.Planning == string(PlanningRequired) {
 		b.WriteString("- submit_plan is required before consequential actions\n")
 	} else {
 		b.WriteString("- use submit_plan before complex or high-risk actions\n")
-	}
-	if s.PlanApproval == string(PlanApprovalManual) {
-		b.WriteString("- after submit_plan, wait for approval before acting\n")
 	}
 	return b.String()
 }
@@ -67,15 +56,14 @@ func (p SurfacePosture) Label() string {
 
 func (r *Runtime) ConfigurePlanning(
 	planning PlanningPolicy,
-	approval PlanApproval,
 ) uint64 {
 	if r == nil {
 		return 0
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.PlanningPolicy, r.PlanApproval = planning, approval
-	r.PlanSubmitted, r.PlanApproved = false, false
+	r.PlanningPolicy = planning
+	r.PlanSubmitted = false
 	return r.bumpRevisionLocked()
 }
 
@@ -86,17 +74,6 @@ func (r *Runtime) SubmitPlan() uint64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.PlanSubmitted = true
-	r.PlanApproved = r.PlanApproval == PlanApprovalAuto
-	return r.bumpRevisionLocked()
-}
-
-func (r *Runtime) ApprovePlan() uint64 {
-	if r == nil {
-		return 0
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.PlanSubmitted, r.PlanApproved = true, true
 	return r.bumpRevisionLocked()
 }
 
@@ -106,7 +83,7 @@ func (r *Runtime) ResetPlanState() uint64 {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.PlanSubmitted, r.PlanApproved = false, false
+	r.PlanSubmitted = false
 	return r.bumpRevisionLocked()
 }
 
@@ -116,6 +93,7 @@ func planningDecision(
 	effect Effect,
 ) *Decision {
 	if r == nil || r.Mode == ModePlan ||
+		verificationTool(invocation.Tool) ||
 		!consequentialPlanningEffect(effect.Kind) {
 		return nil
 	}
@@ -142,22 +120,23 @@ func planningDecision(
 			Reason: "submit a structured Plan before consequential actions",
 		}
 	}
-	if !r.PlanApproved {
-		return &Decision{
-			Action: ActionHold, Code: "plan_approval_required",
-			Reason: "the submitted Plan requires approval before execution",
-		}
-	}
 	return nil
 }
 
-func validatePlanning(planning PlanningPolicy, approval PlanApproval) error {
+func verificationTool(name string) bool {
+	switch name {
+	case "quality_test", "quality_diagnostics", "quality_review",
+		"quality_verify", "quality_process_smoke":
+		return true
+	default:
+		return false
+	}
+}
+
+func validatePlanning(planning PlanningPolicy) error {
 	if planning != PlanningOff && planning != PlanningAdaptive &&
 		planning != PlanningRequired {
 		return fmt.Errorf("unknown planning policy %q", planning)
-	}
-	if approval != PlanApprovalManual && approval != PlanApprovalAuto {
-		return fmt.Errorf("unknown plan approval %q", approval)
 	}
 	return nil
 }

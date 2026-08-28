@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -61,16 +60,17 @@ type Controls struct {
 }
 
 type Policy struct {
-	Version          int      `json:"version"`
-	ID               string   `json:"id"`
-	WorkspaceRoot    string   `json:"workspace_root"`
-	PrivateTemp      string   `json:"private_temp"`
-	RuntimeReadRoots []string `json:"runtime_read_roots"`
-	HostReadRoots    []string `json:"host_read_roots"`
-	HostReadFiles    []string `json:"host_read_files,omitempty"`
-	AllowNetwork     bool     `json:"allow_network,omitempty"`
-	ManagedProxyPort uint16   `json:"managed_proxy_port,omitempty"`
-	Controls         Controls `json:"controls"`
+	Version          int               `json:"version"`
+	ID               string            `json:"id"`
+	WorkspaceRoot    string            `json:"workspace_root"`
+	PrivateTemp      string            `json:"private_temp"`
+	RuntimeReadRoots []string          `json:"runtime_read_roots"`
+	HostReadRoots    []string          `json:"host_read_roots"`
+	HostReadFiles    []string          `json:"host_read_files,omitempty"`
+	Toolchains       ToolchainExposure `json:"toolchains,omitempty"`
+	AllowNetwork     bool              `json:"allow_network,omitempty"`
+	ManagedProxyPort uint16            `json:"managed_proxy_port,omitempty"`
+	Controls         Controls          `json:"controls"`
 	ownsPrivateTemp  bool
 }
 
@@ -157,13 +157,19 @@ func BuildPolicy(options Options) (Policy, error) {
 			}
 		}
 	}
+	toolchains := ToolchainExposure{}
 	if !options.SkipPATHReadRoots {
 		for _, root := range pathHostReadRoots(workspace, runtimeRoots, hostRoots) {
 			hostRoots = append(hostRoots, root)
 		}
-		for _, root := range toolchainHostReadRoots(workspace, runtimeRoots, hostRoots) {
+		toolchains = discoverToolchains(workspace, runtimeRoots, hostRoots)
+		for _, root := range append(
+			append([]string(nil), toolchains.BinDirs...),
+			toolchains.ReadRoots...,
+		) {
 			hostRoots = append(hostRoots, root)
 		}
+		hostFiles = append(hostFiles, toolchains.ReadFiles...)
 	}
 	slices.Sort(runtimeRoots)
 	slices.Sort(hostRoots)
@@ -172,6 +178,7 @@ func BuildPolicy(options Options) (Policy, error) {
 		Version: policyVersion, WorkspaceRoot: workspace, PrivateTemp: privateTemp,
 		RuntimeReadRoots: runtimeRoots, HostReadRoots: hostRoots,
 		HostReadFiles:    hostFiles,
+		Toolchains:       toolchains,
 		AllowNetwork:     options.AllowNetwork,
 		ManagedProxyPort: options.ManagedProxyPort,
 		Controls: Controls{
@@ -346,7 +353,10 @@ func validateInjectedRoot(root, workspace string) error {
 	home, _ := os.UserHomeDir()
 	if home != "" {
 		home, _ = filepath.EvalSymlinks(home)
-		if root == filepath.Clean(home) || pathContains(root, filepath.Join(home, ".ssh")) ||
+		if root == filepath.Clean(home) ||
+			pathContains(root, filepath.Join(home, ".ssh")) ||
+			pathContains(root, filepath.Join(home, ".aws")) ||
+			pathContains(root, filepath.Join(home, ".gnupg")) ||
 			pathContains(root, filepath.Join(home, "Library", "Keychains")) {
 			return errors.New("home, SSH, and keychain roots are forbidden")
 		}
@@ -429,55 +439,6 @@ func pathHostReadRoots(workspace string, runtimeRoots, existing []string) []stri
 			continue
 		}
 		canonical, err := canonicalExisting(directory)
-		if err != nil || seen[canonical] {
-			continue
-		}
-		if err := validateInjectedRoot(canonical, workspace); err != nil {
-			continue
-		}
-		seen[canonical] = true
-		added = append(added, canonical)
-	}
-	return added
-}
-
-// toolchainHostReadRoots exposes language toolchain trees (e.g. GOROOT) that are
-// not covered by PATH directories alone — Homebrew Go lives under Cellar/libexec.
-func toolchainHostReadRoots(workspace string, runtimeRoots, existing []string) []string {
-	candidates := make([]string, 0, 4)
-	if root := strings.TrimSpace(os.Getenv("GOROOT")); root != "" {
-		candidates = append(candidates, root)
-	}
-	if root := strings.TrimSpace(runtime.GOROOT()); root != "" {
-		candidates = append(candidates, root)
-	}
-	if goBin, err := exec.LookPath("go"); err == nil {
-		if resolved, err := filepath.EvalSymlinks(goBin); err == nil {
-			// .../bin/go → sibling libexec or parent package root
-			binDir := filepath.Dir(resolved)
-			candidates = append(candidates,
-				filepath.Join(filepath.Dir(binDir), "libexec"),
-				filepath.Dir(binDir),
-			)
-		}
-	}
-	seen := make(map[string]bool, len(runtimeRoots)+len(existing))
-	for _, root := range runtimeRoots {
-		seen[root] = true
-	}
-	for _, root := range existing {
-		seen[root] = true
-	}
-	added := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		if candidate == "" || !filepath.IsAbs(candidate) {
-			continue
-		}
-		info, err := os.Stat(candidate)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-		canonical, err := canonicalExisting(candidate)
 		if err != nil || seen[canonical] {
 			continue
 		}

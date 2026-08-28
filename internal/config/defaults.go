@@ -35,7 +35,7 @@ func Defaults() Config {
 
 			Compact: Compact{
 				Scope: "total", SummaryMaxBytes: 0, MaxDigestEntries: 120,
-				TruthMaxBytes: 5632, TruthMaxEntities: 256,
+				TruthMaxBytes: 0, TruthMaxEntities: 256,
 				MandatoryMaxEntities: 128, FactMaxEntities: 96,
 				VerifiedChangeRetentionTurns:     32,
 				FailureMaxEntities:               24,
@@ -57,7 +57,7 @@ func Defaults() Config {
 		Telemetry: Telemetry{LogLevel: "info"},
 		Execution: Execution{
 			Protocol: "openai_chat", Mode: "act", Workspace: ".",
-			MaxSteps:    32,
+			MaxSteps:    64,
 			Timeout:     2 * time.Minute,
 			IdleTimeout: 60 * time.Second, MaxConcurrent: 8,
 

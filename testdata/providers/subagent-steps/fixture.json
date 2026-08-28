@@ -2,9 +2,22 @@
   "protocol": "openai_chat",
   "path": "/chat/completions",
   "model": "fixture-model",
-  "streams": ["tool-call.sse", "finalize.sse"],
+  "streams": [
+    "tool-call.sse",
+    "stalled.sse",
+    "stalled-2.sse",
+    "stalled-3.sse",
+    "stalled-4.sse",
+    "stalled-5.sse",
+    "finalize.sse"
+  ],
   "expected_request_fragments": [
     ["count the packages"],
+    ["\"name\":\"file_list\""],
+    ["\"name\":\"file_list\""],
+    ["\"name\":\"file_list\""],
+    ["\"name\":\"file_list\""],
+    ["\"name\":\"file_list\""],
     ["convergence_finalization", "\"name\":\"turn_complete\""]
   ]
 }

@@ -2563,58 +2563,14 @@ func TestWorkspaceChangeGetsOneRepairBeforeConvergenceFinalization(t *testing.T)
 	if len(runtime.requests) != 3 {
 		t.Fatalf("provider requests = %d, want repair plus finalization", len(runtime.requests))
 	}
-	feedback := runtime.requests[1].Messages[len(runtime.requests[1].Messages)-1].Text()
-	if !strings.Contains(feedback, "required_action=perform_workspace_mutation") ||
-		!strings.Contains(feedback, "observed_changes=0") {
-		t.Fatalf("repair feedback = %q", feedback)
+	var feedback strings.Builder
+	for _, message := range runtime.requests[1].Messages {
+		feedback.WriteString(message.Text())
+		feedback.WriteByte('\n')
 	}
-}
-
-func TestStepBudgetWarningProvidesGracefulCompletionWindow(t *testing.T) {
-	tests := []struct {
-		maxSteps int
-		step     int
-		want     int
-	}{
-		{maxSteps: 0, step: 0, want: 0},
-		{maxSteps: 1, step: 0, want: 1},
-		{maxSteps: 4, step: 3, want: 1},
-		{maxSteps: 32, step: 24, want: 8},
-		{maxSteps: 45, step: 34, want: 11},
-		{maxSteps: 64, step: 48, want: 16},
-		{maxSteps: 128, step: 96, want: 32},
-		{maxSteps: 256, step: 192, want: 64},
-		{maxSteps: 256, step: 225, want: 0},
-	}
-	for _, test := range tests {
-		if got := stepBudgetWarningRemaining(test.maxSteps, test.step); got != test.want {
-			t.Fatalf(
-				"stepBudgetWarningRemaining(%d, %d) = %d, want %d",
-				test.maxSteps, test.step, got, test.want,
-			)
-		}
-	}
-	state := turnkernel.NewState(protocol.TurnIntentWorkspaceChange, "act", 1)
-	state.Progress.NoProgressSamples = 3
-	state.SampleLedger["sample"] = turnkernel.ModelSampleState{
-		ID: "sample", Status: turnkernel.SampleCompleted,
-	}
-	state.ClosedCalls["read"] = turnkernel.ToolResultState{
-		ID: "read", Name: "file_read",
-	}
-	state.ClosedCalls["failed"] = turnkernel.ToolResultState{
-		ID: "failed", Name: "exec_command", IsError: true,
-	}
-	state.Changes = []turnkernel.ObservedChange{{Path: "a.go"}}
-	feedback := stepBudgetFeedback(7, 34, 45, state, 1)
-	if feedback.Turn != 7 ||
-		!strings.Contains(feedback.Text(), "remaining_steps=11") ||
-		!strings.Contains(feedback.Text(), `"samples_without_progress":3`) ||
-		!strings.Contains(feedback.Text(), `"successful_tool_calls":1`) ||
-		!strings.Contains(feedback.Text(), `"failed_tool_calls":1`) ||
-		!strings.Contains(feedback.Text(), `"suppressed_failed_calls":1`) ||
-		!strings.Contains(feedback.Text(), "status=incomplete") {
-		t.Fatalf("feedback = %+v", feedback)
+	if !strings.Contains(feedback.String(), "required_action=perform_workspace_mutation") ||
+		!strings.Contains(feedback.String(), "observed_changes=0") {
+		t.Fatalf("repair feedback = %q", feedback.String())
 	}
 }
 

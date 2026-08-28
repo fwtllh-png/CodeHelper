@@ -1,8 +1,12 @@
 package turnkernel
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -10,6 +14,62 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
+
+func TestDebugNoProgressBudgetEvidence(t *testing.T) {
+	debugURL := os.Getenv("DEBUG_SERVER_URL")
+	if debugURL == "" {
+		t.Skip("DEBUG_SERVER_URL is required for no-progress instrumentation")
+	}
+	report := func(hypothesisID, location, message string, data map[string]any) {
+		t.Helper()
+		payload, err := json.Marshal(map[string]any{
+			"sessionId": "no-progress-budget", "runId": "post-fix",
+			"hypothesisId": hypothesisID, "location": location,
+			"msg": "[DEBUG] " + message, "data": data, "ts": time.Now().UnixMilli(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := http.Post(debugURL, "application/json", bytes.NewReader(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+	}
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state.Policy.ExecutionStepLimit = 64
+	state.Policy.Convergence = ConvergencePolicyForStepLimit(
+		state.Policy.ExecutionStepLimit,
+	)
+	// #region debug-point A:policy
+	report("A", "reducer_test.go:policy", "frozen convergence policy", map[string]any{
+		"maxSteps":      state.Policy.ExecutionStepLimit,
+		"researchLimit": state.Policy.Convergence.ResearchLimit,
+		"progressLimit": state.Policy.Convergence.ProgressLimit,
+		"intent":        state.Intent,
+	})
+	// #endregion
+	state = apply(t, state, ObserveProgress{Signature: "unchanged"}).State
+	state = apply(t, state, ObserveProgress{
+		Signature:        "unchanged",
+		CompletedSamples: state.Policy.Convergence.ResearchLimit,
+	}).State
+	// #region debug-point C:progress
+	report("C", "reducer_test.go:progress", "stable signature reached convergence", map[string]any{
+		"mutationRevision": state.MutationRevision,
+		"observed":         state.Progress.ObservedSamples,
+		"noProgress":       state.Progress.NoProgressSamples,
+		"stage":            state.Progress.Stage,
+	})
+	// #endregion
+	// #region debug-point D:fresh-state
+	fresh := startSampling(t, protocol.TurnIntentAnswer)
+	report("D", "reducer_test.go:fresh-state", "new turn progress state", map[string]any{
+		"observed":   fresh.Progress.ObservedSamples,
+		"noProgress": fresh.Progress.NoProgressSamples,
+	})
+	// #endregion
+}
 
 func TestNonInteractiveReadOnlyResearchCompletesWithoutDeclaration(t *testing.T) {
 	for _, intent := range []protocol.TurnIntent{
@@ -280,6 +340,33 @@ func TestIncompleteConvergenceDeclarationBecomesBlockedOutcome(t *testing.T) {
 	}
 }
 
+func TestIncompleteDeclarationWithOpenPlanBecomesBlockedOutcome(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentAnswer)
+	state = apply(t, state, CompletionEvaluated{
+		Candidate: CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "incomplete",
+			Summary:          "Node is unavailable in this environment.",
+			PendingActions:   []string{"Resume the web build with Node available."},
+			CompletionCall:   "incomplete-open-plan",
+			BatchSize:        1,
+			PlanOpenSteps:    2,
+		},
+	}).State
+	if state.Completion == nil ||
+		state.Completion.Reason != "convergence_blocked" ||
+		state.Convergence == nil ||
+		state.Convergence.Cause != ConvergenceIncomplete ||
+		state.Convergence.Summary == "" ||
+		len(state.Convergence.PendingActions) != 1 {
+		t.Fatalf("blocked declaration = %+v", state)
+	}
+	evaluated := apply(t, state, EvaluateTurnStep{ProgressKey: "blocked"})
+	if evaluated.State.NextAction != StepActionBlock {
+		t.Fatalf("blocked action = %q", evaluated.State.NextAction)
+	}
+}
+
 func TestMutationOutputCannotReleaseBeforeCompletionAndVerification(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
 	state = apply(t, state, ToolCallsProposed{
@@ -429,6 +516,17 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 			action:    "final_answer",
 		},
 		{
+			name:  "complete plan requires synchronized progress",
+			state: mutated,
+			candidate: func() CompletionCandidate {
+				value := base
+				value.PlanOpenSteps = 1
+				return value
+			}(),
+			reason: "plan_progress_incomplete",
+			action: "update_plan",
+		},
+		{
 			name:      "workspace change without mutation",
 			state:     startSampling(t, protocol.TurnIntentWorkspaceChange),
 			candidate: base,
@@ -436,7 +534,7 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 			action:    "perform_workspace_mutation",
 		},
 		{
-			name:  "incomplete work continues current turn",
+			name:  "incomplete work becomes resumable blocked outcome",
 			state: startSampling(t, protocol.TurnIntentAnswer),
 			candidate: CompletionCandidate{
 				DeclarationValid: true,
@@ -445,9 +543,10 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 				PendingActions:   []string{"apply the workspace edits"},
 				CompletionCall:   "complete-incomplete",
 				BatchSize:        1,
+				PlanOpenSteps:    1,
 			},
-			reason: "pending_actions",
-			action: "continue_work",
+			reason: "convergence_blocked",
+			action: "finalize_blocked",
 		},
 	}
 	for _, testCase := range tests {
@@ -499,6 +598,18 @@ func TestRecoverableFaultsSuspendJournalInsteadOfRollingBack(t *testing.T) {
 				status,
 			)
 		}
+	}
+}
+
+func TestUserInterruptionSuspendsJournalInsteadOfRollingBack(t *testing.T) {
+	state := NewState(protocol.TurnIntentWorkspaceChange, "act", 1)
+	state.MutationRevision = 1
+	state.Journal = JournalOpen
+	kind, status := terminalJournalOutcome(state, TerminalDecision{
+		Kind: TerminalCanceled, Message: protocol.CancelReasonUserInterrupted,
+	})
+	if kind != EffectSuspendJournal || status != JournalSuspended {
+		t.Fatalf("user interruption outcome = %s/%s", kind, status)
 	}
 }
 
@@ -570,6 +681,8 @@ func TestAcceptedCompletionOutranksProviderContinuation(t *testing.T) {
 
 func TestObserveProgressUsesConservativeDurableThresholds(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentWorkspaceChange)
+	state.Policy.ExecutionStepLimit = 64
+	state.Policy.Convergence = ConvergencePolicyForStepLimit(64)
 	state = apply(t, state, ObserveProgress{
 		Signature: "mutation=0;plan_done=0",
 	}).State
@@ -578,11 +691,10 @@ func TestObserveProgressUsesConservativeDurableThresholds(t *testing.T) {
 		samples uint32
 		want    ProgressStage
 	}{
-		{samples: 8, want: ProgressStageNone},
-		{samples: 16, want: ProgressStageConverge},
-		{samples: 24, want: ProgressStageConverge},
-		{samples: 32, want: ProgressStageFinishOnly},
-		{samples: 48, want: ProgressStageExhausted},
+		{samples: 20, want: ProgressStageNone},
+		{samples: 21, want: ProgressStageConverge},
+		{samples: 41, want: ProgressStageConverge},
+		{samples: 42, want: ProgressStageFinishOnly},
 	} {
 		state = apply(t, state, ObserveProgress{
 			Signature:        "mutation=0;plan_done=0",
@@ -607,10 +719,42 @@ func TestObserveProgressUsesConservativeDurableThresholds(t *testing.T) {
 		state.Progress.NoProgressSamples != 0 {
 		t.Fatalf("progress did not reset: %+v", state.Progress)
 	}
+	exhausted := startSampling(t, protocol.TurnIntentWorkspaceChange)
+	exhausted.Policy.ExecutionStepLimit = 64
+	exhausted.Policy.Convergence = ConvergencePolicyForStepLimit(64)
+	exhausted = apply(t, exhausted, ObserveProgress{
+		Signature: "mutation=0;plan_done=0",
+	}).State
+	exhausted = apply(t, exhausted, ObserveProgress{
+		Signature: "mutation=0;plan_done=0", CompletedSamples: 64,
+	}).State
+	if exhausted.Progress.Stage != ProgressStageExhausted {
+		t.Fatalf("exhausted progress = %+v", exhausted.Progress)
+	}
+}
+
+func TestConvergencePolicyDerivesFromExplicitStepLimit(t *testing.T) {
+	if policy := ConvergencePolicyForStepLimit(0); policy != (ConvergencePolicy{}) {
+		t.Fatalf("uncapped convergence policy = %+v", policy)
+	}
+	if policy := ConvergencePolicyForStepLimit(2); policy.ProgressConverge != 1 ||
+		policy.ProgressFinishOnly != 1 || policy.ProgressLimit != 2 {
+		t.Fatalf("small-budget convergence policy = %+v", policy)
+	}
+	policy := ConvergencePolicyForStepLimit(64)
+	if policy.ProgressConverge != 21 ||
+		policy.ProgressFinishOnly != 42 ||
+		policy.ProgressLimit != 64 ||
+		policy.ResearchConverge != policy.ProgressConverge ||
+		policy.ResearchFinishOnly != policy.ProgressFinishOnly ||
+		policy.ResearchLimit != policy.ProgressLimit {
+		t.Fatalf("derived convergence policy = %+v", policy)
+	}
 }
 
 func TestReadOnlyProgressUsesConsecutiveNoProgressStages(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
+	state.Policy.Convergence = ConvergencePolicyForStepLimit(64)
 	state = apply(t, state, ObserveProgress{
 		Signature: "evidence-0",
 	}).State
@@ -618,10 +762,10 @@ func TestReadOnlyProgressUsesConsecutiveNoProgressStages(t *testing.T) {
 		samples uint32
 		want    ProgressStage
 	}{
-		{samples: 7, want: ProgressStageNone},
-		{samples: 8, want: ProgressStageConverge},
-		{samples: 12, want: ProgressStageFinishOnly},
-		{samples: 16, want: ProgressStageExhausted},
+		{samples: 20, want: ProgressStageNone},
+		{samples: 21, want: ProgressStageConverge},
+		{samples: 42, want: ProgressStageFinishOnly},
+		{samples: 64, want: ProgressStageExhausted},
 	} {
 		state = apply(t, state, ObserveProgress{
 			Signature:        "evidence-0",
@@ -636,6 +780,7 @@ func TestReadOnlyProgressUsesConsecutiveNoProgressStages(t *testing.T) {
 
 func TestReadOnlyProgressDoesNotConvergeWhileEvidenceAdvances(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
+	state.Policy.Convergence = ConvergencePolicyForStepLimit(64)
 	for samples := uint32(0); samples <=
 		state.Policy.Convergence.ResearchLimit*2; samples++ {
 		state = apply(t, state, ObserveProgress{
@@ -652,6 +797,8 @@ func TestReadOnlyProgressDoesNotConvergeWhileEvidenceAdvances(t *testing.T) {
 
 func TestResearchProgressLeavesTotalSampleCapAfterMutation(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
+	state.Policy.ExecutionStepLimit = 64
+	state.Policy.Convergence = ConvergencePolicyForStepLimit(64)
 	state = apply(t, state, ObserveProgress{
 		Signature: "mutation=0",
 	}).State
@@ -685,9 +832,10 @@ func TestResearchProgressLeavesTotalSampleCapAfterMutation(t *testing.T) {
 	}
 }
 
-func TestExplicitStepBudgetConvergesInsideKernel(t *testing.T) {
+func TestExecutionStepBudgetRenewsOnStructuredProgress(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
-	state.Policy.ExecutionStepLimit = 2
+	state.Policy.ExecutionStepLimit = 3
+	state.Policy.Convergence = ConvergencePolicyForStepLimit(3)
 	state.SampleLedger["sample-1"] = ModelSampleState{
 		ID: "sample-1", Status: SampleCompleted, Attempt: 1,
 	}
@@ -703,16 +851,24 @@ func TestExplicitStepBudgetConvergesInsideKernel(t *testing.T) {
 	second := apply(t, first.State, ObserveProgress{
 		Signature: "evidence=two", CompletedSamples: 2,
 	})
-	if second.State.Convergence == nil ||
-		second.State.Convergence.Cause != ConvergenceStepLimit ||
-		second.State.Convergence.Used != 2 ||
-		second.State.Convergence.Limit != 2 {
-		t.Fatalf("explicit step convergence = %+v", second.State.Convergence)
+	if second.State.Convergence != nil {
+		t.Fatalf("progressing Turn converged = %+v", second.State.Convergence)
+	}
+	stalled := apply(t, second.State, ObserveProgress{
+		Signature: "evidence=two", CompletedSamples: 5,
+	})
+	if stalled.State.Convergence == nil ||
+		stalled.State.Convergence.Cause != ConvergenceNoProgress ||
+		stalled.State.Convergence.Used != 3 ||
+		stalled.State.Convergence.Limit != 3 {
+		t.Fatalf("stalled Turn convergence = %+v", stalled.State.Convergence)
 	}
 }
 
-func TestProgressingTurnHasNoImplicitStepBudget(t *testing.T) {
+func TestProgressingTurnRenewsExplicitStepBudget(t *testing.T) {
 	state := startSampling(t, protocol.TurnIntentAnswer)
+	state.Policy.ExecutionStepLimit = 64
+	state.Policy.Convergence = ConvergencePolicyForStepLimit(64)
 	for sample := uint32(1); sample <= 128; sample++ {
 		id := fmt.Sprintf("sample-%d", sample)
 		state.SampleLedger[id] = ModelSampleState{

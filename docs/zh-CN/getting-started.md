@@ -23,7 +23,7 @@ codehelper
 `make install` 会依次安装 Web 依赖、构建静态资源和 Go 二进制，再原子安装到
 `~/.local/bin/codehelper`。二进制包含 Web 静态资源，运行期间不依赖源码目录或独立
 前端服务。安装后在任意项目目录执行 `codehelper`，当前目录即为 Workspace；无配置
-启动默认启用受 Guard 管理的内置工具，并使用 `suggest` 审批姿态。
+启动默认启用受 Guard 管理的内置工具，并使用 `auto` 审批姿态。
 
 同一用户只运行一个本机 Web Supervisor。之后在另一个项目目录再次执行
 `codehelper`，命令会把该目录注册为新的 Workspace、打开带 Workspace 定位参数的已有

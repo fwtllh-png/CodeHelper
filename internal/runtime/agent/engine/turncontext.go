@@ -163,6 +163,16 @@ func SnapshotTurnSpec(
 	kernelPolicy.VerificationRepairLimit =
 		uint32(max(options.Verify.MaxRepairSteps, 0))
 	kernelPolicy.ExecutionStepLimit = uint32(max(options.MaxSteps, 0))
+	progressLease := kernelPolicy.ExecutionStepLimit
+	if progressLease > 0 {
+		progressLease += kernelPolicy.CompletionRepairLimit +
+			kernelPolicy.WorkspaceRepairLimit +
+			kernelPolicy.DeclarationRepairLimit +
+			kernelPolicy.VerificationRepairLimit
+	}
+	kernelPolicy.Convergence = turnkernel.ConvergencePolicyForStepLimit(
+		progressLease,
+	)
 	kernelPolicy.JournalRequired = options.Journal != nil
 	planning := security.PlanningSnapshot()
 	capacity := agentcontext.ResolveCapacity(
@@ -178,8 +188,8 @@ func SnapshotTurnSpec(
 			Version:  protocol.SessionProfileVersion,
 			Revision: identity.ProfileRevision,
 			Mode:     string(security.Mode), Provider: route.ProviderID(),
-			PlanningPolicy: planning.Planning, PlanApproval: planning.PlanApproval,
-			Model: route.Model().ID, ReasoningEffort: options.ReasoningEffort,
+			PlanningPolicy: planning.Planning,
+			Model:          route.Model().ID, ReasoningEffort: options.ReasoningEffort,
 			ApprovalPosture: string(security.Permission),
 			ExecutionTarget: "local", MaxSteps: options.MaxSteps,
 			PromptCacheRevision: identity.ProfileRevision,

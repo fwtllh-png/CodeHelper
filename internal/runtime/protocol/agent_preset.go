@@ -23,7 +23,6 @@ const AgentPresetScopeWorkspace AgentPresetScope = "workspace"
 type AgentPresetProfile struct {
 	Mode            string   `json:"mode"`
 	PlanningPolicy  string   `json:"planning_policy,omitempty"`
-	PlanApproval    string   `json:"plan_approval,omitempty"`
 	Provider        string   `json:"provider"`
 	Model           string   `json:"model"`
 	ReasoningEffort string   `json:"reasoning_effort,omitempty"`
@@ -35,7 +34,7 @@ type AgentPresetProfile struct {
 
 func NewAgentPresetProfile(profile SessionProfile) AgentPresetProfile {
 	return AgentPresetProfile{
-		Mode: profile.Mode, PlanningPolicy: profile.PlanningPolicy, PlanApproval: profile.PlanApproval,
+		Mode: profile.Mode, PlanningPolicy: profile.PlanningPolicy,
 		Provider: profile.Provider, Model: profile.Model,
 		ReasoningEffort: profile.ReasoningEffort,
 		EnabledToolIDs:  sortedToolIDs(profile.EnabledToolIDs),
@@ -54,7 +53,6 @@ func (p AgentPresetProfile) Patch(current SessionProfile) SessionProfilePatch {
 	var patch SessionProfilePatch
 	setStringPatch(&patch.Mode, p.Mode, current.Mode)
 	setStringPatch(&patch.PlanningPolicy, p.PlanningPolicy, current.PlanningPolicy)
-	setStringPatch(&patch.PlanApproval, p.PlanApproval, current.PlanApproval)
 	setStringPatch(&patch.Provider, p.Provider, current.Provider)
 	setStringPatch(&patch.Model, p.Model, current.Model)
 	setStringPatch(&patch.ReasoningEffort, p.ReasoningEffort, current.ReasoningEffort)
@@ -86,7 +84,7 @@ func (p AgentPresetProfile) sessionProfile(
 	return SessionProfile{
 		Version: SessionProfileVersion, Revision: revision,
 		Mode: p.Mode, PlanningPolicy: p.PlanningPolicy,
-		PlanApproval: p.PlanApproval, Provider: p.Provider,
+		Provider:        p.Provider,
 		Model:           p.Model,
 		ReasoningEffort: p.ReasoningEffort,
 		EnabledToolIDs:  sortedToolIDs(p.EnabledToolIDs),

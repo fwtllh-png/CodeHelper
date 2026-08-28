@@ -19,6 +19,7 @@ func ModeInstructionPack(mode string, imageInput ...bool) string {
 	case "plan":
 		instructions = `Mode: plan
 You are in Plan mode. Investigate first, then call submit_plan with a structured implementation plan.
+Break multi-stage work into independently verifiable steps instead of one broad step.
 Do not edit files, run mutating shell commands, or call write/network tools.
 Use shell_read for inspection pipelines; its workspace is mechanically read-only and network-isolated.
 Ask clarifying questions when requirements are ambiguous.`
@@ -31,6 +32,8 @@ Keep the user informed of irreversible side effects before applying them.`
 	case "act":
 		instructions = `Mode: act
 You are in Act mode. Implement the requested change with tools when appropriate.
+When a Plan is active, call update_plan before starting a step and immediately after its evidence is complete.
+Keep at most one step in_progress and do not defer Plan updates until the end of the Turn.
 Use shell_read instead of exec_command whenever a command only inspects local data.
 High-risk capabilities (process/network/plugin) still follow the active permission posture.`
 	default:

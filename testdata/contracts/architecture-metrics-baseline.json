@@ -342,9 +342,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 76,
-        "production_lines": 9114,
+        "production_lines": 9159,
         "options_fields": 74,
         "mutex_fields": 7
+      },
+      "relaxations": {
+        "production_lines": "Persist Workspace-scoped sandbox homes and expose validated host toolchains through one shared main/child runtime contract."
       }
     },
     {
@@ -579,7 +582,7 @@
       "path": "internal/runtime/agent/turnkernel",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 8027,
+        "production_lines": 8033,
         "options_fields": 0,
         "mutex_fields": 8
       },
@@ -627,12 +630,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 7065,
+        "production_lines": 7070,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-      "production_lines": "Publish content-safe economic admission, prefix divergence, append-only image attribution, uncached-input, and Profile-bound recoverable Plan identity facts."
+      "production_lines": "Publish content-safe economic admission, prefix divergence, append-only image attribution, uncached-input, Profile-bound recoverable Plan identity facts, and blocked Session lifecycle state."
       }
     },
     {

@@ -34,6 +34,7 @@
   --ch-danger-soft: #fef2f2;
   --ch-warning: #f59e0b;
   --ch-success: #8fb4ff;
+  --ch-plan-complete: #18a957;
   --ch-focus: #376bd7;
   --ch-code: #f9fafb;
   --ch-shadow: 0 4px 12px rgb(0 0 0 / 2%), 0 2px 8px rgb(0 0 0 / 4%);
@@ -90,6 +91,7 @@
   --ch-danger: #f25a5a;
   --ch-danger-soft: #2c1c1d;
   --ch-focus: #679efe;
+  --ch-plan-complete: #4ade80;
   --ch-code: #1b1b1c;
   --ch-shadow: 0 4px 12px rgb(0 0 0 / 18%), 0 2px 8px rgb(0 0 0 / 24%);
   --ch-modal-mask: rgb(0 0 0 / 48%);
@@ -860,6 +862,13 @@ textarea:disabled {
   color: var(--ch-business);
   font-size: 11px;
   font-weight: 650;
+}
+
+.workingLabel[data-paused] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: color-mix(in srgb, var(--ch-warning) 65%, var(--ch-text));
 }
 
 .conversationScrollport,
@@ -1965,6 +1974,13 @@ textarea:disabled {
   border-color: color-mix(in srgb, var(--ch-danger) 35%, var(--ch-border));
 }
 
+.terminalState[data-warning] {
+  color: var(--ch-warning);
+  background: color-mix(in srgb, var(--ch-warning) 10%, var(--ch-panel));
+  border-color: color-mix(in srgb, var(--ch-warning) 35%, var(--ch-border));
+}
+
+.terminalState[data-warning],
 .terminalState[data-failed] {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -2014,7 +2030,8 @@ textarea:disabled {
 }
 
 @media (max-width: 720px) {
-  .terminalState[data-failed] {
+  .terminalState[data-failed],
+  .terminalState[data-warning] {
     display: grid;
   }
 
@@ -2351,27 +2368,32 @@ textarea:disabled {
 }
 
 .progressPlan {
-  position: relative;
+  display: flex;
+  max-height: min(44dvh, 360px);
   grid-column: 1 / -1;
-  padding: 6px 0 8px;
+  flex-direction: column;
+  margin: 6px 8px 8px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  background: var(--ch-panel-subtle);
 }
 
 .progressPlan[data-collapsed] {
+  height: 32px;
   min-height: 32px;
-  padding: 0;
+  max-height: 32px;
 }
 
 .planDisclosure {
-  position: absolute;
-  z-index: var(--ch-layer-content);
-  top: 3px;
-  right: 6px;
-  display: grid;
-  width: 26px;
-  height: 26px;
-  place-items: center;
-  padding: 0;
-  border-radius: var(--ch-radius-control);
+  display: flex;
+  width: 100%;
+  height: 32px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  text-align: left;
   background: transparent;
   color: var(--ch-text-muted);
 }
@@ -2381,12 +2403,39 @@ textarea:disabled {
   color: var(--ch-text);
 }
 
-.planDisclosure svg {
+.planDisclosure > svg {
+  flex: 0 0 auto;
+  margin-left: auto;
   transition: transform var(--ch-motion-disclosure) var(--ch-ease-in-out);
 }
 
-.planDisclosure svg:not([data-expanded]) {
+.planDisclosure > svg:not([data-expanded]) {
   transform: rotate(-90deg);
+}
+
+.planSummary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.planSummary > svg {
+  flex: 0 0 auto;
+}
+
+.planSummary strong {
+  color: var(--ch-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.planSummary small {
+  overflow: hidden;
+  color: var(--ch-text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .progressSection + .progressSection {
@@ -2440,22 +2489,33 @@ textarea:disabled {
 .progressPlan .progressTasks li {
   grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
-  min-height: 32px;
-  padding: 5px 10px;
-  border-bottom: 1px solid var(--ch-border);
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
-.progressPlan .progressTasks li:first-child {
-  padding-right: 42px;
+.progressPlan .progressTasks {
+  grid-auto-rows: max-content;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 8px 7px;
 }
 
-.progressPlan .progressTasks li:last-child {
-  border-bottom: 0;
+.progressPlan .progressTasks li > svg {
+  flex: 0 0 auto;
 }
 
-.progressPlan > .artifactActions {
-  justify-content: flex-end;
-  padding: 7px 10px 0;
+.progressPlan .progressTasks li[data-state="done"] > svg {
+  color: var(--ch-plan-complete);
+}
+
+.progressPlan .progressTasks li[data-state="in_progress"] > svg {
+  color: var(--ch-accent-hover);
+}
+
+.progressPlan .progressTasks li[data-state="pending"] > svg {
+  color: var(--ch-text-caption);
 }
 
 .progressTasks span,
@@ -2506,11 +2566,6 @@ textarea:disabled {
 
 .progressAgents small {
   grid-column: 2 / -1;
-}
-
-.progressPlan > .artifactActions button:last-child {
-  color: var(--ch-text-secondary);
-  background: var(--ch-panel);
 }
 
 @media (max-width: 760px) {

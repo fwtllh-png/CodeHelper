@@ -75,7 +75,7 @@ OpenAI-Compatible 服务，并填写 Model ID。API Key 由操作系统 Keyring 
 
 源码开发时仍可使用 `make start`。自定义安装位置使用
 `make install PREFIX=/usr/local`，卸载使用 `make uninstall`。
-无配置运行 `codehelper` 时默认启用受 Guard 管理的内置工具，并使用 `suggest`
+无配置运行 `codehelper` 时默认启用受 Guard 管理的内置工具，并使用 `auto`
 审批姿态。
 
 Web 只监听 `127.0.0.1`，默认选择可用端口。终端会分别输出页面开始监听和

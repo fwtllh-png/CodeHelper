@@ -87,7 +87,7 @@ func RunContext(
 		"restart an older Web owner instead of reusing it",
 	)
 	flags.BoolVar(&options.enableTools, "enable-tools", false, "enable built-in workspace tools")
-	flags.StringVar(&options.posture, "posture", "suggest", "tool permission posture")
+	flags.StringVar(&options.posture, "posture", "auto", "tool permission posture")
 	flags.StringVar(&options.mcpConfig, "mcp-config", "", "versioned MCP stdio server config JSON")
 	flags.StringVar(&options.provider, "provider", "", "explicit provider id")
 	flags.StringVar(&options.model, "model", "", "model id within the selected provider")

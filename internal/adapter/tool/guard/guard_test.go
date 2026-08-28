@@ -120,6 +120,76 @@ func TestNetworkTargetsResolveHostPortMethodAndPrivateScope(t *testing.T) {
 	}
 }
 
+func TestTrustedHostPathResourceUsesWorkspaceSandboxPolicy(t *testing.T) {
+	workspace := t.TempDir()
+	privateHome := t.TempDir()
+	privateExecutable := filepath.Join(privateHome, "target", "app")
+	if err := os.MkdirAll(filepath.Dir(privateExecutable), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(privateExecutable, []byte("fixture"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	privateExecutable, err := filepath.EvalSymlinks(privateExecutable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := sandbox.BindPolicy(strongBackend{}, sandbox.Options{
+		WorkspaceRoot: workspace,
+		PrivateTemp:   privateHome,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	registry.SetSandboxBackend(backend)
+	guard, err := New(Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionBypass,
+		),
+		Workspace: workspace,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor := readDescriptor("host_tool")
+	descriptor.ResourceResolver = tool.ResourceResolver{
+		TrustedHostPathField: "path",
+	}
+	descriptor.InputSchema = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"path": map[string]any{"type": "string", "minLength": 1},
+		},
+		"required": []string{"path"}, "additionalProperties": false,
+	}
+	if err := registry.Register(&testExecutor{descriptor: descriptor}, nil); err != nil {
+		t.Fatal(err)
+	}
+	resources, err := guard.resolveResources(
+		"host_tool",
+		descriptor,
+		json.RawMessage(`{"path":"target/app"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resources) != 1 || resources[0].Path != privateExecutable ||
+		resources[0].Access != tool.AccessRead {
+		t.Fatalf("resources = %+v", resources)
+	}
+	outside := filepath.Join(t.TempDir(), "outside-app")
+	raw, err := json.Marshal(map[string]string{"path": outside})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guard.resolveResources("host_tool", descriptor, raw); err == nil {
+		t.Fatal("trusted host resource accepted a path outside policy-owned roots")
+	}
+}
+
 func TestArgumentExpansionFailureIsRecoverableInvalidArguments(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	executor := &failingExpanderExecutor{testExecutor: testExecutor{

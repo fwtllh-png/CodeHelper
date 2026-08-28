@@ -64,7 +64,7 @@ func (r *Service) validatePlanRecovery(
 	}
 	if profile.Profile.Revision != payload.Recovery.ProfileRevision {
 		return revisionProblem(
-			"Turn recovery Plan approval uses a stale Session Profile",
+			"Turn recovery Plan binding uses a stale Session Profile",
 			payload.Recovery.PlanID,
 			payload.Recovery.ProfileRevision,
 			profile.Profile.Revision,
@@ -74,6 +74,8 @@ func (r *Service) validatePlanRecovery(
 	if err != nil {
 		return err
 	}
+	inlinePlanSubmitted := false
+	inlinePlanReceipted := false
 	for _, event := range events {
 		if event.ThreadID != payload.ThreadID ||
 			event.TurnID != payload.Recovery.SourceTurnID {
@@ -86,10 +88,23 @@ func (r *Service) validatePlanRecovery(
 			started.ProfileRevision == payload.Recovery.ProfileRevision {
 			return nil
 		}
+		if submitted, ok := event.Data.(*protocol.PlanDeltaData); ok &&
+			payload.Recovery.PlanTransition == protocol.PlanTransitionAutopilot &&
+			submitted.ArtifactID == payload.Recovery.PlanID &&
+			submitted.ProfileRevision == payload.Recovery.ProfileRevision {
+			inlinePlanSubmitted = true
+		}
+		if receipt, ok := event.Data.(*protocol.ExecutionReceiptData); ok &&
+			receipt.Plan != "" {
+			inlinePlanReceipted = true
+		}
+	}
+	if inlinePlanSubmitted && inlinePlanReceipted {
+		return nil
 	}
 	return runtimeProblem(
 		protocol.CodeConflict,
-		"Turn recovery Plan approval does not match the source Turn",
+		"Turn recovery Plan binding does not match the source Turn",
 		nil,
 	)
 }

@@ -15,6 +15,10 @@ func TestModeInstructionPackDiffersByMode(t *testing.T) {
 	if !strings.Contains(plan, "Plan mode") || !strings.Contains(plan, "submit_plan") {
 		t.Fatalf("plan pack incomplete: %q", plan)
 	}
+	if !strings.Contains(plan, "independently verifiable steps") ||
+		!strings.Contains(act, "call update_plan") {
+		t.Fatalf("plan progress guidance missing: plan=%q act=%q", plan, act)
+	}
 	if !strings.Contains(operate, "Operate mode") ||
 		!strings.Contains(plan, "shell_read") ||
 		!strings.Contains(act, "shell_read") ||

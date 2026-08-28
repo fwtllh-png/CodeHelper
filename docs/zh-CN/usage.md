@@ -83,19 +83,24 @@ Tool 耗时、TTFT、Token、Cache 和 Cost；完整明细保留在 Tooltip 中�
 
 Plan 模式只允许 Workspace Read 与有界的 Session Plan 状态更新。Agent 调研完成后通过
 `submit_plan` 提交带步骤、依赖、预期证据和受影响文件的结构化 JSON 计划。Plan
-Artifact 不接受 Markdown 或 XML 标签输出。计划显示在 Composer 上方，可选择
-`Implement` 或 `Autopilot`。两种动作都复用持久化的 `turn.start` Acceptance；
-Autopilot 的 `auto` Posture 只对该执行 Turn 生效，不修改 Session 默认值。提交计划时
-会记录受影响文件摘要，执行前若文件已变化，Runtime 拒绝旧 Revision 并要求重新规划。
+Artifact 不接受 Markdown 或 XML 标签输出。计划显示在 Composer 上方，并在当前 Turn
+内自动继续执行，不设置额外的 Plan 审批或执行按钮。提交计划时会记录受影响文件摘要，
+执行前若文件已变化，Runtime 拒绝旧 Revision 并要求重新规划。
 
 Mode 只提供 `plan`、`act`、`operate` 三项。`act` 与 `operate` 固定使用自适应规划：
 简单、低风险操作直接执行，复杂或高风险操作先提交计划。界面不再暴露独立的
 Planning Policy，避免用户同时选择模式和规划策略。
 
-`plan_approval=manual` 在提交计划后停止执行，由用户在对话中的 Plan 面板批准；
-`plan_approval=auto` 允许当前 Turn 在 `submit_plan` 成功后继续。提交与批准状态只属于
-当前 Turn，不写回 Session 默认审批姿态。独立 Plan 模式仍使用 Plan 模型路由；Act
-内规划保持 Turn 已冻结的 Act 路由，不在一次回答中途切换模型。
+Plan 提交后始终自动批准；用户无需选择 `Implement` 或 `Autopilot`。提交状态只属于
+当前 Turn，不写回 Session 默认工具审批姿态。独立 Plan 模式仍使用 Plan 模型路由；
+Act 内规划保持 Turn 已冻结的 Act 路由，不在一次回答中途切换模型。新 Session 默认
+使用 `approval_posture=auto`。Plan Artifact 以执行配置摘要而不是整个 Session
+Profile Revision 判断是否过期；模型、工具集、审批姿态或执行目标等执行配置变化仍会
+要求重新规划。
+
+活动 Plan 的状态变化通过 `update_plan` 立即生成新的 `plan.delta`。Runtime 不根据文件
+写入猜测业务步骤是否完成，但会拒绝在仍有未完成 Plan 步骤时提交普通完成声明，并要求
+先同步 Plan；只有收敛 Finalization 可以保留未完成步骤并形成可恢复结果。
 
 创建新 Session 时，Web 会继承当前 Session 的 Approval Posture；因此用户选择 `auto`
 后，新建 Session 不会重新回到 `suggest`。显式的新建参数仍优先于继承值。
@@ -152,6 +157,13 @@ Prompt。
 确认删除表示同时丢弃其未完成状态和隔离改动；仍有内存执行者或恢复中 Operation 的
 Session 会拒绝删除，必须先停止执行。
 
+Agent 明确声明任务尚未完成并提供后续动作时，Session 显示为黄色 `Blocked`，保留
+Workspace 变更并允许 `Continue`。该状态不同于红色 `Failed`，也不同于用户主动暂停
+产生的 `Paused`。Blocked Session 没有活动 Turn 时，Composer 的发送动作显示为
+`Continue`，输入内容作为恢复 Guidance 绑定到最新可恢复 Turn，不会在 retained draft
+之上错误创建无关 Turn。恢复请求提交后按钮保持 Pending，直到 Runtime 发布新 Turn
+或明确拒绝请求。
+
 ## 配置与凭证
 
 首次进入且尚未完成 Runtime Setup 时，Web 不提供默认 Provider 或 Model。用户必须
@@ -186,7 +198,7 @@ Agent Preset 保存经过 Runtime 校验的 Session Profile，不包含 Credenti
 Session；浏览器刷新和 Runtime 重启后仍可恢复。
 
 General Settings 中可选择启用桌面通知。通知默认关闭，并且必须获得浏览器权限；
-只报告后台 Session 等待审批、等待输入、失败、中断或完成，不包含 Prompt、Tool 名称
+只报告后台 Session 等待审批、等待输入、阻塞、失败、暂停或完成，不包含 Prompt、Tool 名称
 或 Tool Output。点击通知会切换到对应 Session，并定位最新 Turn 或待处理控件。
 页面标题和 Session Rail 始终直接投影 Runtime Session 状态，不依赖通知权限。
 

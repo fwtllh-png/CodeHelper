@@ -546,8 +546,6 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		result, err = s.turnQueue(r, dependencies)
 	case "plan/get":
 		result, err = s.planGet(r, dependencies)
-	case "plan/transition":
-		result, err = s.planTransition(r, dependencies)
 	case "task/list":
 		result, err = s.taskList(r, dependencies)
 	case "agent/list":
@@ -1279,83 +1277,6 @@ func (s *Server) planGet(
 		return nil, err
 	}
 	return dependencies.Runtime.SessionPlan(r.Context(), request.SessionID)
-}
-
-func (s *Server) planTransition(
-	r *http.Request,
-	dependencies Dependencies,
-) (any, error) {
-	var request struct {
-		SessionID       string                  `json:"session_id"`
-		SourceSessionID string                  `json:"source_session_id,omitempty"`
-		PlanID          string                  `json:"plan_id"`
-		Transition      protocol.PlanTransition `json:"transition"`
-	}
-	if err := s.decodeRequest(r, &request); err != nil {
-		return nil, err
-	}
-	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-	if idempotencyKey == "" {
-		return nil, protocol.NewProblem(
-			protocol.CodeInvalidArgument,
-			"Idempotency-Key header is required",
-			false,
-			nil,
-		)
-	}
-	var artifact protocol.SessionPlanArtifact
-	if request.SourceSessionID == "" {
-		prepared, err := dependencies.Runtime.PreparePlanExecution(
-			r.Context(),
-			request.SessionID,
-			request.PlanID,
-			request.Transition,
-		)
-		if err != nil {
-			return nil, err
-		}
-		artifact = prepared.Artifact
-	} else {
-		prepared, err := dependencies.Runtime.PreparePlanExecutionTo(
-			r.Context(),
-			request.SourceSessionID,
-			request.SessionID,
-			request.PlanID,
-			request.Transition,
-		)
-		if err != nil {
-			return nil, err
-		}
-		artifact = prepared.Artifact
-	}
-	sourceSessionID, destination := request.SourceSessionID, protocol.PlanDestinationNewSession
-	if sourceSessionID == "" {
-		sourceSessionID, destination = request.SessionID, protocol.PlanDestinationCurrentSession
-	}
-	receipt, err := dependencies.Runtime.SubmitForSession(
-		r.Context(),
-		app.SubmitSessionOperation{
-			SessionID:         request.SessionID,
-			Kind:              protocol.OperationStartTurn,
-			IdempotencyKey:    idempotencyKey,
-			WorkspaceIdentity: &dependencies.WorkspaceIdentity,
-			Payload: &protocol.StartTurnPayload{
-				PlanExecution: &protocol.PlanTransitionRequest{
-					Version:   protocol.WorkflowIntentVersion,
-					SessionID: sourceSessionID, PlanID: request.PlanID,
-					Transition: request.Transition, Destination: destination,
-					IdempotencyKey: idempotencyKey,
-				},
-			},
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return map[string]any{
-		"artifact":  artifact,
-		"operation": receipt,
-	}, nil
 }
 
 func (s *Server) taskList(

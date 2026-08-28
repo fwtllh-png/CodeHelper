@@ -36,7 +36,8 @@ func FinishOnlyAllowed(name string, descriptor Descriptor) bool {
 		"quality_test",
 		"quality_diagnostics",
 		"quality_review",
-		"quality_verify":
+		"quality_verify",
+		"quality_process_smoke":
 		return true
 	default:
 		return false

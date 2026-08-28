@@ -204,6 +204,53 @@ func TestPresentationReadFenceBindsLifecycleThreadsAndEventWatermark(t *testing.
 	}
 }
 
+func TestLifecycleProjectsBlockedTurn(t *testing.T) {
+	store, err := sqlitestate.Open(
+		t.Context(),
+		filepath.Join(t.TempDir(), "state.db"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	repository := session.NewSQLiteRepository(store)
+	if _, err := repository.CreateLifecycle(
+		t.Context(),
+		protocol.SessionCreateSeed{
+			Version:        protocol.SessionLifecycleVersion,
+			SessionID:      "session-blocked",
+			WorkspaceID:    "workspace-blocked",
+			WorkspaceRoot:  "/workspace",
+			WorkspaceLabel: "workspace",
+			ThreadID:       "thread-blocked",
+			Title:          "Blocked",
+			Provider:       "fixture",
+			Model:          "fixture",
+			Isolation:      "shared",
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := store.DB().ExecContext(t.Context(), `
+		INSERT INTO turns(
+			id, thread_id, ordinal, status, created_at, updated_at
+		) VALUES ('turn-blocked', 'thread-blocked', 1, 'blocked', ?, ?)`,
+		now,
+		now,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	summary, err := repository.GetLifecycle(t.Context(), "session-blocked")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Status != protocol.SessionStatusBlocked {
+		t.Fatalf("session status = %s, want blocked", summary.Status)
+	}
+}
+
 func TestLifecycleRejectsArchiveAndDeleteWithActiveTurn(t *testing.T) {
 	store, err := sqlitestate.Open(
 		t.Context(),

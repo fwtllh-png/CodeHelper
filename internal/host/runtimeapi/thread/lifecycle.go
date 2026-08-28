@@ -447,7 +447,7 @@ func (l *Lifecycle) Project(ctx context.Context, event protocol.Event) error {
 		}
 		switch event.Kind {
 		case protocol.EventTurnCompleted, protocol.EventTurnFailed, protocol.EventTurnCanceled:
-			status := terminalStatus(event.Kind)
+			status := terminalStatus(event)
 			result, err := tx.ExecContext(ctx, `
 				UPDATE turns SET status = ?, updated_at = ?, completed_at = ?
 				WHERE id = ? AND status = ?`,
@@ -466,6 +466,18 @@ func (l *Lifecycle) Project(ctx context.Context, event protocol.Event) error {
 				if err := tx.QueryRowContext(
 					ctx, "SELECT status FROM turns WHERE id = ?", event.TurnID,
 				).Scan(&current); err != nil {
+					return err
+				}
+				if current == TurnFailed && status == TurnBlocked {
+					_, err := tx.ExecContext(ctx, `
+						UPDATE turns SET status = ?, updated_at = ?, completed_at = ?
+						WHERE id = ? AND status = ?`,
+						TurnBlocked,
+						timestamp(event.CreatedAt),
+						timestamp(event.CreatedAt),
+						event.TurnID,
+						TurnFailed,
+					)
 					return err
 				}
 				if current != status {
@@ -705,14 +717,32 @@ func lookupOperation(
 	return value, true, nil
 }
 
-func terminalStatus(kind protocol.EventKind) TurnStatus {
-	switch kind {
+func terminalStatus(event protocol.Event) TurnStatus {
+	switch event.Kind {
 	case protocol.EventTurnCompleted:
 		return TurnCompleted
 	case protocol.EventTurnFailed:
+		if data, ok := event.Data.(*protocol.TurnFailedData); ok &&
+			(data.Convergence != nil || recoverableTurnFault(data.Fault)) {
+			return TurnBlocked
+		}
 		return TurnFailed
 	default:
 		return TurnCanceled
+	}
+}
+
+func recoverableTurnFault(fault *protocol.FaultMetadata) bool {
+	if fault == nil {
+		return false
+	}
+	switch fault.Disposition {
+	case protocol.FaultRetryStep,
+		protocol.FaultRetryTurn,
+		protocol.FaultResumeTurn:
+		return true
+	default:
+		return false
 	}
 }
 

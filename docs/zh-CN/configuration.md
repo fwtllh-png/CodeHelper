@@ -52,7 +52,7 @@ mode = "act"                 # plan | act | operate
 workspace = "."
 tools = true
 max_output_tokens = 0           # 0 = 使用当前模型声明的 MaxOutputTokens
-max_steps = 32                  # 0 = 显式取消普通 Step Budget
+max_steps = 64                  # 连续无结构化进展的 Step Lease；0 = 不设置
 timeout = "2m"                  # 连接、TLS 和响应头阶段
 connection_timeout = "0s"       # 0 表示继承 timeout
 tls_handshake_timeout = "0s"    # 0 表示继承 timeout
@@ -69,10 +69,9 @@ native_search = false
 
 `turn_budget_tokens` 统计一个 Turn 内所有模型调用的累计输入与输出。它不是模型的
 Context Window：后者只约束单次请求。默认值 `0` 不设置累计上限，单次请求仍受模型
-能力约束，循环仍受 `max_steps` 约束。需要控制成本时应显式设置
+能力约束；连续无结构化进展时仍受 `max_steps` 约束。需要控制成本时应显式设置
 `turn_budget_tokens`、`budget_tokens` 或 `budget_usd`。
 [execution.verify]
-mode = "soft"                # off | soft | hard
 mode = "soft"                # off | soft | hard
 scope = "diagnostics"        # diagnostics | repository | affected
 on_failure = "fail"          # fail | revert
@@ -90,7 +89,7 @@ max_depth = 5
 max_parallel = 4
 max_resident = 8
 max_total = 16
-max_steps = 0                   # 0 = 只继承进展收敛策略
+max_steps = 0                   # 0 = 不设置子 Agent Sample 数量上限
 max_tokens = 0                  # 0 表示按 Turn 上限和 max_parallel 派生树预算
 max_cost_usd = 0
 wall_time = "0s"                # 0 = 不设置子 Agent 执行 Lease
@@ -138,7 +137,7 @@ emergency_tokens = 0 # 0 表示根据当前模型 Context Window 动态计算
 scope = "total" # 或 "body_after_prefix"
 summary_max_bytes = 0 # 0 表示使用当前 Turn 的硬输入容量作为渲染 Ceiling
 max_digest_entries = 120
-truth_max_bytes = 5632
+truth_max_bytes = 0 # 0 表示根据当前 Route 的硬输入 Token 容量动态计算
 truth_max_entities = 256
 mandatory_max_entities = 128
 fact_max_entities = 96
@@ -243,28 +242,25 @@ Incremental Transport 固定使用 `store=false`。Response State 只保留在�
 以及 Logical/Transport 的 SHA-256 Digest，不保存 Prompt 内容。Request Byte
 下降只属于传输证据，不会被报告为 Token 降幅。
 
-`execution.max_steps` 是普通工作的显式预算，不限制结构化 Finalization。默认值为
-`32`；显式配置为 `0` 表示取消普通 Step Budget。正数会被冻结进 Turn Kernel Policy。当显式预算
-不少于 64 步时，Runtime 会在剩余 16-32 步时注入一次收敛提醒。显式普通工作预算
-耗尽后，Kernel 会在预算之外保留一次 Finalization Sample；它只能请求必需输入，
-或声明 Complete/Incomplete 状态，不能继续探索或修改。Kernel 授权的 Repair Steps
-拥有独立预算。
+`execution.max_steps` 是连续无结构化进展的显式执行 Lease，默认值为 `64`；
+显式配置为 `0` 表示不设置 Sample 数量上限。Mutation、Plan 推进、Verification、
+Completion 和按 Intent 定义的新 Evidence 会续期 Lease，因此正常产出的长任务不会
+因为累计 Sample 数达到 64 而中断。Lease 耗尽后，Kernel 会在预算之外保留一次
+Finalization Sample；它只能请求必需输入，或声明 Complete/Incomplete 状态，不能继续
+探索或修改。Kernel 授权的 Repair Steps 拥有独立预算。
 
 Agent 还会跟踪连续没有结构化进展的 Sample；对于正在执行 Workspace 工作的 Turn，
-这不是新的 16 步执行上限。连续 16 步无进展时要求模型收敛，32 步时限制继续扩散式
-探索，但仍允许精确文件读取、工作区修改、有界 Process 收尾（`exec_command` /
-`write_stdin`）、必需用户输入、质量检查、Plan 更新和 Completion。Provider 投影与
-Tool Executor 共享同一 Allowlist，因此当前批次已广告的 Tool 不会再被误判为
-Terminal-only 而拒绝。48 步时 Kernel 进入同一条结构化 Finalization 路径，不再抛出
-局部 No-progress 错误。Complete 声明照常提交；Incomplete 声明记录可恢复的摘要与
-具体 Pending Actions。任何 Mutation、Plan 步骤完成、Verification 或 Completion
-推进都会立即清零计数。Answer 和 Plan Turn 还会把首次读取的新路径与新 Evidence
-计为进展；Operation Turn 会把成功的业务 Tool 结果计为进展。Progress 与
-Convergence 状态都会持久化并在 Runtime 恢复后延续。仍保持只读的 Answer 或 Plan
-Turn 使用更紧的 8/12/16 阈值，但它只统计连续没有新路径或新 Evidence 的 Sample。
-持续发现 Evidence 的研究由明确设置的 `execution.max_steps`、Context Window 和
-Token/Cost Budget 约束，不再受内部总 Sample 上限影响。Provider 输出不完整时也不再
-有默认续写次数上限，只要这些真实容量仍然可用就继续。
+No-progress 阶段由显式 `execution.max_steps` 派生：约三分之一时要求收敛，约三分之二
+时限制继续扩散式探索，但仍允许精确文件读取、工作区修改、有界 Process 收尾
+（`exec_command` / `write_stdin`）、必需用户输入、质量检查、Plan 更新和 Completion；
+直到完整 Lease 耗尽才进入结构化 Finalization。Provider 投影与 Tool Executor
+共享同一 Allowlist，因此当前批次已广告的 Tool 不会再被误判为 Terminal-only 而拒绝。
+Complete 声明照常提交；Incomplete 声明记录可恢复的摘要与具体 Pending Actions。任何
+Mutation、任意 Plan 状态变化、Verification 或 Completion 推进都会立即清零计数。Answer
+和 Plan Turn 还会把首次读取的新路径与新 Evidence 计为进展；Operation Turn 会把成功
+的业务 Tool 结果计为进展。Progress 与 Convergence 状态都会持久化并在 Runtime 恢复后
+延续。`execution.max_steps=0` 时不启用基于 Sample 数量的 No-progress 上限，持续工作
+仍受模型 Context Window 和显式 Token/Cost Budget 约束。
 
 `execution.subagent.max_steps` 同样使用 `0 = 未设置` 语义。可选的
 `execution.subagent.wall_time` 是可续期执行 Lease：可观测的子 Runtime 进展会续期；
@@ -301,6 +297,9 @@ follow-up 的生命周期上限；每次 follow-up 只预留该 Agent 的剩余�
 Protected/Refreshable Truth、Raw Tail 和可选 Narrative。新增计划、Pending Input
 或写工具预留如果会超过 Mandatory 上界，会在状态或副作用提交前返回
 `resource_exhausted`。`post_turn` Narrative 在业务终态提交后维护 Context；
+默认 `truth_max_bytes=0`，Runtime 按当前 Route 扣除 Output Reserve 后的硬输入
+Token 容量动态派生字节上限，并受公开的 1 MiB 安全上限及显式
+`summary_max_bytes` 约束；显式非零配置仍优先。
 `inline` 在安全 Tool Pair 边界提交独立 Context Rebase。两种模式都使用
 `route.summary`，禁用工具和原生搜索，失败时保留确定性的 Truth + Tail。
 Tool 执行前从当前 Turn 的硬输入容量申请 Result Budget，并按并行 Batch 数量分配，

@@ -87,11 +87,25 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   Review 精确的只读目标。Sandbox 只能连接代理端口，直连和未声明目标均 Fail
   Closed。该 Loopback Proxy 返回 CONNECT 403 表示目标未声明或未授权，并不表示
   远端服务不可达。Linux 在 namespace proxy bridge 交付前保持进程全禁网。
-- 测试 Fixture 必须绑定并连接临时 Localhost 端口时，`quality_test` 与
-  `quality_verify` 可声明 `allow_loopback`。该能力默认关闭，并单独触发 High-risk
-  Network Approval。批准后 macOS Profile 只增加 Localhost Inbound/Outbound
-  Seatbelt Rule；非 Loopback 流量仍必须声明精确 Proxy Target。Effective Profile
-  与 Attempt Receipt 都会记录该 Loopback Grant。
+- 测试 Fixture 或本地开发服务必须绑定并连接临时 Localhost 端口时，
+  `exec_command`、`quality_test` 与 `quality_verify` 可声明 `allow_loopback`。
+  该能力默认关闭；Strong Sandbox 内仅包含精确 Localhost Grant 且没有 Workspace
+  写入的调用按有界 Network Read 评估，`suggest` 要求审批，`auto` 自动 Review。
+  macOS Profile 只增加 Localhost Inbound/Outbound Seatbelt Rule；非 Loopback
+  流量仍必须声明精确 Proxy Target。Effective Profile 与 Attempt Receipt 都会记录
+  该 Loopback Grant。
+- `quality_test`、`quality_diagnostics`、`quality_review` 和 `quality_verify`
+  使用 POSIX `set -e` 的 Fail-fast 语义，不能由尾部日志命令覆盖前序检查的非零
+  退出码。需要有意接受失败时必须在 Command 中显式表达。
+- GUI、WindowServer 或其他无法在 Strong Sandbox 内运行的桌面 Smoke 只能使用
+  `quality_process_smoke`。该工具仅启动当前 Workspace 或该 Workspace 专属持久
+  Sandbox Home 内经过无 Symlink、Hardlink 和 Device Boundary 校验的确切可执行文件；
+  其他宿主绝对路径一律拒绝。最小存活时间由调用参数声明，随后必须终止并回收进程组；
+  它不会获得 Workspace 写权限或 Network Grant。由于进程在 OS Sandbox 外运行，
+  Guard 始终把精确可执行文件和 Host Process 作为审批资源，并要求显式批准，`auto`
+  也不会静默放行。路径不存在、不可执行或启动失败会形成失败的 `process_smoke`
+  Verification Evidence；普通 `quality_verify` 不能覆盖该失败，只有后续通过的同类
+  Process Smoke 才能解除完成门禁。
 - Linux Strong Sandbox 将 Landlock、`no_new_privs`、seccomp 与 `execve` 固定在
   同一个 OS Thread。Seccomp 拒绝 Tracing、跨进程内存访问、Namespace 创建、
   `clone3` 与 `io_uring`；Restricted Network Mode 只保留 AF_UNIX 进程内 IPC。

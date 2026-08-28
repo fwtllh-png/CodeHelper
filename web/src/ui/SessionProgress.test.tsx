@@ -8,7 +8,6 @@ afterEach(cleanup);
 describe("SessionProgress", () => {
   it("renders plan items, ordered tasks, subagents, and trajectory navigation", () => {
     const onOpenTrajectory = vi.fn();
-    const onPlanTransition = vi.fn();
     render(
       <SessionProgress
         plan={{
@@ -20,19 +19,24 @@ describe("SessionProgress", () => {
           cursor: 1,
           status: "ready",
           body: `{"version":1,"revision":2,"objective":"Ship the parser fix",` +
-            `"steps":[{"id":"implement","title":"Implement parser",` +
-            `"status":"pending","expected_evidence":"Focused tests pass"}]}`,
+            `"steps":[{"id":"inspect","title":"Inspect parser","status":"done"},` +
+            `{"id":"implement","title":"Implement parser","status":"in_progress"},` +
+            `{"id":"verify","title":"Verify parser","status":"pending"}]}`,
           document: {
             version: 1,
             revision: 2,
             title: "Parser rollout",
             objective: "Ship the parser fix",
-            steps: [{
-              id: "implement",
-              title: "Implement parser",
-              status: "pending",
-              expected_evidence: "Focused tests pass"
-            }]
+            steps: [
+              {id: "inspect", title: "Inspect parser", status: "done"},
+              {
+                id: "implement",
+                title: "Implement parser",
+                status: "in_progress",
+                expected_evidence: "Focused tests pass"
+              },
+              {id: "verify", title: "Verify parser", status: "pending"}
+            ]
           },
           profile_revision: 1,
           can_implement: true,
@@ -51,7 +55,6 @@ describe("SessionProgress", () => {
             last_message: "Checking the diff"
           }
         ]}
-        onPlanTransition={onPlanTransition}
         onOpenTrajectory={onOpenTrajectory}
       />
     );
@@ -60,52 +63,19 @@ describe("SessionProgress", () => {
     expect(screen.queryByText("Ship the parser fix")).toBeNull();
     expect(screen.queryByText("Revision 2")).toBeNull();
     expect(screen.getByText("Implement parser")).toBeTruthy();
+    expect(screen.getByText("1 completed · 1 active · 1 pending")).toBeTruthy();
     expect(screen.queryByText("Focused tests pass")).toBeNull();
     expect(screen.getByText("1/2 complete")).toBeTruthy();
     expect(screen.getByText("Checking the diff")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Collapse plan"}));
     expect(screen.queryByText("Implement parser")).toBeNull();
-    expect(screen.queryByRole("button", {name: "Implement"})).toBeNull();
+    expect(screen.getByText("1 completed · 1 active · 1 pending")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Expand plan"}));
     expect(screen.getByText("Implement parser")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Open trajectory"}));
     expect(onOpenTrajectory).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", {name: "Implement"}));
-    expect(onPlanTransition).toHaveBeenCalledWith("implement");
-    expect(screen.getByRole("button", {name: "Autopilot"}).hasAttribute("disabled"))
-      .toBe(true);
-  });
-
-  it("keeps plan transitions disabled while the source turn is settling", () => {
-    render(
-      <SessionProgress
-        plan={{
-          version: 1,
-          id: "plan",
-          session_id: "session",
-          thread_id: "thread",
-          turn_id: "turn",
-          cursor: 1,
-          status: "ready",
-          body: `{"version":1,"revision":1,"steps":[]}`,
-          document: {version: 1, revision: 1, steps: []},
-          profile_revision: 1,
-          can_implement: true,
-          can_autopilot: true,
-          created_at: "2026-01-01T00:00:00Z"
-        }}
-        tasks={[]}
-        agents={[]}
-        planBusy
-        onPlanTransition={vi.fn()}
-        onOpenTrajectory={vi.fn()}
-      />
-    );
-
-    expect(screen.getByRole("button", {name: "Implement"}).hasAttribute("disabled"))
-      .toBe(true);
-    expect(screen.getByRole("button", {name: "Autopilot"}).hasAttribute("disabled"))
-      .toBe(true);
+    expect(screen.queryByRole("button", {name: "Implement"})).toBeNull();
+    expect(screen.queryByRole("button", {name: "Autopilot"})).toBeNull();
   });
 
   it("does not render plan metadata when there are no task items", () => {

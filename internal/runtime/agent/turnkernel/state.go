@@ -108,6 +108,7 @@ const (
 	ConvergenceNoProgress   ConvergenceCause = "no_progress"
 	ConvergenceRepairBudget ConvergenceCause = "repair_budget"
 	ConvergenceStepLimit    ConvergenceCause = "step_limit"
+	ConvergenceIncomplete   ConvergenceCause = "declared_incomplete"
 )
 
 type VerificationAction string
@@ -173,21 +174,23 @@ type Policy struct {
 	WorkspaceRepairLimit       uint32 `json:"workspace_repair_limit"`
 	DeclarationRepairLimit     uint32 `json:"declaration_repair_limit"`
 	VerificationRepairLimit    uint32 `json:"verification_repair_limit"`
-	// ExecutionStepLimit is an explicit caller budget. Zero leaves execution
-	// bounded only by progress convergence and other explicit resource budgets.
+	// ExecutionStepLimit is an explicit no-progress lease. Structured progress
+	// renews it; zero leaves execution to context and token/cost budgets.
 	ExecutionStepLimit uint32            `json:"execution_step_limit,omitempty"`
 	JournalRequired    bool              `json:"journal_required"`
 	Convergence        ConvergencePolicy `json:"convergence"`
 }
 
-func DefaultConvergencePolicy() ConvergencePolicy {
+func ConvergencePolicyForStepLimit(limit uint32) ConvergencePolicy {
+	if limit == 0 {
+		return ConvergencePolicy{}
+	}
+	converge := max(uint32(1), limit/3)
+	finishOnly := max(converge, uint32(uint64(limit)*2/3))
 	return ConvergencePolicy{
-		ProgressConverge:   16,
-		ProgressFinishOnly: 32,
-		ProgressLimit:      48,
-		ResearchConverge:   8,
-		ResearchFinishOnly: 12,
-		ResearchLimit:      16,
+		ProgressConverge: converge, ProgressFinishOnly: finishOnly,
+		ProgressLimit: limit, ResearchConverge: converge,
+		ResearchFinishOnly: finishOnly, ResearchLimit: limit,
 	}
 }
 
@@ -202,7 +205,6 @@ func DefaultPolicy() Policy {
 		WorkspaceRepairLimit:    1,
 		DeclarationRepairLimit:  1,
 		VerificationRepairLimit: 1,
-		Convergence:             DefaultConvergencePolicy(),
 	}
 }
 
@@ -385,9 +387,6 @@ func NewStateWithPolicy(
 	policy Policy,
 ) State {
 	state := NewState(intent, mode, profileRevision)
-	if policy.Convergence == (ConvergencePolicy{}) {
-		policy.Convergence = DefaultConvergencePolicy()
-	}
 	state.Policy = policy
 	return state
 }

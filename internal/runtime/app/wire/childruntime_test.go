@@ -1207,10 +1207,10 @@ func TestChildAgentReadOnlyOverrideRunsWritingStance(t *testing.T) {
 	}
 }
 
-func TestChildAgentStepQuotaUsesReservedFinalization(t *testing.T) {
-	// The child's work-step quota is its own, not the parent's. Exhausting it
-	// reserves one finalization Sample so the child can close structurally
-	// without continuing the normal work loop.
+func TestChildAgentProgressLeaseUsesReservedFinalization(t *testing.T) {
+	// The child's progress lease is its own, not the parent's. A new read renews
+	// it; one subsequent no-progress Sample exhausts it and reserves a
+	// finalization Sample so the child can close structurally.
 	session := openChildSession(t, "subagent-steps", func(overrides *config.Overrides) {
 		steps := 1
 		overrides.SubagentMaxSteps = &steps

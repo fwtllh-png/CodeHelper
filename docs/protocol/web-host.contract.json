@@ -255,16 +255,6 @@
       "requires_capability": true
     },
     {
-      "path": "/api/v1/plan/transition",
-      "method": "POST",
-      "request": "plan_transition",
-      "response": "operation_receipt",
-      "mutation": true,
-      "idempotency_key": true,
-      "requires_runtime": true,
-      "requires_capability": true
-    },
-    {
       "path": "/api/v1/profile/get",
       "method": "POST",
       "request": "session_identity",

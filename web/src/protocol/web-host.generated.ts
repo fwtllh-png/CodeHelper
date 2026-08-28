@@ -24,7 +24,6 @@ export const webRPCRoutes = [
   "model/test",
   "operation/submit",
   "plan/get",
-  "plan/transition",
   "profile/get",
   "profile/update",
   "provider/list",

@@ -139,11 +139,12 @@ func (s Snapshot) Validate() error {
 	if err := checkRange(fieldCompactMaxDigest, compaction.MaxDigestEntries, 4096); err != nil {
 		return err
 	}
-	if compaction.TruthMaxBytes < 256 ||
+	if compaction.TruthMaxBytes != 0 && compaction.TruthMaxBytes < 256 ||
 		compaction.SummaryMaxBytes != 0 &&
+			compaction.TruthMaxBytes != 0 &&
 			compaction.TruthMaxBytes >= compaction.SummaryMaxBytes-256 {
 		return fieldError(fieldCompactTruthMaxBytes, s.Provenance,
-			"must leave at least 256 bytes inside summary_max_bytes")
+			"must be zero or leave at least 256 bytes inside summary_max_bytes")
 	}
 	if err := checkRange(fieldCompactTruthMaxEntities, compaction.TruthMaxEntities, 4096); err != nil {
 		return err

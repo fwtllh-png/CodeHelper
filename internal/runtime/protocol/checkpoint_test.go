@@ -42,4 +42,8 @@ func TestCheckpointAndPlanArtifactValidation(t *testing.T) {
 	if err := artifact.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	artifact.ExecutionProfileDigest = "invalid"
+	if err := artifact.Validate(); err == nil {
+		t.Fatal("Plan Artifact accepted an invalid execution profile digest")
+	}
 }

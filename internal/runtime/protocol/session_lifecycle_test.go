@@ -17,6 +17,10 @@ func TestSessionLifecycleContractsRejectAmbiguousState(t *testing.T) {
 	if err := summary.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	summary.Status = SessionStatusBlocked
+	if err := summary.Validate(); err != nil {
+		t.Fatalf("blocked lifecycle status was rejected: %v", err)
+	}
 	summary.Status = "unknown"
 	if err := summary.Validate(); err == nil {
 		t.Fatal("unknown lifecycle status was accepted")

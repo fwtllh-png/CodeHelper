@@ -59,6 +59,10 @@ func TestRunContextExposesOnlyWebStartupFlags(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Run the local CodeHelper Web workspace") {
 		t.Fatalf("--help output = %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), `-posture string`) ||
+		!strings.Contains(stdout.String(), `(default "auto")`) {
+		t.Fatalf("--help defaults = %q", stdout.String())
+	}
 }
 
 func TestLoadWebConfigLeavesProviderAndModelForGuidedSetup(t *testing.T) {

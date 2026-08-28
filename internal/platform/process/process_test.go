@@ -734,6 +734,29 @@ func TestEnsureGoToolchainPrependsGOROOTBin(t *testing.T) {
 	}
 }
 
+func TestEnsureToolchainsAppliesGenericExposure(t *testing.T) {
+	first := filepath.Join(t.TempDir(), "first")
+	second := filepath.Join(t.TempDir(), "second")
+	env := ensureToolchains(
+		[]string{"PATH=/usr/bin:/bin", "LANG=C"},
+		sandbox.ToolchainExposure{
+			BinDirs:     []string{first, second},
+			Environment: []string{"TOOLCHAIN_HOME=/host/toolchain"},
+		},
+	)
+	path := environmentValue(env, "PATH")
+	wantPrefix := strings.Join(
+		[]string{first, second, "/usr/bin", "/bin"},
+		string(os.PathListSeparator),
+	)
+	if path != wantPrefix {
+		t.Fatalf("PATH = %q, want %q", path, wantPrefix)
+	}
+	if got := environmentValue(env, "TOOLCHAIN_HOME"); got != "/host/toolchain" {
+		t.Fatalf("TOOLCHAIN_HOME = %q", got)
+	}
+}
+
 func TestShellRestoresSelectedGitToolchainAfterLoginProfile(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("macOS login shell behavior")

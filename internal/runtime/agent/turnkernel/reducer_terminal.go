@@ -206,6 +206,9 @@ func terminalJournalOutcome(
 	case decision.Kind == TerminalCompleted &&
 		state.Verification.Action != VerificationActionReverted:
 		return EffectCommitJournal, JournalCommitted
+	case decision.Kind == TerminalCanceled &&
+		decision.Message == protocol.CancelReasonUserInterrupted:
+		return EffectSuspendJournal, JournalSuspended
 	case decision.Kind == TerminalFailed &&
 		(state.Verification.Action == VerificationActionBlocked ||
 			decision.Convergence != nil ||

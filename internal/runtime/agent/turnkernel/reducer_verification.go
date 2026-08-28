@@ -124,6 +124,8 @@ func applyCompletion(
 		candidate.OutputMode != "exact" &&
 		candidate.OutputMode != "preserve_provisional":
 		decision.Reason = "invalid_output_mode"
+	case candidate.Status == "complete" && candidate.PlanOpenSteps != 0:
+		decision.Reason = "plan_progress_incomplete"
 	case candidate.Status == "incomplete" &&
 		strings.TrimSpace(candidate.Summary) != "" &&
 		len(candidate.PendingActions) != 0 &&
@@ -139,7 +141,18 @@ func applyCompletion(
 	case candidate.Status == "incomplete" &&
 		strings.TrimSpace(candidate.Summary) != "" &&
 		len(candidate.PendingActions) != 0:
-		decision.Reason = "pending_actions"
+		decision.Reason = "convergence_blocked"
+		transition.State.Convergence = &ConvergenceState{
+			Cause:                 ConvergenceIncomplete,
+			FinalizationAttempted: true,
+			Summary: strings.TrimSpace(
+				candidate.Summary,
+			),
+			PendingActions: append(
+				[]string(nil),
+				candidate.PendingActions...,
+			),
+		}
 	case candidate.ToolError ||
 		candidate.Status != "complete" ||
 		strings.TrimSpace(candidate.Summary) == "" ||

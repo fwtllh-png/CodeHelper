@@ -494,11 +494,18 @@ func TestOnlyExecCommandAdvertisesExactWritePaths(t *testing.T) {
 	if run.ResourceResolver.PathsField != "write_paths" {
 		t.Fatalf("exec_command paths field = %q", run.ResourceResolver.PathsField)
 	}
+	if run.ResourceResolver.LoopbackField != "allow_loopback" {
+		t.Fatalf(
+			"exec_command loopback field = %q",
+			run.ResourceResolver.LoopbackField,
+		)
+	}
 	properties, _ := run.InputSchema["properties"].(map[string]any)
 	if _, exists := properties["write_paths"]; !exists {
 		t.Fatal("exec_command does not advertise write_paths")
 	}
 	network, _ := properties["network_targets"].(map[string]any)
+	loopback, _ := properties["allow_loopback"].(map[string]any)
 	items, _ := network["items"].(map[string]any)
 	targetProperties, _ := items["properties"].(map[string]any)
 	required, _ := items["required"].([]string)
@@ -509,6 +516,7 @@ func TestOnlyExecCommandAdvertisesExactWritePaths(t *testing.T) {
 		targetProperties["methods"] == nil ||
 		targetProperties["allow_private"] == nil ||
 		len(required) != 5 ||
+		loopback["type"] != "boolean" ||
 		!strings.Contains(run.Description, "use method CONNECT for HTTPS") ||
 		!strings.Contains(run.Description, "Undeclared egress is denied") {
 		t.Fatalf("exec_command network target schema = %#v", network)

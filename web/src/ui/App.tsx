@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  CirclePause,
   CircleStop,
   Download,
   FileCode2,
@@ -221,6 +222,7 @@ export function App({client}: Props) {
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
   const [profilePending, setProfilePending] = useState("");
+  const [cancelingTurnID, setCancelingTurnID] = useState("");
   const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
   const [activityTarget, setActivityTarget] =
     useState<BackgroundActivityTarget>();
@@ -263,6 +265,7 @@ export function App({client}: Props) {
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const composingRef = useRef(false);
   const attachmentGenerationRef = useRef(0);
+  const cancelPendingRef = useRef("");
   const removedAttachmentIDs = useRef(new Set<string>());
   const attachmentsRef = useRef(composerAttachments);
   const selectedSessionRef = useRef(snapshot.selectedSessionID);
@@ -291,6 +294,9 @@ export function App({client}: Props) {
     () => projectedEntries.filter((entry) => entry.kind !== "receipt"),
     [projectedEntries]
   );
+  const blockedTurnID = selected?.status === "blocked"
+    ? selected.latest_turn_id
+    : "";
   const transcriptEnd = Math.max(
     0,
     entries.length - transcriptPage * transcriptPageStep
@@ -336,6 +342,12 @@ export function App({client}: Props) {
   const pendingApprovalKey = pendingRequestKey(snapshot.selectedSessionID, pendingApproval);
   const pendingInputKey = pendingRequestKey(snapshot.selectedSessionID, pendingInput);
   const activeTurn = snapshot.conversation.activeTurnID;
+  useEffect(() => {
+    if (cancelPendingRef.current && cancelPendingRef.current !== activeTurn) {
+      cancelPendingRef.current = "";
+      setCancelingTurnID("");
+    }
+  }, [activeTurn]);
   const traceRefreshSequence = snapshot.events.reduce(
     (sequence, event) =>
         event.kind !== "output.delta" &&
@@ -382,6 +394,16 @@ export function App({client}: Props) {
   const reportLocalError = useCallback((error: unknown) => {
     setLocalError(error instanceof Error ? error.message : String(error));
   }, []);
+  const requestCancel = useCallback((turnID: string) => {
+    if (!turnID || cancelPendingRef.current === turnID) return;
+    cancelPendingRef.current = turnID;
+    setCancelingTurnID(turnID);
+    void client.cancel(turnID).catch((error) => {
+      cancelPendingRef.current = "";
+      setCancelingTurnID("");
+      reportLocalError(error);
+    });
+  }, [client, reportLocalError]);
   const updateComposerProfile = useCallback(async (
     patch: Record<string, unknown>,
     label: string
@@ -921,6 +943,8 @@ export function App({client}: Props) {
         await client.steer(submittedTurnID, prompt);
       } else if (submittedTurnID) {
         await client.enqueue(submittedTurnID, prompt);
+      } else if (blockedTurnID) {
+        await client.recoverTurn(blockedTurnID, "continue", prompt);
       } else {
         await client.submitPrompt(prompt);
       }
@@ -1488,6 +1512,11 @@ export function App({client}: Props) {
               <span className="workingLabel">{profilePending}</span>
             ) : activeTurn ? (
               <span className="workingLabel">Working</span>
+            ) : selected?.status === "interrupted" ? (
+              <span className="workingLabel" data-paused role="status">
+                <CirclePause size={13} />
+                Paused
+              </span>
             ) : null}
             {selected && currentQuestion.total > 0 && (
               <div
@@ -1718,10 +1747,6 @@ export function App({client}: Props) {
                   plan={snapshot.plan}
                   tasks={snapshot.tasks}
                   agents={snapshot.agents}
-                  planBusy={Boolean(activeTurn)}
-                  onPlanTransition={(transition) => {
-                    void client.transitionPlan(transition).catch(reportLocalError);
-                  }}
                   onOpenTrajectory={() => {
                     switchConversationView("trajectory");
                     void client.refreshTrace();
@@ -1749,14 +1774,16 @@ export function App({client}: Props) {
                 key={pendingApprovalKey}
                 event={pendingApproval}
                 client={client}
-                activeTurn={activeTurn}
+                stopping={cancelingTurnID === (activeTurn || pendingApproval.turn_id)}
+                onStop={() => requestCancel(activeTurn || pendingApproval.turn_id)}
               />
             ) : pendingInput ? (
               <InputComposer
                 key={pendingInputKey}
                 event={pendingInput}
                 client={client}
-                activeTurn={activeTurn}
+                stopping={cancelingTurnID === (activeTurn || pendingInput.turn_id)}
+                onStop={() => requestCancel(activeTurn || pendingInput.turn_id)}
               />
             ) : (
               <div
@@ -1876,8 +1903,11 @@ export function App({client}: Props) {
                       <IconButton
                         label="Stop turn"
                         danger
-                        icon={<CircleStop size={19} />}
-                        onClick={() => void client.cancel(activeTurn)}
+                        disabled={cancelingTurnID === activeTurn}
+                        icon={cancelingTurnID === activeTurn
+                          ? <LoaderCircle className="spin" size={19} />
+                          : <CircleStop size={19} />}
+                        onClick={() => requestCancel(activeTurn)}
                       />
                     )}
                     {(!activeTurn || Boolean(draft.trim())) && (
@@ -1893,14 +1923,19 @@ export function App({client}: Props) {
                           />
                         )}
                         <IconButton
-                          label={activeTurn ? "Queue next" : "Send"}
+                          label={activeTurn
+                            ? "Queue next"
+                            : blockedTurnID
+                              ? "Continue"
+                              : "Send"}
                           primary
                           disabled={
                             Boolean(snapshot.hydratingSessionID) ||
                             !draft.trim() ||
                             submitting ||
                             attachmentBusy ||
-                            attachmentFailed
+                            attachmentFailed ||
+                            Boolean(blockedTurnID && composerAttachments.length)
                           }
                           icon={submitting
                             ? <LoaderCircle className="spin" size={19} />
@@ -1921,6 +1956,7 @@ export function App({client}: Props) {
                       disabled={
                         Boolean(snapshot.hydratingSessionID) ||
                         submitting ||
+                        Boolean(blockedTurnID) ||
                         snapshot.contextResources.length >= maxComposerAttachments
                       }
                       onClick={() => attachmentInputRef.current?.click()}
@@ -1972,7 +2008,7 @@ export function App({client}: Props) {
                     />
                     <CompactSelect
                       label="Approval"
-                      value={snapshot.profile?.profile.approval_posture ?? "suggest"}
+                      value={snapshot.profile?.profile.approval_posture ?? "auto"}
                       values={["suggest", "auto", "never"]}
                       disabled={!profileMutable(snapshot, "approval_posture") ||
                         Boolean(profilePending)}
@@ -2236,9 +2272,12 @@ function SessionRow({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const showStatus = session.status !== "idle";
-  const statusTone = session.status === "failed" || session.status === "interrupted"
+  const statusTone = session.status === "failed"
     ? "error"
-    : session.status === "awaiting_approval" || session.status === "awaiting_input"
+    : session.status === "awaiting_approval" ||
+        session.status === "awaiting_input" ||
+        session.status === "interrupted" ||
+        session.status === "blocked"
       ? "warning"
       : session.status === "completed"
         ? "complete"
@@ -2247,20 +2286,24 @@ function SessionRow({
     ? "Approval required"
     : session.status === "awaiting_input"
       ? "Input required"
-      : session.status === "interrupted"
-        ? "Interrupted"
-        : session.status === "failed"
-          ? "Failed"
-          : session.status === "completed"
-            ? "Completed"
-            : "Running";
+      : session.status === "blocked"
+        ? "Blocked"
+        : session.status === "interrupted"
+          ? "Paused"
+          : session.status === "failed"
+            ? "Failed"
+            : session.status === "completed"
+              ? "Completed"
+              : "Running";
   const StatusIcon = session.status === "running"
     ? LoaderCircle
     : session.status === "completed"
       ? Check
-      : session.status === "interrupted"
-        ? CircleStop
-        : AlertTriangle;
+      : session.status === "blocked"
+        ? AlertTriangle
+        : session.status === "interrupted"
+          ? CirclePause
+          : AlertTriangle;
   const run = (action: () => void) => {
     setMenuOpen(false);
     action();
@@ -2440,8 +2483,16 @@ const TranscriptItem = memo(function TranscriptItem({
   }
   if (entry.kind === "status") {
     return (
-      <div className="terminalState" data-failed={entry.failed || undefined}>
-        {entry.failed ? <AlertTriangle size={16} /> : <Check size={16} />}
+      <div
+        className="terminalState"
+        data-failed={entry.failed || undefined}
+        data-warning={entry.warning || undefined}
+      >
+        {entry.title === "Paused"
+          ? <CirclePause size={16} />
+          : entry.failed || entry.blocked
+            ? <AlertTriangle size={16} />
+            : <Check size={16} />}
         <div><strong>{entry.title}</strong><span>{entry.text}</span></div>
         {entry.recoverable && entry.turnID && entry.recovery && (
           <div className="turnRecovery">
@@ -2459,7 +2510,8 @@ const TranscriptItem = memo(function TranscriptItem({
                       .finally(() => setRecoveryPending(""));
                   }}
                 >
-                  <RotateCcw size={13} /> Retry
+                  <RotateCcw size={13} />
+                  Retry
                 </button>
               )}
               {entry.recovery.canContinue && (
@@ -2472,7 +2524,8 @@ const TranscriptItem = memo(function TranscriptItem({
                       .finally(() => setRecoveryPending(""));
                   }}
                 >
-                  <Play size={13} /> Continue
+                  <Play size={13} />
+                  Continue
                 </button>
               )}
               {checkpoint?.can_restore && (
@@ -2600,11 +2653,13 @@ function TurnStatus({
 function ApprovalComposer({
   event,
   client,
-  activeTurn
+  stopping,
+  onStop
 }: {
   event: RuntimeEvent;
   client: RuntimeClient;
-  activeTurn: string;
+  stopping: boolean;
+  onStop: () => void;
 }) {
   const [scope, setScope] = useState("");
   const [replacement, setReplacement] = useState("");
@@ -2648,9 +2703,11 @@ function ApprovalComposer({
         <IconButton
           label="Stop turn"
           danger
-          disabled={submitting}
-          icon={<CircleStop size={16} />}
-          onClick={() => void client.cancel(activeTurn || event.turn_id)}
+          disabled={submitting || stopping}
+          icon={stopping
+            ? <LoaderCircle className="spin" size={16} />
+            : <CircleStop size={16} />}
+          onClick={onStop}
         />
       </div>
       <div
@@ -2752,11 +2809,13 @@ function ApprovalComposer({
 function InputComposer({
   event,
   client,
-  activeTurn
+  stopping,
+  onStop
 }: {
   event: RuntimeEvent;
   client: RuntimeClient;
-  activeTurn: string;
+  stopping: boolean;
+  onStop: () => void;
 }) {
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -2808,9 +2867,11 @@ function InputComposer({
       <IconButton
         label="Stop turn"
         danger
-        disabled={submitting}
-        icon={<CircleStop size={17} />}
-        onClick={() => void client.cancel(activeTurn || event.turn_id)}
+        disabled={submitting || stopping}
+        icon={stopping
+          ? <LoaderCircle className="spin" size={17} />
+          : <CircleStop size={17} />}
+        onClick={onStop}
       />
       <button
         className="primaryText"
@@ -3351,21 +3412,32 @@ function ComposerStats({
     ? `${Math.round(cached / input * 100)}% cache`
     : "";
   const turns = numberValue(usage?.turns) || (receipt ? 1 : 0);
+  const turnText = `${turns} ${turns === 1 ? "turn" : "turns"}`;
+  const toolText = `${toolCalls} ${toolCalls === 1 ? "tool" : "tools"}`;
+  const totalTime = numberValue(latency?.total_ms) > 0
+    ? `${formatDuration(numberValue(latency?.total_ms))} total`
+    : "";
+  const modelTime = numberValue(latency?.provider_ms) > 0
+    ? `${formatDuration(numberValue(latency?.provider_ms))} model`
+    : "";
+  const toolTime = numberValue(latency?.tool_ms) > 0
+    ? `${formatDuration(numberValue(latency?.tool_ms))} tools`
+    : "";
+  const ttft = latency?.first_token_ms === undefined
+    ? ""
+    : `${formatDuration(numberValue(latency.first_token_ms))} TTFT`;
+  const timing = [totalTime, modelTime, toolTime].filter(Boolean).join(" · ");
+  const tokenSummary = [
+    totalTokens > 0 ? `${formatCompactCount(totalTokens)} tokens` : "",
+    cacheShare
+  ].filter(Boolean).join(" · ");
   const detailedValues = [
-    `${turns} ${turns === 1 ? "turn" : "turns"}`,
-    `${toolCalls} ${toolCalls === 1 ? "tool" : "tools"}`,
-    numberValue(latency?.total_ms) > 0
-      ? `${formatDuration(numberValue(latency?.total_ms))} total`
-      : "",
-    numberValue(latency?.provider_ms) > 0
-      ? `${formatDuration(numberValue(latency?.provider_ms))} model`
-      : "",
-    numberValue(latency?.tool_ms) > 0
-      ? `${formatDuration(numberValue(latency?.tool_ms))} tools`
-      : "",
-    latency?.first_token_ms !== undefined
-      ? `${formatDuration(numberValue(latency.first_token_ms))} TTFT`
-      : "",
+    turnText,
+    toolText,
+    totalTime,
+    modelTime,
+    toolTime,
+    ttft,
     input > 0 ? `${input.toLocaleString()} in` : "",
     output > 0 ? `${output.toLocaleString()} out` : "",
     reasoning > 0 ? `${reasoning.toLocaleString()} reasoning` : "",
@@ -3375,28 +3447,10 @@ function ComposerStats({
     cacheShare
   ].filter(Boolean);
   const summary = [
-    [
-      `${turns} ${turns === 1 ? "turn" : "turns"}`,
-      `${toolCalls} ${toolCalls === 1 ? "tool" : "tools"}`
-    ].join(" · "),
-    [
-      numberValue(latency?.total_ms) > 0
-        ? `${formatDuration(numberValue(latency?.total_ms))} total`
-        : "",
-      numberValue(latency?.provider_ms) > 0
-        ? `${formatDuration(numberValue(latency?.provider_ms))} model`
-        : "",
-      numberValue(latency?.tool_ms) > 0
-        ? `${formatDuration(numberValue(latency?.tool_ms))} tools`
-        : ""
-    ].filter(Boolean).join(" · "),
-    latency?.first_token_ms !== undefined
-      ? `${formatDuration(numberValue(latency.first_token_ms))} TTFT`
-      : "",
-    [
-      totalTokens > 0 ? `${formatCompactCount(totalTokens)} tokens` : "",
-      cacheShare
-    ].filter(Boolean).join(" · ")
+    `${turnText} · ${toolText}`,
+    timing,
+    ttft,
+    tokenSummary
   ].filter(Boolean).join(" | ");
   return (
     <div

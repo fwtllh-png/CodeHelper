@@ -60,7 +60,6 @@ export type SettingsSection =
 
 interface ProfileDraft {
   mode: SessionProfile["mode"];
-  planApproval: NonNullable<SessionProfile["plan_approval"]>;
   provider: string;
   model: string;
   reasoningEffort: string;
@@ -1322,20 +1321,6 @@ function AgentSettings({
           })}
         />
       </SettingRow>
-      <SettingRow
-        title="Plan approval"
-        description="Continue automatically or wait before executing a submitted plan."
-      >
-        <SelectControl
-          label="Plan approval"
-          value={draft.planApproval}
-          values={["manual", "auto"]}
-          disabled={!mutable(snapshot, "plan_approval")}
-          onChange={(planApproval) => onDraftChange({
-            planApproval: planApproval as ProfileDraft["planApproval"]
-          })}
-        />
-      </SettingRow>
       <SettingRow title="Approval" description="Control when consequential actions ask first.">
         <SelectControl
           label="Approval posture"
@@ -1435,7 +1420,10 @@ function NumberSetting({
   onChange: (value: number) => void;
 }) {
   return (
-    <SettingRow title="Maximum steps" description="Hard limit for one agent turn.">
+    <SettingRow
+      title="Maximum steps"
+      description="Consecutive no-progress steps allowed before finalization."
+    >
       <input
         className="settingsNumber"
         aria-label="Maximum steps"
@@ -1694,12 +1682,11 @@ function settingsProfileDraft(snapshot: RuntimeSnapshot): ProfileDraft {
     revision: 1,
     mode: "act",
     planning_policy: "adaptive",
-    plan_approval: "manual",
     provider: "",
     model: "",
-    approval_posture: "suggest",
+    approval_posture: "auto",
     execution_target: "local",
-    max_steps: 0,
+    max_steps: 64,
     prompt_cache_revision: 1
   }, snapshot.tools);
 }
@@ -1713,7 +1700,6 @@ function settingsProfileDraftFromProfile(
     : tools.filter((tool) => tool.enabled).map((tool) => tool.id);
   return {
     mode: profile.mode,
-    planApproval: profile.plan_approval ?? "manual",
     provider: profile.provider,
     model: profile.model,
     reasoningEffort: profile.reasoning_effort ?? "",
@@ -1729,7 +1715,6 @@ function equalProfileDraft(
   right: ProfileDraft
 ): boolean {
   return left.mode === right.mode &&
-    left.planApproval === right.planApproval &&
     left.provider === right.provider &&
     left.model === right.model &&
     left.reasoningEffort === right.reasoningEffort &&
@@ -1756,9 +1741,6 @@ function changedProfileFields(
     patch.mode = draft.mode;
     patch.planning_policy = "adaptive";
   }
-  if (draft.planApproval !== baseline.planApproval) {
-    patch.plan_approval = draft.planApproval;
-  }
   if (draft.provider !== baseline.provider) patch.provider = draft.provider;
   if (draft.model !== baseline.model) patch.model = draft.model;
   if (draft.reasoningEffort !== baseline.reasoningEffort) {
@@ -1784,7 +1766,6 @@ function agentPresetProfile(draft: ProfileDraft): AgentPresetProfile {
   return {
     mode: draft.mode,
     planning_policy: "adaptive",
-    plan_approval: draft.planApproval,
     provider: draft.provider,
     model: draft.model,
     reasoning_effort: draft.reasoningEffort,
@@ -1801,7 +1782,6 @@ function profileDraftFromPreset(
 ): ProfileDraft {
   return {
     mode: profile.mode,
-    planApproval: profile.plan_approval ?? "manual",
     provider: profile.provider,
     model: profile.model,
     reasoningEffort: profile.reasoning_effort ?? "",
@@ -1822,8 +1802,6 @@ function profileApplyNotice(
   const changes = before && after ? [
     before.model !== after.model && `Model ${before.model} → ${after.model}`,
     before.mode !== after.mode && `Mode ${before.mode} → ${after.mode}`,
-    before.planApproval !== after.planApproval &&
-      `Plan approval ${before.planApproval} → ${after.planApproval}`,
     before.reasoningEffort !== after.reasoningEffort &&
       `Reasoning ${before.reasoningEffort || "default"} → ${
         after.reasoningEffort || "default"

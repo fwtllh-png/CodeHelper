@@ -148,6 +148,42 @@ func TestCorrectedQualityCommandSupersedesFailedCoverage(t *testing.T) {
 	}
 }
 
+func TestGenericVerifyCannotSupersedeFailedProcessSmoke(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	failedSmoke := qualityEvidenceResult(verify.StatusFailed, []string{"a.go"})
+	failedSmoke.IsError = true
+	failedSmoke.Outcome.Facts.Verification.Kind = "process_smoke"
+	failedSmoke.Outcome.Facts.Verification.CommandDigest = "sha256:smoke"
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "smoke-failed", Name: "quality_process_smoke",
+	}, &failedSmoke, false, 1)
+
+	passedVerify := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
+	passedVerify.Outcome.Facts.Verification.Kind = "verify"
+	passedVerify.Outcome.Facts.Verification.CommandDigest = "sha256:verify"
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "verify-passed", Name: "quality_verify",
+	}, &passedVerify, false, 1)
+
+	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go"}, 1)
+	if receipt.Status != verify.StatusFailed || receipt.Errors != 1 ||
+		len(uncovered) != 0 {
+		t.Fatalf("generic verify cleared process smoke failure: %+v, %v", receipt, uncovered)
+	}
+
+	passedSmoke := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
+	passedSmoke.Outcome.Facts.Verification.Kind = "process_smoke"
+	passedSmoke.Outcome.Facts.Verification.CommandDigest = "sha256:smoke-retry"
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "smoke-passed", Name: "quality_process_smoke",
+	}, &passedSmoke, false, 1)
+
+	receipt, uncovered = engine.qualityVerificationReceipt([]string{"a.go"}, 1)
+	if receipt.Status != verify.StatusPassed || len(uncovered) != 0 {
+		t.Fatalf("passing process smoke did not clear prior failure: %+v, %v", receipt, uncovered)
+	}
+}
+
 func TestQualityEvidenceRejectsSameBatchMutationAndGenericShell(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	result := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})

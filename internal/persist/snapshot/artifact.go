@@ -45,12 +45,13 @@ type checkpointMetadata struct {
 }
 
 type planMetadata struct {
-	Version         int                         `json:"version"`
-	SessionID       string                      `json:"session_id"`
-	Status          protocol.PlanArtifactStatus `json:"status"`
-	ProfileRevision uint64                      `json:"profile_revision"`
-	CanImplement    bool                        `json:"can_implement"`
-	CanAutopilot    bool                        `json:"can_autopilot"`
+	Version                int                         `json:"version"`
+	SessionID              string                      `json:"session_id"`
+	Status                 protocol.PlanArtifactStatus `json:"status"`
+	ProfileRevision        uint64                      `json:"profile_revision"`
+	ExecutionProfileDigest string                      `json:"execution_profile_digest,omitempty"`
+	CanImplement           bool                        `json:"can_implement"`
+	CanAutopilot           bool                        `json:"can_autopilot"`
 }
 
 func (r *Repository) SaveCheckpoint(
@@ -441,12 +442,13 @@ func (r *Repository) SavePlan(
 		return protocol.SessionPlanArtifact{}, err
 	}
 	metadata, err := json.Marshal(planMetadata{
-		Version:         artifact.Version,
-		SessionID:       artifact.SessionID,
-		Status:          artifact.Status,
-		ProfileRevision: artifact.ProfileRevision,
-		CanImplement:    artifact.CanImplement,
-		CanAutopilot:    artifact.CanAutopilot,
+		Version:                artifact.Version,
+		SessionID:              artifact.SessionID,
+		Status:                 artifact.Status,
+		ProfileRevision:        artifact.ProfileRevision,
+		ExecutionProfileDigest: artifact.ExecutionProfileDigest,
+		CanImplement:           artifact.CanImplement,
+		CanAutopilot:           artifact.CanAutopilot,
 	})
 	if err != nil {
 		return protocol.SessionPlanArtifact{}, err
@@ -599,18 +601,19 @@ func decodePlanArtifact(
 			&IntegrityError{ID: value.ID, Err: err}
 	}
 	artifact := protocol.SessionPlanArtifact{
-		Version:         metadata.Version,
-		ID:              value.ID,
-		SessionID:       metadata.SessionID,
-		ThreadID:        value.ThreadID,
-		TurnID:          value.TurnID,
-		Cursor:          value.Cursor,
-		Status:          metadata.Status,
-		Body:            string(value.Content),
-		ProfileRevision: metadata.ProfileRevision,
-		CanImplement:    metadata.CanImplement,
-		CanAutopilot:    metadata.CanAutopilot,
-		CreatedAt:       value.CreatedAt,
+		Version:                metadata.Version,
+		ID:                     value.ID,
+		SessionID:              metadata.SessionID,
+		ThreadID:               value.ThreadID,
+		TurnID:                 value.TurnID,
+		Cursor:                 value.Cursor,
+		Status:                 metadata.Status,
+		Body:                   string(value.Content),
+		ProfileRevision:        metadata.ProfileRevision,
+		ExecutionProfileDigest: metadata.ExecutionProfileDigest,
+		CanImplement:           metadata.CanImplement,
+		CanAutopilot:           metadata.CanAutopilot,
+		CreatedAt:              value.CreatedAt,
 	}
 	if err := artifact.Validate(); err != nil {
 		return protocol.SessionPlanArtifact{},

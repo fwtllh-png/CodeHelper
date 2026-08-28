@@ -20,6 +20,26 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
+func TestTruthMaxBytesForCapacityUsesRouteAndSummaryLimits(t *testing.T) {
+	for _, test := range []struct {
+		hardInputTokens uint64
+		summaryMaxBytes int
+		want            int
+	}{
+		{hardInputTokens: 8_192, want: 8_192},
+		{hardInputTokens: 2 << 20, want: 1 << 20},
+		{hardInputTokens: 32_000, summaryMaxBytes: 8_192, want: 7_936},
+	} {
+		if got := truthMaxBytesForCapacity(
+			test.hardInputTokens,
+			test.summaryMaxBytes,
+		); got != test.want {
+			t.Fatalf("truthMaxBytesForCapacity(%d, %d) = %d, want %d",
+				test.hardInputTokens, test.summaryMaxBytes, got, test.want)
+		}
+	}
+}
+
 func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	security := policy.DefaultRuntime(policy.ModeOperate, policy.PermissionAuto)
 	security.Repository = []policy.Rule{{

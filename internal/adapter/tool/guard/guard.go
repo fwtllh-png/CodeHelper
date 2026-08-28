@@ -686,7 +686,7 @@ func (g *Guard) prepare(
 	if err != nil {
 		return Invocation{}, nil, fmt.Errorf("tool %q resources: %w", canonical, err)
 	}
-	resources, err := g.resolveResources(descriptor, arguments)
+	resources, err := g.resolveResources(canonical, descriptor, arguments)
 	if err != nil {
 		return Invocation{}, nil, fmt.Errorf("tool %q resources: %w", canonical, err)
 	}
@@ -1328,7 +1328,9 @@ func (g *Guard) approvalExpiryHandler() func(ApprovalWait) error {
 }
 
 func (g *Guard) resolveResources(
-	descriptor tool.Descriptor, arguments json.RawMessage,
+	toolName string,
+	descriptor tool.Descriptor,
+	arguments json.RawMessage,
 ) ([]tool.Resource, error) {
 	var values map[string]any
 	if err := json.Unmarshal(arguments, &values); err != nil {
@@ -1416,6 +1418,31 @@ func (g *Guard) resolveResources(
 				Kind: "file", Path: canonical, Access: tool.AccessRead,
 			})
 		}
+	}
+	if field := descriptor.ResourceResolver.TrustedHostPathField; field != "" {
+		value, ok := values[field].(string)
+		if !ok || strings.TrimSpace(value) == "" {
+			return nil, errors.New("trusted host path must be a non-empty string")
+		}
+		backend := g.registry.InjectedSandbox(toolName)
+		sandboxPolicy, ok := sandbox.BackendPolicy(backend)
+		if !ok {
+			return nil, errors.New("trusted host path requires an injected sandbox policy")
+		}
+		resolver, err := sandbox.NewTrustedHostPathResolver(
+			sandboxPolicy.WorkspaceRoot,
+			sandboxPolicy.PrivateTemp,
+		)
+		if err != nil {
+			return nil, err
+		}
+		path, err := resolver.Resolve(value, sandbox.AllowMissing)
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, tool.Resource{
+			Kind: "file", Path: path, Access: tool.AccessRead,
+		})
 	}
 	if field := descriptor.ResourceResolver.NetworkTargetsField; field != "" {
 		targets, err := networkTargets(values[field])

@@ -8,7 +8,7 @@ import (
 
 func TestRequiredPlanningGatesConsequentialEffects(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
-	runtime.ConfigurePlanning(PlanningRequired, PlanApprovalManual)
+	runtime.ConfigurePlanning(PlanningRequired)
 	write := planningInvocation("file_edit", tool.CapabilityWrite, []tool.Resource{{
 		Kind: "file", Path: "parser.go", Access: tool.AccessWrite,
 	}})
@@ -16,18 +16,14 @@ func TestRequiredPlanningGatesConsequentialEffects(t *testing.T) {
 		t.Fatalf("write decision = %+v", decision)
 	}
 	runtime.SubmitPlan()
-	if decision := runtime.Evaluate(write); decision.Code != "plan_approval_required" {
-		t.Fatalf("unapproved decision = %+v", decision)
-	}
-	runtime.ApprovePlan()
 	if decision := runtime.Evaluate(write); decision.Action != ActionAllow {
-		t.Fatalf("approved decision = %+v", decision)
+		t.Fatalf("submitted Plan decision = %+v", decision)
 	}
 }
 
 func TestAdaptivePlanningAllowsSmallEditsAndGatesComplexEffects(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
-	runtime.ConfigurePlanning(PlanningAdaptive, PlanApprovalAuto)
+	runtime.ConfigurePlanning(PlanningAdaptive)
 	single := planningInvocation("file_edit", tool.CapabilityWrite, []tool.Resource{{
 		Kind: "file", Path: "parser.go", Access: tool.AccessWrite,
 	}})
@@ -49,7 +45,7 @@ func TestAdaptivePlanningAllowsSmallEditsAndGatesComplexEffects(t *testing.T) {
 
 func TestPlanningStateIsResetBetweenTurns(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
-	runtime.ConfigurePlanning(PlanningRequired, PlanApprovalAuto)
+	runtime.ConfigurePlanning(PlanningRequired)
 	runtime.SubmitPlan()
 	runtime.ResetPlanState()
 	write := planningInvocation("file_edit", tool.CapabilityWrite, []tool.Resource{{
@@ -60,9 +56,32 @@ func TestPlanningStateIsResetBetweenTurns(t *testing.T) {
 	}
 }
 
+func TestPlanningDoesNotGateVerificationTools(t *testing.T) {
+	runtime := DefaultRuntime(ModeAct, PermissionBypass)
+	runtime.ConfigurePlanning(PlanningRequired)
+	for _, name := range []string{
+		"quality_test",
+		"quality_diagnostics",
+		"quality_review",
+		"quality_verify",
+		"quality_process_smoke",
+	} {
+		invocation := planningInvocation(
+			name,
+			tool.CapabilityProcess,
+			[]tool.Resource{{
+				Kind: "host", ID: "localhost", Access: tool.AccessWrite,
+			}},
+		)
+		if decision := runtime.Evaluate(invocation); decision.Action != ActionAllow {
+			t.Fatalf("%s decision = %+v", name, decision)
+		}
+	}
+}
+
 func TestUnknownPlanningPolicyFailsClosed(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
-	runtime.ConfigurePlanning("unknown", PlanApprovalManual)
+	runtime.ConfigurePlanning("unknown")
 	write := planningInvocation("file_edit", tool.CapabilityWrite, []tool.Resource{{
 		Kind: "file", Path: "parser.go", Access: tool.AccessWrite,
 	}})

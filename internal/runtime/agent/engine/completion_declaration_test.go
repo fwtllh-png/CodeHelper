@@ -81,40 +81,7 @@ func (declarationQualityTool) Execute(
 	return qualityEvidenceResult(verify.StatusPassed, input.CoveredPaths), nil
 }
 
-func TestManualSubmittedPlanCompletesWithoutAnotherModelSample(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	root := t.TempDir()
-	if err := interact.Register(registry, interact.Options{
-		Host: interact.NewHost(0), Workspace: root,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	runtime := &scriptedProvider{streams: []provider.Stream{
-		toolCallStream("plan-1", "submit_plan", `{
-			"version":1,
-			"title":"Review this plan",
-			"steps":[{"id":"implement","title":"Implement the change"}]
-		}`),
-	}}
-	engine := newEngine(t, runtime, registry)
-	engine.options.Security.ConfigurePlanning(
-		policy.PlanningAdaptive,
-		policy.PlanApprovalManual,
-	)
-
-	result, err := engine.RunForTurn(t.Context(), "turn-plan", "implement", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.State != Completed || result.Text != "Plan submitted for review." {
-		t.Fatalf("result = %+v", result)
-	}
-	if len(runtime.requests) != 1 {
-		t.Fatalf("model requests = %d, want 1", len(runtime.requests))
-	}
-}
-
-func TestAutoApprovedSubmittedPlanContinuesCurrentTurn(t *testing.T) {
+func TestSubmittedPlanContinuesCurrentTurn(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	root := t.TempDir()
 	if err := interact.Register(registry, interact.Options{
@@ -131,6 +98,11 @@ func TestAutoApprovedSubmittedPlanContinuesCurrentTurn(t *testing.T) {
 			"title":"Execute this plan",
 			"steps":[{"id":"implement","title":"Implement the change"}]
 		}`),
+		toolCallStream("plan-2", "update_plan", `{
+			"version":1,
+			"title":"Execute this plan",
+			"steps":[{"id":"implement","title":"Implement the change","status":"done"}]
+		}`),
 		toolCallStream("complete-1", completiontool.Name, `{
 			"status":"complete",
 			"summary":"Implemented.",
@@ -138,10 +110,7 @@ func TestAutoApprovedSubmittedPlanContinuesCurrentTurn(t *testing.T) {
 		}`),
 	}}
 	engine := newEngine(t, runtime, registry)
-	engine.options.Security.ConfigurePlanning(
-		policy.PlanningAdaptive,
-		policy.PlanApprovalAuto,
-	)
+	engine.options.Security.ConfigurePlanning(policy.PlanningAdaptive)
 
 	result, err := engine.RunForTurn(t.Context(), "turn-plan-auto", "implement", nil)
 	if err != nil {
@@ -150,8 +119,8 @@ func TestAutoApprovedSubmittedPlanContinuesCurrentTurn(t *testing.T) {
 	if result.State != Completed || result.Text != "Implemented." {
 		t.Fatalf("result = %+v", result)
 	}
-	if len(runtime.requests) != 2 {
-		t.Fatalf("model requests = %d, want 2", len(runtime.requests))
+	if len(runtime.requests) != 3 {
+		t.Fatalf("model requests = %d, want 3", len(runtime.requests))
 	}
 }
 
@@ -372,7 +341,7 @@ func TestReadOnlyPlanDeclarationRepairConvergesAfterSingleRetry(t *testing.T) {
 	}
 }
 
-func TestIncompleteDeclarationContinuesCurrentTurn(t *testing.T) {
+func TestIncompleteDeclarationStopsWithResumableBlockedOutcome(t *testing.T) {
 	registry := declarationRegistry(t, false)
 	if err := registry.Register(&echoTool{}, nil); err != nil {
 		t.Fatal(err)
@@ -403,19 +372,19 @@ func TestIncompleteDeclarationContinuesCurrentTurn(t *testing.T) {
 			return nil
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil ||
+		!strings.Contains(err.Error(), "declared incomplete") {
+		t.Fatalf("error = %v", err)
 	}
-	if result.State != Completed ||
-		result.Text != "Both evidence checks are complete." {
+	if result.State != Failed {
 		t.Fatalf("result = %+v", result)
 	}
-	if len(runtime.requests) != 5 ||
+	if len(runtime.requests) != 3 ||
 		!requestContains(runtime.requests[2], "[completion_declaration_required]") {
-		t.Fatalf("incomplete declaration did not continue the turn: %+v",
+		t.Fatalf("incomplete declaration did not stop the turn: %+v",
 			runtime.requests)
 	}
-	sawIncompleteRejection := false
+	sawBlockedDeclaration := false
 	for _, event := range events {
 		if event.Text == "I still need to inspect the second piece of evidence." {
 			t.Fatalf("future-work promise reached stable output: %+v", events)
@@ -425,11 +394,11 @@ func TestIncompleteDeclarationContinuesCurrentTurn(t *testing.T) {
 			event.Result != nil {
 			accepted, _ := event.Result.Metadata["completion_declaration_accepted"].(bool)
 			rejection, _ := event.Result.Metadata["completion_declaration_rejection"].(string)
-			sawIncompleteRejection = !accepted && rejection == "pending_actions"
+			sawBlockedDeclaration = !accepted && rejection == "convergence_blocked"
 		}
 	}
-	if !sawIncompleteRejection {
-		t.Fatalf("incomplete declaration was not rejected: %+v", events)
+	if !sawBlockedDeclaration {
+		t.Fatalf("incomplete declaration was not blocked: %+v", events)
 	}
 }
 

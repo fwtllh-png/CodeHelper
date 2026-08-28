@@ -342,7 +342,9 @@ func TestRetainedDraftConflictTerminalizesNewTurn(t *testing.T) {
 	if state.Phase != turnkernel.PhaseFailed ||
 		state.Terminal == nil ||
 		state.Terminal.Kind != turnkernel.TerminalFailed ||
-		state.Journal != turnkernel.JournalRolledBack ||
+		state.Terminal.Fault == nil ||
+		state.Terminal.Fault.Disposition != protocol.FaultResumeTurn ||
+		state.Journal != turnkernel.JournalSuspended ||
 		!fixture.journal.HasDraft("turn-source-draft") {
 		t.Fatalf("terminal state = %+v", state)
 	}

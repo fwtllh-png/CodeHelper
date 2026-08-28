@@ -36,6 +36,7 @@ type execCommandInput struct {
 	Description    string                       `json:"description"`
 	WritePaths     []string                     `json:"write_paths"`
 	NetworkTargets []tool.DeclaredNetworkTarget `json:"network_targets"`
+	AllowLoopback  bool                         `json:"allow_loopback"`
 }
 
 type writeStdinInput struct {
@@ -194,7 +195,8 @@ func execCommandDescriptor() tool.Descriptor {
 			"status; use output_tokens or a quality tool to bound output. " +
 			"Commands that access the network must declare every destination in " +
 			"network_targets; use method CONNECT for HTTPS targets. Undeclared " +
-			"egress is denied by the local managed proxy.",
+			"egress is denied by the local managed proxy. Set allow_loopback only " +
+			"when the command binds or connects to a local development server.",
 		Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessRead,
@@ -205,6 +207,7 @@ func execCommandDescriptor() tool.Descriptor {
 			},
 			PathsField:          "write_paths",
 			NetworkTargetsField: "network_targets",
+			LoopbackField:       "allow_loopback",
 		},
 		ParallelPolicy:     tool.ParallelConcurrent,
 		SandboxRequirement: tool.SandboxStrong,
@@ -231,6 +234,10 @@ func execCommandDescriptor() tool.Descriptor {
 					"type": "array",
 				},
 				"network_targets": tool.NetworkTargetsInputSchema(),
+				"allow_loopback": map[string]any{
+					"type":        "boolean",
+					"description": "Permit localhost bind/connect for local development servers and fixtures",
+				},
 			},
 			"required":             []string{"command"},
 			"additionalProperties": false,

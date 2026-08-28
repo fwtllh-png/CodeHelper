@@ -75,7 +75,6 @@ var unaryRouteContracts = []RouteContract{
 	rpc("turn/recover", "turn_recover", "operation_receipt", true, true),
 	rpc("turn/queue", "session_identity", "turn_queue", false, false),
 	rpc("plan/get", "session_identity", "session_plan", false, false),
-	rpc("plan/transition", "plan_transition", "operation_receipt", true, true),
 	rpc("task/list", "task_query", "task_list", false, false),
 	rpc("agent/list", "agent_query", "agent_list", false, false),
 	rpc("trace/query", "trace_query", "trace_snapshot", false, false),

@@ -93,6 +93,17 @@ func TestExecutionReceiptAcceptsStructuredConvergenceOutcome(t *testing.T) {
 	}
 }
 
+func TestTurnConvergenceAcceptsDeclaredIncompleteWithoutBudget(t *testing.T) {
+	convergence := TurnConvergence{
+		Cause:          "declared_incomplete",
+		Summary:        "Node is unavailable in this environment.",
+		PendingActions: []string{"Resume the web build with Node available."},
+	}
+	if err := convergence.validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestExecutionReceiptValidatesSkillSelection(t *testing.T) {
 	valid := ReceiptSkillSelection{
 		Method: "weighted_lexical_v1", CatalogSize: 1024,

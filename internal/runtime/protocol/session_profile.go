@@ -10,10 +10,12 @@ import (
 const SessionProfileVersion = 1
 
 type SessionProfile struct {
-	Version             int      `json:"version"`
-	Revision            uint64   `json:"revision"`
-	Mode                string   `json:"mode"`
-	PlanningPolicy      string   `json:"planning_policy,omitempty"`
+	Version        int    `json:"version"`
+	Revision       uint64 `json:"revision"`
+	Mode           string `json:"mode"`
+	PlanningPolicy string `json:"planning_policy,omitempty"`
+	// PlanApproval is retained only to decode persisted pre-release profiles.
+	// New clients cannot mutate it and runtime planning is always automatic.
 	PlanApproval        string   `json:"plan_approval,omitempty"`
 	Provider            string   `json:"provider"`
 	Model               string   `json:"model"`
@@ -28,7 +30,6 @@ type SessionProfile struct {
 type SessionProfilePatch struct {
 	Mode            *string   `json:"mode,omitempty"`
 	PlanningPolicy  *string   `json:"planning_policy,omitempty"`
-	PlanApproval    *string   `json:"plan_approval,omitempty"`
 	Provider        *string   `json:"provider,omitempty"`
 	Model           *string   `json:"model,omitempty"`
 	ReasoningEffort *string   `json:"reasoning_effort,omitempty"`
@@ -91,8 +92,8 @@ func (p SessionProfile) Validate() error {
 	if !slices.Contains([]string{"", "off", "adaptive", "required"}, p.PlanningPolicy) {
 		return errors.New("session profile planning_policy is invalid")
 	}
-	if !slices.Contains([]string{"", "manual", "auto"}, p.PlanApproval) {
-		return errors.New("session profile plan_approval is invalid")
+	if p.PlanApproval != "" && p.PlanApproval != "auto" {
+		return errors.New("session profile plan_approval must be auto")
 	}
 	if !validProfileIdentifier(p.Provider) || !validProfileIdentifier(p.Model) || strings.ContainsAny(p.Model, "\t ") {
 		return errors.New("session profile provider and model are invalid")
@@ -131,7 +132,7 @@ func (p SessionProfile) Validate() error {
 
 func (p SessionProfilePatch) Validate() error {
 	if p.Mode == nil && p.Provider == nil && p.Model == nil &&
-		p.PlanningPolicy == nil && p.PlanApproval == nil &&
+		p.PlanningPolicy == nil &&
 		p.ReasoningEffort == nil && p.EnabledToolIDs == nil &&
 		p.ApprovalPosture == nil && p.ExecutionTarget == nil &&
 		p.MaxSteps == nil {
@@ -165,7 +166,6 @@ func ApplySessionProfilePatch(
 	}
 	applyCached(&next.Mode, patch.Mode, "mode")
 	applyCached(&next.PlanningPolicy, patch.PlanningPolicy, "planning_policy")
-	applyCached(&next.PlanApproval, patch.PlanApproval, "plan_approval")
 	applyCached(&next.Provider, patch.Provider, "provider")
 	applyCached(&next.Model, patch.Model, "model")
 	applyCached(&next.ReasoningEffort, patch.ReasoningEffort, "reasoning_effort")
@@ -242,7 +242,7 @@ func (c SessionProfileCapabilities) Validate(profile SessionProfile) error {
 	for _, field := range c.MutableFields {
 		switch field {
 		case "mode", "provider", "model", "reasoning_effort", "planning_policy",
-			"plan_approval", "enabled_tool_ids", "approval_posture", "execution_target", "max_steps":
+			"enabled_tool_ids", "approval_posture", "execution_target", "max_steps":
 		default:
 			return fmt.Errorf("unknown mutable session profile field %q", field)
 		}
@@ -281,7 +281,6 @@ func equalSessionProfile(left, right SessionProfile) bool {
 	return left.Version == right.Version &&
 		left.Revision == right.Revision &&
 		left.Mode == right.Mode && left.PlanningPolicy == right.PlanningPolicy &&
-		left.PlanApproval == right.PlanApproval &&
 		left.Provider == right.Provider &&
 		left.Model == right.Model &&
 		left.ReasoningEffort == right.ReasoningEffort &&

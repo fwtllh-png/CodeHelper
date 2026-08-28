@@ -8,6 +8,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -73,6 +74,40 @@ func TestProgressSignatureCountsSuccessfulAgentLifecycleCalls(t *testing.T) {
 	}
 }
 
+func TestProgressSignatureOnlyRenewsForMonotonicPlanProgress(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentWorkspaceChange,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	engine.setPlan(interact.Plan{Steps: []interact.PlanStep{{
+		Title: "Implement parser", Status: interact.StepPending,
+	}}})
+	pending := engine.progressSignature(kernel)
+
+	engine.setPlan(interact.Plan{Steps: []interact.PlanStep{{
+		Title: "Implement parser", Status: interact.StepInProgress,
+	}}})
+	inProgress := engine.progressSignature(kernel)
+
+	engine.setPlan(interact.Plan{Steps: []interact.PlanStep{{
+		Title: "Implement parser", Status: interact.StepDone,
+	}}})
+	done := engine.progressSignature(kernel)
+	if pending != inProgress || inProgress == done {
+		t.Fatalf(
+			"plan status signatures renewed without durable progress: pending=%q in_progress=%q done=%q",
+			pending,
+			inProgress,
+			done,
+		)
+	}
+}
+
 func TestFinishOnlyAllowsMutationAndQualityTools(t *testing.T) {
 	for _, test := range []struct {
 		name       string
@@ -104,8 +139,8 @@ func TestFinishOnlyAllowsMutationAndQualityTools(t *testing.T) {
 }
 
 func TestWorkspaceTurnFinalizesAfterNoProgressBudget(t *testing.T) {
-	streams := make([]provider.Stream, 0, 49)
-	for index := range 48 {
+	streams := make([]provider.Stream, 0, 69)
+	for index := range 68 {
 		streams = append(streams, toolCallStream(
 			fmt.Sprintf("call-%d", index),
 			"echo",
@@ -149,8 +184,8 @@ func TestWorkspaceTurnFinalizesAfterNoProgressBudget(t *testing.T) {
 		terminal.Convergence.Cause != string(turnkernel.ConvergenceNoProgress) {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if len(runtime.requests) != 49 {
-		t.Fatalf("provider requests = %d, want 49", len(runtime.requests))
+	if len(runtime.requests) != 69 {
+		t.Fatalf("provider requests = %d, want 69", len(runtime.requests))
 	}
 	assertProgressFeedback := func(requestIndex int, stage string) {
 		t.Helper()
@@ -167,13 +202,13 @@ func TestWorkspaceTurnFinalizesAfterNoProgressBudget(t *testing.T) {
 			stage,
 		)
 	}
-	assertProgressFeedback(16, "converge")
-	assertProgressFeedback(32, "finish_only")
+	assertProgressFeedback(22, "converge")
+	assertProgressFeedback(45, "finish_only")
 }
 
-func TestReadOnlyTurnStopsAfterSixteenTotalSamples(t *testing.T) {
-	streams := make([]provider.Stream, 0, 13)
-	for index := range 12 {
+func TestReadOnlyTurnEntersFinishOnlyAtDerivedBudget(t *testing.T) {
+	streams := make([]provider.Stream, 0, 46)
+	for index := range 45 {
 		streams = append(streams, toolCallStream(
 			fmt.Sprintf("call-%d", index),
 			"echo",
@@ -200,17 +235,17 @@ func TestReadOnlyTurnStopsAfterSixteenTotalSamples(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if result.Text != "bounded final answer" || len(runtime.requests) != 13 {
+	if result.Text != "bounded final answer" || len(runtime.requests) != 46 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
 	}
-	if len(runtime.requests[12].Tools) != 0 {
-		t.Fatalf("finish-only request exposed tools: %+v", runtime.requests[12].Tools)
+	if len(runtime.requests[45].Tools) != 0 {
+		t.Fatalf("finish-only request exposed tools: %+v", runtime.requests[45].Tools)
 	}
 }
 
 func TestReadOnlyFinishOnlyCompletesCurrentProcess(t *testing.T) {
-	streams := make([]provider.Stream, 0, 14)
-	for index := range 12 {
+	streams := make([]provider.Stream, 0, 47)
+	for index := range 45 {
 		streams = append(streams, toolCallStream(
 			fmt.Sprintf("read-%d", index),
 			"echo",
@@ -243,11 +278,11 @@ func TestReadOnlyFinishOnlyCompletesCurrentProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Text != "process completed" || len(runtime.requests) != 14 {
+	if result.Text != "process completed" || len(runtime.requests) != 47 {
 		t.Fatalf("result=%+v requests=%d", result, len(runtime.requests))
 	}
 	names := make(map[string]bool)
-	for _, definition := range runtime.requests[12].Tools {
+	for _, definition := range runtime.requests[45].Tools {
 		names[definition.Name] = true
 	}
 	if !names["exec_command"] || names["echo"] {

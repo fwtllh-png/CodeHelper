@@ -13,6 +13,17 @@ import (
 	"time"
 )
 
+func TestDefaultsUseExtendedTurnBudget(t *testing.T) {
+	defaults := Defaults()
+	if defaults.Execution.MaxSteps != 64 {
+		t.Fatalf("default max steps = %d, want 64", defaults.Execution.MaxSteps)
+	}
+	if defaults.Context.Compact.TruthMaxBytes != 0 {
+		t.Fatalf("default truth max bytes = %d, want automatic",
+			defaults.Context.Compact.TruthMaxBytes)
+	}
+}
+
 func TestLoadPrecedence(t *testing.T) {
 	path := writeConfig(t, `
 [runtime]

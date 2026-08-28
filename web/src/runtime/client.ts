@@ -247,8 +247,6 @@ export class RuntimeClient {
   private storageWrite: Promise<void> = Promise.resolve();
   private storageTimer?: number;
   private pendingStorage?: {scope: string; value: BrowserProjectionState};
-  private pendingPlanTransition?: Promise<void>;
-
   constructor(
     private readonly storage: BrowserStorage = new IndexedDBBrowserStorage()
   ) {
@@ -923,7 +921,7 @@ export class RuntimeClient {
       session_id: this.requireSession(),
       kind: "turn.cancel",
       idempotency_key: crypto.randomUUID(),
-      payload: {turn_id: turnID, reason: "user requested stop"}
+      payload: {turn_id: turnID, reason: "user_interrupted"}
     });
   }
 
@@ -1196,31 +1194,6 @@ export class RuntimeClient {
     });
     await this.refreshSessions();
     await this.selectSession(result.session_id);
-  }
-
-  transitionPlan(transition: "implement" | "autopilot"): Promise<void> {
-    if (!this.state.plan) {
-      return Promise.reject(new Error("No active plan"));
-    }
-    const sessionID = this.requireSession();
-    const planID = this.state.plan.id;
-    if (this.pendingPlanTransition) {
-      return this.pendingPlanTransition;
-    }
-    const promise = this.call<void>("plan/transition", {
-      session_id: sessionID,
-      plan_id: planID,
-      transition
-    }, {
-      idempotencyKey: `plan:${planID}:execute:${crypto.randomUUID()}`,
-      retryNetwork: true
-    }).finally(() => {
-      if (this.pendingPlanTransition === promise) {
-        this.pendingPlanTransition = undefined;
-      }
-    });
-    this.pendingPlanTransition = promise;
-    return promise;
   }
 
   async setExtensionEnabled(

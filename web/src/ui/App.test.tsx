@@ -161,14 +161,6 @@ describe("projectTranscript", () => {
 
     expect(screen.queryByRole("button", {name: "Retry"})).toBeNull();
     expect(screen.getByText("Workspace changes were kept.")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", {name: "Continue"}));
-    await waitFor(() => {
-      expect(client.recoverTurn).toHaveBeenCalledWith(
-        "turn",
-        "continue"
-      );
-    });
-
     fireEvent.click(screen.getByRole("button", {name: "Restore"}));
     await waitFor(() => {
       expect(client.restoreCheckpoint).toHaveBeenCalledWith("checkpoint-failed");
@@ -177,6 +169,53 @@ describe("projectTranscript", () => {
     await waitFor(() => {
       expect(client.forkCheckpoint).toHaveBeenCalledWith("checkpoint-failed");
     });
+
+    vi.mocked(client.recoverTurn).mockImplementation(
+      () => new Promise(() => undefined)
+    );
+    fireEvent.click(screen.getByRole("button", {name: "Continue"}));
+    await waitFor(() => {
+      expect(client.recoverTurn).toHaveBeenCalledWith(
+        "turn",
+        "continue"
+      );
+    });
+    expect(
+      screen.getByRole("button", {name: "Continue"}).getAttribute("disabled")
+    ).not.toBeNull();
+  });
+
+  it("routes blocked-session composer input into Turn recovery", async () => {
+    const value = snapshot([
+      event(1, "turn.failed", {
+        code: "unavailable",
+        message: "workspace journal has a retained draft",
+        fault: {
+          disposition: "resume_turn",
+          side_effects: "draft"
+        }
+      })
+    ]);
+    value.sessions = value.sessions.map((session, index) => index === 0
+      ? {...session, status: "blocked", latest_turn_id: "turn"}
+      : session);
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Ask CodeHelper"), {
+      target: {value: "Run the remaining checks"}
+    });
+    const buttons = screen.getAllByRole("button", {name: "Continue"});
+    fireEvent.click(buttons.at(-1)!);
+
+    await waitFor(() => {
+      expect(client.recoverTurn).toHaveBeenCalledWith(
+        "turn",
+        "continue",
+        "Run the remaining checks"
+      );
+    });
+    expect(client.submitPrompt).not.toHaveBeenCalled();
   });
 
   it("renders lifecycle, workspace, profile, and governed tool controls", async () => {
@@ -646,6 +685,13 @@ describe("projectTranscript", () => {
       },
       {
         ...value.sessions[0],
+        session_id: "paused",
+        thread_id: "thread-paused",
+        title: "Paused task",
+        status: "interrupted"
+      },
+      {
+        ...value.sessions[0],
         session_id: "completed",
         thread_id: "thread-completed",
         title: "Completed task",
@@ -658,6 +704,7 @@ describe("projectTranscript", () => {
       ["Running task", "Running"],
       ["Approval task", "Approval required"],
       ["Failed task", "Failed"],
+      ["Paused task", "Paused"],
       ["Completed task", "Completed"]
     ]) {
       const row = Array.from(document.querySelectorAll(".sessionRow")).find(
@@ -921,13 +968,11 @@ describe("projectTranscript", () => {
     expect(screen.getByText("Implement the verified change")).toBeTruthy();
     expect(screen.getByText("Before implementation")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", {name: "Implement"}));
     fireEvent.click(screen.getByRole("button", {name: "Restore"}));
     fireEvent.click(screen.getByRole("button", {name: "Fork"}));
     fireEvent.click(screen.getByRole("button", {name: "Extensions"}));
     fireEvent.click(screen.getByRole("checkbox", {name: /review-tools/}));
 
-    expect(client.transitionPlan).toHaveBeenCalledWith("implement");
     expect(client.restoreCheckpoint).toHaveBeenCalledWith("checkpoint-1");
     expect(client.forkCheckpoint).toHaveBeenCalledWith("checkpoint-1");
     expect(client.setExtensionEnabled).toHaveBeenCalledWith(
@@ -949,9 +994,6 @@ describe("projectTranscript", () => {
       target: {value: "plan"}
     });
     expect(screen.queryByLabelText("Planning policy")).toBeNull();
-    fireEvent.change(screen.getByLabelText("Plan approval"), {
-      target: {value: "auto"}
-    });
     fireEvent.change(screen.getByLabelText("Maximum steps"), {
       target: {value: "16"}
     });
@@ -967,7 +1009,6 @@ describe("projectTranscript", () => {
       expect(client.updateProfile).toHaveBeenCalledWith({
         mode: "plan",
         planning_policy: "adaptive",
-        plan_approval: "auto",
         max_steps: 16
       });
     });
@@ -1592,6 +1633,66 @@ describe("projectTranscript", () => {
       );
     });
     expect(client.submitPrompt).not.toHaveBeenCalled();
+  });
+
+  it("submits only one cancel while the active turn is stopping", async () => {
+    const value = snapshot([
+      event(1, "turn.started", {display_prompt: "Inspect"})
+    ]);
+    const client = mockClient(value);
+    vi.mocked(client.cancel).mockReturnValue(new Promise(() => {}));
+    render(<App client={client} />);
+
+    const stop = screen.getByRole("button", {name: "Stop turn"});
+    fireEvent.click(stop);
+    fireEvent.click(stop);
+
+    expect(client.cancel).toHaveBeenCalledOnce();
+    expect(stop.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("single-flights stop while waiting for approval or input", () => {
+    const pendingEvents = [
+      event(1, "approval.required", {
+        request_id: "approval",
+        tool: "write_file",
+        effect: "workspace write"
+      }),
+      event(1, "input.required", {
+        request_id: "input",
+        prompt: "Choose"
+      })
+    ];
+
+    for (const pending of pendingEvents) {
+      const client = mockClient(snapshot([pending]));
+      vi.mocked(client.cancel).mockReturnValue(new Promise(() => {}));
+      const view = render(<App client={client} />);
+
+      const stop = screen.getByRole("button", {name: "Stop turn"});
+      fireEvent.click(stop);
+      fireEvent.click(stop);
+
+      expect(client.cancel).toHaveBeenCalledOnce();
+      expect(stop.hasAttribute("disabled")).toBe(true);
+      view.unmount();
+    }
+  });
+
+  it("keeps a visible paused state after a user interruption", () => {
+    const value = snapshot([
+      event(1, "turn.started", {display_prompt: "Inspect"}),
+      event(2, "turn.canceled", {reason: "user_interrupted"})
+    ]);
+    value.sessions = value.sessions.map((session) => ({
+      ...session,
+      status: "interrupted"
+    }));
+    render(<App client={mockClient(value)} />);
+
+    expect(screen.getByRole("status").textContent).toContain("Paused");
+    expect(document.title).toBe("(1) Paused · CodeHelper");
+    expect(screen.queryByRole("button", {name: "Stop turn"})).toBeNull();
   });
 
   it("stops active progress when the Runtime connection is interrupted", async () => {
@@ -2317,7 +2418,6 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
         revision: 1,
         mode: "act",
         planning_policy: "adaptive",
-        plan_approval: "manual",
         provider: "fixture",
         model: "fixture",
         approval_posture: "suggest",
@@ -2329,7 +2429,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
         provider: "fixture",
         model: "fixture",
         mutable_fields: [
-          "mode", "planning_policy", "plan_approval",
+          "mode", "planning_policy",
           "provider", "model", "reasoning_effort",
           "approval_posture", "execution_target", "max_steps",
           "enabled_tool_ids"
@@ -2442,7 +2542,6 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
       },
       restart_required: false
     })),
-    transitionPlan: vi.fn(async () => ({})),
     restoreCheckpoint: vi.fn(async () => ({})),
     forkCheckpoint: vi.fn(async () => ({})),
     setExtensionEnabled: vi.fn(async () => ({})),

@@ -82,6 +82,68 @@ describe("ConversationProjection", () => {
     });
   });
 
+  it("presents declared incomplete turns as resumable blocked work", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.failed", {
+        code: "conflict",
+        message: "turn declared incomplete with resumable pending actions",
+        convergence: {
+          cause: "declared_incomplete",
+          used: 0,
+          limit: 0,
+          summary: "The environment is missing a required dependency.",
+          pending_actions: ["Install the dependency and continue."]
+        }
+      })
+    ]);
+
+    expect(snapshot.nodes.get(snapshot.order[0])).toMatchObject({
+      kind: "status",
+      title: "Blocked",
+      text: "The environment is missing a required dependency.",
+      failed: false,
+      blocked: true,
+      recoverable: true
+    });
+  });
+
+  it("presents recoverable Runtime faults as blocked work", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.failed", {
+        code: "unavailable",
+        message: "workspace journal has a retained draft",
+        fault: {
+          disposition: "resume_turn",
+          side_effects: "draft",
+          recovery_action: "continue the retained draft"
+        }
+      })
+    ]);
+
+    expect(snapshot.nodes.get(snapshot.order[0])).toMatchObject({
+      kind: "status",
+      title: "Blocked",
+      failed: false,
+      blocked: true,
+      recoverable: true
+    });
+  });
+
+  it("presents a user interruption as paused rather than failed", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.canceled", {reason: "user_interrupted"})
+    ]);
+
+    expect(snapshot.nodes.get(snapshot.order[0])).toMatchObject({
+      kind: "status",
+      title: "Paused",
+      text: "Paused by user.",
+      failed: false,
+      warning: true,
+      recoverable: true
+    });
+  });
+
   it("projects produced files and marks older paths stale", () => {
     const first = [
       turnEvent(1, "turn-one", "turn.started", {display_prompt: "Edit"}),

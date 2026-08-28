@@ -72,6 +72,32 @@ func TestShellGrantBindsLoopbackResourceSemantics(t *testing.T) {
 	}
 }
 
+func TestProcessPathGrantBindsExecutableAndArguments(t *testing.T) {
+	base := Invocation{
+		Tool: "quality_process_smoke", Capability: CapabilityProcess,
+		Access: tool.AccessRead, Sandbox: tool.SandboxNone, Validated: true,
+		Arguments: json.RawMessage(
+			`{"path":"target/App","args":["--smoke"]}`,
+		),
+		Resources: []tool.Resource{
+			{Kind: "file", Path: "target/App", Access: tool.AccessRead},
+			{Kind: "process", ID: "host", Access: tool.AccessWrite},
+		},
+	}
+	grant, ok := GrantForInvocation(base)
+	if !ok || grant.Kind != "shell" {
+		t.Fatalf("path grant = %+v, ok=%t", grant, ok)
+	}
+	changed := base
+	changed.Arguments = json.RawMessage(
+		`{"path":"target/App","args":["--other"]}`,
+	)
+	other, ok := GrantForInvocation(changed)
+	if !ok || other.Key == grant.Key {
+		t.Fatalf("changed path grant = %+v, ok=%t", other, ok)
+	}
+}
+
 func TestSessionGrantMatchesOnlyTypedKey(t *testing.T) {
 	now := time.Now()
 	cache := NewApprovalCache()

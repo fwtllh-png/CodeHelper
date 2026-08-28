@@ -17,7 +17,9 @@ func (e *Engine) bindVerificationEvidence(
 	mutationRevision uint64,
 ) {
 	if result == nil || result.Outcome == nil || result.Outcome.Facts == nil ||
-		(call.Name != "quality_test" && call.Name != "quality_verify") {
+		(call.Name != "quality_test" &&
+			call.Name != "quality_verify" &&
+			call.Name != "quality_process_smoke") {
 		return
 	}
 	source := result.Outcome.Facts.Verification

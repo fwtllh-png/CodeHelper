@@ -224,7 +224,6 @@ export interface SessionProfile {
   revision: number;
   mode: "plan" | "act" | "operate";
   planning_policy?: "off" | "adaptive" | "required";
-  plan_approval?: "manual" | "auto";
   provider: string;
   model: string;
   reasoning_effort?: string;
@@ -254,7 +253,6 @@ export interface SessionProfileUpdateResult {
 export interface AgentPresetProfile {
   mode: SessionProfile["mode"];
   planning_policy?: SessionProfile["planning_policy"];
-  plan_approval?: SessionProfile["plan_approval"];
   provider: string;
   model: string;
   reasoning_effort?: string;
@@ -432,6 +430,7 @@ export interface SessionPlanArtifact {
   body: string;
   document?: PlanDocument;
   profile_revision: number;
+  execution_profile_digest?: string;
   can_implement: boolean;
   can_autopilot: boolean;
   created_at: string;

@@ -881,12 +881,18 @@ type TurnConvergence struct {
 
 func (c TurnConvergence) validate() error {
 	switch c.Cause {
+	case "declared_incomplete":
+		if c.Used != 0 || c.Limit != 0 || c.RepairKind != "" {
+			return errors.New("declared incomplete convergence is invalid")
+		}
 	case "output_limit", "no_progress", "repair_budget", "step_limit":
+		if c.Used == 0 || c.Limit == 0 || c.Used < c.Limit {
+			return errors.New("turn convergence budget is invalid")
+		}
 	default:
 		return errors.New("turn convergence cause is invalid")
 	}
-	if c.Used == 0 || c.Limit == 0 || c.Used < c.Limit ||
-		strings.TrimSpace(c.Summary) == "" ||
+	if strings.TrimSpace(c.Summary) == "" ||
 		len(c.PendingActions) == 0 {
 		return errors.New("turn convergence outcome is incomplete")
 	}

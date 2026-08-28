@@ -202,7 +202,6 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		Version: protocol.SessionProfileVersion, Revision: 1,
 		Mode:                execution.Mode,
 		PlanningPolicy:      "adaptive",
-		PlanApproval:        "manual",
 		Provider:            route.ProviderID(),
 		Model:               route.Model().ID,
 		ReasoningEffort:     reasoningEffort,

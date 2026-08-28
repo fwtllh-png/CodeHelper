@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type JournalDriver struct {
@@ -113,11 +114,11 @@ func (s *RuntimeKernel) RequestTerminal(
 
 func (s *RuntimeKernel) FailBeforeJournal(
 	ctx context.Context,
-	reason string,
+	problem *protocol.Problem,
 ) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return FailBeforeJournal(ctx, s.coordinator, s.dispatcher, reason)
+	return FailBeforeJournal(ctx, s.coordinator, s.dispatcher, problem)
 }
 
 func (s *RuntimeKernel) AbortForTerminal(reason string) error {

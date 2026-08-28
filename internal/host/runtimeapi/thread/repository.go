@@ -33,6 +33,7 @@ const (
 
 	TurnActive    TurnStatus = "active"
 	TurnCompleted TurnStatus = "completed"
+	TurnBlocked   TurnStatus = "blocked"
 	TurnFailed    TurnStatus = "failed"
 	TurnCanceled  TurnStatus = "canceled"
 	TurnReverted  TurnStatus = "reverted"

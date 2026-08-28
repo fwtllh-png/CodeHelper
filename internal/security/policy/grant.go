@@ -24,11 +24,27 @@ func GrantForInvocation(call Invocation) (Grant, bool) {
 	writeFingerprintField(hash, call.Tool)
 	switch {
 	case call.Capability == tool.CapabilityProcess:
-		var input struct{ Command, CWD string }
+		var input struct {
+			Command, CWD, Path string
+			Args               []string
+		}
 		if json.Unmarshal(call.Arguments, &input) != nil {
 			return Grant{}, false
 		}
 		input.Command = strings.TrimSpace(input.Command)
+		if input.Command == "" && input.Path != "" {
+			encoded, err := json.Marshal(struct {
+				Path string   `json:"path"`
+				Args []string `json:"args,omitempty"`
+			}{
+				Path: cleanGrantPath(input.Path),
+				Args: append([]string(nil), input.Args...),
+			})
+			if err != nil {
+				return Grant{}, false
+			}
+			input.Command = string(encoded)
+		}
 		if input.Command == "" && kinds&4 == 0 {
 			return Grant{}, false
 		}

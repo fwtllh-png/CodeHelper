@@ -76,7 +76,7 @@ Turn 年龄改写已发送消息。只有显式 compaction/rebase 才允许折�
 - `internal/adapter/provider/types.go:119` `StickyPromptCacheKey(key, route)`：仅当 key 非空且模型支持
   `CapPromptCache` 时才返回非空 key（`types.go:120`）。
 - `internal/runtime/protocol/session_profile.go` 的 `Patch`：只有 `mode / planning_policy /
-  plan_approval / provider / model / reasoning_effort / enabled_tool_ids` 变化时才递增
+  provider / model / reasoning_effort / enabled_tool_ids` 变化时才递增
   `PromptCacheRevision` 并置 `PromptCacheReset`；`ApprovalPosture / ExecutionTarget / MaxSteps` 等
   只递增 `Revision`。
 
@@ -159,7 +159,7 @@ Turn 年龄改写已发送消息。只有显式 compaction/rebase 才允许折�
 > `NewAgentPresetProfile` 全构造点成立排序不变量：`enabled_tool_ids` 按集合判定，重排不触发
 > `PromptCacheRevision`（契约测试 `TestSessionProfileEnabledToolIDsAreSetOrderInsensitive`、
 > `TestAgentPresetProfileNormalizesEnabledToolIDs`、`TestAgentPresetPatchIsSetOrderInsensitive`）。
-> 触发面收敛为真正影响前缀的维度：`mode / planning_policy / plan_approval / provider / model /
+> 触发面收敛为真正影响前缀的维度：`mode / planning_policy / provider / model /
 > reasoning_effort / enabled_tool_ids`；`provider`/`model` 变更即跨 model/provider 失效，属预期
 > 语义（`TestSessionProfileProviderModelChangeResetsPromptCache`）；`MaxSteps`/`ApprovalPosture`/
 > `ExecutionTarget` 只递增 `Revision`，不影响 `PromptCacheKey`

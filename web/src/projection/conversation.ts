@@ -105,6 +105,8 @@ export type ConversationNode =
       readonly title: string;
       readonly text: string;
       readonly failed: boolean;
+      readonly blocked?: boolean;
+      readonly warning?: boolean;
       readonly recoverable: boolean;
       readonly recovery?: {
         readonly canRetry: boolean;
@@ -547,6 +549,8 @@ export class ConversationProjection {
       return;
     }
     const failure = failurePresentation(event);
+    const blocked = failure.blocked === true;
+    const warning = failure.warning === true;
     this.put({
       id: `${event.id}-status`,
       kind: "status",
@@ -554,7 +558,9 @@ export class ConversationProjection {
       sequence: event.sequence,
       title: failure.title,
       text: failure.text,
-      failed,
+      failed: failed && !warning,
+      blocked,
+      warning,
       recoverable: failed,
       recovery: failed ? recoveryOptions(
         event,
@@ -675,6 +681,38 @@ function failurePresentation(event: RuntimeEvent) {
       text: `The next model call would exceed this run's token limit (${formatInteger(
         budget[1]
       )} projected, ${formatInteger(budget[2])} allowed).`
+    };
+  }
+  const convergence = isRecord(event.data.convergence)
+    ? event.data.convergence
+    : undefined;
+  if (stringValue(convergence?.cause)) {
+    return {
+      title: "Blocked",
+      text: stringValue(convergence?.summary) || fallback,
+      blocked: true,
+      warning: true
+    };
+  }
+  const fault = isRecord(event.data.fault) ? event.data.fault : undefined;
+  if (["retry_step", "retry_turn", "resume_turn"].includes(
+    stringValue(fault?.disposition)
+  )) {
+    return {
+      title: "Blocked",
+      text: fallback,
+      blocked: true,
+      warning: true
+    };
+  }
+  if (
+    event.kind === "turn.canceled" &&
+    stringValue(event.data.reason) === "user_interrupted"
+  ) {
+    return {
+      title: "Paused",
+      text: "Paused by user.",
+      warning: true
     };
   }
   return {

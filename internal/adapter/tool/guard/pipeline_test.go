@@ -27,7 +27,7 @@ func TestSubmittedPlanUnlocksAutoApprovedActTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
-	runtime.ConfigurePlanning(policy.PlanningRequired, policy.PlanApprovalAuto)
+	runtime.ConfigurePlanning(policy.PlanningRequired)
 	guard, err := New(Options{
 		Registry: registry, Policy: runtime, Workspace: workspace,
 	})

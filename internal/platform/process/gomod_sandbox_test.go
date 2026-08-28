@@ -71,3 +71,123 @@ func TestGoModuleCacheWritableInSandbox(t *testing.T) {
 		}
 	}
 }
+
+func TestInstalledHostToolchainIsReusableInSandbox(t *testing.T) {
+	root := t.TempDir()
+	privateHome := t.TempDir()
+	helper, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := sandbox.NewPlatformBackend(sandbox.Options{
+		WorkspaceRoot: root,
+		PrivateTemp:   privateHome,
+		HelperPath:    helper,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
+	if err := sandbox.RequireStrong(backend); err != nil {
+		t.Skip(err)
+	}
+	policy, ok := sandbox.BackendPolicy(backend)
+	if !ok || !hasToolchainExecutable(policy.Toolchains.BinDirs, "cargo") {
+		t.Skip("an exposed cargo toolchain is unavailable")
+	}
+	ws, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned, err := ws.OpenDirectory(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pinned.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	result, err := Run(ctx, Options{
+		Dir: ws.Root(), DirFile: pinned,
+		Command: `cargo --version && rustc --version`,
+		Sandbox: backend, RequireStrongSandbox: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf(
+			"host toolchain was not reusable: exit=%d stdout=%s stderr=%s",
+			result.ExitCode,
+			result.Stdout,
+			result.Stderr,
+		)
+	}
+}
+
+func TestInstalledHostNodeRuntimeIsReusableInSandbox(t *testing.T) {
+	root := t.TempDir()
+	privateHome := t.TempDir()
+	helper, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := sandbox.NewPlatformBackend(sandbox.Options{
+		WorkspaceRoot: root,
+		PrivateTemp:   privateHome,
+		HelperPath:    helper,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
+	if err := sandbox.RequireStrong(backend); err != nil {
+		t.Skip(err)
+	}
+	policy, ok := sandbox.BackendPolicy(backend)
+	if !ok || !hasToolchainExecutable(policy.Toolchains.BinDirs, "node") {
+		t.Skip("an exposed Node.js runtime is unavailable")
+	}
+	ws, err := sandbox.NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned, err := ws.OpenDirectory(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pinned.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	result, err := Run(ctx, Options{
+		Dir: ws.Root(), DirFile: pinned,
+		Command: `node --version && npm --version && ` +
+			`node -e 'const c=require("node:child_process");` +
+			`const r=c.spawnSync("/bin/sh",["-c","exit 0"]);` +
+			`if(r.error)throw r.error;process.exit(r.status??1)'`,
+		Sandbox: backend, RequireStrongSandbox: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf(
+			"host Node.js runtime was not reusable: exit=%d stdout=%s stderr=%s",
+			result.ExitCode,
+			result.Stdout,
+			result.Stderr,
+		)
+	}
+}
+
+func hasToolchainExecutable(directories []string, name string) bool {
+	for _, directory := range directories {
+		info, err := os.Stat(filepath.Join(directory, name))
+		if err == nil && info.Mode().IsRegular() &&
+			info.Mode().Perm()&0o111 != 0 {
+			return true
+		}
+	}
+	return false
+}

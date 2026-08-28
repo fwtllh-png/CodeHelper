@@ -3,9 +3,9 @@ import {
   CheckCircle2,
   ChevronDown,
   Circle,
+  CircleDashed,
   ListChecks,
-  Play,
-  Zap
+  LoaderCircle
 } from "lucide-react";
 import {useMemo, useState} from "react";
 
@@ -19,16 +19,12 @@ export function SessionProgress({
   plan,
   tasks,
   agents,
-  onOpenTrajectory,
-  onPlanTransition,
-  planBusy = false
+  onOpenTrajectory
 }: {
   plan?: SessionPlanArtifact;
   tasks: readonly TaskSummary[];
   agents: readonly AgentSummary[];
   onOpenTrajectory: () => void;
-  onPlanTransition?: (transition: "implement" | "autopilot") => void;
-  planBusy?: boolean;
 }) {
   const [planExpanded, setPlanExpanded] = useState(true);
   const orderedTasks = useMemo(() => [...tasks].sort((left, right) =>
@@ -36,7 +32,13 @@ export function SessionProgress({
   ), [tasks]);
   const activeTasks = orderedTasks.filter((task) => !isDone(task.state));
   const done = orderedTasks.length - activeTasks.length;
-  const hasPlanContent = Boolean(plan?.document?.steps.length || onPlanTransition);
+  const planSteps = plan?.document?.steps ?? [];
+  const planDone = planSteps.filter((step) => step.status === "done").length;
+  const planActive = planSteps.filter(
+    (step) => step.status === "in_progress"
+  ).length;
+  const planPending = planSteps.length - planDone - planActive;
+  const hasPlanContent = Boolean(plan?.document?.steps.length);
   if (!hasPlanContent && tasks.length === 0 && agents.length === 0) return null;
 
   return (
@@ -55,6 +57,13 @@ export function SessionProgress({
               title={planExpanded ? "Collapse plan" : "Expand plan"}
               onClick={() => setPlanExpanded((value) => !value)}
             >
+              <span className="planSummary">
+                <ListChecks size={15} />
+                <strong>Tasks</strong>
+                <small>
+                  {planDone} completed · {planActive} active · {planPending} pending
+                </small>
+              </span>
               <ChevronDown size={15} data-expanded={planExpanded || undefined} />
             </button>
             {planExpanded && plan.document && (
@@ -62,30 +71,14 @@ export function SessionProgress({
                 {plan.document.steps.map((step) => (
                   <li key={step.id} data-state={step.status}>
                     {step.status === "done"
-                      ? <CheckCircle2 size={14} />
-                      : <Circle size={14} />}
+                      ? <CheckCircle2 size={16} />
+                      : step.status === "in_progress"
+                        ? <LoaderCircle className="spin" size={16} />
+                        : <CircleDashed size={16} />}
                     <strong>{step.title}</strong>
                   </li>
                 ))}
               </ol>
-            )}
-            {planExpanded && onPlanTransition && (
-              <div className="artifactActions">
-                <button
-                  type="button"
-                  disabled={planBusy || !plan.can_implement}
-                  onClick={() => onPlanTransition("implement")}
-                >
-                  <Play size={13} /> Implement
-                </button>
-                <button
-                  type="button"
-                  disabled={planBusy || !plan.can_autopilot}
-                  onClick={() => onPlanTransition("autopilot")}
-                >
-                  <Zap size={13} /> Autopilot
-                </button>
-              </div>
             )}
           </div>
         )}

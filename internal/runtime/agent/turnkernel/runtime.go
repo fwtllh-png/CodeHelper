@@ -52,27 +52,26 @@ func NewEphemeralCoordinatorRuntime() *StoreCoordinatorRuntime {
 }
 
 // FailBeforeJournal terminalizes a prepared Turn whose workspace journal never
-// opened. With no Turn-owned mutations, rollback is vacuously complete.
+// opened while preserving any retained draft that blocked admission.
 func FailBeforeJournal(
 	ctx context.Context,
 	coordinator *TurnCoordinator,
 	dispatcher *DurableEffectDispatcher,
-	message string,
+	problem *protocol.Problem,
 ) error {
-	if coordinator == nil || dispatcher == nil || message == "" {
+	if coordinator == nil || dispatcher == nil || problem == nil {
 		return errors.New("journal startup failure dependencies are incomplete")
 	}
-	if err := coordinator.Submit(ctx, TerminalRequested{
-		FailureCode: "conflict", FailureMessage: message,
-	}); err != nil {
+	request := TerminalRequested{FailureCode: string(problem.Code), FailureMessage: problem.Message, Fault: protocol.CloneFaultMetadata(problem.Fault)}
+	if err := coordinator.Submit(ctx, request); err != nil {
 		return err
 	}
-	effect, err := dispatcher.Start(EffectRollbackJournal, "")
+	effect, err := dispatcher.Start(EffectSuspendJournal, "")
 	if err != nil {
 		return err
 	}
 	if err := dispatcher.Resolve(JournalResultReceived{
-		EffectID: effect.ID, Status: JournalRolledBack,
+		EffectID: effect.ID, Status: JournalSuspended,
 	}); err != nil {
 		return err
 	}

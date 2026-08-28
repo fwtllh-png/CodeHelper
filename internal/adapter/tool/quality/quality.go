@@ -59,7 +59,11 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 			return err
 		}
 	}
-	return nil
+	sandboxPolicy, ok := sandbox.BackendPolicy(backend)
+	if !ok {
+		return errors.New("quality process smoke requires an injected sandbox policy")
+	}
+	return registerProcessSmoke(registry, absolute, sandboxPolicy.PrivateTemp)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {
@@ -127,15 +131,17 @@ func (t *Tool) typedExecutor() (tool.Executor, error) {
 		Encode: func(value tool.Result) (tool.Result, error) {
 			return value, nil
 		},
-		Outcome: func(value tool.Result) tool.Outcome {
-			outcome := tool.OutcomeFromResult(value)
-			if evidence, ok := value.Metadata[verify.EvidenceMetadataKey].(verify.Evidence); ok {
-				copy := evidence
-				outcome.Facts = &tool.OutcomeFacts{Verification: &copy}
-			}
-			return outcome
-		},
+		Outcome: verificationOutcome,
 	})
+}
+
+func verificationOutcome(value tool.Result) tool.Outcome {
+	outcome := tool.OutcomeFromResult(value)
+	if evidence, ok := value.Metadata[verify.EvidenceMetadataKey].(verify.Evidence); ok {
+		copy := evidence
+		outcome.Facts = &tool.OutcomeFacts{Verification: &copy}
+	}
+	return outcome
 }
 
 func (t *Tool) runTyped(ctx context.Context, value input) (tool.Result, error) {
@@ -266,7 +272,7 @@ func (t *Tool) executeVerifier(
 
 func (t *Tool) runProcess(ctx context.Context, command string) (process.Result, error) {
 	options := process.Options{
-		Command: command, Dir: t.root, Sandbox: t.sandbox,
+		Command: failFastShellCommand(command), Dir: t.root, Sandbox: t.sandbox,
 		RequireStrongSandbox: true, WorkspaceReadOnly: true,
 	}
 	if t.run != nil {
@@ -279,6 +285,10 @@ func (t *Tool) runProcess(ctx context.Context, command string) (process.Result, 
 	defer directory.Close()
 	options.DirFile = directory
 	return process.Run(ctx, options)
+}
+
+func failFastShellCommand(command string) string {
+	return "set -e\n" + command
 }
 
 func appendCheckOutput(target *strings.Builder, name, output string) {

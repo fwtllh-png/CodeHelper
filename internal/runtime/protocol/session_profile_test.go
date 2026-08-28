@@ -9,11 +9,10 @@ func TestSessionProfilePatchRevisionAndPromptCacheReset(t *testing.T) {
 	current := testSessionProfile()
 	mode := "plan"
 	planning := "required"
-	planApproval := "auto"
 	posture := "never"
 	updated, err := ApplySessionProfilePatch(current, SessionProfilePatch{
 		Mode: &mode, PlanningPolicy: &planning,
-		PlanApproval: &planApproval, ApprovalPosture: &posture,
+		ApprovalPosture: &posture,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -21,9 +20,8 @@ func TestSessionProfilePatchRevisionAndPromptCacheReset(t *testing.T) {
 	if updated.Profile.Revision != 2 ||
 		updated.Profile.PromptCacheRevision != 2 ||
 		!updated.PromptCacheReset ||
-		updated.ResetReason != "mode,planning_policy,plan_approval" ||
+		updated.ResetReason != "mode,planning_policy" ||
 		updated.Profile.PlanningPolicy != planning ||
-		updated.Profile.PlanApproval != planApproval ||
 		updated.Profile.ApprovalPosture != posture {
 		t.Fatalf("updated profile = %+v", updated)
 	}
@@ -47,6 +45,12 @@ func TestSessionProfilePatchNoopDoesNotAdvanceRevision(t *testing.T) {
 
 func TestSessionProfileValidationRejectsUnsafeOrUnsupportedValues(t *testing.T) {
 	current := testSessionProfile()
+	manual := "manual"
+	current.PlanApproval = manual
+	if err := current.Validate(); err == nil {
+		t.Fatal("manual Plan approval was accepted")
+	}
+	current.PlanApproval = ""
 	invalid := "turbo"
 	if _, err := ApplySessionProfilePatch(
 		current,
@@ -170,7 +174,6 @@ func testSessionProfile() SessionProfile {
 		Revision:            1,
 		Mode:                "act",
 		PlanningPolicy:      "adaptive",
-		PlanApproval:        "manual",
 		Provider:            "fixture",
 		Model:               "fixture-model",
 		ReasoningEffort:     "low",

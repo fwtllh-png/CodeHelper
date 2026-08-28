@@ -70,6 +70,11 @@ func NormalizeEffect(invocation Invocation) Effect {
 		default:
 			return effect(EffectAgentLifecycle, RiskHigh, "bounded")
 		}
+	case strongProcessUsesOnlyLoopback(invocation):
+		// Local fixture servers stay inside the Strong Sandbox boundary. Treat
+		// their exact localhost grant like bounded network read so auto posture
+		// can review it without repeatedly asking for human approval.
+		return effect(EffectNetworkRead, RiskMedium, "bounded")
 	case invocation.Capability == tool.CapabilityNetwork || resources&4 != 0:
 		if invocation.Access == tool.AccessRead && resources&1 == 0 {
 			return effect(EffectNetworkRead, RiskMedium, "bounded")
@@ -86,6 +91,30 @@ func NormalizeEffect(invocation Invocation) Effect {
 	default:
 		return effect(EffectExternalMutation, RiskHigh, "irreversible")
 	}
+}
+
+func strongProcessUsesOnlyLoopback(invocation Invocation) bool {
+	if invocation.Capability != tool.CapabilityProcess ||
+		invocation.Sandbox != tool.SandboxStrong {
+		return false
+	}
+	found := false
+	for _, resource := range invocation.Resources {
+		switch resource.Kind {
+		case "host", "url":
+			if resource.Protocol != "loopback" ||
+				resource.ID != "localhost" ||
+				!resource.AllowPrivate {
+				return false
+			}
+			found = true
+		case "file", "directory":
+			if resource.Access != tool.AccessRead {
+				return false
+			}
+		}
+	}
+	return found
 }
 
 func effect(kind EffectKind, risk RiskLevel, reversibility string) Effect {

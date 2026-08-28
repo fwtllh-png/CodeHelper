@@ -13,7 +13,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
@@ -318,7 +317,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if journalErr != nil {
 			if terminalErr := kernel.FailBeforeJournal(
 				context.Background(),
-				journalErr.Error(),
+				protocol.ProblemOf(journalErr),
 			); terminalErr != nil {
 				return result, errors.Join(journalErr, terminalErr)
 			}
@@ -709,12 +708,15 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				nil,
 			)
 		}
-		message := fmt.Sprintf(
-			"turn blocked after %s convergence budget was exhausted (%d/%d)",
-			convergence.Cause,
-			convergence.Used,
-			convergence.Limit,
-		)
+		message := "turn declared incomplete with resumable pending actions"
+		if convergence.Cause != turnkernel.ConvergenceIncomplete {
+			message = fmt.Sprintf(
+				"turn blocked after %s convergence budget was exhausted (%d/%d)",
+				convergence.Cause,
+				convergence.Used,
+				convergence.Limit,
+			)
+		}
 		blocked := protocol.NewProblem(
 			protocol.CodeConflict,
 			message,
@@ -910,9 +912,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			if completed {
 				return result, nil
 			}
-		}
-		if contextview.StepBudgetWarningRemaining(spec.Limits.MaxSteps, step) > 0 {
-			transaction = append(transaction, contextview.StepBudgetFeedback(e.turn, step, spec.Limits.MaxSteps, kernel.Snapshot(), cache.SuppressedNonRetryableCalls()))
 		}
 		progressSignature := e.progressSignature(kernel)
 		progress, err = kernel.ObserveProgress(progressSignature)

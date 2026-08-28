@@ -16,7 +16,7 @@ const (
 	readToolSet = ",search_text,search_files,search_definition," +
 		"search_references,file_read,file_list,file_write,file_edit," +
 		"file_apply,shell_read,exec_command,write_stdin,quality_test," +
-		"quality_verify,project_map,"
+		"quality_verify,quality_process_smoke,project_map,"
 	writeToolSet     = ",search_related_tests,quality_diagnostics,"
 	maxRelevantTools = 4
 )

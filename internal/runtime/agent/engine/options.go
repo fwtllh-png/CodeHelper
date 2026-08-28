@@ -12,15 +12,18 @@ import (
 
 func normalizeEngineOptions(options *Options) error {
 	summaryBytes := options.SummaryMaxBytes
+	capacity := agentcontext.ResolveCapacity(
+		options.Route,
+		options.MaxOutputTokens,
+		options.Budget.MaxTurnTokens,
+		options.Budget.MaxTokens,
+	)
 	if options.Context.TruthRetention.TruthMaxBytes <= 0 {
 		options.Context.TruthRetention.TruthMaxBytes =
-			agentcontext.DefaultRetentionPolicy().TruthMaxBytes
-		if summaryBytes > 0 {
-			options.Context.TruthRetention.TruthMaxBytes = min(
-				options.Context.TruthRetention.TruthMaxBytes,
-				max(256, summaryBytes-256),
+			truthMaxBytesForCapacity(
+				capacity.HardInputTokens,
+				summaryBytes,
 			)
-		}
 	}
 	options.Context.TruthRetention =
 		options.Context.TruthRetention.Normalized()
@@ -54,12 +57,6 @@ func normalizeEngineOptions(options *Options) error {
 		options.Context.OwnerDeltaMaxBytes =
 			manifestDefaults.OwnerDeltaMaxBytes
 	}
-	capacity := agentcontext.ResolveCapacity(
-		options.Route,
-		options.MaxOutputTokens,
-		options.Budget.MaxTurnTokens,
-		options.Budget.MaxTokens,
-	)
 	prepareLimit, compactLimit, emergencyLimit := agentcontext.WindowThresholds(
 		options.Context.Window,
 		capacity.HardInputTokens,
@@ -85,6 +82,14 @@ func normalizeEngineOptions(options *Options) error {
 		options.MaxRetryDelay = 2 * time.Minute
 	}
 	return nil
+}
+
+func truthMaxBytesForCapacity(hardInputTokens uint64, summaryMaxBytes int) int {
+	limit := int(min(hardInputTokens, uint64(1<<20)))
+	if summaryMaxBytes > 0 {
+		limit = min(limit, summaryMaxBytes-256)
+	}
+	return limit
 }
 
 func waitRetryDelay(ctx context.Context, delay time.Duration) error {

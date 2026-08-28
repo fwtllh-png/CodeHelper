@@ -159,27 +159,27 @@ const (
 )
 
 type SessionPlanArtifact struct {
-	Version         int                `json:"version"`
-	ID              string             `json:"id"`
-	SessionID       string             `json:"session_id"`
-	ThreadID        ThreadID           `json:"thread_id"`
-	TurnID          TurnID             `json:"turn_id"`
-	Cursor          Cursor             `json:"cursor"`
-	Status          PlanArtifactStatus `json:"status"`
-	Body            string             `json:"body"`
-	ProfileRevision uint64             `json:"profile_revision"`
-	CanImplement    bool               `json:"can_implement"`
-	CanAutopilot    bool               `json:"can_autopilot"`
-	CreatedAt       time.Time          `json:"created_at"`
+	Version                int                `json:"version"`
+	ID                     string             `json:"id"`
+	SessionID              string             `json:"session_id"`
+	ThreadID               ThreadID           `json:"thread_id"`
+	TurnID                 TurnID             `json:"turn_id"`
+	Cursor                 Cursor             `json:"cursor"`
+	Status                 PlanArtifactStatus `json:"status"`
+	Body                   string             `json:"body"`
+	ProfileRevision        uint64             `json:"profile_revision"`
+	ExecutionProfileDigest string             `json:"execution_profile_digest,omitempty"`
+	CanImplement           bool               `json:"can_implement"`
+	CanAutopilot           bool               `json:"can_autopilot"`
+	CreatedAt              time.Time          `json:"created_at"`
 }
 
 func (p SessionPlanArtifact) Validate() error {
 	if p.Version != CheckpointProtocolVersion ||
-		!validProfileIdentifier(p.ID) ||
-		!validProfileIdentifier(p.SessionID) ||
+		!validProfileIdentifier(p.ID) || !validProfileIdentifier(p.SessionID) ||
 		!validProfileIdentifier(string(p.ThreadID)) ||
 		!validProfileIdentifier(string(p.TurnID)) ||
-		p.ProfileRevision == 0 ||
+		p.ProfileRevision == 0 || (p.ExecutionProfileDigest != "" && !validSHA256(p.ExecutionProfileDigest)) ||
 		p.CreatedAt.IsZero() {
 		return errors.New("Session Plan Artifact identity is invalid")
 	}

@@ -48,6 +48,7 @@ const (
 	SessionStatusAwaitingApproval SessionLifecycleStatus = "awaiting_approval"
 	SessionStatusAwaitingInput    SessionLifecycleStatus = "awaiting_input"
 	SessionStatusCompleted        SessionLifecycleStatus = "completed"
+	SessionStatusBlocked          SessionLifecycleStatus = "blocked"
 	SessionStatusFailed           SessionLifecycleStatus = "failed"
 	SessionStatusInterrupted      SessionLifecycleStatus = "interrupted"
 )
@@ -270,6 +271,7 @@ func validSessionLifecycleStatus(status SessionLifecycleStatus) bool {
 		SessionStatusAwaitingApproval,
 		SessionStatusAwaitingInput,
 		SessionStatusCompleted,
+		SessionStatusBlocked,
 		SessionStatusFailed,
 		SessionStatusInterrupted:
 		return true

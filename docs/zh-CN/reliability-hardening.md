@@ -25,15 +25,21 @@ Runtime 区分四种边界：
 | --- | --- | --- |
 | 模型 Context | Active Route Catalog | Compaction，仍不可容纳则 `resource_exhausted` |
 | Token/Cost | 用户或操作员配置；默认按模型/父预算派生 | 结构化阻塞并保留 Resume |
-| 普通 Step | 显式 `max_steps`；`0` 表示未设置 | 进入一次受限 Finalization |
-| No-progress | Kernel 的结构化进展状态 | 收窄能力并请求收敛，不直接伪造失败 |
+| Progress Lease | 显式 `max_steps`；结构化进展续期，`0` 表示未设置 | 收窄能力并进入一次受限 Finalization |
+| No-progress | Kernel 的结构化进展状态 | 消耗 Progress Lease，不按累计步骤截断 |
 
 单 Turn 默认 Token Ceiling 来自当前模型 Context Window。Child Tree 默认预算由父 Turn
 预算和并发度派生；Child 单次 Reservation 只占用剩余额度。显式配置是 Operator
 Ceiling，不能扩大 Provider 或父级容量。
 
 Progress 包括有效 Mutation、Plan 推进、Verification、Completion，以及按 Turn Intent
-定义的新路径或 Evidence。持续有进展的工作不会仅因隐式固定计数被终止。
+定义的新路径或 Evidence。No-progress 的收敛、Finish-only 与终止位置按显式
+`max_steps` 的三分之一、三分之二和完整预算派生；`max_steps=0` 时不启用 Sample
+计数型 No-progress 上限。持续有进展的工作不会仅因隐式固定计数被终止。
+
+Web 的 Stop 操作使用标准 `user_interrupted` 原因，并把已产生 Workspace Mutation 的
+Journal 置为 Suspended，供 Continue 恢复；Shutdown、替换或其他取消原因仍按各自终态
+策略处理，不能把“暂停”降级为删除当前 Turn 产物的 Rollback。
 
 ## Provider Stream
 

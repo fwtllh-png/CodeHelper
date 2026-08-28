@@ -173,7 +173,11 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 			tracecontext.Environment(ctx)...,
 		)
 	}
-	environment = ensureGoToolchain(environment)
+	if policy, ok := sandbox.BackendPolicy(options.Sandbox); ok {
+		environment = ensureToolchains(environment, policy.Toolchains)
+	} else {
+		environment = ensureGoToolchain(environment)
+	}
 	environment = ensureGitToolchain(environment)
 	if options.WorkspaceReadOnly {
 		environment = setEnvironmentValue(environment, "GIT_OPTIONAL_LOCKS", "0")
@@ -498,6 +502,21 @@ func ensureGoToolchain(environment []string) []string {
 		}
 	}
 	return prependPATH(environment, prepend...)
+}
+
+func ensureToolchains(
+	environment []string,
+	exposure sandbox.ToolchainExposure,
+) []string {
+	environment = prependPATH(environment, exposure.BinDirs...)
+	for _, entry := range exposure.Environment {
+		name, value, ok := strings.Cut(entry, "=")
+		if !ok || name == "" || value == "" {
+			continue
+		}
+		environment = setEnvironmentValue(environment, name, value)
+	}
+	return environment
 }
 
 func ensureGitToolchain(environment []string) []string {

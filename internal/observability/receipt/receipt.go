@@ -289,7 +289,8 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 	switch event.ToolCall.Name {
 	case "turn_complete", "update_plan", "submit_plan", "request_user_input":
 		kind = "control"
-	case "quality_test", "quality_diagnostics", "quality_review", "quality_verify":
+	case "quality_test", "quality_diagnostics", "quality_review", "quality_verify",
+		"quality_process_smoke":
 		kind = "verification"
 	}
 	if r.toolExecution == nil {

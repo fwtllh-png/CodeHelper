@@ -25,9 +25,23 @@ describe("background activity", () => {
       session("running", "one"),
       session("running", "two")
     ])).toBe("(2) Working · CodeHelper");
+    expect(activityDocumentTitle([
+      session("interrupted", "paused")
+    ])).toBe("(1) Paused · CodeHelper");
+    expect(activityDocumentTitle([
+      session("blocked", "blocked")
+    ])).toBe("(1) Blocked · CodeHelper");
     expect(sessionStatusPresentation("completed")).toEqual({
       label: "Completed",
       tone: "complete"
+    });
+    expect(sessionStatusPresentation("interrupted")).toEqual({
+      label: "Paused",
+      tone: "warning"
+    });
+    expect(sessionStatusPresentation("blocked")).toEqual({
+      label: "Blocked",
+      tone: "warning"
     });
   });
 

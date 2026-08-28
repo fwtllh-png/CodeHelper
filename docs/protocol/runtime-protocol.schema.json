@@ -191,9 +191,6 @@
                   "model": {
                     "type": "string"
                   },
-                  "plan_approval": {
-                    "type": "string"
-                  },
                   "planning_policy": {
                     "type": "string"
                   },
@@ -304,9 +301,6 @@
                 "model": {
                   "type": "string"
                 },
-                "plan_approval": {
-                  "type": "string"
-                },
                 "planning_policy": {
                   "type": "string"
                 },
@@ -403,9 +397,6 @@
               "type": "string"
             },
             "model": {
-              "type": "string"
-            },
-            "plan_approval": {
               "type": "string"
             },
             "planning_policy": {
@@ -2185,6 +2176,9 @@
             "cursor": {
               "type": "integer"
             },
+            "execution_profile_digest": {
+              "type": "string"
+            },
             "id": {
               "type": "string"
             },
@@ -2254,9 +2248,6 @@
           "type": "string"
         },
         "model": {
-          "type": "string"
-        },
-        "plan_approval": {
           "type": "string"
         },
         "planning_policy": {

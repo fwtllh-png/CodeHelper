@@ -127,10 +127,13 @@ func (e *executor) Descriptor() tool.Descriptor {
 			},
 		}
 	case "update_plan", "submit_plan":
-		description := "Replace the structured working plan projected through ContextLedger."
+		description := "Replace the structured working plan projected through ContextLedger. " +
+			"Call this before starting a planned step and immediately after its " +
+			"evidence is complete; do not defer status updates until Turn completion."
 		if e.name == "submit_plan" {
 			description = "Submit a structured, user-reviewable implementation plan. " +
-				"Use this in plan mode or when the active planning policy requires a plan."
+				"Use independently verifiable steps in plan mode or when the active " +
+				"planning policy requires a plan."
 		}
 		return tool.Descriptor{
 			Name: e.name, Description: description,
@@ -338,48 +341,28 @@ func normalizeInputOptions(values []string) ([]string, error) {
 }
 
 func (t *Tools) updatePlan(raw json.RawMessage, submitted bool) (tool.Result, error) {
+	plan, err := ParseSubmittedPlan(raw)
+	if err != nil {
+		return tool.Result{}, err
+	}
 	if submitted {
-		plan, err := ParseSubmittedPlan(raw)
-		if err != nil {
-			return tool.Result{}, err
-		}
 		plan.FileBaseline, err = t.capturePlanBaseline(plan)
 		if err != nil {
 			return tool.Result{}, err
 		}
-		contextPlan := plan.ContextPlan()
-		if err := t.applyPlan(contextPlan); err != nil {
-			return tool.Result{}, err
-		}
-		content, err := json.Marshal(plan)
-		return tool.Result{
-			Content: string(content), Metadata: map[string]any{
-				"steps": len(plan.Steps), "submitted_plan": true,
-			},
-		}, err
 	}
-	var plan Plan
-	if err := json.Unmarshal(raw, &plan); err != nil {
-		return tool.Result{}, err
-	}
-	if len(plan.Steps) == 0 {
-		return tool.Result{}, errors.New("steps are required")
-	}
-	for index := range plan.Steps {
-		plan.Steps[index].Title = strings.TrimSpace(plan.Steps[index].Title)
-		if plan.Steps[index].Title == "" {
-			return tool.Result{}, errors.New("plan steps must have a title")
-		}
-		if plan.Steps[index].Status == "" {
-			plan.Steps[index].Status = StepPending
-		}
-	}
-	if err := t.applyPlan(plan); err != nil {
+	if err := t.applyPlan(plan.ContextPlan()); err != nil {
 		return tool.Result{}, err
 	}
 	content, err := json.Marshal(plan)
+	metadata := map[string]any{
+		"steps": len(plan.Steps), "plan_delta": true,
+	}
+	if submitted {
+		metadata["submitted_plan"] = true
+	}
 	return tool.Result{
-		Content: string(content), Metadata: map[string]any{"steps": len(plan.Steps)},
+		Content: string(content), Metadata: metadata,
 	}, err
 }
 

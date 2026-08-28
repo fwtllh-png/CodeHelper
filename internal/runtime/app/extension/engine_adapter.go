@@ -521,7 +521,7 @@ func (a *EngineAdapter) StartTurn(
 				}); err != nil {
 					return err
 				}
-				if submitted, _ := event.Result.Metadata["submitted_plan"].(bool); submitted && !event.Result.IsError {
+				if planDelta, _ := event.Result.Metadata["plan_delta"].(bool); planDelta && !event.Result.IsError {
 					_, err := interact.ParseSubmittedPlan([]byte(event.Result.Content))
 					if err != nil {
 						return err
@@ -591,7 +591,7 @@ func (a *EngineAdapter) StartTurn(
 	if planApproved {
 		mode, permission := security.ModeValue(), security.PermissionValue()
 		a.engine.SetPolicyMode(policy.ModeAct)
-		security.ApprovePlan()
+		security.SubmitPlan()
 		if planTransition == protocol.PlanTransitionAutopilot {
 			a.engine.SetPermission(policy.PermissionAuto)
 		}

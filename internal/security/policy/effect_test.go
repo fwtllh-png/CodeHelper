@@ -157,6 +157,22 @@ func TestEffectRiskDrivesApprovalWithoutToolNameExceptions(t *testing.T) {
 			want: ActionAsk,
 		},
 		{
+			name:       "auto strong loopback fixture auto reviews",
+			permission: PermissionAuto,
+			call: effectInvocation(
+				"quality_test",
+				CapabilityProcess,
+				tool.AccessTree,
+				tool.SandboxStrong,
+				tool.Resource{
+					Kind: "host", ID: "localhost", Access: tool.AccessWrite,
+					Protocol: "loopback", Methods: []string{"BIND", "CONNECT"},
+					AllowPrivate: true,
+				},
+			),
+			want: ActionAllow,
+		},
+		{
 			name: "plugin bypass allows", permission: PermissionBypass,
 			call: effectInvocation("plugin_call", CapabilityPlugin, tool.AccessTree, tool.SandboxStrong),
 			want: ActionAllow,
@@ -226,8 +242,12 @@ func effectInvocation(
 	sandbox tool.SandboxRequirement,
 	resources ...tool.Resource,
 ) Invocation {
+	arguments := json.RawMessage(`{}`)
+	if capability == tool.CapabilityProcess {
+		arguments = json.RawMessage(`{"command":"fixture"}`)
+	}
 	return Invocation{
-		CallID: name, Tool: name, Arguments: json.RawMessage(`{}`),
+		CallID: name, Tool: name, Arguments: arguments,
 		Resources: resources, Capability: capability,
 		Access: access, Sandbox: sandbox,
 		Journaled: name == "file_write" || name == "file_edit" ||

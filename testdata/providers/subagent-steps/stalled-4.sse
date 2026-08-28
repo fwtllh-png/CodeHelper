@@ -1,0 +1,5 @@
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_list_again_4","function":{"name":"file_list","arguments":"{\"path\":\".\"}"}}]},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":21,"completion_tokens":4}}
+
+data: [DONE]

@@ -17,7 +17,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
 
 type configModule struct{}
@@ -90,11 +89,7 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 	if err != nil {
 		return fmt.Errorf("resolve sandbox helper executable: %w", err)
 	}
-	backend, err := egress.NewManagedBackend(state.provider.egress, sandbox.Options{
-		WorkspaceRoot: execution.Workspace, HelperPath: helperPath,
-		HostReadRoots: state.config.diagnosticReadRoots,
-		HostReadFiles: state.config.diagnosticReadFiles,
-	}, newPlatformBackend)
+	backend, err := newWorkspaceSandbox(state, helperPath)
 	if err != nil {
 		return fmt.Errorf("create sandbox: %w", err)
 	}

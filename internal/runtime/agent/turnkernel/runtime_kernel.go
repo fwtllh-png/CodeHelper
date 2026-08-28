@@ -901,7 +901,7 @@ func (s *RuntimeKernel) Intent() protocol.TurnIntent {
 }
 
 func (s *RuntimeKernel) ProgressSignature(
-	planDone int,
+	completedPlanSteps int,
 	evidenceDigest string,
 ) string {
 	s.mu.Lock()
@@ -930,7 +930,7 @@ func (s *RuntimeKernel) ProgressSignature(
 			"completion=%t/%s;operation_calls=%d;lifecycle_calls=%d;evidence=%s",
 		s.state.Intent,
 		s.state.MutationRevision,
-		planDone,
+		completedPlanSteps,
 		s.state.Verification.Status,
 		s.state.Verification.Action,
 		s.state.Verification.Mutation,

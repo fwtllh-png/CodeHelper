@@ -167,8 +167,13 @@ func TestUpdatePlanAppearsInContextReceipts(t *testing.T) {
 		"critical_files": []any{"internal/adapter/tool/interact/interact.go"},
 		"handoff_packet": "next: land relay",
 	})
-	if result.IsError || !strings.Contains(result.Content, "wire input") {
+	if result.IsError || result.Metadata["plan_delta"] != true ||
+		result.Metadata["submitted_plan"] != nil ||
+		!strings.Contains(result.Content, "wire input") {
 		t.Fatalf("result = %+v", result)
+	}
+	if _, err := interact.ParseSubmittedPlan([]byte(result.Content)); err != nil {
+		t.Fatalf("update_plan result is not a structured Plan Artifact: %v", err)
 	}
 	if !strings.Contains(result.Content, "ship interact tools") {
 		t.Fatalf("rich fields missing: %+v", result)
@@ -255,7 +260,8 @@ func TestSubmitPlanNormalizesStructuredSteps(t *testing.T) {
 			},
 		},
 	})
-	if result.IsError || result.Metadata["submitted_plan"] != true ||
+	if result.IsError || result.Metadata["plan_delta"] != true ||
+		result.Metadata["submitted_plan"] != true ||
 		!strings.Contains(result.Content, `"id":"implement"`) {
 		t.Fatalf("result = %+v", result)
 	}

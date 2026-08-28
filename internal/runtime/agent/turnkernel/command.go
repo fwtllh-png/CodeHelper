@@ -280,6 +280,7 @@ type CompletionCandidate struct {
 	ToolError        bool
 	QualityRequired  bool
 	QualityCalls     []string
+	PlanOpenSteps    int
 }
 
 type CompletionEvaluated struct {

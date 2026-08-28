@@ -37,16 +37,23 @@ export function activityDocumentTitle(
     (session) => session.status === "awaiting_input"
   ).length;
   const failed = sessions.filter(
-    (session) =>
-      session.status === "failed" || session.status === "interrupted"
+    (session) => session.status === "failed"
+  ).length;
+  const blocked = sessions.filter(
+    (session) => session.status === "blocked"
+  ).length;
+  const paused = sessions.filter(
+    (session) => session.status === "interrupted"
   ).length;
   const running = sessions.filter(
     (session) => session.status === "running"
   ).length;
   const attention = approvals + inputs;
   if (attention > 0) return `(${attention}) Action required · CodeHelper`;
+  if (blocked > 0) return `(${blocked}) Blocked · CodeHelper`;
   if (failed > 0) return `(${failed}) Failed · CodeHelper`;
   if (running > 0) return `(${running}) Working · CodeHelper`;
+  if (paused > 0) return `(${paused}) Paused · CodeHelper`;
   return "CodeHelper";
 }
 
@@ -62,8 +69,10 @@ export function sessionStatusPresentation(
     return {label: "Input required", tone: "warning"};
   case "failed":
     return {label: "Failed", tone: "error"};
+  case "blocked":
+    return {label: "Blocked", tone: "warning"};
   case "interrupted":
-    return {label: "Interrupted", tone: "error"};
+    return {label: "Paused", tone: "warning"};
   case "completed":
     return {label: "Completed", tone: "complete"};
   default:
@@ -121,6 +130,11 @@ function notificationMessage(
     return {
       title: "CodeHelper task failed",
       body: "A background Session failed. Open CodeHelper to review it."
+    };
+  case "blocked":
+    return {
+      title: "CodeHelper task blocked",
+      body: "A background Session has resumable pending work."
     };
   case "interrupted":
     return {

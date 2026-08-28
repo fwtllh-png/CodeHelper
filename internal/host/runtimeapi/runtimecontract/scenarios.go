@@ -371,7 +371,6 @@ func sessionProfileRevisionIsShared(t *testing.T, host Host, _ Setup) {
 	if snapshot.Profile.Revision == 0 ||
 		snapshot.Profile.PromptCacheRevision == 0 ||
 		snapshot.Profile.PlanningPolicy != "adaptive" ||
-		snapshot.Profile.PlanApproval != "manual" ||
 		snapshot.Profile.Provider == "" ||
 		snapshot.Profile.Model == "" ||
 		snapshot.Capabilities.Provider != snapshot.Profile.Provider ||

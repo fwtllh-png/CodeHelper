@@ -81,23 +81,27 @@ func (r *Service) PrepareTurnRecovery(
 	if err := ensureSessionQuiescent(current, string(request.Action)); err != nil {
 		return TurnRecoveryPreparation{}, err
 	}
+	var recoveredProfile *protocol.SessionProfile
 	if r.SessionProfilesAvailable() {
-		if _, err := r.RestoreSessionProfile(
+		snapshot, err := r.RestoreSessionProfile(
 			ctx,
 			request.SessionID,
 			current.ThreadID,
-		); err != nil {
+		)
+		if err != nil {
 			return TurnRecoveryPreparation{}, fmt.Errorf(
 				"restore current session profile for Turn recovery: %w",
 				err,
 			)
 		}
+		recoveredProfile = &snapshot.Profile
 	}
 	events, err := r.ReplayArtifactEvents(ctx, 0)
 	if err != nil {
 		return TurnRecoveryPreparation{}, err
 	}
 	var started *protocol.TurnStartedData
+	var submittedPlan *protocol.PlanDeltaData
 	toolStarts := make(map[string]recoveryToolStart)
 	var closedTools []RecoveryToolEvidence
 	var sourceReceipt *protocol.ExecutionReceiptData
@@ -132,6 +136,11 @@ func (r *Service) PrepareTurnRecovery(
 				Changes:         append([]protocol.FileChange(nil), data.Changes...),
 			})
 			delete(toolStarts, data.CallID)
+		case *protocol.PlanDeltaData:
+			if data.ArtifactID != "" {
+				copy := *data
+				submittedPlan = &copy
+			}
 		case *protocol.ExecutionReceiptData:
 			copy := *data
 			sourceReceipt = &copy
@@ -170,6 +179,16 @@ func (r *Service) PrepareTurnRecovery(
 	intent := protocol.NormalizeTurnIntent(started.Intent)
 	if !intent.Valid() {
 		return TurnRecoveryPreparation{}, runtimeProblem(protocol.CodeConflict, "source Turn has no valid durable intent", nil)
+	}
+	planID := started.PlanID
+	planTransition := started.PlanTransition
+	planProfileRevision := started.ProfileRevision
+	if planID == "" && submittedPlan != nil && sourceReceipt != nil &&
+		strings.TrimSpace(sourceReceipt.Plan) != "" &&
+		recoveredProfile != nil {
+		planID = submittedPlan.ArtifactID
+		planTransition = protocol.PlanTransitionAutopilot
+		planProfileRevision = submittedPlan.ProfileRevision
 	}
 	prompt := sourcePrompt
 	displayPrompt := sourceDisplayPrompt
@@ -216,8 +235,8 @@ func (r *Service) PrepareTurnRecovery(
 		IdempotencyKey: request.IdempotencyKey,
 		Recovery: protocol.TurnRecoveryContext{
 			Action: request.Action, SourceTurnID: request.SourceTurnID,
-			PlanID: started.PlanID, PlanTransition: started.PlanTransition,
-			ProfileRevision: started.ProfileRevision,
+			PlanID: planID, PlanTransition: planTransition,
+			ProfileRevision: planProfileRevision,
 		},
 	}, nil
 }
@@ -851,7 +870,7 @@ func (r *Service) SessionPlan(
 	if err != nil {
 		return protocol.SessionPlanSnapshot{}, err
 	}
-	compatible := profile.Profile.Revision == artifact.ProfileRevision &&
+	compatible := planProfileCompatible(artifact, profile.Profile) &&
 		r.ensurePlanExecutionReady(ctx, current, artifact) == nil
 	artifact.CanImplement = artifact.CanImplement && compatible
 	artifact.CanAutopilot = artifact.CanAutopilot && compatible
@@ -895,7 +914,7 @@ func (r *Service) PreparePlanExecution(
 	if err != nil {
 		return PlanExecutionPreparation{}, err
 	}
-	if profile.Profile.Revision != artifact.ProfileRevision {
+	if !planProfileCompatible(artifact, profile.Profile) {
 		return PlanExecutionPreparation{}, retryableProblem(
 			protocol.CodeConflict,
 			"Plan Artifact Profile Revision is stale",
@@ -987,7 +1006,7 @@ func (r *Service) PreparePlanExecutionTo(
 	if err != nil {
 		return PlanExecutionPreparation{}, err
 	}
-	if sourceProfile.Profile.Revision != artifact.ProfileRevision {
+	if !planProfileCompatible(artifact, sourceProfile.Profile) {
 		return PlanExecutionPreparation{}, revisionProblem(
 			"Plan Artifact Profile Revision is stale",
 			planID,
@@ -1063,7 +1082,6 @@ func samePlanTargetProfile(
 ) bool {
 	return source.Mode == target.Mode &&
 		source.PlanningPolicy == target.PlanningPolicy &&
-		source.PlanApproval == target.PlanApproval &&
 		source.Provider == target.Provider &&
 		source.Model == target.Model &&
 		source.ReasoningEffort == target.ReasoningEffort &&
@@ -1071,6 +1089,17 @@ func samePlanTargetProfile(
 		source.ApprovalPosture == target.ApprovalPosture &&
 		source.ExecutionTarget == target.ExecutionTarget &&
 		source.MaxSteps == target.MaxSteps
+}
+
+func planProfileCompatible(
+	artifact protocol.SessionPlanArtifact,
+	profile protocol.SessionProfile,
+) bool {
+	if artifact.ExecutionProfileDigest == "" {
+		return profile.Revision == artifact.ProfileRevision
+	}
+	digest, err := PlanExecutionProfileDigest(profile)
+	return err == nil && digest == artifact.ExecutionProfileDigest
 }
 func (r *Service) checkpointState(
 	ctx context.Context,
@@ -1238,19 +1267,30 @@ func (r *Service) PersistSessionArtifact(
 			r.LogArtifactError("resolve Plan Session", event, err)
 			return
 		}
+		profile, err := r.StoredProfile(ctx, sessionID, r.DefaultProfile())
+		if err != nil {
+			r.LogArtifactError("resolve Plan Profile", event, err)
+			return
+		}
+		executionProfileDigest, err := PlanExecutionProfileDigest(profile)
+		if err != nil {
+			r.LogArtifactError("digest Plan Profile", event, err)
+			return
+		}
 		_, err = r.ArtifactStore().SavePlan(ctx, protocol.SessionPlanArtifact{
-			Version:         protocol.CheckpointProtocolVersion,
-			ID:              data.ArtifactID,
-			SessionID:       sessionID,
-			ThreadID:        event.ThreadID,
-			TurnID:          event.TurnID,
-			Cursor:          event.Sequence,
-			Status:          protocol.PlanArtifactReady,
-			Body:            data.Body,
-			ProfileRevision: data.ProfileRevision,
-			CanImplement:    data.CanImplement,
-			CanAutopilot:    data.CanAutopilot,
-			CreatedAt:       event.CreatedAt,
+			Version:                protocol.CheckpointProtocolVersion,
+			ID:                     data.ArtifactID,
+			SessionID:              sessionID,
+			ThreadID:               event.ThreadID,
+			TurnID:                 event.TurnID,
+			Cursor:                 event.Sequence,
+			Status:                 protocol.PlanArtifactReady,
+			Body:                   data.Body,
+			ProfileRevision:        data.ProfileRevision,
+			ExecutionProfileDigest: executionProfileDigest,
+			CanImplement:           data.CanImplement,
+			CanAutopilot:           data.CanAutopilot,
+			CreatedAt:              event.CreatedAt,
 		})
 		if err != nil {
 			r.LogArtifactError("save Plan Artifact", event, err)

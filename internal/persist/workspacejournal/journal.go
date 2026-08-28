@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	ErrUnread = errors.New("read-before-edit required")
-	ErrStale  = errors.New("file changed since last successful read")
+	ErrUnread        = errors.New("read-before-edit required")
+	ErrStale         = errors.New("file changed since last successful read")
+	ErrRetainedDraft = errors.New("workspace journal has a retained draft")
 )
 
 // ReadValidationError identifies the exact workspace-relative path whose
@@ -359,8 +360,9 @@ func (m *Manager) Begin(turnID string) error {
 		return errors.New("workspace journal already has an active turn")
 	}
 	if len(m.drafts) != 0 {
-		return errors.New(
-			"workspace journal has a retained draft; continue, retry, or revert it first",
+		return fmt.Errorf(
+			"%w; continue, retry, or revert it first",
+			ErrRetainedDraft,
 		)
 	}
 	started := time.Now().UTC()

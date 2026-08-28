@@ -85,7 +85,6 @@ describe("RuntimeClient", () => {
   let multipleWorkspaces = false;
   let emptyPrimaryWorkspace = false;
   let activePlan = false;
-  let planTransitionGate: Promise<void> | undefined;
 
   beforeEach(() => {
     requests.length = 0;
@@ -110,7 +109,6 @@ describe("RuntimeClient", () => {
     multipleWorkspaces = false;
     emptyPrimaryWorkspace = false;
     activePlan = false;
-    planTransitionGate = undefined;
     window.history.replaceState(null, "", "/?workspace=workspace-id");
     vi.stubGlobal("WebSocket", FakeWebSocket);
     vi.stubGlobal("crypto", {
@@ -465,19 +463,6 @@ describe("RuntimeClient", () => {
           }
         } : {version: 1});
       }
-      if (route.endsWith("/plan/transition")) {
-        await planTransitionGate;
-        return envelope({
-          operation: {
-            operation_id: "plan-operation",
-            kind: "turn.start",
-            thread_id: "thread",
-            turn_id: "implementation-turn",
-            item_id: "implementation-item",
-            accepted: true
-          }
-        });
-      }
       if (route.endsWith("/task/list")) {
         return envelope({tasks: []});
       }
@@ -795,49 +780,6 @@ describe("RuntimeClient", () => {
     client.stop();
   });
 
-  it("uses a fresh retry-safe identity for each Plan execution attempt", async () => {
-    activePlan = true;
-    const client = new RuntimeClient();
-    await startClient(client);
-
-    await client.transitionPlan("implement");
-
-    const transition = requests.find((request) =>
-      request.route.endsWith("/plan/transition")
-    );
-    expect(transition?.body).toEqual({
-      session_id: "session",
-      plan_id: "plan-id",
-      transition: "implement"
-    });
-    expect(transition?.headers.get("Idempotency-Key"))
-      .toBe("plan:plan-id:execute:request-id");
-    client.stop();
-  });
-
-  it("coalesces duplicate Plan transitions while the request is pending", async () => {
-    activePlan = true;
-    let release = () => {};
-    planTransitionGate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const client = new RuntimeClient();
-    await startClient(client);
-
-    const first = client.transitionPlan("implement");
-    const second = client.transitionPlan("implement");
-    await vi.waitFor(() => expect(requests.filter((request) =>
-      request.route.endsWith("/plan/transition")
-    )).toHaveLength(1));
-    release();
-    await Promise.all([first, second]);
-
-    expect(requests.filter((request) =>
-      request.route.endsWith("/plan/transition")
-    )).toHaveLength(1);
-    client.stop();
-  });
-
   it("submits steering against the active turn without starting another turn", async () => {
     const client = new RuntimeClient();
     await startClient(client);
@@ -852,6 +794,25 @@ describe("RuntimeClient", () => {
       payload: {
         turn_id: "turn-active",
         prompt: "focus on the failing test"
+      }
+    });
+    client.stop();
+  });
+
+  it("uses the resumable interruption reason when stopping a turn", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.cancel("turn-active");
+
+    expect(requests.find((request) =>
+      request.route.endsWith("/operation/submit") &&
+      request.body.kind === "turn.cancel"
+    )?.body).toMatchObject({
+      kind: "turn.cancel",
+      payload: {
+        turn_id: "turn-active",
+        reason: "user_interrupted"
       }
     });
     client.stop();

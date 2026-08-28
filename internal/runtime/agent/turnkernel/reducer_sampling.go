@@ -439,6 +439,8 @@ func applyObserveProgress(
 		limit = policy.ResearchLimit
 	}
 	switch {
+	case limit == 0:
+		progress.Stage = ProgressStageNone
 	case progress.NoProgressSamples >= limit:
 		progress.Stage = ProgressStageExhausted
 	case progress.NoProgressSamples >= finishOnlyAt:
@@ -459,30 +461,8 @@ func applyObserveProgress(
 				Limit: limit,
 			},
 		)
-	} else if executionLimit := effectiveExecutionStepLimit(
-		current,
-	); executionLimit > 0 && command.CompletedSamples >= executionLimit {
-		beginConvergence(
-			transition,
-			ConvergenceRequested{
-				Cause: ConvergenceStepLimit,
-				Used:  command.CompletedSamples,
-				Limit: executionLimit,
-			},
-		)
 	}
 	return nil
-}
-
-func effectiveExecutionStepLimit(state State) uint32 {
-	if state.Policy.ExecutionStepLimit == 0 {
-		return 0
-	}
-	limit := state.Policy.ExecutionStepLimit
-	for _, budget := range state.RepairBudgets {
-		limit += budget.Steps
-	}
-	return limit
 }
 
 func applyConvergenceRequested(
