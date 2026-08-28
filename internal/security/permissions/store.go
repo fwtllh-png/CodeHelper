@@ -69,7 +69,7 @@ func OpenWorkspaceStore(dataDir, workspace string) (*Store, error) {
 }
 
 type Store struct {
-	path   string
+	Path   string
 	bundle Bundle
 	mu     sync.Mutex
 }
@@ -79,7 +79,7 @@ func OpenStore(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Store{path: path, bundle: bundle}, nil
+	return &Store{Path: path, bundle: bundle}, nil
 }
 func (s *Store) Rules() []policy.Rule {
 	if s == nil {
@@ -98,7 +98,7 @@ func (s *Store) AppendAllow(
 	if err != nil {
 		return policy.Rule{}, err
 	}
-	bundle, err := AppendAllow(s.path, rule)
+	bundle, err := AppendAllow(s.Path, rule)
 	if err != nil {
 		return policy.Rule{}, err
 	}

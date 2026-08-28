@@ -5,9 +5,11 @@ import (
 	"time"
 
 	qualitytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/quality"
+	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/security/artifactbroker"
 	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
+	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
 )
 
@@ -22,6 +24,21 @@ func NewWorkspaceBroker(
 	leaseTTL time.Duration,
 ) (*workspacebroker.Runtime, error) {
 	return workspacebroker.New(workspace, leaseAuthority, leaseTTL)
+}
+
+func NewWorkspaceQuery(
+	workspace string,
+	backend sandbox.Backend,
+	leaseAuthority *authority.LeaseAuthority,
+	leaseTTL time.Duration,
+) (*workspacequery.Service, error) {
+	brokers, err := NewWorkspaceBroker(
+		workspace, leaseAuthority, leaseTTL,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return workspacequery.New(workspace, backend, brokers.VCS)
 }
 
 func NewProcessRuntime(

@@ -238,8 +238,7 @@ type Runtime struct {
 	contextManifests sync.Map
 }
 
-// ObserveEvents registers an in-process projection observer. Observers run
-// after durable append and Runtime projection, before external fanout.
+// ObserveEvents registers an observer between projection and external fanout.
 func (r *EventService) ObserveEvents(observer func(protocol.Event)) func() {
 	if r == nil || observer == nil {
 		return func() {}
@@ -518,8 +517,7 @@ func (r *SessionService) SessionStatus(
 	return r.projectSessionActivity(ctx, summary)
 }
 
-// EnsurePlanExecutionReady closes the terminal-publication race without
-// treating the source operation's trailing commit as active work.
+// EnsurePlanExecutionReady closes the terminal-publication race.
 func (r *Runtime) EnsurePlanExecutionReady(
 	ctx context.Context,
 	sessionID string,
@@ -1218,9 +1216,7 @@ func (r *Runtime) Submit(ctx context.Context, operation protocol.Operation) erro
 	return r.OperationService.SubmitWithKey(ctx, operation, "")
 }
 
-// SubmitWithKey adds a caller-scoped idempotency key. Reusing either the
-// operation ID or key with the same canonical payload is a no-op; conflicting
-// reuse is rejected before Engine execution.
+// SubmitWithKey adds a caller-scoped idempotency key with conflict detection.
 func (r *Runtime) SubmitWithKey(
 	ctx context.Context,
 	operation protocol.Operation,
@@ -1279,8 +1275,7 @@ func (r *Runtime) Events(ctx context.Context, cursor protocol.Cursor) (<-chan pr
 	return r.hub.Events(ctx, cursor, 0)
 }
 
-// EventsLimited atomically replays and subscribes like Events, but rejects a
-// replay larger than limit before allocating the subscriber channel.
+// EventsLimited atomically replays and subscribes, rejecting oversized replay.
 func (r *Runtime) EventsLimited(
 	ctx context.Context,
 	cursor protocol.Cursor,
@@ -1292,10 +1287,7 @@ func (r *Runtime) EventsLimited(
 	return r.hub.Events(ctx, cursor, limit)
 }
 
-// ReplayEvents reads at most limit committed events after cursor and reports
-// whether more remain. Unlike EventsLimited it neither registers a subscriber
-// nor fails on overflow, so a host that already holds a live subscription can
-// page through history without duplicating deliveries.
+// ReplayEvents pages committed history without registering a subscriber.
 func (r *Runtime) ReplayEvents(
 	ctx context.Context,
 	cursor protocol.Cursor,

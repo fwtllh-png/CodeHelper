@@ -13,7 +13,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/extensionplan"
 	extensionapp "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
-	"github.com/fwtllh-png/CodeHelper/internal/security/permissions"
 )
 
 type extensionSession struct {
@@ -85,13 +84,11 @@ func (extensionPlanModule) Build(
 	if err != nil {
 		return err
 	}
-	permissionPath, err := permissions.Path(
-		state.config.snapshot.Config.State.DataDir,
-		state.config.execution.Workspace,
-	)
-	if err != nil {
-		return err
+	if state.security.permissions == nil ||
+		state.security.permissions.Path == "" {
+		return errors.New("permission store was not constructed")
 	}
+	permissionPath := state.security.permissions.Path
 	lifecycleStore, err := extensionlifecycle.Open(
 		filepath.Join(filepath.Dir(permissionPath), extensionlifecycle.FileName),
 	)

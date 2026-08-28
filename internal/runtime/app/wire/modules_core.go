@@ -13,9 +13,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
-	"github.com/fwtllh-png/CodeHelper/internal/security/vcsbroker"
 )
 
 type configModule struct{}
@@ -102,19 +100,7 @@ func (platformModule) Build(_ context.Context, state *buildState) error {
 		return fmt.Errorf("create sandbox: %w", err)
 	}
 	session.sandbox = backend
-	workspaceVCS, err := vcsbroker.New(
-		execution.Workspace,
-		state.platform.leaseAuthority,
-		execution.LeaseTimeout,
-	)
-	if err != nil {
-		return fmt.Errorf("create workspace VCS Broker: %w", err)
-	}
-	session.workspaceQuery, err = workspacequery.New(
-		execution.Workspace,
-		backend,
-		workspaceVCS,
-	)
+	session.workspaceQuery, err = builtin.NewWorkspaceQuery(execution.Workspace, backend, state.platform.leaseAuthority, execution.LeaseTimeout)
 	if err != nil {
 		return fmt.Errorf("create workspace query: %w", err)
 	}

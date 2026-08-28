@@ -82,7 +82,8 @@ func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	if snapshot.Mode != policy.ModeOperate || snapshot.Posture != policy.PermissionAuto {
 		t.Fatalf("mode/posture = %s/%s", snapshot.Mode, snapshot.Posture)
 	}
-	if snapshot.Workspace != "/tmp/ws" || snapshot.Sandbox != "test/test/strong" {
+	wantSandbox := "test/test/" + turnContextBackend{}.Capability().Effective.Identity()
+	if snapshot.Workspace != "/tmp/ws" || snapshot.Sandbox != wantSandbox {
 		t.Fatalf("workspace/sandbox = %q/%q", snapshot.Workspace, snapshot.Sandbox)
 	}
 	if snapshot.Policy == nil || snapshot.Policy == security {
@@ -422,13 +423,18 @@ type turnContextBackend struct{}
 func (turnContextBackend) Capability() sandbox.Capability {
 	return sandbox.Capability{
 		Platform: "test", Backend: "test", Available: true,
-		Effective: controlmatrix.Matrix{FilesystemRead: controlmatrix.FilesystemReadDeclaredRoots,
-
-			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths, Network: controlmatrix.
-						NetworkDenied, ProcessTree: controlmatrix.ProcessTreeGroupKill,
-			CrossProcess: controlmatrix.CrossProcessUnrestricted, Syscall: controlmatrix.
-					SyscallDenyDangerous, IPC: controlmatrix.IPCUnrestricted,
-			PathIdentity: controlmatrix.PathIdentityDescriptorRelative, ArtifactOrigin: controlmatrix.ArtifactOriginUnverifiedPath, DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly},
+		Effective: controlmatrix.Matrix{
+			FilesystemRead:  controlmatrix.FilesystemReadDeclaredRoots,
+			FilesystemWrite: controlmatrix.FilesystemWriteExactPaths,
+			Network:         controlmatrix.NetworkDenied,
+			ProcessTree:     controlmatrix.ProcessTreeGroupKill,
+			CrossProcess:    controlmatrix.CrossProcessUnrestricted,
+			Syscall:         controlmatrix.SyscallDenyDangerous,
+			IPC:             controlmatrix.IPCUnrestricted,
+			PathIdentity:    controlmatrix.PathIdentityDescriptorRelative,
+			ArtifactOrigin:  controlmatrix.ArtifactOriginUnverifiedPath,
+			DurableRecovery: controlmatrix.DurableRecoveryMemoryOnly,
+		},
 	}
 }
 

@@ -63,6 +63,17 @@ func TestLoadMissingIsEmpty(t *testing.T) {
 	}
 }
 
+func TestStoreExposesConfiguredPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+	store, err := OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.Path != path {
+		t.Fatalf("store path = %q, want %q", store.Path, path)
+	}
+}
+
 func TestLoadAndAppendAllowRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), FileName)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
