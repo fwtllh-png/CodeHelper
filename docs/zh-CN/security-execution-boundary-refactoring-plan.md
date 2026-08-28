@@ -880,7 +880,7 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 - Registry 分别冻结 Model-facing `ExternalDescriptor` 与 Authority-facing
   `TrustedBinding`；Catalog Snapshot 同时绑定 External Presentation、Binding Digest、
   Source、Revision 和私有 Authority Token；
-- MCP 与 Typed Extension 必须由可信 Host Policy 显式注册
+- MCP Tool 必须由可信 Host Policy 显式注册
   Binding，外部 Source 走 Legacy Registration 会 Fail Closed；
 - Guard、Policy、Authority、Journal、Read-before-write、一次性审批、验证证据接纳和
   缺失写目标 Preflight 只消费 Trusted Binding，不消费 Requested Effects 或工具名；
@@ -898,7 +898,7 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 | Registry Freeze 与 Binding Digest | `internal/adapter/tool/catalog.go`、`tool.go` |
 | Guard/Policy/Authority 消费 | `internal/adapter/tool/guard`、`internal/security` |
 | 外部 Source Binding Factory | `internal/adapter/tool/mcp` |
-| Typed Extension 保真注册 | `internal/runtime/app/wire/typed_extensions.go` |
+| Memory Tool 保真注册 | `internal/runtime/app/wire/capability_outputs.go` |
 
 ### 阶段 6：控制矩阵替代 Strong
 

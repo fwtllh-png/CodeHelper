@@ -165,9 +165,8 @@ config
 -> persistence
 -> platform
 -> builtin-tools
--> extension-tools
+-> capability-tools
 -> security
--> extension-plan
 -> orchestration
 -> observability
 -> agent
@@ -279,7 +278,7 @@ Commit？
 1. `Engine.Execute` 获取 Session 级互斥；
 2. `prepareTurnSpec` 校验 Request；
 3. `SnapshotTurnSpec` 冻结 Route、Profile、Policy、Tool Catalog、Skill、MCP、
-   Extension、Budget、World 和 Window；
+   Budget、World 和 Window；
 4. `scopeFactory.Open` 为 Turn 创建隔离 Scope；
 5. `Scope.Run` 获取 Workspace Gate、恢复 Journal Draft、打开 Runtime Kernel。
 

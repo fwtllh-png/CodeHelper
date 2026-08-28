@@ -10,12 +10,10 @@ prerequisites:
 code_paths:
   - internal/adapter/mcp
   - internal/adapter/skill
-  - internal/runtime/extension
   - internal/runtime/app/extension
 test_paths:
   - internal/adapter/mcp/pool_t3_test.go
   - internal/adapter/skill/resolver_test.go
-  - internal/runtime/extension/state_test.go
   - internal/runtime/app/wire/extension_control_test.go
 source_of_truth:
   - internal/adapter/mcp/health.go
@@ -55,7 +53,7 @@ Security/Unknown Failure 为 Terminal。
 Degraded Mode 必须显式：Unavailable Descriptor、Health Snapshot、Issue、Lifecycle
 Receipt 与 Log 说明缺失。Silent Removal 会让模型/Operator 错误推断 Capability。
 
-## Extension Lifecycle
+## Capability Lifecycle
 
 Validation 证明 Shape/Integrity；Authorization 授予 Bounded Capability。MCP 用 Server
 Generation 和 Catalog Revision 隔离连接与调用，Skill 用 Lock 和 Enable State 控制
@@ -78,8 +76,8 @@ Limit、Catalog Source、Cancellation、Generation Fence。
 ## Feedback/Observability
 
 Model Feedback 只包含 Stable、Actionable、Sanitized Category 和 Retry Safety。Operator
-Record 保留 Extension Identity、Source、Plan Revision、Permission Digest、Generation、
-Transition、Bounded Cause 与 Affected Call。Unknown、Tamper、
+Record 保留 Capability Identity、Source、Generation、Transition、Bounded Cause 与
+Affected Call。Unknown、Tamper、
 Partial-effect Failure 不转成 Retry Advice。
 
 Lifecycle Fact 通过 Runtime Event 与控制 Receipt 保留。Trace/Telemetry Failure 不能
@@ -104,7 +102,7 @@ Extension Unhealthy 不影响无关 Runtime Function。
 ```bash
 go test ./internal/adapter/mcp -run 'Test(Pool|Circuit)'
 go test ./internal/adapter/skill
-go test ./internal/runtime/extension ./internal/runtime/app/extension
+go test ./internal/runtime/app/extension
 ```
 
 ## 动手实验

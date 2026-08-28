@@ -21,7 +21,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
@@ -58,9 +57,7 @@ type persistenceBuildState struct {
 	ephemeralState *sqlitestate.Store
 }
 
-type extensionBuildState struct {
-	receipts     []ContributionReceipt
-	registry     *runtimeextension.Registry
+type capabilityBuildState struct {
 	skillCatalog *skill.Catalog
 	memory       *memory.Store
 	mcpPool      *mcpruntime.Pool

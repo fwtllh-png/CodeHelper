@@ -22,23 +22,23 @@ func securityStateDataDir(state *buildState) string {
 	return state.config.snapshot.Config.State.DataDir
 }
 
-func resolveRuntimeExtensionPaths(
+func resolveRuntimeSkillPaths(
 	state *buildState,
 	workspace string,
-) (ExtensionPaths, error) {
-	options := state.options.Extensions
+) (SkillPaths, error) {
+	options := state.options.Skills
 	if state.options.PersistentStore == nil {
-		return ResolveExtensionPaths(options, workspace)
+		return ResolveSkillPaths(options, workspace)
 	}
 	storeRoot := state.options.PersistentStore.Root()
 	if options.DataDir != "" &&
 		filepath.Clean(options.DataDir) != filepath.Clean(storeRoot) {
-		return ExtensionPaths{}, errors.New(
+		return SkillPaths{}, errors.New(
 			"extension state directory must match the Runtime state store",
 		)
 	}
 	options.DataDir = storeRoot
-	return ResolveExtensionPaths(options, workspace)
+	return ResolveSkillPaths(options, workspace)
 }
 
 func externalWorkspaceStateRoot(

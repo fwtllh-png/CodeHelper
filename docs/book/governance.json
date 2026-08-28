@@ -134,13 +134,10 @@
         "extension-*"
       ],
       "source_patterns": [
-        "internal/adapter/extension/**",
         "internal/adapter/mcp/**",
         "internal/adapter/skill/**",
-        "internal/runtime/extension/**",
         "internal/runtime/app/extension/**",
-        "internal/persist/extensioncontrol/**",
-        "internal/persist/extensionplan/**"
+        "internal/persist/extensioncontrol/**"
       ]
     },
     {

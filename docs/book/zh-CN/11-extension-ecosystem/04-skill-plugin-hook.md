@@ -9,18 +9,14 @@ prerequisites:
   - extension-tool
 code_paths:
   - internal/adapter/skill
-  - internal/runtime/extension
   - internal/runtime/app/extension
   - internal/persist/extensioncontrol
-  - internal/persist/extensionplan
 test_paths:
   - internal/adapter/skill/resolver_test.go
-  - internal/runtime/extension/plan_test.go
   - internal/runtime/app/wire/extension_control_test.go
 source_of_truth:
   - internal/adapter/skill/catalog.go
-  - internal/runtime/extension/registry.go
-  - internal/runtime/extension/plan.go
+  - internal/runtime/app/wire/modules_capabilities.go
 status: draft
 last_verified: null
 ---
@@ -41,16 +37,11 @@ Skill 使用 Strict Manifest、Deterministic Root Precedence、Compatibility/Dep
 Resolution、Lockfile Digest、Enable State 与 Cycle/Conflict 检查。
 加载 Skill 不授予 Tool Capability。
 
-## Shared Runtime Extension Contract
+## Direct Capability Ownership
 
-Skill、Memory 与 MCP 都适配到统一 Typed Runtime
-Extension Core。Contributor 声明 Identity、Phase、Capability、Failure Policy、Timeout
-与 Output Budget。注册时校验 Contract 并 Seal 不可变 Registry；Contributor 只接收
-显式 Capability，不接收 Construction State 或私有 Tool Registry。
-
-Source Resolution 生成绑定当前 Permission Digest 的 Deterministic Digested Plan。
-Skill 的启停操作通过 Durable Control Store 幂等记录；MCP 的进程和连接生命周期由其
-Adapter 管理，不通过共享可执行包生命周期间接授权。
+Skill、Memory 与 MCP 不共享通用 Extension Lifecycle。Wire 直接构造 Skill Catalog，
+Skill 自身负责 Root Precedence、Dependency Resolution、Lock 与 Enable State。启停操作
+通过 Durable Control Store 幂等记录；MCP 与 Memory 分别管理自己的连接和 Store。
 
 ## Authority 对比
 
@@ -66,8 +57,8 @@ Skill 同样分离 Discovery、Dependency Resolution、Lock Verify、Bounded Loa
 Root Precedence 防止 Lower Candidate Shadow Governed Skill。
 
 Web Transport `extension/list`/`extension/control` 与 Web Extensions View 提交到同一
-Control Plane。Mutation 按 Operation ID 幂等，并持久化 Prepare/Commit
-Receipt。Host 只投影 Runtime-owned State，不实现 Extension Lifecycle。
+Control Plane。Mutation 按 Operation ID 幂等，并持久化 Prepare/Commit Receipt。
+Host 只投影 Runtime-owned State，不实现 Skill Lifecycle。
 
 ## 失败与安全边界
 
@@ -80,9 +71,8 @@ Receipt。Host 只投影 Runtime-owned State，不实现 Extension Lifecycle。
 
 ```bash
 go test ./internal/adapter/skill
-go test ./internal/runtime/extension ./internal/runtime/app/extension
+go test ./internal/runtime/app/extension
 go test ./internal/persist/extensioncontrol
-go test ./internal/persist/extensionplan
 ```
 
 ## 动手实验

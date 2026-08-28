@@ -28,7 +28,7 @@
 | Turn/Session State | `internal/runtime/app` |
 | Model/Tool Loop | `internal/runtime/agent` |
 | Dependency Construction | `internal/runtime/app/wire` |
-| Typed Extension Lifecycle | `internal/runtime/extension`、`internal/runtime/app/extension` |
+| Skill/MCP/Memory 接入 | `internal/runtime/app/wire`、`internal/adapter/skill`、`internal/adapter/mcp` |
 | Model/Provider | `internal/adapter/model`、`internal/adapter/provider` |
 | Tool | `internal/adapter/tool` |
 | Approval/Sandbox | `internal/security`、`internal/adapter/tool/guard` |

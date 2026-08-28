@@ -12,9 +12,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 )
 
 type buildModuleFunc struct {
@@ -96,7 +93,7 @@ func TestNewExecRollsBackResourcesWhenModuleFails(t *testing.T) {
 func TestNewExecRollsBackEveryConstructionBoundaryInReverseOrder(t *testing.T) {
 	moduleNames := []string{
 		"config", "provider", "persistence", "platform", "builtin-tools",
-		"extension-tools", "security", "extension-plan", "orchestration",
+		"capability-tools", "security", "orchestration",
 		"observability", "agent", "runtime", "background",
 	}
 	for failureIndex, failureName := range moduleNames {
@@ -185,35 +182,11 @@ func TestDefaultBuildModuleOrder(t *testing.T) {
 	}
 	want := []string{
 		"config", "provider", "persistence", "platform", "builtin-tools",
-		"extension-tools", "security", "extension-plan", "orchestration",
+		"capability-tools", "security", "orchestration",
 		"observability", "agent", "runtime", "background",
 	}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("module order = %v, want %v", names, want)
-	}
-}
-
-func TestExtensionContributorIDsAreUnique(t *testing.T) {
-	contributors := newExtensionContributors(&buildState{})
-	seen := make(map[string]struct{}, len(contributors))
-	for _, contributor := range contributors {
-		id := contributor.ID()
-		if id == "" {
-			t.Fatal("empty contributor ID")
-		}
-		if _, exists := seen[id]; exists {
-			t.Fatalf("duplicate contributor ID %q", id)
-		}
-		seen[id] = struct{}{}
-	}
-	for _, required := range []string{
-		"skills",
-		"memory",
-		"mcp",
-	} {
-		if _, exists := seen[required]; !exists {
-			t.Errorf("required contributor %q is missing", required)
-		}
 	}
 }
 
@@ -305,36 +278,6 @@ func TestModuleClosuresDoNotRetainBuildState(t *testing.T) {
 	}
 }
 
-func TestExtensionContributorsDoNotAcceptBuildState(t *testing.T) {
-	fileset := token.NewFileSet()
-	file, err := parser.ParseFile(
-		fileset,
-		"contributors_extensions.go",
-		nil,
-		0,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ast.Inspect(file, func(node ast.Node) bool {
-		function, ok := node.(*ast.FuncDecl)
-		if !ok || function.Name.Name != "Contribute" {
-			return true
-		}
-		ast.Inspect(function.Type.Params, func(inner ast.Node) bool {
-			identifier, identifierOK := inner.(*ast.Ident)
-			if identifierOK && identifier.Name == "buildState" {
-				t.Errorf(
-					"Contributor accepts buildState at %s",
-					fileset.Position(identifier.Pos()),
-				)
-			}
-			return true
-		})
-		return false
-	})
-}
-
 func TestBackgroundModuleOwnsRuntimeActivityStart(t *testing.T) {
 	runtimeSource, err := os.ReadFile("modules_runtime.go")
 	if err != nil {
@@ -371,7 +314,7 @@ func TestBackgroundModuleOwnsRuntimeActivityStart(t *testing.T) {
 		}
 		last = at
 	}
-	for _, path := range []string{"mcp.go", "contributors_extensions.go"} {
+	for _, path := range []string{"mcp.go", "modules_capabilities.go"} {
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			t.Fatal(readErr)
@@ -389,7 +332,7 @@ func TestModulesFailClosedOnMissingRequirements(t *testing.T) {
 		name   string
 		module buildModule
 	}{
-		{name: "extension registry", module: newExtensionToolsModule()},
+		{name: "capability tools", module: capabilityToolsModule{}},
 		{name: "child orchestration", module: orchestrationModule{}},
 		{name: "prepared runtime", module: backgroundModule{}},
 	} {
@@ -398,44 +341,5 @@ func TestModulesFailClosedOnMissingRequirements(t *testing.T) {
 				t.Fatal("missing module requirement succeeded")
 			}
 		})
-	}
-}
-
-type testExtensionContributor struct {
-	id string
-	fn func(*tool.Registry) (ContributionReceipt, error)
-}
-
-func (c testExtensionContributor) ID() string { return c.id }
-
-func (c testExtensionContributor) Contribute(
-	_ context.Context,
-	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return c.fn(registry)
-}
-
-func TestExtensionModulePublishesPartialOutputsForRollback(t *testing.T) {
-	state := &buildState{session: &Session{}}
-	state.config.execution.Tools = true
-	state.tools.registry = tool.NewRegistry(nil, nil)
-	module := extensionToolsModule{contributors: []extensionActivation{
-		testExtensionContributor{id: "created", fn: func(
-			*tool.Registry,
-		) (ContributionReceipt, error) {
-			state.extensions.memory = &memory.Store{}
-			return ContributionReceipt{Contributor: "created"}, nil
-		}},
-		testExtensionContributor{id: "failure", fn: func(
-			*tool.Registry,
-		) (ContributionReceipt, error) {
-			return ContributionReceipt{}, errors.New("stop")
-		}},
-	}}
-	if err := module.Build(t.Context(), state); err == nil {
-		t.Fatal("extension failure succeeded")
-	}
-	if state.session.memory == nil {
-		t.Fatal("partial extension output was hidden from ResourceStack rollback")
 	}
 }

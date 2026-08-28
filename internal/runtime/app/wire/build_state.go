@@ -25,7 +25,7 @@ type buildState struct {
 	platform      platformBuildState
 	persistence   persistenceBuildState
 	tools         toolBuildState
-	extensions    extensionBuildState
+	capabilities  capabilityBuildState
 	security      securityBuildState
 	orchestration orchestrationBuildState
 	agent         agentBuildState
@@ -35,7 +35,7 @@ type buildState struct {
 type configBuildState struct {
 	snapshot                                               config.Snapshot
 	execution                                              config.Execution
-	extensionPaths                                         ExtensionPaths
+	skillPaths                                             SkillPaths
 	runtimeSessionID, workspaceStateID, workspaceStateRoot string
 	diagnosticCommands                                     map[string]diagnostics.Command
 	diagnosticReadRoots                                    []string

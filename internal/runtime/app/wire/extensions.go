@@ -15,10 +15,10 @@ import (
 	extensionapp "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 )
 
-// ExtensionOptions is the explicit production configuration surface for
+// SkillOptions is the explicit production configuration surface for
 // skills. Empty fields are resolved to safe CodeHelper-owned locations by
-// ResolveExtensionPaths.
-type ExtensionOptions struct {
+// ResolveSkillPaths.
+type SkillOptions struct {
 	DataDir             string
 	SkillsConfiguredDir string
 	SkillsStatePath     string
@@ -27,7 +27,7 @@ type ExtensionOptions struct {
 	UserHome            string
 }
 
-type ExtensionPaths struct {
+type SkillPaths struct {
 	DataDir             string
 	SkillsConfiguredDir string
 	SkillsStatePath     string
@@ -36,14 +36,14 @@ type ExtensionPaths struct {
 	UserHome            string
 }
 
-type ExtensionControlHandle struct {
-	Plane *extensionapp.ControlPlane
+type SkillControlHandle struct {
+	Service *extensionapp.SkillService
 }
 
-func OpenExtensionControlPlane(
-	paths ExtensionPaths,
+func OpenSkillControl(
+	paths SkillPaths,
 	workspace string,
-) (*ExtensionControlHandle, error) {
+) (*SkillControlHandle, error) {
 	state, err := skillruntime.NewStateStore(paths.SkillsStatePath)
 	if err != nil {
 		return nil, err
@@ -66,30 +66,30 @@ func OpenExtensionControlPlane(
 	if err != nil {
 		return nil, err
 	}
-	plane, err := extensionapp.NewControlPlane(skills, store)
+	service, err := extensionapp.NewSkillService(skills, store)
 	if err != nil {
 		return nil, err
 	}
-	return &ExtensionControlHandle{Plane: plane}, nil
+	return &SkillControlHandle{Service: service}, nil
 }
 
-func (h *ExtensionControlHandle) Close() error { return nil }
+func (h *SkillControlHandle) Close() error { return nil }
 
-func ResolveExtensionPaths(options ExtensionOptions, workspace string) (ExtensionPaths, error) {
+func ResolveSkillPaths(options SkillOptions, workspace string) (SkillPaths, error) {
 	workspace, err := realDirectory(workspace)
 	if err != nil {
-		return ExtensionPaths{}, fmt.Errorf("resolve extensions workspace: %w", err)
+		return SkillPaths{}, fmt.Errorf("resolve skills workspace: %w", err)
 	}
 	home := strings.TrimSpace(options.UserHome)
 	if home == "" {
 		home, err = os.UserHomeDir()
 		if err != nil {
-			return ExtensionPaths{}, fmt.Errorf("resolve user home: %w", err)
+			return SkillPaths{}, fmt.Errorf("resolve user home: %w", err)
 		}
 	}
 	home, err = absoluteClean(home)
 	if err != nil {
-		return ExtensionPaths{}, fmt.Errorf("resolve user home: %w", err)
+		return SkillPaths{}, fmt.Errorf("resolve user home: %w", err)
 	}
 	dataDir := strings.TrimSpace(options.DataDir)
 	if dataDir == "" {
@@ -97,11 +97,11 @@ func ResolveExtensionPaths(options ExtensionOptions, workspace string) (Extensio
 	}
 	dataDir, err = absoluteClean(dataDir)
 	if err != nil {
-		return ExtensionPaths{}, fmt.Errorf("resolve extensions data directory: %w", err)
+		return SkillPaths{}, fmt.Errorf("resolve skills data directory: %w", err)
 	}
 	workspaceDigest := sha256.Sum256([]byte(workspace))
 	workspaceID := hex.EncodeToString(workspaceDigest[:8])
-	paths := ExtensionPaths{
+	paths := SkillPaths{
 		DataDir:             dataDir,
 		SkillsConfiguredDir: firstPath(options.SkillsConfiguredDir, filepath.Join(dataDir, "skills", "configured")),
 		SkillsStatePath:     firstPath(options.SkillsStatePath, filepath.Join(dataDir, "skills", "state.json")),
@@ -118,7 +118,7 @@ func ResolveExtensionPaths(options ExtensionOptions, workspace string) (Extensio
 	} {
 		*target, err = absoluteClean(*target)
 		if err != nil {
-			return ExtensionPaths{}, err
+			return SkillPaths{}, err
 		}
 	}
 	return paths, nil
@@ -133,7 +133,7 @@ func firstPath(configured, fallback string) string {
 
 func absoluteClean(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
-		return "", errors.New("extension path is empty")
+		return "", errors.New("skill path is empty")
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {

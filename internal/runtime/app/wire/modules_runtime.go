@@ -13,7 +13,6 @@ import (
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -139,12 +138,6 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 					})
 				}
 				return result
-			},
-			ExtensionPlan: func() (runtimeextension.Plan, error) {
-				if session.extensions == nil {
-					return runtimeextension.Plan{}, nil
-				}
-				return session.extensions.SnapshotPlan(context.Background())
 			},
 			SkillSelection: func(
 				query string,

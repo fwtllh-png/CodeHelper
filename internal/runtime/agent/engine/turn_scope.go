@@ -102,7 +102,6 @@ func (s *Scope) Spec() TurnSpec {
 	spec.Window = agentcontext.CloneWindowLedger(spec.Window)
 	spec.Skills = append([]SkillSummary(nil), spec.Skills...)
 	spec.MCP = append([]MCPHealthSnapshot(nil), spec.MCP...)
-	spec.ExtensionPlan = spec.ExtensionPlan.Clone()
 	spec.Memory.SelectedIDs = append([]string(nil), spec.Memory.SelectedIDs...)
 	return spec
 }

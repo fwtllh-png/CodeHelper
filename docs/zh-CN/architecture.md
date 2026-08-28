@@ -63,7 +63,7 @@ Architecture Test 会检查重要 Import 限制。需要违反这些规则的设
 
 ```text
 config -> provider -> persistence -> platform -> builtin tools
-       -> extension contributors -> security -> extension plan
+       -> capability tools -> security
        -> orchestration -> observability -> agent -> runtime
        -> background services
 ```
@@ -85,11 +85,9 @@ MCP 生命周期；File/VCS Broker 接管模型文件工具、Agent/Chat Merge�
 输出和 Git Metadata Mutation。`workspacebroker.Runtime` 只组合窄能力，不把 Broker
 业务逻辑放入 `wire`。
 
-Builtin 与 Extension Tool 共享同一个 Registry 实例。Skill、Memory 与 MCP
-Contributor 只接收其显式构造能力和共享 Registry，不接收
-`buildState`；每个 Contributor 返回确定性的 `ContributionReceipt`，记录新增 Tool
-Identity 与命名输出。Subagent 工具由 Orchestration Module 装配，而非 Extension
-Contributor Chain。
+Builtin、Skill、Memory 与 MCP Tool 共享同一个 Registry 实例。Composition Root
+按固定顺序直接构造 Skill Catalog、Memory Store 和 MCP Pool，并只向后续模块发布
+必要结果。Subagent 工具由 Orchestration Module 单独装配。
 
 Registry 分别冻结模型可见的 `ExternalDescriptor` 与执行权威
 `TrustedBinding`。External Requested Effects 只用于呈现和审计；Guard、Policy、
@@ -116,7 +114,7 @@ Web 进程持有一个全局 Owner Lease 和持久化 Workspace Registry。首�
 Supervisor；其他目录再次执行 `codehelper` 时，通过 Lease 中仅对当前用户可读的
 Capability Token 调用已有 Host 的 `workspace/add`，不会启动第二套控制面。每个
 Workspace 单独拥有 `wire.Session`、Sandbox、Tool Registry、Repository Index 和
-Extension 生命周期。共享 SQLite 中的 Session、Event Recovery 与 Terminal Outbox
+MCP 生命周期。共享 SQLite 中的 Session、Event Recovery 与 Terminal Outbox
 按规范化 Workspace Root 过滤；关闭一个 Runtime 不能关闭 Supervisor 持有的共享
 Store。
 
@@ -159,7 +157,7 @@ eventview + Web Projection -> 仅负责 Host Presentation
 | Turn Coordinator/Scope | `internal/runtime/agent` | Reducer Authority、Effect、Control 与 Turn-local State |
 | Event Hub/Terminal Publisher | `internal/runtime/app/eventhub`、`internal/runtime/app` | Sequence/Fanout 与 Atomic Terminal Publication |
 | Subagent Control | `internal/orchestration/subagent`、`internal/orchestration/admission` | Agent Graph、Budget、Concurrency 与 Worktree Authority |
-| Extension Runtime | `internal/runtime/extension`、`internal/runtime/app/extension` | Typed Contributor、Source Plan、Generation、Lifecycle Effect 与 Control Receipt |
+| Skill Control | `internal/runtime/app/extension`、`internal/adapter/skill` | Skill 状态、Lock、控制操作与 Receipt |
 | Trace/Usage Plane | `internal/observability/trace`、`internal/observability/usage` | Span、Latency、Token、Cost 与查询投影 |
 | Session/Artifact/Trace Service | `internal/runtime/app` | Runtime-owned Port 上的 Host-facing Query 行为 |
 | Agent Preset Service | `internal/runtime/app`、`internal/persist/agentpreset` | Workspace 范围的版本化 Preset 校验、原子持久化与 Session 应用 |
@@ -234,8 +232,8 @@ Application Runtime 是显式 Owner 组成的 Facade：
 ## Turn 数据流
 
 执行前，Engine 构造不可变 `TurnSpec`，冻结 Identity、Request、Session Profile、
-Route、Policy、Limit、Prompt Prefix、Tool Catalog、Skill、MCP Health 与 Extension
-Snapshot。Engine 内的 Scope Factory 从该 Spec 打开单 Turn `engine.Scope`；Scope 运行期间 Sampling
+Route、Policy、Limit、Prompt Prefix、Tool Catalog、Skill 与 MCP Health。Engine 内的
+Scope Factory 从该 Spec 打开单 Turn `engine.Scope`；Scope 运行期间 Sampling
 不得重新读取这些可变来源。
 
 Scope 独占 Turn 级 Kernel、Trace、Diagnostics、Verification、Tool Spend、Diff 与
@@ -533,16 +531,12 @@ Home。
 - MCP 是供应链边界，不是可信文本文件。
 - 服务默认监听 Loopback。
 
-## 扩展架构
+## 能力接入
 
-`internal/runtime/extension` 为 Thread、Turn、Context、Tool 与 MCP Capability 定义
-统一 Typed Contributor Contract。注册时校验 Identity、Failure Policy、Timeout 与
-Output Budget，随后 Seal 不可变 Registry。Contributor 只接收显式 Capability 并返回
-有界 Receipt，不接收 Construction State 或私有 Tool Registry。
-
-Extension Source 按 Source Priority 确定性解析为绑定当前 Permission Digest 的
-Digested Plan。Tool、Skill 与 MCP 各自由其 Adapter 管理运行时生命周期和
-撤销边界，Plan 只记录已解析的 Typed Extension 结果，不承担外部包分发。
+Skill、Memory 与 MCP 不再经过通用 Extension Registry 或 Extension Plan。Wire 在
+`capability-tools` 模块中按固定顺序直接构造三类能力：Skill 发布 Catalog 与发现工具，
+Memory 打开 Store 并注册受信工具，MCP 创建受 Runtime Authority 约束的 Pool 与
+Prewarm。各能力自行管理配置、完整性、生命周期和撤销边界。
 
 Web Transport `extension/list`/`extension/control` 与 Web Extensions View 使用同一
 Runtime Control Plane。Mutation 按 Operation ID 幂等，并持久化

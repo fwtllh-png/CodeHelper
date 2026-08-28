@@ -41,8 +41,7 @@ type platformBundle struct {
 	sandbox         sandbox.Backend
 }
 
-type extensionBundle struct {
-	extensions *extensionSession
+type capabilityBundle struct {
 	mcpPool    *mcpruntime.Pool
 	mcpPrewarm *MCPPrewarm
 	memory     *memory.Store

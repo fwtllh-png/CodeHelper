@@ -208,21 +208,10 @@
       "kind": "package",
       "path": "internal/runtime/app/wire",
       "limits": {
-        "internal_fanout": 63,
-        "production_lines": 7255,
+        "internal_fanout": 61,
+        "production_lines": 7015,
         "options_fields": 60,
         "mutex_fields": 6
-      }
-    },
-    {
-      "id": "runtime_extension_package",
-      "kind": "package",
-      "path": "internal/runtime/extension",
-      "limits": {
-        "internal_fanout": 1,
-        "production_lines": 1202,
-        "options_fields": 1,
-        "mutex_fields": 2
       }
     },
     {
@@ -230,43 +219,10 @@
       "kind": "package",
       "path": "internal/runtime/app/extension",
       "limits": {
-        "internal_fanout": 17,
-        "production_lines": 2039,
+        "internal_fanout": 15,
+        "production_lines": 1859,
         "options_fields": 0,
-        "mutex_fields": 3
-      }
-    },
-    {
-      "id": "persist_extensionplan_package",
-      "kind": "package",
-      "path": "internal/persist/extensionplan",
-      "limits": {
-        "internal_fanout": 2,
-        "production_lines": 220,
-        "options_fields": 0,
-        "mutex_fields": 1
-      }
-    },
-    {
-      "id": "runtime_extension_test_harness_package",
-      "kind": "package",
-      "path": "internal/runtime/extension/extensiontest",
-      "limits": {
-        "internal_fanout": 1,
-        "production_lines": 67,
-        "options_fields": 0,
-        "mutex_fields": 0
-      }
-    },
-    {
-      "id": "adapter_extension_memory_package",
-      "kind": "package",
-      "path": "internal/adapter/extension/memory",
-      "limits": {
-        "internal_fanout": 4,
-        "production_lines": 75,
-        "options_fields": 0,
-        "mutex_fields": 1
+        "mutex_fields": 2
       }
     },
     {
@@ -349,8 +305,8 @@
       "kind": "package",
       "path": "internal/runtime/agent/engine",
       "limits": {
-        "internal_fanout": 22,
-        "production_lines": 7882,
+        "internal_fanout": 21,
+        "production_lines": 7871,
         "options_fields": 6,
         "mutex_fields": 5
       }
@@ -445,12 +401,12 @@
       }
     },
     {
-      "id": "wire_modules_extensions_file",
+      "id": "wire_modules_capabilities_file",
       "kind": "file",
-      "path": "internal/runtime/app/wire/modules_extensions.go",
+      "path": "internal/runtime/app/wire/modules_capabilities.go",
       "limits": {
-        "lines": 79,
-        "max_function_lines": 37
+        "lines": 60,
+        "max_function_lines": 46
       }
     },
     {
@@ -476,8 +432,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 414,
-        "max_function_lines": 321
+        "lines": 407,
+        "max_function_lines": 315
       }
     },
     {
@@ -494,7 +450,7 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/module_outputs.go",
       "limits": {
-        "lines": 100,
+        "lines": 86,
         "max_function_lines": 0
       }
     },
@@ -505,15 +461,6 @@
       "limits": {
         "lines": 189,
         "max_function_lines": 53
-      }
-    },
-    {
-      "id": "wire_contributors_extensions_file",
-      "kind": "file",
-      "path": "internal/runtime/app/wire/contributors_extensions.go",
-      "limits": {
-        "lines": 44,
-        "max_function_lines": 21
       }
     },
     {
@@ -550,15 +497,6 @@
       "limits": {
         "lines": 304,
         "max_function_lines": 49
-      }
-    },
-    {
-      "id": "wire_typed_extensions_file",
-      "kind": "file",
-      "path": "internal/runtime/app/wire/typed_extensions.go",
-      "limits": {
-        "lines": 141,
-        "max_function_lines": 33
       }
     },
     {
@@ -782,6 +720,13 @@
     "wire_scheduler_factory_file": "The background worker scheduler factory was removed.",
     "observability_otel_package": "The Observation-to-OTLP projection and remote exporters were removed.",
     "observability_privacy_package": "The Observation payload capture policy was removed with the independent evidence plane.",
-    "observability_retention_package": "Observation payload retention was removed with the independent evidence plane."
+    "observability_retention_package": "Observation payload retention was removed with the independent evidence plane.",
+    "runtime_extension_package": "The generic Extension Registry, lifecycle contracts, state store, and plan compiler were removed in favor of direct Skill, Memory, and MCP construction.",
+    "runtime_extension_test_harness_package": "The generic Extension test harness was removed with the Extension Registry.",
+    "persist_extensionplan_package": "Turn snapshots no longer persist an unused generic Extension Plan.",
+    "adapter_extension_memory_package": "Memory tools are now constructed directly through the existing memory adapter.",
+    "wire_contributors_extensions_file": "The generic contributor list was replaced by explicit capability construction.",
+    "wire_modules_extensions_file": "The Extension module was replaced by the direct capability-tools module.",
+    "wire_typed_extensions_file": "Typed Extension invocation wrappers were removed; Memory uses its source-owned registrations directly."
   }
 }

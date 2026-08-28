@@ -9,7 +9,6 @@ import (
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
@@ -42,7 +41,6 @@ type TurnLimits struct {
 
 type TurnSnapshotSources struct {
 	MCP            func() []MCPHealthSnapshot
-	ExtensionPlan  func() (runtimeextension.Plan, error)
 	Skills         func() []SkillSummary
 	SkillSelection func(string) ([]SkillSummary, SkillSelectionMetrics, error)
 	Memory         func(string) (MemorySnapshot, error)
@@ -78,7 +76,6 @@ type TurnSpec struct {
 	Skills         []SkillSummary
 	SkillSelection SkillSelectionMetrics
 	MCP            []MCPHealthSnapshot
-	ExtensionPlan  runtimeextension.Plan
 	Memory         MemorySnapshot
 }
 
@@ -217,13 +214,6 @@ func SnapshotTurnSpec(
 	}
 	if options.TurnSnapshots.MCP != nil {
 		spec.MCP = append([]MCPHealthSnapshot(nil), options.TurnSnapshots.MCP()...)
-	}
-	if options.TurnSnapshots.ExtensionPlan != nil {
-		spec.ExtensionPlan, err = options.TurnSnapshots.ExtensionPlan()
-		if err != nil {
-			return TurnSpec{}, fmt.Errorf("snapshot turn extension plan: %w", err)
-		}
-		spec.ExtensionPlan = spec.ExtensionPlan.Clone()
 	}
 	if options.TurnSnapshots.Memory != nil {
 		spec.Memory, err = options.TurnSnapshots.Memory(request.Prompt)

@@ -11,16 +11,13 @@ prerequisites:
 code_paths:
   - internal/adapter/mcp
   - internal/adapter/skill
-  - internal/runtime/extension
   - internal/runtime/app/extension
 test_paths:
   - internal/adapter/mcp/config_test.go
   - internal/adapter/skill/catalog_test.go
-  - internal/runtime/extension/plan_test.go
 source_of_truth:
   - internal/adapter/mcp/config.go
   - internal/adapter/skill/catalog.go
-  - internal/runtime/extension/plan.go
 status: draft
 last_verified: null
 ---
@@ -41,8 +38,8 @@ last_verified: null
 Extension Tool 仍进入 Registry/Catalog 并通过 Guard；“Trusted Extension”不等于 Direct
 Execution Authority。
 
-Runtime 将 Typed Source 解析为绑定 Permission Digest 的 Digested Plan。MCP 与 Skill
-各自拥有独立的配置、完整性和撤销边界，不能借由“扩展已安装”获得执行权限。
+MCP 与 Skill 各自拥有独立的配置、完整性和撤销边界，不能借由“能力已启用”获得
+执行权限。
 
 ## MCP/Skill Boundary
 
@@ -58,7 +55,7 @@ Durable Prepare/Commit Receipt 使 Restart/Retry 可审计。Host 不能通过�
 
 ```bash
 go test ./internal/adapter/mcp ./internal/adapter/skill
-go test ./internal/runtime/extension ./internal/runtime/app/extension
+go test ./internal/runtime/app/extension
 ```
 
 ## 复习问题

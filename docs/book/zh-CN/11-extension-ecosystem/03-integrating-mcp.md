@@ -10,8 +10,6 @@ prerequisites:
 code_paths:
   - internal/adapter/mcp
   - internal/adapter/tool/mcp
-  - internal/runtime/extension
-  - internal/runtime/app/extension
   - internal/runtime/app/wire
 test_paths:
   - internal/adapter/mcp/contract/fixture_test.go
@@ -21,7 +19,7 @@ test_paths:
 source_of_truth:
   - internal/adapter/mcp/config.go
   - internal/adapter/mcp/pool.go
-  - internal/runtime/extension/plan.go
+  - internal/runtime/app/wire/modules_capabilities.go
 status: draft
 last_verified: null
 ---
@@ -37,8 +35,7 @@ last_verified: null
 
 ```mermaid
 flowchart LR
-    C[Strict MCP Config] --> E[Extension Source Plan]
-    E --> P[Pool]
+    C[Strict MCP Config] --> P[Pool]
     P --> T[Stdio / HTTP Transport]
     T --> D[Initialize + Discovery]
     D --> R[Catalog Reconcile]
@@ -53,8 +50,7 @@ Connection Initialize Capability，分页发现 Tool/Resource/Prompt 并 Normali
 只 Reload Changed Server，隔离 Health/Circuit，发布 Catalog Notification，并关闭全部
 Transport。Discovered Tool 进入普通 Registry/Guard，MCP 不是 Policy Bypass。
 
-Runtime Extension Plan 将已注册的 Typed Extension 结果绑定到当前 Permission Digest。
-MCP 自身通过 Pool、Runtime Authority 与 Catalog Generation 管理 Connection、
+MCP 通过 Pool、Runtime Authority 与 Catalog Generation 管理 Connection、
 Process 和 Tool Registration；配置变更会阻止 Stale Catalog Handle 执行。
 
 ## Source-scoped Reconciliation
@@ -105,7 +101,6 @@ W3C Trace Context 通过 HTTP Header 与有界 Stdio Metadata 传播。MCP 不�
 ```bash
 go test ./internal/adapter/mcp/...
 go test ./internal/adapter/tool/mcp
-go test ./internal/runtime/extension ./internal/runtime/app/extension
 go test ./internal/runtime/app/wire -run TestMCP
 ```
 

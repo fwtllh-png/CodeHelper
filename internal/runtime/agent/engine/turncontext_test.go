@@ -14,7 +14,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	runtimeextension "github.com/fwtllh-png/CodeHelper/internal/runtime/extension"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -145,43 +144,6 @@ func TestSnapshotTurnSpecRequiresStructuredTerminalForPlanOnly(
 				t.Fatalf("completion required = %t", spec.Kernel.CompletionRequired)
 			}
 		})
-	}
-}
-
-func TestSnapshotTurnSpecFreezesExtensionPlan(t *testing.T) {
-	source := runtimeextension.SourceRef{
-		Kind: runtimeextension.SourceBuiltin, ID: "builtin",
-		Priority: 10, Revision: 1, Digest: "source-one",
-	}
-	plan, err := (runtimeextension.Compiler{}).Compile(
-		[]runtimeextension.Candidate{{
-			ID: "builtin/memory", Kind: "builtin", Name: "memory",
-			Version: "builtin-v1", Digest: "memory-digest",
-			Generation: 1, Enabled: true, Source: source,
-		}},
-		"permission-one",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	registry := tool.NewRegistry(nil, nil)
-	options := Options{ProviderConfig: ProviderConfig{Route: testRoute(t)}, ContextConfig: ContextConfig{TurnSnapshots: TurnSnapshotSources{
-		ExtensionPlan: func() (runtimeextension.Plan, error) {
-			return plan, nil
-		},
-	}}, ToolConfig: ToolConfig{Tools: registry}, SecurityConfig: SecurityConfig{Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)},
-	}
-	snapshot, err := SnapshotTurnSpec(
-		options,
-		TurnIdentity{SessionID: "session-1", TurnID: "turn-1", ProfileRevision: 1},
-		TurnRequest{Prompt: "inspect"},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	plan.Extensions[0].Version = "mutated"
-	if snapshot.ExtensionPlan.Extensions[0].Version != "builtin-v1" {
-		t.Fatalf("turn plan followed source mutation: %+v", snapshot.ExtensionPlan)
 	}
 }
 

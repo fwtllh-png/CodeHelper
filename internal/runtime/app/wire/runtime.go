@@ -37,7 +37,7 @@ type ExecOptions struct {
 	PromptBudgets       map[string]promptcontext.Budget
 	PersistentStore     *state.Store
 	CredentialControl   *credential.Control
-	Extensions          ExtensionOptions
+	Skills              SkillOptions
 	// TrustProbe lets probe "supported" observations widen catalog capabilities.
 	// Without it, probes may only tighten.
 	TrustProbe bool
@@ -67,7 +67,7 @@ type ContextFile struct {
 type Session struct {
 	providerBundle
 	platformBundle
-	extensionBundle
+	capabilityBundle
 	orchestrationBundle
 	persistenceBundle
 	securityBundle
@@ -88,9 +88,8 @@ func defaultBuildModules() []buildModule {
 		persistenceModule{},
 		platformModule{},
 		builtinToolsModule{},
-		newExtensionToolsModule(),
+		capabilityToolsModule{},
 		securityModule{},
-		extensionPlanModule{},
 		orchestrationModule{},
 		observabilityModule{},
 		agentModule{},

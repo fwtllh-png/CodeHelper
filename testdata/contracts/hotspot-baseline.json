@@ -89,7 +89,6 @@
         "internal/runtime/agent/prompt",
         "internal/runtime/agent/repository",
         "internal/runtime/agent/turnkernel",
-        "internal/runtime/extension",
         "internal/runtime/protocol",
         "internal/security/policy"
       ],

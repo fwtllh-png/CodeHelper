@@ -14,48 +14,40 @@ type mcpContributor struct {
 	configPath        string
 	trustedConfigRoot string
 	runtimeAuthority  *mcpruntime.RuntimeAuthority
-	output            *extensionBuildState
+	output            *capabilityBuildState
 }
-
-func (mcpContributor) ID() string { return "mcp" }
 
 func (c mcpContributor) Contribute(
 	_ context.Context,
 	registry *tool.Registry,
-) (ContributionReceipt, error) {
-	return runContribution(registry, c.ID(), func() error {
-		combined := mcpruntime.Config{
-			Version: mcpruntime.ConfigVersion,
-			Servers: make(map[string]mcpruntime.ServerConfig),
-		}
-		configured := false
-		if c.configPath != "" {
-			if err := sandbox.RequireTrustedConfigFile(
-				c.configPath, c.trustedConfigRoot, "MCP config",
-			); err != nil {
-				return err
-			}
-			config, err := mcpruntime.LoadConfig(c.configPath)
-			if err != nil {
-				return fmt.Errorf("MCP tools: %w", err)
-			}
-			for name, server := range config.Servers {
-				combined.Servers[name] = server
-			}
-			configured = true
-		}
-		if !configured {
-			return nil
-		}
-		pool, prewarm, err := RegisterMCPConfig(
-			registry, combined, c.runtimeAuthority,
-		)
-		if err != nil {
-			return fmt.Errorf("MCP tools: %w", err)
-		}
-		c.output.mcpPool, c.output.mcpPrewarm = pool, prewarm
+) error {
+	combined := mcpruntime.Config{
+		Version: mcpruntime.ConfigVersion,
+		Servers: make(map[string]mcpruntime.ServerConfig),
+	}
+	if c.configPath == "" {
 		return nil
-	})
+	}
+	if err := sandbox.RequireTrustedConfigFile(
+		c.configPath, c.trustedConfigRoot, "MCP config",
+	); err != nil {
+		return err
+	}
+	config, err := mcpruntime.LoadConfig(c.configPath)
+	if err != nil {
+		return fmt.Errorf("MCP tools: %w", err)
+	}
+	for name, server := range config.Servers {
+		combined.Servers[name] = server
+	}
+	pool, prewarm, err := RegisterMCPConfig(
+		registry, combined, c.runtimeAuthority,
+	)
+	if err != nil {
+		return fmt.Errorf("MCP tools: %w", err)
+	}
+	c.output.mcpPool, c.output.mcpPrewarm = pool, prewarm
+	return nil
 }
 
 func RegisterMCPConfig(

@@ -17,7 +17,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-type ControlPlane struct {
+type SkillService struct {
 	mu          sync.Mutex
 	skills      *skillruntime.Catalog
 	store       *extensioncontrol.Store
@@ -26,21 +26,21 @@ type ControlPlane struct {
 	next        uint64
 }
 
-func NewControlPlane(
+func NewSkillService(
 	skills *skillruntime.Catalog,
 	store *extensioncontrol.Store,
-) (*ControlPlane, error) {
+) (*SkillService, error) {
 	if skills == nil || store == nil {
 		return nil, errors.New("extension control dependencies are required")
 	}
-	return &ControlPlane{
+	return &SkillService{
 		skills: skills, store: store,
 		observed:    newControlObservability(),
 		subscribers: make(map[uint64]chan protocol.ExtensionControlEvent),
 	}, nil
 }
 
-func (c *ControlPlane) Submit(
+func (c *SkillService) Submit(
 	ctx context.Context,
 	operation protocol.ExtensionControlOperation,
 ) (result protocol.ExtensionControlResult, returnErr error) {
@@ -159,7 +159,7 @@ func (c *ControlPlane) Submit(
 	return stored.Result, nil
 }
 
-func (c *ControlPlane) reconcilePrepared(
+func (c *SkillService) reconcilePrepared(
 	ctx context.Context,
 	operation protocol.ExtensionControlOperation,
 	digest string,
@@ -201,7 +201,7 @@ func (c *ControlPlane) reconcilePrepared(
 	return stored.Result, nil
 }
 
-func (c *ControlPlane) Snapshot(
+func (c *SkillService) Snapshot(
 	ctx context.Context,
 	kind protocol.ExtensionControlKind,
 ) (protocol.ExtensionControlResult, error) {
@@ -214,7 +214,7 @@ func (c *ControlPlane) Snapshot(
 	return c.Submit(ctx, operation)
 }
 
-func (c *ControlPlane) Replay(
+func (c *SkillService) Replay(
 	ctx context.Context,
 	after uint64,
 	limit int,
@@ -234,7 +234,7 @@ func (c *ControlPlane) Replay(
 		end < len(events), nil
 }
 
-func (c *ControlPlane) Subscribe(
+func (c *SkillService) Subscribe(
 	buffer int,
 ) (<-chan protocol.ExtensionControlEvent, func(), error) {
 	if buffer <= 0 || buffer > 1024 {
@@ -259,14 +259,14 @@ func (c *ControlPlane) Subscribe(
 	}, nil
 }
 
-func (c *ControlPlane) mutate(
+func (c *SkillService) mutate(
 	ctx context.Context,
 	operation protocol.ExtensionControlOperation,
 ) (json.RawMessage, error) {
 	return c.mutateSkill(ctx, operation)
 }
 
-func (c *ControlPlane) mutateSkill(
+func (c *SkillService) mutateSkill(
 	ctx context.Context,
 	operation protocol.ExtensionControlOperation,
 ) (json.RawMessage, error) {
@@ -292,7 +292,7 @@ func (c *ControlPlane) mutateSkill(
 	}
 }
 
-func (c *ControlPlane) project(
+func (c *SkillService) project(
 	ctx context.Context,
 	kind protocol.ExtensionControlKind,
 	name string,
@@ -323,7 +323,7 @@ func (c *ControlPlane) project(
 	return result, nil
 }
 
-func (c *ControlPlane) skillProjections(
+func (c *SkillService) skillProjections(
 	ctx context.Context,
 ) ([]protocol.ExtensionProjection, error) {
 	values, err := c.skills.ControlSummaries(ctx)
@@ -348,7 +348,7 @@ func (c *ControlPlane) skillProjections(
 	return result, nil
 }
 
-func (c *ControlPlane) publish(
+func (c *SkillService) publish(
 	result protocol.ExtensionControlResult,
 	event protocol.ExtensionControlEvent,
 ) {

@@ -42,53 +42,31 @@ func Register(registry *tool.Registry, store *memorystore.Store) error {
 	if registry == nil {
 		return errors.New("remember registry is required")
 	}
-	registrations, err := Registrations(store)
-	if err != nil {
-		return err
-	}
-	for _, registration := range registrations {
-		if err := registry.RegisterTrusted("builtin:memory", registration); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Registration builds the source-owned remember tool contribution without
-// mutating a Registry. Extension assembly uses it to preserve one catalog
-// commit boundary.
-func Registration(store *memorystore.Store) (tool.Registration, error) {
-	executor, err := New(store)
-	if err != nil {
-		return tool.Registration{}, err
-	}
-	typedExecutor, err := executor.typedExecutor()
-	if err != nil {
-		return tool.Registration{}, err
-	}
-	return trustedRegistration(typedExecutor), nil
-}
-
-func Registrations(store *memorystore.Store) ([]tool.Registration, error) {
-	remember, err := Registration(store)
-	if err != nil {
-		return nil, err
-	}
 	builders := []func(*memorystore.Store) (tool.Executor, error){
+		func(store *memorystore.Store) (tool.Executor, error) {
+			value, err := New(store)
+			if err != nil {
+				return nil, err
+			}
+			return value.typedExecutor()
+		},
 		newListExecutor,
 		newGetExecutor,
 		newUpdateExecutor,
 		newForgetExecutor,
 	}
-	result := []tool.Registration{remember}
 	for _, build := range builders {
-		executor, buildErr := build(store)
-		if buildErr != nil {
-			return nil, buildErr
+		executor, err := build(store)
+		if err != nil {
+			return err
 		}
-		result = append(result, trustedRegistration(executor))
+		if err := registry.RegisterTrusted(
+			"builtin:memory", trustedRegistration(executor),
+		); err != nil {
+			return err
+		}
 	}
-	return result, nil
+	return nil
 }
 
 func trustedRegistration(executor tool.Executor) tool.Registration {

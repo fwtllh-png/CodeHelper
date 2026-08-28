@@ -88,9 +88,9 @@ func TestMCPContributorRequiresConfigInsideTrustedStateRoot(t *testing.T) {
 	if err := os.WriteFile(outside, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := (mcpContributor{
+	err := (mcpContributor{
 		configPath: outside, trustedConfigRoot: trustedRoot,
-		output: &extensionBuildState{},
+		output: &capabilityBuildState{},
 	}).Contribute(t.Context(), tool.NewRegistry(nil, nil))
 	if err == nil || !strings.Contains(err.Error(), "Runtime state directory") {
 		t.Fatalf("outside MCP config error = %v", err)
@@ -106,8 +106,8 @@ func TestMCPContributorRequiresConfigInsideTrustedStateRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output := &extensionBuildState{}
-	if _, err := (mcpContributor{
+	output := &capabilityBuildState{}
+	if err := (mcpContributor{
 		configPath: inside, trustedConfigRoot: trustedRoot,
 		runtimeAuthority: runtimeAuthority, output: output,
 	}).Contribute(t.Context(), tool.NewRegistry(nil, nil)); err != nil {
@@ -133,9 +133,9 @@ func TestMCPContributorRejectsSymlinkedTrustedConfig(t *testing.T) {
 	if err := os.Symlink(outside, link); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	_, err := (mcpContributor{
+	err := (mcpContributor{
 		configPath: link, trustedConfigRoot: trustedRoot,
-		output: &extensionBuildState{},
+		output: &capabilityBuildState{},
 	}).Contribute(t.Context(), tool.NewRegistry(nil, nil))
 	if err == nil || !strings.Contains(err.Error(), "non-symlink") {
 		t.Fatalf("symlinked MCP config error = %v", err)

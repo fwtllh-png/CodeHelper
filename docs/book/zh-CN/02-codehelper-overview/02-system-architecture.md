@@ -161,7 +161,7 @@ Event 包含 Sequence、Operation、Thread、Turn 和 Item Identity，使 Host �
 
 ```text
 config -> provider -> persistence -> platform -> builtin tools
-       -> extension contributors -> security -> extension plan
+       -> capability tools -> security
        -> orchestration -> observability -> agent -> runtime
        -> background services
 ```
@@ -173,10 +173,9 @@ SQLite 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchest
 Provider 发布所选 Provider/Model Catalog，Security 发布 Permission Store 与
 Guard Factory。
 
-Builtin 与 Extension Tool 共享同一个 Registry。Skill、Memory 和 MCP
-Contributor 注册 Typed Contract，只接收显式 Capability，并返回
-有界 Receipt。随后 Source Resolution 生成 Digested Extension Plan。Subagent 工具
-由 Orchestration Module 装配，而非 Extension Contributor Chain。
+Builtin、Skill、Memory 和 MCP Tool 共享同一个 Registry。Composition Root 按固定
+顺序直接构造 Skill Catalog、Memory Store 与 MCP Pool。Subagent 工具由
+Orchestration Module 单独装配。
 
 Runtime 构造具有 Prepared 状态：`RuntimeModule` 只构造 Facade 并恢复静态 Durable
 State，不接受 Operation；`BackgroundModule` 依次执行 MCP 初次 Refresh、启动
@@ -197,7 +196,7 @@ Runtime 的 Terminal Outbox/Pending Turn Recovery，再启动 MCP Prewarm。任�
 | Operation | `runtime/app` | Dispatch、Reservation、Event Hub、Terminal Commit |
 | Turn | `runtime/agent` | Coordinator、Scope、Effect、Control、Verification |
 | Subagent Control | `orchestration/subagent`、`orchestration/admission` | Agent Graph、Budget、Concurrency 与 Worktree Authority |
-| Extension Lifecycle | `runtime/extension`、`runtime/app/extension` | Plan、Generation、Effect Ownership、Control Receipt |
+| Skill Control | `runtime/app/extension`、`adapter/skill` | Skill State、Lock、Control Receipt |
 | Trace/Usage Plane | `observability/trace`、`observability/usage` | Span、Latency、Token 与 Cost Projection |
 | Go Projection | `runtime/eventview` | Go Host 共享的 Typed Event Interpretation |
 | Web Projection | `web/src/chat/projector` | Exhaustive Generated Event Class Dispatch |

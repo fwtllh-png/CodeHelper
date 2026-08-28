@@ -14,18 +14,18 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 	workspace := t.TempDir()
 	home := t.TempDir()
 	writeControlSkill(t, workspace, "review")
-	paths, err := ResolveExtensionPaths(ExtensionOptions{
+	paths, err := ResolveSkillPaths(SkillOptions{
 		DataDir: filepath.Join(workspace, "data"), UserHome: home,
 	}, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	control, err := OpenExtensionControlPlane(paths, workspace)
+	control, err := OpenSkillControl(paths, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer control.Close()
-	initial, err := control.Plane.Snapshot(
+	initial, err := control.Service.Snapshot(
 		t.Context(), protocol.ExtensionControlAll,
 	)
 	if err != nil {
@@ -37,7 +37,7 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 		t.Fatalf("initial projection = %+v", initial.Extensions)
 	}
 
-	channel, unsubscribe, err := control.Plane.Subscribe(1)
+	channel, unsubscribe, err := control.Service.Subscribe(1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,11 +45,11 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 	disable := controlOperation(
 		"operation-1", protocol.ExtensionActionDisable, "review",
 	)
-	first, err := control.Plane.Submit(t.Context(), disable)
+	first, err := control.Service.Submit(t.Context(), disable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	duplicate, err := control.Plane.Submit(t.Context(), disable)
+	duplicate, err := control.Service.Submit(t.Context(), disable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,14 +58,14 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 	}
 	conflict := disable
 	conflict.Action = protocol.ExtensionActionEnable
-	if _, err := control.Plane.Submit(t.Context(), conflict); err == nil {
+	if _, err := control.Service.Submit(t.Context(), conflict); err == nil {
 		t.Fatal("conflicting operation ID was accepted")
 	}
 
 	enable := controlOperation(
 		"operation-2", protocol.ExtensionActionEnable, "review",
 	)
-	if _, err := control.Plane.Submit(t.Context(), enable); err != nil {
+	if _, err := control.Service.Submit(t.Context(), enable); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -79,7 +79,7 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 		t.Fatal("slow extension subscriber remained connected")
 	}
 
-	events, more, err := control.Plane.Replay(t.Context(), 0, 10)
+	events, more, err := control.Service.Replay(t.Context(), 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	current, err := control.Plane.Snapshot(
+	current, err := control.Service.Snapshot(
 		t.Context(), protocol.ExtensionControlAll,
 	)
 	if err != nil {
@@ -102,7 +102,7 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 	receiptsOperation := controlOperation(
 		"receipts-query", protocol.ExtensionActionReceipts, "",
 	)
-	receipts, err := control.Plane.Submit(t.Context(), receiptsOperation)
+	receipts, err := control.Service.Submit(t.Context(), receiptsOperation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 	healthOperation := controlOperation(
 		"health-query", protocol.ExtensionActionHealth, "",
 	)
-	health, err := control.Plane.Submit(t.Context(), healthOperation)
+	health, err := control.Service.Submit(t.Context(), healthOperation)
 	if err != nil {
 		t.Fatal(err)
 	}

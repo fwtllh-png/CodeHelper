@@ -682,7 +682,7 @@ func loadWebConfig(options webCommandOptions) (config.Snapshot, error) {
 
 type preparedWebRuntime struct {
 	application  *wire.Session
-	extensions   *wire.ExtensionControlHandle
+	extensions   *wire.SkillControlHandle
 	dependencies webhost.Dependencies
 }
 
@@ -730,7 +730,7 @@ func prepareWebRuntime(
 	runtimeOverrides.Protocol = &loaded.Config.Execution.Protocol
 	runtimeOverrides.CredentialKind = &effectiveCredential.Kind
 	runtimeOverrides.CredentialName = &effectiveCredential.Name
-	extensionOptions := wire.ExtensionOptions{DataDir: loaded.Config.State.DataDir}
+	skillOptions := wire.SkillOptions{DataDir: loaded.Config.State.DataDir}
 	application, err := wire.NewExec(ctx, wire.ExecOptions{
 		ConfigPath:        options.configPath,
 		ConfigOverrides:   runtimeOverrides,
@@ -742,18 +742,18 @@ func prepareWebRuntime(
 		PersistentStore:   store,
 		CredentialControl: credentialControl,
 		WorkspaceIdentity: workspaceIdentity,
-		Extensions:        extensionOptions,
+		Skills:            skillOptions,
 		ModelMetadata:     setupModelMetadata(selection),
 	})
 	if err != nil {
 		return nil, err
 	}
-	extensionPaths, err := wire.ResolveExtensionPaths(extensionOptions, workspaceRoot)
+	skillPaths, err := wire.ResolveSkillPaths(skillOptions, workspaceRoot)
 	if err != nil {
 		closeWebRuntime(application)
 		return nil, fmt.Errorf("extension paths: %w", err)
 	}
-	extensions, err := wire.OpenExtensionControlPlane(extensionPaths, workspaceRoot)
+	extensions, err := wire.OpenSkillControl(skillPaths, workspaceRoot)
 	if err != nil {
 		closeWebRuntime(application)
 		return nil, fmt.Errorf("extension control: %w", err)
@@ -825,7 +825,7 @@ func prepareWebRuntime(
 			ModelCatalog:      application.ModelCatalog(), Connection: connection,
 			MCPHealth:   application.MCPHealth,
 			Diagnostics: stderr, Usage: repositories.Usage,
-			Agents: application.Subagents(), Extensions: extensions.Plane,
+			Agents: application.Subagents(), Extensions: extensions.Service,
 			SessionWorkspaces: application.SessionWorkspaces(),
 			Workspace:         application.WorkspaceQuery(),
 			RepositoryIndex:   application.RepositoryIndex(), Credentials: credentials,

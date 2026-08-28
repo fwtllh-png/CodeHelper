@@ -35,7 +35,7 @@ func (configModule) Build(_ context.Context, state *buildState) error {
 			"repository policy and MCP require tools to be enabled",
 		)
 	}
-	extensionPaths, err := resolveRuntimeExtensionPaths(state, execution.Workspace)
+	skillPaths, err := resolveRuntimeSkillPaths(state, execution.Workspace)
 	if err != nil {
 		return err
 	}
@@ -55,7 +55,7 @@ func (configModule) Build(_ context.Context, state *buildState) error {
 	state.config = configBuildState{
 		snapshot:            snapshot,
 		execution:           execution,
-		extensionPaths:      extensionPaths,
+		skillPaths:          skillPaths,
 		runtimeSessionID:    fmt.Sprintf("process-%d-%p", os.Getpid(), state.session),
 		workspaceStateID:    workspaceStateID,
 		workspaceStateRoot:  workspaceStateRoot,

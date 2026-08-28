@@ -57,7 +57,7 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 | 持久化 | SQLite Projection、Domain Fact、Terminal Envelope、Event Log、CAS、Snapshot、Journal |
 | 可观测性 | 冻结终态 Measurement、Trace、Usage、Receipt、Diagnostics、结构化日志与指标 |
 | 多 Agent 协作 | Agent Graph、Subagent Admission/Budget、Worktree 隔离与 Chat Merge |
-| 生态 | Typed Extension Plan、Model Catalog、MCP、Skill、Memory |
+| 生态 | Model Catalog、MCP、Skill、Memory |
 | Host | 本机 Web |
 
 ## 产品边界
