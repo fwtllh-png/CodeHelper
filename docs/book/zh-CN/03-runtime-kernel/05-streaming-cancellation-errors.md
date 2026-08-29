@@ -47,8 +47,8 @@ Ownership；Free-form Error 则会迫使 Host 猜测能否 Retry。
 ```mermaid
 flowchart LR
     P[Provider SSE] --> N[Normalized Stream Event]
-    N --> E[Protocol EventData]
-    E --> A[Runtime Event Envelope]
+    N --> E[Engine Event]
+    E --> A[Protocol Event]
     A --> H[Host Projection]
     T[Tool stdout/stderr] --> B[Bounded Tool Stream]
     B --> E
@@ -66,8 +66,8 @@ Tool Output 使用 Byte Cursor 和 Truncation Marker。Live Commentary 达到 Bu
 | Layer | Guarantee | Recovery |
 | --- | --- | --- |
 | Provider Fragment | 单 Stream 有序、Vendor-specific Terminal | Adapter 分类 Incomplete Stream |
-| Protocol EventData | Normalized、Call-correlated、Bounded | Turn Fail/Cancel/Continue |
-| Runtime Event Envelope | Runtime Sequence/Stable Identity | Cursor Replay |
+| Engine Event | Normalized、Call-correlated、Bounded | Turn Fail/Cancel/Continue |
+| Protocol Event | Runtime Sequence/Stable Identity | Cursor Replay |
 | Host Projection | Disconnect/Slow Consumer 时可能漏 Live Data | Rebuild/Replay，不 Rerun |
 
 Streaming 不是 Exactly-once Transport Delivery。Event ID/Reducer Idempotency 处理

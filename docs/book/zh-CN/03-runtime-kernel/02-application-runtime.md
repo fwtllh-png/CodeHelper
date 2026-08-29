@@ -182,11 +182,10 @@ Cursor。Slow Subscriber 被关闭并移除，不会阻塞排序路径。
 
 ## Thread 与 Engine 管理
 
-`ThreadManager` 按 Thread 创建/恢复 `EngineAdapter`。Engine 直接产生
-`protocol.EventData`；Adapter 解析 Workspace/Editor Context、补充 Host 关联字段、
-记录 Receipt，并提交 Terminal Envelope。App 层不解析 Provider Stream、不授权 Tool，
-也不调用 `turnkernel.Reducer.Apply`。Turn Coordinator 拥有状态转换；Runtime 拥有
-Admission、Event Sequencing 与 Terminal Publication。
+`ThreadManager` 按 Thread 创建/恢复 `EngineAdapter`。Adapter 解析 Workspace/Editor
+Context，将 Engine Event 转为 Protocol Event，并记录 Receipt。App 层不解析 Provider
+Stream、不授权 Tool，也不调用 `turnkernel.Reducer.Apply`。Turn Coordinator 拥有
+状态转换；Runtime 拥有 Admission、Protocol Projection 与 Terminal Publication。
 
 ## 代码地图
 

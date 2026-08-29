@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"strconv"
 
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -36,7 +37,7 @@ func (s *runtimeSink) publishPostTurnContextMaintenance(
 			FallbackReason: err.Error(),
 		}
 	case result.Receipt != nil:
-		data = agentengine.ProtocolCompactionData(result.Receipt)
+		data = appextension.ProtocolCompactionData(result.Receipt)
 	}
 	if result.Receipt != nil && result.Usage.Total() != 0 {
 		_ = s.runtime.publish(
@@ -55,7 +56,7 @@ func (s *runtimeSink) publishPostTurnContextMaintenance(
 				OutputTokens:    result.Usage.OutputTokens,
 				ReasoningTokens: result.Usage.ReasoningTokens,
 				CachedTokens:    result.Usage.CachedTokens,
-				CostMicrounits:  agentengine.CostMicrounits(result.CostUSD),
+				CostMicrounits:  appextension.CostMicrounits(result.CostUSD),
 				CostKnown:       result.CostKnown,
 			},
 		)

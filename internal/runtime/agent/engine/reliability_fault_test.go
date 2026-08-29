@@ -43,9 +43,9 @@ func TestTerminalContextFailureDoesNotOverrideCompletedTurn(t *testing.T) {
 	if err != nil || result.State != Completed || result.Text != "done" {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
-	if len(eventSecondaryIssues(terminal)) != 1 ||
-		eventSecondaryIssues(terminal)[0].Phase != "terminal_context" {
-		t.Fatalf("terminal secondary issues = %+v", eventSecondaryIssues(terminal))
+	if len(terminal.SecondaryIssues) != 1 ||
+		terminal.SecondaryIssues[0].Phase != "terminal_context" {
+		t.Fatalf("terminal secondary issues = %+v", terminal.SecondaryIssues)
 	}
 }
 
@@ -97,10 +97,10 @@ func TestTurnCoordinatorReleaseFailureIsReportedOnTerminal(t *testing.T) {
 	if runtime.calls < 2 {
 		t.Fatalf("release calls = %d, want terminal attempt and deferred retry", runtime.calls)
 	}
-	if len(eventSecondaryIssues(terminal)) != 1 ||
-		eventSecondaryIssues(terminal)[0].Phase != "turn_coordinator_release" ||
-		eventSecondaryIssues(terminal)[0].Message != releaseErr.Error() {
-		t.Fatalf("terminal secondary issues = %+v", eventSecondaryIssues(terminal))
+	if len(terminal.SecondaryIssues) != 1 ||
+		terminal.SecondaryIssues[0].Phase != "turn_coordinator_release" ||
+		terminal.SecondaryIssues[0].Message != releaseErr.Error() {
+		t.Fatalf("terminal secondary issues = %+v", terminal.SecondaryIssues)
 	}
 }
 

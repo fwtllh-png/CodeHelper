@@ -122,16 +122,12 @@ func TestReceiptReportsLineStatsAndRollbackConflicts(t *testing.T) {
 
 func TestReceiptReportsProviderRetrySummary(t *testing.T) {
 	recorder := New("retry provider")
-	recorder.Observe(auditEvent(agentengine.EventAudit{
-		ProviderRetry: &agentengine.ProviderRetry{
-			Attempt: 1, Code: protocol.CodeUnavailable, Category: "connection_reset",
-		},
-	}))
-	recorder.Observe(auditEvent(agentengine.EventAudit{
-		ProviderRetry: &agentengine.ProviderRetry{
-			Attempt: 2, Code: protocol.CodeUnavailable, Category: "unexpected_eof",
-		},
-	}))
+	recorder.Observe(agentengine.Event{ProviderRetry: &agentengine.ProviderRetry{
+		Attempt: 1, Code: protocol.CodeUnavailable, Category: "connection_reset",
+	}})
+	recorder.Observe(agentengine.Event{ProviderRetry: &agentengine.ProviderRetry{
+		Attempt: 2, Code: protocol.CodeUnavailable, Category: "unexpected_eof",
+	}})
 
 	receipt := recorder.Build(Observations{})
 	if receipt.ProviderRetry == nil ||
@@ -173,9 +169,7 @@ func TestReceiptSeparatesProviderAttemptsSamplesAndCompletionRepairs(t *testing.
 		{Kind: "provider_attempt", SampleID: "sample-2", Attempt: 1},
 	} {
 		value := event
-		recorder.Observe(auditEvent(agentengine.EventAudit{
-			ModelExecution: &value,
-		}))
+		recorder.Observe(agentengine.Event{ModelExecution: &value})
 	}
 	receipt := recorder.Build(Observations{})
 	if receipt.ModelExecution.ProviderAttempts != 3 ||
@@ -199,7 +193,9 @@ func TestReceiptClassifiesToolExecutions(t *testing.T) {
 	} {
 		call := provider.ToolCall{Name: event.name}
 		result := tool.Result{IsError: event.failed}
-		recorder.Observe(toolResultEvent(call, result))
+		recorder.Observe(agentengine.Event{
+			State: agentengine.RunningTools, ToolCall: &call, Result: &result,
+		})
 	}
 	receipt := recorder.Build(Observations{})
 	if receipt.ToolExecution["business"] != 2 ||
@@ -282,16 +278,15 @@ func TestReceiptReportsReadPathsAndContextSections(t *testing.T) {
 // every receipt by the last call's tokens.
 func TestReceiptUsesFrozenKernelUsage(t *testing.T) {
 	recorder := New("fix add")
-	recorder.Observe(usageEvent(
-		1,
-		provider.Usage{InputTokens: 999, OutputTokens: 999},
-		false,
-	))
-	recorder.Observe(usageEvent(
-		0,
-		provider.Usage{InputTokens: 888, OutputTokens: 888},
-		true,
-	))
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Streaming, Sample: 1,
+		Usage: &provider.Usage{InputTokens: 999, OutputTokens: 999},
+	})
+	recorder.Observe(agentengine.Event{
+		State:   agentengine.Completed,
+		Usage:   &provider.Usage{InputTokens: 888, OutputTokens: 888},
+		CostUSD: 99, CostKnown: true,
+	})
 	receipt := recorder.Build(Observations{
 		measurement: receiptMeasurement(t, turnkernel.UsageState{
 			InputTokens: 48, OutputTokens: 6, CachedTokens: 16,
@@ -318,11 +313,12 @@ func TestReceiptUsesFrozenKernelUsage(t *testing.T) {
 // call looked unpriced.
 func TestReceiptCostKnownComesFromPricingNotAmount(t *testing.T) {
 	free := New("ask something cheap")
-	free.Observe(usageEvent(
-		0,
-		provider.Usage{InputTokens: 12, OutputTokens: 3},
-		true,
-	))
+	free.Observe(agentengine.Event{
+		State: agentengine.Completed,
+		Usage: &provider.Usage{InputTokens: 12, OutputTokens: 3},
+		// A priced model whose rates are zero: cost is known to be nothing.
+		CostUSD: 0, CostKnown: true,
+	})
 	receipt := free.Build(Observations{
 		measurement: receiptMeasurement(t, turnkernel.UsageState{
 			InputTokens: 12, OutputTokens: 3,
@@ -334,11 +330,10 @@ func TestReceiptCostKnownComesFromPricingNotAmount(t *testing.T) {
 	}
 
 	unpriced := New("ask something unpriced")
-	unpriced.Observe(usageEvent(
-		0,
-		provider.Usage{InputTokens: 12, OutputTokens: 3},
-		false,
-	))
+	unpriced.Observe(agentengine.Event{
+		State: agentengine.Completed,
+		Usage: &provider.Usage{InputTokens: 12, OutputTokens: 3},
+	})
 	receipt = unpriced.Build(Observations{
 		measurement: receiptMeasurement(t, turnkernel.UsageState{
 			InputTokens: 12, OutputTokens: 3, Frozen: true,
@@ -355,17 +350,18 @@ func TestReceiptCostKnownComesFromPricingNotAmount(t *testing.T) {
 // adding them and counting the input twice.
 func TestReceiptDoesNotReaggregateStreamingUsage(t *testing.T) {
 	recorder := New("fix add")
-	recorder.Observe(usageEvent(1, provider.Usage{InputTokens: 100}, true))
-	recorder.Observe(usageEvent(
-		1,
-		provider.Usage{InputTokens: 100, OutputTokens: 50},
-		true,
-	))
-	recorder.Observe(usageEvent(
-		2,
-		provider.Usage{InputTokens: 30, OutputTokens: 8},
-		true,
-	))
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Streaming, Sample: 1, CostKnown: true,
+		Usage: &provider.Usage{InputTokens: 100},
+	})
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Streaming, Sample: 1, CostKnown: true,
+		Usage: &provider.Usage{InputTokens: 100, OutputTokens: 50},
+	})
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Streaming, Sample: 2, CostKnown: true,
+		Usage: &provider.Usage{InputTokens: 30, OutputTokens: 8},
+	})
 	receipt := recorder.Build(Observations{
 		measurement: receiptMeasurement(t, turnkernel.UsageState{
 			InputTokens: 130, OutputTokens: 58,
@@ -381,12 +377,11 @@ func TestReceiptDoesNotReaggregateStreamingUsage(t *testing.T) {
 // event carries no cumulative usage.
 func TestFailedReceiptUsesFrozenKernelUsage(t *testing.T) {
 	recorder := New("fix add")
-	recorder.Observe(usageEvent(
-		0,
-		provider.Usage{InputTokens: 30, OutputTokens: 4},
-		false,
-	))
-	recorder.Observe(failedEvent("tool file_edit failed"))
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Streaming,
+		Usage: &provider.Usage{InputTokens: 30, OutputTokens: 4},
+	})
+	recorder.Observe(agentengine.Event{State: agentengine.Failed, Error: "tool file_edit failed"})
 	receipt := recorder.Build(Observations{
 		measurement: receiptMeasurement(t, turnkernel.UsageState{
 			InputTokens: 30, OutputTokens: 4, Frozen: true,
@@ -405,13 +400,13 @@ func TestFailedReceiptUsesFrozenKernelUsage(t *testing.T) {
 
 func TestReceiptSeparatesTerminalSecondaryIssues(t *testing.T) {
 	recorder := New("fix add")
-	recorder.Observe(failedEvent(
-		"verification conflict",
-		protocol.TerminalIssue{
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Failed, Error: "verification conflict",
+		SecondaryIssues: []agentengine.TerminalIssue{{
 			Phase: "terminal_context", Code: protocol.CodeResourceExhausted,
 			Message: "history compaction failed",
-		},
-	))
+		}},
+	})
 	receipt := recorder.Build(Observations{})
 	if len(receipt.UnresolvedIssues) != 1 ||
 		receipt.UnresolvedIssues[0] != "verification conflict" {
@@ -476,11 +471,12 @@ func TestReceiptWithoutMeasurementHasNoLatencyPartition(t *testing.T) {
 // completes, and the receipt is written before that.
 func TestReceiptBudgetIncludesThisTurn(t *testing.T) {
 	recorder := New("fix add")
-	recorder.Observe(usageEvent(
-		0,
-		provider.Usage{InputTokens: 300, OutputTokens: 100},
-		true,
-	))
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Completed,
+		Usage: &provider.Usage{InputTokens: 300, OutputTokens: 100},
+		// testRoute-style pricing: 2 USD of spend on this turn.
+		CostUSD: 2, CostKnown: true,
+	})
 	receipt := recorder.Build(Observations{
 		measurement: receiptMeasurement(t, turnkernel.UsageState{
 			InputTokens: 300, OutputTokens: 100,
@@ -549,9 +545,9 @@ func TestReceiptReportsVerificationGateVerdict(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			recorder := New("fix add")
-			recorder.Observe(auditEvent(agentengine.EventAudit{
-				Verification: test.receipt,
-			}))
+			recorder.Observe(agentengine.Event{
+				State: agentengine.Verifying, Verification: test.receipt,
+			})
 			receipt := recorder.Build(Observations{})
 			if receipt.Verification.Verify != test.wantVerif ||
 				receipt.Verification.Tests != test.wantTests {
@@ -565,13 +561,15 @@ func TestReceiptReportsVerificationGateVerdict(t *testing.T) {
 // the verdict the turn ended on.
 func TestReceiptReportsFinalVerificationAfterRepair(t *testing.T) {
 	recorder := New("fix add")
-	recorder.Observe(auditEvent(agentengine.EventAudit{
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Verifying,
 		Verification: &agentengine.VerificationReceipt{
 			Receipt: verify.Receipt{Scope: verify.ScopeDiagnostics, Status: verify.StatusFailed},
 			Action:  "repair",
 		},
-	}))
-	recorder.Observe(auditEvent(agentengine.EventAudit{
+	})
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Verifying,
 		Verification: &agentengine.VerificationReceipt{
 			Receipt:     verify.Receipt{Scope: verify.ScopeDiagnostics, Status: verify.StatusPassed},
 			Action:      "passed",
@@ -589,7 +587,7 @@ func TestReceiptReportsFinalVerificationAfterRepair(t *testing.T) {
 			},
 			Workspace: &agentengine.VerificationWorkspace{Status: "changed"},
 		},
-	}))
+	})
 
 	receipt := recorder.Build(Observations{
 		changes: []agentengine.TurnDiffEntry{{Path: "calc.go"}},
@@ -604,6 +602,35 @@ func TestReceiptReportsFinalVerificationAfterRepair(t *testing.T) {
 		receipt.WorkspaceOutcome.Status != "changed" {
 		t.Fatalf("detailed receipt = %+v workspace = %+v",
 			receipt.VerificationDetail, receipt.WorkspaceOutcome)
+	}
+}
+
+func TestVerificationDataCarriesChecksAndPaths(t *testing.T) {
+	data := VerificationData(&agentengine.VerificationReceipt{
+		Receipt: verify.Receipt{
+			Scope: verify.ScopeRepository, Status: verify.StatusFailed, Errors: 1,
+			Checks: []verify.Check{{
+				Name: "go", Command: "go test ./...", Reason: "go.mod",
+				Category: "test_failure", Status: verify.StatusFailed,
+				ExitCode: 1, Stdout: "--- FAIL", Stderr: "exit status 1",
+			}},
+		},
+		Mode: "hard", Action: "failed", RepairSteps: 2, Paths: []string{"calc.py"},
+	})
+
+	if data.Scope != "repository" || data.Status != protocol.ReceiptFailed ||
+		data.Action != "failed" || data.RepairSteps != 2 || data.Errors != 1 {
+		t.Fatalf("verification data = %+v", data)
+	}
+	if len(data.Checks) != 1 || data.Checks[0].Name != "go" ||
+		data.Checks[0].Reason != "go.mod" ||
+		data.Checks[0].Category != "test_failure" ||
+		!strings.Contains(data.Checks[0].Output, "FAIL") ||
+		!strings.Contains(data.Checks[0].Output, "exit status 1") {
+		t.Fatalf("checks = %+v", data.Checks)
+	}
+	if len(data.Paths) != 1 || data.Paths[0] != "calc.py" {
+		t.Fatalf("paths = %v", data.Paths)
 	}
 }
 
@@ -652,14 +679,18 @@ func TestReceiptOmitsEvidenceWhenThereIsNone(t *testing.T) {
 
 func TestReceiptCarriesOnlyTerminalCompletionDeclaration(t *testing.T) {
 	recorder := New("change a.go")
-	recorder.Observe(startedEvent("/tmp/chat-worktree", "worktree"))
-	recorder.Observe(auditEvent(agentengine.EventAudit{
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Preparing, Workspace: "/tmp/chat-worktree",
+		WorkspaceIsolation: "worktree",
+	})
+	recorder.Observe(agentengine.Event{
+		State: agentengine.Completed,
 		Completion: &tool.CompletionDeclaration{
 			Status: "complete", Summary: "implemented and verified",
 			ChangedPaths: []string{"a.go"}, VerificationCallIDs: []string{"verify-1"},
 			MutationRevision: 1, CallID: "complete-1",
 		},
-	}))
+	})
 	receipt := recorder.Build(Observations{})
 	if receipt.WorkspaceIsolation != "worktree" ||
 		receipt.Completion == nil || !receipt.Completion.Accepted ||
@@ -682,11 +713,12 @@ func TestReceiptDistinguishesUnavailableDiagnostics(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			recorder := New("fix add")
-			recorder.Observe(toolResultEvent(
-				provider.ToolCall{Name: "file_edit", ID: "call_edit"},
-				tool.Result{Content: "edited"},
-				diagnostics.Receipt{Path: "calc.py", Status: test.status},
-			))
+			recorder.Observe(agentengine.Event{
+				State:       agentengine.RunningTools,
+				ToolCall:    &provider.ToolCall{Name: "file_edit", ID: "call_edit"},
+				Result:      &tool.Result{Content: "edited"},
+				Diagnostics: []diagnostics.Receipt{{Path: "calc.py", Status: test.status}},
+			})
 			receipt := recorder.Build(Observations{})
 			if receipt.Verification.Diagnostics != test.want {
 				t.Fatalf(
@@ -701,16 +733,17 @@ func TestReceiptDistinguishesUnavailableDiagnostics(t *testing.T) {
 func TestReceiptCollectsActualSG7PermissionDigests(t *testing.T) {
 	digest := strings.Repeat("a", 64)
 	recorder := New("inspect")
-	recorder.Observe(toolResultEvent(
-		provider.ToolCall{Name: "file_read", ID: "call-read"},
-		tool.Result{
+	recorder.Observe(agentengine.Event{
+		State:    agentengine.RunningTools,
+		ToolCall: &provider.ToolCall{Name: "file_read", ID: "call-read"},
+		Result: &tool.Result{
 			Content: "ok",
 			Execution: &tool.ExecutionReceipt{Attempts: []tool.AttemptReceipt{
 				{PermissionDigest: digest},
 				{PermissionDigest: digest},
 			}},
 		},
-	))
+	})
 	receipt := recorder.Build(Observations{})
 	if len(receipt.PermissionDigests) != 1 ||
 		receipt.PermissionDigests[0] != digest {

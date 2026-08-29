@@ -1,6 +1,7 @@
 package app
 
 import (
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"testing"
 
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
@@ -23,7 +24,7 @@ func TestContextCompactionUsageSampleIsStablePerAttempt(t *testing.T) {
 }
 
 func TestPostTurnCompactionReceiptProducesValidProtocolEvent(t *testing.T) {
-	data := agentengine.ProtocolCompactionData(&agentengine.CompactionReceipt{
+	data := appextension.ProtocolCompactionData(&agentengine.CompactionReceipt{
 		CompactionID:        "compact-1",
 		Status:              "completed",
 		Mode:                "post_turn",

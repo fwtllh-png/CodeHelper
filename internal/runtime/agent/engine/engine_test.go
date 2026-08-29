@@ -210,7 +210,7 @@ func TestEngineReplaysCanonicalDuplicateToolCallsWithinTurn(t *testing.T) {
 	engine := newEngine(t, runtime, registry)
 	var results []Event
 	if _, err := engine.Run(t.Context(), "look up twice", func(event Event) error {
-		if eventToolCall(event) != nil && eventToolResult(event) != nil {
+		if event.ToolCall != nil && event.Result != nil {
 			results = append(results, event)
 		}
 		return nil
@@ -221,7 +221,7 @@ func TestEngineReplaysCanonicalDuplicateToolCallsWithinTurn(t *testing.T) {
 		t.Fatalf("lookup executions = %d, want 1", executor.calls.Load())
 	}
 	if len(results) != 2 ||
-		eventToolResult(results[1]).Metadata["replayed_from_call_id"] != "call_1" {
+		results[1].Result.Metadata["replayed_from_call_id"] != "call_1" {
 		t.Fatalf("tool results = %+v", results)
 	}
 }
@@ -258,10 +258,10 @@ func TestEngineBlocksWhenCompletionRepairRemainsEmpty(t *testing.T) {
 		t.Fatalf("result=%+v err=%v, want blocked convergence", result, err)
 	}
 	if result.State != Failed ||
-		eventConvergence(terminal) == nil ||
-		eventConvergence(terminal).Cause != string(turnkernel.ConvergenceRepairBudget) ||
-		eventCompletion(terminal) == nil ||
-		eventCompletion(terminal).Status != "incomplete" {
+		terminal.Convergence == nil ||
+		terminal.Convergence.Cause != string(turnkernel.ConvergenceRepairBudget) ||
+		terminal.Completion == nil ||
+		terminal.Completion.Status != "incomplete" {
 		t.Fatalf("blocked result=%+v terminal=%+v", result, terminal)
 	}
 }
@@ -455,12 +455,12 @@ func TestEngineContinuesRepeatedReasoningLimitsAtSameEffort(t *testing.T) {
 	engine.options.Route = reasoningRoute(t)
 	engine.options.Routes, _ = model.NewRouteSet(engine.options.Route, nil, false)
 
-	var completedReasoning []protocol.ReasoningCompletedData
+	var completedReasoning []ModelReasoning
 	result, err := engine.Run(t.Context(), "review", func(event Event) error {
-		if eventData[*protocol.ReasoningCompletedData](event) != nil {
+		if event.ReasoningCompleted != nil {
 			completedReasoning = append(
 				completedReasoning,
-				*eventData[*protocol.ReasoningCompletedData](event),
+				*event.ReasoningCompleted,
 			)
 		}
 		return nil
@@ -727,7 +727,7 @@ func TestEngineRepairsInterruptedPostToolNarrationBeforeCompletion(t *testing.T)
 	var completedText string
 	result, err := newEngine(t, runtime, registry).Run(t.Context(), "review", func(event Event) error {
 		if event.State == Completed {
-			completedText = eventText(event)
+			completedText = event.Text
 		}
 		return nil
 	})
@@ -977,8 +977,8 @@ func TestRunToolsReturnsReadFailureToModelAndClosesEveryStartedCall(t *testing.T
 		&toolResultCache{},
 		kernel,
 		func(_ State, event Event) error {
-			if eventToolResult(event) != nil {
-				emitted = append(emitted, *eventToolResult(event))
+			if event.Result != nil {
+				emitted = append(emitted, *event.Result)
 			}
 			return nil
 		},
@@ -1116,10 +1116,10 @@ func TestRunToolsRejectsDuplicateCallIdentityBeforeExecution(t *testing.T) {
 		&toolResultCache{},
 		kernel,
 		func(_ State, event Event) error {
-			if eventToolCall(event) != nil && eventToolResult(event) == nil {
+			if event.ToolCall != nil && event.Result == nil {
 				starts++
 			}
-			if eventToolResult(event) != nil {
+			if event.Result != nil {
 				results++
 			}
 			return nil
@@ -1160,10 +1160,10 @@ func TestRunToolsDoesNotRepublishAlreadyClosedCall(t *testing.T) {
 	}
 	var starts, results int
 	send := func(_ State, event Event) error {
-		if eventToolCall(event) != nil && eventToolResult(event) == nil {
+		if event.ToolCall != nil && event.Result == nil {
 			starts++
 		}
-		if eventToolResult(event) != nil {
+		if event.Result != nil {
 			results++
 		}
 		return nil
@@ -1226,16 +1226,16 @@ func TestRunToolsClosesPublishedCallsWhenStartPublicationFails(t *testing.T) {
 		&toolResultCache{},
 		kernel,
 		func(_ State, event Event) error {
-			if eventToolCall(event) != nil && eventToolResult(event) == nil {
+			if event.ToolCall != nil && event.Result == nil {
 				starts++
 				if starts == 2 {
 					return errors.New("start sink failed")
 				}
 			}
-			if eventToolResult(event) != nil {
+			if event.Result != nil {
 				results++
-				if !eventToolResult(event).IsError {
-					t.Fatalf("aborted result = %+v", eventToolResult(event))
+				if !event.Result.IsError {
+					t.Fatalf("aborted result = %+v", event.Result)
 				}
 			}
 			return nil
@@ -1291,7 +1291,7 @@ func TestRunToolsContinuesResultPublicationAfterSinkFailure(t *testing.T) {
 		&toolResultCache{},
 		kernel,
 		func(_ State, event Event) error {
-			if eventToolResult(event) == nil {
+			if event.Result == nil {
 				return nil
 			}
 			results++
@@ -1353,10 +1353,10 @@ func TestRunToolsCancellationClosesKernelLifecycle(t *testing.T) {
 		&toolResultCache{},
 		kernel,
 		func(_ State, event Event) error {
-			if eventToolCall(event) != nil && eventToolResult(event) == nil {
+			if event.ToolCall != nil && event.Result == nil {
 				starts++
 			}
-			if eventToolResult(event) != nil {
+			if event.Result != nil {
 				results++
 			}
 			return nil
@@ -1617,8 +1617,8 @@ func TestEngineGuaranteesOneRetryForStructuredTransportFailure(t *testing.T) {
 	var retries []*ProviderRetry
 
 	result, err := engine.Run(t.Context(), "retry transport", func(event Event) error {
-		if event.Audit.ProviderRetry != nil {
-			retries = append(retries, event.Audit.ProviderRetry)
+		if event.ProviderRetry != nil {
+			retries = append(retries, event.ProviderRetry)
 		}
 		return nil
 	})
@@ -1750,10 +1750,10 @@ func TestMCPHealthSnapshotProjectsOncePerTurn(t *testing.T) {
 		return append([]MCPHealthSnapshot(nil), snapshots...)
 	}
 	engine.options.Observability.Clock = func() time.Time { return now }
-	var changes []protocol.MCPHealthChangedData
+	var changes []MCPHealthChanged
 	send := func(_ State, event Event) error {
-		if change := eventData[*protocol.MCPHealthChangedData](event); change != nil {
-			changes = append(changes, *change)
+		if event.MCPHealthChanged != nil {
+			changes = append(changes, *event.MCPHealthChanged)
 		}
 		return nil
 	}
@@ -1763,7 +1763,7 @@ func TestMCPHealthSnapshotProjectsOncePerTurn(t *testing.T) {
 	if err := engine.emitMCPHealthChanges(append([]MCPHealthSnapshot(nil), snapshots...), send); err != nil {
 		t.Fatal(err)
 	}
-	if len(changes) != 1 || changes[0].State != "healthy" {
+	if len(changes) != 1 || changes[0].Current.State != "healthy" {
 		t.Fatalf("changes = %+v", changes)
 	}
 }
@@ -1906,7 +1906,7 @@ func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 	var terminalFault *protocol.FaultMetadata
 	result, err := engine.Run(t.Context(), "too large", func(event Event) error {
 		if event.State == Failed {
-			terminalFault = protocol.CloneFaultMetadata(eventFault(event))
+			terminalFault = protocol.CloneFaultMetadata(event.Fault)
 		}
 		return nil
 	})
@@ -2437,7 +2437,7 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 	var receipt *CompactionReceipt
 	snapshot := agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot()
 	_, err := engine.runCompactGate(t.Context(), &history, snapshot, 128, CompactionPhaseMidTurn, true, func(_ State, event Event) error {
-		receipt = event.Audit.Compaction
+		receipt = event.Compaction
 		return nil
 	}, 0, nil)
 	if err != nil {
@@ -2569,14 +2569,14 @@ func TestTerminalSeparatesPrimaryAndContextFinalizationFailure(t *testing.T) {
 	result := Result{}
 	handler.finish(t.Context(), &result, &resultErr)
 
-	if eventTerminalFailure(terminal).Code != protocol.CodeConflict ||
-		eventTerminalFailure(terminal).Message != "primary verification conflict" {
+	if terminal.ErrorCode != protocol.CodeConflict ||
+		terminal.Error != "primary verification conflict" {
 		t.Fatalf("primary terminal error = %+v", terminal)
 	}
-	if len(eventSecondaryIssues(terminal)) != 1 ||
-		eventSecondaryIssues(terminal)[0].Phase != "terminal_context" ||
-		eventSecondaryIssues(terminal)[0].Code != protocol.CodeResourceExhausted {
-		t.Fatalf("secondary issues = %+v", eventSecondaryIssues(terminal))
+	if len(terminal.SecondaryIssues) != 1 ||
+		terminal.SecondaryIssues[0].Phase != "terminal_context" ||
+		terminal.SecondaryIssues[0].Code != protocol.CodeResourceExhausted {
+		t.Fatalf("secondary issues = %+v", terminal.SecondaryIssues)
 	}
 }
 
@@ -2599,12 +2599,12 @@ func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
 	var postTurnCompaction bool
 
 	_, err := engine.Run(t.Context(), "new request", func(event Event) error {
-		if event.Audit.Compaction != nil &&
-			event.Audit.Compaction.Phase == CompactionPhasePostTurn {
+		if event.Compaction != nil &&
+			event.Compaction.Phase == CompactionPhasePostTurn {
 			postTurnCompaction = true
 		}
 		if event.State == Failed {
-			terminalBudget = event.Audit.ContextBudget
+			terminalBudget = event.ContextBudget
 		}
 		return nil
 	})
@@ -2648,12 +2648,12 @@ func TestFailedTurnCompactsWithinOversizedDurableLastTurn(t *testing.T) {
 	var postTurn *CompactionReceipt
 
 	_, err := engine.Run(t.Context(), "new request", func(event Event) error {
-		if event.Audit.Compaction != nil &&
-			event.Audit.Compaction.Phase == CompactionPhasePostTurn {
-			postTurn = event.Audit.Compaction
+		if event.Compaction != nil &&
+			event.Compaction.Phase == CompactionPhasePostTurn {
+			postTurn = event.Compaction
 		}
 		if event.State == Failed {
-			terminalBudget = event.Audit.ContextBudget
+			terminalBudget = event.ContextBudget
 		}
 		return nil
 	})
@@ -2702,7 +2702,7 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 	if _, err := engine.Run(t.Context(), "new request", func(event Event) error {
 		states = append(states, event.State)
 		if event.State == Compacting {
-			compaction = event.Audit.Compaction
+			compaction = event.Compaction
 		}
 		return nil
 	}); err != nil {
@@ -2756,8 +2756,8 @@ func TestEnginePreSamplingGateBeforeModelCall(t *testing.T) {
 		states = append(states, event.State)
 		if event.State == Compacting {
 			sawCompact = true
-			if event.Audit.Compaction == nil || event.Audit.Compaction.Phase != CompactionPhasePreSampling {
-				t.Fatalf("pre-sampling receipt = %+v", event.Audit.Compaction)
+			if event.Compaction == nil || event.Compaction.Phase != CompactionPhasePreSampling {
+				t.Fatalf("pre-sampling receipt = %+v", event.Compaction)
 			}
 		}
 		return nil
@@ -2783,37 +2783,26 @@ func TestDeduplicateCompactionReceipts(t *testing.T) {
 		Phase: CompactionPhasePreSampling, OriginalBytes: 100,
 		RetainedBytes: 80, PrunedToolResults: 1,
 	}
-	if err := send(Compacting, Event{
-		Data:  []protocol.EventData{ProtocolCompactionData(first)},
-		Audit: EventAudit{Compaction: first},
-	}); err != nil {
+	if err := send(Compacting, Event{Compaction: first}); err != nil {
 		t.Fatal(err)
 	}
 	same := *first
 	same.WorkingSet = []string{"internal-only-difference"}
-	if err := send(Compacting, Event{
-		Data:  []protocol.EventData{ProtocolCompactionData(&same)},
-		Audit: EventAudit{Compaction: &same},
-	}); err != nil {
+	if err := send(Compacting, Event{Compaction: &same}); err != nil {
 		t.Fatal(err)
 	}
 	changed := same
 	changed.RetainedBytes = 70
-	if err := send(Compacting, Event{
-		Data:  []protocol.EventData{ProtocolCompactionData(&changed)},
-		Audit: EventAudit{Compaction: &changed},
-	}); err != nil {
+	if err := send(Compacting, Event{Compaction: &changed}); err != nil {
 		t.Fatal(err)
 	}
-	if err := send(Streaming, protocolEvent(&protocol.OutputDeltaData{
-		Text: "done",
-	})); err != nil {
+	if err := send(Streaming, Event{Text: "done"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(events) != 3 ||
-		events[0].Audit.Compaction.RetainedBytes != 80 ||
-		events[1].Audit.Compaction.RetainedBytes != 70 ||
-		eventText(events[2]) != "done" {
+		events[0].Compaction.RetainedBytes != 80 ||
+		events[1].Compaction.RetainedBytes != 70 ||
+		events[2].Text != "done" {
 		t.Fatalf("events = %+v", events)
 	}
 }

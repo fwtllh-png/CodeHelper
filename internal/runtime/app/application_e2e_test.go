@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,10 +37,10 @@ func TestValidToolArgumentsOmitsMalformedProviderPayload(t *testing.T) {
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := agentengine.ValidToolArguments(testCase.value)
+			got := appextension.ValidToolArguments(testCase.value)
 			if string(got) != testCase.want {
 				t.Fatalf(
-					"agentengine.ValidToolArguments(%q) = %q, want %q",
+					"appextension.ValidToolArguments(%q) = %q, want %q",
 					testCase.value, got, testCase.want,
 				)
 			}

@@ -7,15 +7,17 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 )
 
 func TestReceiptRecordsSkillsReadInvocation(t *testing.T) {
 	recorder := New("review")
-	recorder.Observe(toolResultEvent(
-		provider.ToolCall{
+	recorder.Observe(agentengine.Event{
+		State: agentengine.RunningTools,
+		ToolCall: &provider.ToolCall{
 			ID: "call-1", Name: "skills_read", Arguments: `{"handle":"skh"}`,
 		},
-		tool.Result{
+		Result: &tool.Result{
 			Content: "instructions",
 			Metadata: map[string]any{
 				"resolved_skills": []skillruntime.ResolvedSkill{{
@@ -25,7 +27,7 @@ func TestReceiptRecordsSkillsReadInvocation(t *testing.T) {
 				}},
 			},
 		},
-	))
+	})
 	receipt := recorder.Build(Observations{})
 	if len(receipt.Skills) != 1 || receipt.Skills[0].Name != "review" {
 		t.Fatalf("skills = %+v", receipt.Skills)

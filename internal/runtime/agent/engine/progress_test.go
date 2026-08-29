@@ -218,8 +218,8 @@ func TestWorkspaceTurnFinalizesAfterNoProgressBudget(t *testing.T) {
 	)
 	if err == nil ||
 		protocol.CodeOf(err) != protocol.CodeConflict ||
-		eventConvergence(terminal) == nil ||
-		eventConvergence(terminal).Cause != string(turnkernel.ConvergenceNoProgress) {
+		terminal.Convergence == nil ||
+		terminal.Convergence.Cause != string(turnkernel.ConvergenceNoProgress) {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if len(runtime.requests) != 69 {

@@ -49,8 +49,8 @@ func TestDeepSeekEngineCrossTurnAppendOnlyCache(t *testing.T) {
 	}
 	var firstSamples []protocol.SampleContextData
 	firstEmit := func(event Event) error {
-		if eventSampleContext(event) != nil {
-			firstSamples = append(firstSamples, *eventSampleContext(event))
+		if event.SampleContext != nil {
+			firstSamples = append(firstSamples, *event.SampleContext)
 		}
 		return nil
 	}
@@ -64,8 +64,8 @@ func TestDeepSeekEngineCrossTurnAppendOnlyCache(t *testing.T) {
 	}
 	var secondSamples []protocol.SampleContextData
 	secondEmit := func(event Event) error {
-		if eventSampleContext(event) != nil {
-			secondSamples = append(secondSamples, *eventSampleContext(event))
+		if event.SampleContext != nil {
+			secondSamples = append(secondSamples, *event.SampleContext)
 		}
 		return nil
 	}

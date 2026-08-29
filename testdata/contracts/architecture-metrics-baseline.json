@@ -219,8 +219,8 @@
       "kind": "package",
       "path": "internal/runtime/app/extension",
       "limits": {
-        "internal_fanout": 14,
-        "production_lines": 1251,
+        "internal_fanout": 15,
+        "production_lines": 1859,
         "options_fields": 0,
         "mutex_fields": 2
       }
@@ -306,7 +306,7 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 21,
-        "production_lines": 8486,
+        "production_lines": 7871,
         "options_fields": 6,
         "mutex_fields": 5
       }
@@ -647,7 +647,7 @@
       "kind": "repository",
       "path": ".",
       "limits": {
-        "event_switch_sites": 22,
+        "event_switch_sites": 20,
         "runtime_package_dirs": 19,
         "runtime_one_file_packages": 6,
         "runtime_agent_package_dirs": 6,

@@ -74,13 +74,11 @@ func (e *Engine) runToolsWithCache(
 	stream := tool.NewOutputStream(
 		e.options.MaxToolStreamBytes,
 		func(output tool.OutputProjection) {
-			_ = send(RunningTools, Event{
-				Data: []protocol.EventData{&protocol.ToolOutputData{
-					Tool: output.Tool, CallID: output.CallID,
-					Stream: output.Stream, Chunk: output.Chunk,
-					Cursor: output.Cursor, Truncated: output.Truncated,
-				}},
-			})
+			_ = send(RunningTools, Event{ToolOutput: &ToolOutput{
+				Tool: output.Tool, CallID: output.CallID,
+				Stream: output.Stream, Chunk: output.Chunk,
+				Cursor: output.Cursor, Truncated: output.Truncated,
+			}})
 		},
 	)
 	defer stream.Close()
@@ -97,24 +95,16 @@ func (e *Engine) runToolsWithCache(
 		Admit:       e.admitToolBatch,
 		BeforeStart: e.contextAuthority().NoteToolCall,
 		PublishStart: func(call provider.ToolCall) error {
-			return send(RunningTools, Event{
-				Data: []protocol.EventData{&protocol.ToolStartData{
-					Tool: call.Name, CallID: call.ID,
-					Arguments: ValidToolArguments(call.Arguments),
-				}},
-			})
+			copy := call
+			return send(RunningTools, Event{ToolCall: &copy})
 		},
 		PublishAborted: func(
 			call provider.ToolCall,
 			result tool.Result,
 		) error {
-			events, err := projectToolEvents(call, result, nil, nil)
-			if err != nil {
-				return err
-			}
 			return send(RunningTools, Event{
-				Data:  events,
-				Audit: EventAudit{ToolResult: &result},
+				ToolCall: &call,
+				Result:   &result,
 			})
 		},
 		Execute: func(callCtx context.Context, call provider.ToolCall) (tool.Result, error) {
@@ -243,18 +233,11 @@ func (e *Engine) runToolsWithCache(
 			call provider.ToolCall,
 			result tool.Result,
 		) error {
-			events, err := projectToolEvents(
-				call,
-				result,
-				diagnosticReceipts[call.ID],
-				turnkernel.ObservedFileChanges(result),
-			)
-			if err != nil {
-				return err
-			}
 			return send(RunningTools, Event{
-				Data:  events,
-				Audit: EventAudit{ToolResult: &result},
+				ToolCall:    &call,
+				Result:      &result,
+				Diagnostics: diagnosticReceipts[call.ID],
+				FileChanges: turnkernel.ObservedFileChanges(result),
 			})
 		},
 	})

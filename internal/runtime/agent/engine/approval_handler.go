@@ -70,14 +70,11 @@ func (e *Engine) connectInputHost(
 			); err != nil {
 				return err
 			}
+			copy := request
 			return emit(Event{
 				State: AwaitingInput,
 				Turn:  e.turn,
-				Data: []protocol.EventData{&protocol.InputRequiredData{
-					RequestID: request.RequestID, CallID: request.CallID,
-					Tool: request.Tool, Prompt: request.Prompt,
-					Options: request.Options, ExpiresAt: request.ExpiresAt,
-				}},
+				Input: &copy,
 			})
 		},
 	)
@@ -243,9 +240,7 @@ func (e *Engine) emitApproval(_ context.Context, request toolguard.ApprovalReque
 	if emit == nil {
 		return errors.New("approval host is not connected to an active turn")
 	}
-	return emit(Event{
-		Data: []protocol.EventData{projectApproval(&request)},
-	})
+	return emit(Event{Approval: &request})
 }
 
 func (e *Engine) restoreApprovalWait(request toolguard.ApprovalRequest) error {
@@ -307,19 +302,11 @@ func (e *Engine) expireApprovalWait(wait toolguard.ApprovalWait) error {
 	if emit == nil {
 		return errors.New("approval host is not connected to an active turn")
 	}
-	return emit(Event{
-		Data: []protocol.EventData{&protocol.ApprovalResolvedData{
-			RequestID: wait.RequestID,
-			Decision:  protocol.ApprovalDeny,
-			Problem: protocol.NewProblemWithDetails(
-				protocol.CodeConflict,
-				"tool approval expired",
-				false,
-				protocol.ProblemDetails{Reason: "approval_expired"},
-				nil,
-			),
-		}},
-	})
+	return emit(Event{ApprovalResolution: &ApprovalResolution{
+		RequestID: wait.RequestID,
+		Decision:  "deny",
+		Reason:    "approval_expired",
+	}})
 }
 
 func (e *Engine) queueRecoveredApproval(

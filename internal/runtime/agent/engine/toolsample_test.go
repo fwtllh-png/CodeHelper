@@ -12,7 +12,6 @@ import (
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 // samplingTool stands in for image_analyze: a tool whose work is a model call.
@@ -106,11 +105,11 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 	var toolResults []tool.Result
 	result, err := engine.RunForTurn(t.Context(), "turn-1", "look at the screenshot",
 		func(event Event) error {
-			if eventUsage(event) != nil && eventData[*protocol.UsageData](event).Sample != 0 {
+			if event.Usage != nil && event.Sample != 0 {
 				usageEvents = append(usageEvents, event)
 			}
-			if eventToolResult(event) != nil {
-				toolResults = append(toolResults, *eventToolResult(event))
+			if event.Result != nil {
+				toolResults = append(toolResults, *event.Result)
 			}
 			return nil
 		})
@@ -135,28 +134,26 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 
 	var toolSample *Event
 	for index, event := range usageEvents {
-		if event.Audit.Purpose == string(model.PurposeVision) {
+		if event.Purpose == string(model.PurposeVision) {
 			toolSample = &usageEvents[index]
 		}
 	}
 	if toolSample == nil {
 		t.Fatalf("no usage event named the vision purpose: %+v", usageEvents)
 	}
-	if eventUsageModel(*toolSample) != "eyes" ||
-		eventCostUSD(*toolSample) != 10 ||
-		!eventCostKnown(*toolSample) {
+	if toolSample.Model != "eyes" || toolSample.CostUSD != 10 || !toolSample.CostKnown {
 		t.Fatalf("tool usage event = %+v", *toolSample)
 	}
 	// Samples are numbered within the turn across both kinds of call, because a
 	// usage row is identified by (turn, sample) and two calls sharing a number
 	// would overwrite each other.
 	for _, event := range usageEvents {
-		if eventData[*protocol.UsageData](event).Sample == 0 {
+		if event.Sample == 0 {
 			t.Fatalf("usage event has no sample: %+v", event)
 		}
 	}
-	if eventSample(usageEvents[0]) == eventSample(*toolSample) {
-		t.Fatalf("the tool's sample reused number %d", eventSample(*toolSample))
+	if usageEvents[0].Sample == toolSample.Sample {
+		t.Fatalf("the tool's sample reused number %d", toolSample.Sample)
 	}
 
 	spans := engine.TurnSpans()
@@ -279,7 +276,7 @@ func TestToolSampleUsageProjectionFailureIsSecondary(t *testing.T) {
 		"turn-usage-failure",
 		"inspect",
 		func(event Event) error {
-			if eventUsage(event) != nil && event.Audit.Purpose == string(model.PurposeVision) {
+			if event.Usage != nil && event.Purpose == string(model.PurposeVision) {
 				return persistErr
 			}
 			if event.State == Completed {
@@ -294,9 +291,9 @@ func TestToolSampleUsageProjectionFailureIsSecondary(t *testing.T) {
 	if result.Usage.InputTokens != 23 || result.Usage.OutputTokens != 4 {
 		t.Fatalf("turn usage = %+v", result.Usage)
 	}
-	if len(eventSecondaryIssues(terminal)) != 1 ||
-		eventSecondaryIssues(terminal)[0].Phase != "event_projection" ||
-		eventSecondaryIssues(terminal)[0].Message != persistErr.Error() {
-		t.Fatalf("terminal secondary issues = %+v", eventSecondaryIssues(terminal))
+	if len(terminal.SecondaryIssues) != 1 ||
+		terminal.SecondaryIssues[0].Phase != "event_projection" ||
+		terminal.SecondaryIssues[0].Message != persistErr.Error() {
+		t.Fatalf("terminal secondary issues = %+v", terminal.SecondaryIssues)
 	}
 }

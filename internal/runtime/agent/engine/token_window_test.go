@@ -262,7 +262,7 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 		},
 	}).Snapshot()
 	window, err := engine.runCompactGate(t.Context(), &history, input, 128, CompactionPhasePreSampling, false, func(_ State, event Event) error {
-		receipt = event.Audit.Compaction
+		receipt = event.Compaction
 		return nil
 	}, 0, nil)
 	if err != nil || receipt == nil || window.total > window.hardLimit {
@@ -296,7 +296,7 @@ func TestCompactGateMeasuresStatelessProviderProjection(t *testing.T) {
 		CompactionPhasePreSampling,
 		true,
 		func(_ State, event Event) error {
-			receipt = event.Audit.Compaction
+			receipt = event.Compaction
 			return nil
 		},
 		0, project,

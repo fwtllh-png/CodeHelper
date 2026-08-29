@@ -254,8 +254,8 @@ func TestInlineNarrativeFailureCommitsDeterministicRebase(t *testing.T) {
 	}
 	var fallback bool
 	for _, event := range events {
-		fallback = fallback || event.Audit.Compaction != nil &&
-			event.Audit.Compaction.Status == "fallback"
+		fallback = fallback || event.Compaction != nil &&
+			event.Compaction.Status == "fallback"
 	}
 	if !fallback {
 		t.Fatalf("events=%+v, want fallback receipt", events)

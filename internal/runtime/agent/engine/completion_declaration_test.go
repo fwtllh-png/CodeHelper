@@ -189,7 +189,7 @@ func TestWorkspaceChangeRequiresCompletionDeclaration(t *testing.T) {
 		if event.State == Verifying {
 			verifyIndex = index
 		}
-		if eventText(event) == "Implemented and verified." {
+		if event.Text == "Implemented and verified." {
 			finalIndex = index
 		}
 	}
@@ -197,7 +197,7 @@ func TestWorkspaceChangeRequiresCompletionDeclaration(t *testing.T) {
 		t.Fatalf("verification must precede final answer: %+v", events)
 	}
 	for _, event := range events {
-		if eventText(event) == "Next I will run the remaining validation." {
+		if event.Text == "Next I will run the remaining validation." {
 			t.Fatalf("pre-declaration text reached the stable output stream: %+v", events)
 		}
 	}
@@ -236,7 +236,7 @@ func TestAnswerMutationRequiresCompletionDeclaration(t *testing.T) {
 		t.Fatalf("mutation did not activate completion gate: %+v", runtime.requests)
 	}
 	for _, event := range events {
-		if eventText(event) == "I changed the file without declaring completion." {
+		if event.Text == "I changed the file without declaring completion." {
 			t.Fatalf("pre-declaration text reached the stable output stream: %+v", events)
 		}
 	}
@@ -279,7 +279,7 @@ func TestReadOnlyToolTurnRequiresCompletionDeclaration(t *testing.T) {
 		t.Fatalf("read-only tool requests = %+v", runtime.requests)
 	}
 	if slices.ContainsFunc(events, func(event Event) bool {
-		return eventText(event) == "I will now prepare the findings."
+		return event.Text == "I will now prepare the findings."
 	}) {
 		t.Fatalf("provisional narration reached stable output: %+v", events)
 	}
@@ -394,14 +394,14 @@ func TestIncompleteDeclarationStopsWithResumableBlockedOutcome(t *testing.T) {
 	}
 	sawBlockedDeclaration := false
 	for _, event := range events {
-		if eventText(event) == "I still need to inspect the second piece of evidence." {
+		if event.Text == "I still need to inspect the second piece of evidence." {
 			t.Fatalf("future-work promise reached stable output: %+v", events)
 		}
-		if eventToolCall(event) != nil &&
-			eventToolCall(event).ID == "incomplete-1" &&
-			eventToolResult(event) != nil {
-			accepted, _ := eventToolResult(event).Metadata["completion_declaration_accepted"].(bool)
-			rejection, _ := eventToolResult(event).Metadata["completion_declaration_rejection"].(string)
+		if event.ToolCall != nil &&
+			event.ToolCall.ID == "incomplete-1" &&
+			event.Result != nil {
+			accepted, _ := event.Result.Metadata["completion_declaration_accepted"].(bool)
+			rejection, _ := event.Result.Metadata["completion_declaration_rejection"].(string)
 			sawBlockedDeclaration = !accepted && rejection == "convergence_blocked"
 		}
 	}
@@ -480,19 +480,6 @@ func TestCompletionDeclarationBindsExactMutationRevision(t *testing.T) {
 	if bound.MutationRevision != 1 {
 		t.Fatalf("bound mutation revision = %d, want 1", bound.MutationRevision)
 	}
-	events, err := projectToolEvents(
-		provider.ToolCall{ID: "outer-call", Name: completiontool.Name},
-		accepted,
-		nil,
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("projectToolEvents() error = %v", err)
-	}
-	projected := events[0].(*protocol.ToolResultData).Completion
-	if projected == nil || projected.CallID != "complete-1" {
-		t.Fatalf("projected completion = %+v", projected)
-	}
 }
 
 func TestRejectedCompletionResultExposesTheRuntimeDecision(t *testing.T) {
@@ -546,8 +533,8 @@ func TestMalformedCompletionResultPreservesSchemaError(t *testing.T) {
 				}},
 				make(map[string]tool.Result),
 				func(_ State, event Event) error {
-					if eventToolResult(event) != nil {
-						copy := *eventToolResult(event)
+					if event.Result != nil {
+						copy := *event.Result
 						emitted = &copy
 					}
 					return nil
@@ -612,8 +599,8 @@ func TestVerificationRepairInvalidatesCompletionDeclaration(t *testing.T) {
 	result, err := engine.RunForTurnWithIntentAndAttachments(
 		t.Context(), "turn-1", "change a.go",
 		protocol.TurnIntentWorkspaceChange, nil, func(event Event) error {
-			if eventCompletion(event) != nil {
-				copy := *eventCompletion(event)
+			if event.Completion != nil {
+				copy := *event.Completion
 				completion = &copy
 			}
 			return nil

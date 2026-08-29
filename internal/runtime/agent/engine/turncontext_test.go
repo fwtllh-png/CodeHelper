@@ -254,7 +254,7 @@ func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 			if event.State == Preparing {
 				started = event
 			}
-			if event.State == AwaitingApproval && eventApproval(event) != nil {
+			if event.State == AwaitingApproval && event.Approval != nil {
 				approvals++
 				// Mid-turn host mutation: session would flip to bypass.
 				security.Permission = policy.PermissionBypass
@@ -265,7 +265,7 @@ func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 						RequestID: requestID, Approved: true,
 						Scope: policy.ApprovalOnce, ExpiresAt: time.Now().Add(time.Minute),
 					})
-				}(eventApproval(event).RequestID)
+				}(event.Approval.RequestID)
 			}
 			return nil
 		})
@@ -283,13 +283,8 @@ func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if eventStarted(started).Mode != string(policy.ModeAct) ||
-		eventStarted(started).Posture != string(policy.PermissionSuggest) {
-		t.Fatalf(
-			"started context = mode=%q posture=%q",
-			eventStarted(started).Mode,
-			eventStarted(started).Posture,
-		)
+	if started.Mode != string(policy.ModeAct) || started.Posture != string(policy.PermissionSuggest) {
+		t.Fatalf("started context = mode=%q posture=%q", started.Mode, started.Posture)
 	}
 	// Two write tools under Suggest → two asks even after session flipped to bypass.
 	if approvals != 2 {
@@ -342,10 +337,10 @@ func TestRunForTurnNextTurnSeesUpdatedPolicy(t *testing.T) {
 	security.Permission = policy.PermissionSuggest
 	var approvals int
 	_, err = engine.RunForTurn(t.Context(), "t2", "second", func(event Event) error {
-		if event.State == AwaitingApproval && eventApproval(event) != nil {
+		if event.State == AwaitingApproval && event.Approval != nil {
 			approvals++
 			_ = mustControl(t, engine).ResolveApproval(toolguard.ApprovalDecision{
-				RequestID: eventApproval(event).RequestID, Approved: true,
+				RequestID: event.Approval.RequestID, Approved: true,
 				Scope: policy.ApprovalOnce, ExpiresAt: time.Now().Add(time.Minute),
 			})
 		}
