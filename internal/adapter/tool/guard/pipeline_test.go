@@ -54,15 +54,12 @@ func TestSubmittedPlanUnlocksAutoApprovedActTurn(t *testing.T) {
 }
 
 func TestApprovalWaitHoldsNeitherAdmissionNorClaims(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	descriptor := readDescriptor("approval_release")
 	descriptor.Capability = tool.CapabilityProcess
 	descriptor.AccessMode = tool.AccessWrite
 	descriptor.ParallelPolicy = tool.ParallelSerial
 	executor := &testExecutor{descriptor: descriptor}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 1)
@@ -108,7 +105,6 @@ func TestApprovalWaitHoldsNeitherAdmissionNorClaims(t *testing.T) {
 }
 
 func TestHostProcessApprovalIsFreshOnce(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	descriptor := readDescriptor("quality_process_smoke")
 	descriptor.Capability = tool.CapabilityProcess
 	descriptor.AccessMode = tool.AccessWrite
@@ -120,9 +116,7 @@ func TestHostProcessApprovalIsFreshOnce(t *testing.T) {
 		Approval:             tool.ApprovalPolicyOnce,
 	}
 	executor := &testExecutor{descriptor: descriptor, binding: binding}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	requests := make(chan ApprovalRequest, 1)
 	guard, err := New(Options{
 		Registry: registry,
@@ -168,13 +162,12 @@ func TestHostProcessApprovalIsFreshOnce(t *testing.T) {
 }
 
 func TestInitialApprovalDenialReturnsGuardTerminalReceipt(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	descriptor := readDescriptor("approval_denied_receipt")
 	descriptor.Capability = tool.CapabilityProcess
 	descriptor.AccessMode = tool.AccessWrite
-	if err := registry.Register(&testExecutor{descriptor: descriptor}); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(
+		t, nil, &testExecutor{descriptor: descriptor},
+	)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 1)
@@ -218,12 +211,8 @@ func TestInitialApprovalDenialReturnsGuardTerminalReceipt(t *testing.T) {
 }
 
 func TestAdditionalPermissionApprovalReleasesAdmissionAndClaims(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("retry_release")}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
 	requests := make(chan ApprovalRequest, 1)
 	guard, err := New(Options{
@@ -312,14 +301,10 @@ func TestAdditionalPermissionApprovalReleasesAdmissionAndClaims(t *testing.T) {
 }
 
 func TestAdditionalPermissionRetryRejectsChangedAuthorization(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{
 		descriptor: sandboxedDescriptor("retry_reauthorize"),
 	}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	requests := make(chan ApprovalRequest, 1)
 	guard, err := New(Options{
 		Registry: registry,
@@ -389,12 +374,8 @@ func receiptHasProvenance(receipt tool.AttemptReceipt, kind string) bool {
 }
 
 func TestRejectedAdditionalPermissionRetainsAuthorityEvidence(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("retry_rejected")}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	requests := make(chan ApprovalRequest, 1)
 	guard, err := New(Options{
 		Registry:  registry,
@@ -441,11 +422,8 @@ func TestRejectedAdditionalPermissionRetainsAuthorityEvidence(t *testing.T) {
 }
 
 func TestReplacementArgumentsRepeatPreparationAndAuthorization(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := &testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 1)

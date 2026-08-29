@@ -1,12 +1,8 @@
 package turnkernel
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -14,62 +10,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
-
-func TestDebugNoProgressBudgetEvidence(t *testing.T) {
-	debugURL := os.Getenv("DEBUG_SERVER_URL")
-	if debugURL == "" {
-		t.Skip("DEBUG_SERVER_URL is required for no-progress instrumentation")
-	}
-	report := func(hypothesisID, location, message string, data map[string]any) {
-		t.Helper()
-		payload, err := json.Marshal(map[string]any{
-			"sessionId": "no-progress-budget", "runId": "post-fix",
-			"hypothesisId": hypothesisID, "location": location,
-			"msg": "[DEBUG] " + message, "data": data, "ts": time.Now().UnixMilli(),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		response, err := http.Post(debugURL, "application/json", bytes.NewReader(payload))
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = response.Body.Close()
-	}
-	state := startSampling(t, protocol.TurnIntentAnswer)
-	state.Policy.ExecutionStepLimit = 64
-	state.Policy.Convergence = ConvergencePolicyForStepLimit(
-		state.Policy.ExecutionStepLimit,
-	)
-	// #region debug-point A:policy
-	report("A", "reducer_test.go:policy", "frozen convergence policy", map[string]any{
-		"maxSteps":      state.Policy.ExecutionStepLimit,
-		"researchLimit": state.Policy.Convergence.ResearchLimit,
-		"progressLimit": state.Policy.Convergence.ProgressLimit,
-		"intent":        state.Intent,
-	})
-	// #endregion
-	state = apply(t, state, ObserveProgress{Signature: "unchanged"}).State
-	state = apply(t, state, ObserveProgress{
-		Signature:        "unchanged",
-		CompletedSamples: state.Policy.Convergence.ResearchLimit,
-	}).State
-	// #region debug-point C:progress
-	report("C", "reducer_test.go:progress", "stable signature reached convergence", map[string]any{
-		"mutationRevision": state.MutationRevision,
-		"observed":         state.Progress.ObservedSamples,
-		"noProgress":       state.Progress.NoProgressSamples,
-		"stage":            state.Progress.Stage,
-	})
-	// #endregion
-	// #region debug-point D:fresh-state
-	fresh := startSampling(t, protocol.TurnIntentAnswer)
-	report("D", "reducer_test.go:fresh-state", "new turn progress state", map[string]any{
-		"observed":   fresh.Progress.ObservedSamples,
-		"noProgress": fresh.Progress.NoProgressSamples,
-	})
-	// #endregion
-}
 
 func TestNonInteractiveReadOnlyResearchCompletesWithoutDeclaration(t *testing.T) {
 	for _, intent := range []protocol.TurnIntent{

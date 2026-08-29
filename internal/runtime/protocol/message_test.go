@@ -283,10 +283,7 @@ func TestEditorContextReceiptValidationFailsClosed(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			value := valid
 			mutate(&value)
-			if _, err := NewEvent(EventMeta{
-				Sequence: 1, OperationID: "op", ThreadID: "thread",
-				TurnID: "turn", ItemID: "item",
-			}, &TurnStartedData{
+			if _, err := NewEvent(testEventMeta(1), &TurnStartedData{
 				Provider: "fixture", Model: "model",
 				EditorContext: []EditorContextReceipt{value},
 			}); err == nil {
@@ -305,10 +302,7 @@ func TestTurnStartedImageAttachmentsValidateAndRoundTrip(t *testing.T) {
 	}
 	sum := sha256.Sum256([]byte("image"))
 	image.Digest = hex.EncodeToString(sum[:])
-	event, err := NewEvent(EventMeta{
-		Sequence: 1, OperationID: "op", ThreadID: "thread",
-		TurnID: "turn", ItemID: "item",
-	}, &TurnStartedData{
+	event, err := NewEvent(testEventMeta(1), &TurnStartedData{
 		Provider: "fixture", Model: "model",
 		DisplayPrompt: "Describe this image", Images: []EditorContextReference{image},
 	})
@@ -330,10 +324,7 @@ func TestTurnStartedImageAttachmentsValidateAndRoundTrip(t *testing.T) {
 		t.Fatalf("turn started images = %#v", decoded.Data)
 	}
 	image.Content = "not base64"
-	if _, err := NewEvent(EventMeta{
-		Sequence: 2, OperationID: "op", ThreadID: "thread",
-		TurnID: "turn", ItemID: "item",
-	}, &TurnStartedData{
+	if _, err := NewEvent(testEventMeta(2), &TurnStartedData{
 		Provider: "fixture", Model: "model",
 		Images: []EditorContextReference{image},
 	}); err == nil {
@@ -342,10 +333,7 @@ func TestTurnStartedImageAttachmentsValidateAndRoundTrip(t *testing.T) {
 }
 
 func TestToolStartRejectsMalformedArgumentsBeforeEncoding(t *testing.T) {
-	_, err := NewEvent(EventMeta{
-		Sequence: 1, OperationID: "op", ThreadID: "thread",
-		TurnID: "turn", ItemID: "item",
-	}, &ToolStartData{
+	_, err := NewEvent(testEventMeta(1), &ToolStartData{
 		Tool: "read", CallID: "call-1", Arguments: json.RawMessage(`{"path":`),
 	})
 	if err == nil || !strings.Contains(err.Error(), "valid JSON") {
@@ -354,10 +342,7 @@ func TestToolStartRejectsMalformedArgumentsBeforeEncoding(t *testing.T) {
 }
 
 func TestRejectedCompletionDeclarationCanOmitRuntimeBindings(t *testing.T) {
-	_, err := NewEvent(EventMeta{
-		Sequence: 1, OperationID: "op", ThreadID: "thread",
-		TurnID: "turn", ItemID: "item",
-	}, &ToolResultData{
+	_, err := NewEvent(testEventMeta(1), &ToolResultData{
 		Tool: "turn_complete", CallID: "call-complete",
 		Output: "declaration rejected",
 		Completion: &CompletionDeclaration{
@@ -374,10 +359,7 @@ func TestRejectedCompletionDeclarationCanOmitRuntimeBindings(t *testing.T) {
 }
 
 func TestAcceptedReadOnlyCompletionDeclarationUsesRevisionZero(t *testing.T) {
-	_, err := NewEvent(EventMeta{
-		Sequence: 1, OperationID: "op", ThreadID: "thread",
-		TurnID: "turn", ItemID: "item",
-	}, &ToolResultData{
+	_, err := NewEvent(testEventMeta(1), &ToolResultData{
 		Tool: "turn_complete", CallID: "call-complete",
 		Output: "declaration accepted",
 		Completion: &CompletionDeclaration{
@@ -394,10 +376,7 @@ func TestAcceptedReadOnlyCompletionDeclarationUsesRevisionZero(t *testing.T) {
 }
 
 func TestRejectedIncompleteDeclarationCarriesPendingActions(t *testing.T) {
-	_, err := NewEvent(EventMeta{
-		Sequence: 1, OperationID: "op", ThreadID: "thread",
-		TurnID: "turn", ItemID: "item",
-	}, &ToolResultData{
+	_, err := NewEvent(testEventMeta(1), &ToolResultData{
 		Tool: "turn_complete", CallID: "call-complete",
 		Output: "continue current turn",
 		Completion: &CompletionDeclaration{
@@ -556,10 +535,7 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 		},
 	}
 	for index, value := range dataValues {
-		event, err := NewEvent(EventMeta{
-			Sequence: Cursor(index + 1), OperationID: "op_test",
-			ThreadID: "thread_test", TurnID: "turn_test", ItemID: "item_test",
-		}, value)
+		event, err := NewEvent(testEventMeta(Cursor(index+1)), value)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -571,6 +547,13 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 		if err := json.Unmarshal(encoded, &decoded); err != nil {
 			t.Fatalf("%s round trip: %v", event.Kind, err)
 		}
+	}
+}
+
+func testEventMeta(sequence Cursor) EventMeta {
+	return EventMeta{
+		Sequence: sequence, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
 	}
 }
 

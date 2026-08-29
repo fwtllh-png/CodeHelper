@@ -23,11 +23,8 @@ import (
 )
 
 func TestMalformedArgumentsFailBeforePolicy(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
 	runtime.Repository = []policy.Rule{{Tool: "write", Action: policy.ActionHold, Code: "hold"}}
 	guard := newTestGuard(t, registry, runtime, nil)
@@ -197,13 +194,10 @@ func TestTrustedHostPathResourceUsesWorkspaceSandboxPolicy(t *testing.T) {
 }
 
 func TestArgumentExpansionFailureIsRecoverableInvalidArguments(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := &failingExpanderExecutor{testExecutor: testExecutor{
 		descriptor: readDescriptor("expand"),
 	}}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	guard := newTestGuard(
 		t,
 		registry,
@@ -217,11 +211,8 @@ func TestArgumentExpansionFailureIsRecoverableInvalidArguments(t *testing.T) {
 }
 
 func TestDefaultsNormalizeBeforeCanonicalResources(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	guard := newTestGuard(
 		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), nil,
 	)
@@ -245,11 +236,8 @@ func TestDefaultsNormalizeBeforeCanonicalResources(t *testing.T) {
 func TestRepositoryAskPausesAndApproveDenyResume(t *testing.T) {
 	for _, permission := range []policy.Permission{policy.PermissionAuto, policy.PermissionBypass} {
 		t.Run(string(permission), func(t *testing.T) {
-			registry := tool.NewRegistry(nil, nil)
 			executor := testExecutor{descriptor: writeDescriptor()}
-			if err := registry.Register(&executor); err != nil {
-				t.Fatal(err)
-			}
+			registry := newTestRegistry(t, nil, &executor)
 			runtime := policy.DefaultRuntime(policy.ModeAct, permission)
 			runtime.Repository = []policy.Rule{{
 				Tool: "write", Resource: "default.txt", Action: policy.ActionAsk,
@@ -319,13 +307,10 @@ func TestRepositoryAskPausesAndApproveDenyResume(t *testing.T) {
 }
 
 func TestActAutoProcessPausesForApprovalThenResumes(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	descriptor := readDescriptor("exec_command")
 	descriptor.Capability = tool.CapabilityProcess
 	descriptor.SandboxRequirement = tool.SandboxNone
-	if err := registry.Register(&testExecutor{descriptor: descriptor}); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &testExecutor{descriptor: descriptor})
 	requests := make(chan ApprovalRequest, 1)
 	guard := newTestGuard(
 		t,
@@ -363,14 +348,12 @@ func TestActAutoProcessPausesForApprovalThenResumes(t *testing.T) {
 }
 
 func TestActAutoReadOnlyShellDoesNotAsk(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	descriptor := readDescriptor("shell_read")
 	descriptor.Capability = tool.CapabilityRead
 	descriptor.SandboxRequirement = tool.SandboxStrong
-	if err := registry.Register(&testExecutor{descriptor: descriptor}); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(
+		t, strongBackend{}, &testExecutor{descriptor: descriptor},
+	)
 	var approvals atomic.Int64
 	guard := newTestGuard(
 		t,
@@ -399,13 +382,10 @@ func TestActAutoReadOnlyShellDoesNotAsk(t *testing.T) {
 
 func TestApprovalAlwaysPersistsAllow(t *testing.T) {
 	now := time.Unix(10_000, 0)
-	registry := tool.NewRegistry(nil, nil)
 	descriptor := networkFetchDescriptor()
 	descriptor.AccessMode = tool.AccessWrite
 	executor := testExecutor{descriptor: descriptor}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 2)
@@ -463,10 +443,9 @@ func TestApprovalAlwaysPersistsAllow(t *testing.T) {
 }
 
 func TestUnscopedApprovalOffersOnceOnly(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&testExecutor{descriptor: writeDescriptor()}); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(
+		t, nil, &testExecutor{descriptor: writeDescriptor()},
+	)
 	requests := make(chan ApprovalRequest, 1)
 	guard, err := New(Options{
 		Registry:  registry,
@@ -504,14 +483,11 @@ func TestUnscopedApprovalOffersOnceOnly(t *testing.T) {
 
 func TestApprovalOnceSessionExpiryAndModifiedArguments(t *testing.T) {
 	now := time.Unix(10_000, 0)
-	registry := tool.NewRegistry(nil, nil)
 	descriptor := writeDescriptor()
 	descriptor.Name = "followup_task"
 	descriptor.ResourceResolver.Templates[0].Kind = "agent"
 	executor := testExecutor{descriptor: descriptor}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	runtime.DisableAutoReview = true
 	runtime.Repository = []policy.Rule{{
@@ -570,11 +546,8 @@ func TestApprovalOnceSessionExpiryAndModifiedArguments(t *testing.T) {
 }
 
 func TestApprovalCancelDuplicateLateAndWrongRequest(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	requests := make(chan ApprovalRequest, 1)
 	guard := newTestGuard(
 		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
@@ -626,11 +599,8 @@ func TestApprovalCancelDuplicateLateAndWrongRequest(t *testing.T) {
 }
 
 func TestPendingApprovalExpiresFailClosed(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
@@ -730,14 +700,12 @@ func TestAliasDeferredUnknownAvailabilityAndSandboxFailClosed(t *testing.T) {
 }
 
 func TestStrongSandboxDescriptorUsesInjectedBackend(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	descriptor := readDescriptor("sandboxed")
 	descriptor.Capability = tool.CapabilityProcess
 	descriptor.SandboxRequirement = tool.SandboxStrong
-	if err := registry.Register(&testExecutor{descriptor: descriptor}); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(
+		t, strongBackend{}, &testExecutor{descriptor: descriptor},
+	)
 	guard := newTestGuard(
 		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), nil,
 	)
@@ -759,7 +727,6 @@ func TestPatchRenameAndSymlinkTargetsCanonicalizeIdentically(t *testing.T) {
 	if err := os.Symlink("target.txt", filepath.Join(workspace, "alias.txt")); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	registry := tool.NewRegistry(nil, nil)
 	write := testExecutor{descriptor: writeDescriptor()}
 	patchDescriptor := readDescriptor("patch")
 	patchDescriptor.Capability = tool.CapabilityWrite
@@ -772,12 +739,9 @@ func TestPatchRenameAndSymlinkTargetsCanonicalizeIdentically(t *testing.T) {
 		},
 		"required": []string{"patch"}, "additionalProperties": false,
 	}
-	if err := registry.Register(&write); err != nil {
-		t.Fatal(err)
-	}
-	if err := registry.Register(&testExecutor{descriptor: patchDescriptor}); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(
+		t, nil, &write, &testExecutor{descriptor: patchDescriptor},
+	)
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -880,11 +844,8 @@ func (e *testExecutor) profilesSnapshot() []sandbox.ExecutionAuthority {
 }
 
 func TestEgressDeniedAsksThenRetries(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := &egressRetryExecutor{descriptor: networkFetchDescriptor()}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 2)
@@ -958,11 +919,8 @@ func TestEgressDeniedAsksThenRetries(t *testing.T) {
 }
 
 func TestEgressDeniedBypassAutoGrantsWithoutAsk(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := &egressRetryExecutor{descriptor: networkFetchDescriptor()}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)
 	var grantedMu sync.Mutex
 	var granted []string
@@ -1009,11 +967,8 @@ func TestEgressDeniedBypassAutoGrantsWithoutAsk(t *testing.T) {
 }
 
 func TestEgressDeniedApprovalDenyKeepsFailure(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := &egressRetryExecutor{descriptor: networkFetchDescriptor()}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 2)
@@ -1087,11 +1042,8 @@ func (e *egressRetryExecutor) Execute(_ context.Context, _ json.RawMessage) (too
 }
 
 func TestNetworkHostApprovalSessionReuseAndCancel(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: networkFetchDescriptor()}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	runtime := policy.DefaultRuntime(policy.ModeOperate, policy.PermissionAuto)
 	runtime.DisableAutoReview = true
 	requests := make(chan ApprovalRequest, 4)
@@ -1164,12 +1116,8 @@ func TestNetworkHostApprovalSessionReuseAndCancel(t *testing.T) {
 }
 
 func TestProcessNetworkTargetRequiresApprovalUnderSuggest(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &testExecutor{descriptor: processNetworkDescriptor()}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	requests := make(chan ApprovalRequest, 1)
 	grants := make(chan egress.Target, 1)
 	guard, err := New(Options{
@@ -1242,12 +1190,8 @@ func TestProcessLoopbackRequiresApprovalAndBindsAuthority(t *testing.T) {
 		},
 		"additionalProperties": false,
 	}
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &testExecutor{descriptor: descriptor}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	requests := make(chan ApprovalRequest, 1)
 	guard, err := New(Options{
 		Registry:  registry,
@@ -1301,11 +1245,8 @@ func TestProcessLoopbackRequiresApprovalAndBindsAuthority(t *testing.T) {
 }
 
 func TestNetworkAutoReviewsUnderActAuto(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := &testExecutor{descriptor: networkFetchDescriptor()}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionAuto)
 	metrics := &approvalMetricSink{}
 	guard := newTestGuard(t, registry, runtime, func(
@@ -1412,11 +1353,8 @@ func writeDescriptor() tool.Descriptor {
 }
 
 func TestControlPlaneWriteCannotBeApprovedOrBypassed(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := &testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	requested := atomic.Bool{}
 	guard := newTestGuard(
 		t,
@@ -1487,12 +1425,8 @@ func (strongBackend) Prepare(_ context.Context, command sandbox.Command) (sandbo
 }
 
 func TestAdditionalPermissionRequiresReapproval(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("escalate")}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	requests := make(chan ApprovalRequest, 2)
 	guard := newTestGuard(
 		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -1543,12 +1477,8 @@ func TestAdditionalPermissionRequiresReapproval(t *testing.T) {
 }
 
 func TestAdditionalPermissionRequiresApprovalForEveryInvocation(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("escalate")}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	requests := make(chan ApprovalRequest, 4)
 	guard := newTestGuard(
 		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -1597,14 +1527,10 @@ func TestAdditionalPermissionRequiresApprovalForEveryInvocation(t *testing.T) {
 }
 
 func TestAdditionalPermissionRetriesAtMostOnce(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &repeatedEscalateExecutor{
 		descriptor: sandboxedDescriptor("repeated_escalate"),
 	}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	requests := make(chan ApprovalRequest, 2)
 	guard := newTestGuard(
 		t, registry, policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -1643,12 +1569,8 @@ func TestAdditionalPermissionRetriesAtMostOnce(t *testing.T) {
 }
 
 func TestSandboxStrongApprovalDoesNotCoverAdditionalPermission(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("escalate")}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	runtime := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
 	requests := make(chan ApprovalRequest, 4)
 	guard := newTestGuard(t, registry, runtime, func(_ context.Context, request ApprovalRequest) error {
@@ -1678,12 +1600,8 @@ func TestSandboxStrongApprovalDoesNotCoverAdditionalPermission(t *testing.T) {
 }
 
 func TestAdditionalPermissionDisabled(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &escalateExecutor{descriptor: sandboxedDescriptor("escalate")}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	disabled := EscalationPolicy{EscalateOnFailure: false}
 	guard, err := New(Options{
 		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -1734,15 +1652,11 @@ func TestIsSandboxDenial(t *testing.T) {
 }
 
 func TestUntypedSandboxFailureFailsClosedWithoutApproval(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
-	registry.SetSandboxBackend(strongBackend{})
 	executor := &errorExecutor{
 		descriptor: sandboxedDescriptor("untyped_denial"),
 		err:        errors.New("Operation not permitted"),
 	}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
 	guard := newTestGuard(
 		t,
 		registry,
@@ -1863,10 +1777,9 @@ func TestAbsoluteWorkspacePathIsRewritten(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&testExecutor{descriptor: writeDescriptor()}); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(
+		t, nil, &testExecutor{descriptor: writeDescriptor()},
+	)
 	guard, err := New(Options{
 		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
 		Workspace: workspace,
@@ -1914,6 +1827,24 @@ func newTestGuard(
 		t.Fatal(err)
 	}
 	return value
+}
+
+func newTestRegistry(
+	t testing.TB,
+	backend sandbox.Backend,
+	executors ...tool.Executor,
+) *tool.Registry {
+	t.Helper()
+	registry := tool.NewRegistry(nil, nil)
+	if backend != nil {
+		registry.SetSandboxBackend(backend)
+	}
+	for _, executor := range executors {
+		if err := registry.Register(executor); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return registry
 }
 
 func mustDecide(

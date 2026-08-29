@@ -1,68 +1,11 @@
 package agentcontext
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"os"
 	"reflect"
-	"strings"
 	"testing"
-	"time"
 )
-
-func TestDebugMandatoryTruthCapacityEvidence(t *testing.T) {
-	debugURL := os.Getenv("DEBUG_SERVER_URL")
-	if debugURL == "" {
-		t.Skip("DEBUG_SERVER_URL is required for mandatory truth instrumentation")
-	}
-	report := func(hypothesisID, location, message string, data map[string]any) {
-		t.Helper()
-		payload, err := json.Marshal(map[string]any{
-			"sessionId": "mandatory-truth-capacity", "runId": "post-fix",
-			"hypothesisId": hypothesisID, "location": location,
-			"msg": "[DEBUG] " + message, "data": data, "ts": time.Now().UnixMilli(),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		response, err := http.Post(debugURL, "application/json", bytes.NewReader(payload))
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = response.Body.Close()
-	}
-	policy := DefaultRetentionPolicy()
-	policy.TruthMaxBytes = 1_048_576 - 393_216
-	// #region debug-point A:retention-policy
-	report("A", "compact_retention_test.go:policy", "default truth retention policy", map[string]any{
-		"truthMaxBytes":        policy.TruthMaxBytes,
-		"truthMaxEntities":     policy.TruthMaxEntities,
-		"mandatoryMaxEntities": policy.MandatoryMaxEntities,
-	})
-	// #endregion
-	current := truthFixture("sha256:compat", "model", 1_048_576)
-	large := NewTruthEntity(EntityChange, "large", strings.Repeat("x", 6_000), "runtime.evidence")
-	decision := (ContextAdmissionController{Policy: policy}).Decide(
-		current,
-		AdmissionRequest{AddedMandatory: []TruthEntity{large}},
-	)
-	// #region debug-point B:admission
-	report("B", "compact_retention_test.go:admission", "mandatory write reservation decision", map[string]any{
-		"allowed":             decision.Allowed,
-		"projectedTruthBytes": decision.ProjectedTruthBytes,
-		"reason":              decision.Reason,
-		"requiredActions":     decision.RequiredActions,
-	})
-	// #endregion
-	// #region debug-point D:baseline
-	report("D", "compact_retention_test.go:baseline", "source capsule baseline", map[string]any{
-		"entities": len(current.Entities), "modelContextTokens": 1_048_576,
-	})
-	// #endregion
-}
 
 func TestPlanRetentionKeepsMandatoryAndBoundsOptionalFacts(t *testing.T) {
 	capsule := truthFixture("sha256:compat", "model", 8192)

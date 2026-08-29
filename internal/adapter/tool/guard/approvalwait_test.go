@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -58,11 +57,8 @@ func (o *waitObserver) snapshot() []ApprovalWait {
 func TestApprovalWaitIsTheTimeSpentWaiting(t *testing.T) {
 	clock := newWaitClock()
 	observer := &waitObserver{}
-	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	requests := make(chan ApprovalRequest, 1)
 	guard, err := New(Options{
 		Registry:  registry,
@@ -113,11 +109,8 @@ func TestApprovalWaitIsTheTimeSpentWaiting(t *testing.T) {
 // dropped, and it says why it ended.
 func TestApprovalWaitIsReportedWhenNobodyAnswers(t *testing.T) {
 	observer := &waitObserver{}
-	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
@@ -143,11 +136,8 @@ func TestApprovalWaitIsReportedWhenNobodyAnswers(t *testing.T) {
 }
 
 func TestC5GuardRestoresApprovalWaitWithoutDuplicateEmission(t *testing.T) {
-	registry := tool.NewRegistry(nil, nil)
 	executor := testExecutor{descriptor: writeDescriptor()}
-	if err := registry.Register(&executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, &executor)
 	var emissions int
 	guard, err := New(Options{
 		Registry: registry,

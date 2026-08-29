@@ -134,10 +134,7 @@ func resourceConcurrencyGuard(
 	executor tool.Executor,
 ) *Guard {
 	t.Helper()
-	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	guard, err := New(Options{
 		Registry: registry,
 		Policy: policy.DefaultRuntime(

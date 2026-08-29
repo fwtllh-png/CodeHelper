@@ -75,10 +75,9 @@ func TestGuardDeclaresEveryTransactionPathAsAWrite(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&patchExecutor{descriptor: transactionToolDescriptor()}); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(
+		t, nil, &patchExecutor{descriptor: transactionToolDescriptor()},
+	)
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -140,11 +139,8 @@ func TestGuardDeclaresEveryTransactionPathAsAWrite(t *testing.T) {
 // paths would hand the tool an unmediated write.
 func TestGuardRefusesTransactionArgumentsItCannotEnumerate(t *testing.T) {
 	workspace := t.TempDir()
-	registry := tool.NewRegistry(nil, nil)
 	executor := &patchExecutor{descriptor: transactionToolDescriptor()}
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -188,10 +184,7 @@ func TestGuardObservesWritesFromToolsWithoutPathArguments(t *testing.T) {
 		write("untouched.txt", "same\n") // rewritten byte-for-byte: not a change
 		return os.Remove(filepath.Join(workspace, "removed.txt"))
 	}}
-	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -241,10 +234,9 @@ func TestGuardReportsNoChangesWhenNothingWasWritten(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "keep.txt"), []byte("v\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(&patchExecutor{descriptor: patchToolDescriptor()}); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(
+		t, nil, &patchExecutor{descriptor: patchToolDescriptor()},
+	)
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -288,10 +280,7 @@ func TestGuardCountsLinesAgainstTheTurnsStartingContent(t *testing.T) {
 	executor := &patchExecutor{descriptor: patchToolDescriptor(), apply: func(string) error {
 		return os.WriteFile(path, []byte(content), 0o600)
 	}}
-	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
@@ -355,10 +344,7 @@ func TestGuardRefusesWritesWhenTheBeforeImageCannotBeStored(t *testing.T) {
 	executor := &patchExecutor{descriptor: patchToolDescriptor(), apply: func(string) error {
 		return os.WriteFile(path, []byte("clobbered"), 0o600)
 	}}
-	registry := tool.NewRegistry(nil, nil)
-	if err := registry.Register(executor); err != nil {
-		t.Fatal(err)
-	}
+	registry := newTestRegistry(t, nil, executor)
 	guard, err := New(Options{
 		Registry:  registry,
 		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),

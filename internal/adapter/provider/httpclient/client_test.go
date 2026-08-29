@@ -246,7 +246,8 @@ func TestBundledResponsesCatalogEntryEncodesToTheResponsesPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, path, err := encodeRequest(provider.ModelRequest{
+	var body map[string]any
+	path := mustEncodeRequest(t, provider.ModelRequest{
 		Route: route,
 		Messages: []provider.Message{
 			provider.TextMessage(provider.RoleUser, "hello"),
@@ -254,16 +255,9 @@ func TestBundledResponsesCatalogEntryEncodesToTheResponsesPath(t *testing.T) {
 		MaxOutputTokens: 128,
 		PromptCacheKey:  "session-1",
 		Idempotent:      true,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	}, &body)
 	if path != "/responses" {
 		t.Fatalf("path = %q, want /responses", path)
-	}
-	var body map[string]any
-	if err := json.Unmarshal(data, &body); err != nil {
-		t.Fatal(err)
 	}
 	if body["model"] != "gpt-4.1" {
 		t.Fatalf("model = %#v", body["model"])
@@ -282,14 +276,8 @@ func TestBundledResponsesCatalogEntryEncodesToTheResponsesPath(t *testing.T) {
 func TestEncodeOmitsPromptCacheKeyWithoutCapability(t *testing.T) {
 	request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 	request.PromptCacheKey = "session-1"
-	data, _, err := encodeRequest(request)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var body map[string]any
-	if err := json.Unmarshal(data, &body); err != nil {
-		t.Fatal(err)
-	}
+	mustEncodeRequest(t, request, &body)
 	if _, ok := body["prompt_cache_key"]; ok {
 		t.Fatalf("prompt_cache_key should be omitted without capability: %#v", body)
 	}
@@ -298,16 +286,10 @@ func TestEncodeOmitsPromptCacheKeyWithoutCapability(t *testing.T) {
 func TestEncodeChatPromptCacheKeyWithCapability(t *testing.T) {
 	withCache := testRequestWithPromptCache(t, "https://provider.test", model.ProtocolOpenAIChat, true)
 	withCache.PromptCacheKey = "session-chat"
-	data, path, err := encodeRequest(withCache)
-	if err != nil {
-		t.Fatal(err)
-	}
+	var body map[string]any
+	path := mustEncodeRequest(t, withCache, &body)
 	if path != "/chat/completions" {
 		t.Fatalf("path = %q", path)
-	}
-	var body map[string]any
-	if err := json.Unmarshal(data, &body); err != nil {
-		t.Fatal(err)
 	}
 	if body["prompt_cache_key"] != "session-chat" {
 		t.Fatalf("prompt_cache_key missing: %#v", body)
@@ -315,14 +297,8 @@ func TestEncodeChatPromptCacheKeyWithCapability(t *testing.T) {
 
 	without := testRequestWithPromptCache(t, "https://provider.test", model.ProtocolOpenAIChat, false)
 	without.PromptCacheKey = "session-chat"
-	data, _, err = encodeRequest(without)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var withoutBody map[string]any
-	if err := json.Unmarshal(data, &withoutBody); err != nil {
-		t.Fatal(err)
-	}
+	mustEncodeRequest(t, without, &withoutBody)
 	if _, ok := withoutBody["prompt_cache_key"]; ok {
 		t.Fatalf("prompt_cache_key should be omitted without capability: %#v", withoutBody)
 	}
@@ -336,19 +312,12 @@ func TestEncodeAnthropicSystemCacheControl(t *testing.T) {
 		provider.TextMessage(provider.RoleUser, "hello"),
 		provider.TextMessage(provider.RoleSystem, "volatile-turn"),
 	}
-	data, path, err := encodeRequest(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if path != "/messages" {
-		t.Fatalf("path = %q", path)
-	}
 	var body struct {
 		System   []map[string]any `json:"system"`
 		Messages []map[string]any `json:"messages"`
 	}
-	if err := json.Unmarshal(data, &body); err != nil {
-		t.Fatal(err)
+	if path := mustEncodeRequest(t, request, &body); path != "/messages" {
+		t.Fatalf("path = %q", path)
 	}
 	if len(body.System) != 3 {
 		t.Fatalf("system = %#v", body.System)
@@ -372,13 +341,7 @@ func TestEncodeAnthropicSystemCacheControl(t *testing.T) {
 		provider.TextMessage(provider.RoleSystem, "stable"),
 		provider.TextMessage(provider.RoleUser, "hello"),
 	}
-	data, _, err = encodeRequest(noCache)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &body); err != nil {
-		t.Fatal(err)
-	}
+	mustEncodeRequest(t, noCache, &body)
 	if len(body.System) != 1 || body.System[0]["cache_control"] != nil {
 		t.Fatalf("no-cache system = %#v", body.System)
 	}
@@ -401,16 +364,10 @@ func TestEncodeToolHistoryByProtocol(t *testing.T) {
 	t.Run("responses", func(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = messages
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Input []map[string]any `json:"input"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		if len(body.Input) != 4 ||
 			body.Input[1]["role"] != "assistant" ||
 			body.Input[2]["type"] != "function_call" ||
@@ -423,16 +380,10 @@ func TestEncodeToolHistoryByProtocol(t *testing.T) {
 	t.Run("anthropic", func(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolAnthropic)
 		request.Messages = messages
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Messages []map[string]any `json:"messages"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		assistantContent, _ := body.Messages[1]["content"].([]any)
 		toolUse, _ := assistantContent[1].(map[string]any)
 		resultContent, _ := body.Messages[2]["content"].([]any)
@@ -469,16 +420,10 @@ func TestEncodeImageByProtocol(t *testing.T) {
 	t.Run("chat completions", func(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIChat)
 		request.Messages = imaged
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Messages []map[string]any `json:"messages"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		content, _ := body.Messages[0]["content"].([]any)
 		if len(content) != 2 {
 			t.Fatalf("content = %#v", body.Messages[0]["content"])
@@ -500,16 +445,10 @@ func TestEncodeImageByProtocol(t *testing.T) {
 	t.Run("chat completions without an image keeps string content", func(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIChat)
 		request.Messages = []provider.Message{provider.TextMessage(provider.RoleUser, "plain")}
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Messages []map[string]any `json:"messages"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		if body.Messages[0]["content"] != "plain" {
 			t.Fatalf("content = %#v", body.Messages[0]["content"])
 		}
@@ -518,16 +457,10 @@ func TestEncodeImageByProtocol(t *testing.T) {
 	t.Run("responses", func(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolOpenAIResponses)
 		request.Messages = imaged
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Input []map[string]any `json:"input"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		// The image and the question that asks about it have to arrive as one
 		// input item, or the model is shown a picture and asked about nothing.
 		if len(body.Input) != 1 {
@@ -547,16 +480,10 @@ func TestEncodeImageByProtocol(t *testing.T) {
 	t.Run("anthropic", func(t *testing.T) {
 		request := testRequest(t, "https://provider.test", model.ProtocolAnthropic)
 		request.Messages = imaged
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Messages []map[string]any `json:"messages"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		content, _ := body.Messages[0]["content"].([]any)
 		image, _ := content[1].(map[string]any)
 		source, _ := image["source"].(map[string]any)
@@ -590,18 +517,12 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 			),
 			provider.TextMessage(provider.RoleUser, "second"),
 		}
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Messages []struct {
 				Content []map[string]any `json:"content"`
 			} `json:"messages"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		thinking := body.Messages[1].Content[0]
 		if thinking["type"] != "thinking" ||
 			thinking["thinking"] != "private thought" ||
@@ -625,16 +546,10 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 			),
 			provider.TextMessage(provider.RoleUser, "second"),
 		}
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Input []map[string]any `json:"input"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		if len(body.Input) != 3 || body.Input[1]["type"] != "reasoning" ||
 			body.Input[2]["role"] != "user" {
 			t.Fatalf("reasoning replay = %#v", body.Input)
@@ -658,16 +573,10 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 				responsesReplayState(raw),
 			),
 		}
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Input []map[string]any `json:"input"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		if len(body.Input) != 2 ||
 			body.Input[1]["type"] != "function_call" {
 			t.Fatalf("empty reasoning shell was retained: %#v", body.Input)
@@ -691,16 +600,10 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 				{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{ID: "c2", Name: "file_read", Arguments: `{}`}},
 			}},
 		}
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Input []map[string]any `json:"input"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		var sawCall bool
 		for i, item := range body.Input {
 			if item["type"] != "function_call" || item["call_id"] != "c2" {
@@ -766,16 +669,10 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 			reconstructed.History,
 			provider.TextMessage(provider.RoleUser, "continue"),
 		)
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Input []map[string]any `json:"input"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		callIndex, outputIndex := -1, -1
 		for index, item := range body.Input {
 			if item["type"] == "function_call" && item["call_id"] == "call-1" {
@@ -804,16 +701,10 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 				responsesReplayState(raw),
 			),
 		}
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Input []map[string]any `json:"input"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		content, _ := body.Input[1]["content"].([]any)
 		part, _ := content[0].(map[string]any)
 		if body.Input[1]["type"] != "reasoning" || part["text"] != "from item" {
@@ -836,16 +727,10 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 				ToolResult: &provider.ToolResult{CallID: "call_1", Content: "cloudy"},
 			}}},
 		}
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Input []map[string]any `json:"input"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		if len(body.Input) < 3 || body.Input[1]["type"] != "reasoning" {
 			t.Fatalf("input = %#v", body.Input)
 		}
@@ -876,16 +761,10 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 				responsesReplayState(raw),
 			),
 		}
-		data, _, err := encodeRequest(request)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var body struct {
 			Input []map[string]any `json:"input"`
 		}
-		if err := json.Unmarshal(data, &body); err != nil {
-			t.Fatal(err)
-		}
+		mustEncodeRequest(t, request, &body)
 		item := body.Input[1]
 		if item["type"] != "reasoning" || item["id"] != nil {
 			t.Fatalf("item = %#v", item)
@@ -899,25 +778,6 @@ func TestEncodeReasoningReplayByProtocol(t *testing.T) {
 			t.Fatalf("content = %#v", item["content"])
 		}
 	})
-}
-
-func TestClientMakesOneAttemptForRetryableStatus(t *testing.T) {
-	var attempts atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		attempts.Add(1)
-		writer.WriteHeader(http.StatusTooManyRequests)
-	}))
-	defer server.Close()
-
-	client := testClient()
-	_, err := client.Stream(t.Context(), testRequest(t, server.URL, model.ProtocolOpenAIChat))
-	var problem *protocol.Problem
-	if !errors.As(err, &problem) || !problem.Retryable {
-		t.Fatalf("error = %v, want retryable problem", err)
-	}
-	if got := attempts.Load(); got != 1 {
-		t.Fatalf("attempts = %d, want 1", got)
-	}
 }
 
 func TestClientMakesOneAttemptForRetryableHTTPStatusMatrix(t *testing.T) {

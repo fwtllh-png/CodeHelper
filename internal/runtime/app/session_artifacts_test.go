@@ -1,13 +1,10 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -21,27 +18,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-func TestDebugRecoveryPreservesInlineAutoApprovedPlan(t *testing.T) {
-	debugURL := os.Getenv("DEBUG_SERVER_URL")
-	if debugURL == "" {
-		t.Skip("DEBUG_SERVER_URL is required for Plan recovery instrumentation")
-	}
-	report := func(hypothesisID, location, message string, data map[string]any) {
-		t.Helper()
-		payload, err := json.Marshal(map[string]any{
-			"sessionId": "recovery-plan-approval", "runId": "post-fix",
-			"hypothesisId": hypothesisID, "location": location,
-			"msg": "[DEBUG] " + message, "data": data, "ts": time.Now().UnixMilli(),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		response, err := http.Post(debugURL, "application/json", bytes.NewReader(payload))
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = response.Body.Close()
-	}
+func TestRecoveryPreservesInlineAutoApprovedPlan(t *testing.T) {
 	events := NewMemoryEventStore(8)
 	meta := protocol.EventMeta{
 		Sequence: 1, OperationID: "operation-inline-plan",
@@ -104,12 +81,6 @@ func TestDebugRecoveryPreservesInlineAutoApprovedPlan(t *testing.T) {
 	})
 	t.Cleanup(func() { closeRuntime(t, runtime) })
 
-	// #region debug-point A:source-plan
-	report("A", "session_artifacts_test.go:source", "source Plan evidence", map[string]any{
-		"startedPlanID": "", "deltaPlanID": "plan-inline",
-		"receiptHasPlan": true,
-	})
-	// #endregion
 	prepared, err := runtime.PrepareTurnRecovery(t.Context(), protocol.TurnRecoveryRequest{
 		Version: protocol.WorkflowIntentVersion, Action: protocol.TurnRecoveryContinue,
 		SessionID: "session-profile", SourceTurnID: "turn-inline-plan",
@@ -118,13 +89,6 @@ func TestDebugRecoveryPreservesInlineAutoApprovedPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// #region debug-point B:prepared-recovery
-	report("B", "session_artifacts_test.go:prepared", "prepared recovery Plan identity", map[string]any{
-		"planID":          prepared.Recovery.PlanID,
-		"planTransition":  prepared.Recovery.PlanTransition,
-		"profileRevision": prepared.Recovery.ProfileRevision,
-	})
-	// #endregion
 	if prepared.Recovery.PlanID != "plan-inline" ||
 		prepared.Recovery.PlanTransition != protocol.PlanTransitionAutopilot {
 		t.Fatalf("recovery did not retain inline Plan: %+v", prepared.Recovery)

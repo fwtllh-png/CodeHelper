@@ -2,7 +2,9 @@ package httpclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -46,6 +48,22 @@ func encodeRequest(
 	}
 	call, err := adapter.Prepare(request)
 	return call.Body, call.Path, err
+}
+
+func mustEncodeRequest(
+	t testing.TB,
+	request provider.ModelRequest,
+	target any,
+) string {
+	t.Helper()
+	data, path, err := encodeRequest(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, target); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func testAdapter(id model.AdapterID) (providerwire.Adapter, error) {
