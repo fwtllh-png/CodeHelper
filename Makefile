@@ -87,6 +87,7 @@ canary-adversarial-quick:
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
 WEB_HOST_CONTRACT := docs/protocol/web-host.contract.json
 WEB_HOST_TYPES := web/src/protocol/web-host.generated.ts
+WEB_HOST_ROUTES_GO := internal/host/runtimeapi/web/unary_routes.generated.go
 WEB_STREAMING_SOAK_DURATION ?= 1h
 WEB_STREAMING_SOAK_TIMEOUT ?= 70m
 WEB_STREAMING_SOAK_ALLOW_SHORT ?= 0
@@ -527,13 +528,16 @@ protocol-contract:
 protocol-schema:
 	$(GO) run ./scripts/eventtraitgen ./internal/runtime/protocol/event_traits.json ./internal/runtime/protocol/event_traits.gen.go
 	$(GO) run ./internal/runtime/protocol/schemagen $(PROTOCOL_SCHEMA)
-	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) -typescript $(WEB_HOST_TYPES)
+	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) \
+		-typescript $(WEB_HOST_TYPES) -go-output $(WEB_HOST_ROUTES_GO)
 
 web-protocol:
-	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) -typescript $(WEB_HOST_TYPES)
+	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) \
+		-typescript $(WEB_HOST_TYPES) -go-output $(WEB_HOST_ROUTES_GO)
 
 web-protocol-check:
-	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) -typescript $(WEB_HOST_TYPES) -check
+	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) \
+		-typescript $(WEB_HOST_TYPES) -go-output $(WEB_HOST_ROUTES_GO) -check
 
 deepseek-init:
 	./scripts/deepseek-local.sh init

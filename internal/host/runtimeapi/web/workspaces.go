@@ -56,7 +56,7 @@ type WorkspaceDirectoryResult struct {
 	Cancelled bool   `json:"cancelled,omitempty"`
 }
 
-func (s *Server) workspaceList(r *http.Request) (any, error) {
+func (s *Server) workspaceList(r *http.Request, _ Dependencies) (any, error) {
 	if err := s.decodeRequest(r, &struct{}{}); err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (s *Server) workspaceList(r *http.Request) (any, error) {
 	return s.workspaceControl.List(r.Context())
 }
 
-func (s *Server) workspaceAdd(r *http.Request) (any, error) {
+func (s *Server) workspaceAdd(r *http.Request, _ Dependencies) (any, error) {
 	if s.workspaceControl == nil {
 		return nil, unavailable("workspace management is unavailable")
 	}
@@ -98,7 +98,7 @@ func (s *Server) workspaceAdd(r *http.Request) (any, error) {
 	return WorkspaceAddResult{Workspace: workspace}, nil
 }
 
-func (s *Server) workspaceRemove(r *http.Request) (any, error) {
+func (s *Server) workspaceRemove(r *http.Request, _ Dependencies) (any, error) {
 	if s.workspaceControl == nil {
 		return nil, unavailable("workspace management is unavailable")
 	}
@@ -139,7 +139,10 @@ func (s *Server) workspaceRemove(r *http.Request) (any, error) {
 	return catalog, nil
 }
 
-func (s *Server) workspacePickDirectory(r *http.Request) (any, error) {
+func (s *Server) workspaceSelectDirectory(
+	r *http.Request,
+	_ Dependencies,
+) (any, error) {
 	if err := s.decodeRequest(r, &struct{}{}); err != nil {
 		return nil, err
 	}

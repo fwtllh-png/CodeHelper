@@ -4,11 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"reflect"
-	"strconv"
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
@@ -31,42 +27,9 @@ func TestUnaryRouteRegistryMatchesDispatcher(t *testing.T) {
 		declared[route.Path] = route
 	}
 
-	file, err := parser.ParseFile(token.NewFileSet(), "server.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dispatched := make(map[string]bool)
-	for _, declaration := range file.Decls {
-		function, ok := declaration.(*ast.FuncDecl)
-		if !ok || function.Name.Name != "unary" {
-			continue
-		}
-		ast.Inspect(function.Body, func(node ast.Node) bool {
-			clause, ok := node.(*ast.CaseClause)
-			if !ok {
-				return true
-			}
-			for _, expression := range clause.List {
-				literal, ok := expression.(*ast.BasicLit)
-				if !ok || literal.Kind != token.STRING {
-					continue
-				}
-				value, unquoteErr := strconv.Unquote(literal.Value)
-				if unquoteErr == nil {
-					dispatched[value] = true
-				}
-			}
-			return true
-		})
-	}
 	for path := range declared {
-		if !dispatched[path] {
-			t.Errorf("registered route %q has no dispatcher case", path)
-		}
-	}
-	for path := range dispatched {
-		if _, registered := declared[path]; !registered {
-			t.Errorf("dispatcher route %q is not registered", path)
+		if _, registered := unaryRouteHandler(path); !registered {
+			t.Errorf("registered route %q has no generated handler", path)
 		}
 	}
 	for path, request := range map[string]string{

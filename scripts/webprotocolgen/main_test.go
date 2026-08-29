@@ -18,6 +18,7 @@ func TestGenerateProducesDeterministicGuardedRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(first.contract) != string(second.contract) ||
+		string(first.goSource) != string(second.goSource) ||
 		string(first.typeScript) != string(second.typeScript) {
 		t.Fatal("generated Web Host contract is not deterministic")
 	}
@@ -63,6 +64,43 @@ func TestGenerateProducesDeterministicGuardedRoutes(t *testing.T) {
 		`export type WebRPCRoute = (typeof webRPCRoutes)[number]`,
 	) {
 		t.Fatal("generated TypeScript route union is missing")
+	}
+	if !strings.Contains(
+		string(first.goSource),
+		`"operation/submit":`,
+	) || !strings.Contains(
+		string(first.goSource),
+		`(*Server).operationSubmit`,
+	) {
+		t.Fatal("generated Go route binding is missing")
+	}
+}
+
+func TestHandlerNameUsesRouteSegments(t *testing.T) {
+	for route, expected := range map[string]string{
+		"session/create":             "sessionCreate",
+		"agent-preset/apply":         "agentPresetApply",
+		"credential/set-keyring":     "credentialSetKeyring",
+		"workspace/select-directory": "workspaceSelectDirectory",
+	} {
+		actual, err := handlerName(route)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if actual != expected {
+			t.Fatalf("handlerName(%q) = %q, want %q", route, actual, expected)
+		}
+	}
+}
+
+func TestGenerateGoRoutesRejectsAmbiguousHandlers(t *testing.T) {
+	if _, err := generateGoRoutes([]string{"agent-task/list", "agent/task-list"}); err == nil {
+		t.Fatal("ambiguous generated handlers were accepted")
+	}
+	for _, route := range []string{"/session/list", "session//list", "session/list-"} {
+		if _, err := handlerName(route); err == nil {
+			t.Fatalf("invalid route %q was accepted", route)
+		}
 	}
 }
 

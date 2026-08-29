@@ -195,6 +195,11 @@ Event 分类是 Protocol 数据，而不是 Host Policy。`event_traits.json` �
 Class、Item Owner、Durability、Correlation 或 Terminal Trait 时生成直接失败。
 Go Benchmark 消费 `eventview` 的 Typed Semantic Update，不再分类 `Event.Data`。
 
+Web Unary Route 以 `internal/host/runtimeapi/web/contract.go` 为唯一清单。
+`webprotocolgen` 从该清单生成公开 Transport Manifest、TypeScript Route Union 和
+Go Handler Table；Handler 方法名由路由分段确定，例如 `session/create` 对应
+`sessionCreate`。服务端不得再维护平行的字符串 Dispatch Switch。
+
 Web Client 使用 Runtime Snapshot 完成 Hydration，再按当前 Workspace 的 Cursor 消费
 Event。持久层 Sequence 在 Supervisor 内全局严格单调，浏览器则按 Workspace 分别保存
 Cursor；只有对应 Runtime 明确报告 Retention Gap 时才进入 Desync。

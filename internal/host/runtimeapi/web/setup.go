@@ -59,7 +59,7 @@ func (o SetupOptions) validate() error {
 	return nil
 }
 
-func (s *Server) setupApply(r *http.Request) (any, error) {
+func (s *Server) setupApply(r *http.Request, _ Dependencies) (any, error) {
 	if s.setup == nil {
 		return nil, unavailable("Runtime setup is unavailable")
 	}

@@ -446,140 +446,8 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var result any
-	var err error
-	switch route {
-	case "setup/apply":
-		result, err = s.setupApply(r)
-	case "workspace/list":
-		result, err = s.workspaceList(r)
-	case "workspace/select-directory":
-		result, err = s.workspacePickDirectory(r)
-	case "workspace/add":
-		result, err = s.workspaceAdd(r)
-	case "workspace/remove":
-		result, err = s.workspaceRemove(r)
-	case "system/describe":
-		if err = s.decodeRequest(r, &struct{}{}); err == nil {
-			result = s.describe(dependencies)
-		}
-	case "system/readiness":
-		if err = s.decodeRequest(r, &struct{}{}); err == nil {
-			result = map[string]any{"ready": true, "draining": false}
-		}
-	case "system/diagnostics":
-		result = s.systemDiagnostics(r, dependencies)
-	case "session/create":
-		result, err = s.createSession(r, dependencies)
-	case "session/activate":
-		result, err = s.activateSession(r, dependencies)
-	case "session/list":
-		result, err = s.listSessions(r, dependencies)
-	case "session/status":
-		result, err = s.sessionStatus(r, dependencies)
-	case "session/update":
-		result, err = s.updateSession(r, dependencies)
-	case "session/delete":
-		result, err = s.deleteSession(r, dependencies)
-	case "session/history":
-		result, err = s.sessionHistory(r, dependencies)
-	case "session/snapshot":
-		result, err = s.sessionSnapshot(r, dependencies)
-	case "session/export":
-		result, err = s.sessionExport(r, dependencies)
-	case "session/merge":
-		result, err = s.sessionMerge(r, dependencies)
-	case "operation/submit":
-		result, err = s.submitOperation(r, dependencies)
-	case "profile/get":
-		result, err = s.profile(r, dependencies)
-	case "profile/update":
-		result, err = s.updateProfile(r, dependencies)
-	case "agent-preset/list":
-		result, err = s.agentPresetList(r, dependencies)
-	case "agent-preset/save":
-		result, err = s.agentPresetSave(r, dependencies)
-	case "agent-preset/delete":
-		result, err = s.agentPresetDelete(r, dependencies)
-	case "agent-preset/apply":
-		result, err = s.agentPresetApply(r, dependencies)
-	case "provider/list":
-		if err = s.decodeRequest(r, &struct{}{}); err == nil {
-			result = dependencies.ProviderCatalog
-		}
-	case "model/list":
-		if err = s.decodeRequest(r, &struct{}{}); err == nil {
-			result, err = sessionModelCatalog(
-				r.Context(),
-				dependencies,
-				s.capacity.MaxActiveSessions,
-			)
-		}
-	case "model/test":
-		result, err = s.modelTest(r, dependencies)
-	case "connection/status":
-		result, err = s.connectionStatus(r, dependencies)
-	case "tool/catalog":
-		result, err = s.toolCatalog(r, dependencies)
-	case "checkpoint/list":
-		result, err = s.checkpointList(r, dependencies)
-	case "checkpoint/get":
-		result, err = s.checkpointGet(r, dependencies)
-	case "checkpoint/restore":
-		result, err = s.checkpointRestore(r, dependencies)
-	case "checkpoint/fork":
-		result, err = s.checkpointFork(r, dependencies)
-	case "turn/recover":
-		result, err = s.turnRecover(r, dependencies)
-	case "turn/queue":
-		result, err = s.turnQueue(r, dependencies)
-	case "plan/get":
-		result, err = s.planGet(r, dependencies)
-	case "agent/list":
-		result, err = s.agentList(r, dependencies)
-	case "trace/query":
-		result, err = s.traceQuery(r, dependencies)
-	case "usage/query":
-		result, err = s.usageQuery(r, dependencies)
-	case "extension/list":
-		result, err = s.extensionList(r, dependencies)
-	case "extension/control":
-		result, err = s.extensionControl(r, dependencies)
-	case "workspace/browse":
-		result, err = s.workspaceBrowse(r, dependencies)
-	case "workspace/search":
-		result, err = s.workspaceSearch(r, dependencies)
-	case "workspace/resource":
-		result, err = s.workspaceResource(r, dependencies)
-	case "workspace/open":
-		result, err = s.workspaceOpen(r, dependencies)
-	case "workspace/image":
-		result, err = s.workspaceImage(r, dependencies)
-	case "workspace/symbols":
-		result, err = s.workspaceSymbols(r, dependencies)
-	case "workspace/diagnostics":
-		result, err = s.workspaceDiagnostics(r, dependencies)
-	case "workspace/diff":
-		result, err = s.workspaceDiff(r, dependencies)
-	case "workspace/git-switch":
-		result, err = s.workspaceGitSwitch(r, dependencies)
-	case "credential/status":
-		result, err = s.credentialStatus(r, dependencies)
-	case "credential/set-keyring":
-		result, err = s.credentialSetKeyring(r, dependencies)
-	case "credential/clear-keyring":
-		result, err = s.credentialClearKeyring(r, dependencies)
-	case "credential/validate":
-		result, err = s.credentialValidate(r, dependencies)
-	case "mcp/health":
-		if err = s.decodeRequest(r, &struct{}{}); err == nil {
-			if dependencies.MCPHealth != nil {
-				result = dependencies.MCPHealth()
-			} else {
-				result = []mcp.HealthSnapshot{}
-			}
-		}
-	default:
+	handler, dispatched := unaryRouteHandler(route)
+	if !dispatched {
 		writeProblem(w, r, http.StatusNotFound, protocol.NewProblem(
 			protocol.CodeInvalidArgument,
 			"unknown Web API endpoint",
@@ -588,6 +456,7 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	result, err := handler(s, r, dependencies)
 	if err != nil {
 		if dependencies.Diagnostics != nil {
 			_, _ = fmt.Fprintf(
@@ -605,7 +474,15 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) describe(dependencies Dependencies) map[string]any {
+type unaryHandler func(*Server, *http.Request, Dependencies) (any, error)
+
+func (s *Server) systemDescribe(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	if err := s.decodeRequest(r, &struct{}{}); err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"protocol_version": webProtocol,
 		"workspace_root":   dependencies.WorkspaceRoot,
@@ -617,13 +494,26 @@ func (s *Server) describe(dependencies Dependencies) map[string]any {
 			"workspace", "credentials", "diagnostics", "session_export",
 			"trajectory", "trace_query",
 		},
+	}, nil
+}
+
+func (s *Server) systemReadiness(
+	r *http.Request,
+	_ Dependencies,
+) (any, error) {
+	if err := s.decodeRequest(r, &struct{}{}); err != nil {
+		return nil, err
 	}
+	return map[string]any{"ready": true, "draining": false}, nil
 }
 
 func (s *Server) systemDiagnostics(
 	r *http.Request,
 	dependencies Dependencies,
-) map[string]any {
+) (any, error) {
+	if err := s.decodeRequest(r, &struct{}{}); err != nil {
+		return nil, err
+	}
 	health := []mcp.HealthSnapshot{}
 	if dependencies.MCPHealth != nil {
 		health = dependencies.MCPHealth()
@@ -660,10 +550,23 @@ func (s *Server) systemDiagnostics(
 		},
 		"mcp_health":   health,
 		"generated_at": time.Now().UTC(),
-	}
+	}, nil
 }
 
-func (s *Server) createSession(
+func (s *Server) mcpHealth(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	if err := s.decodeRequest(r, &struct{}{}); err != nil {
+		return nil, err
+	}
+	if dependencies.MCPHealth == nil {
+		return []mcp.HealthSnapshot{}, nil
+	}
+	return dependencies.MCPHealth(), nil
+}
+
+func (s *Server) sessionCreate(
 	r *http.Request,
 	dependencies Dependencies,
 ) (any, error) {
@@ -727,7 +630,7 @@ func (s *Server) createSession(
 	})
 }
 
-func (s *Server) activateSession(
+func (s *Server) sessionActivate(
 	r *http.Request,
 	dependencies Dependencies,
 ) (any, error) {
@@ -747,7 +650,7 @@ func (s *Server) activateSession(
 	)
 }
 
-func (s *Server) listSessions(
+func (s *Server) sessionList(
 	r *http.Request,
 	dependencies Dependencies,
 ) (any, error) {
@@ -772,7 +675,7 @@ func (s *Server) sessionStatus(
 	return dependencies.Runtime.SessionStatus(r.Context(), request.SessionID)
 }
 
-func (s *Server) updateSession(
+func (s *Server) sessionUpdate(
 	r *http.Request,
 	dependencies Dependencies,
 ) (any, error) {
@@ -792,7 +695,7 @@ func (s *Server) updateSession(
 	)
 }
 
-func (s *Server) deleteSession(
+func (s *Server) sessionDelete(
 	r *http.Request,
 	dependencies Dependencies,
 ) (any, error) {
@@ -958,7 +861,7 @@ func (s *Server) sessionMerge(
 	}, nil
 }
 
-func (s *Server) submitOperation(
+func (s *Server) operationSubmit(
 	r *http.Request,
 	dependencies Dependencies,
 ) (any, error) {
@@ -1021,7 +924,7 @@ func validateWebOperationPayload(payload protocol.OperationPayload) error {
 	)
 }
 
-func (s *Server) profile(
+func (s *Server) profileGet(
 	r *http.Request,
 	dependencies Dependencies,
 ) (any, error) {
@@ -1034,7 +937,7 @@ func (s *Server) profile(
 	return dependencies.Runtime.SessionProfile(r.Context(), request.SessionID)
 }
 
-func (s *Server) updateProfile(
+func (s *Server) profileUpdate(
 	r *http.Request,
 	dependencies Dependencies,
 ) (any, error) {

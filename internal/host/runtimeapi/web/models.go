@@ -1,7 +1,6 @@
 package web
 
 import (
-	"context"
 	"net/http"
 	"sort"
 	"strings"
@@ -25,18 +24,30 @@ type WorkspaceConnection struct {
 	Protocol string `json:"protocol"`
 }
 
-func sessionModelCatalog(
-	ctx context.Context,
+func (s *Server) providerList(
+	r *http.Request,
 	dependencies Dependencies,
-	limit int,
-) (protocol.ModelCatalog, error) {
+) (any, error) {
+	if err := s.decodeRequest(r, &struct{}{}); err != nil {
+		return nil, err
+	}
+	return dependencies.ProviderCatalog, nil
+}
+
+func (s *Server) modelList(
+	r *http.Request,
+	dependencies Dependencies,
+) (any, error) {
+	if err := s.decodeRequest(r, &struct{}{}); err != nil {
+		return nil, err
+	}
 	result := dependencies.ModelCatalog
 	sessions, err := dependencies.Runtime.ListSessions(
-		ctx,
+		r.Context(),
 		protocol.SessionListQuery{
 			WorkspaceRoot:   dependencies.WorkspaceRoot,
 			IncludeArchived: true,
-			Limit:           limit,
+			Limit:           s.capacity.MaxActiveSessions,
 		},
 	)
 	if err != nil {
@@ -48,7 +59,7 @@ func sessionModelCatalog(
 	}
 	for _, session := range sessions.Sessions {
 		snapshot, profileErr := dependencies.Runtime.SessionProfile(
-			ctx,
+			r.Context(),
 			session.SessionID,
 		)
 		if profileErr != nil {
