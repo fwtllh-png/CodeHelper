@@ -26,7 +26,7 @@ func TestEngineAttachesCostToStreamingUsage(t *testing.T) {
 
 	var streamed []Event
 	result, err := engine.Run(t.Context(), "work", func(event Event) error {
-		if event.State == Streaming && event.Usage != nil {
+		if event.State == Streaming && eventUsage(event) != nil {
 			streamed = append(streamed, event)
 		}
 		return nil
@@ -39,19 +39,19 @@ func TestEngineAttachesCostToStreamingUsage(t *testing.T) {
 	}
 	// testRoute prices input and output at 1 USD per million tokens.
 	const wantCost = 3.0
-	if streamed[0].CostUSD != wantCost {
-		t.Fatalf("streaming usage cost = %v, want %v", streamed[0].CostUSD, wantCost)
+	if eventCostUSD(streamed[0]) != wantCost {
+		t.Fatalf("streaming usage cost = %v, want %v", eventCostUSD(streamed[0]), wantCost)
 	}
 	if result.CostUSD != wantCost {
 		t.Fatalf("turn cost = %v, want %v", result.CostUSD, wantCost)
 	}
-	if !streamed[0].CostKnown {
+	if !eventCostKnown(streamed[0]) {
 		t.Fatal("usage event reports unknown cost for a priced model")
 	}
-	if streamed[0].Sample != 1 {
-		t.Fatalf("usage sample = %d, want the first provider call", streamed[0].Sample)
+	if eventSample(streamed[0]) != 1 {
+		t.Fatalf("usage sample = %d, want the first provider call", eventSample(streamed[0]))
 	}
-	if streamed[0].Provider == "" || streamed[0].Model == "" {
+	if eventUsageProvider(streamed[0]) == "" || eventUsageModel(streamed[0]) == "" {
 		t.Fatalf("usage event does not name the model that answered: %+v", streamed[0])
 	}
 }
@@ -90,7 +90,7 @@ func TestEngineNumbersUsageBySampleAcrossCalls(t *testing.T) {
 
 	var streamed []Event
 	if _, err := engine.Run(t.Context(), "work", func(event Event) error {
-		if event.State == Streaming && event.Usage != nil {
+		if event.State == Streaming && eventUsage(event) != nil {
 			streamed = append(streamed, event)
 		}
 		return nil
@@ -102,14 +102,14 @@ func TestEngineNumbersUsageBySampleAcrossCalls(t *testing.T) {
 	}
 	// The first call's two reports share a sample and are cumulative over it;
 	// the second call starts a new sample and counts only its own tokens.
-	if streamed[0].Sample != 1 || streamed[1].Sample != 1 || streamed[2].Sample != 2 {
+	if eventSample(streamed[0]) != 1 || eventSample(streamed[1]) != 1 || eventSample(streamed[2]) != 2 {
 		t.Fatalf("samples = %d/%d/%d, want 1/1/2",
-			streamed[0].Sample, streamed[1].Sample, streamed[2].Sample)
+			eventSample(streamed[0]), eventSample(streamed[1]), eventSample(streamed[2]))
 	}
-	if streamed[1].Usage.InputTokens != 100 || streamed[1].Usage.OutputTokens != 20 {
-		t.Fatalf("first call total = %+v, want 100 in / 20 out", streamed[1].Usage)
+	if eventUsage(streamed[1]).InputTokens != 100 || eventUsage(streamed[1]).OutputTokens != 20 {
+		t.Fatalf("first call total = %+v, want 100 in / 20 out", eventUsage(streamed[1]))
 	}
-	if streamed[2].Usage.InputTokens != 150 || streamed[2].Usage.OutputTokens != 30 {
-		t.Fatalf("second call total = %+v, want only its own tokens", streamed[2].Usage)
+	if eventUsage(streamed[2]).InputTokens != 150 || eventUsage(streamed[2]).OutputTokens != 30 {
+		t.Fatalf("second call total = %+v, want only its own tokens", eventUsage(streamed[2]))
 	}
 }

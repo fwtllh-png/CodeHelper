@@ -7,6 +7,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 type ToolSampler = providerassembly.ToolSampler
@@ -88,12 +89,16 @@ func (a *toolAccount) hooks() providerassembly.ToolSampleHooks {
 				return nil
 			}
 			return a.emit(Event{
-				Usage:   &projection.Usage,
-				CostUSD: projection.CostUSD, CostKnown: projection.CostKnown,
-				Sample:   projection.Metadata.Index,
-				Provider: projection.Metadata.Provider,
-				Model:    projection.Metadata.Model,
-				Purpose:  string(projection.Metadata.Purpose),
+				Audit: EventAudit{Purpose: string(projection.Metadata.Purpose)},
+				Data: []protocol.EventData{projectUsage(
+					projection.Usage,
+					projection.CostUSD,
+					projection.CostKnown,
+					projection.Metadata.Index,
+					projection.Metadata.Provider,
+					projection.Metadata.Model,
+					nil,
+				)},
 			})
 		},
 	}

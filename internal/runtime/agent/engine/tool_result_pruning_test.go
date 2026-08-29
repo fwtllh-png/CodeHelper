@@ -40,7 +40,7 @@ func TestCompactGatePrunesOnlyConsumedToolResultBeforeSummaryReplacement(t *test
 		CompactionPhaseMidTurn,
 		true,
 		func(_ State, event Event) error {
-			receipt = event.Compaction
+			receipt = event.Audit.Compaction
 			return nil
 		},
 		0,
@@ -108,7 +108,7 @@ func TestStatelessDefaultCompactsLargeHistoryIntoTruthCapsule(t *testing.T) {
 		CompactionPhasePreSampling,
 		true,
 		func(_ State, event Event) error {
-			receipt = event.Compaction
+			receipt = event.Audit.Compaction
 			return nil
 		},
 		0,
@@ -201,7 +201,7 @@ func TestCompactGateKeepsConsumedResultsBelowDynamicPressureThreshold(t *testing
 		CompactionPhaseMidTurn,
 		true,
 		func(_ State, event Event) error {
-			receipt = event.Compaction
+			receipt = event.Audit.Compaction
 			return nil
 		},
 		0,
@@ -247,7 +247,7 @@ func TestCompactGatePrunesConsumedHandleResultUsingDynamicSurfaceBudget(t *testi
 		CompactionPhaseMidTurn,
 		true,
 		func(_ State, event Event) error {
-			receipt = event.Compaction
+			receipt = event.Audit.Compaction
 			return nil
 		},
 		0,

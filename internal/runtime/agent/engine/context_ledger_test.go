@@ -40,8 +40,8 @@ func TestModelSamplesUseMonotonicContextLedgerSnapshots(t *testing.T) {
 	engine := newEngine(t, runtime, registry)
 	var contexts []*protocol.SampleContextData
 	if _, err := engine.Run(t.Context(), "work", func(event Event) error {
-		if event.SampleContext != nil {
-			copy := *event.SampleContext
+		if eventSampleContext(event) != nil {
+			copy := *eventSampleContext(event)
 			contexts = append(contexts, &copy)
 		}
 		return nil
@@ -143,8 +143,8 @@ func TestPrefixManifestContinuesAcrossTurns(t *testing.T) {
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
 	var contexts []*protocol.SampleContextData
 	capture := func(event Event) error {
-		if event.SampleContext != nil {
-			copy := *event.SampleContext
+		if eventSampleContext(event) != nil {
+			copy := *eventSampleContext(event)
 			contexts = append(contexts, &copy)
 		}
 		return nil

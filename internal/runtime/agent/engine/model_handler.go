@@ -102,7 +102,9 @@ func (e *Engine) modelStep(
 		}
 	}
 	if changed := e.catalogChange(catalog); changed != nil {
-		if err := send(CallingModel, Event{CatalogChanged: changed}); err != nil {
+		if err := send(CallingModel, Event{
+			Data: []protocol.EventData{changed},
+		}); err != nil {
 			return nil, nil, provider.Usage{}, 0, err
 		}
 	}
@@ -341,9 +343,11 @@ func (e *Engine) modelStep(
 		messages := snapshot.Messages()
 		providerAttempt++
 		if err := send(CallingModel, Event{
-			ModelExecution: &ModelExecution{
-				Kind: "provider_attempt", SampleID: sampleID,
-				Attempt: providerAttempt, Reason: sampleReason,
+			Audit: EventAudit{
+				ModelExecution: &ModelExecution{
+					Kind: "provider_attempt", SampleID: sampleID,
+					Attempt: providerAttempt, Reason: sampleReason,
+				},
 			},
 		}); err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
@@ -397,24 +401,23 @@ func (e *Engine) modelStep(
 							)
 						}
 						return send(Streaming, Event{
-							Usage: &copy,
-							CostUSD: provider.EstimateCost(
-								call.pricing,
+							Data: []protocol.EventData{projectUsage(
 								copy,
-							),
-							CostKnown: provider.PricingKnown(
-								call.pricing,
-								copy,
-							),
-							Sample: call.index, Provider: call.provider,
-							Model: call.model, SampleContext: call.context,
+								provider.EstimateCost(call.pricing, copy),
+								provider.PricingKnown(call.pricing, copy),
+								call.index,
+								call.provider,
+								call.model,
+								call.context,
+							)},
 						})
 					}
-					return send(Streaming, Event{
-						Text: projected.Text, Block: projected.Block,
-						Search: projected.Search, Citation: projected.Citation,
-						Sample: call.index, SampleID: sampleID,
-					})
+					return send(Streaming, protocolEvent(projectContent(
+						projected.Block,
+						projected.Search,
+						projected.Citation,
+						sampleID,
+					)))
 				},
 			},
 			providerassembly.TransportLifecycle{
@@ -469,7 +472,7 @@ func (e *Engine) modelStep(
 			)
 			if retryable && ctx.Err() == nil {
 				if sendErr := send(CallingModel, Event{
-					ProviderRetry: &retry,
+					Audit: EventAudit{ProviderRetry: &retry},
 				}); sendErr != nil {
 					return nil, nil, totalUsage, lastEstimate, sendErr
 				}
@@ -622,7 +625,7 @@ func (e *Engine) modelStep(
 				)
 		}
 		if sendErr := send(CallingModel, Event{
-			ProviderRetry: &retry,
+			Audit: EventAudit{ProviderRetry: &retry},
 		}); sendErr != nil {
 			return nil, nil, totalUsage, lastEstimate, sendErr
 		}
@@ -641,8 +644,9 @@ func deduplicateCompactionReceipts(
 ) func(State, Event) error {
 	var previous *CompactionReceipt
 	return func(state State, event Event) error {
-		if state == Compacting && event.Compaction != nil {
-			current := observableCompactionReceipt(event.Compaction)
+		compaction := event.Audit.Compaction
+		if state == Compacting && compaction != nil {
+			current := observableCompactionReceipt(compaction)
 			if previous != nil && reflect.DeepEqual(previous, &current) {
 				return nil
 			}
@@ -684,7 +688,7 @@ func (e *Engine) emitMCPHealthChanges(
 	for _, change := range mcp.ProjectHealth(current) {
 		value := change
 		if err := send(CallingModel, Event{
-			MCPHealthChanged: &value,
+			Data: []protocol.EventData{projectMCPHealth(&value)},
 		}); err != nil {
 			return err
 		}
@@ -716,7 +720,9 @@ func (e *Engine) refreshScopeCatalog() error {
 	return nil
 }
 
-func (e *Engine) catalogChange(current tool.CatalogSnapshot) *CatalogChanged {
+func (e *Engine) catalogChange(
+	current tool.CatalogSnapshot,
+) *protocol.ToolCatalogChangedData {
 	scope := e.executionScope()
 	if scope == nil {
 		return nil
@@ -729,11 +735,20 @@ func (e *Engine) catalogChange(current tool.CatalogSnapshot) *CatalogChanged {
 	}
 	scope.state.catalogProjected = current
 	diff := tool.DiffCatalog(previous, current)
-	changed := &CatalogChanged{
-		CatalogID: current.CatalogID, Generation: current.Generation, Digest: current.Digest,
-		Added: diff.Added, Replaced: diff.Replaced, Revoked: diff.Revoked,
+	convert := func(changes []tool.CatalogChange) []protocol.ToolCatalogChange {
+		result := make([]protocol.ToolCatalogChange, len(changes))
+		for index, change := range changes {
+			result[index] = protocol.ToolCatalogChange{
+				Name: change.Name, Source: change.Source, Revision: change.Revision,
+			}
+		}
+		return result
 	}
-	return changed
+	return &protocol.ToolCatalogChangedData{
+		CatalogID: current.CatalogID, Generation: current.Generation,
+		Digest: current.Digest, Added: convert(diff.Added),
+		Replaced: convert(diff.Replaced), Revoked: convert(diff.Revoked),
+	}
 }
 
 // sample attributes one provider call and its usage.

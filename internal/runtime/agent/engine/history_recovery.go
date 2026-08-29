@@ -50,7 +50,10 @@ func (e *Engine) runCompactGate(
 	)
 	if receipt != nil {
 		receipt.Phase = phase
-		if err := send(Compacting, Event{Compaction: receipt}); err != nil {
+		if err := send(Compacting, Event{
+			Data:  []protocol.EventData{ProtocolCompactionData(receipt)},
+			Audit: EventAudit{Compaction: receipt},
+		}); err != nil {
 			return tokenWindow{}, err
 		}
 	}
@@ -62,7 +65,10 @@ func (e *Engine) runCompactGate(
 		}
 		if inlineReceipt != nil {
 			inlineReceipt.Phase = phase
-			if err := send(Compacting, Event{Compaction: inlineReceipt}); err != nil {
+			if err := send(Compacting, Event{
+				Data:  []protocol.EventData{ProtocolCompactionData(inlineReceipt)},
+				Audit: EventAudit{Compaction: inlineReceipt},
+			}); err != nil {
 				return tokenWindow{}, err
 			}
 		}

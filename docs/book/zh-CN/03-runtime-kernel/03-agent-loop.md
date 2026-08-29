@@ -66,8 +66,8 @@ stateDiagram-v2
 
 上图是概念视图。代码中 `turnkernel.Reducer` 是状态转换以及 Repair、Verification、
 Terminal Decision 的唯一生产 Owner；`TurnCoordinator` 是 `Reducer.Apply` 的唯一
-生产调用方。Engine Handler 只执行 Effect 并投影 Progress，Engine Event 不会反向
-生成 Command 驱动 Reducer。
+生产调用方。Engine Handler 只执行 Effect 并直接产出 Protocol Event；这些投影不会
+反向生成 Command 驱动 Reducer。
 
 ## Sampling Boundary
 

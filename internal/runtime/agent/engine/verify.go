@@ -203,7 +203,10 @@ func (g *verifyGate) evaluate(
 		UncoveredPaths: append([]string(nil), uncovered...),
 		Attempts:       append([]verify.Receipt(nil), g.attempts...),
 	}
-	if err := send(Verifying, Event{Verification: observed}); err != nil {
+	if err := send(Verifying, Event{
+		Data:  []protocol.EventData{projectVerification(observed)},
+		Audit: EventAudit{Verification: observed},
+	}); err != nil {
 		return verifyOutcome{}, err
 	}
 	return verifyOutcome{action: action, receipt: observed}, nil

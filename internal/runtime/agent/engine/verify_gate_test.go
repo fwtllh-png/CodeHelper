@@ -147,8 +147,8 @@ func TestVerifyGateRepairRoundUsesExtraStepBudget(t *testing.T) {
 	var verifications []*VerificationReceipt
 
 	result, err := fixture.engine.RunForTurn(t.Context(), "turn-1", "edit", func(event Event) error {
-		if event.State == Verifying && event.Verification != nil {
-			verifications = append(verifications, event.Verification)
+		if event.State == Verifying && event.Audit.Verification != nil {
+			verifications = append(verifications, event.Audit.Verification)
 		}
 		return nil
 	})

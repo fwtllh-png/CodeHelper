@@ -9,6 +9,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 // streamingTool reports progress while it runs, the way a shell command does.
@@ -91,20 +92,20 @@ func TestToolOutputReachesTheHostWhileTheCallIsStillOpen(t *testing.T) {
 	engine, _ := streamingTurn(t, executor, nil)
 
 	var (
-		chunks  []ToolOutput
+		chunks  []protocol.ToolOutputData
 		results int
 	)
 	done := make(chan error, 1)
 	go func() {
 		_, err := engine.Run(t.Context(), "work", func(event Event) error {
 			switch {
-			case event.ToolOutput != nil:
-				chunks = append(chunks, *event.ToolOutput)
+			case eventData[*protocol.ToolOutputData](event) != nil:
+				chunks = append(chunks, *eventData[*protocol.ToolOutputData](event))
 				if len(chunks) == 2 {
 					// Both chunks landed with the tool still running.
 					close(release)
 				}
-			case event.Result != nil:
+			case eventToolResult(event) != nil:
 				results++
 			}
 			return nil
@@ -146,10 +147,10 @@ func TestStreamingStopsAtItsBudgetButTheResultIsComplete(t *testing.T) {
 		options.MaxToolStreamBytes = 12
 	})
 
-	var chunks []ToolOutput
+	var chunks []protocol.ToolOutputData
 	if _, err := engine.Run(t.Context(), "work", func(event Event) error {
-		if event.ToolOutput != nil {
-			chunks = append(chunks, *event.ToolOutput)
+		if eventData[*protocol.ToolOutputData](event) != nil {
+			chunks = append(chunks, *eventData[*protocol.ToolOutputData](event))
 		}
 		return nil
 	}); err != nil {
@@ -199,7 +200,7 @@ func TestATurnWithoutStreamedOutputEmitsNoOutputEvents(t *testing.T) {
 	engine, _ := streamingTurn(t, &streamingTool{}, nil)
 	var chunks int
 	if _, err := engine.Run(t.Context(), "work", func(event Event) error {
-		if event.ToolOutput != nil {
+		if eventData[*protocol.ToolOutputData](event) != nil {
 			chunks++
 		}
 		return nil

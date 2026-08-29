@@ -353,9 +353,10 @@ Mutation Revision。只复用输入摘要未变的通过节点；失败或 unava
 内容已保存为可重取 Handle，且动态 Tool Surface 预算要求缩减时才提前裁剪。
 增量 Route 保持严格追加投影，不执行这些会破坏 Response Chain 前缀的转换。
 
-`TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，
-不会反向生成 Command 写回状态机。Durable Runtime 构造必须显式提供 Event、Content、
-Terminal Store；Memory Store 仅由显式 `NewRuntime` Ephemeral 构造选择。
+`TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine 直接产出
+`protocol.EventData`；轻量执行阶段只决定投影失败处理方式，不再维护一套平行的事件
+联合体，也不会反向生成 Command 写回状态机。Durable Runtime 构造必须显式提供 Event、
+Content、Terminal Store；Memory Store 仅由显式 `NewRuntime` Ephemeral 构造选择。
 
 Cancel 和 Failure 是明确终态，不是“没有返回数据”。
 

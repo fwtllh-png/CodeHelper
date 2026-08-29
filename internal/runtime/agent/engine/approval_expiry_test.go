@@ -77,10 +77,11 @@ func TestApprovalExpiryResolvesKernelBeforeToolResult(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if emitted.ApprovalResolution == nil ||
-		emitted.ApprovalResolution.RequestID != "approval-1" ||
-		emitted.ApprovalResolution.Decision != "deny" ||
-		emitted.ApprovalResolution.Reason != "approval_expired" {
+	if eventApprovalResolution(emitted) == nil ||
+		eventApprovalResolution(emitted).RequestID != "approval-1" ||
+		eventApprovalResolution(emitted).Decision != "deny" ||
+		eventApprovalResolution(emitted).Problem == nil ||
+		eventApprovalResolution(emitted).Problem.Details.Reason != "approval_expired" {
 		t.Fatalf("approval resolution event = %+v", emitted)
 	}
 	if len(kernel.Snapshot().PendingApprovals) != 0 {

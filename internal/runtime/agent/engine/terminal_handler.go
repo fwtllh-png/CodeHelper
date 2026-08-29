@@ -51,12 +51,9 @@ func (h *turnEmitter) send(state State, event Event) error {
 		if err := h.releaseTurn(); err != nil {
 			h.addReleaseIssue(err)
 		}
-		event.SecondaryIssues = mergeTerminalIssues(
-			event.SecondaryIssues,
-			h.secondary,
-		)
-		event.ContextBudget = h.contextBudget
+		event.Audit.ContextBudget = h.contextBudget
 	}
+	event.Data = completeProtocolProjection(state, event.Data, h.secondary)
 	if err := h.emitFunc(event); err != nil {
 		if !terminal &&
 			state != Preparing &&
@@ -280,28 +277,27 @@ func (h *turnEmitter) finish(ctx context.Context, result *Result, resultErr *err
 			switch decision.Kind {
 			case turnkernel.TerminalCompleted:
 				state = Completed
-				event = Event{}
+				event = protocolEvent(&protocol.TurnCompletedData{})
 			case turnkernel.TerminalCanceled:
 				state = Canceled
-				event = Event{
-					Error:        decision.Message,
-					CancelReason: decision.Message,
-				}
+				event = protocolEvent(&protocol.TurnCanceledData{
+					Reason: decision.Message,
+				})
 			case turnkernel.TerminalFailed:
 				state = Failed
 				h.setPrimary(*resultErr)
-				event = Event{
-					ErrorCode: protocol.ErrorCode(decision.Code),
-					Error:     decision.Message,
-					Fault:     protocol.CloneFaultMetadata(decision.Fault),
+				event = protocolEvent(&protocol.TurnFailedData{
+					Code:    protocol.ErrorCode(decision.Code),
+					Message: decision.Message,
+					Fault:   protocol.CloneFaultMetadata(decision.Fault),
 					Convergence: turnkernel.ProtocolConvergence(
 						decision.Convergence,
 					),
 					SecondaryIssues: append(
-						[]TerminalIssue(nil),
-						h.secondary...,
+						[]protocol.TerminalIssue(nil),
+						protocolTerminalIssues(h.secondary)...,
 					),
-				}
+				})
 			}
 		}
 	}
@@ -319,30 +315,28 @@ func (h *turnEmitter) terminalEvent(ctx context.Context, err error) (State, Even
 		reason = h.cancelReason()
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
-		return Canceled, Event{
-			Error:        "turn canceled",
-			CancelReason: protocol.NormalizeCancelReason(reason),
-		}
+		return Canceled, protocolEvent(&protocol.TurnCanceledData{
+			Reason: protocol.NormalizeCancelReason(reason),
+		})
 	}
 	if reason == protocol.CancelReasonApprovalCanceled {
-		return Canceled, Event{
-			Error:        "approval canceled",
-			CancelReason: reason,
-		}
+		return Canceled, protocolEvent(&protocol.TurnCanceledData{Reason: reason})
 	}
 	var decision *policy.DecisionError
 	if errors.As(err, &decision) && decision.Code == "approval_canceled" {
-		return Canceled, Event{
-			Error:        "approval canceled",
-			CancelReason: protocol.CancelReasonApprovalCanceled,
-		}
+		return Canceled, protocolEvent(&protocol.TurnCanceledData{
+			Reason: protocol.CancelReasonApprovalCanceled,
+		})
 	}
 	h.setPrimary(err)
-	return Failed, Event{
-		ErrorCode: h.primaryCode, Error: h.primaryError,
-		Fault:           protocol.CloneFaultMetadata(h.primaryFault),
-		SecondaryIssues: append([]TerminalIssue(nil), h.secondary...),
-	}
+	return Failed, protocolEvent(&protocol.TurnFailedData{
+		Code: h.primaryCode, Message: h.primaryError,
+		Fault: protocol.CloneFaultMetadata(h.primaryFault),
+		SecondaryIssues: append(
+			[]protocol.TerminalIssue(nil),
+			protocolTerminalIssues(h.secondary)...,
+		),
+	})
 }
 
 func (h *turnEmitter) terminalRequest(
@@ -350,15 +344,18 @@ func (h *turnEmitter) terminalRequest(
 ) (State, Event, turnkernel.TerminalRequested) {
 	state, event := h.terminalEvent(ctx, err)
 	request := turnkernel.TerminalRequested{}
-	if state == Canceled {
-		request.CancelReason = terminalValue(
-			event.CancelReason,
-			protocol.CancelReasonShutdown,
-		)
-	} else {
-		request.FailureCode = string(event.ErrorCode)
-		request.FailureMessage = terminalValue(event.Error, "turn failed")
-		request.Fault = h.primaryFault
+	if len(event.Data) != 0 {
+		switch data := event.Data[0].(type) {
+		case *protocol.TurnCanceledData:
+			request.CancelReason = terminalValue(
+				data.Reason,
+				protocol.CancelReasonShutdown,
+			)
+		case *protocol.TurnFailedData:
+			request.FailureCode = string(data.Code)
+			request.FailureMessage = terminalValue(data.Message, "turn failed")
+			request.Fault = h.primaryFault
+		}
 	}
 	return state, event, request
 }

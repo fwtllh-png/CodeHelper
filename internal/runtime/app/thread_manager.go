@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"sync"
 
 	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
@@ -392,7 +391,7 @@ func (m *ThreadManager) CompactThread(
 	receipt := engine.CompactForced()
 	summary := "context already within budget; no messages compacted"
 	if receipt != nil {
-		summary = appextension.FormatCompactionSummary(receipt)
+		summary = agentengine.FormatCompactionSummary(receipt)
 	}
 	history := engine.History()
 	encoded, err := sessionhistory.EncodeCompactedHistory(history)
@@ -414,7 +413,7 @@ func (m *ThreadManager) CompactThread(
 		PreviousWindowID:   window.previous,
 		WindowID:           window.Current,
 	}
-	appextension.ApplyThreadCompactionTruth(data, receipt)
+	agentengine.ApplyThreadCompactionTruth(data, receipt)
 	return sink.Emit(data)
 }
 

@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
@@ -124,50 +125,71 @@ func (r *Recorder) BuildWithMeasurement(
 	return r.Build(Observations{measurement: measurement})
 }
 
-// observe folds one engine event into the receipt.
+// Observe folds protocol events and non-public audit observations into the receipt.
 func (r *Recorder) Observe(event agentengine.Event) {
 	if r == nil {
 		return
 	}
-	switch event.State {
-	case agentengine.Preparing:
-		r.mode, r.posture = event.Mode, event.Posture
-		r.sandbox, r.workspace = event.Sandbox, event.Workspace
-		r.workspaceIsolation = event.WorkspaceIsolation
-	case agentengine.AwaitingApproval:
-		if event.Approval != nil {
-			r.approvals++
-		}
-	case agentengine.RunningTools:
-		r.observeTool(event)
-	case agentengine.Failed:
-		if event.Error != "" {
-			r.issues = append(r.issues, event.Error)
-		}
-		if event.Convergence != nil {
-			value := *event.Convergence
-			value.PendingActions = append(
-				[]string(nil),
-				event.Convergence.PendingActions...,
+	for _, data := range event.Data {
+		switch value := data.(type) {
+		case *protocol.TurnStartedData:
+			r.mode, r.posture = value.Mode, value.Posture
+			r.sandbox, r.workspace = value.Sandbox, value.Workspace
+			r.workspaceIsolation = value.WorkspaceIsolation
+			r.observeRoute(
+				event.Audit.Purpose,
+				value.Provider,
+				value.Model,
 			)
-			r.convergence = &value
-		}
-		for _, issue := range event.SecondaryIssues {
-			r.secondary = append(r.secondary, protocol.TerminalIssue{
-				Phase: issue.Phase, Code: issue.Code, Message: issue.Message,
-			})
+		case *protocol.ApprovalRequiredData:
+			r.approvals++
+		case *protocol.ToolResultData:
+			r.observeTool(value, event.Audit.ToolResult)
+		case *protocol.DiagnosticsData:
+			r.observeDiagnostics(value.Receipts)
+		case *protocol.PlanDeltaData:
+			if value.Done {
+				r.plan = value.Body
+			}
+		case *protocol.TurnFailedData:
+			if value.Message != "" {
+				r.issues = append(r.issues, value.Message)
+			}
+			if value.Convergence != nil {
+				convergence := *value.Convergence
+				convergence.PendingActions = append(
+					[]string(nil),
+					value.Convergence.PendingActions...,
+				)
+				r.convergence = &convergence
+			}
+			r.secondary = append(
+				r.secondary,
+				value.SecondaryIssues...,
+			)
+		case *protocol.TurnCompletedData:
+			r.secondary = append(
+				r.secondary,
+				value.SecondaryIssues...,
+			)
+		case *protocol.UsageData:
+			r.observeRoute(
+				event.Audit.Purpose,
+				value.Provider,
+				value.Model,
+			)
 		}
 	}
-	if event.Verification != nil {
-		r.verification = event.Verification
+	if event.Audit.Verification != nil {
+		r.verification = event.Audit.Verification
 	}
-	if event.Completion != nil {
-		declaration := event.Completion
+	if event.Audit.Completion != nil {
+		declaration := event.Audit.Completion
 		rejection := ""
 		if declaration.Status == "incomplete" {
 			rejection = "convergence_blocked"
 		}
-		r.completion = &protocol.CompletionDeclaration{
+		r.observeCompletion(&protocol.CompletionDeclaration{
 			Status: declaration.Status, Summary: declaration.Summary,
 			OutputMode:   declaration.OutputMode,
 			ChangedPaths: append([]string(nil), declaration.ChangedPaths...),
@@ -179,23 +201,23 @@ func (r *Recorder) Observe(event agentengine.Event) {
 			CallID:           declaration.CallID,
 			Accepted:         declaration.Status == "complete",
 			Rejection:        rejection,
-		}
+		})
 	}
-	if event.ProviderRetry != nil {
+	if event.Audit.ProviderRetry != nil {
 		if r.providerRetry == nil {
 			r.providerRetry = &protocol.ReceiptProviderRetry{}
 		}
 		r.providerRetry.Count++
-		r.providerRetry.LastCode = event.ProviderRetry.Code
-		r.providerRetry.LastCategory = event.ProviderRetry.Category
+		r.providerRetry.LastCode = event.Audit.ProviderRetry.Code
+		r.providerRetry.LastCategory = event.Audit.ProviderRetry.Category
 	}
-	if event.ModelExecution != nil {
-		switch event.ModelExecution.Kind {
+	if event.Audit.ModelExecution != nil {
+		switch event.Audit.ModelExecution.Kind {
 		case "provider_attempt":
 			r.modelExecution.ProviderAttempts++
 		case "model_sample":
 			r.modelExecution.ModelSamples++
-			reason := event.ModelExecution.Reason
+			reason := event.Audit.ModelExecution.Reason
 			if reason == "" {
 				reason = promptcontext.SampleNormal
 			}
@@ -211,31 +233,45 @@ func (r *Recorder) Observe(event agentengine.Event) {
 	if event.Turn > r.turn {
 		r.turn = event.Turn
 	}
-	if event.ContextBudget != nil {
+	if event.Audit.ContextBudget != nil {
 		r.budget = &protocol.ReceiptContextBudget{
-			WindowID:             event.ContextBudget.WindowID,
-			WindowNumber:         event.ContextBudget.WindowNumber,
-			Observed:             event.ContextBudget.Observed,
-			ActiveTokens:         event.ContextBudget.ActiveTokens,
-			FullActiveTokens:     event.ContextBudget.FullActiveTokens,
-			PrefillTokens:        event.ContextBudget.PrefillTokens,
-			BodyTokens:           event.ContextBudget.BodyTokens,
-			ToolDefinitionTokens: event.ContextBudget.ToolDefinitionTokens,
-			PendingTokens:        event.ContextBudget.PendingTokens,
-			OutputReserve:        event.ContextBudget.OutputReserve,
-			AutoCompactTokens:    event.ContextBudget.AutoCompactTokens,
-			PrepareTokens:        event.ContextBudget.PrepareTokens,
-			EmergencyTokens:      event.ContextBudget.EmergencyTokens,
-			EstimatedTokens:      event.ContextBudget.EstimatedTokens,
-			MaxContextTokens:     event.ContextBudget.MaxContextTokens,
-			Compactions:          event.ContextBudget.Compactions,
+			WindowID:             event.Audit.ContextBudget.WindowID,
+			WindowNumber:         event.Audit.ContextBudget.WindowNumber,
+			Observed:             event.Audit.ContextBudget.Observed,
+			ActiveTokens:         event.Audit.ContextBudget.ActiveTokens,
+			FullActiveTokens:     event.Audit.ContextBudget.FullActiveTokens,
+			PrefillTokens:        event.Audit.ContextBudget.PrefillTokens,
+			BodyTokens:           event.Audit.ContextBudget.BodyTokens,
+			ToolDefinitionTokens: event.Audit.ContextBudget.ToolDefinitionTokens,
+			PendingTokens:        event.Audit.ContextBudget.PendingTokens,
+			OutputReserve:        event.Audit.ContextBudget.OutputReserve,
+			AutoCompactTokens:    event.Audit.ContextBudget.AutoCompactTokens,
+			PrepareTokens:        event.Audit.ContextBudget.PrepareTokens,
+			EmergencyTokens:      event.Audit.ContextBudget.EmergencyTokens,
+			EstimatedTokens:      event.Audit.ContextBudget.EstimatedTokens,
+			MaxContextTokens:     event.Audit.ContextBudget.MaxContextTokens,
+			Compactions:          event.Audit.ContextBudget.Compactions,
 		}
 	}
-	// Any event that names a purpose contributes to the route summary, not just
-	// the turn's opening one: a tool that samples a model of its own reports it
-	// with its usage, and a receipt that listed only the turn's own route would
-	// omit the model that produced part of the bill.
-	r.observeRoute(event)
+}
+
+func (r *Recorder) observeCompletion(
+	declaration *protocol.CompletionDeclaration,
+) {
+	if declaration == nil {
+		return
+	}
+	value := *declaration
+	value.ChangedPaths = append([]string(nil), declaration.ChangedPaths...)
+	value.VerificationCallIDs = append(
+		[]string(nil),
+		declaration.VerificationCallIDs...,
+	)
+	value.PendingActions = append(
+		[]string(nil),
+		declaration.PendingActions...,
+	)
+	r.completion = &value
 }
 
 func (r *Recorder) Freeze(
@@ -264,26 +300,29 @@ func (r *Recorder) Freeze(
 // observeRoute records which route a purpose sampled on. A purpose is recorded
 // once: a turn that resamples does so on the route it started with, and repeating
 // it would read as two models having answered.
-func (r *Recorder) observeRoute(event agentengine.Event) {
-	if event.Purpose == "" || event.Provider == "" {
+func (r *Recorder) observeRoute(purpose, providerID, modelID string) {
+	if purpose == "" || providerID == "" {
 		return
 	}
 	for _, existing := range r.routes {
-		if existing.Purpose == event.Purpose {
+		if existing.Purpose == purpose {
 			return
 		}
 	}
 	r.routes = append(r.routes, protocol.ReceiptRoute{
-		Purpose: event.Purpose, Provider: event.Provider, Model: event.Model,
+		Purpose: purpose, Provider: providerID, Model: modelID,
 	})
 }
 
-func (r *Recorder) observeTool(event agentengine.Event) {
-	if event.ToolCall == nil || event.Result == nil {
+func (r *Recorder) observeTool(
+	event *protocol.ToolResultData,
+	result *tool.Result,
+) {
+	if event == nil {
 		return
 	}
 	kind := "business"
-	switch event.ToolCall.Name {
+	switch event.Tool {
 	case "turn_complete", "update_plan", "submit_plan", "request_user_input":
 		kind = "control"
 	case "quality_test", "quality_diagnostics", "quality_review", "quality_verify",
@@ -294,17 +333,17 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 		r.toolExecution = make(map[string]int)
 	}
 	r.toolExecution[kind]++
-	if event.Result.IsError {
+	if event.IsError {
 		r.toolExecution["failed"]++
-		r.toolsFailed = appendUniqueString(r.toolsFailed, event.ToolCall.Name)
+		r.toolsFailed = appendUniqueString(r.toolsFailed, event.Tool)
 	} else {
-		r.toolsSucceeded = appendUniqueString(r.toolsSucceeded, event.ToolCall.Name)
-		if event.ToolCall.Name == "submit_plan" {
-			r.plan = event.Result.Content
+		r.toolsSucceeded = appendUniqueString(r.toolsSucceeded, event.Tool)
+		if event.Tool == "submit_plan" {
+			r.plan = event.Output
 		}
 	}
-	if event.Result.Execution != nil {
-		for _, attempt := range event.Result.Execution.Attempts {
+	if event.Execution != nil {
+		for _, attempt := range event.Execution.Attempts {
 			if attempt.PermissionDigest != "" {
 				r.permissionDigests = appendUniqueString(
 					r.permissionDigests,
@@ -313,13 +352,14 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 			}
 		}
 	}
-	if event.ToolCall.Name == "skills_read" ||
-		event.ToolCall.Name == "skills.read" {
+	r.observeCompletion(event.Completion)
+	if result != nil && (event.Tool == "skills_read" ||
+		event.Tool == "skills.read") {
 		var resolved []struct {
 			Name, Version, Source, Digest string
 			Locked                        bool
 		}
-		if encoded, err := json.Marshal(event.Result.Metadata["resolved_skills"]); err == nil &&
+		if encoded, err := json.Marshal(result.Metadata["resolved_skills"]); err == nil &&
 			json.Unmarshal(encoded, &resolved) == nil {
 			for _, item := range resolved {
 				duplicate := false
@@ -339,7 +379,10 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 			}
 		}
 	}
-	for _, receipt := range event.Diagnostics {
+}
+
+func (r *Recorder) observeDiagnostics(receipts []protocol.DiagnosticReceipt) {
+	for _, receipt := range receipts {
 		status := protocol.ReceiptPassed
 		switch {
 		case receipt.Status == "failed":
@@ -575,27 +618,6 @@ func receiptEvidence(snapshot agentcontext.EvidenceSnapshot) *protocol.ReceiptEv
 		rendered.Reminders = append(rendered.Reminders, reminder.Detail)
 	}
 	return rendered
-}
-
-// VerificationData renders one gate evaluation as a protocol event. Check output
-// is trimmed to the failing streams so the event stays readable in a log.
-func VerificationData(receipt *agentengine.VerificationReceipt) *protocol.TurnVerificationData {
-	data := &protocol.TurnVerificationData{
-		Scope: string(receipt.Scope), Mode: receipt.Mode, Action: receipt.Action,
-		Status: receipt.Status, RepairSteps: receipt.RepairSteps,
-		Errors: receipt.Errors, Warnings: receipt.Warnings,
-		Paths:          append([]string(nil), receipt.Paths...),
-		UncoveredPaths: append([]string(nil), receipt.UncoveredPaths...),
-		Message:        receipt.Message,
-	}
-	for _, check := range receipt.Checks {
-		output := strings.TrimSpace(check.Stdout + "\n" + check.Stderr)
-		data.Checks = append(data.Checks, protocol.VerificationCheck{
-			Name: check.Name, Command: check.Command, Reason: check.Reason, Status: check.Status,
-			Category: check.Category, ExitCode: check.ExitCode, Output: output,
-		})
-	}
-	return data
 }
 
 func verificationDetail(

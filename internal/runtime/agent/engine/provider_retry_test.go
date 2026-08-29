@@ -144,7 +144,7 @@ func TestContextOverflowRetriesOnlyAfterVisibleCompaction(t *testing.T) {
 	}
 	var compacted bool
 	result, err := engine.Run(t.Context(), "recover context", func(event Event) error {
-		compacted = compacted || event.Compaction != nil
+		compacted = compacted || event.Audit.Compaction != nil
 		return nil
 	})
 	if err != nil {

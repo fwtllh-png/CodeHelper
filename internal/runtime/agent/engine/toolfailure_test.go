@@ -320,8 +320,8 @@ func TestRunToolsFeedsRecoverableFailureBackToModel(t *testing.T) {
 		[]provider.ToolCall{{ID: "call_1", Name: "unread", Arguments: `{}`}},
 		make(map[string]tool.Result),
 		func(_ State, event Event) error {
-			if event.Result != nil {
-				emitted = append(emitted, *event.Result)
+			if eventToolResult(event) != nil {
+				emitted = append(emitted, *eventToolResult(event))
 			}
 			return nil
 		},

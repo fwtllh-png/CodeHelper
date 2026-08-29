@@ -7,6 +7,7 @@ import (
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 const providerRetryPolicyRevision = providerwire.RetryPolicyRevision
@@ -68,7 +69,10 @@ func (e *Engine) recoverContextOverflow(
 		return false, nil
 	}
 	receipt.Phase = CompactionPhaseMidTurn
-	if err := send(Compacting, Event{Compaction: receipt}); err != nil {
+	if err := send(Compacting, Event{
+		Data:  []protocol.EventData{ProtocolCompactionData(receipt)},
+		Audit: EventAudit{Compaction: receipt},
+	}); err != nil {
 		return false, err
 	}
 	return true, nil

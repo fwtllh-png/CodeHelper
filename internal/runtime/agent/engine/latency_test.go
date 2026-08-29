@@ -398,14 +398,14 @@ func approveAfter(
 ) func(Event) error {
 	t.Helper()
 	return func(event Event) error {
-		if event.State != AwaitingApproval || event.Approval == nil {
+		if event.State != AwaitingApproval || eventApproval(event) == nil {
 			return nil
 		}
 		clock.advance(waited)
 		// A zero expiry takes the request's own, which the guard requires the
 		// decision to stay inside.
 		return mustControl(t, engine).ResolveApproval(toolguard.ApprovalDecision{
-			RequestID: event.Approval.RequestID, Approved: true,
+			RequestID: eventApproval(event).RequestID, Approved: true,
 			Scope: policy.ApprovalOnce,
 		})
 	}

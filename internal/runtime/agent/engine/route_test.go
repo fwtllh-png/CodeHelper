@@ -107,8 +107,13 @@ func TestPlanModeSamplesOnThePlanRouteAndSaysSo(t *testing.T) {
 	if got := scripted.requests[0].Route.Model().ID; got != "planner" {
 		t.Fatalf("sampled model = %q, want planner", got)
 	}
-	if prepared.Purpose != string(model.PurposePlan) || prepared.Model != "planner" {
-		t.Fatalf("prepared = purpose %q model %q", prepared.Purpose, prepared.Model)
+	if prepared.Audit.Purpose != string(model.PurposePlan) ||
+		eventStarted(prepared).Model != "planner" {
+		t.Fatalf(
+			"prepared = purpose %q model %q",
+			prepared.Audit.Purpose,
+			eventStarted(prepared).Model,
+		)
 	}
 	// The plan model's ceiling is lower than the session's, and asking for more
 	// than a model allows is a provider error rather than a routing story.

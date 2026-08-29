@@ -147,9 +147,10 @@ Engine 构建包含 Route、Message、Limit、Reasoning、Native Search 和 Tool
 以一个被保留的 `ModelSampleResultReceived` Command 返回。若 Result 的持久化接收
 失败，可以重交同一个 Command，而不会再次调用 Provider。
 
-Text、Reasoning、Citation、Usage 和 Tool Call 先成为 Engine Event，再转换为 Runtime
-Event；Host 不直接拥有 Provider Stream。Protocol Event 是面向 Host 的 Projection，
-有序 Domain Fact 才是 Turn 状态机的权威记录。
+Text、Reasoning、Citation、Usage 和 Tool Call 由 Engine 直接投影为
+`protocol.EventData`，Runtime 再补充顺序与稳定 Identity；Host 不直接拥有 Provider
+Stream。Protocol Event 是面向 Host 的 Projection，有序 Domain Fact 才是 Turn
+状态机的权威记录。
 
 ## 5. Tool 执行与继续
 

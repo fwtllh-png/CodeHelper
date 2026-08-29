@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
-
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
 )
@@ -60,7 +59,7 @@ func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {
 		TerminalStatus: tool.OutcomeRejected,
 		TerminalOwner:  tool.TerminalOwnerGuard,
 	}
-	projected := appextension.ProjectToolExecutionReceipt(source)
+	projected := agentengine.ProjectToolExecutionReceipt(source)
 	source.Attempts[0].ReadRoots[0] = "/tampered"
 	source.Attempts[0].Denial.Resource = "/tampered"
 	if projected == nil || projected.Tool.Name != "exec_command" ||

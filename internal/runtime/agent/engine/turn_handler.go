@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -413,9 +414,10 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 				finalized.Pending,
 			)
 			projectionErr := send(AwaitingRecovery, Event{
-				ErrorCode: fault.Code,
-				Error:     fault.Message,
-				Fault:     fault.Fault,
+				Data: []protocol.EventData{&protocol.ToolStateData{
+					State: string(AwaitingRecovery),
+					Text:  fault.Message,
+				}},
 			})
 			return errors.Join(fault, projectionErr)
 		}
@@ -435,7 +437,11 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			return true, err
 		}
 		result.State = Canceled
-		return true, send(Canceled, Event{CancelReason: reason})
+		return true, send(Canceled, Event{
+			Data: []protocol.EventData{&protocol.TurnCanceledData{
+				Reason: reason,
+			}},
+		})
 	}
 	defer func() {
 		if kernelTerminalFinalized || kernelTerminalStarted {
@@ -461,21 +467,31 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		case turnkernel.TerminalCompleted:
 			result.Text = kernel.FrozenOutput()
 			result.State = Completed
-			if err := send(Completed, Event{Text: result.Text}); err != nil {
+			if err := send(Completed, Event{
+				Data: []protocol.EventData{&protocol.TurnCompletedData{
+					Text: result.Text,
+				}},
+			}); err != nil {
 				return result, err
 			}
 			return result, nil
 		case turnkernel.TerminalCanceled:
 			result.State = Canceled
 			if err := send(Canceled, Event{
-				CancelReason: decision.Message,
+				Data: []protocol.EventData{&protocol.TurnCanceledData{
+					Reason: decision.Message,
+				}},
 			}); err != nil {
 				return result, err
 			}
 			return result, nil
 		default:
 			result.State = Failed
-			if err := send(Failed, Event{Error: decision.Message}); err != nil {
+			if err := send(Failed, Event{
+				Data: []protocol.EventData{&protocol.TurnFailedData{
+					Code: protocol.CodeInternal, Message: decision.Message,
+				}},
+			}); err != nil {
 				return result, err
 			}
 			return result, nil
@@ -490,21 +506,29 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		case turnkernel.TerminalCompleted:
 			result.Text = kernel.FrozenOutput()
 			result.State = Completed
-			if err := send(Completed, Event{Text: result.Text}); err != nil {
+			if err := send(Completed, Event{
+				Data: []protocol.EventData{&protocol.TurnCompletedData{
+					Text: result.Text,
+				}},
+			}); err != nil {
 				return result, err
 			}
 		case turnkernel.TerminalCanceled:
 			result.State = Canceled
 			if err := send(Canceled, Event{
-				CancelReason: decision.Message,
+				Data: []protocol.EventData{&protocol.TurnCanceledData{
+					Reason: decision.Message,
+				}},
 			}); err != nil {
 				return result, err
 			}
 		default:
 			result.State = Failed
 			if err := send(Failed, Event{
-				ErrorCode: protocol.ErrorCode(decision.Code),
-				Error:     decision.Message,
+				Data: []protocol.EventData{&protocol.TurnFailedData{
+					Code:    protocol.ErrorCode(decision.Code),
+					Message: decision.Message,
+				}},
 			}); err != nil {
 				return result, err
 			}
@@ -515,13 +539,16 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		return result, context.Canceled
 	}
 	if err := send(Preparing, Event{
-		Provider: spec.Provider, Model: spec.Model,
-		Purpose:         string(spec.Purpose),
-		ProfileRevision: spec.Identity.ProfileRevision,
-		Mode:            string(spec.Mode), Posture: string(spec.Posture),
-		Workspace:          spec.Workspace,
-		WorkspaceIsolation: e.options.WorkspaceIsolation,
-		Sandbox:            spec.Sandbox,
+		Audit: EventAudit{Purpose: string(spec.Purpose)},
+		Data: []protocol.EventData{&protocol.TurnStartedData{
+			Provider: spec.Provider, Model: spec.Model,
+			ProfileRevision: spec.Identity.ProfileRevision,
+			Intent:          spec.Request.Intent,
+			Mode:            string(spec.Mode), Posture: string(spec.Posture),
+			Workspace:          spec.Workspace,
+			WorkspaceIsolation: e.options.WorkspaceIsolation,
+			Sandbox:            spec.Sandbox,
+		}},
 	}); err != nil {
 		return result, err
 	}
@@ -605,8 +632,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		}
 		pricing := e.activeRoute().Model().Pricing
 		cost := provider.EstimateCost(pricing, sampled) + toolSpent.cost
-		costKnown := provider.PricingKnown(pricing, sampled) &&
-			(toolSpent.samples == 0 || toolSpent.known)
 		result.CostUSD = cost
 		journalRevert = outcome.action == verifyActionReverted
 		if e.journal == nil && journalRevert {
@@ -653,13 +678,14 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			e.turnIDs[turnID] = e.turn
 		}
 		if err := send(Completed, Event{
-			Text: finalText, Usage: &result.Usage, CostUSD: cost,
-			CostKnown: costKnown, Verification: outcome.receipt,
-			Completion: kernel.CompletionDeclaration(),
-			SecondaryIssues: append(
-				[]TerminalIssue(nil),
-				terminal.secondary...,
-			),
+			Audit: EventAudit{
+				Verification: outcome.receipt,
+				Completion:   kernel.CompletionDeclaration(),
+			},
+			Data: []protocol.EventData{&protocol.TurnCompletedData{
+				Text:            finalText,
+				SecondaryIssues: protocolTerminalIssues(terminal.secondary),
+			}},
 		}); err != nil {
 			return err
 		}
@@ -692,8 +718,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		)
 		pricing := e.activeRoute().Model().Pricing
 		cost := provider.EstimateCost(pricing, sampled) + toolSpent.cost
-		costKnown := provider.PricingKnown(pricing, sampled) &&
-			(toolSpent.samples == 0 || toolSpent.known)
 		result.CostUSD = cost
 		terminal.setPrimary(blocked)
 		snapshot, err := e.finalizeTerminalContext(
@@ -720,18 +744,15 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		convergence = kernel.Convergence()
 		result.State = Failed
 		if err := send(Failed, Event{
-			ErrorCode:    protocol.CodeConflict,
-			Error:        message,
-			Convergence:  turnkernel.ProtocolConvergence(convergence),
-			Usage:        &result.Usage,
-			CostUSD:      cost,
-			CostKnown:    costKnown,
-			Verification: result.Verification,
-			Completion:   kernel.BlockedCompletionDeclaration(),
-			SecondaryIssues: append(
-				[]TerminalIssue(nil),
-				terminal.secondary...,
-			),
+			Audit: EventAudit{
+				Verification: result.Verification,
+				Completion:   kernel.BlockedCompletionDeclaration(),
+			},
+			Data: []protocol.EventData{&protocol.TurnFailedData{
+				Code: protocol.CodeConflict, Message: message,
+				Convergence:     turnkernel.ProtocolConvergence(convergence),
+				SecondaryIssues: protocolTerminalIssues(terminal.secondary),
+			}},
 		}); err != nil {
 			return errors.Join(blocked, err)
 		}
@@ -914,9 +935,11 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 			}
 		}
 		if err := send(CallingModel, Event{
-			ModelExecution: &ModelExecution{
-				Kind: "model_sample", SampleID: sampleID,
-				Reason: sampleReason,
+			Audit: EventAudit{
+				ModelExecution: &ModelExecution{
+					Kind: "model_sample", SampleID: sampleID,
+					Reason: sampleReason,
+				},
 			},
 		}); err != nil {
 			return result, err
@@ -932,10 +955,10 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		var pendingInputInjected bool
 		var modelReplay *provider.ReplayState
 		modelSend := func(state State, event Event) error {
-			if event.ProviderRetry != nil {
+			if event.Audit.ProviderRetry != nil {
 				if err := kernel.ScheduleProviderRetry(
 					sampleID,
-					kernelProviderRetry(*event.ProviderRetry),
+					kernelProviderRetry(*event.Audit.ProviderRetry),
 				); err != nil {
 					return err
 				}
@@ -943,9 +966,13 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					return err
 				}
 			}
-			if state == Streaming &&
-				event.Block != nil &&
-				event.Block.Type == provider.ContentText {
+			if state == Streaming && slices.ContainsFunc(
+				event.Data,
+				func(data protocol.EventData) bool {
+					_, ok := data.(*protocol.OutputDeltaData)
+					return ok
+				},
+			) {
 				return nil
 			}
 			return send(state, event)
@@ -995,10 +1022,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		reasoning := providerassembly.BlocksReasoning(blocks)
 		if strings.TrimSpace(reasoning) != "" {
 			if sendErr := send(Streaming, Event{
-				ReasoningCompleted: &ModelReasoning{
-					SampleID: sampleID,
-					Text:     reasoning,
-				},
+				Data: []protocol.EventData{&protocol.ReasoningCompletedData{
+					SampleID: sampleID, Text: reasoning,
+				}},
 			}); sendErr != nil {
 				return result, errors.Join(err, sendErr)
 			}

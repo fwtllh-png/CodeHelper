@@ -240,7 +240,7 @@ Runtime.SubmitWithKey
    - Application Port 到 Agent Engine 的适配；
    - Editor Context 解析；
    - Receipt 创建；
-   - Engine Event 到 Protocol Event 的映射。
+   - Protocol Event 的 Host 上下文补全与终态提交。
 5. `internal/runtime/app/thread_manager.go`
    - 每个 Thread 的 Engine 所有权；
    - Session Profile、Pending Interaction 和 Child Engine。
