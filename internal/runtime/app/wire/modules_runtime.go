@@ -9,7 +9,6 @@ import (
 	reverttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/revert"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
@@ -181,13 +180,6 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		SessionID: state.config.runtimeSessionID,
 		InputHost: session.inputHost},
 	}
-	engineGuardFactory := state.security.guardFactory
-	approvalObserver := session.metrics.Approval
-	bindEngineGuardFactory(
-		&seedOptions,
-		engineGuardFactory,
-		approvalObserver,
-	)
 	defaultProfile := protocol.SessionProfile{
 		Version: protocol.SessionProfileVersion, Revision: 1,
 		Mode:                execution.Mode,
@@ -218,69 +210,17 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	}
 	workspaceIdentity := state.options.WorkspaceIdentity
 	childToolsets := state.orchestration.childToolsets
-	securityRuntime := state.security.runtime
-	threadManager := app.NewThreadManager(func() (*app.EngineAdapter, error) {
-		threadOptions := seedOptions
-		threadOptions.Security = cloneThreadSecurity(seedOptions.Security)
-		bindEngineGuardFactory(
-			&threadOptions,
-			engineGuardFactory,
-			approvalObserver,
-		)
-		worker, workerErr := agentengine.New(threadOptions)
-		if workerErr != nil {
-			return nil, workerErr
-		}
-		return adaptEngine(worker, workspaceIdentity), nil
-	})
+	coreBuilder := runtimeCoreBuilder{
+		seed: seedOptions, guardFactory: state.security.guardFactory,
+		approvalObserver:    session.metrics.Approval,
+		workspaceIdentity:   workspaceIdentity,
+		childTools:          childToolsets,
+		turnProcessReleaser: session.turnProcessReleaser,
+	}
+	threadManager := app.NewThreadManager(coreBuilder.BuildMain)
 	session.threads = threadManager
 	subagent.BindRuntimeContext(state.orchestration.subagents, threadManager)
-	threadManager.SetChildFactory(
-		func(spec app.ChildSpec) (*app.EngineAdapter, error) {
-			options := childEngineOptions(
-				seedOptions,
-				spec,
-				securityRuntime,
-			)
-			if !spec.Serialized && (!spec.ReadOnly || spec.Workspace != spec.HostWorkspace) {
-				toolset, openErr := childToolsets.open(spec.Workspace, spec.HostSeeded)
-				if openErr != nil {
-					return nil, openErr
-				}
-				options.Tools = toolset.registry
-				options.Journal, options.InputHost = toolset.journal, toolset.inputHost
-				options.ReadTracker = workspacejournal.NewReadTracker()
-				options.Diagnostics = toolset.diagnostics
-				options.Verify.Runner = toolset.verify
-				options.ReleaseTurnResources = session.turnProcessReleaser(
-					toolset.processes,
-					"child",
-				)
-			}
-			restrictChildTools(
-				options.Security, spec, seedOptions.Tools, options.Tools,
-			)
-			bindEngineGuardFactory(
-				&options,
-				engineGuardFactory,
-				approvalObserver,
-			)
-			worker, workerErr := agentengine.New(options)
-			if workerErr != nil {
-				return nil, workerErr
-			}
-			adapter := adaptEngine(worker, workspaceIdentity)
-			if spec.AgentID != "" && spec.AgentPath != "" {
-				adapter.SetApprovalSource(protocol.ApprovalSource{
-					Kind: "agent", AgentID: spec.AgentID,
-					AgentPath: spec.AgentPath, ParentPath: spec.ParentPath,
-					Role: spec.Role, SessionID: spec.SessionID,
-					WorkspaceRoot: spec.HostWorkspace,
-				})
-			}
-			return adapter, nil
-		},
-	)
+	threadManager.SetChildFactory(coreBuilder.BuildChild)
 	session.chatWorkspaces = buildChatWorkspaces(
 		state, threadManager, workspaceTurnGate,
 	)
@@ -326,9 +266,6 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 	}
 	session.applyPlan = threadManager.ApplyPlan
 	state.agent = agentBuildState{
-		workspaceTurnGate:   workspaceTurnGate,
-		coordinatorRuntime:  contextRuntime.coordinator,
-		seedOptions:         seedOptions,
 		defaultProfile:      defaultProfile,
 		profileCapabilities: profileCapabilities,
 		profileModels:       profileModels,

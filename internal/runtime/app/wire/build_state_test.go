@@ -219,6 +219,38 @@ func TestNewExecRemainsConstructionOnlyOrchestration(t *testing.T) {
 	}
 }
 
+func TestRuntimeModuleDelegatesEngineConstructionToCoreBuilder(t *testing.T) {
+	moduleSource, err := os.ReadFile("modules_runtime.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	coreSource, err := os.ReadFile("runtime_core.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := string(moduleSource)
+	core := string(coreSource)
+	for _, forbidden := range []string{
+		"agentengine.New(",
+		"bindEngineGuardFactory(",
+		"childEngineOptions(",
+		"childToolsets.open(",
+	} {
+		if strings.Contains(module, forbidden) {
+			t.Errorf("agent module retained Runtime Core construction %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"type runtimeCoreBuilder struct",
+		"func (b runtimeCoreBuilder) BuildMain(",
+		"func (b runtimeCoreBuilder) BuildChild(",
+	} {
+		if !strings.Contains(core, required) {
+			t.Errorf("Runtime Core Builder is missing %q", required)
+		}
+	}
+}
+
 func TestWireDoesNotRegisterBackgroundOrchestrationTools(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join("orchestration_components.go"))
 	if err != nil {

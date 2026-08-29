@@ -75,6 +75,12 @@ SQLite 基础；Platform 拥有 Process、Sandbox 与 Repository Index；Orchest
 Provider 显式输出 Provider/Model Catalog，Security 显式输出 Permission Store 与
 Guard Factory。
 
+Agent Module 只计算一次 Runtime Core Seed（Provider、Context、Tool、Security 与
+Lifecycle Options）。Concrete `runtimeCoreBuilder` 从该 Seed 构造 Main Engine 和
+Child Engine，统一完成 Security Clone、Guard Factory 绑定、Workspace Identity
+适配和构造失败回滚；Child 的 Role、Budget、Toolset 与 Worktree Authority 仍以显式
+`ChildSpec` 覆盖，不能扩大 Parent Authority。
+
 `internal/security/authority` 拥有执行授权数据模型。它把已验证的 Tool Invocation
 规范化为带 Resource Namespace、Root Generation、Subject、Effect Contract 和
 Required Controls 的 `ExecutionOperation`，并由 Runtime 共享的 `LeaseAuthority`

@@ -33,10 +33,8 @@ import (
 // gitCommandTimeout bounds one caller-owned provisioning attempt.
 const gitCommandTimeout = 2 * time.Minute
 
-// childWorktrees provisions where each child agent works. A read-only child gets
-// a scratch directory it never writes to; a writing child gets a real git
-// worktree, because "isolated" has to mean the parent workspace cannot be
-// touched, not that the child was asked politely to stay put.
+// childWorktrees gives read-only agents scratch roots and writing agents
+// isolated Git worktrees that cannot mutate the parent workspace.
 type childWorktrees struct {
 	// repository is the host workspace, which must be inside a git work tree for
 	// isolation to be possible at all.
@@ -65,8 +63,7 @@ func newChildWorktrees(
 	if strategy != config.SubagentWorkspaceWorktree {
 		return trees, nil
 	}
-	// An operator who asked for worktree isolation gets told at startup that this
-	// workspace cannot provide it, rather than at the first spawn.
+	// Fail at startup when explicitly requested isolation is unavailable.
 	if err := trees.checkRepository(context.Background()); err != nil {
 		return nil, err
 	}
@@ -149,8 +146,7 @@ func (c *childWorktrees) addDetachedWorktree(
 	if firstErr == nil {
 		return nil
 	}
-	// A killed host can leave an exact-path Git registration after its managed
-	// directory disappears. Remove only that registration, then retry once.
+	// Reconcile an orphaned exact-path registration, then retry once.
 	if cleanupErr := c.brokers.RemoveWorktree(
 		ctx, c.repository, path,
 	); cleanupErr != nil {
@@ -172,13 +168,11 @@ func (c *childWorktrees) Discard(worktree subagent.Worktree) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), gitCommandTimeout)
 	defer cancel()
-	// --force because the child almost certainly left uncommitted changes: this
-	// is a discard, and the caller already decided the work is done with.
+	// Discard intentionally removes the child's uncommitted changes.
 	if err := c.brokers.RemoveWorktree(
 		ctx, c.repository, worktree.Path,
 	); err != nil {
-		// Removing the registration without the directory, or the other way
-		// round, would leave git complaining forever. Prune reconciles both.
+		// Prune reconciles a partially removed registration and directory.
 		if pruneErr := c.brokers.PruneWorktrees(
 			ctx, c.repository,
 		); pruneErr != nil {
@@ -308,11 +302,8 @@ func worktreeGitReadRoots(root, expectedCommonDir string) ([]string, error) {
 	return roots, nil
 }
 
-// childToolset is the tool plane of one isolated child: a registry, sandbox and
-// journal rooted at the child's worktree. It exists because a tool registry
-// resolves paths against the root it was built with — handing a child the
-// parent's registry would send its writes to the parent workspace no matter what
-// the child's Engine believed its workspace was.
+// childToolset roots one child's registry, sandbox and journal at its worktree;
+// reusing the parent's registry would redirect child writes into the parent.
 type childToolset struct {
 	registry    *tool.Registry
 	backend     sandbox.Backend
@@ -406,24 +397,27 @@ func newChildToolsets(
 	}
 }
 
-// open returns the toolset for a child root, building it on first use. Reuse
-// matters: a follow-up turn on the same child must see the same journal, or its
-// second turn could not roll back what its first turn wrote.
+// open builds once per child root so follow-up turns retain the same journal.
 func (c *childToolsets) open(
 	root string,
 	interactive bool,
 ) (*childToolset, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if existing, ok := c.built[root]; ok {
 		if (existing.inputHost != nil) != interactive {
+			c.mu.Unlock()
 			return nil, errors.New("child toolset interaction mode changed")
 		}
+		c.mu.Unlock()
 		return existing, nil
 	}
 	if interactive && !c.interactionsBound {
+		c.mu.Unlock()
 		return nil, errors.New("child interaction tools are not configured")
 	}
+	agents, agentSession, agentRelease := c.agents, c.agentSession, c.agentRelease
+	vision, onPlan := c.interactionVision, c.interactionPlan
+	c.mu.Unlock()
 	hostReadRoots := append([]string(nil), c.diagnosticReadRoots...)
 	gitRoots, err := worktreeGitReadRoots(root, c.gitCommonDir)
 	if err != nil {
@@ -446,8 +440,7 @@ func (c *childToolsets) open(
 	if err != nil {
 		return nil, fmt.Errorf("child sandbox: %w", err)
 	}
-	// The child gets its own process manager: background jobs are journaled per
-	// root, and sharing the parent's would mix the two sessions' job lists.
+	// Child process journals stay isolated from the parent and sibling roots.
 	processes := process.NewSessionManager(0)
 	var jobs *joblog.Store
 	if stateLayout.Root != "" {
@@ -477,7 +470,7 @@ func (c *childToolsets) open(
 		inputHost = interacttool.NewHost(0)
 		registerErr := interacttool.Register(registry, interacttool.Options{
 			Host: inputHost, Backend: backend,
-			Vision: c.interactionVision, OnPlan: c.interactionPlan, Workspace: root,
+			Vision: vision, OnPlan: onPlan, Workspace: root,
 		})
 		if registerErr != nil {
 			if jobs != nil {
@@ -505,11 +498,11 @@ func (c *childToolsets) open(
 		_ = sandbox.CloseBackend(backend)
 		return nil, fmt.Errorf("child integration files: %w", err)
 	}
-	if c.agents != nil {
+	if agents != nil {
 		if err := agenttool.Register(registry, agenttool.Options{
-			Control: c.agents, Handles: handles,
-			Files: files, OnRelease: c.agentRelease,
-			Sandbox: backend, Verify: runner, Workspace: root, SessionID: c.agentSession,
+			Control: agents, Handles: handles,
+			Files: files, OnRelease: agentRelease,
+			Sandbox: backend, Verify: runner, Workspace: root, SessionID: agentSession,
 		}); err != nil {
 			_ = journal.Close(context.Background())
 			processes.CloseAll()
@@ -523,14 +516,21 @@ func (c *childToolsets) open(
 		diagnostics: diagnostics.NewCommandRunner(root, backend, c.diagnosticCommands),
 		verify:      runner, files: files,
 	}
+	c.mu.Lock()
+	if existing := c.built[root]; existing != nil {
+		c.mu.Unlock()
+		toolset.close()
+		if (existing.inputHost != nil) != interactive {
+			return nil, errors.New("child toolset interaction mode changed")
+		}
+		return existing, nil
+	}
 	c.built[root] = toolset
+	c.mu.Unlock()
 	return toolset, nil
 }
 
-// openJournal gives the child the same durability the parent has. A worktree
-// outlives the turn that created it, so a child killed mid-turn leaves the same
-// half-applied writes — with the added twist that the person who has to clean up
-// never looked at that directory in the first place.
+// openJournal preserves rollback evidence when a child dies mid-turn.
 func (c *childToolsets) openJournal(
 	root string,
 	stateLayout sandbox.StateLayout,

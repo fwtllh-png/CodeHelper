@@ -8,8 +8,6 @@ import (
 	handletool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
 	"github.com/fwtllh-png/CodeHelper/internal/config"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -49,9 +47,6 @@ type toolBuildState struct {
 }
 
 type agentBuildState struct {
-	workspaceTurnGate   *agentengine.WorkspaceTurnGate
-	coordinatorRuntime  turnkernel.CoordinatorRuntime
-	seedOptions         agentengine.Options
 	defaultProfile      protocol.SessionProfile
 	profileCapabilities protocol.SessionProfileCapabilities
 	profileModels       map[string]protocol.ModelCapabilities

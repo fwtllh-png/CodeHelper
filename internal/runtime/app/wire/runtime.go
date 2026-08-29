@@ -237,29 +237,17 @@ func cloneThreadSecurity(source *policy.Runtime) *policy.Runtime {
 	return cloned
 }
 
-func adaptEngine(
-	engine *agentengine.Engine,
-	identity protocol.WorkspaceIdentity,
-) *app.EngineAdapter {
-	if identity.Version == 0 {
-		return app.AdaptEngine(engine)
-	}
-	return app.AdaptEngineWithWorkspaceIdentity(engine, identity)
-}
-
-// childEngineOptions derives a child agent's Engine from the host template.
-// A child gets no InputHost because the emitter is a single shared slot and gets
-// its own step/spend budget. Isolated and ordinary read-only children do not
-// inherit the host journal or turn gate. A same-workspace child deliberately
-// inherits the gate, and a writable one can then safely reuse the host journal.
+// childEngineOptions drops the host InputHost, journal and turn gate unless the
+// child is serialized into the same workspace, where the gate makes reuse safe.
 func childEngineOptions(
-	seed agentengine.Options, spec app.ChildSpec, security *policy.Runtime,
+	seed agentengine.Options,
+	spec app.ChildSpec,
 ) agentengine.Options {
 	options := seed
 	options.Guard = nil
 	options.InputHost = nil
 	options.ReadTracker = nil
-	options.Security = cloneThreadSecurity(security)
+	options.Security = cloneThreadSecurity(seed.Security)
 	if !spec.Serialized {
 		options.Journal = nil
 		options.WorkspaceTurnGate = nil

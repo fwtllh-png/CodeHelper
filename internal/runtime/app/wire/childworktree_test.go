@@ -76,6 +76,16 @@ func TestWorktreeGitReadRootsRejectsEscapingGitDir(t *testing.T) {
 	}
 }
 
+func TestRuntimeCoreBuilderFailsClosedWithoutChildToolsets(t *testing.T) {
+	_, err := (runtimeCoreBuilder{}).BuildChild(app.ChildSpec{
+		Workspace:     t.TempDir(),
+		HostWorkspace: t.TempDir(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "child toolsets") {
+		t.Fatalf("BuildChild error = %v", err)
+	}
+}
+
 func TestWorktreeGitReadRootsRejectsMismatchedCommonDir(t *testing.T) {
 	base := t.TempDir()
 	common := filepath.Join(base, "repository.git")
@@ -397,19 +407,19 @@ func TestChildEngineOptionsOnlySharesHostJournalUnderSerializedStrategy(t *testi
 	journal := new(workspacejournal.Manager)
 	seed := agentengine.Options{SecurityConfig: agentengine.SecurityConfig{Journal: journal, WorkspaceTurnGate: gate}}
 
-	serialized := childEngineOptions(seed, app.ChildSpec{Serialized: true}, nil)
+	serialized := childEngineOptions(seed, app.ChildSpec{Serialized: true})
 	if serialized.Journal != journal || serialized.WorkspaceTurnGate != gate ||
 		serialized.ReadTracker == nil {
 		t.Fatalf("serialized child options = %+v", serialized)
 	}
 
-	isolated := childEngineOptions(seed, app.ChildSpec{Workspace: t.TempDir()}, nil)
+	isolated := childEngineOptions(seed, app.ChildSpec{Workspace: t.TempDir()})
 	if isolated.Journal != nil || isolated.WorkspaceTurnGate != nil {
 		t.Fatalf("isolated child inherited host serialization: %+v", isolated)
 	}
 
 	readOnly := childEngineOptions(
-		seed, app.ChildSpec{Serialized: true, ReadOnly: true}, nil,
+		seed, app.ChildSpec{Serialized: true, ReadOnly: true},
 	)
 	if readOnly.Journal != nil || readOnly.WorkspaceTurnGate != gate {
 		t.Fatalf("serialized read-only child options = %+v", readOnly)

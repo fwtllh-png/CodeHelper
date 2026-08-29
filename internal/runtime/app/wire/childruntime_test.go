@@ -253,9 +253,13 @@ func TestDelegatingReadOnlyRoleRetainsOnlyAgentLifecycleWrites(t *testing.T) {
 		AllowedTools: []string{"read", "search"}, CanDelegate: true,
 	}
 	options := childEngineOptions(
-		agentengine.Options{},
+		agentengine.Options{SecurityConfig: agentengine.SecurityConfig{
+			Security: policy.DefaultRuntime(
+				policy.ModeAct,
+				policy.PermissionSuggest,
+			),
+		}},
 		spec,
-		policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
 	)
 	security := options.Security
 	restrictChildTools(security, spec, parent, child)

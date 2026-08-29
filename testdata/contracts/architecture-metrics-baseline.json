@@ -378,7 +378,7 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/runtime.go",
       "limits": {
-        "lines": 385,
+        "lines": 353,
         "max_function_lines": 50
       }
     },
@@ -432,8 +432,8 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 407,
-        "max_function_lines": 315
+        "lines": 344,
+        "max_function_lines": 253
       }
     },
     {
