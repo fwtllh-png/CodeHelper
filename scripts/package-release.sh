@@ -5,6 +5,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+if [[ ! -f web/dist/index.html ]]; then
+  echo "web bundle is missing; run make web-build before packaging" >&2
+  exit 2
+fi
+
 VERSION="${VERSION:-dev}"
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || printf unknown)"
 BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -41,12 +46,12 @@ for pair in "${targets[@]}"; do
     name="${name}.exe"
   fi
   echo "building ${name}"
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "$OUT/bin/$name" ./cmd/codehelper
+  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -tags webbundle -trimpath -ldflags "$LDFLAGS" -o "$OUT/bin/$name" ./cmd/codehelper
 done
 
 # Host binary for install/upgrade/rollback smoke.
 host_name="codehelper"
-CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" -o "$OUT/bin/${host_name}" ./cmd/codehelper
+CGO_ENABLED=0 go build -tags webbundle -trimpath -ldflags "$LDFLAGS" -o "$OUT/bin/${host_name}" ./cmd/codehelper
 
 (
   cd "$OUT"

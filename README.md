@@ -47,7 +47,7 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 
 - Go 1.26 或更高版本
 - Git
-- 重新构建 Web 前端时需要 Node.js 和 npm
+- Node.js 和 npm（`make build` 会先生成并嵌入 Web 前端）
 
 支持平台边界：
 

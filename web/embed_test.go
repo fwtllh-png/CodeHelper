@@ -1,3 +1,5 @@
+//go:build webbundle
+
 package web
 
 import (

@@ -6,16 +6,31 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
 )
+
+func TestMain(m *testing.M) {
+	loadWebAssets = func() (fs.FS, error) {
+		return fstest.MapFS{
+			"index.html": {
+				Data: []byte("<main>CodeHelper</main>"),
+				Mode: fs.FileMode(0o444),
+			},
+		}, nil
+	}
+	os.Exit(m.Run())
+}
 
 func TestRunContextExposesOnlyWebStartupFlags(t *testing.T) {
 	for _, legacyCommand := range []string{"web", "exec", "tui", "doctor"} {

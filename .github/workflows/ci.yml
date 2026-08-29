@@ -55,6 +55,16 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Web dependencies
+        run: npm --prefix web ci
+
       - name: Check tracked-file whitespace
         run: |
           if git grep -n -I -E '[[:blank:]]+$' -- \
@@ -120,6 +130,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Web dependencies
+        run: npm --prefix web ci
 
       - name: Check protocol, binary smoke, and cross-build
         run: make protocol-contract smoke cross-build

@@ -29,9 +29,11 @@ last_verified: null
 
 ## 产物链
 
-`make web-build` 先生成无 Source Map 的 Hash Asset；Go Build 随后通过 `web/embed.go`
-把 `web/dist` 嵌入 Binary。`scripts/package-release.sh` 为目标平台构建 Binary、执行
-Smoke、生成 Checksum、CycloneDX SBOM 和 Release Manifest。
+`web/dist` 是不提交到 Git 的构建产物。`make build` 先通过 `web-build` 生成无
+Source Map 的 Hash Asset，再使用 `webbundle` Build Tag 通过 `web/embed.go` 把
+`web/dist` 嵌入 Binary。普通 Go Test 不要求该目录存在；发布入口不允许绕过 Web
+构建。`scripts/package-release.sh` 为目标平台构建 Binary、执行 Smoke、生成
+Checksum、CycloneDX SBOM 和 Release Manifest。
 
 Web 不是独立部署物。发布时必须证明页面资源来自同一 Binary，且：
 
@@ -57,15 +59,15 @@ Web 不是独立部署物。发布时必须证明页面资源来自同一 Binary
 ## 验证
 
 ```bash
-make web-build
-make web-e2e
+make web-install
 make build
+make web-e2e
 make test-release
 ```
 
 `make test-release` 只接受 clean Commit。Release Gate 在全部资格测试、Web Asset
-重建和降级演练结束后再次检查工作树；源码或生成资源发生漂移时，即使测试本身通过，
-也不能产出 `verified` 发布结论。
+重建和降级演练结束后再次检查工作树；由于 `web/dist` 被忽略，构建不会再制造 Hash
+文件噪声，源码或其他受控文件发生漂移时仍不能产出 `verified` 发布结论。
 
 ## 事实来源与验证
 

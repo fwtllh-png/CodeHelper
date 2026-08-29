@@ -1,5 +1,6 @@
 /bin/
 /dist/
+/web/dist/
 /web/node_modules/
 /.tmp/
 /testdata/canary/

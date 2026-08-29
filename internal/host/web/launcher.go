@@ -52,6 +52,8 @@ type webCommandOptions struct {
 	providerFixture string
 }
 
+var loadWebAssets = webassets.Assets
+
 // RunContext parses process startup flags and runs the local Web workspace.
 func RunContext(
 	ctx context.Context,
@@ -155,7 +157,7 @@ func runWeb(
 		return 2
 	}
 
-	bundle, err := webassets.Assets()
+	bundle, err := loadWebAssets()
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "codehelper: assets: %v\n", err)
 		return 1

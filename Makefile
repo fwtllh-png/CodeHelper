@@ -13,6 +13,7 @@ LDFLAGS := -s -w \
 	-X $(MODULE)/internal/buildinfo.Version=$(VERSION) \
 	-X $(MODULE)/internal/buildinfo.Commit=$(COMMIT) \
 	-X $(MODULE)/internal/buildinfo.Date=$(BUILD_DATE)
+WEB_BUILD_TAG := webbundle
 
 .PHONY: start install uninstall fmt verify test test-hermetic test-platform-capability reliability-gate test-integration \
 	test-release release-baseline-check integration-gate release-gate race build cross-build smoke \
@@ -99,6 +100,7 @@ AGENT_PREFLIGHT_WEB ?= $(AGENT_PREFLIGHT_DIR)/web.json
 AGENT_CURRENT_ARCHITECTURE ?= $(AGENT_PREFLIGHT_DIR)/current-architecture.json
 AGENT_CURRENT_WEB ?= $(AGENT_PREFLIGHT_DIR)/current-web.json
 WEB_MEASUREMENT_REPORT ?= .tmp/web-supply-chain-report.json
+WEB_INSTALL_STAMP := web/node_modules/.package-lock.json
 ARCHITECTURE_BASE_REF ?= origin/main
 ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
 	if git cat-file -e '$(ARCHITECTURE_BASE_REF):$(ARCHITECTURE_METRICS_BASELINE)' 2>/dev/null; then \
@@ -268,7 +270,7 @@ test-integration:
 		$(INTEGRATION_REQUIRED) \
 		-- $(MAKE) integration-gate
 
-integration-gate: build web-build
+integration-gate: build
 	$(GO) test -count=1 ./internal/host/runtimeapi/web ./internal/host/web
 
 test-release: release-baseline-check
@@ -301,19 +303,18 @@ release-gate: cross-build smoke race secret-leak-test reliability-gate benchmark
 race:
 	$(GO) test -race -p 1 ./...
 
-build:
+build: web-build
 	@mkdir -p bin
-	$(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/codehelper
+	$(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath \
+		-ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/codehelper
 
 start:
 	$(MAKE) web-install
-	$(MAKE) web-build
 	$(MAKE) build
 	./$(BINARY) --workspace '$(START_WORKSPACE)' --enable-tools --posture suggest --replace-owner --open
 
 install:
 	$(MAKE) web-install
-	$(MAKE) web-build
 	$(MAKE) build
 	@mkdir -p '$(BINDIR)'
 	@tmp="$$(mktemp '$(BINDIR)/.codehelper.XXXXXX')"; \
@@ -332,8 +333,11 @@ uninstall:
 	@rm -f '$(INSTALL_BINARY)'
 	@printf 'Removed CodeHelper: %s\n' '$(INSTALL_BINARY)'
 
-web-install:
+web-install: $(WEB_INSTALL_STAMP)
+
+$(WEB_INSTALL_STAMP): web/package.json web/package-lock.json
 	$(NPM) --prefix web ci
+	@test -f '$(WEB_INSTALL_STAMP)'
 
 web-check:
 	$(NPM) --prefix web run check
@@ -353,7 +357,7 @@ web-vulnerability-check:
 		exit 1; \
 	}
 
-web-compile:
+web-compile: $(WEB_INSTALL_STAMP)
 	$(NPM) --prefix web run build
 	$(GO) run ./scripts/webassetmanifest -dist web/dist -output web/dist/asset-manifest.json
 
@@ -367,7 +371,7 @@ web-build: web-compile
 web-brand-assets:
 	$(NPM) --prefix web run brand-assets
 
-web-assets-check: web-brand-assets
+web-assets-check: web-brand-assets web-build
 	@tmp="$$(mktemp -d)"; \
 	trap 'rm -rf "$$tmp"' EXIT; \
 	$(NPM) --prefix web run build -- --outDir "$$tmp/dist" >/dev/null; \
@@ -398,7 +402,9 @@ web-release-drill: build
 		}; \
 		./scripts/validate-release-ref.sh '$(PREVIOUS_RELEASE_REF)' >/dev/null; \
 		git archive '$(PREVIOUS_RELEASE_REF)' | tar -x -C "$$tmp"; \
-		(cd "$$tmp" && $(GO) build -trimpath -o "$$tmp/codehelper-previous" ./cmd/codehelper); \
+		(cd "$$tmp" && \
+			$(NPM) --prefix web ci >/dev/null && \
+			$(MAKE) build BINARY="$$tmp/codehelper-previous"); \
 		previous="$$tmp/codehelper-previous"; \
 	fi; \
 	python3 scripts/web-release-drill.py \
@@ -415,12 +421,12 @@ web-streaming-soak:
 		-run '^TestWebSocketSustainedStreamingSoak$$' \
 		./internal/host/runtimeapi/web
 
-cross-build:
+cross-build: web-build
 	@tmp=$$(mktemp -d); \
 	trap 'rm -rf "$$tmp"' EXIT; \
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -trimpath -o "$$tmp/codehelper-linux-amd64" ./cmd/codehelper; \
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -trimpath -o "$$tmp/codehelper-linux-arm64" ./cmd/codehelper; \
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build -trimpath -o "$$tmp/codehelper-windows-amd64.exe" ./cmd/codehelper
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath -o "$$tmp/codehelper-linux-amd64" ./cmd/codehelper; \
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath -o "$$tmp/codehelper-linux-arm64" ./cmd/codehelper; \
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath -o "$$tmp/codehelper-windows-amd64.exe" ./cmd/codehelper
 
 smoke: build
 	./$(BINARY) --help >/dev/null

@@ -10,7 +10,6 @@ git clone https://github.com/fwtllh-png/CodeHelper.git
 cd CodeHelper
 go mod download
 make web-install
-make web-build
 make build
 ```
 
@@ -63,8 +62,12 @@ git diff --check
 | `make architecture-ratchet` | 校验架构预算 |
 | `make security-side-effect-check` | 校验生产副作用入口 Inventory 与 Owner Allowlist |
 
-`make verify` 是完整门禁。Web Build 和依赖嵌入 Go Binary 的测试应串行执行，避免
-Vite 清空 `web/dist` 时 Go 编译器正在读取资源。
+`web/dist` 是被 Git 忽略的本地构建目录。`make build` 先执行 `web-build`，再使用
+`webbundle` Build Tag 将生成资源嵌入 Go Binary；不要直接用裸 `go build` 产出发布
+Binary。普通 Go Test 不依赖该目录，因而干净 Checkout 可以直接执行。
+
+`make verify` 是完整门禁。Make 负责串行化 Web Build 和依赖嵌入 Go Binary 的步骤，
+避免 Vite 清空 `web/dist` 时 Go 编译器正在读取资源。
 
 ## 测试分层
 
@@ -98,6 +101,7 @@ Bundle Budget，并拒绝 npm Audit 报告中的 High 或 Critical 漏洞。
 不要手工编辑：
 
 - `docs/protocol/runtime-protocol.schema.json`
+- `web/dist/**`（本地生成且不提交）
 
 使用：
 
