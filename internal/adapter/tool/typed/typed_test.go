@@ -21,6 +21,15 @@ type fixtureOutput struct {
 	Greeting string `json:"greeting"`
 }
 
+type embeddedFixture struct {
+	Contract[fixtureInput, tool.Result]
+	descriptor tool.Descriptor
+}
+
+func (f embeddedFixture) Descriptor() tool.Descriptor {
+	return f.descriptor
+}
+
 func TestDefineExecutesStrictTypedContract(t *testing.T) {
 	executor := fixtureExecutor(t, func(_ context.Context, input fixtureInput) (fixtureOutput, error) {
 		return fixtureOutput{Greeting: "hello " + input.Name}, nil
@@ -46,6 +55,39 @@ func TestDefineExecutesStrictTypedContract(t *testing.T) {
 		if _, err := executor.Execute(t.Context(), json.RawMessage(raw)); !errors.Is(err, tool.ErrInvalidArguments) {
 			t.Fatalf("arguments %q error = %v", raw, err)
 		}
+	}
+}
+
+func TestResultContractEmbedsInSpecializedTool(t *testing.T) {
+	descriptor := fixtureSpec(nil).Descriptor
+	contract, err := NewResultContract(ResultSpec[fixtureInput]{
+		Name: descriptor.Name, Disposition: tool.DispositionWaitForTeardown,
+		Run: func(_ context.Context, input fixtureInput) (tool.Result, error) {
+			return tool.Result{Content: input.Name}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := embeddedFixture{Contract: contract, descriptor: descriptor}
+	result, outcome, err := executor.ExecuteOutcome(
+		t.Context(),
+		json.RawMessage(`{"name":"embedded"}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "embedded" || outcome.Status != tool.OutcomeSucceeded {
+		t.Fatalf("result = %+v, outcome = %+v", result, outcome)
+	}
+	if disposition := tool.DispositionFor(executor); disposition != tool.DispositionWaitForTeardown {
+		t.Fatalf("execution disposition = %q", disposition)
+	}
+	if _, err := executor.Execute(
+		t.Context(),
+		json.RawMessage(`{"name":"embedded","extra":true}`),
+	); !errors.Is(err, tool.ErrInvalidArguments) {
+		t.Fatalf("strict decode error = %v", err)
 	}
 }
 
@@ -129,29 +171,13 @@ func TestDefineValidatesDescriptorAndRequiredRun(t *testing.T) {
 	if _, err := Define(spec); err == nil {
 		t.Fatal("implicit execution disposition succeeded")
 	}
-}
-
-func TestDescriptorBuildersRequirePolicySensitiveOptions(t *testing.T) {
-	policy := DescriptorPolicy{
-		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
-			Kind: "fixture", ID: "value", Access: tool.AccessRead,
-		}}},
-		Availability: tool.AvailabilityAvailable,
-		RepeatPolicy: tool.RepeatExecute,
-	}
-	schema := map[string]any{
-		"type": "object", "additionalProperties": false,
-	}
-	for _, descriptor := range []tool.Descriptor{
-		ReadTool("read_fixture", "read", schema, policy),
-		WriteTool("write_fixture", "write", schema, policy),
-		ProcessTool("process_fixture", "process", schema, policy),
-	} {
-		if descriptor.Availability != policy.Availability ||
-			descriptor.RepeatPolicy != policy.RepeatPolicy ||
-			len(descriptor.ResourceResolver.Templates) != 1 {
-			t.Fatalf("descriptor lost explicit options: %+v", descriptor)
-		}
+	if _, err := NewResultContract(ResultSpec[fixtureInput]{
+		Disposition: tool.DispositionAbortImmediately,
+		Run: func(context.Context, fixtureInput) (tool.Result, error) {
+			return tool.Result{}, nil
+		},
+	}); err == nil {
+		t.Fatal("missing contract name succeeded")
 	}
 }
 
@@ -177,10 +203,17 @@ func fixtureExecutor(
 func fixtureSpec(
 	run func(context.Context, fixtureInput) (fixtureOutput, error),
 ) Spec[fixtureInput, fixtureOutput] {
-	descriptor := ReadTool(
-		"typed_fixture",
-		"Typed fixture",
-		map[string]any{
+	descriptor := tool.Descriptor{
+		Name: "typed_fixture", Description: "Typed fixture",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+		SandboxRequirement: tool.SandboxNone,
+		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
+			Kind: "fixture", ID: "value", Access: tool.AccessRead,
+		}}},
+		Availability: tool.AvailabilityAvailable,
+		RepeatPolicy: tool.RepeatExecute,
+		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"name": map[string]any{"type": "string", "minLength": 1},
@@ -188,12 +221,7 @@ func fixtureSpec(
 			"required":             []string{"name"},
 			"additionalProperties": false,
 		},
-		DescriptorPolicy{
-			ResourceResolver: tool.ResourceResolver{},
-			Availability:     tool.AvailabilityAvailable,
-			RepeatPolicy:     tool.RepeatExecute,
-		},
-	)
+	}
 	return Spec[fixtureInput, fixtureOutput]{
 		Descriptor:  descriptor,
 		Disposition: tool.DispositionAbortImmediately,

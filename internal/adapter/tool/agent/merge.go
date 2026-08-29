@@ -16,6 +16,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
@@ -56,8 +57,8 @@ func (o *operation) IsAuthorizedFileMutation(
 	if o == nil || o.kind != "integrate_agent" {
 		return false
 	}
-	var input mergeInput
-	return json.Unmarshal(invocation.Arguments, &input) == nil &&
+	input, err := typed.DecodeStrict[mergeInput](invocation.Arguments)
+	return err == nil &&
 		strings.TrimSpace(input.Op) == mergeApply
 }
 
@@ -82,8 +83,8 @@ func (o *operation) PrepareAuthorizedFile(
 	if o == nil || o.tools == nil || o.kind != "integrate_agent" {
 		return authority.FileBinding{}, errors.New("agent operation is not a workspace writer")
 	}
-	var input mergeInput
-	if err := json.Unmarshal(invocation.Arguments, &input); err != nil {
+	input, err := typed.DecodeStrict[mergeInput](invocation.Arguments)
+	if err != nil {
 		return authority.FileBinding{}, err
 	}
 	op, err := normalizeMergeOp(input.Op)
@@ -170,8 +171,8 @@ func (o *operation) ExpandArguments(ctx context.Context, raw json.RawMessage) (j
 }
 
 func (t *Tool) expandMerge(ctx context.Context, raw json.RawMessage) (json.RawMessage, error) {
-	var input mergeInput
-	if err := json.Unmarshal(raw, &input); err != nil {
+	input, err := typed.DecodeStrict[mergeInput](raw)
+	if err != nil {
 		return nil, err
 	}
 	agentID := strings.TrimSpace(input.AgentID)
@@ -354,13 +355,9 @@ func (t *Tool) planMerge(ctx context.Context, agentID string, filter []string) (
 	}, nil
 }
 
-func (t *Tool) merge(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+func (t *Tool) merge(ctx context.Context, input mergeInput) (tool.Result, error) {
 	if t.files == nil {
 		return tool.Result{}, errors.New("integrate_agent requires parent file tools")
-	}
-	var input mergeInput
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
 	}
 	agentID := strings.TrimSpace(input.AgentID)
 	if agentID == "" {

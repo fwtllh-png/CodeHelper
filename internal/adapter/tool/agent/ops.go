@@ -9,14 +9,50 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 )
 
 // operation dispatches one model-visible lifecycle tool onto AgentControl.
 type operation struct {
+	typed.Contract[operationInput, tool.Result]
 	tools *Tool
 	kind  string
+}
+
+type operationInput struct {
+	mergeInput
+	TaskName       string   `json:"task_name"`
+	Role           string   `json:"role"`
+	Objective      string   `json:"objective"`
+	ExpectedOutput string   `json:"expected_output"`
+	OwnedPaths     []string `json:"owned_paths"`
+	ParentID       string   `json:"parent_id"`
+	Trigger        string   `json:"trigger"`
+	ContextMode    string   `json:"context_mode"`
+	ContextTurns   int      `json:"context_turns"`
+	MaxSteps       int      `json:"max_steps"`
+	MaxTokens      uint64   `json:"max_tokens"`
+	MaxCostUSD     float64  `json:"max_cost_usd"`
+	AgentIDs       []string `json:"agent_ids"`
+	TimeoutMS      int64    `json:"timeout_ms"`
+	IncludeClosed  bool     `json:"include_closed"`
+	Message        string   `json:"message"`
+	Prompt         string   `json:"prompt"`
+}
+
+func newOperation(tools *Tool, kind string) (*operation, error) {
+	executor := &operation{tools: tools, kind: kind}
+	contract, err := typed.NewResultContract(typed.ResultSpec[operationInput]{
+		Name: kind, Disposition: tool.DispositionWaitForTeardown,
+		Run: executor.run,
+	})
+	if err != nil {
+		return nil, err
+	}
+	executor.Contract = contract
+	return executor, nil
 }
 
 func (o *operation) TrustedBinding() tool.TrustedBinding {
@@ -224,27 +260,27 @@ func (o *operation) Descriptor() tool.Descriptor {
 	}
 }
 
-func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+func (o *operation) run(ctx context.Context, input operationInput) (tool.Result, error) {
 	if o == nil || o.tools == nil {
 		return tool.Result{}, errors.New("agent tool is not configured")
 	}
 	switch o.kind {
 	case "wait_agent":
-		return o.tools.wait(ctx, raw)
+		return o.tools.wait(ctx, input)
 	case "list_agents":
-		return o.tools.list(ctx, raw)
+		return o.tools.list(ctx, input)
 	case "send_message":
-		return o.tools.sendMessage(ctx, raw)
+		return o.tools.sendMessage(ctx, input)
 	case "followup_task":
-		return o.tools.followUp(ctx, raw)
+		return o.tools.followUp(ctx, input)
 	case "interrupt_agent":
-		return o.tools.interrupt(ctx, raw)
+		return o.tools.interrupt(ctx, input)
 	case "close_agent":
-		return o.tools.closeAgent(ctx, raw)
+		return o.tools.closeAgent(ctx, input)
 	case "integrate_agent":
-		return o.tools.merge(ctx, raw)
+		return o.tools.merge(ctx, input.mergeInput)
 	default:
-		return o.tools.spawn(ctx, raw)
+		return o.tools.spawn(ctx, input)
 	}
 }
 
@@ -349,14 +385,7 @@ func agentSnapshot(agent subagent.Agent) map[string]any {
 	return snapshot
 }
 
-func (t *Tool) wait(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		AgentIDs  []string `json:"agent_ids"`
-		TimeoutMS int64    `json:"timeout_ms"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tool) wait(ctx context.Context, input operationInput) (tool.Result, error) {
 	if caller, nested := t.callerAgent(ctx); nested {
 		if len(input.AgentIDs) == 0 {
 			for _, child := range t.control.List(subagent.ListFilter{
@@ -466,14 +495,7 @@ func (t *Tool) serializedWaitTargets(
 	return queued
 }
 
-func (t *Tool) list(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		ParentID      string `json:"parent_id"`
-		IncludeClosed bool   `json:"include_closed"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tool) list(ctx context.Context, input operationInput) (tool.Result, error) {
 	parentID := strings.TrimSpace(input.ParentID)
 	if caller, nested := t.callerAgent(ctx); nested {
 		if parentID != "" && parentID != caller.ID &&
@@ -507,15 +529,8 @@ func (t *Tool) list(ctx context.Context, raw json.RawMessage) (tool.Result, erro
 
 func (t *Tool) sendMessage(
 	ctx context.Context,
-	raw json.RawMessage,
+	input operationInput,
 ) (tool.Result, error) {
-	var input struct {
-		AgentID string `json:"agent_id"`
-		Message string `json:"message"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
 	agentID := strings.TrimSpace(input.AgentID)
 	message := strings.TrimSpace(input.Message)
 	if agentID == "" || message == "" {
@@ -558,14 +573,7 @@ func (t *Tool) sendMessage(
 	}, nil
 }
 
-func (t *Tool) followUp(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		AgentID string `json:"agent_id"`
-		Prompt  string `json:"prompt"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tool) followUp(ctx context.Context, input operationInput) (tool.Result, error) {
 	agentID := strings.TrimSpace(input.AgentID)
 	prompt := strings.TrimSpace(input.Prompt)
 	if agentID == "" || prompt == "" {
@@ -595,13 +603,7 @@ func (t *Tool) followUp(ctx context.Context, raw json.RawMessage) (tool.Result, 
 	}, nil
 }
 
-func (t *Tool) interrupt(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		AgentID string `json:"agent_id"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tool) interrupt(ctx context.Context, input operationInput) (tool.Result, error) {
 	agentID := strings.TrimSpace(input.AgentID)
 	if agentID == "" {
 		return tool.Result{}, errors.New("agent_id is required")
@@ -635,14 +637,8 @@ func (t *Tool) interrupt(ctx context.Context, raw json.RawMessage) (tool.Result,
 
 func (t *Tool) closeAgent(
 	ctx context.Context,
-	raw json.RawMessage,
+	input operationInput,
 ) (tool.Result, error) {
-	var input struct {
-		AgentID string `json:"agent_id"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
 	agentID := strings.TrimSpace(input.AgentID)
 	if agentID == "" {
 		return tool.Result{}, errors.New("agent_id is required")

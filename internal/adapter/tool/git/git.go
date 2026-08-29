@@ -2,7 +2,6 @@ package git
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -16,9 +15,17 @@ import (
 )
 
 type Tool struct {
+	typed.Contract[input, tool.Result]
 	root    string
 	kind    string
 	backend sandbox.Backend
+}
+
+type input struct {
+	Staged   bool   `json:"staged"`
+	Limit    int    `json:"limit"`
+	Revision string `json:"revision"`
+	Path     string `json:"path"`
 }
 
 func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.Backend) error {
@@ -38,7 +45,16 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 	for _, kind := range []string{
 		"git_status", "git_diff", "git_log", "git_remote", "git_branch", "git_show", "git_blame",
 	} {
-		if err := registry.Register(&Tool{root: absolute, kind: kind, backend: backend}); err != nil {
+		executor := &Tool{root: absolute, kind: kind, backend: backend}
+		contract, err := typed.NewResultContract(typed.ResultSpec[input]{
+			Name: kind, Disposition: tool.DispositionWaitForTeardown,
+			Run: executor.run,
+		})
+		if err != nil {
+			return err
+		}
+		executor.Contract = contract
+		if err := registry.Register(executor); err != nil {
 			return err
 		}
 	}
@@ -71,16 +87,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	}
 }
 
-func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Staged   bool   `json:"staged"`
-		Limit    int    `json:"limit"`
-		Revision string `json:"revision"`
-		Path     string `json:"path"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tool) run(ctx context.Context, input input) (tool.Result, error) {
 	arguments := []string{"status", "--short"}
 	switch t.kind {
 	case "git_diff":
@@ -137,17 +144,6 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 		Content: string(output), IsError: exitCode != 0,
 		Metadata: map[string]any{"exit_code": exitCode},
 	}, nil
-}
-
-func (*Tool) ExecutionDisposition() tool.ExecutionDisposition {
-	return tool.DispositionWaitForTeardown
-}
-
-func (t *Tool) ExecuteOutcome(
-	ctx context.Context,
-	raw json.RawMessage,
-) (tool.Result, tool.Outcome, error) {
-	return typed.ExecuteOutcome(ctx, t, raw)
 }
 
 // gitExecutable prefers the real Command Line Tools / Xcode binary so Apple's

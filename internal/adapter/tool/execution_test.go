@@ -3,6 +3,7 @@ package tool_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -40,6 +41,39 @@ func TestResolveBoundRefFreezesCatalogAuthority(t *testing.T) {
 	}
 	if ref.Binding() != binding {
 		t.Fatalf("round-trip binding = %+v, want %+v", ref.Binding(), binding)
+	}
+}
+
+func TestExecuteWithOutcomeNormalizesLifecycle(t *testing.T) {
+	executor := &executionFixture{name: "outcome_fixture"}
+	result, outcome, err := tool.ExecuteWithOutcome(
+		t.Context(), executor, json.RawMessage(`{}`),
+	)
+	if err != nil || result.Content != "ok" ||
+		outcome.Status != tool.OutcomeSucceeded ||
+		result.Outcome == nil || result.Outcome.Status != outcome.Status {
+		t.Fatalf("result = %+v, outcome = %+v, error = %v", result, outcome, err)
+	}
+	_, outcome, err = tool.ExecuteWithOutcome(
+		t.Context(), structuredExecutionFixture{}, json.RawMessage(`{}`),
+	)
+	if err != nil || outcome.Security == nil ||
+		outcome.Security.EgressDenied == nil ||
+		outcome.Security.EgressDenied.Host != "example.com" {
+		t.Fatalf("structured outcome = %+v, error = %v", outcome, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, outcome, err := tool.ExecuteWithOutcome(
+		ctx, executor, json.RawMessage(`{}`),
+	); !errors.Is(err, context.Canceled) || outcome.Status != tool.OutcomeCanceled {
+		t.Fatalf("canceled outcome = %+v, error = %v", outcome, err)
+	}
+	if _, outcome, err := tool.ExecuteWithOutcome(
+		t.Context(), panickingExecutionFixture{}, json.RawMessage(`{}`),
+	); err == nil || outcome.Status != tool.OutcomeFailed ||
+		!strings.Contains(err.Error(), "panicked") {
+		t.Fatalf("panic outcome = %+v, error = %v", outcome, err)
 	}
 }
 
@@ -219,4 +253,40 @@ func (e *executionFixture) Descriptor() tool.Descriptor {
 
 func (*executionFixture) Execute(context.Context, json.RawMessage) (tool.Result, error) {
 	return tool.Result{Content: "ok"}, nil
+}
+
+type panickingExecutionFixture struct{}
+
+func (panickingExecutionFixture) Descriptor() tool.Descriptor {
+	return (&executionFixture{name: "panic_fixture"}).Descriptor()
+}
+
+func (panickingExecutionFixture) Execute(
+	context.Context,
+	json.RawMessage,
+) (tool.Result, error) {
+	panic("boom")
+}
+
+type structuredExecutionFixture struct{}
+
+func (structuredExecutionFixture) Descriptor() tool.Descriptor {
+	return (&executionFixture{name: "structured_fixture"}).Descriptor()
+}
+
+func (structuredExecutionFixture) Execute(
+	context.Context,
+	json.RawMessage,
+) (tool.Result, error) {
+	return tool.Result{
+		IsError: true,
+		Outcome: &tool.Outcome{
+			Status: tool.OutcomeFailed,
+			Security: &tool.SecuritySignal{
+				EgressDenied: &tool.NetworkTarget{
+					Host: "example.com", Protocol: "https",
+				},
+			},
+		},
+	}, nil
 }

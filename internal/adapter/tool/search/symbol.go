@@ -28,10 +28,45 @@ const (
 // Every one of them is read-only over the repository tree and reports its
 // results as lexical, because that is what the index holds.
 type symbolTool struct {
+	typed.Contract[symbolInput, tool.Result]
 	kind     string
 	index    *repoindex.Index
 	walker   *repowalk.Walker
 	semantic symbols.Provider
+}
+
+type symbolInput struct {
+	Query              string   `json:"query"`
+	Name               string   `json:"name"`
+	Kinds              []string `json:"kinds"`
+	ExportedOnly       bool     `json:"exported_only"`
+	Path               string   `json:"path"`
+	PathPrefix         string   `json:"path_prefix"`
+	Paths              []string `json:"paths"`
+	IncludeDefinitions bool     `json:"include_definitions"`
+	MaxResults         int      `json:"max_results"`
+	Line               int      `json:"line"`
+	Character          int      `json:"character"`
+}
+
+func newSymbolTool(
+	kind string,
+	index *repoindex.Index,
+	walker *repowalk.Walker,
+	semantic symbols.Provider,
+) (*symbolTool, error) {
+	executor := &symbolTool{
+		kind: kind, index: index, walker: walker, semantic: semantic,
+	}
+	contract, err := typed.NewResultContract(typed.ResultSpec[symbolInput]{
+		Name: kind, Disposition: tool.DispositionWaitForTeardown,
+		Run: executor.run,
+	})
+	if err != nil {
+		return nil, err
+	}
+	executor.Contract = contract
+	return executor, nil
 }
 
 func (t *symbolTool) Descriptor() tool.Descriptor {
@@ -131,23 +166,7 @@ func symbolSchema(kind string) map[string]any {
 	}
 }
 
-func (t *symbolTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Query              string   `json:"query"`
-		Name               string   `json:"name"`
-		Kinds              []string `json:"kinds"`
-		ExportedOnly       bool     `json:"exported_only"`
-		Path               string   `json:"path"`
-		PathPrefix         string   `json:"path_prefix"`
-		Paths              []string `json:"paths"`
-		IncludeDefinitions bool     `json:"include_definitions"`
-		MaxResults         int      `json:"max_results"`
-		Line               int      `json:"line"`
-		Character          int      `json:"character"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *symbolTool) run(ctx context.Context, input symbolInput) (tool.Result, error) {
 	limit := input.MaxResults
 	if budget := tool.ResultTokenBudget(ctx); budget != 0 &&
 		(limit <= 0 || uint64(limit) > budget) {
@@ -208,17 +227,6 @@ func (t *symbolTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Res
 			Limit: limit,
 		}, input.PathPrefix, input.ExportedOnly)
 	}
-}
-
-func (*symbolTool) ExecutionDisposition() tool.ExecutionDisposition {
-	return tool.DispositionWaitForTeardown
-}
-
-func (t *symbolTool) ExecuteOutcome(
-	ctx context.Context,
-	raw json.RawMessage,
-) (tool.Result, tool.Outcome, error) {
-	return typed.ExecuteOutcome(ctx, t, raw)
 }
 
 type symbolMatch struct {

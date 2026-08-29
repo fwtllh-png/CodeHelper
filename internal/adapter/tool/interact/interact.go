@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
 	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
@@ -49,8 +50,39 @@ type Tools struct {
 }
 
 type executor struct {
+	typed.Contract[operationInput, tool.Result]
 	tools *Tools
 	name  string
+}
+
+type operationInput struct {
+	SubmittedPlan
+	Prompt   string   `json:"prompt"`
+	Options  []string `json:"options"`
+	Path     string   `json:"path"`
+	MaxDepth int      `json:"max_depth"`
+	Limit    int      `json:"limit"`
+	Notes    string   `json:"notes"`
+}
+
+func newExecutor(tools *Tools, name string) (*executor, error) {
+	instance := &executor{tools: tools, name: name}
+	contract, err := typed.NewResultContract(typed.ResultSpec[operationInput]{
+		Name: name, Disposition: tool.DispositionWaitForTeardown,
+		Decode: instance.decode, Run: instance.run,
+	})
+	if err != nil {
+		return nil, err
+	}
+	instance.Contract = contract
+	return instance, nil
+}
+
+func (e *executor) decode(raw json.RawMessage) (operationInput, error) {
+	if e.name == "image_analyze" && e.tools.vision == nil {
+		return operationInput{}, nil
+	}
+	return typed.DecodeStrict[operationInput](raw)
 }
 
 func Register(registry *tool.Registry, options Options) error {
@@ -81,7 +113,11 @@ func Register(registry *tool.Registry, options Options) error {
 		"request_user_input", "update_plan", "submit_plan", "project_map",
 		"image_analyze",
 	} {
-		if err := registry.Register(&executor{tools: tools, name: name}); err != nil {
+		executor, err := newExecutor(tools, name)
+		if err != nil {
+			return err
+		}
+		if err := registry.Register(executor); err != nil {
 			return err
 		}
 	}
@@ -227,31 +263,24 @@ func (e *executor) Descriptor() tool.Descriptor {
 	}
 }
 
-func (e *executor) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+func (e *executor) run(ctx context.Context, input operationInput) (tool.Result, error) {
 	switch e.name {
 	case "request_user_input":
-		return e.tools.requestInput(ctx, raw)
+		return e.tools.requestInput(ctx, input)
 	case "update_plan":
-		return e.tools.updatePlan(raw, false)
+		return e.tools.updatePlan(input, false)
 	case "submit_plan":
-		return e.tools.updatePlan(raw, true)
+		return e.tools.updatePlan(input, true)
 	case "project_map":
-		return e.tools.projectMap(ctx, raw)
+		return e.tools.projectMap(ctx, input)
 	case "image_analyze":
-		return e.tools.imageAnalyze(ctx, raw)
+		return e.tools.imageAnalyze(ctx, input)
 	default:
 		return tool.Result{}, fmt.Errorf("unknown interact tool %q", e.name)
 	}
 }
 
-func (t *Tools) requestInput(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Prompt  string   `json:"prompt"`
-		Options []string `json:"options"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tools) requestInput(ctx context.Context, input operationInput) (tool.Result, error) {
 	input.Prompt = strings.TrimSpace(input.Prompt)
 	if input.Prompt == "" {
 		return tool.Result{}, errors.New("prompt is required")
@@ -299,11 +328,12 @@ func normalizeInputOptions(values []string) ([]string, error) {
 	return out, nil
 }
 
-func (t *Tools) updatePlan(raw json.RawMessage, submitted bool) (tool.Result, error) {
-	plan, err := ParseSubmittedPlan(raw)
-	if err != nil {
+func (t *Tools) updatePlan(input operationInput, submitted bool) (tool.Result, error) {
+	plan := input.SubmittedPlan
+	if err := plan.NormalizeAndValidate(); err != nil {
 		return tool.Result{}, err
 	}
+	var err error
 	if submitted {
 		plan.FileBaseline, err = t.capturePlanBaseline(plan)
 		if err != nil {
@@ -390,17 +420,7 @@ func (t *Tools) capturePlanBaseline(plan SubmittedPlan) ([]PlanFileBaseline, err
 	return baseline, nil
 }
 
-func (t *Tools) projectMap(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input struct {
-		Path     string `json:"path"`
-		MaxDepth int    `json:"max_depth"`
-		Limit    int    `json:"limit"`
-	}
-	if len(raw) > 0 && string(raw) != "null" {
-		if err := json.Unmarshal(raw, &input); err != nil {
-			return tool.Result{}, err
-		}
-	}
+func (t *Tools) projectMap(ctx context.Context, input operationInput) (tool.Result, error) {
 	if input.MaxDepth <= 0 {
 		input.MaxDepth = 3
 	}
@@ -487,19 +507,12 @@ func (t *Tools) mapPrefix(rel string) (string, error) {
 	return filepath.ToSlash(relative) + "/", nil
 }
 
-func (t *Tools) imageAnalyze(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+func (t *Tools) imageAnalyze(ctx context.Context, input operationInput) (tool.Result, error) {
 	if t.vision == nil {
 		return tool.Result{
 			Content: VisionUnavailableReason, IsError: true,
 			Metadata: map[string]any{"error_category": "unavailable"},
 		}, nil
-	}
-	var input struct {
-		Path   string `json:"path"`
-		Prompt string `json:"prompt"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
 	}
 	path := strings.TrimSpace(input.Path)
 	if path == "" {

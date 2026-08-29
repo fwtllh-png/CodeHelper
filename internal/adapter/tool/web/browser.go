@@ -50,11 +50,34 @@ type BrowserRuntime interface {
 }
 
 type browserTool struct {
+	typed.Contract[browserInput, tool.Result]
 	runtime BrowserRuntime
 }
 
+type browserInput struct {
+	Action   string `json:"action"`
+	URL      string `json:"url"`
+	Selector string `json:"selector"`
+	Value    string `json:"value"`
+}
+
 func registerBrowser(registry *tool.Registry, runtime BrowserRuntime) error {
-	return registry.Register(&browserTool{runtime: runtime})
+	executor := &browserTool{runtime: runtime}
+	contract, err := typed.NewResultContract(typed.ResultSpec[browserInput]{
+		Name: "web_run", Disposition: tool.DispositionWaitForTeardown,
+		Decode: func(raw json.RawMessage) (browserInput, error) {
+			if runtime == nil {
+				return browserInput{}, nil
+			}
+			return typed.DecodeStrict[browserInput](raw)
+		},
+		Run: executor.run,
+	})
+	if err != nil {
+		return err
+	}
+	executor.Contract = contract
+	return registry.Register(executor)
 }
 
 func browserRuntimeFromEnv() BrowserRuntime {
@@ -105,21 +128,12 @@ func (b *browserTool) Descriptor() tool.Descriptor {
 	}
 }
 
-func (b *browserTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+func (b *browserTool) run(ctx context.Context, input browserInput) (tool.Result, error) {
 	if b.runtime == nil {
 		return tool.Result{
 			Content: BrowserUnavailableReason, IsError: true,
 			Metadata: map[string]any{"error_category": "unavailable"},
 		}, nil
-	}
-	var input struct {
-		Action   string `json:"action"`
-		URL      string `json:"url"`
-		Selector string `json:"selector"`
-		Value    string `json:"value"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
 	}
 	switch strings.ToLower(strings.TrimSpace(input.Action)) {
 	case "navigate":
@@ -170,17 +184,6 @@ func (b *browserTool) Execute(ctx context.Context, raw json.RawMessage) (tool.Re
 	default:
 		return tool.Result{}, fmt.Errorf("unsupported web_run action %q", input.Action)
 	}
-}
-
-func (*browserTool) ExecutionDisposition() tool.ExecutionDisposition {
-	return tool.DispositionWaitForTeardown
-}
-
-func (b *browserTool) ExecuteOutcome(
-	ctx context.Context,
-	raw json.RawMessage,
-) (tool.Result, tool.Outcome, error) {
-	return typed.ExecuteOutcome(ctx, b, raw)
 }
 
 // FakeBrowser is an in-process hermetic browser for tests and CODEHELPER_BROWSER_FIXTURE.

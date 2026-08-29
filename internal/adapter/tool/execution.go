@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"strings"
 	"time"
@@ -444,6 +445,39 @@ func cloneAttemptReceipt(source AttemptReceipt) AttemptReceipt {
 type OutcomeExecutor interface {
 	Executor
 	ExecuteOutcome(context.Context, json.RawMessage) (Result, Outcome, error)
+}
+
+// ExecuteWithOutcome is the compatibility boundary for executors whose domain
+// logic still implements Execute directly. New built-ins should use typed.Contract.
+func ExecuteWithOutcome(
+	ctx context.Context,
+	executor Executor,
+	raw json.RawMessage,
+) (result Result, outcome Outcome, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			result = Result{}
+			outcome = Outcome{Status: OutcomeFailed}
+			err = fmt.Errorf("tool %q panicked: %v", executor.Descriptor().Name, recovered)
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return Result{}, Outcome{Status: OutcomeCanceled}, err
+	}
+	result, err = executor.Execute(ctx, raw)
+	if result.Outcome != nil {
+		outcome = *CloneOutcome(result.Outcome)
+	} else {
+		outcome = OutcomeFromResult(result)
+	}
+	if err != nil {
+		outcome.Status = OutcomeFailed
+		if errors.Is(err, context.Canceled) {
+			outcome.Status = OutcomeCanceled
+		}
+	}
+	result.Outcome = CloneOutcome(&outcome)
+	return result, outcome, err
 }
 
 type invocationSourceKey struct{}

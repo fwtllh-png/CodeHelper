@@ -88,6 +88,9 @@ Runtime 不应实现协议和工具基础设施细节：
 
 - `provider/assembly.ConsumeStream` 负责 Vendor-neutral Stream Assembly，并按累计增长
   自适应拉开 Durable Checkpoint 间隔；
+- `tool/typed.Contract` 统一内置工具的参数解码、校验、取消、Panic 隔离、Result 编码和
+  Outcome 归一化；需要 Edit Planner、Argument Expander 或 Broker 授权接口的工具把
+  Contract 嵌入原有领域类型，不增加绕过 Guard 的包装执行路径；
 - `tool.ExecuteBatch` 负责串并行调度、Panic 隔离和 Result 归一化；
 - `tool.ProjectModelResults` 保持 Tool Call/Result Identity；
 - `tool/result` 负责可恢复结果与模型可见 Surface 裁剪；

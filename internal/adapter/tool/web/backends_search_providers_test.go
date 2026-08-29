@@ -73,7 +73,8 @@ func TestWebSearchTavilySearXNGBochaBackends(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := tc.tool.Execute(t.Context(), json.RawMessage(`{"query":"go modules","limit":3}`))
+			result, err := boundTool(t, tc.tool).
+				Execute(t.Context(), json.RawMessage(`{"query":"go modules","limit":3}`))
 			if err != nil {
 				t.Fatal(err)
 			}

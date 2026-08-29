@@ -70,12 +70,14 @@ func TestTierTwoToolsUseTypedBoundaryOrDocumentException(t *testing.T) {
 	}
 }
 
-func TestRemainingBuiltinsExposeTypedOutcomeBoundary(t *testing.T) {
+func TestRemainingBuiltinsEmbedTypedContract(t *testing.T) {
 	root := filepath.Clean("..")
 	files := []string{
+		"agent/ops.go",
 		"content/content.go",
 		"file/file.go",
 		"git/git.go",
+		"interact/interact.go",
 		"search/search.go",
 		"search/symbol.go",
 		"web/web.go",
@@ -88,12 +90,12 @@ func TestRemainingBuiltinsExposeTypedOutcomeBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			source := string(data)
-			if !strings.Contains(source, "ExecuteOutcome(") ||
-				!strings.Contains(source, "typed.ExecuteOutcome(") {
-				t.Fatal("builtin does not expose the typed Outcome boundary")
+			if !strings.Contains(source, "typed.Contract[") ||
+				!strings.Contains(source, "typed.NewResultContract(") {
+				t.Fatal("builtin does not embed the typed execution contract")
 			}
-			if !strings.Contains(source, "ExecutionDisposition()") {
-				t.Fatal("builtin does not declare cancellation disposition")
+			if strings.Contains(source, "typed.ExecuteOutcome(") {
+				t.Fatal("builtin retained the legacy Outcome adapter")
 			}
 		})
 	}

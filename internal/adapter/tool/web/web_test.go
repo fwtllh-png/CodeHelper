@@ -13,6 +13,14 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 )
 
+func boundTool(t testing.TB, executor *Tool) *Tool {
+	t.Helper()
+	if err := executor.bindContract(); err != nil {
+		t.Fatal(err)
+	}
+	return executor
+}
+
 func TestWebSearchFetchScrapeAndLimits(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch {
@@ -40,7 +48,9 @@ func TestWebSearchFetchScrapeAndLimits(t *testing.T) {
 	}))
 	defer server.Close()
 
-	search, err := (&Tool{kind: "web_search", searchURL: server.URL + "/search"}).Execute(
+	search, err := boundTool(t, &Tool{
+		kind: "web_search", searchURL: server.URL + "/search",
+	}).Execute(
 		t.Context(), json.RawMessage(`{"query":"fixture query","limit":2}`),
 	)
 	if err != nil {
@@ -50,7 +60,7 @@ func TestWebSearchFetchScrapeAndLimits(t *testing.T) {
 		t.Fatalf("search = %+v", search)
 	}
 
-	scrape, err := (&Tool{kind: "web_scrape"}).Execute(
+	scrape, err := boundTool(t, &Tool{kind: "web_scrape"}).Execute(
 		t.Context(), json.RawMessage(fmt.Sprintf(`{"url":%q}`, server.URL+"/page")),
 	)
 	if err != nil {
@@ -72,7 +82,8 @@ func TestWebSearchFetchScrapeAndLimits(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := (&Tool{kind: "web_fetch"}).Execute(t.Context(), json.RawMessage(test.arguments))
+			result, err := boundTool(t, &Tool{kind: "web_fetch"}).
+				Execute(t.Context(), json.RawMessage(test.arguments))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -83,7 +94,7 @@ func TestWebSearchFetchScrapeAndLimits(t *testing.T) {
 	}
 
 	// Tiny max_bytes used to hard-fail every real page; floor to the default instead.
-	tiny, err := (&Tool{kind: "web_fetch"}).Execute(
+	tiny, err := boundTool(t, &Tool{kind: "web_fetch"}).Execute(
 		t.Context(), json.RawMessage(fmt.Sprintf(`{"url":%q,"max_bytes":32}`, server.URL+"/large")),
 	)
 	if err != nil {
@@ -116,7 +127,7 @@ func TestWebFetchTruncatesOverLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := (&Tool{kind: "web_fetch"}).Execute(
+	result, err := boundTool(t, &Tool{kind: "web_fetch"}).Execute(
 		t.Context(),
 		json.RawMessage(fmt.Sprintf(`{"url":%q,"max_bytes":%d}`, server.URL, minBodyLimit)),
 	)
@@ -135,7 +146,7 @@ func TestWebFetchRateLimitStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := (&Tool{kind: "web_fetch"}).Execute(
+	result, err := boundTool(t, &Tool{kind: "web_fetch"}).Execute(
 		t.Context(), json.RawMessage(fmt.Sprintf(`{"url":%q}`, server.URL)),
 	)
 	if err != nil {
@@ -180,7 +191,7 @@ func TestWebSearchDefaultBackendFallbackAndReceipts(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := (&Tool{
+	result, err := boundTool(t, &Tool{
 		kind: "web_search", primaryURL: server.URL + "/duckduckgo",
 		fallbackURL: server.URL + "/bing",
 	}).Execute(t.Context(), json.RawMessage(
@@ -223,7 +234,7 @@ func TestParseDuckDuckGoSearchHTML(t *testing.T) {
 func TestEgressDeniedClassified(t *testing.T) {
 	gate := &egress.Gate{Enforce: true}
 	client := egress.WrapClient(&http.Client{}, gate)
-	result, err := (&Tool{kind: "web_fetch", httpClient: client}).Execute(
+	result, err := boundTool(t, &Tool{kind: "web_fetch", httpClient: client}).Execute(
 		t.Context(), json.RawMessage(`{"url":"https://example.com/page"}`),
 	)
 	if err != nil {

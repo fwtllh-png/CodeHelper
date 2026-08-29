@@ -162,10 +162,16 @@ func contractExecutor(
 	metadata func(contractOutput) map[string]any,
 ) tool.Executor {
 	t.Helper()
-	descriptor := typed.ReadTool(
-		"contract_fixture",
-		"Exercise the shared executor contract",
-		map[string]any{
+	descriptor := tool.Descriptor{
+		Name:        "contract_fixture",
+		Description: "Exercise the shared executor contract",
+		Visibility:  tool.VisibleModel, Capability: tool.CapabilityRead,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+		SandboxRequirement: tool.SandboxNone,
+		ResourceResolver:   tool.ResourceResolver{},
+		Availability:       tool.AvailabilityAvailable,
+		RepeatPolicy:       tool.RepeatExecute,
+		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"value": map[string]any{"type": "string", "minLength": 1},
@@ -173,12 +179,7 @@ func contractExecutor(
 			"required":             []string{"value"},
 			"additionalProperties": false,
 		},
-		typed.DescriptorPolicy{
-			ResourceResolver: tool.ResourceResolver{},
-			Availability:     tool.AvailabilityAvailable,
-			RepeatPolicy:     tool.RepeatExecute,
-		},
-	)
+	}
 	executor, err := typed.Define(typed.Spec[contractInput, contractOutput]{
 		Descriptor:  descriptor,
 		Disposition: tool.DispositionAbortImmediately,

@@ -53,14 +53,13 @@ func NewWithBackend(root string, backend sandbox.Backend) (*Tools, error) {
 
 func (t *Tools) Register(registry *tool.Registry) error {
 	registry.SetSandboxBackend(t.backend)
-	for _, executor := range []tool.Executor{
-		&operation{tools: t, kind: "file_read"},
-		&operation{tools: t, kind: "file_write"},
-		&operation{tools: t, kind: "file_edit"},
-		&operation{tools: t, kind: "file_apply"},
-		&operation{tools: t, kind: "file_patch"},
-		&operation{tools: t, kind: "file_list"},
+	for _, kind := range []string{
+		"file_read", "file_write", "file_edit", "file_apply", "file_patch", "file_list",
 	} {
+		executor, err := newOperation(t, kind)
+		if err != nil {
+			return err
+		}
 		if err := registry.Register(executor); err != nil {
 			return err
 		}
@@ -69,8 +68,22 @@ func (t *Tools) Register(registry *tool.Registry) error {
 }
 
 type operation struct {
+	typed.Contract[operationInput, tool.Result]
 	tools *Tools
 	kind  string
+}
+
+func newOperation(tools *Tools, kind string) (*operation, error) {
+	executor := &operation{tools: tools, kind: kind}
+	contract, err := typed.NewResultContract(typed.ResultSpec[operationInput]{
+		Name: kind, Disposition: tool.DispositionWaitForTeardown,
+		Run: executor.run,
+	})
+	if err != nil {
+		return nil, err
+	}
+	executor.Contract = contract
+	return executor, nil
 }
 
 type operationInput struct {
@@ -134,8 +147,8 @@ func (o *operation) IsAuthorizedFileMutation(
 func (o *operation) PlanEdit(
 	ctx context.Context, raw json.RawMessage,
 ) (tool.EditPlan, error) {
-	var input operationInput
-	if err := json.Unmarshal(raw, &input); err != nil {
+	input, err := typed.DecodeStrict[operationInput](raw)
+	if err != nil {
 		return tool.EditPlan{}, err
 	}
 	var requests []changeRequest
@@ -297,11 +310,7 @@ func (o *operation) Descriptor() tool.Descriptor {
 	}
 }
 
-func (o *operation) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var input operationInput
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
-	}
+func (o *operation) run(ctx context.Context, input operationInput) (tool.Result, error) {
 	switch o.kind {
 	case "file_read":
 		file, err := o.tools.workspace.OpenFile(input.Path)
@@ -390,8 +399,8 @@ func (o *operation) prepareMutation(
 	ctx context.Context,
 	raw json.RawMessage,
 ) (preparedFileMutation, error) {
-	var input operationInput
-	if err := json.Unmarshal(raw, &input); err != nil {
+	input, err := typed.DecodeStrict[operationInput](raw)
+	if err != nil {
 		return preparedFileMutation{}, err
 	}
 	var requests []changeRequest
@@ -461,17 +470,6 @@ func (o *operation) mutationResult(prepared preparedFileMutation) tool.Result {
 			prepared.changes, prepared.diff, prepared.operations, false,
 		)
 	}
-}
-
-func (*operation) ExecutionDisposition() tool.ExecutionDisposition {
-	return tool.DispositionWaitForTeardown
-}
-
-func (o *operation) ExecuteOutcome(
-	ctx context.Context,
-	raw json.RawMessage,
-) (tool.Result, tool.Outcome, error) {
-	return typed.ExecuteOutcome(ctx, o, raw)
 }
 
 func (t *Tools) recoverMissingPath(err error, path string) error {

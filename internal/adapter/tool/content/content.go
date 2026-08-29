@@ -26,6 +26,7 @@ const contentOutputLimit = 4 << 20
 const contentInputLimit = 64 << 20
 
 type Tool struct {
+	typed.Contract[input, tool.Result]
 	root      string
 	kind      string
 	workspace *sandbox.Workspace
@@ -40,6 +41,18 @@ type input struct {
 	From       string `json:"from"`
 	To         string `json:"to"`
 	Format     string `json:"format"`
+}
+
+func (t *Tool) bindContract() error {
+	contract, err := typed.NewResultContract(typed.ResultSpec[input]{
+		Name: t.kind, Disposition: tool.DispositionWaitForTeardown,
+		Run: t.run,
+	})
+	if err != nil {
+		return err
+	}
+	t.Contract = contract
+	return nil
 }
 
 func (t *Tool) TrustedBinding() tool.TrustedBinding {
@@ -80,10 +93,14 @@ func RegisterWithBackendAndRuntime(
 	for _, kind := range []string{
 		"content_capabilities", "image_ocr", "speech_transcribe", "document_convert", "data_validate",
 	} {
-		if err := registry.Register(&Tool{
+		executor := &Tool{
 			root: workspace.Root(), kind: kind, workspace: workspace,
 			backend: backend, broker: broker,
-		}); err != nil {
+		}
+		if err := executor.bindContract(); err != nil {
+			return err
+		}
+		if err := registry.Register(executor); err != nil {
 			return err
 		}
 	}
@@ -177,11 +194,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	}
 }
 
-func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var value input
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
 	switch t.kind {
 	case "content_capabilities":
 		return t.capabilities()
@@ -196,17 +209,6 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 	default:
 		return tool.Result{}, errors.New("unknown content tool")
 	}
-}
-
-func (*Tool) ExecutionDisposition() tool.ExecutionDisposition {
-	return tool.DispositionWaitForTeardown
-}
-
-func (t *Tool) ExecuteOutcome(
-	ctx context.Context,
-	raw json.RawMessage,
-) (tool.Result, tool.Outcome, error) {
-	return typed.ExecuteOutcome(ctx, t, raw)
 }
 
 // Probe reports whether optional content binaries are resolvable via LookPath

@@ -730,8 +730,7 @@ func (r *Registry) ExecutePreparedOutcome(
 	if typed, ok := executor.(OutcomeExecutor); ok {
 		result, outcome, err = typed.ExecuteOutcome(ctx, arguments)
 	} else {
-		result, err = executor.Execute(ctx, arguments)
-		outcome = OutcomeFromResult(result)
+		result, outcome, err = ExecuteWithOutcome(ctx, executor, arguments)
 	}
 	if result.Outcome != nil {
 		outcome = *CloneOutcome(result.Outcome)
@@ -1542,16 +1541,7 @@ func (t *resultRetrieval) ExecuteOutcome(
 	ctx context.Context,
 	raw json.RawMessage,
 ) (Result, Outcome, error) {
-	if err := ctx.Err(); err != nil {
-		return Result{}, Outcome{Status: OutcomeCanceled}, err
-	}
-	result, err := t.Execute(ctx, raw)
-	outcome := OutcomeFromResult(result)
-	if err != nil {
-		outcome.Status = OutcomeFailed
-	}
-	result.Outcome = CloneOutcome(&outcome)
-	return result, outcome, err
+	return ExecuteWithOutcome(ctx, t, raw)
 }
 
 func boundedSlice(value string, offset, limit int) (string, bool) {

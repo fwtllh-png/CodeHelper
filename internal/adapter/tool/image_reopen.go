@@ -169,14 +169,5 @@ func (t *imageReopen) ExecuteOutcome(
 	ctx context.Context,
 	raw json.RawMessage,
 ) (Result, Outcome, error) {
-	if err := ctx.Err(); err != nil {
-		return Result{}, Outcome{Status: OutcomeCanceled}, err
-	}
-	result, err := t.Execute(ctx, raw)
-	outcome := OutcomeFromResult(result)
-	if err != nil {
-		outcome.Status = OutcomeFailed
-	}
-	result.Outcome = CloneOutcome(&outcome)
-	return result, outcome, err
+	return ExecuteWithOutcome(ctx, t, raw)
 }

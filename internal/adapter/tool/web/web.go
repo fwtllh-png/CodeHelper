@@ -36,6 +36,7 @@ const (
 var errRedirectLimit = errors.New("redirect limit exceeded")
 
 type Tool struct {
+	typed.Contract[input, tool.Result]
 	kind          string
 	searchBackend string
 	searchURL     string
@@ -73,6 +74,18 @@ type input struct {
 	TimeoutMS int      `json:"timeout_ms"`
 }
 
+func (t *Tool) bindContract() error {
+	contract, err := typed.NewResultContract(typed.ResultSpec[input]{
+		Name: t.kind, Disposition: tool.DispositionWaitForTeardown,
+		Run: t.run,
+	})
+	if err != nil {
+		return err
+	}
+	t.Contract = contract
+	return nil
+}
+
 func Register(registry *tool.Registry, _ string) error {
 	return RegisterWithOptions(registry, OptionsFromEnv())
 }
@@ -94,13 +107,17 @@ func RegisterWithOptions(registry *tool.Registry, options Options) error {
 		options.BochaURL = defaultBochaURL
 	}
 	for _, kind := range []string{"web_search", "web_fetch", "web_scrape"} {
-		if err := registry.Register(&Tool{
+		executor := &Tool{
 			kind: kind, searchBackend: options.SearchBackend, searchURL: options.SearchURL,
 			primaryURL: options.PrimaryURL, fallbackURL: options.FallbackURL,
 			tavilyURL: options.TavilyURL, tavilyAPIKey: options.TavilyAPIKey,
 			searxngURL: options.SearXNGURL, bochaURL: options.BochaURL, bochaAPIKey: options.BochaAPIKey,
 			browser: options.Browser, httpClient: options.HTTP,
-		}); err != nil {
+		}
+		if err := executor.bindContract(); err != nil {
+			return err
+		}
+		if err := registry.Register(executor); err != nil {
 			return err
 		}
 	}
@@ -194,26 +211,11 @@ func (t *Tool) searchResourceTemplates() []tool.ResourceTemplate {
 	return out
 }
 
-func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	var value input
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
 	if t.kind == "web_search" {
 		return t.search(ctx, value)
 	}
 	return t.fetch(ctx, value, t.kind == "web_scrape")
-}
-
-func (*Tool) ExecutionDisposition() tool.ExecutionDisposition {
-	return tool.DispositionWaitForTeardown
-}
-
-func (t *Tool) ExecuteOutcome(
-	ctx context.Context,
-	raw json.RawMessage,
-) (tool.Result, tool.Outcome, error) {
-	return typed.ExecuteOutcome(ctx, t, raw)
 }
 
 func (t *Tool) search(ctx context.Context, value input) (tool.Result, error) {

@@ -168,33 +168,20 @@ func Register(registry *tool.Registry, options Options) error {
 		"spawn_agent", "send_message", "wait_agent", "list_agents",
 		"followup_task", "interrupt_agent", "close_agent", "integrate_agent",
 	} {
-		if err := registry.Register(&operation{tools: shared, kind: kind}); err != nil {
+		executor, err := newOperation(shared, kind)
+		if err != nil {
+			return err
+		}
+		if err := registry.Register(executor); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (t *Tool) spawn(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
+func (t *Tool) spawn(ctx context.Context, input operationInput) (tool.Result, error) {
 	if t == nil || t.control == nil || t.handles == nil {
 		return tool.Result{}, errors.New("agent tool is not configured")
-	}
-	var input struct {
-		TaskName       string   `json:"task_name"`
-		Role           string   `json:"role"`
-		Objective      string   `json:"objective"`
-		ExpectedOutput string   `json:"expected_output"`
-		OwnedPaths     []string `json:"owned_paths"`
-		ParentID       string   `json:"parent_id"`
-		Trigger        string   `json:"trigger"`
-		ContextMode    string   `json:"context_mode"`
-		ContextTurns   int      `json:"context_turns"`
-		MaxSteps       int      `json:"max_steps"`
-		MaxTokens      uint64   `json:"max_tokens"`
-		MaxCostUSD     float64  `json:"max_cost_usd"`
-	}
-	if err := json.Unmarshal(raw, &input); err != nil {
-		return tool.Result{}, err
 	}
 	role, err := subagent.ParseRole(input.Role)
 	if err != nil {

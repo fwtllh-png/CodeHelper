@@ -20,6 +20,7 @@ import (
 )
 
 type Tool struct {
+	typed.Contract[searchInput, tool.Result]
 	root      string
 	kind      string
 	workspace *sandbox.Workspace
@@ -68,17 +69,28 @@ func RegisterWithProviders(
 	}
 	registry.SetSandboxBackend(backend)
 	for _, kind := range []string{"search_text", "search_files", "search_project"} {
-		if err := registry.Register(&Tool{
+		executor := &Tool{
 			root: workspace.Root(), kind: kind,
 			workspace: workspace, backend: backend, walker: walker,
-		}); err != nil {
+		}
+		contract, err := typed.NewResultContract(typed.ResultSpec[searchInput]{
+			Name: kind, Disposition: tool.DispositionWaitForTeardown,
+			Decode: parseSearchInput, Run: executor.run,
+		})
+		if err != nil {
+			return err
+		}
+		executor.Contract = contract
+		if err := registry.Register(executor); err != nil {
 			return err
 		}
 	}
 	for _, kind := range []string{KindSymbol, KindDefinition, KindReferences, KindRelatedTests} {
-		if err := registry.Register(&symbolTool{
-			kind: kind, index: index, walker: walker, semantic: semantic,
-		}); err != nil {
+		executor, err := newSymbolTool(kind, index, walker, semantic)
+		if err != nil {
+			return err
+		}
+		if err := registry.Register(executor); err != nil {
 			return err
 		}
 	}
@@ -307,11 +319,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, error) {
-	input, err := parseSearchInput(raw)
-	if err != nil {
-		return tool.Result{}, err
-	}
+func (t *Tool) run(ctx context.Context, input searchInput) (tool.Result, error) {
 	var matcher func(string) bool
 	if input.Regex {
 		expressionText := input.Query
@@ -461,17 +469,6 @@ func (t *Tool) Execute(ctx context.Context, raw json.RawMessage) (tool.Result, e
 			"skipped_symlink": skips.Symlink,
 		}, hits),
 	}, nil
-}
-
-func (*Tool) ExecutionDisposition() tool.ExecutionDisposition {
-	return tool.DispositionWaitForTeardown
-}
-
-func (t *Tool) ExecuteOutcome(
-	ctx context.Context,
-	raw json.RawMessage,
-) (tool.Result, tool.Outcome, error) {
-	return typed.ExecuteOutcome(ctx, t, raw)
 }
 
 type contextLine struct {

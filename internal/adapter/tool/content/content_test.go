@@ -169,7 +169,11 @@ func TestContentDependencyUnavailableIsStable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := (&Tool{root: root, workspace: workspace, kind: "image_ocr"}).Execute(
+	executor := &Tool{root: root, workspace: workspace, kind: "image_ocr"}
+	if err := executor.bindContract(); err != nil {
+		t.Fatal(err)
+	}
+	result, err := executor.Execute(
 		t.Context(), json.RawMessage(`{"path":"image.pgm"}`),
 	)
 	if err != nil {
