@@ -19,6 +19,7 @@ type executionFileConfig struct {
 	MaxSteps              *int     `toml:"max_steps"`
 	Timeout               *string  `toml:"timeout"`
 	LeaseTimeout          *string  `toml:"lease_timeout"`
+	ApprovalTimeout       *string  `toml:"approval_timeout"`
 	ConnectionTimeout     *string  `toml:"connection_timeout"`
 	TLSHandshakeTimeout   *string  `toml:"tls_handshake_timeout"`
 	ResponseHeaderTimeout *string  `toml:"response_header_timeout"`
@@ -357,6 +358,7 @@ func applyExecutionFile(
 	applyInt(input.MaxSteps, &execution.MaxSteps, fieldMaxSteps, source, provenance)
 	applyDurationString(input.Timeout, &execution.Timeout, fieldTimeout, source, provenance)
 	applyDurationString(input.LeaseTimeout, &execution.LeaseTimeout, fieldLeaseTimeout, source, provenance)
+	applyDurationString(input.ApprovalTimeout, &execution.ApprovalTimeout, fieldApprovalTimeout, source, provenance)
 	applyDurationString(input.ConnectionTimeout, &execution.ConnectionTimeout, fieldConnectionTimeout, source, provenance)
 	applyDurationString(input.TLSHandshakeTimeout, &execution.TLSHandshakeTimeout, fieldTLSHandshakeTimeout, source, provenance)
 	applyDurationString(input.ResponseHeaderTimeout, &execution.ResponseHeaderTimeout, fieldResponseHeaderTimeout, source, provenance)

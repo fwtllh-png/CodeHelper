@@ -99,9 +99,6 @@ func (c *ApprovalCache) Add(request ApprovalRequest, scope ApprovalScope) error 
 	if request.Fingerprint == "" || request.Fingerprint != approvalFingerprint(request) {
 		return errors.New("approval fingerprint does not match request")
 	}
-	if request.ExpiresAt.IsZero() {
-		return errors.New("approval expiry is required")
-	}
 	if scope != ApprovalOnce && scope != ApprovalSession && scope != ApprovalAlways {
 		return errors.New("approval scope must be once, session, or always")
 	}
@@ -174,7 +171,7 @@ func (c *ApprovalCache) matchGrant(invocation Invocation, now time.Time) bool {
 	if !exists {
 		return false
 	}
-	if !entry.expiresAt.After(now) {
+	if approvalExpired(entry, now) {
 		delete(c.grantKeys, grant.Key)
 		return false
 	}
@@ -190,7 +187,7 @@ func (c *ApprovalCache) matchInvocationExact(invocation Invocation, now time.Tim
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for key, entry := range c.entries {
-		if !entry.expiresAt.After(now) {
+		if approvalExpired(entry, now) {
 			delete(c.entries, key)
 			continue
 		}
@@ -212,15 +209,19 @@ func (c *ApprovalCache) Purge(now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for key, entry := range c.entries {
-		if !entry.expiresAt.After(now) {
+		if approvalExpired(entry, now) {
 			delete(c.entries, key)
 		}
 	}
 	for key, entry := range c.grantKeys {
-		if !entry.expiresAt.After(now) {
+		if approvalExpired(entry, now) {
 			delete(c.grantKeys, key)
 		}
 	}
+}
+
+func approvalExpired(entry approvalEntry, now time.Time) bool {
+	return !entry.expiresAt.IsZero() && !entry.expiresAt.After(now)
 }
 
 func approvalFingerprint(request ApprovalRequest) string {

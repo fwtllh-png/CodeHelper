@@ -223,6 +223,9 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 	if err := applyEnvDuration(lookup, "CODEHELPER_LEASE_TIMEOUT", fieldLeaseTimeout, &execution.LeaseTimeout, provenance); err != nil {
 		return err
 	}
+	if err := applyEnvDuration(lookup, "CODEHELPER_APPROVAL_TIMEOUT", fieldApprovalTimeout, &execution.ApprovalTimeout, provenance); err != nil {
+		return err
+	}
 	if err := applyEnvDuration(lookup, "CODEHELPER_CONNECTION_TIMEOUT", fieldConnectionTimeout, &execution.ConnectionTimeout, provenance); err != nil {
 		return err
 	}

@@ -2716,7 +2716,8 @@ function ApprovalComposer({
           {Array.isArray(data.resources) && (
             <span>{data.resources.length} protected resources</span>
           )}
-          {typeof data.expires_at === "string" && (
+          {typeof data.expires_at === "string" &&
+            Date.parse(data.expires_at) > 0 && (
             <span>Expires {new Date(data.expires_at).toLocaleString()}</span>
           )}
         </div>

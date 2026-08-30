@@ -57,6 +57,7 @@ max_output_tokens = 0           # 0 = 使用当前模型声明的 MaxOutputToken
 max_steps = 64                  # 连续无结构化进展的 Step Lease；0 = 不设置
 timeout = "2m"                  # 连接、TLS 和响应头阶段
 lease_timeout = "2m"            # Guard 授权到 Executor 接管前的 Lease 有效期
+approval_timeout = "0s"         # 0 = 审批随 Turn/Session 生命周期，不独立过期
 connection_timeout = "0s"       # 0 表示继承 timeout
 tls_handshake_timeout = "0s"    # 0 表示继承 timeout
 response_header_timeout = "0s"  # 0 表示继承 timeout
@@ -275,6 +276,11 @@ Runtime 自动调度并重试，不要求模型或用户轮询；预算耗尽、
 公开上限，可由 `CODEHELPER_LEASE_TIMEOUT` 或受信配置覆盖。调用 Context 的 Deadline
 更早时使用更早值。Lease 被消费后，运行中进程的 Timeout、Cancel、Wait 和 Reap 由
 Executor/Broker 生命周期负责，不能因为 Lease 到期而放弃回收。
+
+`execution.approval_timeout` 是等待人工审批的可选墙钟上限。默认 `0`，审批请求随
+Turn 或 Session 的取消而结束，不会因用户暂时离开页面而自动阻断 Turn。受监管环境
+可设置非零时长，或通过 `CODEHELPER_APPROVAL_TIMEOUT` 覆盖；到期请求仍按
+`approval_expired` Fail Closed，不能在过期后执行。
 
 这些 Convergence Budget 不等于物理边界或用户配置的硬上限。Runtime 不会越过
 Token/Cost Ceiling，不会猜测半截 Tool Call，不会绕过 Content Filter，也不会在安全

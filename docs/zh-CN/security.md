@@ -117,6 +117,8 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   过期、撤销、重复消费或任一 Generation 漂移都会 Fail Closed。
 - `execution.lease_timeout` 是授权到执行接管之间的显式配置上限；更早的调用 Context
   Deadline 会收紧它。Lease 消费后，运行中资源的回收不受 Lease 到期影响。
+- `execution.approval_timeout` 控制人工审批等待；默认 `0`，表示只随 Turn/Session
+  生命周期结束。非零值启用独立过期，过期请求继续 Fail Closed。
 - Attempt Receipt 持久记录 Operation Digest、Lease ID/State、Effect、Workspace、
   Subject、Policy 和 Sandbox 绑定。当前兼容 Facade 保持原有 Policy Decision、
   Approval Scope、Typed Denial 与 Amendment 语义不变。

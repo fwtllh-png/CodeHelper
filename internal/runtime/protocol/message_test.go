@@ -584,6 +584,21 @@ func TestApprovalPresentationFactsFailClosed(t *testing.T) {
 	}
 }
 
+func TestApprovalRequestMayFollowTurnLifecycleWithoutExpiry(t *testing.T) {
+	value := ApprovalRequiredData{
+		RequestID: "approval_1", CallID: "call_1", Tool: "exec_command",
+		Arguments:       json.RawMessage(`{"command":"go test ./..."}`),
+		ArgumentsDigest: strings.Repeat("a", 64),
+		AllowedScopes:   []ApprovalScope{ApprovalScopeOnce},
+		Effect:          "process.mutating",
+		Risk:            "high",
+		ReasonCode:      "approval_required",
+	}
+	if err := value.validate(); err != nil {
+		t.Fatalf("approval without independent expiry was rejected: %v", err)
+	}
+}
+
 func TestTaggedUnionsRejectUnknownAndMalformedJSON(t *testing.T) {
 	validTime := "2026-07-27T00:00:00Z"
 	cases := []string{

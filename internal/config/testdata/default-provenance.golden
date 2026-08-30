@@ -38,6 +38,7 @@ context.working_set.max_bytes
 context.working_set.max_entries
 credential.kind
 credential.name
+execution.approval_timeout
 execution.budget_tokens
 execution.budget_usd
 execution.connection_timeout

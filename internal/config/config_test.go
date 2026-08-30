@@ -488,6 +488,49 @@ lease_timeout = "45s"
 	}
 }
 
+func TestExecutionApprovalTimeoutIsOptionalAndHasProvenance(t *testing.T) {
+	if Defaults().Execution.ApprovalTimeout != 0 {
+		t.Fatalf(
+			"default approval timeout = %s",
+			Defaults().Execution.ApprovalTimeout,
+		)
+	}
+	path := writeConfig(t, `
+[execution]
+approval_timeout = "45m"
+`)
+	fromFile, err := Load(LoadOptions{
+		Path: path, LookupEnv: envLookup(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromFile.Config.Execution.ApprovalTimeout != 45*time.Minute ||
+		fromFile.Provenance[fieldApprovalTimeout] != SourceFile {
+		t.Fatalf("file approval timeout = %+v", fromFile)
+	}
+	fromEnv, err := Load(LoadOptions{
+		Path: path,
+		LookupEnv: envLookup(map[string]string{
+			"CODEHELPER_APPROVAL_TIMEOUT": "2h",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromEnv.Config.Execution.ApprovalTimeout != 2*time.Hour ||
+		fromEnv.Provenance[fieldApprovalTimeout] != SourceEnv {
+		t.Fatalf("environment approval timeout = %+v", fromEnv)
+	}
+	invalid := -time.Second
+	_, err = Load(LoadOptions{
+		Overrides: Overrides{ApprovalTimeout: &invalid},
+	})
+	if err == nil || !strings.Contains(err.Error(), fieldApprovalTimeout) {
+		t.Fatalf("negative approval timeout error = %v", err)
+	}
+}
+
 func TestProviderRetryLimitHasProvenanceAndValidation(t *testing.T) {
 	if Defaults().Execution.ProviderRetryLimit != 3 {
 		t.Fatalf(

@@ -496,7 +496,7 @@ func TestApprovalOnceSessionExpiryAndModifiedArguments(t *testing.T) {
 	requests := make(chan ApprovalRequest, 4)
 	guard, err := New(Options{
 		Registry: registry, Policy: runtime, Workspace: t.TempDir(),
-		Now: func() time.Time { return now },
+		Now: func() time.Time { return now }, ApprovalTTL: 5 * time.Minute,
 		Approvals: func(_ context.Context, request ApprovalRequest) error {
 			requests <- request
 			return nil

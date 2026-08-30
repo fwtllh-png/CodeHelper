@@ -125,6 +125,7 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyInt(overrides.MaxSteps, &execution.MaxSteps, fieldMaxSteps, SourceStartup, provenance)
 	applyDuration(overrides.Timeout, &execution.Timeout, fieldTimeout, SourceStartup, provenance)
 	applyDuration(overrides.LeaseTimeout, &execution.LeaseTimeout, fieldLeaseTimeout, SourceStartup, provenance)
+	applyDuration(overrides.ApprovalTimeout, &execution.ApprovalTimeout, fieldApprovalTimeout, SourceStartup, provenance)
 	applyDuration(overrides.ConnectionTimeout, &execution.ConnectionTimeout, fieldConnectionTimeout, SourceStartup, provenance)
 	applyDuration(overrides.TLSHandshakeTimeout, &execution.TLSHandshakeTimeout, fieldTLSHandshakeTimeout, SourceStartup, provenance)
 	applyDuration(overrides.ResponseHeaderTimeout, &execution.ResponseHeaderTimeout, fieldResponseHeaderTimeout, SourceStartup, provenance)

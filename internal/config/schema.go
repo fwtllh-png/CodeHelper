@@ -144,6 +144,9 @@ type Execution struct {
 	// LeaseTimeout bounds the authorization-to-execution handoff. It does not
 	// terminate work after a Broker has consumed the Lease.
 	LeaseTimeout time.Duration `json:"lease_timeout" toml:"-"`
+	// ApprovalTimeout optionally bounds a pending human approval. Zero keeps
+	// the request alive until the Turn or Session is canceled.
+	ApprovalTimeout time.Duration `json:"approval_timeout" toml:"-"`
 	// The phase-specific values override Timeout when non-zero.
 	ConnectionTimeout     time.Duration `json:"connection_timeout" toml:"-"`
 	TLSHandshakeTimeout   time.Duration `json:"tls_handshake_timeout" toml:"-"`
@@ -356,6 +359,7 @@ type Overrides struct {
 	MaxSteps              *int
 	Timeout               *time.Duration
 	LeaseTimeout          *time.Duration
+	ApprovalTimeout       *time.Duration
 	ConnectionTimeout     *time.Duration
 	TLSHandshakeTimeout   *time.Duration
 	ResponseHeaderTimeout *time.Duration

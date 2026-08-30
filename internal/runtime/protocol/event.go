@@ -969,8 +969,8 @@ func (d *ApprovalRequiredData) validate() error {
 	if d.RequestID == "" || d.CallID == "" || d.Tool == "" || d.ArgumentsDigest == "" {
 		return errors.New("approval request identity and arguments digest are required")
 	}
-	if len(d.Arguments) == 0 || d.ExpiresAt.IsZero() {
-		return errors.New("approval arguments and expiry are required")
+	if len(d.Arguments) == 0 {
+		return errors.New("approval arguments are required")
 	}
 	if !validApprovalEffect(d.Effect) || !validApprovalRisk(d.Risk) ||
 		d.ReasonCode == "" {

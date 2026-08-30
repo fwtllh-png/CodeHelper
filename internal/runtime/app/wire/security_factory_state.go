@@ -23,6 +23,7 @@ type guardFactory struct {
 	leaseAuthority         *toolguard.LeaseAuthority
 	forceEditReview        bool
 	leaseTTL               time.Duration
+	approvalTTL            time.Duration
 	now                    func() time.Time
 }
 

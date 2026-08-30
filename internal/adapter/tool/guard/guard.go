@@ -123,6 +123,10 @@ type ApprovalWait struct {
 
 type ApprovalObserver func(string, string, string, string, time.Duration)
 
+// DefaultLeaseTTL is the direct Guard-construction fallback. Application
+// wiring supplies execution.lease_timeout with configuration provenance.
+const DefaultLeaseTTL = 2 * time.Minute
+
 type Guard struct {
 	registry              *tool.Registry
 	policy                *policy.Runtime
@@ -187,11 +191,11 @@ func New(options Options) (*Guard, error) {
 	if options.Now == nil {
 		options.Now = time.Now
 	}
-	if options.ApprovalTTL <= 0 {
-		options.ApprovalTTL = 5 * time.Minute
+	if options.ApprovalTTL < 0 {
+		return nil, errors.New("tool guard approval TTL must be non-negative")
 	}
 	if options.LeaseTTL <= 0 {
-		options.LeaseTTL = options.ApprovalTTL
+		options.LeaseTTL = DefaultLeaseTTL
 	}
 	if options.ReadTracker == nil {
 		options.ReadTracker = workspacejournal.NewReadTracker()
@@ -899,7 +903,10 @@ func (g *Guard) waitForApproval(
 	if len(ask) > 0 {
 		opts = ask[0]
 	}
-	expiresAt := now.Add(g.approvalTTL)
+	var expiresAt time.Time
+	if g.approvalTTL > 0 {
+		expiresAt = now.Add(g.approvalTTL)
+	}
 	g.mu.Lock()
 	recovered, recovering := g.recovered[invocation.CallID]
 	if recovering {
@@ -999,13 +1006,18 @@ func (g *Guard) waitForApproval(
 			return ApprovalDecision{}, fmt.Errorf("emit approval request: %w", err)
 		}
 	}
-	timer := time.NewTimer(max(time.Millisecond, expiresAt.Sub(g.now())))
-	defer timer.Stop()
+	var expiry <-chan time.Time
+	var timer *time.Timer
+	if !expiresAt.IsZero() {
+		timer = time.NewTimer(max(time.Millisecond, expiresAt.Sub(g.now())))
+		expiry = timer.C
+		defer timer.Stop()
+	}
 	select {
 	case <-ctx.Done():
 		reportWait(ApprovalWaitCanceled)
 		return ApprovalDecision{}, ctx.Err()
-	case <-timer.C:
+	case <-expiry:
 		wait := reportWait(ApprovalWaitExpired)
 		if expire := g.approvalExpiryHandler(); expire != nil {
 			if err := expire(wait); err != nil {
@@ -1043,15 +1055,12 @@ func (g *Guard) waitForApproval(
 				Code: "approval_scope_denied", Reason: "approval scope is not allowed",
 			}
 		}
-		if decision.Scope == policy.ApprovalAlways {
-			if decision.ExpiresAt.IsZero() || !decision.ExpiresAt.After(g.now()) {
-				decision.ExpiresAt = g.now().Add(24 * time.Hour)
-			}
-		} else {
-			if decision.ExpiresAt.IsZero() {
-				decision.ExpiresAt = expiresAt
-			}
-			if !decision.ExpiresAt.After(g.now()) || decision.ExpiresAt.After(expiresAt) {
+		if decision.ExpiresAt.IsZero() {
+			decision.ExpiresAt = expiresAt
+		}
+		if !decision.ExpiresAt.IsZero() {
+			if !decision.ExpiresAt.After(g.now()) ||
+				(!expiresAt.IsZero() && decision.ExpiresAt.After(expiresAt)) {
 				return ApprovalDecision{}, &policy.DecisionError{
 					Code: "approval_expired", Reason: "approval expiry is invalid",
 				}
@@ -1076,8 +1085,7 @@ func (g *Guard) observeApproval(
 }
 
 func (g *Guard) RestoreApproval(request ApprovalRequest) error {
-	if request.RequestID == "" || request.CallID == "" ||
-		request.ExpiresAt.IsZero() {
+	if request.RequestID == "" || request.CallID == "" {
 		return errors.New("restored approval request is incomplete")
 	}
 	g.mu.Lock()
@@ -1099,9 +1107,6 @@ func (g *Guard) cacheApproval(
 			}
 		}
 		decision.Scope = policy.ApprovalSession
-		if decision.ExpiresAt.IsZero() || !decision.ExpiresAt.After(g.now()) {
-			decision.ExpiresAt = g.now().Add(24 * time.Hour)
-		}
 	}
 	g.grantNetworkHosts(invocation.Resources)
 	request, err := policy.NewApprovalRequestForScope(

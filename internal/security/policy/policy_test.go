@@ -341,6 +341,31 @@ func TestApprovalIsBoundToCallArgumentsResourcesScopeAndExpiry(t *testing.T) {
 	}
 }
 
+func TestSessionApprovalWithoutExpiryLivesWithPolicyRuntime(t *testing.T) {
+	now := time.Unix(2000, 0)
+	call := invocation(
+		"exec_command",
+		"call-session",
+		`{"cwd":".","command":"go test ./..."}`,
+	)
+	request, err := NewApprovalRequestForScope(
+		call,
+		ApprovalSession,
+		time.Time{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache := NewApprovalCache()
+	if err := cache.Add(request, ApprovalSession); err != nil {
+		t.Fatal(err)
+	}
+	if !cache.MatchInvocation(call, now) ||
+		!cache.MatchInvocation(call, now.Add(365*24*time.Hour)) {
+		t.Fatal("session approval unexpectedly expired inside its policy runtime")
+	}
+}
+
 func TestSuggestLowRiskEditDoesNotRequireAsyncHost(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionSuggest)
 	call := invocation("file_edit", "call-approval", `{"path":"a"}`)

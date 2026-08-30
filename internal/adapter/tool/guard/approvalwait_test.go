@@ -3,6 +3,7 @@ package guard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -132,6 +133,52 @@ func TestApprovalWaitIsReportedWhenNobodyAnswers(t *testing.T) {
 	}
 	if waits[0].Waited <= 0 {
 		t.Fatalf("expired wait = %s, want the time it spent waiting", waits[0].Waited)
+	}
+}
+
+func TestApprovalWaitWithoutConfiguredTimeoutFollowsContext(t *testing.T) {
+	observer := &waitObserver{}
+	executor := testExecutor{descriptor: writeDescriptor()}
+	registry := newTestRegistry(t, nil, &executor)
+	requests := make(chan ApprovalRequest, 1)
+	guard, err := New(Options{
+		Registry: registry,
+		Policy: policy.DefaultRuntime(
+			policy.ModeAct,
+			policy.PermissionSuggest,
+		),
+		Workspace: t.TempDir(),
+		Approvals: func(_ context.Context, request ApprovalRequest) error {
+			requests <- request
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	guard.SetApprovalWaitObserver(observer.observe)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, executeErr := guard.Execute(
+			ctx,
+			"call-no-timeout",
+			"write",
+			json.RawMessage(`{"path":"a","value":"x"}`),
+		)
+		done <- executeErr
+	}()
+	request := <-requests
+	if !request.ExpiresAt.IsZero() {
+		t.Fatalf("default approval expiry = %s, want none", request.ExpiresAt)
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("approval cancellation error = %v", err)
+	}
+	waits := observer.snapshot()
+	if len(waits) != 1 || waits[0].Outcome != ApprovalWaitCanceled {
+		t.Fatalf("waits = %+v, want one canceled wait", waits)
 	}
 }
 
