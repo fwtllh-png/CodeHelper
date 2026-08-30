@@ -37,6 +37,11 @@ func (c Checker) semantic(
 			"semantic query requires a relative path and 1-based line/character",
 		)
 	}
+	resolved, err := c.forPaths([]string{query.Path})
+	if err != nil {
+		return symbols.SemanticResult{}, err
+	}
+	c = resolved
 	client, err := c.start(ctx)
 	if err != nil {
 		return symbols.SemanticResult{}, err

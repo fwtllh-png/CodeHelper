@@ -30,6 +30,18 @@ const (
 	Commit         MutationKind = "commit"
 	ApplyPatch     MutationKind = "apply_patch"
 	SwitchBranch   MutationKind = "switch_branch"
+	CreateBranch   MutationKind = "create_branch"
+	Fetch          MutationKind = "fetch"
+	Pull           MutationKind = "pull"
+	Push           MutationKind = "push"
+	Merge          MutationKind = "merge"
+	Rebase         MutationKind = "rebase"
+	CherryPick     MutationKind = "cherry_pick"
+	Restore        MutationKind = "restore"
+	StashPush      MutationKind = "stash_push"
+	StashPop       MutationKind = "stash_pop"
+	Tag            MutationKind = "tag"
+	Conflict       MutationKind = "conflict"
 )
 
 type RepositoryState struct {
@@ -37,6 +49,7 @@ type RepositoryState struct {
 	HEAD              string `json:"head"`
 	Ref               string `json:"ref"`
 	IndexDigest       string `json:"index_digest"`
+	ConfigDigest      string `json:"config_digest"`
 	WorktreesDigest   string `json:"worktrees_digest"`
 }
 
@@ -100,7 +113,7 @@ func (b *Broker) Read(
 	if b == nil {
 		return "", errors.New("VCS Broker is required")
 	}
-	return runGit(ctx, dir, arguments...)
+	return runGit(trustedReadContext{Context: ctx}, dir, arguments...)
 }
 
 func (b *Broker) SwitchBranch(
@@ -128,7 +141,20 @@ func (b *Broker) Mutate(
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	before, err := b.snapshot(ctx, mutation.Dir)
+	readCtx := trustedReadContext{Context: ctx}
+	if remote, push := mutationRemote(mutation); remote != "" {
+		arguments := []string{"remote", "get-url"}
+		if push {
+			arguments = append(arguments, "--push")
+		}
+		arguments = append(arguments, remote)
+		if _, err := runGit(readCtx, mutation.Dir, arguments...); err != nil {
+			return processbroker.Result{}, fmt.Errorf(
+				"resolve configured Git remote %q: %w", remote, err,
+			)
+		}
+	}
+	before, err := b.snapshot(readCtx, mutation.Dir)
 	if err != nil {
 		return processbroker.Result{}, err
 	}
@@ -148,6 +174,20 @@ func (b *Broker) Mutate(
 	}
 	executable := process.GitExecutable()
 	arguments := process.ManagedGitArguments(mutation.Args)
+	effectKind := policy.EffectProcessMutating
+	reversibility := authority.ReversibilityBounded
+	risk := policy.RiskHigh
+	switch mutation.Kind {
+	case Fetch:
+		effectKind = policy.EffectNetworkRead
+		reversibility = authority.ReversibilityReversible
+		risk = policy.RiskMedium
+	case Pull:
+		effectKind = policy.EffectNetworkMutating
+	case Push:
+		effectKind = policy.EffectExternalMutation
+		reversibility = authority.ReversibilityIrreversible
+	}
 	operation, err := authority.BuildManagedProcessOperation(
 		authority.ManagedProcessInput{
 			ID: fmt.Sprintf("vcs-%d", sequence), Tool: "vcs_broker",
@@ -155,9 +195,9 @@ func (b *Broker) Mutate(
 			Subject: subject, Executable: executable,
 			Args: arguments, WorkingDirectory: mutation.Dir,
 			Effect: authority.EffectContract{
-				Kind:                 policy.EffectProcessMutating,
-				Reversibility:        authority.ReversibilityBounded,
-				Risk:                 policy.RiskHigh,
+				Kind:                 effectKind,
+				Reversibility:        reversibility,
+				Risk:                 risk,
 				WorkspaceTransaction: authority.WorkspaceTransactionNone,
 			},
 			Required: authority.RequiredControls{},
@@ -205,7 +245,7 @@ func (b *Broker) Mutate(
 			return processbroker.Result{}, err
 		}
 	}
-	current, err := b.snapshot(ctx, mutation.Dir)
+	current, err := b.snapshot(readCtx, mutation.Dir)
 	if err != nil {
 		return processbroker.Result{}, err
 	}
@@ -239,6 +279,13 @@ func (b *Broker) Mutate(
 	}
 	return result, err
 }
+
+// trustedReadContext keeps cancellation and deadlines while preventing a
+// caller's tool authority from constraining the broker's fixed read-only
+// preflight commands. Mutations still execute under a broker-issued lease.
+type trustedReadContext struct{ context.Context }
+
+func (trustedReadContext) Value(any) any { return nil }
 
 func (b *Broker) snapshot(
 	ctx context.Context,
@@ -282,6 +329,18 @@ func (b *Broker) snapshot(
 	if err != nil {
 		return RepositoryState{}, err
 	}
+	configPath, err := runGit(ctx, dir, "rev-parse", "--git-path", "config")
+	if err != nil {
+		return RepositoryState{}, err
+	}
+	configPath = strings.TrimSpace(configPath)
+	if !filepath.IsAbs(configPath) {
+		configPath = filepath.Join(dir, configPath)
+	}
+	configDigest, err := digestFile(configPath)
+	if err != nil {
+		return RepositoryState{}, err
+	}
 	worktrees, err := runGit(ctx, dir, "worktree", "list", "--porcelain")
 	if err != nil {
 		return RepositoryState{}, err
@@ -291,11 +350,33 @@ func (b *Broker) snapshot(
 			"%s:%d:%d", common, info.ModTime().UnixNano(), info.Size(),
 		),
 		HEAD: strings.TrimSpace(head), Ref: strings.TrimSpace(ref),
-		IndexDigest: indexDigest, WorktreesDigest: digestBytes([]byte(worktrees)),
+		IndexDigest: indexDigest, ConfigDigest: configDigest,
+		WorktreesDigest: digestBytes([]byte(worktrees)),
 	}, nil
 }
 
+func mutationRemote(mutation Mutation) (remote string, push bool) {
+	switch mutation.Kind {
+	case Fetch:
+		return mutation.Args[2], false
+	case Pull:
+		return mutation.Args[3], false
+	case Push:
+		return mutation.Args[3], true
+	default:
+		return "", false
+	}
+}
+
 func validateMutation(repository string, mutation Mutation) error {
+	repository, err := filepath.Abs(repository)
+	if err != nil {
+		return err
+	}
+	repository, err = filepath.EvalSymlinks(repository)
+	if err != nil {
+		return err
+	}
 	if mutation.Dir == "" {
 		mutation.Dir = repository
 	}
@@ -329,7 +410,8 @@ func validateMutation(repository string, mutation Mutation) error {
 	case IndexAdd:
 		if len(mutation.Args) < 3 ||
 			mutation.Args[0] != "add" || mutation.Args[1] != "-A" ||
-			mutation.Args[2] != "--" {
+			mutation.Args[2] != "--" ||
+			!validPaths(mutation.Args[3:]) {
 			return errors.New("invalid index mutation")
 		}
 	case Commit:
@@ -351,6 +433,90 @@ func validateMutation(repository string, mutation Mutation) error {
 			directory != repository {
 			return errors.New("invalid branch switch mutation")
 		}
+	case CreateBranch:
+		if len(mutation.Args) != 3 ||
+			mutation.Args[0] != "switch" ||
+			mutation.Args[1] != "-c" ||
+			!validBranch(mutation.Args[2]) ||
+			directory != repository {
+			return errors.New("invalid branch creation mutation")
+		}
+	case Fetch:
+		if len(mutation.Args) != 3 ||
+			mutation.Args[0] != "fetch" ||
+			mutation.Args[1] != "--prune" ||
+			!validRemote(mutation.Args[2]) ||
+			directory != repository {
+			return errors.New("invalid fetch mutation")
+		}
+	case Pull:
+		if len(mutation.Args) != 5 ||
+			mutation.Args[0] != "pull" ||
+			mutation.Args[1] != "--ff-only" ||
+			mutation.Args[2] != "--" ||
+			!validRemote(mutation.Args[3]) ||
+			!validBranch(mutation.Args[4]) ||
+			directory != repository {
+			return errors.New("invalid pull mutation")
+		}
+	case Push:
+		if len(mutation.Args) != 5 ||
+			mutation.Args[0] != "push" ||
+			mutation.Args[1] != "--porcelain" ||
+			mutation.Args[2] != "--" ||
+			!validRemote(mutation.Args[3]) ||
+			!validPushRefspec(mutation.Args[4]) ||
+			directory != repository {
+			return errors.New("invalid push mutation")
+		}
+	case Merge:
+		if len(mutation.Args) != 4 ||
+			mutation.Args[0] != "merge" ||
+			mutation.Args[1] != "--no-edit" ||
+			mutation.Args[2] != "--" ||
+			!validRevision(mutation.Args[3]) ||
+			directory != repository {
+			return errors.New("invalid merge mutation")
+		}
+	case Rebase:
+		if len(mutation.Args) != 3 ||
+			mutation.Args[0] != "rebase" ||
+			mutation.Args[1] != "--" ||
+			!validRevision(mutation.Args[2]) ||
+			directory != repository {
+			return errors.New("invalid rebase mutation")
+		}
+	case CherryPick:
+		if len(mutation.Args) != 3 ||
+			mutation.Args[0] != "cherry-pick" ||
+			mutation.Args[1] != "--" ||
+			!validRevision(mutation.Args[2]) ||
+			directory != repository {
+			return errors.New("invalid cherry-pick mutation")
+		}
+	case Restore:
+		if !validRestoreArguments(mutation.Args) || directory != repository {
+			return errors.New("invalid restore mutation")
+		}
+	case StashPush:
+		if !validStashPushArguments(mutation.Args) || directory != repository {
+			return errors.New("invalid stash push mutation")
+		}
+	case StashPop:
+		if len(mutation.Args) != 2 ||
+			mutation.Args[0] != "stash" ||
+			mutation.Args[1] != "pop" ||
+			directory != repository {
+			return errors.New("invalid stash pop mutation")
+		}
+	case Tag:
+		if !validTagArguments(mutation.Args) || directory != repository {
+			return errors.New("invalid tag mutation")
+		}
+	case Conflict:
+		if !validConflictArguments(mutation.Args) || directory != repository {
+			return errors.New("invalid conflict mutation")
+		}
 	default:
 		return errors.New("VCS mutation kind is not allowlisted")
 	}
@@ -364,17 +530,140 @@ func validBranch(branch string) bool {
 	branch = strings.TrimSpace(branch)
 	return branch != "" &&
 		!strings.HasPrefix(branch, "-") &&
-		!strings.ContainsAny(branch, "\x00\r\n")
+		!strings.ContainsAny(branch, "\x00\r\n~^:?*[\\")
+}
+
+func validRevision(revision string) bool {
+	revision = strings.TrimSpace(revision)
+	return revision != "" &&
+		!strings.HasPrefix(revision, "-") &&
+		!strings.ContainsAny(revision, "\x00\r\n")
+}
+
+func validRestoreArguments(arguments []string) bool {
+	offset := 1
+	if len(arguments) > 1 && arguments[1] == "--staged" {
+		offset++
+	}
+	return len(arguments) > offset+1 &&
+		arguments[0] == "restore" &&
+		arguments[offset] == "--" &&
+		validPaths(arguments[offset+1:])
+}
+
+func validStashPushArguments(arguments []string) bool {
+	if len(arguments) == 2 {
+		return arguments[0] == "stash" && arguments[1] == "push"
+	}
+	return len(arguments) == 4 &&
+		arguments[0] == "stash" &&
+		arguments[1] == "push" &&
+		arguments[2] == "-m" &&
+		validCommitMessage(arguments[3])
+}
+
+func validTagArguments(arguments []string) bool {
+	if len(arguments) == 3 {
+		return arguments[0] == "tag" &&
+			arguments[1] == "--" &&
+			validBranch(arguments[2])
+	}
+	return len(arguments) == 5 &&
+		arguments[0] == "tag" &&
+		arguments[1] == "-a" &&
+		validBranch(arguments[2]) &&
+		arguments[3] == "-m" &&
+		validCommitMessage(arguments[4])
+}
+
+func validConflictArguments(arguments []string) bool {
+	joined := strings.Join(arguments, "\x00")
+	for _, allowed := range [][]string{
+		{"merge", "--abort"},
+		{"rebase", "--abort"},
+		{"-c", "core.editor=true", "rebase", "--continue"},
+		{"cherry-pick", "--abort"},
+		{"-c", "core.editor=true", "cherry-pick", "--continue"},
+	} {
+		if joined == strings.Join(allowed, "\x00") {
+			return true
+		}
+	}
+	return false
+}
+
+func validRemote(remote string) bool {
+	remote = strings.TrimSpace(remote)
+	if remote == "" || !asciiAlphaNumeric(remote[0]) {
+		return false
+	}
+	for index := 1; index < len(remote); index++ {
+		character := remote[index]
+		if !asciiAlphaNumeric(character) &&
+			character != '.' && character != '_' && character != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func asciiAlphaNumeric(value byte) bool {
+	return value >= 'a' && value <= 'z' ||
+		value >= 'A' && value <= 'Z' ||
+		value >= '0' && value <= '9'
+}
+
+func validPushRefspec(refspec string) bool {
+	const prefix = "HEAD:refs/heads/"
+	return strings.HasPrefix(refspec, prefix) &&
+		validBranch(strings.TrimPrefix(refspec, prefix))
+}
+
+func validPaths(paths []string) bool {
+	if len(paths) == 0 {
+		return false
+	}
+	for _, path := range paths {
+		if path == "" || filepath.IsAbs(path) ||
+			strings.ContainsAny(path, "\x00\r\n") {
+			return false
+		}
+		clean := filepath.Clean(path)
+		if clean == ".." ||
+			strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			return false
+		}
+	}
+	return true
 }
 
 func validCommitArguments(arguments []string) bool {
-	expected := []string{
+	baseline := []string{
 		"-c", "user.name=CodeHelper",
 		"-c", "user.email=codehelper@localhost",
 		"commit", "--allow-empty", "--no-gpg-sign", "-m",
 		"codehelper chat baseline",
 	}
-	return strings.Join(arguments, "\x00") == strings.Join(expected, "\x00")
+	if strings.Join(arguments, "\x00") == strings.Join(baseline, "\x00") {
+		return true
+	}
+	return len(arguments) == 4 &&
+		arguments[0] == "commit" &&
+		arguments[1] == "--no-gpg-sign" &&
+		arguments[2] == "-m" &&
+		validCommitMessage(arguments[3]) ||
+		len(arguments) == 5 &&
+			arguments[0] == "commit" &&
+			arguments[1] == "--amend" &&
+			arguments[2] == "--no-gpg-sign" &&
+			arguments[3] == "-m" &&
+			validCommitMessage(arguments[4])
+}
+
+func validCommitMessage(message string) bool {
+	message = strings.TrimSpace(message)
+	return message != "" && len(message) <= 4096 &&
+		!strings.ContainsAny(message, "\x00\r")
 }
 
 func runGit(ctx context.Context, dir string, arguments ...string) (string, error) {

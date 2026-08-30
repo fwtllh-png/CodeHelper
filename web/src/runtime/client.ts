@@ -321,7 +321,7 @@ export class RuntimeClient {
           models: [],
           socketConnected: false,
           problem: undefined,
-          setupCatalog: undefined
+          setupCatalog: bootstrap.setup_catalog
         });
         return;
       }
@@ -333,7 +333,7 @@ export class RuntimeClient {
         workspaces: workspaceCatalog.workspaces,
         selectedWorkspaceID,
         problem: undefined,
-        setupCatalog: undefined
+        setupCatalog: bootstrap.setup_catalog
       });
       this.socket?.close(1000, "client reconnect");
       await this.connect();
@@ -1882,7 +1882,7 @@ export class RuntimeClient {
       historyMoreBefore: false,
       providers: [],
       models: [],
-      setupCatalog: undefined,
+      setupCatalog: bootstrap.setup_catalog ?? this.state.setupCatalog,
       profile: undefined,
       tools: [],
       checkpoints: [],

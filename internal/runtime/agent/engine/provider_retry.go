@@ -1,12 +1,14 @@
 package engine
 
 import (
+	"errors"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 const providerRetryPolicyRevision = providerwire.RetryPolicyRevision
@@ -40,6 +42,18 @@ func (e *Engine) providerRetry(
 		MaxDelay:   e.options.MaxRetryDelay,
 		Now:        e.options.Observability.Now,
 	}.Decide(err, meaningful, retries, contextChanged)
+}
+
+func exhaustedProviderRetry(err error) error {
+	fault := protocol.FaultMetadata{
+		Origin: protocol.FaultOriginProvider, Disposition: protocol.FaultRetryTurn, SideEffects: protocol.SideEffectUnchanged,
+		RecoveryAction: "retry the turn from its durable checkpoint",
+	}
+	if problem, ok := errors.AsType[*protocol.Problem](err); ok {
+		problem.Retryable, problem.Fault = true, &fault
+		return err
+	}
+	return protocol.NewFault(protocol.CodeUnavailable, "provider could not complete the model sample: "+errorText(err), true, fault, err)
 }
 
 func (e *Engine) recoverContextOverflow(

@@ -120,6 +120,7 @@ type Server struct {
 	bootProblem       *protocol.Problem
 	ready             atomic.Bool
 	draining          atomic.Bool
+	reconfiguring     atomic.Bool
 	connections       atomic.Int32
 }
 
@@ -257,7 +258,8 @@ func (s *Server) activateWorkspace(
 	s.mu.Lock()
 	workspaceID := dependencies.WorkspaceIdentity.RootID
 	s.workspaces[workspaceID] = dependencies
-	if makeDefault || s.dependencies.Runtime == nil {
+	if makeDefault || s.dependencies.Runtime == nil ||
+		s.dependencies.WorkspaceIdentity.RootID == workspaceID {
 		s.dependencies = dependencies
 	}
 	s.bootProblem = nil
@@ -283,6 +285,14 @@ func (s *Server) FailBoot(err error) {
 func (s *Server) Drain() {
 	s.draining.Store(true)
 	s.ready.Store(false)
+}
+
+func (s *Server) BeginRuntimeReconfiguration() bool {
+	return s.reconfiguring.CompareAndSwap(false, true)
+}
+
+func (s *Server) EndRuntimeReconfiguration() {
+	s.reconfiguring.Store(false)
 }
 
 func (s *Server) routes() http.Handler {
@@ -343,16 +353,18 @@ func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
 	if result.WorkspaceCatalog.Version == 0 {
 		result.WorkspaceCatalog = s.workspaceCatalog()
 	}
+	if s.setup != nil {
+		catalog := s.setup.Catalog
+		result.SetupCatalog = &catalog
+	}
 	if dependencies.WorkspaceIdentity.Version != 0 {
 		identity := dependencies.WorkspaceIdentity
 		result.Workspace = &identity
 	} else if !result.Ready && s.setup != nil {
 		identity := s.setup.WorkspaceIdentity
-		catalog := s.setup.Catalog
 		result.WorkspaceRoot = s.setup.WorkspaceRoot
 		result.Workspace = &identity
 		result.SetupRequired = true
-		result.SetupCatalog = &catalog
 	}
 	writeJSON(w, http.StatusOK, result)
 }
@@ -413,10 +425,11 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	if s.draining.Load() || (contract.RequiresRuntime && !s.ready.Load()) {
+	if s.draining.Load() || (contract.RequiresRuntime &&
+		(!s.ready.Load() || s.reconfiguring.Load())) {
 		writeProblem(w, r, http.StatusServiceUnavailable, protocol.NewProblem(
 			protocol.CodeUnavailable,
-			"Runtime is not ready",
+			"Runtime is not ready or its provider connection is restarting",
 			true,
 			nil,
 		))

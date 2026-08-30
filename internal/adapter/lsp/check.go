@@ -80,6 +80,15 @@ type rpcClient struct {
 }
 
 func (c Checker) Analyze(ctx context.Context, files []string, changes []Change) ([]Diagnostic, error) {
+	paths := append([]string(nil), files...)
+	for _, change := range changes {
+		paths = append(paths, change.Path)
+	}
+	resolved, err := c.forPaths(paths)
+	if err != nil {
+		return nil, err
+	}
+	c = resolved
 	client, err := c.start(ctx)
 	if err != nil {
 		return nil, err
@@ -206,6 +215,9 @@ func (c Checker) start(ctx context.Context) (*rpcClient, error) {
 	command, err := process.NewCommand(ctx, process.Options{
 		Path: binary, Args: c.Args, Dir: root, DirFile: directory,
 		Sandbox: backend, RequireSandbox: true,
+		WorkspaceReadOnly:   true,
+		AdditionalReadPaths: []string{filepath.Dir(binary)},
+		DenyNetwork:         true,
 	})
 	if err != nil {
 		return nil, err
@@ -501,12 +513,22 @@ func languageID(path string) string {
 		return "go"
 	case ".js":
 		return "javascript"
+	case ".jsx":
+		return "javascriptreact"
 	case ".ts":
 		return "typescript"
+	case ".tsx":
+		return "typescriptreact"
 	case ".py":
 		return "python"
 	case ".rs":
 		return "rust"
+	case ".c", ".h":
+		return "c"
+	case ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx":
+		return "cpp"
+	case ".java":
+		return "java"
 	default:
 		return "plaintext"
 	}

@@ -72,7 +72,8 @@ func newSymbolTool(
 func (t *symbolTool) Descriptor() tool.Descriptor {
 	descriptor := tool.Descriptor{
 		Name: t.kind, Description: symbolDescription(t.kind), Visibility: tool.VisibleModel,
-		Capability: tool.CapabilityRead, AccessMode: tool.AccessTree,
+		DiscoveryTerms: symbolDiscoveryTerms(t.kind),
+		Capability:     tool.CapabilityRead, AccessMode: tool.AccessTree,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 			Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true,
 		}}},
@@ -92,6 +93,19 @@ func (t *symbolTool) Descriptor() tool.Descriptor {
 		descriptor.UnavailableReason = "the repository index is unavailable: " + snapshot.Detail
 	}
 	return descriptor
+}
+
+func symbolDiscoveryTerms(kind string) []string {
+	switch kind {
+	case KindDefinition:
+		return []string{"definition", "declaration", "定义", "声明", "跳转"}
+	case KindReferences:
+		return []string{"references", "usages", "引用", "调用"}
+	case KindRelatedTests:
+		return []string{"related tests", "tests for", "关联测试", "相关测试"}
+	default:
+		return []string{"symbol", "function", "class", "符号", "函数", "类型", "类"}
+	}
 }
 
 func symbolDescription(kind string) string {

@@ -1381,7 +1381,7 @@ func (r *Runtime) loop() {
 	r.cancel()
 	r.cancelActive()
 	r.workers.Wait()
-	_ = r.hub.Close(context.Background())
+	_ = errors.Join(closeEngine(r.engine), r.hub.Close(context.Background()))
 	_ = r.content.Close(context.Background())
 	r.lifecycleMu.Lock()
 	r.closed = true

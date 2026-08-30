@@ -14,6 +14,7 @@ import (
 
 type stubExec struct {
 	name, desc string
+	terms      []string
 	deferred   bool
 }
 
@@ -24,10 +25,34 @@ func (s stubExec) Descriptor() tool.Descriptor {
 	}
 	return tool.Descriptor{
 		Name: s.name, Description: s.desc, Visibility: tool.VisibleModel,
-		Capability: tool.CapabilityRead, AccessMode: tool.AccessRead,
+		DiscoveryTerms: s.terms,
+		Capability:     tool.CapabilityRead, AccessMode: tool.AccessRead,
 		ParallelPolicy: tool.ParallelConcurrent, SandboxRequirement: tool.SandboxNone,
 		Availability: availability,
 		InputSchema:  map[string]any{"type": "object"},
+	}
+}
+
+func TestToolSearchRanksMultilingualDiscoveryTerms(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(stubExec{
+		name: "format_code", desc: "format exact source files",
+		terms: []string{"格式化代码", "代码格式"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      toolsearch.ToolName,
+		Arguments: json.RawMessage(`{"query":"请格式化代码并验证"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "format_code") {
+		t.Fatalf("multilingual search result = %s", result.Content)
 	}
 }
 

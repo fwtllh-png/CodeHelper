@@ -190,6 +190,11 @@ func (r *Service) PrepareTurnRecovery(
 		planTransition = protocol.PlanTransitionAutopilot
 		planProfileRevision = submittedPlan.ProfileRevision
 	}
+	planStale := planID != "" && recoveredProfile != nil &&
+		planProfileRevision != recoveredProfile.Revision
+	if planStale {
+		planID, planTransition, planProfileRevision = "", "", 0
+	}
 	prompt := sourcePrompt
 	displayPrompt := sourceDisplayPrompt
 	if request.Action == protocol.TurnRecoveryContinue {
@@ -227,6 +232,11 @@ func (r *Service) PrepareTurnRecovery(
 			prompt += "\n\nAdditional guidance:\n" + guidance
 			displayPrompt += "\n\nGuidance: " + guidance
 		}
+	}
+	if planStale {
+		prompt += "\n\nThe prior structured Plan was invalidated by a " +
+			"Session Profile change. Submit a fresh structured Plan before " +
+			"performing consequential actions."
 	}
 	return TurnRecoveryPreparation{
 		Prompt:         prompt,

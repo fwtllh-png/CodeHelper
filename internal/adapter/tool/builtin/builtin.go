@@ -8,11 +8,13 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
 	contenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/content"
+	devtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/dev"
 	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
 	gittool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/git"
 	handletool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
 	lsptool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/lsp"
 	qualitytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/quality"
+	repohosttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/repohost"
 	searchtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/search"
 	shelltool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/shell"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
@@ -141,21 +143,27 @@ func NewWithIndexAndRuntime(
 	); err != nil {
 		return nil, nil, err
 	}
-	for _, register := range []func(*tool.Registry, string, sandbox.Backend) error{
-		gittool.RegisterWithBackend,
-		lsptool.RegisterWithBackend,
-	} {
-		if err := register(registry, root, backend); err != nil {
-			return nil, nil, err
-		}
-	}
 	var workspaceRuntime *workspacebroker.Runtime
 	if runtime != nil {
 		workspaceRuntime = runtime.workspace
 	}
+	if err := gittool.RegisterWithBackendAndRuntime(
+		registry, root, backend, workspaceRuntime,
+	); err != nil {
+		return nil, nil, err
+	}
+	if err := lsptool.RegisterWithBackend(registry, root, backend); err != nil {
+		return nil, nil, err
+	}
 	if err := contenttool.RegisterWithBackendAndRuntime(
 		registry, root, backend, workspaceRuntime,
 	); err != nil {
+		return nil, nil, err
+	}
+	if err := devtool.Register(registry, root, backend); err != nil {
+		return nil, nil, err
+	}
+	if err := repohosttool.Register(registry, root, backend); err != nil {
 		return nil, nil, err
 	}
 	if err := shelltool.RegisterWithManagerAndBackend(

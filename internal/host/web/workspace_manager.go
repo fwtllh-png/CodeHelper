@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -39,14 +40,15 @@ type workspaceRuntimeManager struct {
 	repositories apppersistence.PersistentRepositories
 	stderr       io.Writer
 
-	selection webSetupSelection
-	reference credential.Reference
-	roots     []string
-	active    map[string]*preparedWebRuntime
-	problems  map[string]string
-	loading   map[string]chan struct{}
-	loads     sync.WaitGroup
-	closing   bool
+	selection     webSetupSelection
+	reference     credential.Reference
+	roots         []string
+	active        map[string]*preparedWebRuntime
+	problems      map[string]string
+	loading       map[string]chan struct{}
+	loads         sync.WaitGroup
+	reconfiguring bool
+	closing       bool
 }
 
 func newWorkspaceRuntimeManager(
@@ -94,6 +96,203 @@ func (m *workspaceRuntimeManager) SetRoute(
 	defer m.mu.Unlock()
 	m.selection = selection
 	m.reference = reference
+}
+
+func (m *workspaceRuntimeManager) Configured() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.active) != 0
+}
+
+func (m *workspaceRuntimeManager) Reconfigure(
+	ctx context.Context,
+	request webhost.SetupRequest,
+) error {
+	resolveRequest := request
+	if strings.TrimSpace(resolveRequest.APIKey) == "" {
+		resolveRequest.APIKey = "persisted"
+	}
+	selection, reference, err := resolveWebSetup(resolveRequest)
+	if err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	switch {
+	case m.closing:
+		m.mu.Unlock()
+		return errors.New("Web Host is shutting down")
+	case m.reconfiguring:
+		m.mu.Unlock()
+		return protocol.NewProblem(
+			protocol.CodeConflict,
+			"Provider connection is already restarting",
+			true,
+			nil,
+		)
+	case len(m.loading) != 0:
+		m.mu.Unlock()
+		return protocol.NewProblem(
+			protocol.CodeConflict,
+			"Workspace Runtime is still starting",
+			true,
+			nil,
+		)
+	case len(m.active) == 0 || m.server == nil || m.store == nil:
+		m.mu.Unlock()
+		return errors.New("Workspace Runtime is unavailable")
+	}
+	if !m.server.BeginRuntimeReconfiguration() {
+		m.mu.Unlock()
+		return protocol.NewProblem(
+			protocol.CodeConflict,
+			"Provider connection is already restarting",
+			true,
+			nil,
+		)
+	}
+	m.reconfiguring = true
+	active := maps.Clone(m.active)
+	previousSelection := m.selection
+	options := m.options
+	store := m.store
+	repositories := m.repositories
+	server := m.server
+	stderr := m.stderr
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.reconfiguring = false
+		m.mu.Unlock()
+		server.EndRuntimeReconfiguration()
+	}()
+
+	if err := idleWorkspaceRuntimes(ctx, active); err != nil {
+		return err
+	}
+	ids := make([]string, 0, len(active))
+	for id := range active {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	prepared := make(map[string]*preparedWebRuntime, len(active))
+	closePrepared := func() {
+		for _, runtime := range prepared {
+			runtime.close()
+		}
+	}
+	for index, id := range ids {
+		current := active[id]
+		root := current.dependencies.WorkspaceRoot
+		identity := current.dependencies.WorkspaceIdentity
+		options.workspace = root
+		candidate, loadErr := loadWebSetupConfig(options, selection, reference)
+		if loadErr != nil {
+			closePrepared()
+			return loadErr
+		}
+		secret := ""
+		if index == 0 {
+			secret = request.APIKey
+		}
+		replacement, prepareErr := prepareWebRuntime(
+			ctx,
+			options,
+			candidate,
+			selection,
+			root,
+			identity,
+			store,
+			repositories,
+			stderr,
+			secret,
+		)
+		if prepareErr != nil {
+			closePrepared()
+			return prepareErr
+		}
+		prepared[id] = replacement
+	}
+	if err := idleWorkspaceRuntimes(ctx, active); err != nil {
+		closePrepared()
+		return err
+	}
+	roots := make([]string, 0, len(ids))
+	for _, id := range ids {
+		roots = append(roots, active[id].dependencies.WorkspaceRoot)
+	}
+	if err := saveWebSetupSelection(m.dataDir, "", selection); err != nil {
+		closePrepared()
+		return err
+	}
+	previousProfile := active[ids[0]].application.DefaultProfile()
+	nextProfile := prepared[ids[0]].application.DefaultProfile()
+	if err := repositories.Sessions.RebindWorkspaceProfiles(
+		ctx,
+		roots,
+		nextProfile,
+	); err != nil {
+		_ = saveWebSetupSelection(m.dataDir, "", previousSelection)
+		closePrepared()
+		return err
+	}
+	replaced := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if err := server.AddWorkspace(
+			prepared[id].dependenciesWithDiagnostics(stderr),
+		); err != nil {
+			for _, replacedID := range replaced {
+				_ = server.AddWorkspace(
+					active[replacedID].dependenciesWithDiagnostics(stderr),
+				)
+			}
+			rollbackErr := repositories.Sessions.RebindWorkspaceProfiles(
+				ctx,
+				roots,
+				previousProfile,
+			)
+			rollbackErr = errors.Join(
+				rollbackErr,
+				saveWebSetupSelection(m.dataDir, "", previousSelection),
+			)
+			closePrepared()
+			return errors.Join(err, rollbackErr)
+		}
+		replaced = append(replaced, id)
+	}
+
+	m.mu.Lock()
+	m.selection = selection
+	m.reference = reference
+	m.active = prepared
+	m.mu.Unlock()
+	for _, runtime := range active {
+		runtime.close()
+	}
+	return nil
+}
+
+func idleWorkspaceRuntimes(
+	ctx context.Context,
+	runtimes map[string]*preparedWebRuntime,
+) error {
+	for _, runtime := range runtimes {
+		activity := runtime.application.Runtime.Snapshot(ctx)
+		if activity.ActiveTurns != 0 ||
+			activity.ActiveProviderCalls != 0 ||
+			activity.ActiveToolExecutions != 0 ||
+			activity.PendingApprovals != 0 ||
+			activity.PendingInputs != 0 ||
+			activity.PendingOperations != 0 {
+			return protocol.NewProblem(
+				protocol.CodeConflict,
+				"Finish active and pending work before changing Provider",
+				true,
+				nil,
+			)
+		}
+	}
+	return nil
 }
 
 func (m *workspaceRuntimeManager) RegisterInitial(
@@ -193,6 +392,15 @@ func (m *workspaceRuntimeManager) Add(
 			m.mu.Unlock()
 			return webhost.WorkspaceDescriptor{}, errors.New("Web Host is shutting down")
 		}
+		if m.reconfiguring {
+			m.mu.Unlock()
+			return webhost.WorkspaceDescriptor{}, protocol.NewProblem(
+				protocol.CodeConflict,
+				"Provider connection is restarting",
+				true,
+				nil,
+			)
+		}
 		if runtime := m.active[identity.RootID]; runtime != nil {
 			m.mu.Unlock()
 			return m.descriptor(ctx, identity, runtime), nil
@@ -285,6 +493,15 @@ func (m *workspaceRuntimeManager) Remove(
 	if m.closing {
 		m.mu.Unlock()
 		return webhost.WorkspaceCatalog{}, errors.New("Web Host is shutting down")
+	}
+	if m.reconfiguring {
+		m.mu.Unlock()
+		return webhost.WorkspaceCatalog{}, protocol.NewProblem(
+			protocol.CodeConflict,
+			"Provider connection is restarting",
+			true,
+			nil,
+		)
 	}
 	if m.loading[workspaceID] != nil {
 		m.mu.Unlock()

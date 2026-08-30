@@ -25,6 +25,7 @@ type executionFileConfig struct {
 	IdleTimeout           *string  `toml:"idle_timeout"`
 	MaxConcurrent         *int     `toml:"max_concurrent"`
 	RateLimit             *float64 `toml:"rate_limit"`
+	ProviderRetryLimit    *int     `toml:"provider_retry_limit"`
 	BudgetTokens          *uint64  `toml:"budget_tokens"`
 	TurnBudgetTokens      *uint64  `toml:"turn_budget_tokens"`
 	BudgetUSD             *float64 `toml:"budget_usd"`
@@ -362,6 +363,7 @@ func applyExecutionFile(
 	applyDurationString(input.IdleTimeout, &execution.IdleTimeout, fieldIdleTimeout, source, provenance)
 	applyInt(input.MaxConcurrent, &execution.MaxConcurrent, fieldMaxConcurrent, source, provenance)
 	applyFloat64(input.RateLimit, &execution.RateLimit, fieldRateLimit, source, provenance)
+	applyInt(input.ProviderRetryLimit, &execution.ProviderRetryLimit, fieldProviderRetryLimit, source, provenance)
 	applyUint64(input.BudgetTokens, &execution.BudgetTokens, fieldBudgetTokens, source, provenance)
 	applyUint64(input.TurnBudgetTokens, &execution.TurnBudgetTokens, fieldTurnBudgetTokens, source, provenance)
 	applyFloat64(input.BudgetUSD, &execution.BudgetUSD, fieldBudgetUSD, source, provenance)

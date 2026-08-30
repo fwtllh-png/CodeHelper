@@ -154,7 +154,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	}
 	return tool.Descriptor{
 		Name: t.kind, Description: description, Visibility: tool.VisibleModel,
-		Capability: tool.CapabilityProcess, AccessMode: tool.AccessTree,
+		DiscoveryTerms: qualityDiscoveryTerms(t.kind),
+		Capability:     tool.CapabilityProcess, AccessMode: tool.AccessTree,
 		ResourceResolver:   resolver,
 		ParallelPolicy:     tool.ParallelSerial,
 		RepeatPolicy:       tool.RepeatExecute,
@@ -163,6 +164,21 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"type": "object", "properties": properties,
 			"additionalProperties": false,
 		},
+	}
+}
+
+func qualityDiscoveryTerms(kind string) []string {
+	switch kind {
+	case "quality_test":
+		return []string{"test", "unit test", "测试", "单测"}
+	case "quality_diagnostics":
+		return []string{"diagnostics", "lint", "static analysis", "诊断", "静态检查"}
+	case "quality_review":
+		return []string{"review", "code review", "审查", "代码审查"}
+	case "quality_verify":
+		return []string{"verify", "validation", "验证", "检查"}
+	default:
+		return nil
 	}
 }
 

@@ -68,6 +68,198 @@ func TestBrokerRejectsUnallowlistedGitMutation(t *testing.T) {
 	}
 }
 
+func TestBrokerRejectsUnsafeModelGitArguments(t *testing.T) {
+	repository := gitRepository(t)
+	broker, err := New(
+		repository,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []Mutation{
+		{
+			Kind: IndexAdd, Dir: repository,
+			Args: []string{"add", "-A", "--", "../outside"},
+		},
+		{
+			Kind: Commit, Dir: repository,
+			Args: []string{"commit", "--no-gpg-sign", "-m", ""},
+		},
+		{
+			Kind: Push, Dir: repository,
+			Args: []string{"push", "--porcelain", "--", "--force", "HEAD:refs/heads/main"},
+		},
+		{
+			Kind: Push, Dir: repository,
+			Args: []string{"push", "--porcelain", "--", ".", "HEAD:refs/heads/main"},
+		},
+		{
+			Kind: Push, Dir: repository,
+			Args: []string{"push", "--porcelain", "--", "origin", "+HEAD:refs/heads/main"},
+		},
+		{
+			Kind: Pull, Dir: repository,
+			Args: []string{"pull", "--rebase", "--", "origin", "main"},
+		},
+	}
+	for _, mutation := range tests {
+		if _, err := broker.Mutate(t.Context(), mutation); err == nil {
+			t.Fatalf("unsafe mutation was accepted: %+v", mutation)
+		}
+	}
+}
+
+func TestExtendedMutationAllowlist(t *testing.T) {
+	repository := gitRepository(t)
+	valid := []Mutation{
+		{Kind: Merge, Dir: repository, Args: []string{"merge", "--no-edit", "--", "feature"}},
+		{Kind: Rebase, Dir: repository, Args: []string{"rebase", "--", "main"}},
+		{Kind: CherryPick, Dir: repository, Args: []string{"cherry-pick", "--", "HEAD~1"}},
+		{Kind: Restore, Dir: repository, Args: []string{"restore", "--", "README.md"}},
+		{Kind: Restore, Dir: repository, Args: []string{"restore", "--staged", "--", "README.md"}},
+		{Kind: StashPush, Dir: repository, Args: []string{"stash", "push", "-m", "work"}},
+		{Kind: StashPop, Dir: repository, Args: []string{"stash", "pop"}},
+		{Kind: Tag, Dir: repository, Args: []string{"tag", "--", "v1.0.0"}},
+		{Kind: Tag, Dir: repository, Args: []string{"tag", "-a", "v1.0.0", "-m", "release"}},
+		{Kind: Commit, Dir: repository, Args: []string{
+			"commit", "--amend", "--no-gpg-sign", "-m", "updated",
+		}},
+		{Kind: Conflict, Dir: repository, Args: []string{"merge", "--abort"}},
+		{Kind: Conflict, Dir: repository, Args: []string{"rebase", "--abort"}},
+		{Kind: Conflict, Dir: repository, Args: []string{
+			"-c", "core.editor=true", "rebase", "--continue",
+		}},
+		{Kind: Conflict, Dir: repository, Args: []string{"cherry-pick", "--abort"}},
+		{Kind: Conflict, Dir: repository, Args: []string{
+			"-c", "core.editor=true", "cherry-pick", "--continue",
+		}},
+	}
+	for _, mutation := range valid {
+		if err := validateMutation(repository, mutation); err != nil {
+			t.Fatalf("valid mutation rejected: %+v: %v", mutation, err)
+		}
+	}
+	invalid := []Mutation{
+		{Kind: Merge, Dir: repository, Args: []string{"merge", "--abort"}},
+		{Kind: Rebase, Dir: repository, Args: []string{"rebase", "--exec", "touch owned", "main"}},
+		{Kind: CherryPick, Dir: repository, Args: []string{"cherry-pick", "--no-commit", "HEAD"}},
+		{Kind: Restore, Dir: repository, Args: []string{"restore", "--", "../outside"}},
+		{Kind: StashPop, Dir: repository, Args: []string{"stash", "pop", "stash@{2}"}},
+		{Kind: Tag, Dir: repository, Args: []string{"tag", "-f", "v1"}},
+		{Kind: Conflict, Dir: repository, Args: []string{"reset", "--hard"}},
+	}
+	for _, mutation := range invalid {
+		if err := validateMutation(repository, mutation); err == nil {
+			t.Fatalf("unsafe mutation accepted: %+v", mutation)
+		}
+	}
+}
+
+func TestBrokerExecutesExtendedMutations(t *testing.T) {
+	repository := gitRepository(t)
+	baseBranch := strings.TrimSpace(runRepositoryGit(
+		t, repository, "symbolic-ref", "--short", "HEAD",
+	))
+	runRepositoryGit(t, repository, "switch", "-c", "feature")
+	if err := os.WriteFile(filepath.Join(repository, "feature.txt"), []byte("feature\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runRepositoryGit(t, repository, "add", "feature.txt")
+	runRepositoryGit(t, repository, "commit", "-qm", "feature")
+	featureCommit := strings.TrimSpace(runRepositoryGit(t, repository, "rev-parse", "HEAD"))
+	runRepositoryGit(t, repository, "switch", baseBranch)
+
+	broker, err := New(
+		repository,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutate := func(kind MutationKind, arguments ...string) {
+		t.Helper()
+		if _, mutationErr := broker.Mutate(t.Context(), Mutation{
+			Kind: kind, Dir: repository, Args: arguments,
+		}); mutationErr != nil {
+			t.Fatalf("%s %v: %v", kind, arguments, mutationErr)
+		}
+	}
+
+	mutate(Merge, "merge", "--no-edit", "--", "feature")
+	mutate(Tag, "tag", "--", "v1.0.0")
+	if got := strings.TrimSpace(runRepositoryGit(t, repository, "rev-parse", "v1.0.0")); got != featureCommit {
+		t.Fatalf("tag points to %q, want %q", got, featureCommit)
+	}
+
+	if err := os.WriteFile(filepath.Join(repository, "feature.txt"), []byte("stashed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mutate(StashPush, "stash", "push", "-m", "fixture")
+	if got := runRepositoryGit(t, repository, "status", "--porcelain"); strings.TrimSpace(got) != "" {
+		t.Fatalf("status after stash = %q", got)
+	}
+	mutate(StashPop, "stash", "pop")
+	mutate(Restore, "restore", "--", "feature.txt")
+
+	if err := os.WriteFile(filepath.Join(repository, "amended.txt"), []byte("amended\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runRepositoryGit(t, repository, "add", "amended.txt")
+	mutate(Commit, "commit", "--amend", "--no-gpg-sign", "-m", "amended")
+
+	runRepositoryGit(t, repository, "switch", "-c", "source")
+	if err := os.WriteFile(filepath.Join(repository, "picked.txt"), []byte("picked\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runRepositoryGit(t, repository, "add", "picked.txt")
+	runRepositoryGit(t, repository, "commit", "-qm", "picked")
+	picked := strings.TrimSpace(runRepositoryGit(t, repository, "rev-parse", "HEAD"))
+	runRepositoryGit(t, repository, "switch", baseBranch)
+	mutate(CherryPick, "cherry-pick", "--", picked)
+
+	runRepositoryGit(t, repository, "switch", "-c", "topic")
+	if err := os.WriteFile(filepath.Join(repository, "topic.txt"), []byte("topic\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runRepositoryGit(t, repository, "add", "topic.txt")
+	runRepositoryGit(t, repository, "commit", "-qm", "topic")
+	runRepositoryGit(t, repository, "switch", baseBranch)
+	if err := os.WriteFile(filepath.Join(repository, "main.txt"), []byte("main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runRepositoryGit(t, repository, "add", "main.txt")
+	runRepositoryGit(t, repository, "commit", "-qm", "main")
+	runRepositoryGit(t, repository, "switch", "topic")
+	mutate(Rebase, "rebase", "--", baseBranch)
+	if _, err := os.Stat(filepath.Join(repository, "main.txt")); err != nil {
+		t.Fatalf("rebased branch is missing main.txt: %v", err)
+	}
+}
+
+func TestBrokerRejectsUnknownRemoteBeforeMutation(t *testing.T) {
+	repository := gitRepository(t)
+	broker, err := New(
+		repository,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = broker.Mutate(t.Context(), Mutation{
+		Kind: Push, Dir: repository,
+		Args: []string{
+			"push", "--porcelain", "--", "missing", "HEAD:refs/heads/main",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "resolve configured Git remote") {
+		t.Fatalf("unknown remote error = %v", err)
+	}
+}
+
 func TestBrokerSwitchesAllowlistedLocalBranch(t *testing.T) {
 	repository := gitRepository(t)
 	command := exec.Command("git", "branch", "feature")
@@ -163,6 +355,32 @@ func TestBrokerRejectsIndexDriftBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestBrokerRejectsConfigDriftBeforeMutation(t *testing.T) {
+	repository := gitRepository(t)
+	broker, err := New(
+		repository,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker.beforeRevalidate = func() error {
+		command := exec.Command("git", "config", "fixture.changed", "true")
+		command.Dir = repository
+		command.Env = append(
+			os.Environ(), "GIT_CONFIG_GLOBAL=", "GIT_CONFIG_SYSTEM=",
+		)
+		return command.Run()
+	}
+	if _, err := broker.Mutate(t.Context(), Mutation{
+		Kind: WorktreePrune, Dir: repository,
+		Args: []string{"worktree", "prune"},
+	}); err == nil || !strings.Contains(err.Error(), "repository changed") {
+		t.Fatalf("config drift error = %v", err)
+	}
+}
+
 func TestBrokerBindsMutationToTargetWorktreeIndex(t *testing.T) {
 	repository := gitRepository(t)
 	broker, err := New(
@@ -236,4 +454,18 @@ func gitRepository(t *testing.T) string {
 		}
 	}
 	return root
+}
+
+func runRepositoryGit(t *testing.T, root string, arguments ...string) string {
+	t.Helper()
+	command := exec.Command("git", arguments...)
+	command.Dir = root
+	command.Env = append(
+		os.Environ(), "GIT_CONFIG_GLOBAL=", "GIT_CONFIG_SYSTEM=",
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(arguments, " "), err, output)
+	}
+	return string(output)
 }

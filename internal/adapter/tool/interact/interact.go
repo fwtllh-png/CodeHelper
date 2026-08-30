@@ -132,7 +132,8 @@ func (e *executor) Descriptor() tool.Descriptor {
 			Description: "Request required user input and block the current Turn until the host replies. " +
 				"Resolve discoverable facts first, include options for finite choices, and never ask " +
 				"for required input in ordinary final text.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+			DiscoveryTerms: []string{"ask user", "clarify", "询问用户", "澄清"},
+			Visibility:     tool.VisibleModel, Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -162,7 +163,8 @@ func (e *executor) Descriptor() tool.Descriptor {
 		}
 		return tool.Descriptor{
 			Name: e.name, Description: description,
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
+			DiscoveryTerms: []string{"plan", "task plan", "计划", "任务计划"},
+			Visibility:     tool.VisibleModel, Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -215,7 +217,8 @@ func (e *executor) Descriptor() tool.Descriptor {
 	case "project_map":
 		return tool.Descriptor{
 			Name: e.name, Description: "Summarize workspace structure as a bounded directory map.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+			DiscoveryTerms: []string{"project map", "repository structure", "项目结构", "仓库结构"},
+			Visibility:     tool.VisibleModel, Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessTree, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -240,7 +243,8 @@ func (e *executor) Descriptor() tool.Descriptor {
 		}
 		return tool.Descriptor{
 			Name: e.name, Description: "Analyze an image with a vision-capable model when [vision] is configured.",
-			Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+			DiscoveryTerms: []string{"analyze image", "screenshot", "图片分析", "截图"},
+			Visibility:     tool.VisibleModel, Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone,
 			Availability:       available,

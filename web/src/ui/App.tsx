@@ -294,7 +294,8 @@ export function App({client}: Props) {
     () => projectedEntries.filter((entry) => entry.kind !== "receipt"),
     [projectedEntries]
   );
-  const blockedTurnID = selected?.status === "blocked"
+  const resumableTurnID = selected?.status === "blocked" ||
+      selected?.status === "interrupted"
     ? selected.latest_turn_id
     : "";
   const transcriptEnd = Math.max(
@@ -943,8 +944,8 @@ export function App({client}: Props) {
         await client.steer(submittedTurnID, prompt);
       } else if (submittedTurnID) {
         await client.enqueue(submittedTurnID, prompt);
-      } else if (blockedTurnID) {
-        await client.recoverTurn(blockedTurnID, "continue", prompt);
+      } else if (resumableTurnID) {
+        await client.recoverTurn(resumableTurnID, "continue", prompt);
       } else {
         await client.submitPrompt(prompt);
       }
@@ -1902,7 +1903,7 @@ export function App({client}: Props) {
                         <IconButton
                           label={activeTurn
                             ? "Queue next"
-                            : blockedTurnID
+                            : resumableTurnID
                               ? "Continue"
                               : "Send"}
                           primary
@@ -1912,7 +1913,7 @@ export function App({client}: Props) {
                             submitting ||
                             attachmentBusy ||
                             attachmentFailed ||
-                            Boolean(blockedTurnID && composerAttachments.length)
+                            Boolean(resumableTurnID && composerAttachments.length)
                           }
                           icon={submitting
                             ? <LoaderCircle className="spin" size={19} />
@@ -1933,7 +1934,7 @@ export function App({client}: Props) {
                       disabled={
                         Boolean(snapshot.hydratingSessionID) ||
                         submitting ||
-                        Boolean(blockedTurnID) ||
+                        Boolean(resumableTurnID) ||
                         snapshot.contextResources.length >= maxComposerAttachments
                       }
                       onClick={() => attachmentInputRef.current?.click()}
@@ -2821,42 +2822,44 @@ function InputComposer({
     <div className="pendingComposer inputComposer">
       <strong>{String(event.data.prompt ?? "Input required")}</strong>
       {error && <span className="composerError">{error}</span>}
-      {options.length > 0 && (
-        <select
-          aria-label="Input options"
+      <div className="pendingActions inputResponse">
+        {options.length > 0 && (
+          <select
+            aria-label="Input options"
+            value={answer}
+            disabled={submitting}
+            onChange={(event) => setAnswer(event.target.value)}
+          >
+            <option value="">Select an option</option>
+            {options.map((option) => (
+              <option value={option} key={option}>{option}</option>
+            ))}
+          </select>
+        )}
+        <input
+          aria-label="Input answer"
           value={answer}
+          autoFocus
           disabled={submitting}
-          onChange={(event) => setAnswer(event.target.value)}
+          onChange={(value) => setAnswer(value.target.value)}
+        />
+        <IconButton
+          label="Stop turn"
+          danger
+          disabled={submitting || stopping}
+          icon={stopping
+            ? <LoaderCircle className="spin" size={17} />
+            : <CircleStop size={17} />}
+          onClick={onStop}
+        />
+        <button
+          className="primaryText"
+          disabled={!answer.trim() || submitting}
+          onClick={() => void submit()}
         >
-          <option value="">Select an option</option>
-          {options.map((option) => (
-            <option value={option} key={option}>{option}</option>
-          ))}
-        </select>
-      )}
-      <input
-        aria-label="Input answer"
-        value={answer}
-        autoFocus
-        disabled={submitting}
-        onChange={(value) => setAnswer(value.target.value)}
-      />
-      <IconButton
-        label="Stop turn"
-        danger
-        disabled={submitting || stopping}
-        icon={stopping
-          ? <LoaderCircle className="spin" size={17} />
-          : <CircleStop size={17} />}
-        onClick={onStop}
-      />
-      <button
-        className="primaryText"
-        disabled={!answer.trim() || submitting}
-        onClick={() => void submit()}
-      >
-        Submit
-      </button>
+          Submit
+        </button>
+      </div>
     </div>
   );
 }

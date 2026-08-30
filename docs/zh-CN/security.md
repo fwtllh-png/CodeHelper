@@ -97,9 +97,11 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   Repository Common Git Directory 中必要的 Object、Ref 与配置路径；这不会授予
   Parent Worktree 或 Git Metadata 写权限。
 - Git Worktree Registration、Index 和 Ref 不属于普通 Workspace 文件。Child
-  Worktree Add/Remove/Prune 与 Chat Baseline `add`/`commit` 只能由 VCS Broker
+  Worktree Add/Remove/Prune、Chat Baseline，以及模型发起的 `add`、`commit`、
+  `switch`、`fetch`、fast-forward `pull` 和非 force `push` 只能由 VCS Broker
   执行。每次白名单 Mutation 绑定 Common Git Directory Identity、目标 Worktree
   HEAD/Ref、Index Digest 和 Worktree Registration Digest；执行接管前发生漂移即拒绝。
+  远端写入使用不可逆高风险 Effect，并要求单次审批。
 - 使用 `apply --dry-run` 检查生成计划。
 - 重要仓库必须纳入版本控制并维护备份。
 
@@ -154,6 +156,19 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - `quality_test`、`quality_diagnostics`、`quality_review` 和 `quality_verify`
   使用 POSIX `set -e` 的 Fail-fast 语义，不能由尾部日志命令覆盖前序检查的非零
   退出码。需要有意接受失败时必须在 Command 中显式表达。
+- Language Server 按文件类型选择实际安装的 Server，进程在 Workspace Read-only、
+  Network Denied 的 Strong Sandbox 中运行。format、code action 和 rename 只返回
+  edits，不直接取得文件写权限。
+- `format_code` 的写权限限定到请求中的精确文件，并使用 before-image Transaction；
+  `debug_run` 只接受经过校验的 Symbol 或 `file:line` 断点，不接受任意 LLDB Command；
+  `dependency_resolve` 禁用安装脚本并保持 Workspace Read-only。
+- `web_run` 使用独立临时 Chromium Profile，不复用用户浏览器 Profile。浏览器交互和
+  通用 `http_request` 都按不可逆 External Mutation 要求单次审批；Loopback 导航必须
+  显式声明。`http_request` 拒绝 Authorization、Cookie 和 API Key Header，并从返回
+  Metadata 中删除 Set-Cookie 与认证挑战 Header。
+- Git merge、rebase、cherry-pick、restore、stash、tag 和 amend 均通过 VCS Broker
+  的固定 argv 白名单执行；不提供任意 Git 参数、force push 或隐式远端。可能改写历史、
+  产生冲突或丢弃内容的操作要求单次审批。
 - `quality_process_smoke` 仅在持久化 Workspace State 可提供 Artifact Staging 和
   Process Broker 时开放。原始 Workspace 或 Sandbox Home 路径只作为 Snapshot 输入，
   实际进程只能从 Broker-owned Snapshot 启动；Guard 强制 `ApprovalOnce`，且不提供

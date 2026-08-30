@@ -492,7 +492,13 @@ func sandboxEnvironment(
 		}
 		result = append(result, entry)
 	}
-	result = append(result, "HOME="+policy.PrivateTemp, "TMPDIR="+policy.PrivateTemp)
+	result = append(
+		result,
+		"HOME="+policy.PrivateTemp,
+		"TMPDIR="+policy.PrivateTemp,
+		"TMP="+policy.PrivateTemp,
+		"TEMP="+policy.PrivateTemp,
+	)
 	// Keep Go toolchain caches inside the writable private temp. GOTMPDIR covers
 	// compile work dirs separately from GOCACHE.
 	result = append(result,

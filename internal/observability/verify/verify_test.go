@@ -17,13 +17,22 @@ func TestDetectReadsWorkspaceBuildFiles(t *testing.T) {
 		want    []string
 		exclude string
 	}{
-		"go":       {files: []string{"go.mod"}, want: []string{"go test ./..."}},
-		"pnpm":     {files: []string{"package.json", "pnpm-lock.yaml"}, want: []string{"pnpm test"}},
-		"yarn":     {files: []string{"package.json", "yarn.lock"}, want: []string{"yarn test"}},
-		"npm":      {files: []string{"package.json"}, want: []string{"npm test"}},
-		"python":   {files: []string{"pyproject.toml"}, want: []string{"python3 -m pytest"}},
-		"rust":     {files: []string{"Cargo.toml"}, want: []string{"cargo test --workspace"}},
-		"fallback": {want: []string{"make verify"}},
+		"go":     {files: []string{"go.mod"}, want: []string{"go test ./..."}},
+		"pnpm":   {files: []string{"package.json", "pnpm-lock.yaml"}, want: []string{"pnpm test"}},
+		"yarn":   {files: []string{"package.json", "yarn.lock"}, want: []string{"yarn test"}},
+		"npm":    {files: []string{"package.json"}, want: []string{"npm test"}},
+		"python": {files: []string{"pyproject.toml"}, want: []string{"python3 -m pytest"}},
+		"rust":   {files: []string{"Cargo.toml"}, want: []string{"cargo test --workspace"}},
+		"cmake": {
+			files: []string{"CMakeLists.txt"},
+			want:  []string{"cmake -S .", "cmake --build", "ctest --test-dir"},
+		},
+		"bazel workspace": {files: []string{"WORKSPACE.bazel"}, want: []string{"bazel test //..."}},
+		"bazel module":    {files: []string{"MODULE.bazel"}, want: []string{"bazel test //..."}},
+		"maven":           {files: []string{"pom.xml"}, want: []string{"mvn test"}},
+		"gradle wrapper":  {files: []string{"gradlew"}, want: []string{"./gradlew test"}},
+		"gradle system":   {files: []string{"build.gradle.kts"}, want: []string{"gradle test"}},
+		"fallback":        {want: []string{"make verify"}},
 		"mixed": {
 			files: []string{"go.mod", "Cargo.toml"},
 			want:  []string{"go test ./...", "cargo test --workspace"},

@@ -263,6 +263,116 @@ func (r *Repository) UpdateProfile(
 	return updated, nil
 }
 
+func (r *Repository) RebindWorkspaceProfiles(
+	ctx context.Context,
+	workspaceRoots []string,
+	defaults protocol.SessionProfile,
+) error {
+	if r.db == nil {
+		return errors.New("session repository database is required")
+	}
+	if err := defaults.Validate(); err != nil {
+		return fmt.Errorf("default session profile: %w", err)
+	}
+	roots := make([]string, 0, len(workspaceRoots))
+	seen := make(map[string]struct{}, len(workspaceRoots))
+	for _, root := range workspaceRoots {
+		normalized, err := NormalizeWorkspaceRoot(root)
+		if err != nil {
+			return fmt.Errorf("resolve session workspace: %w", err)
+		}
+		if _, exists := seen[normalized]; exists {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		roots = append(roots, normalized)
+	}
+	return sqlkit.WithTx(ctx, r.db, nil, func(tx *sql.Tx) error {
+		type profileMetadata struct {
+			id       string
+			metadata []byte
+		}
+		var records []profileMetadata
+		for _, root := range roots {
+			rows, err := tx.QueryContext(ctx, `
+				SELECT s.id, s.metadata_json
+				FROM sessions s
+				JOIN workspaces w ON w.id = s.workspace_id
+				WHERE w.root_path = ?`,
+				root,
+			)
+			if err != nil {
+				return fmt.Errorf("list Workspace session profiles: %w", err)
+			}
+			for rows.Next() {
+				var record profileMetadata
+				if err := rows.Scan(&record.id, &record.metadata); err != nil {
+					_ = rows.Close()
+					return err
+				}
+				records = append(records, record)
+			}
+			if err := rows.Close(); err != nil {
+				return err
+			}
+			if err := rows.Err(); err != nil {
+				return err
+			}
+		}
+		now := sqlkit.Timestamp(time.Now().UTC())
+		for _, record := range records {
+			var values map[string]json.RawMessage
+			if err := json.Unmarshal(record.metadata, &values); err != nil {
+				return fmt.Errorf("decode durable session metadata: %w", err)
+			}
+			if len(values["profile"]) == 0 {
+				continue
+			}
+			current, err := profileFromMetadata(record.metadata, defaults)
+			if err != nil {
+				return err
+			}
+			provider := defaults.Provider
+			model := defaults.Model
+			reasoning := defaults.ReasoningEffort
+			updated, err := protocol.ApplySessionProfilePatch(
+				current,
+				protocol.SessionProfilePatch{
+					Provider:        &provider,
+					Model:           &model,
+					ReasoningEffort: &reasoning,
+				},
+			)
+			if err != nil {
+				return err
+			}
+			if updated.Profile.Revision == current.Revision {
+				continue
+			}
+			next, err := metadataWithProfile(record.metadata, updated.Profile)
+			if err != nil {
+				return err
+			}
+			result, err := tx.ExecContext(ctx, `
+				UPDATE sessions
+				SET metadata_json = ?, updated_at = ?
+				WHERE id = ? AND metadata_json = ?`,
+				next,
+				now,
+				record.id,
+				record.metadata,
+			)
+			if err != nil {
+				return fmt.Errorf("rebind session profile: %w", err)
+			}
+			if err := sqlkit.RequireAffected(result, 1); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 func metadataWithProfile(
 	metadata []byte,
 	profile protocol.SessionProfile,

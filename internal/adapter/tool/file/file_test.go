@@ -524,6 +524,27 @@ func TestFilePatchRequiresStrongSandbox(t *testing.T) {
 	}
 }
 
+func TestFileWritersAdvertiseParentDirectoryCreation(t *testing.T) {
+	tools, err := NewWithBackend(t.TempDir(), fileTestBackend{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := tools.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"file_write", "file_apply"} {
+		_, descriptor, _, err := registry.Resolve(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(descriptor.Description, "parent directories") ||
+			!strings.Contains(descriptor.Description, "placeholder") {
+			t.Fatalf("%s description does not explain directory creation: %q", name, descriptor.Description)
+		}
+	}
+}
+
 func TestFileMutationToolsAreSerial(t *testing.T) {
 	tools, err := NewWithBackend(t.TempDir(), fileTestBackend{})
 	if err != nil {

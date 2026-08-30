@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 
@@ -20,22 +19,16 @@ const BrowserUnavailableReason = "browser runtime is unavailable"
 const (
 	BrowserDriverUnavailable = "unavailable"
 	BrowserDriverFakeFixture = "fake:fixture"
-	BrowserDriverFakeBinary  = "fake:binary-gated"
+	BrowserDriverRealChrome  = "real:chromium-cdp"
 )
 
 // BrowserDriverStatus reports which driver web_run would use and its fidelity.
-// No real engine is implemented yet, so every available path is a hermetic fake;
-// hosts must not present it as real browser automation.
 func BrowserDriverStatus() string {
 	if os.Getenv("CODEHELPER_BROWSER_FIXTURE") == "1" {
 		return BrowserDriverFakeFixture
 	}
-	binary := strings.TrimSpace(os.Getenv("CODEHELPER_BROWSER_BINARY"))
-	if binary == "" {
-		binary = "codehelper-browser"
-	}
-	if path, err := exec.LookPath(binary); err == nil && path != "" {
-		return BrowserDriverFakeBinary
+	if findChromeBinary() != "" {
+		return BrowserDriverRealChrome
 	}
 	return BrowserDriverUnavailable
 }
@@ -54,11 +47,19 @@ type browserTool struct {
 	runtime BrowserRuntime
 }
 
+func (b *browserTool) Close() error {
+	if b == nil || b.runtime == nil {
+		return nil
+	}
+	return b.runtime.Close()
+}
+
 type browserInput struct {
-	Action   string `json:"action"`
-	URL      string `json:"url"`
-	Selector string `json:"selector"`
-	Value    string `json:"value"`
+	Action        string `json:"action"`
+	URL           string `json:"url"`
+	Selector      string `json:"selector"`
+	Value         string `json:"value"`
+	AllowLoopback bool   `json:"allow_loopback"`
 }
 
 func registerBrowser(registry *tool.Registry, runtime BrowserRuntime) error {
@@ -84,12 +85,8 @@ func browserRuntimeFromEnv() BrowserRuntime {
 	if os.Getenv("CODEHELPER_BROWSER_FIXTURE") == "1" {
 		return NewFakeBrowser()
 	}
-	binary := strings.TrimSpace(os.Getenv("CODEHELPER_BROWSER_BINARY"))
-	if binary == "" {
-		binary = "codehelper-browser"
-	}
-	if path, err := exec.LookPath(binary); err == nil && path != "" {
-		return NewFakeBrowser() // binary presence gates availability; hermetic driver is Fake
+	if binary := findChromeBinary(); binary != "" {
+		return newChromeBrowser(binary)
 	}
 	return nil
 }
@@ -103,15 +100,21 @@ func (b *browserTool) Descriptor() tool.Descriptor {
 	}
 	return tool.Descriptor{
 		Name: "web_run",
-		Description: "Drive a minimal browser session: navigate, snapshot, click, or fill. " +
-			"Unavailable without CODEHELPER_BROWSER_FIXTURE=1 or CODEHELPER_BROWSER_BINARY.",
+		Description: "Drive an isolated headless Chromium session through CDP: navigate, " +
+			"snapshot the live DOM, click, or fill. Set CODEHELPER_BROWSER_BINARY to override detection.",
+		DiscoveryTerms: []string{
+			"browser", "navigate", "click", "fill", "浏览器", "打开网页", "点击", "填写",
+		},
 		Visibility: tool.VisibleModel, Capability: tool.CapabilityNetwork,
 		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 		SandboxRequirement: tool.SandboxNone,
 		Availability:       available, UnavailableReason: reason,
-		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
-			Kind: "url", Field: "url", Access: tool.AccessWrite,
-		}}},
+		ResourceResolver: tool.ResourceResolver{
+			Templates: []tool.ResourceTemplate{{
+				Kind: "url", Field: "url", Access: tool.AccessWrite,
+			}},
+			LoopbackField: "allow_loopback",
+		},
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -121,11 +124,26 @@ func (b *browserTool) Descriptor() tool.Descriptor {
 				"url":      map[string]any{"type": "string"},
 				"selector": map[string]any{"type": "string"},
 				"value":    map[string]any{"type": "string"},
+				"allow_loopback": map[string]any{
+					"type":        "boolean",
+					"description": "Permit navigation to an explicitly supplied localhost development URL",
+				},
 			},
 			"required":             []string{"action"},
 			"additionalProperties": false,
 		},
 	}
+}
+
+func (b *browserTool) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(b.Descriptor())
+	binding.Effect = tool.EffectContract{
+		Mode: tool.EffectFixed, Kind: tool.EffectExternalMutation,
+		Risk: tool.RiskHigh, Reversibility: tool.Irreversible,
+		WorkspaceTransaction: tool.TransactionNone,
+		Approval:             tool.ApprovalPolicyOnce,
+	}
+	return binding
 }
 
 func (b *browserTool) run(ctx context.Context, input browserInput) (tool.Result, error) {

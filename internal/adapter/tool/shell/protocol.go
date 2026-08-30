@@ -198,13 +198,23 @@ func execCommandDescriptor() tool.Descriptor {
 		Description: "Run a local POSIX sh command. Returns output when it exits " +
 			"within yield-time, otherwise a session_id for write_stdin. " +
 			"yield-time_ms defaults to 10000 and must not exceed 30000. " +
+			"The workspace is read-only by default. write_paths permits only exact " +
+			"regular files whose parent directories already exist; it does not permit " +
+			"mkdir. To create files in missing directories, use file_write or " +
+			"file_apply directly because they safely create parent directories. " +
+			"Use $TMPDIR for compiler outputs and caches; absolute /tmp remains denied. " +
 			"Use cwd instead of prepending cd. Do not pipe verification commands " +
 			"through head or tail because POSIX pipelines report the last command's " +
-			"status; use output_tokens or a quality tool to bound output. " +
+			"status; use output_tokens or a quality tool to bound output. Git metadata " +
+			"is protected: use the dedicated git_add, git_commit, git_switch, " +
+			"git_fetch, git_pull, and git_push tools for Git mutations. " +
 			"Commands that access the network must declare every destination in " +
 			"network_targets; use method CONNECT for HTTPS targets. Undeclared " +
 			"egress is denied by the local managed proxy. Set allow_loopback only " +
 			"when the command binds or connects to a local development server.",
+		DiscoveryTerms: []string{
+			"run command", "terminal", "build", "执行命令", "终端", "编译", "运行测试",
+		},
 		Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessRead,
@@ -263,9 +273,10 @@ func writeStdinDescriptor() tool.Descriptor {
 		Description: "Continue an exec_command session: poll output, write chars, " +
 			"resize its TTY, signal it, or close it. yield_time_ms defaults " +
 			"to 5000 and must not exceed 30000.",
-		Visibility: tool.VisibleModel,
-		Capability: tool.CapabilityProcess,
-		AccessMode: tool.AccessWrite,
+		DiscoveryTerms: []string{"process output", "terminal input", "进程输出", "终端输入"},
+		Visibility:     tool.VisibleModel,
+		Capability:     tool.CapabilityProcess,
+		AccessMode:     tool.AccessWrite,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 			Kind: "session", Field: "session_id", Access: tool.AccessWrite,
 		}}},

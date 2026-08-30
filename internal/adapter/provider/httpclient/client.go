@@ -20,6 +20,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerratelimit "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/ratelimit"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
@@ -44,10 +45,10 @@ type Client struct {
 	RequestsPerSecond float64
 	deadlines         DeadlineConfig
 
-	mu          sync.Mutex
-	active      int
-	nextRequest time.Time
-	health      Health
+	mu     sync.Mutex
+	active int
+	limits providerratelimit.Controller
+	health Health
 }
 type Health struct {
 	Healthy             bool      `json:"healthy"`
@@ -137,8 +138,7 @@ func (c *Client) Execute(
 		request,
 		call,
 		adapter,
-		transportRequestID,
-		requestCancel,
+		transportRequestID, requestCancel, providerratelimit.Key(request.Route),
 	)
 	if transferred {
 		release = false
@@ -149,6 +149,13 @@ func (c *Client) begin(
 	ctx context.Context,
 	route model.ReadyRoute,
 ) (context.Context, context.CancelFunc, string, error) {
+	if err := c.limits.Wait(
+		ctx,
+		providerratelimit.Key(route),
+		c.RequestsPerSecond,
+	); err != nil {
+		return nil, nil, "", err
+	}
 	if err := c.acquire(ctx); err != nil {
 		return nil, nil, "", err
 	}
@@ -157,9 +164,6 @@ func (c *Client) begin(
 		cancel()
 		c.release()
 		return nil, nil, "", err
-	}
-	if err := c.rateLimit(requestContext); err != nil {
-		return fail(err)
 	}
 	resolver := c.Credentials
 	if resolver == nil {
@@ -206,22 +210,6 @@ func (c *Client) release() {
 	c.health.Active = c.active
 	c.health.UpdatedAt = time.Now()
 	c.mu.Unlock()
-}
-func (c *Client) rateLimit(ctx context.Context) error {
-	c.mu.Lock()
-	rate := c.RequestsPerSecond
-	if rate <= 0 {
-		c.mu.Unlock()
-		return nil
-	}
-	now := time.Now()
-	waitFor := c.nextRequest.Sub(now)
-	if waitFor < 0 {
-		waitFor = 0
-	}
-	c.nextRequest = now.Add(waitFor + time.Duration(float64(time.Second)/rate))
-	c.mu.Unlock()
-	return wait(ctx, waitFor)
 }
 func (c *Client) recordSuccess() {
 	c.mu.Lock()

@@ -77,9 +77,6 @@ func (s *Server) setupApply(r *http.Request, _ Dependencies) (any, error) {
 	}
 	s.setupMu.Lock()
 	defer s.setupMu.Unlock()
-	if s.ready.Load() {
-		return SetupResult{Ready: true}, nil
-	}
 	if err := s.setup.Apply(r.Context(), request); err != nil {
 		var problem *protocol.Problem
 		if errors.As(err, &problem) {

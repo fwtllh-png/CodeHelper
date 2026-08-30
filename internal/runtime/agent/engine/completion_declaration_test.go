@@ -132,6 +132,64 @@ func TestSubmittedPlanContinuesCurrentTurn(t *testing.T) {
 	}
 }
 
+func TestSubmittedPlanRetriesPreviouslyRejectedReplayTool(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	write := &countingCatalogExecutor{descriptor: tool.Descriptor{
+		Name: "edit_fixture", Description: "edit a fixture",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityWrite,
+		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
+		RepeatPolicy:       tool.RepeatReplaySameTurn,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"value": map[string]any{"type": "string"},
+			},
+			"required":             []string{"value"},
+			"additionalProperties": false,
+		},
+	}}
+	if err := registry.Register(write); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(&completiontool.Tool{}); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("edit-before-plan", "edit_fixture", `{"value":"same"}`),
+		toolCallStream("submit-plan", "submit_plan", `{
+			"version":1,
+			"title":"Execute this plan",
+			"steps":[{"id":"implement","title":"Implement the change"}]
+		}`),
+		toolCallStream("edit-after-plan", "edit_fixture", `{"value":"same"}`),
+		toolCallStream("complete", completiontool.Name, `{
+			"status":"complete",
+			"summary":"Implemented.",
+			"pending_actions":[]
+		}`),
+	}}
+	engine := newEngine(t, runtime, registry)
+	engine.options.Security.ConfigurePlanning(policy.PlanningRequired)
+
+	result, err := engine.RunForTurn(t.Context(), "turn-plan-retry", "implement", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.State != Completed || result.Text != "Implemented." {
+		t.Fatalf("result = %+v", result)
+	}
+	if write.calls.Load() != 1 {
+		t.Fatalf("edit executions = %d, want 1 after Plan submission", write.calls.Load())
+	}
+}
+
 func TestReadOnlyAnswerCompletesFromEndTurnWithoutDeclarationRepair(t *testing.T) {
 	registry := declarationRegistry(t, false)
 	runtime := &scriptedProvider{streams: []provider.Stream{textStream("Direct answer.")}}

@@ -90,8 +90,6 @@ func (s *managedStream) Recv() (provider.StreamEvent, error) {
 			context.DeadlineExceeded,
 		)
 		s.failure(err)
-		s.cancel()
-		<-result
 		_ = s.Close()
 		return provider.StreamEvent{}, err
 	}

@@ -601,3 +601,45 @@ func (t *countingTool) Execute(context.Context, json.RawMessage) (Result, error)
 	t.calls.Add(1)
 	return Result{Content: "ok"}, nil
 }
+
+type closableTool struct {
+	closed atomic.Int32
+}
+
+func (*closableTool) Descriptor() Descriptor {
+	return Descriptor{
+		Name: "closable", Description: "closable fixture", Visibility: VisibleModel,
+		Capability: CapabilityRead, AccessMode: AccessRead,
+		ParallelPolicy: ParallelConcurrent, SandboxRequirement: SandboxNone,
+		Availability: AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type": "object", "additionalProperties": false,
+		},
+	}
+}
+
+func (*closableTool) Execute(context.Context, json.RawMessage) (Result, error) {
+	return Result{Content: "ok"}, nil
+}
+
+func (t *closableTool) Close() error {
+	t.closed.Add(1)
+	return nil
+}
+
+func TestRegistryCloseReleasesExecutorResources(t *testing.T) {
+	registry := NewRegistry(nil, nil)
+	instance := &closableTool{}
+	if err := registry.Register(instance); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if instance.closed.Load() != 1 {
+		t.Fatalf("close calls = %d, want 1", instance.closed.Load())
+	}
+}

@@ -53,6 +53,7 @@ execution.model
 execution.native_search
 execution.protocol
 execution.provider
+execution.provider_retry_limit
 execution.rate_limit
 execution.reasoning_effort
 execution.response_header_timeout

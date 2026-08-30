@@ -3,9 +3,12 @@ package httpclient
 import (
 	"io"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
 // mockStream implements provider.Stream for testing managedStream.Close safety.
@@ -58,5 +61,49 @@ func TestStreamCloseIsSafeMultipleTimes(t *testing.T) {
 
 	if count != 1 {
 		t.Errorf("BUG: release called %d times, expected exactly 1 (double-release detected)", count)
+	}
+}
+
+type closeUnblocksStream struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (s *closeUnblocksStream) Recv() (provider.StreamEvent, error) {
+	<-s.closed
+	return provider.StreamEvent{}, io.EOF
+}
+
+func (s *closeUnblocksStream) Close() error {
+	s.once.Do(func() { close(s.closed) })
+	return nil
+}
+
+func TestIdleTimeoutClosesStreamBeforeReturning(t *testing.T) {
+	source := &closeUnblocksStream{closed: make(chan struct{})}
+	var released atomic.Int32
+	stream := &managedStream{
+		stream: source, cancel: func() {},
+		release:     func() { released.Add(1) },
+		failure:     func(error) {},
+		success:     func() {},
+		idleTimeout: 10 * time.Millisecond,
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := stream.Recv()
+		result <- err
+	}()
+
+	select {
+	case err := <-result:
+		if !protocol.IsCode(err, protocol.CodeDeadlineExceeded) {
+			t.Fatalf("Recv() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Recv() remained blocked after idle timeout")
+	}
+	if released.Load() != 1 {
+		t.Fatalf("release count = %d", released.Load())
 	}
 }

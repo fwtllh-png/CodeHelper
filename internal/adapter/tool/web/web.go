@@ -58,6 +58,26 @@ type Citation struct {
 	Snippet string `json:"snippet,omitempty"`
 }
 
+func (t *Tool) TrustedBinding() tool.TrustedBinding {
+	binding := tool.TrustedBindingFromDescriptor(t.Descriptor())
+	if t.kind == "http_request" {
+		binding.Effect = tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: tool.EffectExternalMutation,
+			Risk: tool.RiskHigh, Reversibility: tool.Irreversible,
+			WorkspaceTransaction: tool.TransactionNone,
+			Approval:             tool.ApprovalPolicyOnce,
+		}
+	} else {
+		binding.Effect = tool.EffectContract{
+			Mode: tool.EffectFixed, Kind: tool.EffectNetworkRead,
+			Risk: tool.RiskMedium, Reversibility: tool.Reversible,
+			WorkspaceTransaction: tool.TransactionNone,
+			Approval:             tool.ApprovalPolicyDefault,
+		}
+	}
+	return binding
+}
+
 type searchResult struct {
 	Title   string `json:"title"`
 	URL     string `json:"url"`
@@ -65,13 +85,17 @@ type searchResult struct {
 }
 
 type input struct {
-	Query     string   `json:"query"`
-	Domains   []string `json:"domains"`
-	Recency   string   `json:"recency"`
-	URL       string   `json:"url"`
-	Limit     int      `json:"limit"`
-	MaxBytes  int64    `json:"max_bytes"`
-	TimeoutMS int      `json:"timeout_ms"`
+	Query        string            `json:"query"`
+	Domains      []string          `json:"domains"`
+	Recency      string            `json:"recency"`
+	URL          string            `json:"url"`
+	Limit        int               `json:"limit"`
+	MaxBytes     int64             `json:"max_bytes"`
+	TimeoutMS    int               `json:"timeout_ms"`
+	Method       string            `json:"method"`
+	Headers      map[string]string `json:"headers"`
+	Body         string            `json:"body"`
+	ExpectStatus []int             `json:"expect_status"`
 }
 
 func (t *Tool) bindContract() error {
@@ -106,7 +130,7 @@ func RegisterWithOptions(registry *tool.Registry, options Options) error {
 	if options.BochaURL == "" {
 		options.BochaURL = defaultBochaURL
 	}
-	for _, kind := range []string{"web_search", "web_fetch", "web_scrape"} {
+	for _, kind := range []string{"web_search", "web_fetch", "web_scrape", "http_request"} {
 		executor := &Tool{
 			kind: kind, searchBackend: options.SearchBackend, searchURL: options.SearchURL,
 			primaryURL: options.PrimaryURL, fallbackURL: options.FallbackURL,
@@ -143,23 +167,50 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"timeout_ms": map[string]any{"type": "integer"},
 		}
 		required = []string{"query"}
+	case "http_request":
+		properties = map[string]any{
+			"url": map[string]any{"type": "string", "minLength": 1},
+			"method": map[string]any{
+				"type": "string",
+				"enum": []any{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"},
+			},
+			"headers": map[string]any{
+				"type":                 "object",
+				"additionalProperties": map[string]any{"type": "string"},
+			},
+			"body": map[string]any{"type": "string"},
+			"expect_status": map[string]any{
+				"type": "array", "items": map[string]any{
+					"type": "integer", "minimum": 100, "maximum": 599,
+				},
+			},
+			"timeout_ms": map[string]any{"type": "integer", "minimum": 1},
+			"max_bytes":  map[string]any{"type": "integer", "minimum": minBodyLimit, "maximum": maxBodyLimit},
+		}
+		required = []string{"url", "method"}
 	default:
 		properties["url"] = map[string]any{"type": "string", "minLength": 1}
 	}
 	description := map[string]string{
-		"web_search": "Search the Web with selectable backends (DDG/Bing/Tavily/SearXNG/Bocha) and return normalized citations",
-		"web_fetch":  "Fetch a bounded HTTP response with redirect and timeout limits",
-		"web_scrape": "Fetch HTML and extract its title, readable text, and citation",
+		"web_search":   "Search the Web with selectable backends (DDG/Bing/Tavily/SearXNG/Bocha) and return normalized citations",
+		"web_fetch":    "Fetch a bounded HTTP response with redirect and timeout limits",
+		"web_scrape":   "Fetch HTML and extract its title, readable text, and citation",
+		"http_request": "Send a structured HTTP API request with bounded output and optional status assertion",
 	}[t.kind]
 	resolver := tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 		Kind: "url", Field: "url", Access: tool.AccessRead,
 	}}}
+	access := tool.AccessRead
 	if t.kind == "web_search" {
 		resolver = tool.ResourceResolver{Templates: t.searchResourceTemplates()}
+	} else if t.kind == "http_request" {
+		access = tool.AccessWrite
+		resolver.Templates[0].Access = tool.AccessWrite
 	}
 	return tool.Descriptor{
 		Name: t.kind, Description: description, Visibility: tool.VisibleModel,
-		Capability: tool.CapabilityNetwork, AccessMode: tool.AccessRead,
+		DiscoveryTerms: webDiscoveryTerms(t.kind),
+		Capability:     tool.CapabilityNetwork, AccessMode: access,
 		ResourceResolver:   resolver,
 		ParallelPolicy:     tool.ParallelConcurrent,
 		SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
@@ -167,6 +218,21 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"type": "object", "properties": properties, "required": required,
 			"additionalProperties": false,
 		},
+	}
+}
+
+func webDiscoveryTerms(kind string) []string {
+	switch kind {
+	case "web_search":
+		return []string{"web search", "search online", "联网搜索", "网上搜索", "搜索网页"}
+	case "web_fetch":
+		return []string{"fetch url", "open url", "读取网页", "访问链接"}
+	case "web_scrape":
+		return []string{"scrape", "extract webpage", "抓取网页", "提取网页"}
+	case "http_request":
+		return []string{"http request", "api request", "test api", "接口请求", "接口测试"}
+	default:
+		return nil
 	}
 }
 
@@ -215,7 +281,101 @@ func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
 	if t.kind == "web_search" {
 		return t.search(ctx, value)
 	}
+	if t.kind == "http_request" {
+		return t.httpRequest(ctx, value)
+	}
 	return t.fetch(ctx, value, t.kind == "web_scrape")
+}
+
+func (t *Tool) httpRequest(ctx context.Context, value input) (tool.Result, error) {
+	if !validHTTPURL(value.URL) {
+		return tool.Result{}, errors.New("HTTP URL must use http or https without credentials")
+	}
+	method := strings.ToUpper(strings.TrimSpace(value.Method))
+	switch method {
+	case http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch,
+		http.MethodDelete, http.MethodHead:
+	default:
+		return tool.Result{}, fmt.Errorf("unsupported HTTP method %q", value.Method)
+	}
+	for name := range value.Headers {
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "authorization", "proxy-authorization", "cookie", "set-cookie",
+			"x-api-key", "api-key":
+			return tool.Result{}, fmt.Errorf(
+				"sensitive header %q is not accepted; use a managed connector", name,
+			)
+		}
+	}
+	timeout := 10 * time.Second
+	if value.TimeoutMS > 0 {
+		timeout = time.Duration(value.TimeoutMS) * time.Millisecond
+	}
+	if timeout > 30*time.Second {
+		timeout = 30 * time.Second
+	}
+	requestContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(
+		requestContext, method, value.URL, strings.NewReader(value.Body),
+	)
+	if err != nil {
+		return tool.Result{}, err
+	}
+	for name, header := range value.Headers {
+		request.Header.Set(name, header)
+	}
+	client := t.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: timeout}
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return httpTransportFailure(err, value.URL), nil
+	}
+	defer response.Body.Close()
+	limit := resolveBodyLimit(value.MaxBytes)
+	body, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	if err != nil {
+		return tool.Result{}, err
+	}
+	truncated := int64(len(body)) > limit
+	if truncated {
+		body = body[:limit]
+	}
+	expected := len(value.ExpectStatus) == 0
+	for _, status := range value.ExpectStatus {
+		if response.StatusCode == status {
+			expected = true
+			break
+		}
+	}
+	payload, err := json.Marshal(map[string]any{
+		"status_code":         response.StatusCode,
+		"headers":             safeResponseHeaders(response.Header),
+		"body":                string(body),
+		"matched_expectation": expected,
+	})
+	if err != nil {
+		return tool.Result{}, err
+	}
+	return tool.Result{
+		Content: string(payload), IsError: !expected, Truncated: truncated,
+		Metadata: map[string]any{
+			"method": method, "status_code": response.StatusCode,
+			"matched_expectation": expected,
+		},
+	}, nil
+}
+
+func safeResponseHeaders(headers http.Header) http.Header {
+	result := headers.Clone()
+	for _, name := range []string{
+		"Set-Cookie", "Proxy-Authenticate", "WWW-Authenticate",
+	} {
+		result.Del(name)
+	}
+	return result
 }
 
 func (t *Tool) search(ctx context.Context, value input) (tool.Result, error) {

@@ -38,6 +38,7 @@ import type {
   ModelTestResult,
   SessionProfile,
   SessionProfileUpdateResult,
+  SetupRequest,
   WorkspaceConnection
 } from "../protocol";
 import type {RuntimeClient, RuntimeSnapshot} from "../runtime/client";
@@ -122,7 +123,6 @@ export function SettingsDialog({
   );
   const [applying, setApplying] = useState(false);
   const [applyNotice, setApplyNotice] = useState<ApplyNotice>();
-  const [confirmClose, setConfirmClose] = useState(false);
   const [notificationSettings, setNotificationSettings] = useState(
     initialBrowserNotificationSettings
   );
@@ -152,12 +152,8 @@ export function SettingsDialog({
     }
   }, [notificationPending, reportError]);
   const requestClose = useCallback(() => {
-    if (dirty) {
-      setConfirmClose(true);
-      return;
-    }
     onClose();
-  }, [dirty, onClose]);
+  }, [onClose]);
   useEffect(() => {
     closeRef.current?.focus();
   }, []);
@@ -180,7 +176,6 @@ export function SettingsDialog({
       setProfileDraft(next);
       setProfileBaseline(next);
       setApplyNotice(undefined);
-      setConfirmClose(false);
     }
   }, [
     snapshot.profile?.profile.revision,
@@ -195,7 +190,6 @@ export function SettingsDialog({
   const changeProfileDraft = (patch: Partial<ProfileDraft>) => {
     setProfileDraft((current) => current ? {...current, ...patch} : current);
     setApplyNotice(undefined);
-    setConfirmClose(false);
   };
 
   const applyProfile = async () => {
@@ -306,6 +300,7 @@ export function SettingsDialog({
                 credential={credential}
                 onCredential={setCredential}
                 client={client}
+                onConfigured={requestClose}
                 onError={reportError}
               />
             )}
@@ -337,17 +332,16 @@ export function SettingsDialog({
               />
             )}
           </div>
+          {active !== "connection" && (
           <footer className="settingsApplyBar" data-dirty={dirty || undefined}>
             <span aria-live="polite">
-              {confirmClose
-                ? "Discard unsaved changes?"
-                : dirty
+              {dirty
+                ? profileDraftProblem
                   ? profileDraftProblem
-                    ? profileDraftProblem
-                    : profileApplyBlocked
-                    ? "Unsaved changes · finish the active Turn to apply"
-                    : "Unsaved changes"
-                  : applyNotice?.text || "Settings are up to date"}
+                  : profileApplyBlocked
+                  ? "Unsaved changes · finish the active Turn to apply"
+                  : "Unsaved changes"
+                : applyNotice?.text || "Settings are up to date"}
             </span>
             {applyNotice && !dirty && (
               <small data-tone={applyNotice.tone}>
@@ -358,46 +352,34 @@ export function SettingsDialog({
               </small>
             )}
             <div>
-              {confirmClose ? (
-                <>
-                  <button type="button" onClick={() => setConfirmClose(false)}>
-                    Keep editing
-                  </button>
-                  <button type="button" onClick={onClose}>
-                    Discard and close
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    disabled={!dirty || applying}
-                    onClick={() => {
-                      setProfileDraft(profileBaseline);
-                      setApplyNotice(undefined);
-                    }}
-                  >
-                    Discard
-                  </button>
-                  <button
-                    type="button"
-                    className="settingsApply"
-                    disabled={
-                      !dirty || applying || profileApplyBlocked ||
-                      Boolean(profileDraftProblem)
-                    }
-                    title={profileApplyBlocked
-                      ? "Finish the active Turn before applying settings"
-                      : "Apply changes to this Session"}
-                    onClick={() => void applyProfile()}
-                  >
-                    <Save size={14} />
-                    {applying ? "Applying..." : "Apply changes"}
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                disabled={!dirty || applying}
+                onClick={() => {
+                  setProfileDraft(profileBaseline);
+                  setApplyNotice(undefined);
+                }}
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                className="settingsApply"
+                disabled={
+                  !dirty || applying || profileApplyBlocked ||
+                  Boolean(profileDraftProblem)
+                }
+                title={profileApplyBlocked
+                  ? "Finish the active Turn before applying settings"
+                  : "Apply changes to this Session"}
+                onClick={() => void applyProfile()}
+              >
+                <Save size={14} />
+                {applying ? "Applying..." : "Apply changes"}
+              </button>
             </div>
           </footer>
+          )}
         </div>
       </section>
     </div>
@@ -698,33 +680,182 @@ function ConnectionSettings({
   credential,
   onCredential,
   client,
+  onConfigured,
   onError
 }: {
   snapshot: RuntimeSnapshot;
   credential?: CredentialStatus;
   onCredential: (status: CredentialStatus) => void;
   client: RuntimeClient;
+  onConfigured: () => void;
   onError: (error: unknown) => void;
 }) {
   const provider = snapshot.providers.find((entry) => entry.selected);
   const [connection, setConnection] = useState<WorkspaceConnection>();
+  const [providerID, setProviderID] = useState("");
+  const [modelID, setModelID] = useState("");
+  const [baseURL, setBaseURL] = useState("");
+  const [protocol, setProtocol] = useState("openai_chat");
+  const [apiKey, setAPIKey] = useState("");
+  const [configuring, setConfiguring] = useState(false);
+  const [pending, setPending] = useState(false);
+  const catalog = snapshot.setupCatalog;
+  const providerOption = catalog?.providers.find(
+    (entry) => entry.id === providerID
+  );
+  const configuredProvider = catalog?.providers.find(
+    (entry) => entry.id === connection?.provider
+  );
+  const custom = Boolean(providerOption?.custom);
+  const requiresKey = Boolean(
+    providerOption?.requires_api_key && providerID !== connection?.provider
+  );
+  const currentModel = snapshot.models.find((entry) => entry.selected)?.id ??
+    snapshot.profile?.profile.model ?? "";
   useEffect(() => {
-    void client.connectionStatus().then(setConnection, onError);
-  }, [client, onError]);
+    void client.connectionStatus().then((value) => {
+      setConnection(value);
+      setProviderID(value.provider);
+      setModelID(currentModel);
+      setBaseURL(value.endpoint);
+      setProtocol(value.protocol || "openai_chat");
+    }, onError);
+  }, [client, currentModel, onError]);
+  const configure = async () => {
+    if (!providerOption || !modelID.trim() || pending) return;
+    const request: SetupRequest = {
+      provider: providerID,
+      model: modelID.trim(),
+      api_key: apiKey,
+      ...(custom ? {base_url: baseURL.trim(), protocol} : {})
+    };
+    setPending(true);
+    try {
+      await client.completeSetup(request);
+      setAPIKey("");
+      onConfigured();
+    } catch (error) {
+      onError(error);
+      setPending(false);
+    }
+  };
   return (
     <SettingsSectionView
       title="Connection"
-      description="Workspace Runtime provider and credential boundary."
+      description="Provider, endpoint, and credential boundary for all Workspace runtimes."
     >
       <SettingRow
         title="Provider"
-        description="Shared by every Session in this Workspace."
+        description="Changing it rebuilds idle Workspace runtimes."
       >
         <span className="settingsStatus" data-ready>
           <span />
-          {provider?.display_name || snapshot.profile?.profile.provider}
+          {configuredProvider?.display_name ||
+            provider?.display_name ||
+            snapshot.profile?.profile.provider}
         </span>
+        {catalog && (
+          <button
+            type="button"
+            className="settingsHeaderAction"
+            onClick={() => setConfiguring((value) => !value)}
+          >
+            <RefreshCw size={13} />
+            {configuring ? "Cancel change" : "Change provider"}
+          </button>
+        )}
       </SettingRow>
+      {configuring && catalog && (
+        <div className="settingsBlock">
+          <div className="settingsBlockTitle">Provider connection</div>
+          <SettingRow title="Provider" description="Runtime adapter and API family.">
+            <SelectControl
+              label="Connection provider"
+              value={providerID}
+              values={catalog.providers.map((entry) => entry.id)}
+              disabled={pending}
+              format={(value) => catalog.providers.find(
+                (entry) => entry.id === value
+              )?.display_name ?? value}
+              onChange={(value) => {
+                const next = catalog.providers.find((entry) => entry.id === value);
+                setProviderID(value);
+                setModelID("");
+                setAPIKey("");
+                setBaseURL("");
+                setProtocol(next?.protocol || "openai_chat");
+              }}
+            />
+          </SettingRow>
+          {custom && (
+            <SettingRow title="Base URL" description="HTTPS or loopback HTTP endpoint.">
+              <input
+                className="settingsSelect"
+                aria-label="Connection base URL"
+                value={baseURL}
+                placeholder="https://api.example.com/v1"
+                disabled={pending}
+                onChange={(event) => setBaseURL(event.target.value)}
+              />
+            </SettingRow>
+          )}
+          {custom && (
+            <SettingRow title="Protocol" description="OpenAI-compatible wire format.">
+              <SelectControl
+                label="Connection protocol"
+                value={protocol}
+                values={["openai_chat", "openai_responses"]}
+                disabled={pending}
+                format={(value) => value === "openai_chat"
+                  ? "Chat Completions"
+                  : "Responses"}
+                onChange={setProtocol}
+              />
+            </SettingRow>
+          )}
+          <SettingRow title="Model ID" description="Initial model for rebuilt runtimes.">
+            <input
+              className="settingsSelect"
+              aria-label="Connection model ID"
+              value={modelID}
+              placeholder="Enter the exact model ID"
+              disabled={pending}
+              onChange={(event) => setModelID(event.target.value)}
+            />
+          </SettingRow>
+          <SettingRow
+            title="API key"
+            description={requiresKey
+              ? "Required when switching to this Provider."
+              : "Leave blank to reuse the saved key for this Provider."}
+          >
+            <input
+              className="settingsSelect"
+              type="password"
+              autoComplete="off"
+              aria-label="Connection API key"
+              value={apiKey}
+              placeholder="Use saved key"
+              disabled={pending}
+              onChange={(event) => setAPIKey(event.target.value)}
+            />
+          </SettingRow>
+          <div className="settingsButtonRow">
+            <button
+              type="button"
+              disabled={
+                pending || !providerOption || !modelID.trim() ||
+                (custom && !baseURL.trim()) || (requiresKey && !apiKey.trim())
+              }
+              onClick={() => void configure()}
+            >
+              {pending
+                ? <><RefreshCw className="spin" size={13} /> Restarting...</>
+                : <><RefreshCw size={13} /> Apply and restart</>}
+            </button>
+          </div>
+        </div>
+      )}
       <SettingRow title="Endpoint" description="Fixed for this Workspace Runtime.">
         <code className="settingsReference">
           {connection ? connection.endpoint || "Runtime-managed" : "Loading..."}

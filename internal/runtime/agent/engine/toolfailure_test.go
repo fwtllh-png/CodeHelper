@@ -26,9 +26,19 @@ type missingPathTool struct{}
 type catalogFixtureTool string
 
 func (t catalogFixtureTool) Descriptor() tool.Descriptor {
+	discoveryTerms := []string(nil)
+	switch string(t) {
+	case "git_status", "git_diff", "git_log", "git_remote",
+		"git_branch", "git_add", "git_commit", "git_push":
+		discoveryTerms = []string{"提交", "推送"}
+	}
+	if strings.HasPrefix(string(t), "relevant_") {
+		discoveryTerms = []string{"跨语言工作流"}
+	}
 	return tool.Descriptor{
 		Name: string(t), Description: "catalog fixture", Visibility: tool.VisibleModel,
-		Capability: tool.CapabilityRead, AccessMode: tool.AccessRead,
+		DiscoveryTerms: discoveryTerms,
+		Capability:     tool.CapabilityRead, AccessMode: tool.AccessRead,
 		ParallelPolicy: tool.ParallelConcurrent, SandboxRequirement: tool.SandboxNone,
 		Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
@@ -104,11 +114,30 @@ func TestRecoverableToolFailureClassification(t *testing.T) {
 			err:             &policy.DecisionError{Code: "approval_denied", Reason: "user declined"},
 			wantRecoverable: true, wantContains: "user declined",
 		},
+		"plan required": {
+			err: &policy.DecisionError{
+				Code: "plan_required", Reason: "submit a structured Plan",
+			},
+			wantRecoverable: true, wantContains: "call submit_plan",
+		},
 		"edit plan stale": {
 			err: &policy.DecisionError{
 				Code: "edit_plan_stale", Reason: "workspace changed after edit preview",
 			},
 			wantRecoverable: true, wantContains: "re-read",
+		},
+		"Git control plane": {
+			err: tool.WithRecoveryHint(
+				&policy.DecisionError{
+					Code: "control_plane_protected", Reason: "security control-plane path is protected: .git",
+				},
+				tool.RecoveryHint{
+					ErrorCategory:  "control_plane_protected",
+					RequiredAction: "use_git_tool",
+					RetryOriginal:  false,
+				},
+			),
+			wantRecoverable: true, wantContains: "use_git_tool",
 		},
 		"permission denied": {
 			err: &policy.DecisionError{Code: "permission_denied", Reason: "write is denied"},
@@ -254,6 +283,18 @@ func TestRecoverableToolResultPreservesGuardExecutionReceipt(t *testing.T) {
 	}
 }
 
+func TestPlanRequiredRecoveryMetadataRequestsStructuredPlan(t *testing.T) {
+	err := &policy.DecisionError{
+		Code: "plan_required", Reason: "submit a structured Plan",
+	}
+	metadata := toolresult.FailureMetadata(err)
+	if metadata["error_category"] != "plan_required" ||
+		metadata["required_action"] != "submit_plan" ||
+		metadata["retry_original"] != false {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
 func TestEditPlanStaleRecoveryMetadataRequiresNewPlan(t *testing.T) {
 	err := &policy.DecisionError{
 		Code: "edit_plan_stale", Reason: "workspace changed after edit preview",
@@ -263,6 +304,26 @@ func TestEditPlanStaleRecoveryMetadataRequiresNewPlan(t *testing.T) {
 		metadata["required_action"] != "file_read" ||
 		metadata["retry_original"] != false ||
 		metadata["approval_required"] != true {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+}
+
+func TestControlPlaneRecoveryMetadataUsesDedicatedGitTool(t *testing.T) {
+	err := tool.WithRecoveryHint(
+		&policy.DecisionError{
+			Code:   "control_plane_protected",
+			Reason: "security control-plane path is protected: .git",
+		},
+		tool.RecoveryHint{
+			ErrorCategory:  "control_plane_protected",
+			RequiredAction: "use_git_tool",
+			RetryOriginal:  false,
+		},
+	)
+	metadata := toolresult.FailureMetadata(err)
+	if metadata["error_category"] != "control_plane_protected" ||
+		metadata["required_action"] != "use_git_tool" ||
+		metadata["retry_original"] != false {
 		t.Fatalf("metadata = %#v", metadata)
 	}
 }
@@ -609,8 +670,12 @@ func TestToolDefinitionsEnforceCountAndSchemaBudgets(t *testing.T) {
 	}
 
 	engine.options.MaxToolDefinitions = 1
-	if _, _, err := engine.toolDefinitionsFromSnapshot(snapshot, TurnRequest{}); !errors.Is(err, tool.ErrCatalogLimit) {
-		t.Fatalf("count budget error = %v, want catalog limit", err)
+	definitions, advertised, err := engine.toolDefinitionsFromSnapshot(snapshot, TurnRequest{})
+	if err != nil {
+		t.Fatalf("count budget should retain the required core tool: %v", err)
+	}
+	if len(definitions) != 1 || !advertised["result_get"] {
+		t.Fatalf("count-limited definitions = %+v, advertised = %v", definitions, advertised)
 	}
 	engine.options.MaxToolDefinitions = 128
 	engine.options.MaxToolSchemaBytes = 1
@@ -710,6 +775,79 @@ func TestToolSelectionKeepsRequiredAgentTools(t *testing.T) {
 	} {
 		if !advertised[name] {
 			t.Fatalf("required Agent tool %q omitted from %v", name, advertised)
+		}
+	}
+}
+
+func TestToolSelectionKeepsChineseGitWorkflowTools(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"git_status", "git_diff", "git_log", "git_remote", "git_branch",
+		"git_add", "git_commit", "git_push", "git_fetch", "git_pull",
+		"git_switch", "unrelated_fixture",
+	} {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, advertised, err := engine.toolDefinitionsFromSnapshot(
+		snapshot,
+		TurnRequest{Prompt: "提交 Phase 2 变更并推送到 origin/main"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"git_status", "git_diff", "git_log", "git_remote",
+		"git_branch", "git_add", "git_commit", "git_push",
+	} {
+		if !advertised[name] {
+			t.Fatalf("required Git tool %q omitted from %v", name, advertised)
+		}
+	}
+	for _, name := range []string{"git_fetch", "git_pull", "git_switch", "unrelated_fixture"} {
+		if advertised[name] {
+			t.Fatalf("unrelated Git tool %q advertised in %v", name, advertised)
+		}
+	}
+}
+
+func TestToolSelectionUsesProviderBudgetInsteadOfFixedRelevantCount(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	for index := range 7 {
+		if err := registry.Register(catalogFixtureTool(
+			fmt.Sprintf("relevant_%d", index),
+		)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	definitions, advertised, err := engine.toolDefinitionsFromSnapshot(
+		snapshot,
+		TurnRequest{Prompt: "执行跨语言工作流"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range 7 {
+		name := fmt.Sprintf("relevant_%d", index)
+		if !advertised[name] {
+			t.Fatalf("%s omitted from %d definitions: %v", name, len(definitions), advertised)
 		}
 	}
 }

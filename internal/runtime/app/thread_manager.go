@@ -38,7 +38,10 @@ type ThreadManager struct {
 	windows   map[protocol.ThreadID]*compactWindow
 	childSpec map[protocol.ThreadID]ChildSpec
 	sessions  map[protocol.ThreadID]string
+	retired   map[*agentengine.Engine]struct{}
 	createMu  sync.Mutex // serialize factory calls (shared Options seeds)
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func (m *ThreadManager) ActivitySnapshot() agentengine.ActivitySnapshot {
@@ -115,6 +118,7 @@ func NewThreadManager(factory func() (*EngineAdapter, error)) *ThreadManager {
 		windows:   make(map[protocol.ThreadID]*compactWindow),
 		childSpec: make(map[protocol.ThreadID]ChildSpec),
 		sessions:  make(map[protocol.ThreadID]string),
+		retired:   make(map[*agentengine.Engine]struct{}),
 	}
 }
 
@@ -207,6 +211,9 @@ func (m *ThreadManager) ChildSpecFor(threadID protocol.ThreadID) (ChildSpec, boo
 func (m *ThreadManager) Release(threadID protocol.ThreadID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if adapter := m.threads[threadID]; adapter != nil && adapter.Underlying() != nil {
+		m.retired[adapter.Underlying()] = struct{}{}
+	}
 	delete(m.threads, threadID)
 	delete(m.windows, threadID)
 	delete(m.childSpec, threadID)
@@ -216,6 +223,29 @@ func (m *ThreadManager) Release(threadID protocol.ThreadID) {
 			delete(m.turns, turnID)
 		}
 	}
+}
+
+func (m *ThreadManager) Close() error {
+	if m == nil {
+		return nil
+	}
+	m.closeOnce.Do(func() {
+		m.mu.Lock()
+		engines := make(map[*agentengine.Engine]struct{}, len(m.threads))
+		for _, adapter := range m.threads {
+			if adapter != nil && adapter.Underlying() != nil {
+				engines[adapter.Underlying()] = struct{}{}
+			}
+		}
+		for engine := range m.retired {
+			engines[engine] = struct{}{}
+		}
+		m.mu.Unlock()
+		for engine := range engines {
+			m.closeErr = errors.Join(m.closeErr, engine.OptionsSeed().Tools.Close())
+		}
+	})
+	return m.closeErr
 }
 
 // SetWindowRestorer installs a resume hook used when a thread engine is first created.

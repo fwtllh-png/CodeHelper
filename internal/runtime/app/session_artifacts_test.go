@@ -975,6 +975,34 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	); protocol.CodeOf(err) != protocol.CodeConflict {
 		t.Fatalf("stale profile recovery error = %v, want conflict", err)
 	}
+	refreshed, err := runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version:        protocol.WorkflowIntentVersion,
+			Action:         protocol.TurnRecoveryContinue,
+			SessionID:      "session-profile",
+			SourceTurnID:   "turn-source",
+			IdempotencyKey: "continue-after-profile-change",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Recovery.PlanID != "" ||
+		refreshed.Recovery.PlanTransition != "" ||
+		refreshed.Recovery.ProfileRevision != 0 ||
+		!strings.Contains(refreshed.Prompt, "Submit a fresh structured Plan") {
+		t.Fatalf("stale Plan was not removed from recovery: %+v", refreshed)
+	}
+	refreshedPayload := &protocol.StartTurnPayload{
+		ThreadID: "thread-profile",
+		Recovery: &refreshed.Recovery,
+	}
+	if err := runtime.PrepareStartPayload(
+		t.Context(), "/workspace", refreshedPayload,
+	); err != nil {
+		t.Fatalf("recovery without stale Plan binding = %v", err)
+	}
 	profiles.mu.Lock()
 	profiles.profile.Revision--
 	profiles.mu.Unlock()

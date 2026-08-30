@@ -8,10 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
 	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
 	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
 	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
@@ -58,6 +61,223 @@ func TestLocalGitReadOperations(t *testing.T) {
 	}
 }
 
+func TestGitReadOperationsRequestReadOnlyOfflineSandbox(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+	backend := &recordingGitBackend{}
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithBackend(registry, root, backend); err != nil {
+		t.Fatal(err)
+	}
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "git_status", Arguments: json.RawMessage(`{}`),
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("git_status result = %+v, err = %v", result, err)
+	}
+	if !backend.command.WorkspaceReadOnly || !backend.command.DenyNetwork {
+		t.Fatalf("sandbox command = %+v", backend.command)
+	}
+}
+
+func TestGitStatusUsesPlatformReadOnlySandbox(t *testing.T) {
+	root := t.TempDir()
+	runGit(t, root, "init", "-q")
+	backend, err := sandbox.NewPlatformBackend(sandbox.Options{
+		WorkspaceRoot: root,
+		PrivateTemp:   t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sandbox.CloseBackend(backend) })
+	if err := sandbox.RequireControls(backend, sandbox.DefaultProcessRequirements()); err != nil {
+		t.Skipf("strong sandbox unavailable: %v", err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithBackend(registry, root, backend); err != nil {
+		t.Fatal(err)
+	}
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "git_status", Arguments: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("git_status result = %+v", result)
+	}
+}
+
+func TestManagedGitMutationWorkflow(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+	root := t.TempDir()
+	runGit(t, root, "init", "-q", "-b", "main")
+	runGit(t, root, "config", "user.email", "fixture@example.test")
+	runGit(t, root, "config", "user.name", "Fixture")
+	if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte("first\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, root, "add", "note.txt")
+	runGit(t, root, "commit", "-qm", "seed")
+
+	broker, err := workspacebroker.New(
+		root,
+		authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithBackendAndRuntime(
+		registry, root, gitTestBackend{}, broker,
+	); err != nil {
+		t.Fatal(err)
+	}
+	executeContext := func(ctx context.Context, name, arguments string) tool.Result {
+		t.Helper()
+		result, executeErr := tooltest.Execute(ctx, registry, tool.Call{
+			Name: name, Arguments: json.RawMessage(arguments),
+		})
+		if executeErr != nil {
+			t.Fatalf("%s: %v", name, executeErr)
+		}
+		if result.IsError {
+			t.Fatalf("%s result = %+v", name, result)
+		}
+		return result
+	}
+	execute := func(name, arguments string) tool.Result {
+		return executeContext(t.Context(), name, arguments)
+	}
+	restricted, err := sandbox.WithExecutionAuthority(
+		t.Context(),
+		sandbox.ExecutionAuthority{
+			Digest: strings.Repeat("a", 64), Enforcement: "none",
+			WorkspaceRoot: root,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutate := func(name, arguments string) tool.Result {
+		return executeContext(restricted, name, arguments)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte("second\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mutate("git_add", `{"paths":["note.txt"]}`)
+	committed := mutate("git_commit", `{"message":"update note"}`)
+	if !strings.Contains(committed.Content, `"revision"`) {
+		t.Fatalf("commit result = %q", committed.Content)
+	}
+	log := execute("git_log", `{"limit":1}`)
+	if !strings.Contains(log.Content, "update note") {
+		t.Fatalf("log after commit = %q", log.Content)
+	}
+	mutate("git_switch", `{"branch":"feature","create":true}`)
+	branch := execute("git_branch", `{}`)
+	if !strings.Contains(branch.Content, "* feature") {
+		t.Fatalf("branches after switch = %q", branch.Content)
+	}
+
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	runGit(t, filepath.Dir(remote), "init", "--bare", "-q", remote)
+	runGit(t, root, "remote", "add", "origin", remote)
+	mutate("git_push", `{"remote":"origin","branch":"feature"}`)
+	command := exec.Command("git", "rev-parse", "--verify", "refs/heads/feature")
+	command.Dir = remote
+	if output, verifyErr := command.CombinedOutput(); verifyErr != nil {
+		t.Fatalf("verify pushed branch: %v\n%s", verifyErr, output)
+	}
+	mutate("git_fetch", `{"remote":"origin"}`)
+
+	publisher := t.TempDir()
+	runGit(t, publisher, "clone", "-q", "--branch", "feature", remote, ".")
+	runGit(t, publisher, "config", "user.email", "publisher@example.test")
+	runGit(t, publisher, "config", "user.name", "Publisher")
+	if err := os.WriteFile(filepath.Join(publisher, "remote.txt"), []byte("remote\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, publisher, "add", "remote.txt")
+	runGit(t, publisher, "commit", "-qm", "remote update")
+	runGit(t, publisher, "push", "-q", "origin", "feature")
+	pulled := mutate("git_pull", `{"remote":"origin","branch":"feature"}`)
+	if pulled.Outcome == nil || pulled.Outcome.Facts == nil ||
+		len(pulled.Outcome.Facts.WorkspaceChanges) != 1 {
+		t.Fatalf("pull outcome = %+v", pulled.Outcome)
+	}
+	if _, err := os.Stat(filepath.Join(root, "remote.txt")); err != nil {
+		t.Fatalf("pulled file: %v", err)
+	}
+}
+
+func TestGitMutationToolsAreUnavailableWithoutBroker(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithBackend(registry, t.TempDir(), gitTestBackend{}); err != nil {
+		t.Fatal(err)
+	}
+	descriptors := make(map[string]tool.Descriptor)
+	for _, descriptor := range registry.Descriptors(tool.VisibleModel) {
+		descriptors[descriptor.Name] = descriptor
+	}
+	for _, name := range []string{
+		"git_add", "git_commit", "git_switch", "git_fetch", "git_pull", "git_push",
+		"git_amend", "git_merge", "git_rebase", "git_cherry_pick",
+		"git_restore", "git_stash", "git_tag", "git_conflict",
+	} {
+		descriptor, ok := descriptors[name]
+		if !ok {
+			t.Fatalf("%s is missing from the model catalog", name)
+		}
+		if descriptor.Availability != tool.AvailabilityUnavailable {
+			t.Fatalf("%s availability = %q", name, descriptor.Availability)
+		}
+	}
+}
+
+func TestGitMutationBindingsDeclareConsequentialEffects(t *testing.T) {
+	tests := map[string]struct {
+		kind          tool.EffectKind
+		risk          tool.RiskLevel
+		reversibility tool.Reversibility
+		approval      tool.ApprovalMode
+	}{
+		"git_add":    {tool.EffectProcessMutating, tool.RiskMedium, tool.Bounded, tool.ApprovalPolicyDefault},
+		"git_commit": {tool.EffectProcessMutating, tool.RiskMedium, tool.Bounded, tool.ApprovalPolicyDefault},
+		"git_switch": {tool.EffectProcessMutating, tool.RiskMedium, tool.Bounded, tool.ApprovalPolicyDefault},
+		"git_fetch":  {tool.EffectNetworkRead, tool.RiskMedium, tool.Bounded, tool.ApprovalPolicyDefault},
+		"git_pull":   {tool.EffectNetworkMutating, tool.RiskHigh, tool.Bounded, tool.ApprovalPolicyOnce},
+		"git_push":   {tool.EffectExternalMutation, tool.RiskHigh, tool.Irreversible, tool.ApprovalPolicyOnce},
+		"git_amend":  {tool.EffectProcessMutating, tool.RiskHigh, tool.Bounded, tool.ApprovalPolicyOnce},
+		"git_merge":  {tool.EffectProcessMutating, tool.RiskHigh, tool.Bounded, tool.ApprovalPolicyOnce},
+		"git_rebase": {tool.EffectProcessMutating, tool.RiskHigh, tool.Bounded, tool.ApprovalPolicyOnce},
+		"git_cherry_pick": {
+			tool.EffectProcessMutating, tool.RiskHigh, tool.Bounded, tool.ApprovalPolicyOnce,
+		},
+		"git_restore":  {tool.EffectProcessMutating, tool.RiskHigh, tool.Bounded, tool.ApprovalPolicyOnce},
+		"git_stash":    {tool.EffectProcessMutating, tool.RiskHigh, tool.Bounded, tool.ApprovalPolicyOnce},
+		"git_tag":      {tool.EffectProcessMutating, tool.RiskMedium, tool.Bounded, tool.ApprovalPolicyDefault},
+		"git_conflict": {tool.EffectProcessMutating, tool.RiskHigh, tool.Bounded, tool.ApprovalPolicyOnce},
+	}
+	for name, want := range tests {
+		instance := &mutationTool{kind: name}
+		binding := instance.TrustedBinding()
+		if binding.Effect.Kind != want.kind ||
+			binding.Effect.Risk != want.risk ||
+			binding.Effect.Reversibility != want.reversibility ||
+			binding.Effect.Approval != want.approval {
+			t.Fatalf("%s binding = %+v", name, binding)
+		}
+		if err := binding.Validate(); err != nil {
+			t.Fatalf("%s binding: %v", name, err)
+		}
+	}
+}
+
 type gitTestBackend struct{}
 
 func (gitTestBackend) Capability() sandbox.Capability {
@@ -84,7 +304,22 @@ func (gitTestBackend) Capability() sandbox.Capability {
 }
 
 func (gitTestBackend) Prepare(_ context.Context, command sandbox.Command) (sandbox.Command, error) {
+	command.PreparedReadOnly = command.WorkspaceReadOnly
+	command.PreparedNetworkDenied = command.DenyNetwork
 	return command, nil
+}
+
+type recordingGitBackend struct {
+	gitTestBackend
+	command sandbox.Command
+}
+
+func (b *recordingGitBackend) Prepare(
+	ctx context.Context,
+	command sandbox.Command,
+) (sandbox.Command, error) {
+	b.command = command
+	return b.gitTestBackend.Prepare(ctx, command)
 }
 
 func runGit(t *testing.T, root string, arguments ...string) {

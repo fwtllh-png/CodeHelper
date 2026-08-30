@@ -93,7 +93,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	description := "Run a read-only, network-isolated POSIX sh command. " +
 		"The sandbox permits workspace reads and private temporary files, " +
 		"but rejects workspace writes and network access. Quote shell " +
-		"metacharacters with single quotes. Use cwd instead of prepending cd. " +
+		"metacharacters with single quotes. Use $TMPDIR for compiler outputs " +
+		"and caches; absolute /tmp remains denied. Use cwd instead of prepending cd. " +
 		"Do not pipe verification commands through head or tail because POSIX " +
 		"pipelines report the last command's status."
 	description += " Commands run under POSIX sh, not Bash. Do not use Bash-only " +
@@ -106,7 +107,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	}
 	return tool.Descriptor{
 		Name: "shell_read", Description: description, Visibility: tool.VisibleModel,
-		Capability: tool.CapabilityRead, AccessMode: tool.AccessRead,
+		DiscoveryTerms: []string{"read command", "inspect command", "只读命令", "查看命令"},
+		Capability:     tool.CapabilityRead, AccessMode: tool.AccessRead,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{
 			{Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true},
 			{Kind: "process", ID: "workspace", Access: tool.AccessRead, Tree: true},
@@ -544,6 +546,10 @@ func sandboxPathHint(text string) string {
 	}
 	if strings.Contains(lower, "not a directory") {
 		return "path denied by sandbox (often looks like 'Not a directory'); use workspace-relative paths and $TMPDIR"
+	}
+	if strings.Contains(lower, "operation not permitted") ||
+		strings.Contains(lower, "permission denied") {
+		return "sandbox denied this filesystem operation; use file_write or file_apply for workspace edits because they safely create missing parent directories"
 	}
 	return ""
 }

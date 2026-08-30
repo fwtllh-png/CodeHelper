@@ -798,9 +798,11 @@ function recoveryOptions(
   const legacy = !disposition;
   return Object.freeze({
     canRetry: event.kind === "turn.canceled" ||
+      disposition === "retry_step" ||
       disposition === "retry_turn" ||
       legacy,
     canContinue: event.kind === "turn.canceled" ||
+      disposition === "retry_step" ||
       disposition === "resume_turn" ||
       disposition === "retry_turn" ||
       disposition === "fail_turn" ||

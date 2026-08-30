@@ -17,8 +17,10 @@ func (c *Client) openResponse(
 	adapter providerwire.Adapter,
 	transportRequestID string,
 	cancel context.CancelFunc,
+	rateLimitKey string,
 ) (provider.Stream, bool, error) {
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		c.limits.Observe(rateLimitKey, c.RequestsPerSecond, response.StatusCode, response.Header, nil)
 		stream, err := adapter.OpenStream(response.Body, call)
 		if err != nil {
 			_ = response.Body.Close()
@@ -42,6 +44,7 @@ func (c *Client) openResponse(
 		transportRequestID,
 		protocol.FaultStageResponseHeaders,
 	)
+	problem = c.limits.Observe(rateLimitKey, c.RequestsPerSecond, response.StatusCode, response.Header, problem)
 	if providerdump.Enabled(response.StatusCode) {
 		if dumpPath, dumpErr := providerdump.Write(
 			request, call.Body, call.Path, response.StatusCode, errorText,

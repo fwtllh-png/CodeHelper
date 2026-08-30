@@ -3,6 +3,7 @@ package toolsearch
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -17,8 +18,7 @@ const (
 		"search_references,file_read,file_list,file_write,file_edit," +
 		"file_apply,shell_read,exec_command,write_stdin,quality_test," +
 		"quality_verify,quality_process_smoke,project_map,"
-	writeToolSet     = ",search_related_tests,quality_diagnostics,"
-	maxRelevantTools = 4
+	writeToolSet = ",search_related_tests,quality_diagnostics,"
 )
 
 type ProjectionRequest struct {
@@ -49,8 +49,8 @@ func ProjectDefinitions(
 		return nil, map[string]bool{}, nil
 	}
 	selected := make(map[string]bool)
+	scores := make(map[string]int)
 	var search *tool.CatalogEntrySnapshot
-	relevant := 0
 	for index := range entries {
 		entry := entries[index]
 		if entry.Name == ToolName {
@@ -68,10 +68,9 @@ func ProjectDefinitions(
 			selected[entry.Name] = true
 			continue
 		}
-		if relevant < maxRelevantTools &&
-			ScoreDescriptor(entry.PresentationDescriptor(), request.Prompt) > 0 {
+		if score := ScoreDescriptor(entry.PresentationDescriptor(), request.Prompt); score > 0 {
 			selected[entry.Name] = true
-			relevant++
+			scores[entry.Name] = score
 		}
 	}
 	if search == nil {
@@ -113,18 +112,37 @@ func ProjectDefinitions(
 			return nil, nil, err
 		}
 	}
-	for _, entry := range entries {
+	ordered := append([]tool.CatalogEntrySnapshot(nil), entries...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		leftRequired := requiredProjectionTool(request, ordered[i])
+		rightRequired := requiredProjectionTool(request, ordered[j])
+		if leftRequired != rightRequired {
+			return leftRequired
+		}
+		if scores[ordered[i].Name] != scores[ordered[j].Name] {
+			return scores[ordered[i].Name] > scores[ordered[j].Name]
+		}
+		return ordered[i].Name < ordered[j].Name
+	})
+	for _, entry := range ordered {
 		if !selected[entry.Name] || entry.Name == ToolName {
 			continue
 		}
-		required := coreTool(request.Intent, entry.Name) ||
-			entry.State == tool.CatalogEntryMaterialized ||
-			requiredAgentTool(request.Prompt, entry.Name)
+		required := requiredProjectionTool(request, entry)
 		if err := add(entry, required); err != nil {
 			return nil, nil, err
 		}
 	}
 	return result, advertised, nil
+}
+
+func requiredProjectionTool(
+	request ProjectionRequest,
+	entry tool.CatalogEntrySnapshot,
+) bool {
+	return coreTool(request.Intent, entry.Name) ||
+		entry.State == tool.CatalogEntryMaterialized ||
+		requiredAgentTool(request.Prompt, entry.Name)
 }
 
 func coreTool(intent protocol.TurnIntent, name string) bool {

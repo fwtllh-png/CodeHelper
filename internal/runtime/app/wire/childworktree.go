@@ -329,7 +329,7 @@ func (t *childToolset) close() {
 	if t.journal != nil {
 		_ = t.journal.Close(context.Background())
 	}
-	_ = sandbox.CloseBackend(t.backend)
+	_ = errors.Join(t.registry.Close(), sandbox.CloseBackend(t.backend))
 }
 
 // childToolsets builds and owns one toolset per isolated child root.

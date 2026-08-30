@@ -179,6 +179,40 @@ func TestRunContextStartsAndStopsWebHost(t *testing.T) {
 	if !foundSecond {
 		t.Fatalf("second Workspace is not ready: %+v", catalog)
 	}
+	reconfigureBody := strings.NewReader(
+		`{"provider":"deepseek","model":"deepseek-chat","api_key":"fixture-key"}`,
+	)
+	reconfigureRequest, err := http.NewRequest(
+		http.MethodPost,
+		strings.TrimSuffix(url, "/")+"/api/v1/setup/apply",
+		reconfigureBody,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconfigureRequest.Header.Set("Authorization", "Bearer "+token)
+	reconfigureRequest.Header.Set("Content-Type", "application/json")
+	reconfigureRequest.Header.Set("X-CodeHelper-Request-ID", "provider-change")
+	reconfigureRequest.Header.Set("Idempotency-Key", "provider-change")
+	reconfigureResponse, err := http.DefaultClient.Do(reconfigureRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reconfigureResponse.Body.Close()
+	if reconfigureResponse.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(reconfigureResponse.Body)
+		t.Fatalf(
+			"provider reconfiguration status=%d body=%s",
+			reconfigureResponse.StatusCode,
+			body,
+		)
+	}
+	reconfiguredCatalog := fetchWorkspaceCatalog(t, url, token)
+	for _, descriptor := range reconfiguredCatalog.Workspaces {
+		if !descriptor.Ready {
+			t.Fatalf("reconfigured Workspace is not ready: %+v", descriptor)
+		}
+	}
 
 	cancel()
 	select {

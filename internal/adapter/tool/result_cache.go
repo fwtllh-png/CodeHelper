@@ -134,6 +134,11 @@ func (c *ResultCache) Commit(
 		return
 	}
 	for index, fingerprint := range plan.Fingerprints {
+		if changed, _ := results[index].Metadata["plan_delta"].(bool); changed {
+			c.revision++
+			clear(c.entries)
+			return
+		}
 		if fingerprint == "" || plan.CacheSources[index] != "" ||
 			!plan.ReplaySuccessful[index] &&
 				!nonRetryableResult(results[index]) {

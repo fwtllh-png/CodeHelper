@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -24,7 +25,7 @@ type stream struct {
 	stopEvent  provider.StreamEvent
 	usage      *provider.Usage
 	stopped    bool
-	closed     bool
+	closed     atomic.Bool
 	responses  ResponsesDecoder
 }
 type StreamPolicy struct {
@@ -288,11 +289,9 @@ func (s *stream) finish(reason provider.StopReason) {
 	s.queue = append(s.queue, stop)
 }
 func (s *stream) Close() error {
-	if s.closed {
+	if !s.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	s.closed = true
-	s.stopped = true
 	return s.body.Close()
 }
 func parseChatChunk(

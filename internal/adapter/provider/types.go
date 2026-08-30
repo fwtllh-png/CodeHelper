@@ -414,7 +414,7 @@ func (e StreamEvent) Validate() error {
 
 type Stream interface {
 	Recv() (StreamEvent, error)
-	Close() error
+	Close() error // Concurrent-safe and unblocks Recv.
 }
 type TransportMetadata struct {
 	LogicalRequestID       string            `json:"logical_request_id,omitempty"`

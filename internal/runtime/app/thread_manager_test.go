@@ -90,6 +90,41 @@ func TestThreadManagerIsolatesHistory(t *testing.T) {
 	t.Fatalf("histories not isolated:\nA=%+v\nB=%+v", histA, histB)
 }
 
+func TestRuntimeCloseReleasesSharedThreadToolRegistryOnce(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	instance := &closeTrackingTool{}
+	if err := registry.Register(instance); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := newTestAgentEngine(agentengine.Options{
+		ProviderConfig: agentengine.ProviderConfig{
+			Provider: &threadEchoProvider{}, Route: runtimeTestRoute(t),
+		},
+		ToolConfig: agentengine.ToolConfig{Tools: registry},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewThreadManager(func() (*EngineAdapter, error) {
+		return AdaptEngine(engine), nil
+	})
+	if _, err := manager.forThread("thread-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.forThread("thread-b"); err != nil {
+		t.Fatal(err)
+	}
+	manager.Release("thread-a")
+	manager.Release("thread-b")
+	runtime := NewRuntime(Options{Engine: manager})
+	if err := runtime.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if instance.closed != 1 {
+		t.Fatalf("tool close calls = %d, want 1", instance.closed)
+	}
+}
+
 func TestThreadManagerBindsToolIdentityAndContextLookup(t *testing.T) {
 	seen := make(chan tool.InvocationIdentity, 1)
 	registry := tool.NewRegistry(nil, nil)
@@ -289,6 +324,32 @@ func historyContains(messages []provider.Message, needle string) bool {
 
 type identityCaptureTool struct {
 	seen chan<- tool.InvocationIdentity
+}
+
+type closeTrackingTool struct {
+	closed int
+}
+
+func (*closeTrackingTool) Descriptor() tool.Descriptor {
+	return tool.Descriptor{
+		Name: "close_tracking", Description: "track registry closure",
+		Visibility: tool.VisibleModel, Capability: tool.CapabilityRead,
+		AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+		SandboxRequirement: tool.SandboxNone,
+		Availability:       tool.AvailabilityAvailable,
+		InputSchema: map[string]any{
+			"type": "object", "additionalProperties": false,
+		},
+	}
+}
+
+func (*closeTrackingTool) Execute(context.Context, json.RawMessage) (tool.Result, error) {
+	return tool.Result{Content: "ok"}, nil
+}
+
+func (t *closeTrackingTool) Close() error {
+	t.closed++
+	return nil
 }
 
 type restoredApprovalTool struct{}

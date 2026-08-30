@@ -80,15 +80,16 @@ type RequiredControls = controlmatrix.Requirements
 // declaration. Requested never grants authority; it is retained for review and
 // diagnostics only.
 type ExternalDescriptor struct {
-	Name         string           `json:"name"`
-	Description  string           `json:"description"`
-	InputSchema  map[string]any   `json:"input_schema"`
-	Visibility   Visibility       `json:"visibility"`
-	Aliases      []Alias          `json:"aliases,omitempty"`
-	Deferred     DeferredLoading  `json:"deferred_loading"`
-	Availability Availability     `json:"availability"`
-	Unavailable  string           `json:"unavailable_reason,omitempty"`
-	Requested    RequestedEffects `json:"requested_effects"`
+	Name           string           `json:"name"`
+	Description    string           `json:"description"`
+	DiscoveryTerms []string         `json:"discovery_terms,omitempty"`
+	InputSchema    map[string]any   `json:"input_schema"`
+	Visibility     Visibility       `json:"visibility"`
+	Aliases        []Alias          `json:"aliases,omitempty"`
+	Deferred       DeferredLoading  `json:"deferred_loading"`
+	Availability   Availability     `json:"availability"`
+	Unavailable    string           `json:"unavailable_reason,omitempty"`
+	Requested      RequestedEffects `json:"requested_effects"`
 }
 
 type RequestedEffects struct {
@@ -123,12 +124,13 @@ type TrustedBindingProvider interface {
 func ExternalFromDescriptor(descriptor Descriptor) ExternalDescriptor {
 	return ExternalDescriptor{
 		Name: descriptor.Name, Description: descriptor.Description,
-		InputSchema:  cloneStringMap(descriptor.InputSchema),
-		Visibility:   descriptor.Visibility,
-		Aliases:      append([]Alias(nil), descriptor.Aliases...),
-		Deferred:     descriptor.DeferredLoading,
-		Availability: descriptor.Availability,
-		Unavailable:  descriptor.UnavailableReason,
+		DiscoveryTerms: append([]string(nil), descriptor.DiscoveryTerms...),
+		InputSchema:    cloneStringMap(descriptor.InputSchema),
+		Visibility:     descriptor.Visibility,
+		Aliases:        append([]Alias(nil), descriptor.Aliases...),
+		Deferred:       descriptor.DeferredLoading,
+		Availability:   descriptor.Availability,
+		Unavailable:    descriptor.UnavailableReason,
 		Requested: RequestedEffects{
 			Capability:         descriptor.Capability,
 			ResourceResolver:   cloneResourceResolver(descriptor.ResourceResolver),
@@ -186,6 +188,7 @@ func (b TrustedBinding) Journaled() bool {
 func (d ExternalDescriptor) Descriptor(binding TrustedBinding) Descriptor {
 	return Descriptor{
 		Name: d.Name, Description: d.Description,
+		DiscoveryTerms:     append([]string(nil), d.DiscoveryTerms...),
 		InputSchema:        cloneStringMap(d.InputSchema),
 		Visibility:         d.Visibility,
 		Capability:         binding.Capability,
@@ -336,6 +339,7 @@ func cloneResourceResolver(value ResourceResolver) ResourceResolver {
 func cloneExternalDescriptor(value ExternalDescriptor) ExternalDescriptor {
 	value.InputSchema = cloneStringMap(value.InputSchema)
 	value.Aliases = append([]Alias(nil), value.Aliases...)
+	value.DiscoveryTerms = append([]string(nil), value.DiscoveryTerms...)
 	value.Requested.ResourceResolver = cloneResourceResolver(
 		value.Requested.ResourceResolver,
 	)

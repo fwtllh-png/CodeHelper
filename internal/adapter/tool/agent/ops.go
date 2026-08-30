@@ -97,7 +97,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"timeout_ms>0 returns timed_out without error when the deadline elapses. " +
 				"A queued same-workspace child returns deferred immediately because it can start only " +
 				"after the calling turn releases the workspace.",
-			Visibility: o.visibility(), Capability: tool.CapabilityRead,
+			DiscoveryTerms: []string{"wait agent", "等待子代理", "等待代理"},
+			Visibility:     o.visibility(), Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			InputSchema: map[string]any{
@@ -116,7 +117,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 			Name: "list_agents",
 			Description: "List child agents managed by this session. " +
 				"Optionally filter by parent_id; include_closed lists closed agents.",
-			Visibility: o.visibility(), Capability: tool.CapabilityRead,
+			DiscoveryTerms: []string{"list agents", "子代理列表", "代理状态"},
+			Visibility:     o.visibility(), Capability: tool.CapabilityRead,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			InputSchema: map[string]any{
@@ -133,7 +135,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 			Name: "send_message",
 			Description: "Queue a bounded message for an open child agent without starting a new turn. " +
 				"Use followup_task when the message should begin more work.",
-			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
+			DiscoveryTerms: []string{"message agent", "通知子代理", "发送消息"},
+			Visibility:     o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -157,7 +160,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 			Description: "Send a follow-up turn to a resident child agent. " +
 				"Fails if the agent is running, closed, or missing. " +
 				"Interrupt or wait for completion before following up.",
-			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
+			DiscoveryTerms: []string{"follow up agent", "继续子任务", "追加任务"},
+			Visibility:     o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -180,7 +184,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 			Name: "interrupt_agent",
 			Description: "Interrupt a running child agent turn. The agent stays open " +
 				"(worktree retained) so followup_task can resume.",
-			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
+			DiscoveryTerms: []string{"interrupt agent", "中断子代理", "暂停代理"},
+			Visibility:     o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -201,7 +206,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 			Description: "Close a child agent, free its concurrency slot, and cleanup its worktree. " +
 				"Integrate with integrate_agent first if you need the child's writes in the parent workspace; " +
 				"Close discards the worktree. Prefer wait_agent until terminal status before closing.",
-			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
+			DiscoveryTerms: []string{"close agent", "关闭子代理", "清理代理"},
+			Visibility:     o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelConcurrent,
 			SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
@@ -225,7 +231,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 				"write claims, and parent baseline before the journaled write, then verifies the parent workspace. " +
 				"Use discard to reject and clean up, or retry with a failed candidate digest to create a new preview. " +
 				"Requires an open isolated child; do not close_agent first.",
-			Visibility: o.visibility(), Capability: tool.CapabilityWrite,
+			DiscoveryTerms: []string{"integrate agent", "merge agent", "合并子代理", "集成代理"},
+			Visibility:     o.visibility(), Capability: tool.CapabilityWrite,
 			AccessMode: tool.AccessTree, ParallelPolicy: tool.ParallelSerial,
 			SandboxRequirement: tool.SandboxStrong, Availability: tool.AvailabilityAvailable,
 			ResourceResolver: tool.ResourceResolver{
@@ -295,7 +302,8 @@ func (t *Tool) spawnDescriptor() tool.Descriptor {
 			"full requires explicit authority or role policy. Parent context is captured by the runtime. " +
 			"Returns agent_id, structured receipt, and a transcript var_handle for handle_read. " +
 			"Use wait_agent, followup_task, interrupt_agent, list_agents, integrate_agent, and close_agent for control.",
-		Visibility: t.visibility(), Capability: tool.CapabilityWrite,
+		DiscoveryTerms: []string{"spawn agent", "delegate", "subagent", "创建子代理", "委派"},
+		Visibility:     t.visibility(), Capability: tool.CapabilityWrite,
 		AccessMode: tool.AccessWrite, ParallelPolicy: tool.ParallelConcurrent,
 		SandboxRequirement: tool.SandboxNone, Availability: tool.AvailabilityAvailable,
 		ResourceResolver: tool.ResourceResolver{

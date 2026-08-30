@@ -345,6 +345,26 @@ func TestStructuredCommandUsesSanitizedEnvironmentAndSandbox(t *testing.T) {
 	}
 }
 
+func TestSandboxEnvironmentForcesPrivateTempVariables(t *testing.T) {
+	privateTemp := filepath.Join(t.TempDir(), "private")
+	environment := sandboxEnvironment([]string{
+		"HOME=/host/home",
+		"TMPDIR=/host/tmpdir",
+		"TMP=/host/tmp",
+		"TEMP=/host/temp",
+		"LANG=C",
+	}, sandbox.Policy{PrivateTemp: privateTemp}, true)
+
+	for _, name := range []string{"HOME", "TMPDIR", "TMP", "TEMP"} {
+		if got := environmentValue(environment, name); got != privateTemp {
+			t.Fatalf("%s=%q, want private temp %q", name, got, privateTemp)
+		}
+	}
+	if got := environmentValue(environment, "LANG"); got != "C" {
+		t.Fatalf("LANG=%q, want C", got)
+	}
+}
+
 func TestRunPinsWorkingDirectoryToDescriptor(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()

@@ -218,6 +218,33 @@ describe("projectTranscript", () => {
     expect(client.submitPrompt).not.toHaveBeenCalled();
   });
 
+  it("routes paused-session composer input into Turn recovery", async () => {
+    const value = snapshot([
+      event(1, "turn.started", {display_prompt: "Implement the change"}),
+      event(2, "turn.canceled", {reason: "user_interrupted"})
+    ]);
+    value.sessions = value.sessions.map((session, index) => index === 0
+      ? {...session, status: "interrupted", latest_turn_id: "turn"}
+      : session);
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Ask CodeHelper"), {
+      target: {value: "Continue with the remaining implementation"}
+    });
+    const buttons = screen.getAllByRole("button", {name: "Continue"});
+    fireEvent.click(buttons.at(-1)!);
+
+    await waitFor(() => {
+      expect(client.recoverTurn).toHaveBeenCalledWith(
+        "turn",
+        "continue",
+        "Continue with the remaining implementation"
+      );
+    });
+    expect(client.submitPrompt).not.toHaveBeenCalled();
+  });
+
   it("renders lifecycle, workspace, profile, and governed tool controls", async () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
@@ -975,7 +1002,7 @@ describe("projectTranscript", () => {
     );
   });
 
-  it("stages Agent settings, protects dirty close, and applies one profile patch", async () => {
+  it("discards staged Agent settings on close and applies one profile patch", async () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
     fireEvent.click(screen.getByRole("button", {name: "Settings"}));
@@ -994,8 +1021,18 @@ describe("projectTranscript", () => {
     expect(screen.getByText("Unsaved changes")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", {name: "Close settings"}));
-    expect(screen.getByText("Discard unsaved changes?")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", {name: "Keep editing"}));
+    expect(screen.queryByRole("dialog", {name: "Settings"})).toBeNull();
+    expect(client.updateProfile).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", {name: "Settings"}));
+    await screen.findByRole("dialog", {name: "Settings"});
+    fireEvent.click(screen.getByRole("button", {name: "Agent preset"}));
+    fireEvent.change(screen.getByLabelText("Agent mode"), {
+      target: {value: "plan"}
+    });
+    fireEvent.change(screen.getByLabelText("Maximum steps"), {
+      target: {value: "16"}
+    });
     fireEvent.click(screen.getByRole("button", {name: "Apply changes"}));
 
     await waitFor(() => {
@@ -1377,6 +1414,51 @@ describe("projectTranscript", () => {
     fireEvent.click(screen.getByRole("button", {name: "Confirm clear"}));
     expect(client.validateCredential).toHaveBeenCalledOnce();
     await waitFor(() => expect(client.clearKeyringCredential).toHaveBeenCalledOnce());
+  });
+
+  it("reconfigures the Runtime provider from Connection settings", async () => {
+    const value = snapshot();
+    value.setupCatalog = {
+      version: 1,
+      providers: [{
+        id: "fixture",
+        display_name: "Fixture",
+        protocol: "openai_chat",
+        requires_api_key: false
+      }, {
+        id: "deepseek",
+        display_name: "DeepSeek",
+        protocol: "openai_chat",
+        requires_api_key: true
+      }]
+    };
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    fireEvent.click(screen.getByRole("button", {name: "Settings"}));
+    await screen.findByRole("dialog", {name: "Settings"});
+    fireEvent.click(screen.getByRole("button", {name: "Connection"}));
+    await screen.findByText("https://models.example.com/v1");
+    fireEvent.click(screen.getByRole("button", {name: "Change provider"}));
+    fireEvent.change(screen.getByLabelText("Connection provider"), {
+      target: {value: "deepseek"}
+    });
+    fireEvent.change(screen.getByLabelText("Connection model ID"), {
+      target: {value: "deepseek-chat"}
+    });
+    fireEvent.change(screen.getByLabelText("Connection API key"), {
+      target: {value: "sk-next"}
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Apply and restart"}));
+
+    await waitFor(() => {
+      expect(client.completeSetup).toHaveBeenCalledWith({
+        provider: "deepseek",
+        model: "deepseek-chat",
+        api_key: "sk-next"
+      });
+    });
+    expect(screen.queryByRole("dialog", {name: "Settings"})).toBeNull();
   });
 
   it("renders full approval decisions and structured input options", () => {

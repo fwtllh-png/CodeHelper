@@ -129,7 +129,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	}
 	return tool.Descriptor{
 		Name: t.kind, Description: searchDescription(t.kind), Visibility: tool.VisibleModel,
-		Capability: tool.CapabilityRead, AccessMode: tool.AccessTree,
+		DiscoveryTerms: searchDiscoveryTerms(t.kind),
+		Capability:     tool.CapabilityRead, AccessMode: tool.AccessTree,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 			Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true,
 		}}},
@@ -143,6 +144,17 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			},
 			"additionalProperties": false,
 		},
+	}
+}
+
+func searchDiscoveryTerms(kind string) []string {
+	switch kind {
+	case "search_files":
+		return []string{"find file", "search files", "查找文件", "文件名"}
+	case "search_project":
+		return []string{"search project", "搜索项目", "搜索代码"}
+	default:
+		return []string{"search text", "grep", "搜索文本", "查找内容"}
 	}
 }
 

@@ -163,6 +163,56 @@ func TestTurnQueueAdvancesAfterTerminalInFIFOOrder(t *testing.T) {
 	}
 }
 
+func TestIdleEnqueuePersistsThenStartsNewTurn(t *testing.T) {
+	engine := &recordingStartEngine{}
+	runtime := NewRuntime(Options{
+		Engine: engine, EventHistory: 16, SubscriberBuffer: 16,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	events, err := runtime.Events(t.Context(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := protocol.NewOperation(&protocol.EnqueueTurnPayload{
+		ThreadID: "idle-enqueue-thread",
+		TurnID:   "just-finished-turn",
+		ItemID:   "idle-enqueue-item",
+		QueueID:  "idle-enqueue-queue",
+		Prompt:   "start after the previous turn finished",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Submit(t.Context(), operation); err != nil {
+		t.Fatal(err)
+	}
+	sawQueued, sawStarted := false, false
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case event := <-events:
+			switch event.Kind {
+			case protocol.EventOperationRejected:
+				t.Fatalf("idle enqueue rejected: %+v", event.Data)
+			case protocol.EventTurnQueued:
+				sawQueued = true
+			case protocol.EventTurnStarted:
+				data := event.Data.(*protocol.TurnStartedData)
+				sawStarted = data.QueueID == "idle-enqueue-queue"
+			}
+			if sawQueued && sawStarted && engine.starts.Load() == 1 &&
+				engine.prompt() == "start after the previous turn finished" {
+				return
+			}
+		case <-deadline:
+			t.Fatalf(
+				"idle enqueue did not start: queued=%t started=%t calls=%d prompt=%q",
+				sawQueued, sawStarted, engine.starts.Load(), engine.prompt(),
+			)
+		}
+	}
+}
+
 func TestTurnQueueProjectionUpdatesRemovesAndClaims(t *testing.T) {
 	now := testTime()
 	items := make(map[string]protocol.QueuedTurn)

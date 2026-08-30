@@ -186,6 +186,7 @@ type DeferredLoading struct {
 type Descriptor struct {
 	Name               string             `json:"name"`
 	Description        string             `json:"description"`
+	DiscoveryTerms     []string           `json:"discovery_terms,omitempty"`
 	InputSchema        map[string]any     `json:"input_schema"`
 	Visibility         Visibility         `json:"visibility"`
 	Capability         Capability         `json:"capability"`
@@ -348,6 +349,29 @@ type Registry struct {
 	results         *ResultStore
 	images          *ImageStore
 	backend         sandbox.Backend
+	closeOnce       sync.Once
+	closeErr        error
+}
+
+// Close releases resources owned by registered executors.
+func (r *Registry) Close() error {
+	if r == nil {
+		return nil
+	}
+	r.closeOnce.Do(func() {
+		r.mu.RLock()
+		closers := make([]interface{ Close() error }, 0)
+		for _, item := range r.tools {
+			if closer, ok := item.executor.(interface{ Close() error }); ok {
+				closers = append(closers, closer)
+			}
+		}
+		r.mu.RUnlock()
+		for _, closer := range closers {
+			r.closeErr = errors.Join(r.closeErr, closer.Close())
+		}
+	})
+	return r.closeErr
 }
 
 type Call struct {
@@ -808,6 +832,17 @@ func validateDescriptor(descriptor Descriptor) error {
 	}
 	if descriptor.Description == "" {
 		return fmt.Errorf("tool %q description is required", descriptor.Name)
+	}
+	seenDiscoveryTerms := make(map[string]struct{}, len(descriptor.DiscoveryTerms))
+	for _, term := range descriptor.DiscoveryTerms {
+		normalized := strings.ToLower(strings.TrimSpace(term))
+		if normalized == "" {
+			return fmt.Errorf("tool %q has an empty discovery term", descriptor.Name)
+		}
+		if _, exists := seenDiscoveryTerms[normalized]; exists {
+			return fmt.Errorf("tool %q has duplicate discovery term %q", descriptor.Name, term)
+		}
+		seenDiscoveryTerms[normalized] = struct{}{}
 	}
 	if descriptor.Visibility != VisibleModel && descriptor.Visibility != VisibleInternal && descriptor.Visibility != VisibleHidden {
 		return fmt.Errorf("tool %q has invalid visibility", descriptor.Name)

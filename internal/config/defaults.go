@@ -61,6 +61,7 @@ func Defaults() Config {
 			Timeout:      2 * time.Minute,
 			LeaseTimeout: 2 * time.Minute,
 			IdleTimeout:  60 * time.Second, MaxConcurrent: 8,
+			ProviderRetryLimit: 3,
 
 			Verify: Verify{
 				Mode: "soft", Scope: "diagnostics", OnFailure: "fail",

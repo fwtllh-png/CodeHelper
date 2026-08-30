@@ -334,6 +334,7 @@ func (e CatalogEntrySnapshot) PresentationDescriptor() Descriptor {
 	external := cloneExternalDescriptor(e.External)
 	descriptor.Name = external.Name
 	descriptor.Description = external.Description
+	descriptor.DiscoveryTerms = external.DiscoveryTerms
 	descriptor.InputSchema = external.InputSchema
 	descriptor.Visibility = external.Visibility
 	descriptor.Aliases = external.Aliases
@@ -1054,6 +1055,7 @@ func validCatalogEntryState(state CatalogEntryState) bool {
 func cloneDescriptor(descriptor Descriptor) Descriptor {
 	descriptor.InputSchema = cloneStringMap(descriptor.InputSchema)
 	descriptor.Aliases = append([]Alias(nil), descriptor.Aliases...)
+	descriptor.DiscoveryTerms = append([]string(nil), descriptor.DiscoveryTerms...)
 	descriptor.ResourceResolver.Templates = append(
 		[]ResourceTemplate(nil), descriptor.ResourceResolver.Templates...,
 	)

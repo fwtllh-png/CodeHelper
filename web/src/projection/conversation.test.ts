@@ -129,6 +129,34 @@ describe("ConversationProjection", () => {
     });
   });
 
+  it("offers recovery for current and legacy Provider retry faults", () => {
+    for (const disposition of ["retry_step", "retry_turn"]) {
+      const snapshot = projectConversation([
+        event(1, "turn.failed", {
+          code: "unavailable",
+          message: "provider rate limit retry budget exhausted",
+          fault: {
+            disposition,
+            side_effects: "draft",
+            recovery_action: "retry the turn from its durable checkpoint"
+          }
+        })
+      ]);
+
+      expect(snapshot.nodes.get(snapshot.order[0])).toMatchObject({
+        kind: "status",
+        title: "Blocked",
+        blocked: true,
+        recoverable: true,
+        recovery: {
+          canRetry: true,
+          canContinue: true,
+          sideEffects: "draft"
+        }
+      });
+    }
+  });
+
   it("presents a user interruption as paused rather than failed", () => {
     const snapshot = projectConversation([
       event(1, "turn.canceled", {reason: "user_interrupted"})

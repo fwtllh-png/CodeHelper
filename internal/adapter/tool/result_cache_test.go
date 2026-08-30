@@ -104,6 +104,52 @@ func TestResultCacheDoesNotSuppressRetryableFailure(t *testing.T) {
 	}
 }
 
+func TestResultCachePlanMutationInvalidatesPriorFailure(t *testing.T) {
+	registry := NewRegistry(nil, nil)
+	if err := registry.Register(resultCacheTool{
+		name: "edit", repeat: RepeatReplaySameTurn, access: AccessWrite,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cache := &ResultCache{}
+	first := provider.ToolCall{
+		ID: "call-1", Name: "edit", Arguments: `{"value":"same"}`,
+	}
+	plan := cache.Plan([]provider.ToolCall{first}, map[string]Result{}, registry)
+	cache.Commit([]provider.ToolCall{first}, plan, []Result{{
+		Content: "submit a structured Plan",
+		IsError: true,
+		Metadata: map[string]any{
+			"error_category":  "plan_required",
+			"required_action": "submit_plan",
+			"retry_original":  false,
+		},
+	}}, false)
+
+	beforePlan := cache.Plan([]provider.ToolCall{{
+		ID: "call-2", Name: "edit", Arguments: `{"value":"same"}`,
+	}}, map[string]Result{}, registry)
+	if !beforePlan.SkipExecution[0] {
+		t.Fatalf("unchanged state did not suppress repeated failure: %+v", beforePlan)
+	}
+	planCall := provider.ToolCall{
+		ID: "plan", Name: "edit", Arguments: `{"value":"plan"}`,
+	}
+	planMutation := cache.Plan(
+		[]provider.ToolCall{planCall}, map[string]Result{}, registry,
+	)
+	cache.Commit([]provider.ToolCall{planCall}, planMutation, []Result{{
+		Metadata: map[string]any{"plan_delta": true, "submitted_plan": true},
+	}}, false)
+
+	retry := cache.Plan([]provider.ToolCall{{
+		ID: "call-3", Name: "edit", Arguments: `{"value":"same"}`,
+	}}, map[string]Result{}, registry)
+	if retry.SkipExecution[0] || retry.CacheSources[0] != "" {
+		t.Fatalf("failure survived Plan state mutation: %+v", retry)
+	}
+}
+
 func TestResultCacheMutationInvalidatesNonRetryableFailure(t *testing.T) {
 	registry := NewRegistry(nil, nil)
 	if err := registry.Register(resultCacheTool{

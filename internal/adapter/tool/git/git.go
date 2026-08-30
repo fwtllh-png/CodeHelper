@@ -29,6 +29,15 @@ type input struct {
 }
 
 func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.Backend) error {
+	return RegisterWithBackendAndRuntime(registry, root, backend, nil)
+}
+
+func RegisterWithBackendAndRuntime(
+	registry *tool.Registry,
+	root string,
+	backend sandbox.Backend,
+	runtime MutationRuntime,
+) error {
 	if backend == nil {
 		return errors.New("Git tools require an injected sandbox backend")
 	}
@@ -58,7 +67,7 @@ func RegisterWithBackend(registry *tool.Registry, root string, backend sandbox.B
 			return err
 		}
 	}
-	return nil
+	return RegisterMutations(registry, absolute, runtime)
 }
 
 func (t *Tool) Descriptor() tool.Descriptor {
@@ -73,8 +82,9 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		required = []string{"path"}
 	}
 	return tool.Descriptor{
-		Name: t.kind, Description: "Inspect the workspace Git repository", Visibility: tool.VisibleModel,
-		Capability: tool.CapabilityRead, AccessMode: tool.AccessTree,
+		Name: t.kind, Description: gitReadDescription(t.kind), Visibility: tool.VisibleModel,
+		DiscoveryTerms: gitReadDiscoveryTerms(t.kind),
+		Capability:     tool.CapabilityRead, AccessMode: tool.AccessTree,
 		ResourceResolver: tool.ResourceResolver{Templates: []tool.ResourceTemplate{{
 			Kind: "repo", ID: ".", Access: tool.AccessRead, Tree: true,
 		}}},
@@ -84,6 +94,49 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"type":       "object",
 			"properties": properties, "required": required, "additionalProperties": false,
 		},
+	}
+}
+
+func gitReadDescription(kind string) string {
+	switch kind {
+	case "git_status":
+		return "Show concise staged, unstaged, and untracked workspace changes"
+	case "git_diff":
+		return "Show the workspace Git diff; set staged to inspect the index"
+	case "git_log":
+		return "Show recent commits in concise one-line form"
+	case "git_remote":
+		return "List configured Git remotes and fetch/push URLs"
+	case "git_branch":
+		return "List local and remote Git branches"
+	case "git_show":
+		return "Show one revision, optionally limited to one workspace-relative path"
+	case "git_blame":
+		return "Show line attribution for one workspace-relative file at a revision"
+	default:
+		return "Inspect the workspace Git repository"
+	}
+}
+
+func gitReadDiscoveryTerms(kind string) []string {
+	common := []string{"git", "repository", "仓库", "版本库"}
+	switch kind {
+	case "git_status":
+		return append(common, "status", "changes", "状态", "变更", "未提交")
+	case "git_diff":
+		return append(common, "diff", "patch", "差异", "补丁")
+	case "git_log":
+		return append(common, "log", "history", "commit", "历史", "提交记录")
+	case "git_remote":
+		return append(common, "remote", "origin", "远端")
+	case "git_branch":
+		return append(common, "branch", "分支")
+	case "git_show":
+		return append(common, "show commit", "revision", "查看提交", "版本详情")
+	case "git_blame":
+		return append(common, "blame", "line author", "逐行", "作者")
+	default:
+		return common
 	}
 }
 
@@ -134,6 +187,7 @@ func (t *Tool) run(ctx context.Context, input input) (tool.Result, error) {
 	command, err := process.NewCommand(ctx, process.Options{
 		Path: gitExecutable(), Args: arguments, Dir: t.root,
 		DirFile: directory, Sandbox: t.backend, RequireSandbox: true,
+		WorkspaceReadOnly: true, DenyNetwork: true,
 	})
 	if err != nil {
 		return tool.Result{}, err

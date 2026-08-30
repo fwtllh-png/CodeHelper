@@ -110,7 +110,7 @@ func planningDecision(
 	}
 	required := r.PlanningPolicy == PlanningRequired ||
 		(r.PlanningPolicy == PlanningAdaptive &&
-			adaptivePlanningRequired(invocation, effect))
+			adaptivePlanningRequired(effect))
 	if !required && !r.PlanSubmitted {
 		return nil
 	}
@@ -151,19 +151,10 @@ func consequentialPlanningEffect(kind EffectKind) bool {
 	}
 }
 
-func adaptivePlanningRequired(invocation Invocation, effect Effect) bool {
-	if effect.Risk == RiskHigh || effect.Risk == RiskCritical ||
+func adaptivePlanningRequired(effect Effect) bool {
+	return effect.Risk == RiskHigh || effect.Risk == RiskCritical ||
 		effect.Kind == EffectNetworkMutating ||
 		effect.Kind == EffectExternalMutation ||
-		effect.Kind == EffectAgentLifecycle {
-		return true
-	}
-	writes := 0
-	for _, resource := range invocation.Resources {
-		if (resource.Kind == "file" || resource.Kind == "directory") &&
-			resource.Access != tool.AccessRead {
-			writes++
-		}
-	}
-	return writes > 1
+		effect.Kind == EffectAgentLifecycle ||
+		effect.Reversibility == string(tool.Irreversible)
 }

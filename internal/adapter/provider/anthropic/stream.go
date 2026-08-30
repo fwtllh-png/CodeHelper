@@ -7,6 +7,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 )
@@ -17,7 +18,7 @@ type stream struct {
 	queue          []provider.StreamEvent
 	started        bool
 	stopped        bool
-	closed         bool
+	closed         atomic.Bool
 	searchInputs   map[int]*strings.Builder
 	pendingQueries []string
 	reasoningIndex map[int]int
@@ -173,11 +174,9 @@ func searchQuery(input string) string {
 	return value.Query
 }
 func (s *stream) Close() error {
-	if s.closed {
+	if !s.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	s.closed = true
-	s.stopped = true
 	return s.body.Close()
 }
 func parseChunk(data []byte) ([]provider.StreamEvent, error) {

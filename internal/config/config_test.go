@@ -488,6 +488,49 @@ lease_timeout = "45s"
 	}
 }
 
+func TestProviderRetryLimitHasProvenanceAndValidation(t *testing.T) {
+	if Defaults().Execution.ProviderRetryLimit != 3 {
+		t.Fatalf(
+			"default provider retry limit = %d",
+			Defaults().Execution.ProviderRetryLimit,
+		)
+	}
+	path := writeConfig(t, `
+[execution]
+provider_retry_limit = 5
+`)
+	fromFile, err := Load(LoadOptions{
+		Path: path, LookupEnv: envLookup(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromFile.Config.Execution.ProviderRetryLimit != 5 ||
+		fromFile.Provenance[fieldProviderRetryLimit] != SourceFile {
+		t.Fatalf("file provider retry limit = %+v", fromFile)
+	}
+	fromEnv, err := Load(LoadOptions{
+		Path: path,
+		LookupEnv: envLookup(map[string]string{
+			"CODEHELPER_PROVIDER_RETRY_LIMIT": "7",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromEnv.Config.Execution.ProviderRetryLimit != 7 ||
+		fromEnv.Provenance[fieldProviderRetryLimit] != SourceEnv {
+		t.Fatalf("environment provider retry limit = %+v", fromEnv)
+	}
+	invalid := 0
+	_, err = Load(LoadOptions{
+		Overrides: Overrides{ProviderRetryLimit: &invalid},
+	})
+	if err == nil || !strings.Contains(err.Error(), fieldProviderRetryLimit) {
+		t.Fatalf("zero provider retry limit error = %v", err)
+	}
+}
+
 func TestVisionConfigFileAndValidation(t *testing.T) {
 	path := writeConfig(t, `
 [vision]

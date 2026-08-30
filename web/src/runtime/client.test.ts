@@ -166,6 +166,15 @@ describe("RuntimeClient", () => {
           draining: false,
           workspace_root: "/workspace",
           can_open_path: true,
+          setup_catalog: {
+            version: 1,
+            providers: [{
+              id: "deepseek",
+              display_name: "DeepSeek",
+              protocol: "openai_chat",
+              requires_api_key: true
+            }]
+          },
           workspace: {
             version: 1,
             root_id: "workspace-id",
@@ -747,6 +756,7 @@ describe("RuntimeClient", () => {
       "fixture",
       "reasoner"
     ]);
+    expect(client.getSnapshot().setupCatalog?.providers[0]?.id).toBe("deepseek");
     expect(client.getSnapshot().tools).toEqual([]);
     expect(client.getSnapshot().checkpoints).toEqual([]);
 
@@ -1022,6 +1032,7 @@ describe("RuntimeClient", () => {
       workspaceRoot: "/workspace-b",
       selectedSessionID: "session-b"
     });
+    expect(client.getSnapshot().setupCatalog?.providers[0]?.id).toBe("deepseek");
     expect(await client.loadDraft()).toBe("workspace B");
     const listedWorkspaceIDs = requests
       .filter((request) => request.route.endsWith("/session/list"))

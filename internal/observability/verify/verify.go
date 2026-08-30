@@ -156,6 +156,43 @@ func Detect(root string) []Command {
 			Reason: "Python project metadata declares a pytest-compatible repository",
 		})
 	}
+	if exists(filepath.Join(root, "CMakeLists.txt")) {
+		commands = append(commands, Command{
+			Name: "cmake",
+			Command: `cmake -S . -B "$TMPDIR/codehelper-cmake-build" && ` +
+				`cmake --build "$TMPDIR/codehelper-cmake-build" && ` +
+				`ctest --test-dir "$TMPDIR/codehelper-cmake-build" --output-on-failure`,
+			Reason: "CMakeLists.txt declares a CMake project; configure, build, and run CTest in private temporary storage",
+		})
+	}
+	if exists(filepath.Join(root, "WORKSPACE")) ||
+		exists(filepath.Join(root, "WORKSPACE.bazel")) ||
+		exists(filepath.Join(root, "MODULE.bazel")) {
+		commands = append(commands, Command{
+			Name: "bazel", Command: "bazel test //...",
+			Reason: "Bazel workspace metadata declares a repository test graph",
+		})
+	}
+	if exists(filepath.Join(root, "pom.xml")) {
+		commands = append(commands, Command{
+			Name: "maven", Command: "mvn test",
+			Reason: "pom.xml declares a Maven project",
+		})
+	}
+	if exists(filepath.Join(root, "gradlew")) {
+		commands = append(commands, Command{
+			Name: "gradle", Command: "./gradlew test",
+			Reason: "the Gradle wrapper declares a reproducible project test entry point",
+		})
+	} else if exists(filepath.Join(root, "build.gradle")) ||
+		exists(filepath.Join(root, "build.gradle.kts")) ||
+		exists(filepath.Join(root, "settings.gradle")) ||
+		exists(filepath.Join(root, "settings.gradle.kts")) {
+		commands = append(commands, Command{
+			Name: "gradle", Command: "gradle test",
+			Reason: "Gradle build metadata declares a project test entry point",
+		})
+	}
 	if len(commands) == 0 {
 		commands = append(commands, Command{
 			Name: "workspace", Command: "make verify",

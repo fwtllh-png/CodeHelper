@@ -78,6 +78,49 @@ Git Workspace 会在侧栏显示当前本地分支，并可从本地分支列表
 执行，活动 Turn 或待处理 Operation 存在时拒绝；Git 自身仍负责拒绝会覆盖本地修改的
 切换。
 
+Agent 不通过 `exec_command` 写 `.git`。提交与同步工作流使用结构化的 `git_add`、
+`git_commit`、`git_switch`、`git_fetch`、`git_pull` 和 `git_push`；参数由 VCS
+Broker 白名单校验，其中 pull 只允许 fast-forward，push 不允许 force refspec，并且
+远端写入要求单次审批。`git_status`、`git_diff`、`git_log`、`git_remote`、
+`git_branch`、`git_show` 和 `git_blame` 保持只读。
+分支协作使用 `git_merge`、`git_rebase`、`git_cherry_pick`、`git_restore`、
+`git_stash`、`git_tag` 和 `git_amend`。这些工具只接受固定参数结构；merge、rebase、
+cherry-pick、restore、stash 和 amend 可能改变历史、产生冲突或丢弃未提交内容，因此
+要求结构化 Plan 和单次审批。冲突不会被自动掩盖，Git 保留冲突状态供后续检查和处理。
+冲突处理使用 `git_conflict`，仅允许 merge/rebase/cherry-pick 的 continue 或 abort；
+不开放 `reset --hard`，continue 也不会启动交互式编辑器。
+本地 `git_add`、`git_commit` 和 `git_switch` 属于有界本地变更，不会单独触发自适应
+Plan；`git_pull` 和 `git_push` 仍按网络或外部变更要求 Plan。
+
+Tool Catalog 的 `discovery_terms` 保存不授予权限的多语言检索词。首轮投影先保留核心与
+当前已物化工具，再按相关度排序其他工具，并在模型声明的 Tool Definition 与 Schema
+容量内填充，不再使用固定的“相关工具数量”。因此中文的 Git、Web、LSP、格式化、调试
+和依赖工作流不需要先失败一次再通过 `tool_search` 补载。
+
+`lsp_diagnostics`、`lsp_hover`、`lsp_format_edits`、`lsp_code_actions` 和
+`lsp_rename_edits` 按文件类型选择已安装的 `gopls`、`clangd`、
+`rust-analyzer`、`pyright-langserver`、`typescript-language-server` 或 `jdtls`。
+注册状态来自实际二进制探测；同一次调用不能混用不同 Language Server。
+format/code-action/rename 只返回结构化 edits，不直接修改文件，应用 edits 仍通过受
+Journal 保护的文件工具完成。
+
+`quality_verify` 依据仓库 Manifest 自动发现 Go、Rust、Node、Python、CMake、Bazel、
+Maven 和 Gradle 验证入口。CMake 配置与构建目录位于沙箱私有 `$TMPDIR`，不会向
+Workspace 写入生成文件。`format_code` 只格式化显式路径且进入 before-image Journal；
+`debug_run` 使用 LLDB 的固定批处理参数，Workspace 保持只读；`dependency_resolve`
+以禁用脚本、Workspace 只读的方式解析依赖，并要求显式声明网络目标。
+
+安装 Chromium/Chrome 后，`web_run` 使用隔离临时 Profile 和 CDP 提供真实
+navigate、DOM snapshot、click 与 fill；`CODEHELPER_BROWSER_BINARY` 可覆盖自动探测。
+本地开发地址必须显式传入 `allow_loopback`。`http_request` 支持结构化
+GET/POST/PUT/PATCH/DELETE/HEAD、响应状态断言和有界 Body；它拒绝
+Authorization、Cookie、API Key 等会被持久化进 Tool Call 的敏感 Header。
+
+安装并授权 GitHub CLI 后，`github_pr_list`、`github_pr_view`、
+`github_ci_status` 和 `github_pr_create` 提供固定参数的 PR/CI 操作。创建 PR 属于
+不可逆外部变更，要求 Plan 和单次审批。GitLab、内部代码托管平台和企业认证流程继续
+通过 MCP 或 Skill 提供，不把平台凭据写入通用 Tool 参数。
+
 Composer 下方的 Stats 使用一条可整体省略的摘要展示 Turn、Tool、总耗时、模型耗时、
 Tool 耗时、TTFT、Token、Cache 和 Cost；完整明细保留在 Tooltip 中，不逐项压缩。
 
@@ -88,8 +131,9 @@ Artifact 不接受 Markdown 或 XML 标签输出。计划显示在 Composer 上�
 执行前若文件已变化，Runtime 拒绝旧 Revision 并要求重新规划。
 
 Mode 只提供 `plan`、`act`、`operate` 三项。`act` 与 `operate` 固定使用自适应规划：
-简单、低风险操作直接执行，复杂或高风险操作先提交计划。界面不再暴露独立的
-Planning Policy，避免用户同时选择模式和规划策略。
+非高风险且非不可逆的 Workspace 操作直接执行，不按文件数量升级；高风险、不可逆、
+网络写、外部写或 Agent 生命周期操作先提交计划。界面不再暴露独立的 Planning
+Policy，避免用户同时选择模式和规划策略。
 
 Plan 提交后始终自动批准；用户无需选择 `Implement` 或 `Autopilot`。提交状态只属于
 当前 Turn，不写回 Session 默认工具审批姿态。独立 Plan 模式仍使用 Plan 模型路由；

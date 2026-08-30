@@ -846,6 +846,41 @@ func TestClientRetainsRetryAfterMetadataWithoutSleeping(t *testing.T) {
 	}
 }
 
+func TestClientDerivesSharedCooldownFromRateLimitedRequest(t *testing.T) {
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter,
+		_ *http.Request,
+	) {
+		attempts.Add(1)
+		time.Sleep(20 * time.Millisecond)
+		writer.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := testClient()
+	request := testRequest(t, server.URL, model.ProtocolOpenAIChat)
+	_, err := client.Stream(t.Context(), request)
+	var problem *protocol.Problem
+	var failure *provider.Failure
+	if !errors.As(err, &problem) ||
+		!errors.As(err, &failure) ||
+		problem.RateLimit == nil ||
+		problem.RateLimit.RetryAfterMS == 0 ||
+		failure.RetryAfterMS != problem.RateLimit.RetryAfterMS {
+		t.Fatalf("rate limit error = %#v, failure = %#v", problem, failure)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
+	defer cancel()
+	if _, err := client.Stream(ctx, request); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cooldown error = %v, want deadline exceeded", err)
+	}
+	if attempts.Load() != 1 {
+		t.Fatalf("provider attempts = %d, want shared cooldown before retry", attempts.Load())
+	}
+}
+
 func TestClientClassifiesTransportErrors(t *testing.T) {
 	tests := map[string]struct {
 		err       error

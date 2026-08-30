@@ -1059,7 +1059,9 @@ func TestPhase4R1SampleUsageContextAndCancelAreStructured(t *testing.T) {
 		Failure: provider.Failure{
 			Code: provider.FailureStreamClosed, Message: "unexpected eof",
 		},
-		RetryAt: time.Now(), PolicyRevision: "test/v1",
+		EffectiveDelayMS: 125,
+		RetryAt:          time.Now(),
+		PolicyRevision:   "test/v1",
 	}).State
 	state = apply(t, state, EffectStarted{
 		EffectID: effectID, Attempt: 2,

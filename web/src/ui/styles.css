@@ -3237,13 +3237,17 @@ textarea:disabled {
   border-color: var(--ch-accent) !important;
 }
 
-.inputComposer {
-  display: grid;
-  grid-template-columns: auto minmax(120px, 1fr) auto auto;
-  align-items: center;
+.inputResponse {
+  flex-wrap: nowrap;
 }
 
-.inputComposer input {
+.inputResponse select {
+  min-width: 120px;
+  flex: 0 1 300px;
+}
+
+.inputResponse input {
+  flex: 1;
   min-width: 0;
   height: 34px;
   padding: 0 9px;
@@ -3641,12 +3645,13 @@ textarea:disabled {
     max-width: 88%;
   }
 
-  .inputComposer {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .inputResponse {
+    flex-wrap: wrap;
   }
 
-  .inputComposer strong {
-    grid-column: 1 / -1;
+  .inputResponse select {
+    max-width: none;
+    flex-basis: 100%;
   }
 
   .pendingComposer:not(.inputComposer) {

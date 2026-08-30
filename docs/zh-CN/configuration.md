@@ -62,7 +62,8 @@ tls_handshake_timeout = "0s"    # 0 表示继承 timeout
 response_header_timeout = "0s"  # 0 表示继承 timeout
 idle_timeout = "1m"             # 每个流事件都会续期
 max_concurrent = 8
-rate_limit = 0
+rate_limit = 0                    # 0 = 仅根据 Provider 反馈动态限流
+provider_retry_limit = 3          # 每次 Model Sample 的瞬时故障重试预算
 budget_tokens = 0            # 0 表示不设置累计 Session Token 上限
 turn_budget_tokens = 0       # 0 表示不设置累计 Turn Token 上限
 budget_usd = 0               # 0 表示不增加成本上限
@@ -260,6 +261,16 @@ Mutation、任意 Plan 状态变化、Verification 或 Completion 推进都会�
 `execution.idle_timeout` 约束相邻流事件之间的空闲时间，每收到一个事件就重新计时，
 因此持续产出进展的长流不会在固定两分钟后被中断。
 
+`execution.rate_limit` 是运维侧声明的初始请求速率上限。无论该值是否为零，Runtime
+都会按 Provider、Endpoint、Credential 引用和 Model 共享动态限流状态：优先采用
+`Retry-After`，其次采用 `RateLimit-Reset`/`X-RateLimit-Reset`；Provider 未返回时间
+提示时，根据实际请求耗时和连续限流反馈逐步延长冷却。冷却等待可取消且不会占用
+Provider 并发槽。
+
+`execution.provider_retry_limit` 是单次 Model Sample 的瞬时故障重试预算。预算内由
+Runtime 自动调度并重试，不要求模型或用户轮询；预算耗尽、账户硬配额错误或 Turn
+被取消后才停止自动重试。可通过 `CODEHELPER_PROVIDER_RETRY_LIMIT` 覆盖。
+
 `execution.lease_timeout` 是 Guard 完成授权到 Executor 消费 Execution Lease 之间的
 公开上限，可由 `CODEHELPER_LEASE_TIMEOUT` 或受信配置覆盖。调用 Context 的 Deadline
 更早时使用更早值。Lease 被消费后，运行中进程的 Timeout、Cancel、Wait 和 Reap 由
@@ -315,12 +326,12 @@ Memory 使用带稳定 ID 和 Generation 的记录存储。`user`、`workspace` 
 不要猜测标识符。Web Settings 展示 Runtime 发布的 Provider/Model Catalog；即使
 Model ID 相同，Provider ID 也可能不同，存在歧义时必须在 TOML 中显式指定 Provider。
 
-Web Settings 的 Connection 页展示 Workspace Runtime 固定的 Provider、Endpoint、
-Protocol 和凭据状态；Models 页展示当前 Session 的 Model、能力来源与 Reasoning 档位。
+Web Settings 的 Connection 页展示并管理 Runtime Provider、Endpoint、Protocol 和凭据；
+Models 页展示当前 Session 的 Model、能力来源与 Reasoning 档位。Connection 中的
+Provider 变更会在没有活动或待处理工作的前提下重建已注册的 Workspace Runtime，并把
+现有 Session Profile 迁移到新 Provider 和初始 Model；构造失败时继续保留旧 Runtime。
 Composer 可直接切换历史 Model。同一 Provider 内标记为 `hot` 的 Model 可作为 Session
 Profile 在 Turn 之间切换；运行中的 Turn 继续使用启动时冻结的 Route。
-跨 Provider 切换仍属于 Runtime 启动配置，必须修改 `[execution]` 后重启，界面以只读值
-呈现该边界，不显示不可操作的 Provider 下拉框。
 
 用途路由支持 `plan`、`vision` 和 `summary`。设置 `route.lock=true` 后，缺失用途路由
 会直接报错，不再静默回落到主执行路由。
@@ -444,7 +455,7 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | --- | --- |
 | `CODEHELPER_PROVIDER`、`CODEHELPER_MODEL`、`CODEHELPER_PROTOCOL` | 主模型路由 |
 | `CODEHELPER_MODE`、`CODEHELPER_WORKSPACE`、`CODEHELPER_TOOLS` | 执行行为 |
-| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_LEASE_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT` | 限制 |
+| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_LEASE_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT`、`CODEHELPER_PROVIDER_RETRY_LIMIT` | 限制 |
 | `CODEHELPER_BUDGET_TOKENS`、`CODEHELPER_BUDGET_USD` | 会话预算 |
 | `CODEHELPER_SUBAGENT_*` | 委派模式、Tree 限制、Child 预算、Wall Time 与 Workspace 策略 |
 | `CODEHELPER_VERIFY_*` | 验证行为 |

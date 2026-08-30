@@ -86,9 +86,23 @@
     {
       "path": "internal/adapter/tool/web",
       "prefix": true,
-      "categories": ["network"],
+      "categories": ["process", "file", "network"],
       "owner": "web tool",
-      "reason": "Guarded web fetch and search transports."
+      "reason": "Guarded web transports and the isolated Chromium CDP process/profile lifecycle."
+    },
+    {
+      "path": "internal/adapter/tool/dev",
+      "prefix": true,
+      "categories": ["process"],
+      "owner": "developer tools",
+      "reason": "Guard-authorized sandboxed formatter, debugger, and dependency resolver processes."
+    },
+    {
+      "path": "internal/adapter/tool/repohost",
+      "prefix": true,
+      "categories": ["process"],
+      "owner": "repository host tools",
+      "reason": "Guard-authorized fixed-shape repository hosting CLI operations."
     },
     {
       "path": "internal/adapter/provider",

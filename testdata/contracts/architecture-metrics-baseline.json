@@ -128,7 +128,7 @@
       "kind": "package",
       "path": "internal/adapter/provider/httpclient",
       "limits": {
-        "internal_fanout": 9,
+        "internal_fanout": 10,
         "production_lines": 1081,
         "options_fields": 0,
         "mutex_fields": 1

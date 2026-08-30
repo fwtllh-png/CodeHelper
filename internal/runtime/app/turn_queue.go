@@ -344,10 +344,6 @@ func (h EnqueueTurnHandler) Handle(
 	_ protocol.Operation,
 	payload *protocol.EnqueueTurnPayload,
 ) OperationOutcome {
-	active, ok := h.active.LookupThread(payload.ThreadID)
-	if !ok || active.TurnID != payload.TurnID {
-		return finishOutcome(turnNotActiveProblem())
-	}
 	if _, exists := h.TurnQueueService.item(payload.ThreadID, payload.QueueID); exists {
 		return finishOutcome(runtimeProblem(
 			protocol.CodeConflict,

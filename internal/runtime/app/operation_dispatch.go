@@ -137,12 +137,19 @@ func (s *OperationService) Apply(operation protocol.Operation, outcome Operation
 	}
 	if outcome.Kind == OutcomeCommitted {
 		sink := &runtimeSink{runtime: s.Runtime, operation: operation}
+		drainThread := protocol.ThreadID("")
 		for _, event := range outcome.Events {
 			if err := sink.Emit(event); err != nil {
 				return
 			}
+			if _, queued := event.(*protocol.TurnQueuedData); queued {
+				drainThread, _, _ = protocol.OperationReferences(operation)
+			}
 		}
 		s.commit(operation.ID)
+		if drainThread != "" {
+			s.Runtime.TurnQueueService.Drain(drainThread)
+		}
 	}
 }
 func validateOperationOutcome(outcome OperationOutcome) error {

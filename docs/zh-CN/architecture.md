@@ -221,6 +221,9 @@ Connection 内从当前 Ready Route 派生新的 Model Route，并在 Turn 开�
 `TurnSpec`；它不能借模型切换改变 Endpoint 或 Credential。Web Model Catalog 将内置
 目录与当前 Workspace 已持久化 Session Profile 中的模型合并，因此用户输入的新 Model
 ID 在刷新、重启和其他 Session 中仍可选择。Active Turn 期间拒绝 Profile 修改。
+Connection 设置通过 Host 控制面切换 Provider：先拒绝新的 Runtime 操作并确认全部
+Workspace 空闲，再构造新 Runtime、事务化迁移 Session Route，最后替换旧 Runtime；
+任一步失败都会保留或恢复原连接。
 
 ### Application Ownership
 
@@ -412,7 +415,8 @@ Plan Artifact 同时保存执行配置摘要；摘要覆盖 Mode、模型、工�
 
 产品只暴露 `plan`、`act`、`operate` 三种 Mode。`act` 与 `operate` 固定采用
 `adaptive` Planning Policy；Guard 在 Capability、Resource、Effect 和 Risk 已规范化后，
-至少拦截高风险、网络写、外部写、Agent Lifecycle 和同次调用中的多文件写。成功的
+拦截高风险、不可逆、网络写、外部写和 Agent Lifecycle 操作；非高风险且非不可逆的
+批量 Workspace 操作不因资源数量单独升级。成功的
 `submit_plan` Tool Result 才能推进 Turn-scoped `submitted/approved` 状态；文本声明不能
 解锁工具。Plan 只采用自动执行语义，每个 Turn 结束时状态归零。Continue 恢复自动批准
 的 Plan 时，必须由同一源 Turn 的 `plan.delta`、Execution Receipt Plan 与匹配的

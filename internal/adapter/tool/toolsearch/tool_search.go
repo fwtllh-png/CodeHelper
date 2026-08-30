@@ -187,6 +187,13 @@ func scoreDescriptor(descriptor tool.Descriptor, terms []string) int {
 			score += 1
 		}
 	}
+	query := strings.Join(terms, " ")
+	for _, discoveryTerm := range descriptor.DiscoveryTerms {
+		discoveryTerm = strings.ToLower(strings.TrimSpace(discoveryTerm))
+		if discoveryTerm != "" && strings.Contains(query, discoveryTerm) {
+			score += 8
+		}
+	}
 	return score
 }
 

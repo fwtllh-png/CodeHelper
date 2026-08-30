@@ -258,6 +258,13 @@ func (s Snapshot) Validate() error {
 	if execution.RateLimit < 0 {
 		return fieldError(fieldRateLimit, s.Provenance, "must be non-negative")
 	}
+	if execution.ProviderRetryLimit < 1 {
+		return fieldError(
+			fieldProviderRetryLimit,
+			s.Provenance,
+			"must be positive",
+		)
+	}
 	if execution.BudgetUSD < 0 {
 		return fieldError(fieldBudgetUSD, s.Provenance, "must be non-negative")
 	}

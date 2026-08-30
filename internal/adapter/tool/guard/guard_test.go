@@ -1385,6 +1385,33 @@ func TestControlPlaneWriteCannotBeApprovedOrBypassed(t *testing.T) {
 	}
 }
 
+func TestGitControlPlaneWriteSuggestsDedicatedTool(t *testing.T) {
+	executor := &testExecutor{descriptor: writeDescriptor()}
+	registry := newTestRegistry(t, nil, executor)
+	guard := newTestGuard(
+		t,
+		registry,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		nil,
+	)
+	_, err := guard.Execute(
+		t.Context(),
+		"git-control-plane-write",
+		"write",
+		json.RawMessage(`{"path":".git/index","value":"unsafe"}`),
+	)
+	hint, ok := tool.RecoveryHintFromError(err)
+	if !ok ||
+		hint.ErrorCategory != "control_plane_protected" ||
+		hint.RequiredAction != "use_git_tool" ||
+		hint.RetryOriginal {
+		t.Fatalf("Git control-plane recovery hint = %+v, ok=%t, err=%v", hint, ok, err)
+	}
+	if executor.calls.Load() != 0 {
+		t.Fatalf("executor calls = %d", executor.calls.Load())
+	}
+}
+
 func readDescriptor(name string) tool.Descriptor {
 	return tool.Descriptor{
 		Name: name, Description: "test tool", Visibility: tool.VisibleModel,

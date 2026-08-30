@@ -183,7 +183,8 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	}
 	return tool.Descriptor{
 		Name: t.kind, Description: description, Visibility: tool.VisibleModel,
-		Capability: capability, AccessMode: access, ResourceResolver: resolver,
+		DiscoveryTerms: contentDiscoveryTerms(t.kind),
+		Capability:     capability, AccessMode: access, ResourceResolver: resolver,
 		ParallelPolicy:     tool.ParallelConcurrent,
 		SandboxRequirement: requirement, Availability: availability,
 		UnavailableReason: unavailableReason,
@@ -191,6 +192,23 @@ func (t *Tool) Descriptor() tool.Descriptor {
 			"type": "object", "properties": properties, "required": required,
 			"additionalProperties": false,
 		},
+	}
+}
+
+func contentDiscoveryTerms(kind string) []string {
+	switch kind {
+	case "content_capabilities":
+		return []string{"content tools", "media capabilities", "内容工具", "媒体能力"}
+	case "image_ocr":
+		return []string{"ocr", "image text", "图片文字", "识别图片"}
+	case "speech_transcribe":
+		return []string{"transcribe", "speech to text", "音频转写", "语音识别"}
+	case "document_convert":
+		return []string{"convert document", "pandoc", "文档转换", "格式转换"}
+	case "data_validate":
+		return []string{"validate json", "validate csv", "校验数据", "验证 json", "验证 csv"}
+	default:
+		return nil
 	}
 }
 

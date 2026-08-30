@@ -482,7 +482,8 @@ func (e *Engine) modelStep(
 				providerRetries++
 				continue
 			}
-			return nil, nil, totalUsage, lastEstimate, err
+			return nil, nil, totalUsage, lastEstimate,
+				exhaustedProviderRetry(err)
 		}
 		e.prefixMu.Lock()
 		e.prefixManifest = prefixManifest
@@ -602,24 +603,8 @@ func (e *Engine) modelStep(
 			if ctx.Err() != nil {
 				return blocks, nil, totalUsage, lastEstimate, ctx.Err()
 			}
-			var problem *protocol.Problem
-			if errors.As(err, &problem) {
-				return blocks, nil, totalUsage, lastEstimate, err
-			}
 			return blocks, nil, totalUsage, lastEstimate,
-				protocol.NewFault(
-					protocol.CodeUnavailable,
-					"provider could not complete the model sample: "+
-						errorText(err),
-					true,
-					protocol.FaultMetadata{
-						Origin:         protocol.FaultOriginProvider,
-						Disposition:    protocol.FaultRetryTurn,
-						SideEffects:    protocol.SideEffectUnchanged,
-						RecoveryAction: "retry the turn from its durable checkpoint",
-					},
-					err,
-				)
+				exhaustedProviderRetry(err)
 		}
 		if sendErr := send(CallingModel, Event{
 			ProviderRetry: &retry,

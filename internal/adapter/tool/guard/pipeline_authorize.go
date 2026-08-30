@@ -130,10 +130,20 @@ func (g *Guard) checkControlPlaneWrites(resources []tool.Resource) error {
 		}
 		tree := resource.Tree || resource.Kind != "file"
 		if err := g.controlPlane.CheckWrite(resource.Path, tree); err != nil {
-			return &policy.DecisionError{
+			decision := &policy.DecisionError{
 				Code:   "control_plane_protected",
 				Reason: err.Error(),
 			}
+			classification, protected, classifyErr :=
+				g.controlPlane.Classify(resource.Path)
+			if classifyErr == nil && protected && classification.Root == ".git" {
+				return tool.WithRecoveryHint(decision, tool.RecoveryHint{
+					ErrorCategory:  "control_plane_protected",
+					RequiredAction: "use_git_tool",
+					RetryOriginal:  false,
+				})
+			}
+			return decision
 		}
 	}
 	return nil

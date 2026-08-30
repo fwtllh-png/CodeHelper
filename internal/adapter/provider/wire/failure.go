@@ -23,9 +23,10 @@ func GenericHTTPFailure(failure HTTPFailure) error {
 	}
 	problem := protocol.NewProblem(code, message, retryable, nil)
 	problem.HTTPStatus = failure.Status
-	problem.RateLimit = rateLimitMetadata(failure.Header)
+	problem.RateLimit = rateLimitMetadata(failure.Header, time.Now())
 	return problem
 }
+
 func TypedHTTPFailure(
 	failure HTTPFailure,
 	code provider.FailureCode,
@@ -57,36 +58,33 @@ func RetryableStatus(status int) bool {
 	return status == http.StatusRequestTimeout || status == http.StatusTooEarly ||
 		status == http.StatusTooManyRequests || status >= 500
 }
-func rateLimitMetadata(header http.Header) *protocol.RateLimitMetadata {
-	retryDelay, hasRetryAfter := retryAfter(header.Get("Retry-After"), time.Now())
+
+func rateLimitMetadata(header http.Header, now time.Time) *protocol.RateLimitMetadata {
+	delay, hasDelay := retryAfter(header.Get("Retry-After"), now)
 	metadata := &protocol.RateLimitMetadata{
-		Limit:     FirstHeader(header, "RateLimit-Limit", "X-RateLimit-Limit"),
-		Remaining: FirstHeader(header, "RateLimit-Remaining", "X-RateLimit-Remaining"),
-		Reset:     FirstHeader(header, "RateLimit-Reset", "X-RateLimit-Reset"),
+		Limit: FirstHeader(header, "RateLimit-Limit", "X-RateLimit-Limit"),
+		Remaining: FirstHeader(
+			header, "RateLimit-Remaining", "X-RateLimit-Remaining",
+		),
+		Reset: FirstHeader(header, "RateLimit-Reset", "X-RateLimit-Reset"),
 	}
-	if hasRetryAfter {
-		metadata.RetryAfterMS = uint64(retryDelay / time.Millisecond)
+	if hasDelay {
+		metadata.RetryAfterMS = uint64(delay / time.Millisecond)
 	}
-	if metadata.Limit == "" && metadata.Remaining == "" && metadata.Reset == "" && metadata.RetryAfterMS == 0 {
+	if metadata.Limit == "" && metadata.Remaining == "" &&
+		metadata.Reset == "" && metadata.RetryAfterMS == 0 {
 		return nil
 	}
 	return metadata
 }
+
 func retryAfter(value string, now time.Time) (time.Duration, bool) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0, false
-	}
-	if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
+	if seconds, err := strconv.Atoi(strings.TrimSpace(value)); err == nil && seconds >= 0 {
 		return time.Duration(seconds) * time.Second, true
 	}
 	at, err := http.ParseTime(value)
 	if err != nil {
 		return 0, false
 	}
-	delay := at.Sub(now)
-	if delay < 0 {
-		delay = 0
-	}
-	return delay, true
+	return max(at.Sub(now), 0), true
 }

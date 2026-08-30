@@ -106,11 +106,12 @@ func RecoverableFailure(err error) (string, bool) {
 		return err.Error() +
 			"; required_action=report_budget_exhaustion; retry_original=false", true
 	}
-	var decision *policy.DecisionError
-	if errors.As(err, &decision) {
+	if decision, ok := errors.AsType[*policy.DecisionError](err); ok {
 		switch decision.Code {
 		case "approval_denied":
 			return decision.Reason, true
+		case "plan_required":
+			return decision.Reason + "; call submit_plan with a structured plan, then retry the requested action", true
 		case "edit_plan_stale":
 			return decision.Reason +
 				"; re-read the affected file and submit a new edit for approval", true
@@ -177,14 +178,12 @@ func FailureMetadata(err error) map[string]any {
 			"retry_original":  false,
 		}
 	}
-	var decision *policy.DecisionError
-	if errors.As(err, &decision) &&
-		decision.Code == "edit_plan_stale" {
-		return map[string]any{
-			"error_category":    "edit_plan_stale",
-			"required_action":   "file_read",
-			"retry_original":    false,
-			"approval_required": true,
+	if decision, ok := errors.AsType[*policy.DecisionError](err); ok {
+		switch decision.Code {
+		case "plan_required":
+			return map[string]any{"error_category": "plan_required", "required_action": "submit_plan", "retry_original": false}
+		case "edit_plan_stale":
+			return map[string]any{"error_category": "edit_plan_stale", "required_action": "file_read", "retry_original": false, "approval_required": true}
 		}
 	}
 	var validation *workspacejournal.ReadValidationError

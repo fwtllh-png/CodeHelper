@@ -3,6 +3,7 @@ package workspacebroker
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
@@ -76,6 +77,22 @@ func (r *Runtime) AddIndex(
 	return r.mutateVCS(ctx, vcsbroker.IndexAdd, dir, arguments)
 }
 
+func (r *Runtime) Commit(
+	ctx context.Context, dir, message string,
+) error {
+	return r.mutateVCS(ctx, vcsbroker.Commit, dir, []string{
+		"commit", "--no-gpg-sign", "-m", message,
+	})
+}
+
+func (r *Runtime) AmendCommit(
+	ctx context.Context, dir, message string,
+) error {
+	return r.mutateVCS(ctx, vcsbroker.Commit, dir, []string{
+		"commit", "--amend", "--no-gpg-sign", "-m", message,
+	})
+}
+
 func (r *Runtime) CommitBaseline(
 	ctx context.Context, dir string,
 ) error {
@@ -85,6 +102,120 @@ func (r *Runtime) CommitBaseline(
 		"commit", "--allow-empty", "--no-gpg-sign",
 		"-m", "codehelper chat baseline",
 	})
+}
+
+func (r *Runtime) CreateBranch(
+	ctx context.Context, dir, branch string,
+) error {
+	return r.mutateVCS(ctx, vcsbroker.CreateBranch, dir, []string{
+		"switch", "-c", branch,
+	})
+}
+
+func (r *Runtime) SwitchBranch(
+	ctx context.Context, dir, branch string,
+) error {
+	return r.VCS.SwitchBranch(ctx, dir, branch)
+}
+
+func (r *Runtime) Fetch(
+	ctx context.Context, dir, remote string,
+) error {
+	return r.mutateVCS(ctx, vcsbroker.Fetch, dir, []string{
+		"fetch", "--prune", remote,
+	})
+}
+
+func (r *Runtime) Pull(
+	ctx context.Context, dir, remote, branch string,
+) error {
+	return r.mutateVCS(ctx, vcsbroker.Pull, dir, []string{
+		"pull", "--ff-only", "--", remote, branch,
+	})
+}
+
+func (r *Runtime) Push(
+	ctx context.Context, dir, remote, branch string,
+) error {
+	return r.mutateVCS(ctx, vcsbroker.Push, dir, []string{
+		"push", "--porcelain", "--", remote, "HEAD:refs/heads/" + branch,
+	})
+}
+
+func (r *Runtime) Merge(
+	ctx context.Context, dir, revision string,
+) error {
+	return r.mutateVCS(ctx, vcsbroker.Merge, dir, []string{
+		"merge", "--no-edit", "--", revision,
+	})
+}
+
+func (r *Runtime) Rebase(
+	ctx context.Context, dir, revision string,
+) error {
+	return r.mutateVCS(ctx, vcsbroker.Rebase, dir, []string{
+		"rebase", "--", revision,
+	})
+}
+
+func (r *Runtime) CherryPick(
+	ctx context.Context, dir, revision string,
+) error {
+	return r.mutateVCS(ctx, vcsbroker.CherryPick, dir, []string{
+		"cherry-pick", "--", revision,
+	})
+}
+
+func (r *Runtime) Restore(
+	ctx context.Context, dir string, paths []string, staged bool,
+) error {
+	arguments := []string{"restore"}
+	if staged {
+		arguments = append(arguments, "--staged")
+	}
+	arguments = append(arguments, "--")
+	arguments = append(arguments, paths...)
+	return r.mutateVCS(ctx, vcsbroker.Restore, dir, arguments)
+}
+
+func (r *Runtime) StashPush(
+	ctx context.Context, dir, message string,
+) error {
+	arguments := []string{"stash", "push"}
+	if message != "" {
+		arguments = append(arguments, "-m", message)
+	}
+	return r.mutateVCS(ctx, vcsbroker.StashPush, dir, arguments)
+}
+
+func (r *Runtime) StashPop(ctx context.Context, dir string) error {
+	return r.mutateVCS(ctx, vcsbroker.StashPop, dir, []string{"stash", "pop"})
+}
+
+func (r *Runtime) Tag(
+	ctx context.Context, dir, tag, message string,
+) error {
+	arguments := []string{"tag", "--", tag}
+	if message != "" {
+		arguments = []string{"tag", "-a", tag, "-m", message}
+	}
+	return r.mutateVCS(ctx, vcsbroker.Tag, dir, arguments)
+}
+
+func (r *Runtime) ResolveConflict(
+	ctx context.Context, dir, action string,
+) error {
+	arguments := map[string][]string{
+		"merge_abort":          {"merge", "--abort"},
+		"rebase_abort":         {"rebase", "--abort"},
+		"rebase_continue":      {"-c", "core.editor=true", "rebase", "--continue"},
+		"cherry_pick_abort":    {"cherry-pick", "--abort"},
+		"cherry_pick_continue": {"-c", "core.editor=true", "cherry-pick", "--continue"},
+	}[action]
+	if len(arguments) == 0 {
+		return errors.New("unsupported Git conflict action")
+	}
+	return r.mutateVCS(ctx, vcsbroker.Conflict, dir, arguments)
 }
 
 func (r *Runtime) CommitFiles(

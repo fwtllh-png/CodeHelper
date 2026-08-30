@@ -196,6 +196,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 		properties["pages"] = map[string]any{"type": "string"}
 	case "file_write":
 		description = "Atomically write a UTF-8 text file. path is workspace-relative. " +
+			"Missing parent directories are created safely; write the intended file " +
+			"directly instead of running mkdir or creating a placeholder file. " +
 			"If the path already exists, call file_read for that exact path first; " +
 			"new paths do not require a prior read."
 		properties["content"] = map[string]any{"type": "string"}
@@ -210,6 +212,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 		description = "Apply a set of file changes as one transaction: write, edit, " +
 			"move and delete across several workspace-relative paths. Every change is " +
 			"validated first, so nothing is written unless all of them can be applied. " +
+			"Write operations safely create missing parent directories, so do not " +
+			"create placeholder files first. " +
 			"Later changes see earlier ones, so the same file can be edited twice in " +
 			"one call. Before calling, use file_read on every existing source or " +
 			"destination path named by the transaction; new paths need no prior read. " +
@@ -300,13 +304,33 @@ func (o *operation) Descriptor() tool.Descriptor {
 	}
 	return tool.Descriptor{
 		Name: o.kind, Description: description, Visibility: tool.VisibleModel,
-		Capability: capability, AccessMode: access,
+		DiscoveryTerms: fileDiscoveryTerms(o.kind),
+		Capability:     capability, AccessMode: access,
 		ResourceResolver: resolver, Aliases: aliases,
 		ParallelPolicy: parallel, RepeatPolicy: repeat,
 		SandboxRequirement: requirement, Availability: tool.AvailabilityAvailable,
 		InputSchema: map[string]any{
 			"type": "object", "properties": properties, "required": required, "additionalProperties": false,
 		},
+	}
+}
+
+func fileDiscoveryTerms(kind string) []string {
+	switch kind {
+	case "file_read":
+		return []string{"read file", "查看文件", "读取文件"}
+	case "file_list":
+		return []string{"list files", "目录", "文件列表"}
+	case "file_write":
+		return []string{"write file", "创建文件", "写文件"}
+	case "file_edit":
+		return []string{"edit file", "修改文件", "编辑文件"}
+	case "file_apply":
+		return []string{"multiple files", "批量修改", "移动文件", "删除文件"}
+	case "file_patch":
+		return []string{"apply patch", "补丁", "diff"}
+	default:
+		return nil
 	}
 }
 

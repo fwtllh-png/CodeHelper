@@ -122,6 +122,98 @@ func TestProviderRetryUsesDeterministicBackoffWithoutRetryAfter(t *testing.T) {
 	}
 }
 
+func TestRateLimitRetryUsesConfiguredAttemptBudget(t *testing.T) {
+	engine := &Engine{options: Options{ProviderConfig: ProviderConfig{
+		MaxRetries: 2, MaxRetryDelay: time.Second,
+	}}}
+	err := protocol.NewProblem(
+		protocol.CodeUnavailable,
+		"rate limited",
+		true,
+		&provider.Failure{
+			Code: provider.FailureRateLimit, Message: "rate limited",
+			RetryAfterMS: 1000,
+		},
+	)
+	for retries := range uint32(2) {
+		retry, ok := engine.providerRetry(
+			err,
+			false,
+			retries,
+			false,
+		)
+		if !ok || retry.EffectiveDelay != time.Second {
+			t.Fatalf(
+				"retry %d = %+v, allowed=%t",
+				retries,
+				retry,
+				ok,
+			)
+		}
+	}
+	if retry, ok := engine.providerRetry(
+		err,
+		false,
+		2,
+		false,
+	); ok {
+		t.Fatalf("retry beyond attempt budget = %+v", retry)
+	}
+}
+
+func TestEngineRetriesRateLimitUntilProviderRecovers(t *testing.T) {
+	rateLimited := func() provider.Stream {
+		return &errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"rate limited",
+			true,
+			&provider.Failure{
+				Code: provider.FailureRateLimit, Message: "rate limited",
+				RetryAfterMS: 1,
+			},
+		)}
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		rateLimited(),
+		rateLimited(),
+		rateLimited(),
+		textStream("recovered"),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.MaxRetries = 3
+	engine.options.MaxRetryDelay = time.Second
+
+	result, err := engine.Run(t.Context(), "retry rate limit", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "recovered" || len(runtime.requests) != 4 {
+		t.Fatalf("result = %+v, requests = %d", result, len(runtime.requests))
+	}
+}
+
+func TestExhaustedProviderRetryBecomesUserRecoverable(t *testing.T) {
+	original := protocol.NewProblem(
+		protocol.CodeUnavailable,
+		"rate limited",
+		true,
+		&provider.Failure{
+			Code: provider.FailureRateLimit, Message: "rate limited",
+		},
+	)
+	original.HTTPStatus = 429
+	original.RateLimit = &protocol.RateLimitMetadata{RetryAfterMS: 1000}
+
+	recovered := protocol.ProblemOf(exhaustedProviderRetry(original))
+	if recovered.HTTPStatus != 429 ||
+		recovered.RateLimit.RetryAfterMS != 1000 ||
+		recovered.Fault == nil ||
+		recovered.Fault.Disposition != protocol.FaultRetryTurn ||
+		recovered.Fault.RecoveryAction == "" {
+		t.Fatalf("exhausted retry = %#v", recovered)
+	}
+}
+
 func TestContextOverflowRetriesOnlyAfterVisibleCompaction(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&errorStream{err: protocol.NewProblem(

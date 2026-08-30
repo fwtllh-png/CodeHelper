@@ -358,32 +358,34 @@ func runWeb(
 	workspaceURL := publicURL + "?workspace=" +
 		url.QueryEscape(workspaceIdentity.RootID)
 	info := buildinfo.Current()
-	var setupRequests chan webSetupAttempt
-	var setupOptions *webhost.SetupOptions
-	if setupRequired {
-		setupRequests = make(chan webSetupAttempt)
-		setupOptions = &webhost.SetupOptions{
-			WorkspaceRoot: workspaceRoot, WorkspaceIdentity: workspaceIdentity,
-			Catalog: webSetupCatalog(),
-			Apply: func(requestContext context.Context, request webhost.SetupRequest) error {
-				attempt := webSetupAttempt{request: request, result: make(chan error, 1)}
-				select {
-				case setupRequests <- attempt:
-				case <-requestContext.Done():
-					return requestContext.Err()
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-				select {
-				case err := <-attempt.result:
-					return err
-				case <-requestContext.Done():
-					return requestContext.Err()
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			},
-		}
+	setupRequests := make(chan webSetupAttempt)
+	setupOptions := &webhost.SetupOptions{
+		WorkspaceRoot: workspaceRoot, WorkspaceIdentity: workspaceIdentity,
+		Catalog: webSetupCatalog(),
+		Apply: func(
+			requestContext context.Context,
+			request webhost.SetupRequest,
+		) error {
+			if !setupRequired || workspaceManager.Configured() {
+				return workspaceManager.Reconfigure(requestContext, request)
+			}
+			attempt := webSetupAttempt{request: request, result: make(chan error, 1)}
+			select {
+			case setupRequests <- attempt:
+			case <-requestContext.Done():
+				return requestContext.Err()
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+			select {
+			case err := <-attempt.result:
+				return err
+			case <-requestContext.Done():
+				return requestContext.Err()
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		},
 	}
 	server, err := webhost.New(webhost.Options{
 		Assets: bundle, ExpectedHost: hostPort, Origin: "http://" + hostPort,
@@ -733,6 +735,14 @@ func prepareWebRuntime(
 	runtimeOverrides.CredentialKind = &effectiveCredential.Kind
 	runtimeOverrides.CredentialName = &effectiveCredential.Name
 	skillOptions := wire.SkillOptions{DataDir: loaded.Config.State.DataDir}
+	// #region debug-point D:wire-new-exec
+	func() {
+		response, _ := http.Post("http://127.0.0.1:7777/event", "application/json", strings.NewReader(fmt.Sprintf(`{"sessionId":"make-start-boot-failed","runId":"post-fix","hypothesisId":"D","location":"web.prepareWebRuntime","msg":"[DEBUG] wire NewExec","data":{"provider":%q,"model":%q,"workspace":%q,"persistent":%t}}`, loaded.Config.Execution.Provider, loaded.Config.Execution.Model, workspaceRoot, store != nil)))
+		if response != nil {
+			_ = response.Body.Close()
+		}
+	}()
+	// #endregion
 	application, err := wire.NewExec(ctx, wire.ExecOptions{
 		ConfigPath:        options.configPath,
 		ConfigOverrides:   runtimeOverrides,
@@ -748,6 +758,14 @@ func prepareWebRuntime(
 		ModelMetadata:     setupModelMetadata(selection),
 	})
 	if err != nil {
+		// #region debug-point D:wire-new-exec-failed
+		func() {
+			response, _ := http.Post("http://127.0.0.1:7777/event", "application/json", strings.NewReader(fmt.Sprintf(`{"sessionId":"make-start-boot-failed","runId":"post-fix","hypothesisId":"D","location":"web.prepareWebRuntime","msg":"[DEBUG] wire NewExec failed","data":{"error":%q}}`, err.Error())))
+			if response != nil {
+				_ = response.Body.Close()
+			}
+		}()
+		// #endregion
 		return nil, err
 	}
 	skillPaths, err := wire.ResolveSkillPaths(skillOptions, workspaceRoot)
@@ -805,7 +823,7 @@ func prepareWebRuntime(
 		)
 	}
 	connection := webhost.WorkspaceConnection{
-		Provider: application.ProviderID(),
+		Provider: selection.Provider,
 		Endpoint: selection.BaseURL,
 		Protocol: selection.Protocol,
 	}

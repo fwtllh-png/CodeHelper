@@ -81,6 +81,67 @@ func TestProfilePersistsWithRevisionCASAndPreservesMetadata(t *testing.T) {
 	}
 }
 
+func TestRebindWorkspaceProfilesUpdatesOnlySelectedWorkspaces(t *testing.T) {
+	store, err := sqlitestate.Open(t.Context(), filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	repository := session.NewSQLiteRepository(store)
+	firstRoot := t.TempDir()
+	secondRoot := t.TempDir()
+	if err := repository.EnsureSeed(t.Context(), "first", firstRoot); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.EnsureSeed(t.Context(), "second", secondRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().ExecContext(
+		t.Context(),
+		`UPDATE sessions SET metadata_json = ? WHERE id IN (?, ?)`,
+		[]byte(`{}`),
+		"first",
+		"second",
+	); err != nil {
+		t.Fatal(err)
+	}
+	defaults := persistedProfile()
+	if _, err := repository.EnsureProfile(t.Context(), "first", defaults); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.EnsureProfile(t.Context(), "second", defaults); err != nil {
+		t.Fatal(err)
+	}
+	next := defaults
+	next.Provider = "openai"
+	next.Model = "gpt-5"
+	next.ReasoningEffort = "high"
+	if err := repository.RebindWorkspaceProfiles(
+		t.Context(),
+		[]string{firstRoot},
+		next,
+	); err != nil {
+		t.Fatal(err)
+	}
+	first, err := repository.Profile(t.Context(), "first", next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Provider != "openai" || first.Model != "gpt-5" ||
+		first.ReasoningEffort != "high" || first.Revision != defaults.Revision+1 {
+		t.Fatalf("rebound profile = %+v", first)
+	}
+	second, err := repository.Profile(t.Context(), "second", defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Provider != defaults.Provider ||
+		second.Model != defaults.Model ||
+		second.Revision != defaults.Revision {
+		t.Fatalf("unselected Workspace profile = %+v", second)
+	}
+}
+
 func TestEnsureProfileMigratesOnlyUntouchedLegacyStepDefaults(t *testing.T) {
 	store, err := sqlitestate.Open(t.Context(), filepath.Join(t.TempDir(), "state.db"))
 	if err != nil {

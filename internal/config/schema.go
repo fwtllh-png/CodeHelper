@@ -152,7 +152,9 @@ type Execution struct {
 	IdleTimeout   time.Duration `json:"idle_timeout" toml:"-"`
 	MaxConcurrent int           `json:"max_concurrent" toml:"max_concurrent"`
 	RateLimit     float64       `json:"rate_limit" toml:"rate_limit"`
-	BudgetTokens  uint64        `json:"budget_tokens" toml:"budget_tokens"`
+	// ProviderRetryLimit bounds retries of transient Provider failures.
+	ProviderRetryLimit int    `json:"provider_retry_limit" toml:"provider_retry_limit"`
+	BudgetTokens       uint64 `json:"budget_tokens" toml:"budget_tokens"`
 	// TurnBudgetTokens is an optional cumulative operator ceiling. Zero leaves
 	// the Turn uncapped; each request remains bounded by model capacity.
 	TurnBudgetTokens uint64   `json:"turn_budget_tokens" toml:"turn_budget_tokens"`
@@ -360,6 +362,7 @@ type Overrides struct {
 	IdleTimeout           *time.Duration
 	MaxConcurrent         *int
 	RateLimit             *float64
+	ProviderRetryLimit    *int
 	BudgetTokens          *uint64
 	TurnBudgetTokens      *uint64
 	BudgetUSD             *float64

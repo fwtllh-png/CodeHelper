@@ -131,6 +131,7 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyDuration(overrides.IdleTimeout, &execution.IdleTimeout, fieldIdleTimeout, SourceStartup, provenance)
 	applyInt(overrides.MaxConcurrent, &execution.MaxConcurrent, fieldMaxConcurrent, SourceStartup, provenance)
 	applyFloat64(overrides.RateLimit, &execution.RateLimit, fieldRateLimit, SourceStartup, provenance)
+	applyInt(overrides.ProviderRetryLimit, &execution.ProviderRetryLimit, fieldProviderRetryLimit, SourceStartup, provenance)
 	applyUint64(overrides.BudgetTokens, &execution.BudgetTokens, fieldBudgetTokens, SourceStartup, provenance)
 	applyUint64(overrides.TurnBudgetTokens, &execution.TurnBudgetTokens, fieldTurnBudgetTokens, SourceStartup, provenance)
 	applyFloat64(overrides.BudgetUSD, &execution.BudgetUSD, fieldBudgetUSD, SourceStartup, provenance)

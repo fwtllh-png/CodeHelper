@@ -21,25 +21,31 @@ func TestRequiredPlanningGatesConsequentialEffects(t *testing.T) {
 	}
 }
 
-func TestAdaptivePlanningAllowsSmallEditsAndGatesComplexEffects(t *testing.T) {
+func TestAdaptivePlanningUsesTrustedEffectInsteadOfFileCount(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
 	runtime.ConfigurePlanning(PlanningAdaptive)
-	single := planningInvocation("file_edit", tool.CapabilityWrite, []tool.Resource{{
-		Kind: "file", Path: "parser.go", Access: tool.AccessWrite,
-	}})
-	if decision := runtime.Evaluate(single); decision.Action != ActionAllow {
-		t.Fatalf("single-file decision = %+v", decision)
-	}
 	multiple := planningInvocation("file_edit", tool.CapabilityWrite, []tool.Resource{
 		{Kind: "file", Path: "parser.go", Access: tool.AccessWrite},
 		{Kind: "file", Path: "lexer.go", Access: tool.AccessWrite},
 	})
-	if decision := runtime.Evaluate(multiple); decision.Code != "plan_required" {
-		t.Fatalf("multi-file decision = %+v", decision)
+	multiple.Effect = tool.EffectContract{
+		Mode: tool.EffectFixed, Kind: tool.EffectWorkspaceEdit,
+		Risk: tool.RiskLow, Reversibility: tool.Reversible,
+		WorkspaceTransaction: tool.TransactionBeforeImage,
+		Approval:             tool.ApprovalPolicyDefault,
 	}
-	runtime.SubmitPlan()
 	if decision := runtime.Evaluate(multiple); decision.Action != ActionAllow {
-		t.Fatalf("auto-approved decision = %+v", decision)
+		t.Fatalf("reversible multi-file edit decision = %+v", decision)
+	}
+	highRisk := multiple
+	highRisk.Effect.Risk = tool.RiskHigh
+	if decision := runtime.Evaluate(highRisk); decision.Code != "plan_required" {
+		t.Fatalf("high-risk decision = %+v", decision)
+	}
+	irreversible := multiple
+	irreversible.Effect.Reversibility = tool.Irreversible
+	if decision := runtime.Evaluate(irreversible); decision.Code != "plan_required" {
+		t.Fatalf("irreversible decision = %+v", decision)
 	}
 }
 

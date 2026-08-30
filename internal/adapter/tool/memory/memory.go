@@ -92,6 +92,7 @@ func (t *Tool) Descriptor() tool.Descriptor {
 		Description: "Append a durable note to the user memory file so it surfaces in " +
 			"future sessions. Use this when the user states a preference, convention, or " +
 			"fact that should persist. Keep notes terse. Do not store secrets.",
+		DiscoveryTerms: []string{"remember", "memory", "记住", "记忆", "偏好"},
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -324,6 +325,7 @@ func memoryDescriptor(
 	}
 	return tool.Descriptor{
 		Name: name, Description: description,
+		DiscoveryTerms: []string{"memory", "remember", "记忆", "记住"},
 		InputSchema: map[string]any{
 			"type": "object", "properties": properties,
 			"required": required, "additionalProperties": false,

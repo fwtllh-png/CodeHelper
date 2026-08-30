@@ -17,3 +17,16 @@ func TestWrapSandboxTempCommandRemapsCdTmp(t *testing.T) {
 		t.Fatal("empty command should stay empty")
 	}
 }
+
+func TestSandboxPathHintDirectsWorkspaceEditsToFileTools(t *testing.T) {
+	for _, message := range []string{
+		"mkdir generated: Operation not permitted",
+		"touch generated/file: Permission denied",
+	} {
+		hint := sandboxPathHint(message)
+		if !strings.Contains(hint, "file_write or file_apply") ||
+			!strings.Contains(hint, "parent directories") {
+			t.Fatalf("sandboxPathHint(%q) = %q", message, hint)
+		}
+	}
+}

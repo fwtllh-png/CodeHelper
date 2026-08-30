@@ -500,6 +500,18 @@ func TestOnlyExecCommandAdvertisesExactWritePaths(t *testing.T) {
 	if _, exists := properties["write_paths"]; !exists {
 		t.Fatal("exec_command does not advertise write_paths")
 	}
+	if !strings.Contains(run.Description, "does not permit mkdir") ||
+		!strings.Contains(run.Description, "file_write or file_apply") ||
+		!strings.Contains(run.Description, "parent directories") ||
+		!strings.Contains(run.Description, "$TMPDIR") ||
+		!strings.Contains(run.Description, "absolute /tmp remains denied") {
+		t.Fatalf("exec_command does not explain directory writes: %q", run.Description)
+	}
+	read := (&Tool{}).Descriptor()
+	if !strings.Contains(read.Description, "$TMPDIR") ||
+		!strings.Contains(read.Description, "absolute /tmp remains denied") {
+		t.Fatalf("shell_read does not explain private temporary files: %q", read.Description)
+	}
 	network, _ := properties["network_targets"].(map[string]any)
 	loopback, _ := properties["allow_loopback"].(map[string]any)
 	items, _ := network["items"].(map[string]any)
