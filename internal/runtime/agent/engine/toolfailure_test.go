@@ -821,13 +821,14 @@ func TestToolSelectionKeepsChineseGitWorkflowTools(t *testing.T) {
 	}
 }
 
-func TestToolSelectionAlwaysKeepsReadOnlyGitCore(t *testing.T) {
+func TestToolSelectionAlwaysKeepsGitCoreWorkflow(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := toolsearch.Register(registry); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{
-		"git_status", "git_diff", "git_log", "git_commit",
+		"git_status", "git_diff", "git_log",
+		"git_add", "git_commit", "git_push",
 	} {
 		if err := registry.Register(catalogFixtureTool(name)); err != nil {
 			t.Fatal(err)
@@ -840,18 +841,21 @@ func TestToolSelectionAlwaysKeepsReadOnlyGitCore(t *testing.T) {
 	}
 	_, advertised, err := engine.toolDefinitionsFromSnapshot(
 		snapshot,
-		TurnRequest{Prompt: "修复编译错误并验证"},
+		TurnRequest{
+			Prompt: "继续完成当前工作",
+			Intent: protocol.TurnIntentAnswer,
+		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"git_status", "git_diff", "git_log"} {
+	for _, name := range []string{
+		"git_status", "git_diff", "git_log",
+		"git_add", "git_commit", "git_push",
+	} {
 		if !advertised[name] {
-			t.Fatalf("read-only Git core tool %q omitted from %v", name, advertised)
+			t.Fatalf("Git core workflow tool %q omitted from %v", name, advertised)
 		}
-	}
-	if advertised["git_commit"] {
-		t.Fatalf("Git mutation was advertised without matching intent: %v", advertised)
 	}
 }
 
