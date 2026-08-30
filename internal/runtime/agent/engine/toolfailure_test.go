@@ -17,6 +17,7 @@ import (
 	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
@@ -851,6 +852,44 @@ func TestToolSelectionAlwaysKeepsReadOnlyGitCore(t *testing.T) {
 	}
 	if advertised["git_commit"] {
 		t.Fatalf("Git mutation was advertised without matching intent: %v", advertised)
+	}
+}
+
+func TestToolSelectionKeepsGitMutationWorkflowForWorkspaceChanges(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"git_status", "git_diff", "git_log",
+		"git_add", "git_commit", "git_push",
+	} {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, advertised, err := engine.toolDefinitionsFromSnapshot(
+		snapshot,
+		TurnRequest{
+			Prompt: "修复编译错误并验证",
+			Intent: protocol.TurnIntentWorkspaceChange,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"git_status", "git_diff", "git_log",
+		"git_add", "git_commit", "git_push",
+	} {
+		if !advertised[name] {
+			t.Fatalf("Git workflow tool %q omitted from %v", name, advertised)
+		}
 	}
 }
 

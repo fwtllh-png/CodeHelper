@@ -19,7 +19,8 @@ const (
 		"file_apply,shell_read,exec_command,write_stdin,quality_test," +
 		"quality_verify,quality_process_smoke,project_map," +
 		"git_status,git_diff,git_log,"
-	writeToolSet = ",search_related_tests,quality_diagnostics,"
+	writeToolSet = ",search_related_tests,quality_diagnostics," +
+		"git_add,git_commit,git_push,"
 )
 
 type ProjectionRequest struct {
