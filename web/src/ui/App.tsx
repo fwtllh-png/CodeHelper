@@ -1977,10 +1977,9 @@ export function App({client}: Props) {
                       value={snapshot.profile?.profile.mode ?? "act"}
                       values={["plan", "act", "operate"]}
                       disabled={!profileMutable(snapshot, "mode") ||
-                        !profileMutable(snapshot, "planning_policy") ||
                         Boolean(profilePending)}
                       onChange={(value) => void updateComposerProfile(
-                        {mode: value, planning_policy: "adaptive"},
+                        {mode: value},
                         "Updating mode"
                       )}
                     />
@@ -2639,7 +2638,6 @@ function ApprovalComposer({
   stopping: boolean;
   onStop: () => void;
 }) {
-  const [scope, setScope] = useState("");
   const [replacement, setReplacement] = useState("");
   const [replacementOpen, setReplacementOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -2656,7 +2654,10 @@ function ApprovalComposer({
   const replacementAllowed = Boolean(data.replacement_allowed);
   const replacementArguments = parseJSONObject(replacement);
   const replacementValid = !replacement.trim() || replacementArguments !== undefined;
-  const decide = async (decision: "approve" | "deny" | "cancel") => {
+  const decide = async (
+    decision: "approve" | "deny" | "cancel",
+    approvalScope = ""
+  ) => {
     if (submitting || (decision === "approve" && !replacementValid)) return;
     setSubmitting(true);
     setError("");
@@ -2665,7 +2666,7 @@ function ApprovalComposer({
         requestID,
         decision,
         planID,
-        scope,
+        approvalScope,
         replacementArguments
       );
     } catch (value) {
@@ -2720,35 +2721,17 @@ function ApprovalComposer({
           )}
         </div>
         {error && <span className="composerError">{error}</span>}
-        {(scopes.length > 0 || replacementAllowed) && (
+        {replacementAllowed && (
           <details className="approvalOptions">
             <summary>Approval options <ChevronDown size={13} /></summary>
-            {scopes.length > 0 && (
-              <label>
-                <span>Scope</span>
-                <select
-                  aria-label="Approval scope"
-                  value={scope}
-                  disabled={submitting}
-                  onChange={(event) => setScope(event.target.value)}
-                >
-                  <option value="">Once</option>
-                  {scopes.map((value) => (
-                    <option value={value} key={value}>{value}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {replacementAllowed && (
-              <button
-                type="button"
-                onClick={() => setReplacementOpen((value) => !value)}
-              >
-                <Braces size={14} />
-                {replacementOpen ? "Hide replacement arguments" : "Edit arguments"}
-              </button>
-            )}
-            {replacementAllowed && replacementOpen && (
+            <button
+              type="button"
+              onClick={() => setReplacementOpen((value) => !value)}
+            >
+              <Braces size={14} />
+              {replacementOpen ? "Hide replacement arguments" : "Edit arguments"}
+            </button>
+            {replacementOpen && (
               <label className="replacementEditor">
                 <span>Replacement arguments (JSON)</span>
                 <textarea
@@ -2771,11 +2754,29 @@ function ApprovalComposer({
         <button type="button" disabled={submitting} onClick={() => void decide("deny")}>
           Deny
         </button>
+        {scopes.includes("always") && (
+          <button
+            type="button"
+            disabled={submitting || !replacementValid}
+            onClick={() => void decide("approve", "always")}
+          >
+            Always approve
+          </button>
+        )}
+        {scopes.includes("session") && (
+          <button
+            type="button"
+            disabled={submitting || !replacementValid}
+            onClick={() => void decide("approve", "session")}
+          >
+            Approve for session
+          </button>
+        )}
         <button
           type="button"
           className="primaryText"
           disabled={submitting || !replacementValid}
-          onClick={() => void decide("approve")}
+          onClick={() => void decide("approve", "once")}
         >
           Approve once
         </button>

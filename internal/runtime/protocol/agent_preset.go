@@ -34,7 +34,7 @@ type AgentPresetProfile struct {
 
 func NewAgentPresetProfile(profile SessionProfile) AgentPresetProfile {
 	return AgentPresetProfile{
-		Mode: profile.Mode, PlanningPolicy: profile.PlanningPolicy,
+		Mode: profile.Mode, PlanningPolicy: "adaptive",
 		Provider: profile.Provider, Model: profile.Model,
 		ReasoningEffort: profile.ReasoningEffort,
 		EnabledToolIDs:  sortedToolIDs(profile.EnabledToolIDs),
@@ -52,7 +52,6 @@ func (p AgentPresetProfile) Validate() error {
 func (p AgentPresetProfile) Patch(current SessionProfile) SessionProfilePatch {
 	var patch SessionProfilePatch
 	setStringPatch(&patch.Mode, p.Mode, current.Mode)
-	setStringPatch(&patch.PlanningPolicy, p.PlanningPolicy, current.PlanningPolicy)
 	setStringPatch(&patch.Provider, p.Provider, current.Provider)
 	setStringPatch(&patch.Model, p.Model, current.Model)
 	setStringPatch(&patch.ReasoningEffort, p.ReasoningEffort, current.ReasoningEffort)
@@ -83,7 +82,7 @@ func (p AgentPresetProfile) sessionProfile(
 ) SessionProfile {
 	return SessionProfile{
 		Version: SessionProfileVersion, Revision: revision,
-		Mode: p.Mode, PlanningPolicy: p.PlanningPolicy,
+		Mode: p.Mode, PlanningPolicy: "adaptive",
 		Provider:        p.Provider,
 		Model:           p.Model,
 		ReasoningEffort: p.ReasoningEffort,

@@ -541,7 +541,7 @@ func (g *Guard) finishFileWrites(
 			g.readTracker.Invalidate(path)
 			continue
 		}
-		if refreshRead {
+		if refreshRead || !expected[path].Exists {
 			if err := g.readTracker.RecordFingerprint(after); err != nil {
 				return fmt.Errorf("record post-write fingerprint %q: %w", path, err)
 			}

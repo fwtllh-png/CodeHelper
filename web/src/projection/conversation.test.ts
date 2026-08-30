@@ -454,6 +454,45 @@ describe("ConversationProjection", () => {
     });
   });
 
+  it("keeps shell output visible when a command changes generated files", () => {
+    const snapshot = projectConversation([
+      event(1, "tool.start", {
+        call_id: "compile-1",
+        tool: "exec_command",
+        arguments: {command: "c++ source.cpp -o build/test"}
+      }),
+      event(2, "tool.result", {
+        call_id: "compile-1",
+        tool: "exec_command",
+        output: "compile_exit=0\ntest_exit=1",
+        changes: [{
+          path: "build/test",
+          kind: "modified",
+          added: 0,
+          removed: 0
+        }],
+        is_error: true
+      }),
+      event(3, "command.execution", {
+        call_id: "compile-1",
+        command: "c++ source.cpp -o build/test && ./build/test",
+        status: "failed",
+        exit_code: 1
+      })
+    ]);
+
+    expect(snapshot.nodes.get("tool-compile-1")).toMatchObject({
+      kind: "tool",
+      variant: "shell",
+      state: "failed",
+      summary: "compile_exit=0",
+      errorSummary: "exit 1",
+      output: "compile_exit=0\ntest_exit=1",
+      changes: [{path: "build/test"}],
+      command: {exitCode: 1}
+    });
+  });
+
   it("projects file_apply patch content into the edit card", () => {
     const snapshot = projectConversation([
       event(1, "tool.start", {

@@ -12,6 +12,17 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
+func TestPlanningPolicyIsNotMutable(t *testing.T) {
+	planning := "required"
+	err := validateMutableProfilePatch(
+		protocol.SessionProfilePatch{PlanningPolicy: &planning},
+		[]string{"mode", "max_steps"},
+	)
+	if protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("planning policy mutation error = %v", err)
+	}
+}
+
 type memoryProfileStore struct {
 	mu      sync.Mutex
 	profile protocol.SessionProfile

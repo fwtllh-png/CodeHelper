@@ -367,6 +367,7 @@ func (p *commandProtocol) execCommand(
 	ctx context.Context,
 	input execCommandInput,
 ) (tool.Result, error) {
+	started := time.Now()
 	if token := unsupportedPOSIXShellSyntax(input.Command); token != "" {
 		return unsupportedSyntaxResult(token), nil
 	}
@@ -467,6 +468,18 @@ func (p *commandProtocol) execCommand(
 	}
 	wait.Data = output.String()
 	result := sessionResult(id, wait, outputTokens)
+	status := "running"
+	if !wait.Running {
+		status = "completed"
+		if wait.ExitCode != 0 {
+			status = "failed"
+		}
+	}
+	result.Metadata["command_execution"] = map[string]any{
+		"command": input.Command, "status": status,
+		"exit_code": wait.ExitCode, "duration_ms": time.Since(started).Milliseconds(),
+		"output_tail": result.Content,
+	}
 	if omitted := output.Omitted(); omitted > 0 {
 		result.Metadata["omitted_bytes"] = omitted
 	}

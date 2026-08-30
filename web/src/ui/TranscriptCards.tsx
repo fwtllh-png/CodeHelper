@@ -130,6 +130,17 @@ export function ToolDisclosure({
       {open && (
         <div className="toolExpanded">
           {renderToolBody(presentation, entry, onOpenFile)}
+          {entry.state === "failed" &&
+            entry.output &&
+            presentation.kind !== "shell" &&
+            presentation.kind !== "generic" && (
+              <div className="toolIOCard">
+                <section>
+                  <span>ERROR</span>
+                  <pre data-error>{entry.output}</pre>
+                </section>
+              </div>
+            )}
           <div className="artifactActions toolActions">
             <button onClick={() => onInspect(entry.callID)}>
               <ScanSearch size={13} /> Inspect

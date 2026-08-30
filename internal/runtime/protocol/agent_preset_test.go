@@ -9,6 +9,7 @@ func TestAgentPresetProfileBuildsOnlyChangedPatchFields(t *testing.T) {
 	current := testSessionProfile()
 	preset := NewAgentPresetProfile(current)
 	preset.Mode = "plan"
+	preset.PlanningPolicy = "required"
 	preset.EnabledToolIDs = []string{"builtin:read", "builtin:search"}
 
 	patch := preset.Patch(current)
@@ -16,7 +17,7 @@ func TestAgentPresetProfileBuildsOnlyChangedPatchFields(t *testing.T) {
 		patch.EnabledToolIDs == nil || len(*patch.EnabledToolIDs) != 2 {
 		t.Fatalf("patch = %+v", patch)
 	}
-	if patch.Model != nil || patch.ApprovalPosture != nil ||
+	if patch.PlanningPolicy != nil || patch.Model != nil || patch.ApprovalPosture != nil ||
 		patch.MaxSteps != nil {
 		t.Fatalf("unchanged fields entered patch = %+v", patch)
 	}

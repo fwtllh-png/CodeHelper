@@ -261,6 +261,57 @@ func TestGuardReportsNoChangesWhenNothingWasWritten(t *testing.T) {
 	}
 }
 
+func TestGuardRetainsFingerprintForFilesCreatedByExactProcessWrite(t *testing.T) {
+	workspace := t.TempDir()
+	created := filepath.Join(workspace, "generated.tmp")
+	existing := filepath.Join(workspace, "existing.txt")
+	if err := os.WriteFile(existing, []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	createdBefore, _, _, err := workspacejournal.Snapshot(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existingBefore, _, _, err := workspacejournal.Snapshot(existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(created, []byte{0, 1, 2}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(existing, []byte("after\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	guard := &Guard{
+		workspace:   workspace,
+		readTracker: workspacejournal.NewReadTracker(),
+	}
+	result := &tool.Result{}
+	err = guard.finishFileWrites(
+		t.Context(),
+		[]string{created, existing},
+		map[string]workspacejournal.Fingerprint{
+			created: createdBefore, existing: existingBefore,
+		},
+		result,
+		true,
+		false,
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guard.readTracker.ValidateWrite(created); err != nil {
+		t.Fatalf("created file fingerprint was not retained: %v", err)
+	}
+	if _, err := guard.readTracker.ValidateWrite(existing); !errors.Is(
+		err,
+		workspacejournal.ErrUnread,
+	) {
+		t.Fatalf("modified existing file validation = %v, want ErrUnread", err)
+	}
+}
+
 // Line counts are measured against the content the turn started from, not the
 // previous call, so a file edited twice reports the turn's cumulative delta.
 func TestGuardCountsLinesAgainstTheTurnsStartingContent(t *testing.T) {

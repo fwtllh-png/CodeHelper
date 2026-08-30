@@ -332,7 +332,7 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 	err := fmt.Errorf("plan workspace edit: %w", tool.Precondition(
 		tool.WithRecoveryHint(errors.New("old text did not match"), tool.RecoveryHint{
 			ErrorCategory:  "edit_precondition_failed",
-			RequiredAction: "replace_failed_change",
+			RequiredAction: "file_read",
 			Path:           "docs/chapter.md",
 			RetryOriginal:  false,
 			FailedChange:   6,
@@ -346,7 +346,7 @@ func TestToolFailureRecoveryMetadataUsesStructuredEditHint(t *testing.T) {
 	metadata := toolresult.FailureMetadata(err)
 
 	if metadata["error_category"] != "edit_precondition_failed" ||
-		metadata["required_action"] != "replace_failed_change" ||
+		metadata["required_action"] != "file_read" ||
 		metadata["path"] != "docs/chapter.md" ||
 		metadata["retry_original"] != false ||
 		metadata["failed_change"] != 6 ||
@@ -817,6 +817,40 @@ func TestToolSelectionKeepsChineseGitWorkflowTools(t *testing.T) {
 		if advertised[name] {
 			t.Fatalf("unrelated Git tool %q advertised in %v", name, advertised)
 		}
+	}
+}
+
+func TestToolSelectionAlwaysKeepsReadOnlyGitCore(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"git_status", "git_diff", "git_log", "git_commit",
+	} {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, advertised, err := engine.toolDefinitionsFromSnapshot(
+		snapshot,
+		TurnRequest{Prompt: "修复编译错误并验证"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"git_status", "git_diff", "git_log"} {
+		if !advertised[name] {
+			t.Fatalf("read-only Git core tool %q omitted from %v", name, advertised)
+		}
+	}
+	if advertised["git_commit"] {
+		t.Fatalf("Git mutation was advertised without matching intent: %v", advertised)
 	}
 }
 

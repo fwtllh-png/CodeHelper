@@ -6,7 +6,7 @@ func mutableSessionProfileFields(
 	approvalMutable bool,
 ) []string {
 	fields := append(
-		[]string{"mode", "planning_policy", "max_steps"},
+		[]string{"mode", "max_steps"},
 		modelFields...,
 	)
 	if toolCalls {

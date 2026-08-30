@@ -524,13 +524,9 @@ func changePrecondition(index int, request changeRequest, err error) error {
 	)
 	var match *editMatchError
 	if errors.As(err, &match) {
-		requiredAction := "reread_exact_range"
-		if match.excerpt != "" {
-			requiredAction = "replace_failed_change"
-		}
 		wrapped = tool.WithRecoveryHint(wrapped, tool.RecoveryHint{
 			ErrorCategory:  "edit_precondition_miss",
-			RequiredAction: requiredAction,
+			RequiredAction: "file_read",
 			Path:           request.Path,
 			RetryOriginal:  false,
 			FailedChange:   index + 1,

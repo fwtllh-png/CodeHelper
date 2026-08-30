@@ -45,6 +45,25 @@ func TestUnifiedProcessProtocolLifecycle(t *testing.T) {
 	if _, exists := completed.Metadata["session_id"]; exists {
 		t.Fatalf("completed command retained a session: %+v", completed.Metadata)
 	}
+	execution, _ := completed.Metadata["command_execution"].(map[string]any)
+	if execution["command"] != "printf complete" ||
+		execution["status"] != "completed" ||
+		execution["exit_code"] != 0 {
+		t.Fatalf("completed command execution = %#v", execution)
+	}
+
+	failed := executeProcessTool(
+		t,
+		registry,
+		processTestThread,
+		"exec_command",
+		map[string]any{"command": "printf compile_exit=0; exit 7"},
+	)
+	execution, _ = failed.Metadata["command_execution"].(map[string]any)
+	if !failed.IsError || execution["status"] != "failed" ||
+		execution["exit_code"] != 7 {
+		t.Fatalf("failed command execution = %#v result = %+v", execution, failed)
+	}
 
 	started := executeProcessTool(
 		t,

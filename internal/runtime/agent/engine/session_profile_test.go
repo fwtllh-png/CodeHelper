@@ -66,6 +66,25 @@ func TestProfilePermissionCeilingClampsEveryPosture(t *testing.T) {
 	}
 }
 
+func TestSessionProfileUsesAutomaticPlanningPolicy(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	route := engine.options.Routes.Act()
+	profile := protocol.SessionProfile{
+		Version: protocol.SessionProfileVersion, Revision: 2,
+		Mode: "act", PlanningPolicy: "required",
+		Provider: route.ProviderID(), Model: route.Model().ID,
+		ApprovalPosture: "suggest", ExecutionTarget: "local",
+		MaxSteps: 8, PromptCacheRevision: 2,
+	}
+	if err := engine.ApplySessionProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	planning := engine.options.Security.PlanningSnapshot()
+	if planning.Planning != string(policy.PlanningAdaptive) {
+		t.Fatalf("effective planning policy = %q", planning.Planning)
+	}
+}
+
 func TestSessionProfileModeProjectsThroughWorldState(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	route := engine.options.Routes.Act()

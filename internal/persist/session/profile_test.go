@@ -204,6 +204,59 @@ func TestEnsureProfileMigratesOnlyUntouchedLegacyStepDefaults(t *testing.T) {
 	}
 }
 
+func TestEnsureProfileMigratesLegacyPlanningPolicy(t *testing.T) {
+	store, err := sqlitestate.Open(t.Context(), filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	repository := session.NewSQLiteRepository(store)
+	workspaceRoot := t.TempDir()
+	legacy := persistedProfile()
+	legacy.Revision = 3
+	legacy.PromptCacheRevision = 2
+	legacy.PlanningPolicy = "required"
+	encoded, err := json.Marshal(map[string]any{"profile": legacy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.EnsureSeed(t.Context(), "legacy-planning", workspaceRoot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.DB().ExecContext(
+		t.Context(),
+		`UPDATE sessions SET metadata_json = ? WHERE id = ?`,
+		[]byte(encoded),
+		"legacy-planning",
+	); err != nil {
+		t.Fatal(err)
+	}
+	defaults := persistedProfile()
+	defaults.PlanningPolicy = "adaptive"
+	migrated, err := repository.EnsureProfile(
+		t.Context(),
+		"legacy-planning",
+		defaults,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migrated.PlanningPolicy != "adaptive" ||
+		migrated.Revision != legacy.Revision+1 ||
+		migrated.PromptCacheRevision != legacy.PromptCacheRevision+1 {
+		t.Fatalf("migrated profile = %+v", migrated)
+	}
+	recovered, err := repository.Profile(t.Context(), "legacy-planning", defaults)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.PlanningPolicy != migrated.PlanningPolicy ||
+		recovered.Revision != migrated.Revision ||
+		recovered.PromptCacheRevision != migrated.PromptCacheRevision {
+		t.Fatalf("persisted profile = %+v, want %+v", recovered, migrated)
+	}
+}
+
 func persistedProfile() protocol.SessionProfile {
 	return protocol.SessionProfile{
 		Version:             protocol.SessionProfileVersion,

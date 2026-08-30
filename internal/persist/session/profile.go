@@ -94,7 +94,7 @@ func (r *Repository) EnsureProfile(
 			if err != nil {
 				return protocol.SessionProfile{}, err
 			}
-			migrated, ok, err := migrateLegacyDefaultMaxSteps(current, defaults)
+			migrated, ok, err := migrateLegacyProfileDefaults(current, defaults)
 			if err != nil {
 				return protocol.SessionProfile{}, err
 			}
@@ -116,7 +116,7 @@ func (r *Repository) EnsureProfile(
 			)
 			if err != nil {
 				return protocol.SessionProfile{}, fmt.Errorf(
-					"migrate session profile max steps: %w",
+					"migrate session profile defaults: %w",
 					err,
 				)
 			}
@@ -156,19 +156,28 @@ func (r *Repository) EnsureProfile(
 	return protocol.SessionProfile{}, ErrProfileRevisionConflict
 }
 
-func migrateLegacyDefaultMaxSteps(
+func migrateLegacyProfileDefaults(
 	current, defaults protocol.SessionProfile,
 ) (protocol.SessionProfile, bool, error) {
-	if current.Revision != 1 || defaults.MaxSteps != 0 ||
-		(current.MaxSteps != 8 &&
-			current.MaxSteps != 64 &&
-			current.MaxSteps != 256) {
+	var patch protocol.SessionProfilePatch
+	if current.Revision == 1 && defaults.MaxSteps == 0 &&
+		(current.MaxSteps == 8 ||
+			current.MaxSteps == 64 ||
+			current.MaxSteps == 256) {
+		maxSteps := defaults.MaxSteps
+		patch.MaxSteps = &maxSteps
+	}
+	if defaults.PlanningPolicy == "adaptive" &&
+		current.PlanningPolicy != "adaptive" {
+		planning := defaults.PlanningPolicy
+		patch.PlanningPolicy = &planning
+	}
+	if patch.MaxSteps == nil && patch.PlanningPolicy == nil {
 		return current, false, nil
 	}
-	maxSteps := defaults.MaxSteps
 	updated, err := protocol.ApplySessionProfilePatch(
 		current,
-		protocol.SessionProfilePatch{MaxSteps: &maxSteps},
+		patch,
 	)
 	if err != nil {
 		return protocol.SessionProfile{}, false, err

@@ -241,7 +241,7 @@ func (c SessionProfileCapabilities) Validate(profile SessionProfile) error {
 	}
 	for _, field := range c.MutableFields {
 		switch field {
-		case "mode", "provider", "model", "reasoning_effort", "planning_policy",
+		case "mode", "provider", "model", "reasoning_effort",
 			"enabled_tool_ids", "approval_posture", "execution_target", "max_steps":
 		default:
 			return fmt.Errorf("unknown mutable session profile field %q", field)

@@ -457,12 +457,17 @@ export class ConversationProjection {
     const changes = Array.isArray(event.data.changes)
       ? event.data.changes.filter(isRecord)
       : [];
+    const variant = node.variant === "shell"
+      ? node.variant
+      : changes.length > 0
+        ? "diff"
+        : node.variant;
     this.put({
       ...node,
-      variant: changes.length > 0 ? "diff" : node.variant,
+      variant,
       summary: failed
         ? firstNonEmptyLine(output) || "Tool failed"
-        : changes.length > 0
+        : changes.length > 0 && node.variant !== "shell"
           ? changeSummary(changes)
           : node.summary,
       state: failed ? "failed" : "completed",
@@ -499,8 +504,13 @@ export class ConversationProjection {
     if (!node) return;
     const exitCode = numberValue(event.data.exit_code);
     const durationMS = numberValue(event.data.duration_ms);
+    const failed = stringValue(event.data.status) === "failed" ||
+      (exitCode !== undefined && exitCode !== 0);
     this.put({
       ...node,
+      errorSummary: failed
+        ? exitCode === undefined ? "Command failed" : `exit ${exitCode}`
+        : node.errorSummary,
       command: {
         command: stringValue(event.data.command),
         status: stringValue(event.data.status),

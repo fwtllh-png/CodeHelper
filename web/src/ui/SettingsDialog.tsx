@@ -1834,7 +1834,6 @@ function changedProfileFields(
   const patch: Record<string, unknown> = {};
   if (draft.mode !== baseline.mode) {
     patch.mode = draft.mode;
-    patch.planning_policy = "adaptive";
   }
   if (draft.provider !== baseline.provider) patch.provider = draft.provider;
   if (draft.model !== baseline.model) patch.model = draft.model;

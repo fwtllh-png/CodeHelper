@@ -228,7 +228,7 @@ func TestFileApplyEditMismatchCarriesStructuredRecoveryHint(t *testing.T) {
 	}
 	hint, ok := tool.RecoveryHintFromError(err)
 	if !ok || hint.ErrorCategory != "edit_precondition_miss" ||
-		hint.RequiredAction != "reread_exact_range" ||
+		hint.RequiredAction != "file_read" ||
 		hint.Path != "chapter.md" ||
 		hint.RetryOriginal {
 		t.Fatalf("hint = %+v, found = %v", hint, ok)
@@ -272,7 +272,7 @@ func TestFileApplyMismatchReturnsBoundedCurrentExcerpt(t *testing.T) {
 
 	_, err = planner.PlanEdit(t.Context(), arguments)
 	hint, ok := tool.RecoveryHintFromError(err)
-	if !ok || hint.RequiredAction != "replace_failed_change" ||
+	if !ok || hint.RequiredAction != "file_read" ||
 		hint.FailedChange != 1 || hint.MatchCount != 0 ||
 		hint.StartLine != 2 || hint.EndLine != 7 ||
 		!strings.Contains(hint.CurrentExcerpt, "Policy 合并") ||

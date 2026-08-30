@@ -501,7 +501,7 @@ describe("projectTranscript", () => {
     expect(screen.getByRole("heading", {name: "Models"})).toBeTruthy();
   });
 
-  it("offers three modes and keeps planning adaptive", async () => {
+  it("offers three modes without exposing the derived planning policy", async () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
 
@@ -513,8 +513,7 @@ describe("projectTranscript", () => {
     });
     await waitFor(() => {
       expect(client.updateProfile).toHaveBeenCalledWith({
-        mode: "operate",
-        planning_policy: "adaptive"
+        mode: "operate"
       });
     });
   });
@@ -1038,7 +1037,6 @@ describe("projectTranscript", () => {
     await waitFor(() => {
       expect(client.updateProfile).toHaveBeenCalledWith({
         mode: "plan",
-        planning_policy: "adaptive",
         max_steps: 16
       });
     });
@@ -1473,19 +1471,17 @@ describe("projectTranscript", () => {
     const client = mockClient(snapshot([approval]));
     const approvalView = render(<App client={client} />);
     expect(screen.getByRole("button", {name: "Deny"})).toBeTruthy();
-    const approve = screen.getByRole("button", {name: "Approve once"});
+    const approveOnce = screen.getByRole("button", {name: "Approve once"});
+    const approveSession = screen.getByRole("button", {name: "Approve for session"});
     fireEvent.click(screen.getByText("Approval options"));
-    expect(screen.getByLabelText("Approval scope")).toBeTruthy();
     expect(screen.queryByLabelText("Replacement arguments")).toBeNull();
     fireEvent.click(screen.getByRole("button", {name: "Edit arguments"}));
     const replacement = screen.getByLabelText("Replacement arguments");
     fireEvent.change(replacement, {target: {value: "{"}});
-    expect((approve as HTMLButtonElement).disabled).toBe(true);
+    expect((approveOnce as HTMLButtonElement).disabled).toBe(true);
+    expect((approveSession as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(replacement, {target: {value: "{\"path\":\"safe\"}"}});
-    fireEvent.change(screen.getByLabelText("Approval scope"), {
-      target: {value: "session"}
-    });
-    fireEvent.click(approve);
+    fireEvent.click(approveSession);
     expect(client.decideApproval).toHaveBeenCalledWith(
       "approval",
       "approve",
@@ -1889,6 +1885,7 @@ describe("projectTranscript", () => {
         call_id: "bash",
         tool: "exec_command",
         output: "ok example/project",
+        changes: [{path: "build/test", kind: "modified", added: 0, removed: 0}],
         is_error: false
       }),
       event(3, "command.execution", {
@@ -1926,6 +1923,39 @@ describe("projectTranscript", () => {
     expect(container.querySelector("[data-search='search-matches']")).toBeTruthy();
     expect(screen.getByText("2 matches · 1 files")).toBeTruthy();
     expect(screen.getByText("18:")).toBeTruthy();
+  });
+
+  it("shows structured recovery details beside a failed edit preview", () => {
+    const output = "old text matched 0 times; required_action=file_read; " +
+      "retry_original=false; path=src/main.cpp";
+    const value = snapshot([
+      event(1, "tool.start", {
+        call_id: "edit",
+        tool: "file_edit",
+        arguments: {
+          path: "src/main.cpp",
+          old: "int old_value;",
+          new: "int new_value;"
+        }
+      }),
+      event(2, "tool.result", {
+        call_id: "edit",
+        tool: "file_edit",
+        output,
+        is_error: true,
+        recovery: {
+          error_category: "edit_precondition_miss",
+          required_action: "file_read",
+          path: "src/main.cpp",
+          retry_original: false
+        }
+      })
+    ]);
+    const {container} = render(<App client={mockClient(value)} />);
+
+    fireEvent.click(screen.getByRole("button", {name: /Edit old text matched/}));
+    expect(container.querySelector(".diffCard")).toBeTruthy();
+    expect(container.querySelector(".toolIOCard pre[data-error]")?.textContent).toBe(output);
   });
 
   it("disables Session-bound controls while the selected Session hydrates", () => {
@@ -2502,7 +2532,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
         provider: "fixture",
         model: "fixture",
         mutable_fields: [
-          "mode", "planning_policy",
+          "mode",
           "provider", "model", "reasoning_effort",
           "approval_posture", "execution_target", "max_steps",
           "enabled_tool_ids"
