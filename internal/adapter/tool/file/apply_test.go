@@ -746,12 +746,12 @@ func TestPlannedWriteRejectsWrongPlanIdentity(t *testing.T) {
 	}
 }
 
-// Read-before-edit has to cover every existing path a transaction touches, not
-// just the first one, or a single read would license changes to files the model
-// never looked at.
-func TestFileApplyRequiresEveryExistingPathToBeRead(t *testing.T) {
+// Exact edits carry their own content precondition. Destructive operations
+// without one still require an explicit read of every existing path.
+func TestFileApplyAcceptsExactEditsAndRequiresReadsForOtherWrites(t *testing.T) {
 	root, registry := applyTools(t, map[string]string{
-		"first.txt": "first\n", "second.txt": "second\n", "source.txt": "source\n",
+		"first.txt": "first\n", "second.txt": "second\n",
+		"overwrite.txt": "before\n", "source.txt": "source\n",
 	})
 	guard, err := toolguard.New(toolguard.Options{
 		Registry: registry, Policy: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass), Workspace: root,
@@ -783,20 +783,21 @@ func TestFileApplyRequiresEveryExistingPathToBeRead(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	readTool("read-first", "first.txt")
-	if err := apply("half-read", editFirst, editSecond); !errors.Is(err, workspacejournal.ErrUnread) {
-		t.Fatalf("error = %v, want ErrUnread for the unread second file", err)
-	} else {
-		var validation *workspacejournal.ReadValidationError
-		if !errors.As(err, &validation) || validation.Path != "second.txt" {
-			t.Fatalf("read validation = %#v, want second.txt", validation)
-		}
+	if err := apply("exact-edits", editFirst, editSecond); err != nil {
+		t.Fatalf("exact edits without separate reads: %v", err)
 	}
-	if got := read(t, root, "first.txt"); got != "first\n" {
-		t.Fatalf("first.txt = %q, want the refused transaction to have written nothing", got)
+	if got := read(t, root, "first.txt"); got != "1\n" {
+		t.Fatalf("first.txt = %q", got)
 	}
-	readTool("read-second", "second.txt")
-	if err := apply("both-read", editFirst, editSecond); err != nil {
+	if err := apply("overwrite-unread", map[string]any{
+		"op": "write", "path": "overwrite.txt", "content": "after\n",
+	}); !errors.Is(err, workspacejournal.ErrUnread) {
+		t.Fatalf("error = %v, want ErrUnread for full overwrite", err)
+	}
+	readTool("read-overwrite", "overwrite.txt")
+	if err := apply("overwrite", map[string]any{
+		"op": "write", "path": "overwrite.txt", "content": "after\n",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	// A move rewrites its source too, so the source needs a read of its own.

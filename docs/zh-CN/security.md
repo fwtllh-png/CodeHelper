@@ -86,6 +86,9 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - File Broker 在 Journal Before Image 后再次校验文件内容、身份和父目录，使用
   descriptor-relative API 先写后删。写入、最终快照或 Journal Settlement 失败时
   逆序恢复；恢复冲突或失败明确报告 Partial Change，不伪造原子成功。
+- `file_edit` 以及 `file_apply` 中首个落盘操作为精确替换的路径，可由受信文件工具
+  提交绑定当前内容摘要的 Exact Edit Proof，等价满足该路径的 Read-before-write。
+  全量覆盖、删除、移动或先覆盖后编辑仍要求显式 `file_read`。
 - File Broker 拒绝 Symlink、Hardlink、Device Boundary、Root/Parent Replacement，
   并在自身边界拒绝 `.git`、`.codehelper`、`.codehelper-worktree`、`.agents` 和
   `.codex`。Unified Diff 先解析为 File Plan，不调用 `git apply` 修改 Workspace。

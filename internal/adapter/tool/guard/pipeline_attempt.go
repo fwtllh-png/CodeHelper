@@ -398,6 +398,23 @@ func (g *Guard) runAttempt(
 	writePaths := invocationWritePaths(invocation)
 	requireRead := invocation.Binding.Effect.RequireReadBeforeWrite
 	var expectedWrites map[string]workspacejournal.Fingerprint
+	if requireRead {
+		err = g.recordExactEditProofs(
+			ctx,
+			prepared.executor,
+			prepared.arguments,
+			writePaths,
+		)
+	}
+	if err != nil {
+		release()
+		run.err = err
+		run.receipt = attemptReceipt(
+			sequence, mode, started, g.now(), tool.OutcomeRejected, "prepare_writes",
+			run.profile,
+		)
+		return run
+	}
 	if fileBrokerAware {
 		expectedWrites, err = g.validateFileWrites(writePaths, requireRead)
 	} else {

@@ -97,8 +97,8 @@ func TestReadBeforeEditContract(t *testing.T) {
 	execute := func(id, name, arguments string) (tool.Result, error) {
 		return guard.Execute(t.Context(), id, name, json.RawMessage(arguments))
 	}
-	if _, err := execute("unread-edit", "file_edit", `{"path":"sample.txt","old":"one","new":"two"}`); !errors.Is(err, workspacejournal.ErrUnread) {
-		t.Fatalf("unread edit error = %v", err)
+	if _, err := execute("exact-edit", "file_edit", `{"path":"sample.txt","old":"one","new":"two"}`); err != nil {
+		t.Fatalf("exact edit without separate read: %v", err)
 	}
 	read, err := execute("read-edit", "file_read", `{"path":"sample.txt"}`)
 	if err != nil {
@@ -111,10 +111,10 @@ func TestReadBeforeEditContract(t *testing.T) {
 		read.Outcome.Facts.WorkspaceRead.Digest == "" {
 		t.Fatalf("read fingerprint facts = %#v", read.Outcome)
 	}
-	if _, err := execute("edit", "file_edit", `{"path":"sample.txt","old":"one","new":"two"}`); err != nil {
+	if _, err := execute("edit", "file_edit", `{"path":"sample.txt","old":"two","new":"three"}`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := execute("sequential-edit", "file_edit", `{"path":"sample.txt","old":"two","new":"three"}`); err != nil {
+	if _, err := execute("sequential-edit", "file_edit", `{"path":"sample.txt","old":"three","new":"four"}`); err != nil {
 		t.Fatalf("sequential edit error = %v", err)
 	}
 	if err := os.WriteFile(path, []byte("external\n"), 0o600); err != nil {
@@ -136,13 +136,13 @@ func TestReadBeforeEditContract(t *testing.T) {
 	if err := os.Rename(replacement, path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := execute("rename-race", "file_edit", `{"path":"sample.txt","old":"external","new":"changed"}`); !errors.Is(err, workspacejournal.ErrStale) {
-		t.Fatalf("rename race error = %v", err)
+	if _, err := execute("rename-exact", "file_edit", `{"path":"sample.txt","old":"external","new":"changed"}`); err != nil {
+		t.Fatalf("exact edit after identity replacement: %v", err)
 	}
 	if _, err := execute("read-patch", "file_read", `{"path":"sample.txt"}`); err != nil {
 		t.Fatal(err)
 	}
-	patch := "--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-external\n+patched\n"
+	patch := "--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-changed\n+patched\n"
 	patchArguments, _ := json.Marshal(map[string]string{"patch": patch})
 	if _, err := guard.Execute(t.Context(), "patch", "file_patch", patchArguments); err != nil {
 		t.Fatal(err)

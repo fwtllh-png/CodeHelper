@@ -165,6 +165,60 @@ func (o *operation) PlanEdit(
 	return o.tools.plan(ctx, requests)
 }
 
+func (o *operation) ExactEditProofs(
+	ctx context.Context,
+	raw json.RawMessage,
+) ([]tool.ExactEditProof, error) {
+	if o.kind != "file_edit" && o.kind != "file_apply" {
+		return nil, nil
+	}
+	plan, err := o.PlanEdit(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	input, err := typed.DecodeStrict[operationInput](raw)
+	if err != nil {
+		return nil, err
+	}
+	requests := input.Changes
+	if o.kind == "file_edit" {
+		requests = []changeRequest{{
+			Op: opEdit, Path: input.Path, Old: input.Old, New: input.New,
+		}}
+	}
+	digests := make(map[string]string, len(plan.Files))
+	for _, file := range plan.Files {
+		path := filepath.Join(o.tools.root, filepath.FromSlash(file.Path))
+		if file.BeforeExists {
+			digests[filepath.Clean(path)] = file.BeforeDigest
+		}
+	}
+	seen := make(map[string]bool)
+	var proofs []tool.ExactEditProof
+	for _, request := range requests {
+		path, resolveErr := o.tools.resolve(request.Path, sandbox.AllowMissing)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		if !seen[path] && request.Op == opEdit {
+			if digest := digests[path]; digest != "" {
+				proofs = append(proofs, tool.ExactEditProof{
+					Path: path, Digest: digest,
+				})
+			}
+		}
+		seen[path] = true
+		if request.To != "" {
+			target, resolveErr := o.tools.resolve(request.To, sandbox.AllowMissing)
+			if resolveErr != nil {
+				return nil, resolveErr
+			}
+			seen[target] = true
+		}
+	}
+	return proofs, nil
+}
+
 func (o *operation) Descriptor() tool.Descriptor {
 	properties := map[string]any{
 		"path": map[string]any{"type": "string", "minLength": float64(1)},
@@ -204,7 +258,8 @@ func (o *operation) Descriptor() tool.Descriptor {
 		required = append(required, "content")
 	case "file_edit":
 		description = "Atomically replace one exact text occurrence. path is workspace-relative. " +
-			"Call file_read for that exact path before editing it."
+			"The exact old text is a compare-and-swap precondition; call file_read first " +
+			"when the current text is not already known."
 		properties["old"] = map[string]any{"type": "string"}
 		properties["new"] = map[string]any{"type": "string"}
 		required = append(required, "old", "new")
@@ -215,8 +270,9 @@ func (o *operation) Descriptor() tool.Descriptor {
 			"Write operations safely create missing parent directories, so do not " +
 			"create placeholder files first. " +
 			"Later changes see earlier ones, so the same file can be edited twice in " +
-			"one call. Before calling, use file_read on every existing source or " +
-			"destination path named by the transaction; new paths need no prior read. " +
+			"one call. Exact edits may use old as their read precondition. Before calling, " +
+			"use file_read on every other existing source or destination path; new paths " +
+			"need no prior read. " +
 			"For every edit, copy old as one contiguous exact substring from file_read; " +
 			"preserve whitespace and order, and never reconstruct or reorder it. " +
 			"Set dry_run to get the unified diff without writing."

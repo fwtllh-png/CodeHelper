@@ -454,6 +454,46 @@ func (g *Guard) validateFileWrites(
 	return expected, nil
 }
 
+func (g *Guard) recordExactEditProofs(
+	ctx context.Context,
+	executor tool.Executor,
+	arguments json.RawMessage,
+	writePaths []string,
+) error {
+	provider, ok := executor.(tool.ExactEditProofProvider)
+	if !ok {
+		return nil
+	}
+	proofs, err := provider.ExactEditProofs(ctx, arguments)
+	if err != nil {
+		return err
+	}
+	allowed := make(map[string]bool, len(writePaths))
+	for _, path := range writePaths {
+		allowed[filepath.Clean(path)] = true
+	}
+	for _, proof := range proofs {
+		path := filepath.Clean(proof.Path)
+		if !allowed[path] || proof.Digest == "" {
+			return tool.Precondition(fmt.Errorf(
+				"exact edit proof is not bound to a declared write path",
+			))
+		}
+		fingerprint, _, _, err := workspacejournal.Snapshot(path)
+		if err != nil {
+			return err
+		}
+		if !fingerprint.Exists || fingerprint.SHA256 != proof.Digest {
+			g.readTracker.Invalidate(path)
+			return g.readValidationError(path, workspacejournal.ErrStale)
+		}
+		if err := g.readTracker.RecordFingerprint(fingerprint); err != nil {
+			return g.readValidationError(path, err)
+		}
+	}
+	return nil
+}
+
 func (g *Guard) preflightFileWrites(invocation Invocation) error {
 	for _, path := range invocationWritePaths(invocation) {
 		fingerprint, _, _, err := workspacejournal.Snapshot(path)

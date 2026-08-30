@@ -306,6 +306,19 @@ type EditPlanner interface {
 	PlanEdit(context.Context, json.RawMessage) (EditPlan, error)
 }
 
+// ExactEditProof is a trusted assertion that a writer validated an exact
+// caller-supplied precondition against the current file content.
+type ExactEditProof struct {
+	Path   string
+	Digest string
+}
+
+// ExactEditProofProvider lets Guard satisfy read-before-write for narrowly
+// scoped compare-and-swap edits without requiring a separate file_read call.
+type ExactEditProofProvider interface {
+	ExactEditProofs(context.Context, json.RawMessage) ([]ExactEditProof, error)
+}
+
 // ArgumentExpander lets a tool rewrite its arguments after schema normalization
 // and before resource resolution. integrate_agent uses it to expand agent_id into
 // the concrete file changes Guard must journal for turnDiff.
