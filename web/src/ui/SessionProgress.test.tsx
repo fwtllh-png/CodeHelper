@@ -51,6 +51,7 @@ describe("SessionProgress", () => {
             last_message: "Checking the diff"
           }
         ]}
+        activeTurnID="turn"
         onOpenTrajectory={onOpenTrajectory}
       />
     );
@@ -94,6 +95,7 @@ describe("SessionProgress", () => {
           created_at: "2026-01-01T00:00:00Z"
         }}
         agents={[]}
+        activeTurnID=""
         onOpenTrajectory={vi.fn()}
       />
     );
@@ -101,5 +103,40 @@ describe("SessionProgress", () => {
     expect(screen.queryByRole("region", {name: "Session progress"})).toBeNull();
     expect(screen.queryByText("Implementation plan")).toBeNull();
     expect(screen.queryByText(body)).toBeNull();
+  });
+
+  it("does not show stale plan work as active after its turn ends", () => {
+    render(
+      <SessionProgress
+        plan={{
+          version: 1,
+          id: "plan",
+          session_id: "session",
+          thread_id: "thread",
+          turn_id: "finished-turn",
+          cursor: 1,
+          status: "ready",
+          body: "{}",
+          document: {
+            version: 1,
+            revision: 1,
+            steps: [
+              {id: "done", title: "Done", status: "done"},
+              {id: "stale", title: "Interrupted", status: "in_progress"}
+            ]
+          },
+          profile_revision: 1,
+          can_implement: true,
+          can_autopilot: false,
+          created_at: "2026-01-01T00:00:00Z"
+        }}
+        agents={[]}
+        activeTurnID=""
+        onOpenTrajectory={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("1 completed · 0 active · 1 pending")).toBeTruthy();
+    expect(document.querySelector(".spin")).toBeNull();
   });
 });

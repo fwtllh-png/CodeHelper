@@ -173,7 +173,7 @@ export class ConversationProjection {
   private readonly nodes = new Map<string, ConversationNode>();
   private readonly outputByTurn = new Map<string, string>();
   private readonly reasoningByTurn = new Map<string, string>();
-  private readonly toolByCall = new Map<string, string>();
+  private readonly ids = new Map<string, string>();
   private readonly activeTurns = new Set<string>();
   private readonly approvals = new Map<string, RuntimeEvent>();
   private readonly inputs = new Map<string, RuntimeEvent>();
@@ -191,6 +191,7 @@ export class ConversationProjection {
     const data = event.data;
     switch (event.kind) {
       case "turn.started":
+        this.ids.set(event.turn_id, event.operation_id);
         this.activeTurns.add(event.turn_id);
         this.put({
           id: event.id,
@@ -281,6 +282,9 @@ export class ConversationProjection {
         this.finishTurn(event, true);
         break;
       case "operation.rejected":
+        if (this.ids.get(event.turn_id) === event.operation_id) {
+          this.finishTurn(event, true);
+        }
         this.put({
           id: event.id,
           kind: "status",
@@ -419,7 +423,7 @@ export class ConversationProjection {
     const id = `tool-${callID}`;
     const args = event.data.arguments;
     const editPlan = editPlanFromArguments(tool, args);
-    this.toolByCall.set(callID, id);
+    this.ids.set(callID, id);
     this.put({
       id,
       kind: "tool",
@@ -494,7 +498,7 @@ export class ConversationProjection {
   }
 
   private toolNodeForCall(callID: string) {
-    const id = this.toolByCall.get(callID);
+    const id = this.ids.get(callID);
     const node = id ? this.nodes.get(id) : undefined;
     return node?.kind === "tool" ? node : undefined;
   }
@@ -659,7 +663,7 @@ export class ConversationProjection {
 
   private toolNode(event: RuntimeEvent): Extract<ConversationNode, {kind: "tool"}> | undefined {
     const callID = stringValue(event.data.call_id);
-    const id = this.toolByCall.get(callID);
+    const id = this.ids.get(callID);
     const node = id ? this.nodes.get(id) : undefined;
     return node?.kind === "tool" ? node : undefined;
   }

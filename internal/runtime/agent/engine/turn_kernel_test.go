@@ -604,6 +604,45 @@ func TestTurnKernelAbortClosesEveryOpenTool(t *testing.T) {
 	}
 }
 
+func TestTurnKernelAbortClosesToolAwaitingApproval(t *testing.T) {
+	kernel := newEngineTurnKernel(
+		protocol.TurnIntentWorkspaceChange,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	call := provider.ToolCall{ID: "edit", Name: "file_edit"}
+	if err := kernel.StartTools([]provider.ToolCall{call}); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.StartTool(call.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.RequireApproval("approval-edit", call.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := kernel.CloseTool(
+		call,
+		tool.Result{Content: "push interrupted", IsError: true},
+		nil,
+	); err == nil || !strings.Contains(err.Error(), "pending approval") {
+		t.Fatalf("premature tool result error = %v", err)
+	}
+
+	if err := kernel.AbortTools(protocol.CancelReasonHostInterrupted); err != nil {
+		t.Fatal(err)
+	}
+	state := kernel.Snapshot()
+	if len(state.OpenCalls) != 0 ||
+		len(state.PendingApprovals) != 0 ||
+		len(state.PendingEffects) != 0 ||
+		len(state.ClosedCalls) != 1 {
+		t.Fatalf("aborted approval ledger = %+v", state)
+	}
+}
+
 func TestTurnKernelCancellationClosesToolAwaitingApproval(t *testing.T) {
 	var records []turnkernel.TransitionRecord
 	kernel := newEngineTurnKernel(

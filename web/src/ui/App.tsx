@@ -1725,6 +1725,7 @@ export function App({client}: Props) {
                 <SessionProgress
                   plan={snapshot.plan}
                   agents={snapshot.agents}
+                  activeTurnID={activeTurn}
                   onOpenTrajectory={() => {
                     switchConversationView("trajectory");
                     void client.refreshTrace();

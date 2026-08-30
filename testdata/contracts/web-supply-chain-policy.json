@@ -11,12 +11,18 @@
     "MPL-2.0"
   ],
   "bundle_budgets": {
-    "total_raw_bytes": 961739,
-    "javascript_raw_bytes": 842068,
+    "total_raw_bytes": 971509,
+    "javascript_raw_bytes": 850666,
     "javascript_gzip_bytes": 258000,
     "javascript_brotli_bytes": 222000,
     "css_raw_bytes": 100985,
     "initial_gzip_bytes": 143000,
     "initial_brotli_bytes": 125000
+  },
+  "bundle_budget_provenance": {
+    "updated_at": "2026-08-30",
+    "basis": "Measured post-fix bundle plus 1% headroom for raw totals",
+    "measured_total_raw_bytes": 961890,
+    "measured_javascript_raw_bytes": 842243
   }
 }

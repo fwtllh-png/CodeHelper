@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 
@@ -373,15 +374,48 @@ func (s *RuntimeKernel) AbortTools(reason string) error {
 	if len(s.state.OpenCalls) == 0 {
 		return nil
 	}
-	for _, kind := range []EffectKind{
-		EffectAwaitApproval,
-		EffectExecuteTool,
-	} {
-		if err := s.dispatcher.Abort(kind, "", reason); err != nil {
-			return fmt.Errorf("abort %s effect: %w", kind, err)
+	requestIDs := make([]string, 0, len(s.state.PendingApprovals))
+	for requestID := range s.state.PendingApprovals {
+		requestIDs = append(requestIDs, requestID)
+	}
+	slices.Sort(requestIDs)
+	for _, requestID := range requestIDs {
+		approval := s.state.PendingApprovals[requestID]
+		effect, started, err := s.dispatcher.Routed(
+			EffectAwaitApproval,
+			approval.CallID,
+		)
+		if err != nil {
+			return fmt.Errorf("abort approval effect: %w", err)
+		}
+		if !started {
+			effect, err = s.dispatcher.Start(
+				EffectAwaitApproval,
+				approval.CallID,
+			)
+			if err != nil {
+				return fmt.Errorf("start approval effect for abort: %w", err)
+			}
+		}
+		if err := s.dispatcher.Resolve(ApprovalResultReceived{
+			EffectID: effect.ID, RequestID: requestID,
+			Accepted: false, Error: reason,
+		}); err != nil {
+			return fmt.Errorf("abort approval effect: %w", err)
 		}
 	}
 	s.state = s.coordinator.Snapshot()
+	if err := s.dispatcher.Abort(
+		EffectExecuteTool,
+		"",
+		reason,
+	); err != nil {
+		return fmt.Errorf("abort execute_tool effect: %w", err)
+	}
+	s.state = s.coordinator.Snapshot()
+	if len(s.state.OpenCalls) == 0 {
+		return nil
+	}
 	return s.applyAuthoritativeLocked(AbortOpenCalls{Reason: reason})
 }
 func (s *RuntimeKernel) MutationRevision() uint64 {

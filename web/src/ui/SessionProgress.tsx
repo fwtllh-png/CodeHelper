@@ -16,18 +16,20 @@ import type {
 export function SessionProgress({
   plan,
   agents,
+  activeTurnID,
   onOpenTrajectory
 }: {
   plan?: SessionPlanArtifact;
   agents: readonly AgentSummary[];
+  activeTurnID: string;
   onOpenTrajectory: () => void;
 }) {
   const [planExpanded, setPlanExpanded] = useState(true);
   const planSteps = plan?.document?.steps ?? [];
   const planDone = planSteps.filter((step) => step.status === "done").length;
-  const planActive = planSteps.filter(
+  const planActive = plan?.turn_id === activeTurnID ? planSteps.filter(
     (step) => step.status === "in_progress"
-  ).length;
+  ).length : 0;
   const planPending = planSteps.length - planDone - planActive;
   const hasPlanContent = Boolean(plan?.document?.steps.length);
   if (!hasPlanContent && agents.length === 0) return null;
@@ -60,10 +62,15 @@ export function SessionProgress({
             {planExpanded && plan.document && (
               <ol className="progressTasks">
                 {plan.document.steps.map((step) => (
-                  <li key={step.id} data-state={step.status}>
+                  <li
+                    key={step.id}
+                    data-state={step.status === "in_progress" && planActive === 0
+                      ? "pending"
+                      : step.status}
+                  >
                     {step.status === "done"
                       ? <CheckCircle2 size={16} />
-                      : step.status === "in_progress"
+                      : step.status === "in_progress" && planActive > 0
                         ? <LoaderCircle className="spin" size={16} />
                         : <CircleDashed size={16} />}
                     <strong>{step.title}</strong>

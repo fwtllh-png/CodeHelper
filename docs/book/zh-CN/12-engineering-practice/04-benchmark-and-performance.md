@@ -78,15 +78,18 @@ Release Gate 同时测量行为和耗时：
 | --- | --- |
 | 10k Streaming Delta Projection | 小于 1 s |
 | 500 Turn Retained Transcript Projection | 小于 1 s |
-| JavaScript Raw | 不超过 400,000 Bytes |
-| JavaScript gzip | 不超过 120,000 Bytes |
-| JavaScript brotli | 不超过 105,000 Bytes |
-| CSS Raw | 不超过 30,000 Bytes |
-| 全部未压缩 Web Asset | 不超过 450,000 Bytes |
+| JavaScript Raw | 不超过 850,666 Bytes |
+| JavaScript gzip | 不超过 258,000 Bytes |
+| JavaScript brotli | 不超过 222,000 Bytes |
+| CSS Raw | 不超过 100,985 Bytes |
+| 全部未压缩 Web Asset | 不超过 971,509 Bytes |
 
 `web/src/ui/performance.test.ts` 固定 Projection Fixture；
 `testdata/contracts/web-supply-chain-policy.json` 是 Bundle Budget 与许可证 allowlist 的
 权威输入。提高预算必须提交因果说明和前后对比证据。
+2026-08-30 的 Raw Budget 以修复后实测值
+`total_raw_bytes=961890`、`javascript_raw_bytes=842243` 为基线，并保留 1%
+增长余量；压缩体积预算未放宽。
 
 ## 失败边界
 

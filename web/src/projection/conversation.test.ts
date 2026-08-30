@@ -362,6 +362,43 @@ describe("ConversationProjection", () => {
     });
   });
 
+  it("finishes an active turn when its start operation is rejected", () => {
+    const projection = new ConversationProjection();
+    projection.apply(event(1, "turn.started", {display_prompt: "Push it"}));
+    projection.apply(event(2, "reasoning.delta", {text: "Working"}));
+    projection.apply(event(3, "approval.required", {request_id: "approval"}));
+    projection.apply(event(4, "operation.rejected", {
+      code: "unavailable",
+      message: "terminal envelope could not be committed"
+    }));
+
+    expect(projection.snapshot()).toMatchObject({
+      activeTurnID: "",
+      pendingApproval: undefined
+    });
+    const reasoning = [...projection.snapshot().nodes.values()].find(
+      (node) => node.kind === "reasoning"
+    );
+    expect(reasoning).toMatchObject({
+      kind: "reasoning",
+      running: false
+    });
+  });
+
+  it("keeps the turn active when a child operation is rejected", () => {
+    const projection = new ConversationProjection();
+    projection.apply(event(1, "turn.started", {display_prompt: "Push it"}));
+    projection.apply({
+      ...event(2, "operation.rejected", {
+        code: "conflict",
+        message: "approval decision rejected"
+      }),
+      operation_id: "child-operation"
+    });
+
+    expect(projection.snapshot().activeTurnID).toBe("turn");
+  });
+
   it("projects accepted steering as a durable user interjection", () => {
     const snapshot = projectConversation([
       event(1, "turn.started", {display_prompt: "Inspect"}),
