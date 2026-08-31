@@ -907,19 +907,13 @@ describe("projectTranscript", () => {
     fireEvent.change(screen.getByLabelText("Model ID"), {
       target: {value: "vendor-model"}
     });
-    fireEvent.change(screen.getByLabelText("Canonical model ID"), {
-      target: {value: "vendor/vendor-model"}
-    });
-    fireEvent.change(screen.getByLabelText("Wire model ID"), {
-      target: {value: "vendor-model"}
-    });
     fireEvent.change(screen.getByLabelText("Context tokens"), {
       target: {value: "200000"}
     });
     fireEvent.change(screen.getByLabelText("Max output tokens"), {
       target: {value: "24000"}
     });
-    fireEvent.click(screen.getByRole("checkbox", {name: "Streaming"}));
+    fireEvent.click(screen.getByText("Advanced model configuration"));
     fireEvent.click(screen.getByRole("checkbox", {name: "Tool calls"}));
     fireEvent.click(screen.getByRole("checkbox", {name: "Reasoning"}));
     fireEvent.change(screen.getByLabelText("Reasoning efforts"), {
@@ -938,7 +932,7 @@ describe("projectTranscript", () => {
         base_url: "https://models.example.com/v1",
         protocol: "openai_chat",
         model_metadata: {
-          canonical_id: "vendor/vendor-model",
+          canonical_id: "vendor-model",
           wire_id: "vendor-model",
           context_tokens: 200000,
           max_output_tokens: 24000,

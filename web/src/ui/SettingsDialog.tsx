@@ -51,6 +51,7 @@ import {
   emptyModelMetadataDraft,
   ModelMetadataFields,
   modelMetadataDraft,
+  modelMetadataForModel,
   modelMetadataProblem,
   setupModelMetadata
 } from "./ModelMetadataFields";
@@ -737,7 +738,7 @@ function ConnectionSettings({
       setModelID(currentModel);
       setBaseURL(value.endpoint);
       setProtocol(value.protocol || "openai_chat");
-      setMetadata(modelMetadataDraft(value.model_metadata));
+      setMetadata(modelMetadataDraft(value.model_metadata, currentModel));
     }, onError);
   }, [client, currentModel, onError]);
   const configure = async () => {
@@ -816,10 +817,7 @@ function ConnectionSettings({
                 value={baseURL}
                 placeholder="https://api.example.com/v1"
                 disabled={pending}
-                onChange={(event) => {
-                  setBaseURL(event.target.value);
-                  setMetadata(emptyModelMetadataDraft());
-                }}
+                onChange={(event) => setBaseURL(event.target.value)}
               />
             </SettingRow>
           )}
@@ -833,10 +831,7 @@ function ConnectionSettings({
                 format={(value) => value === "openai_chat"
                   ? "Chat Completions"
                   : "Responses"}
-                onChange={(value) => {
-                  setProtocol(value);
-                  setMetadata(emptyModelMetadataDraft());
-                }}
+                onChange={setProtocol}
               />
             </SettingRow>
           )}
@@ -848,8 +843,13 @@ function ConnectionSettings({
               placeholder="Enter the exact model ID"
               disabled={pending}
               onChange={(event) => {
-                setModelID(event.target.value);
-                setMetadata(emptyModelMetadataDraft());
+                const nextModelID = event.target.value;
+                setMetadata((current) => modelMetadataForModel(
+                  current,
+                  modelID,
+                  nextModelID
+                ));
+                setModelID(nextModelID);
               }}
             />
           </SettingRow>
@@ -860,7 +860,11 @@ function ConnectionSettings({
               onChange={setMetadata}
             />
           )}
-          {metadataError && <small role="alert">{metadataError}</small>}
+          {metadataError && (
+            <small className="settingsError" role="alert">
+              {metadataError}
+            </small>
+          )}
           <SettingRow
             title="API key"
             description={requiresKey

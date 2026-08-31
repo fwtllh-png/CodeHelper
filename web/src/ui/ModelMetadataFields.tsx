@@ -14,14 +14,14 @@ export interface ModelMetadataDraft {
   defaultReasoningEffort: string;
 }
 
-export function emptyModelMetadataDraft(): ModelMetadataDraft {
+export function emptyModelMetadataDraft(modelID = ""): ModelMetadataDraft {
   return {
-    canonicalID: "",
-    wireID: "",
+    canonicalID: modelID,
+    wireID: modelID,
     contextTokens: "",
     maxOutputTokens: "",
     capabilities: {
-      streaming: false,
+      streaming: true,
       reasoning: false,
       tool_calls: false,
       native_search: false,
@@ -38,18 +38,40 @@ export function emptyModelMetadataDraft(): ModelMetadataDraft {
 }
 
 export function modelMetadataDraft(
-  metadata?: SetupModelMetadata
+  metadata?: SetupModelMetadata,
+  modelID = ""
 ): ModelMetadataDraft {
-  if (!metadata) return emptyModelMetadataDraft();
+  if (!metadata) return emptyModelMetadataDraft(modelID);
   return {
     canonicalID: metadata.canonical_id,
     wireID: metadata.wire_id,
     contextTokens: String(metadata.context_tokens),
     maxOutputTokens: String(metadata.max_output_tokens),
-    capabilities: {...metadata.capabilities},
+    capabilities: {...metadata.capabilities, streaming: true},
     reasoningEfforts: metadata.capabilities.reasoning_efforts?.join(", ") ?? "",
     defaultReasoningEffort:
       metadata.capabilities.default_reasoning_effort ?? ""
+  };
+}
+
+export function modelMetadataForModel(
+  draft: ModelMetadataDraft,
+  previousModelID: string,
+  modelID: string
+): ModelMetadataDraft {
+  const previous = previousModelID.trim();
+  const next = modelID.trim();
+  return {
+    ...draft,
+    canonicalID:
+      !draft.canonicalID.trim() || draft.canonicalID.trim() === previous
+        ? next
+        : draft.canonicalID,
+    wireID:
+      !draft.wireID.trim() || draft.wireID.trim() === previous
+        ? next
+        : draft.wireID,
+    capabilities: {...draft.capabilities, streaming: true}
   };
 }
 
@@ -70,21 +92,30 @@ export function modelMetadataProblem(
   const declaredEfforts = efforts(draft.reasoningEfforts);
   const defaultEffort = draft.defaultReasoningEffort.trim();
   if (!modelIDPattern.test(draft.canonicalID.trim()) ||
-      !modelIDPattern.test(draft.wireID.trim()) ||
-      !Number.isSafeInteger(contextTokens) || contextTokens <= 0 ||
-      !Number.isSafeInteger(maxOutputTokens) || maxOutputTokens <= 0 ||
-      maxOutputTokens > contextTokens ||
-      !capabilities.streaming ||
-      (!capabilities.reasoning &&
-       (declaredEfforts.length > 0 || defaultEffort ||
-        capabilities.thinking_toggle)) ||
+      !modelIDPattern.test(draft.wireID.trim())) {
+    return "Model IDs are invalid.";
+  }
+  if (!Number.isSafeInteger(contextTokens) || contextTokens <= 0 ||
+      !Number.isSafeInteger(maxOutputTokens) || maxOutputTokens <= 0) {
+    return "Enter token limits.";
+  }
+  if (maxOutputTokens > contextTokens) {
+    return "Output exceeds context.";
+  }
+  if (!capabilities.reasoning &&
+      (declaredEfforts.length > 0 || defaultEffort ||
+       capabilities.thinking_toggle) ||
       declaredEfforts.some((effort) => !validEfforts.includes(effort)) ||
       new Set(declaredEfforts).size !== declaredEfforts.length ||
-      Boolean(defaultEffort && !declaredEfforts.includes(defaultEffort)) ||
-      (capabilities.automatic_prompt_cache && !capabilities.prompt_cache) ||
-      (capabilities.incremental_responses &&
-       protocol !== "openai_responses")) {
-    return "Metadata invalid.";
+      Boolean(defaultEffort && !declaredEfforts.includes(defaultEffort))) {
+    return "Reasoning settings are invalid.";
+  }
+  if (capabilities.automatic_prompt_cache && !capabilities.prompt_cache) {
+    return "Enable prompt cache first.";
+  }
+  if (capabilities.incremental_responses &&
+      protocol !== "openai_responses") {
+    return "Incremental responses require Responses.";
   }
   return "";
 }
@@ -118,7 +149,6 @@ const capabilityFields: Array<{
   key: BooleanCapabilityKey;
   label: string;
 }> = [
-  {key: "streaming", label: "Streaming"},
   {key: "tool_calls", label: "Tool calls"},
   {key: "reasoning", label: "Reasoning"},
   {key: "native_search", label: "Native search"},
@@ -145,11 +175,14 @@ interface TextField {
   placeholder?: string;
 }
 
-const identityFields: TextField[] = [
-  {key: "canonicalID", label: "Canonical model ID"},
-  {key: "wireID", label: "Wire model ID"},
+const limitFields: TextField[] = [
   {key: "contextTokens", label: "Context tokens", type: "number"},
   {key: "maxOutputTokens", label: "Max output tokens", type: "number"}
+];
+
+const identityFields: TextField[] = [
+  {key: "canonicalID", label: "Canonical model ID"},
+  {key: "wireID", label: "Wire model ID"}
 ];
 
 const reasoningFields: TextField[] = [
@@ -179,39 +212,74 @@ export function ModelMetadataFields({
       capabilities: {...value.capabilities, [key]: checked}
     });
   };
-  const textFields = value.capabilities.reasoning
-    ? [...identityFields, ...reasoningFields]
-    : identityFields;
+  const updateText = (key: TextFieldKey, text: string) => {
+    onChange({...value, [key]: text});
+  };
   return (
     <>
-      {textFields.map(({key, label, type, placeholder}) => (
-        <label className="selectField" key={key}>
-          <span>{label}</span>
-          <input
-            className="settingsSelect"
-            type={type}
-            min={type === "number" ? "1" : undefined}
-            step={type === "number" ? "1" : undefined}
-            aria-label={label}
-            placeholder={placeholder}
-            value={value[key]}
-            disabled={disabled}
-            onChange={(event) => onChange({...value, [key]: event.target.value})}
-          />
-        </label>
-      ))}
-      {capabilityFields.map(({key, label}) => (
-        <label className="settingsPreferenceControl" key={key}>
-          <input
-            type="checkbox"
-            aria-label={label}
-            checked={Boolean(value.capabilities[key])}
-            disabled={disabled}
-            onChange={(event) => setCapability(key, event.target.checked)}
-          />
-          <span>{label}</span>
-        </label>
-      ))}
+      <div className="settingsFacts">
+        {limitFields.map(({key, label, type}) => (
+          <label className="selectField" key={key}>
+            <span>{label}</span>
+            <input
+              className="settingsSelect"
+              type={type}
+              min="1"
+              step="1"
+              aria-label={label}
+              value={value[key]}
+              disabled={disabled}
+              onChange={(event) => updateText(key, event.target.value)}
+            />
+          </label>
+        ))}
+      </div>
+      <details className="settingsCatalogDetails">
+        <summary>Advanced model configuration</summary>
+        <div className="startupFields" data-custom>
+          {identityFields.map(({key, label}) => (
+            <label className="selectField" key={key}>
+              <span>{label}</span>
+              <input
+                className="settingsSelect"
+                aria-label={label}
+                value={value[key]}
+                disabled={disabled}
+                onChange={(event) => updateText(key, event.target.value)}
+              />
+            </label>
+          ))}
+          {capabilityFields.map(({key, label}) => (
+            <label className="settingsPreferenceControl" key={key}>
+              <input
+                type="checkbox"
+                aria-label={label}
+                checked={Boolean(value.capabilities[key])}
+                disabled={disabled}
+                onChange={(event) => setCapability(key, event.target.checked)}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+          {value.capabilities.reasoning && (
+            <>
+              {reasoningFields.map(({key, label, placeholder}) => (
+                <label className="selectField" key={key}>
+                  <span>{label}</span>
+                  <input
+                    className="settingsSelect"
+                    aria-label={label}
+                    placeholder={placeholder}
+                    value={value[key]}
+                    disabled={disabled}
+                    onChange={(event) => updateText(key, event.target.value)}
+                  />
+                </label>
+              ))}
+            </>
+          )}
+        </div>
+      </details>
     </>
   );
 }

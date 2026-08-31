@@ -2,6 +2,7 @@ import {describe, expect, it} from "vitest";
 
 import {
   emptyModelMetadataDraft,
+  modelMetadataForModel,
   modelMetadataProblem
 } from "./ModelMetadataFields";
 
@@ -52,15 +53,43 @@ describe("modelMetadataProblem", () => {
 
     draft.capabilities.thinking_toggle = false;
     draft.capabilities.automatic_prompt_cache = true;
-    expect(modelMetadataProblem(draft, "openai_chat")).toContain(
-      "invalid"
+    expect(modelMetadataProblem(draft, "openai_chat")).toBe(
+      "Enable prompt cache first."
     );
 
     draft.capabilities.automatic_prompt_cache = false;
     draft.capabilities.incremental_responses = true;
-    expect(modelMetadataProblem(draft, "openai_chat")).toContain(
-      "invalid"
+    expect(modelMetadataProblem(draft, "openai_chat")).toBe(
+      "Incremental responses require Responses."
     );
     expect(modelMetadataProblem(draft, "openai_responses")).toBe("");
+  });
+
+  it("keeps model identities synchronized until explicitly overridden", () => {
+    const initial = modelMetadataForModel(
+      emptyModelMetadataDraft(),
+      "",
+      "model-v1"
+    );
+    expect(initial.canonicalID).toBe("model-v1");
+    expect(initial.wireID).toBe("model-v1");
+    expect(initial.capabilities.streaming).toBe(true);
+
+    initial.canonicalID = "vendor/model-v1";
+    const changed = modelMetadataForModel(initial, "model-v1", "model-v2");
+    expect(changed.canonicalID).toBe("vendor/model-v1");
+    expect(changed.wireID).toBe("model-v2");
+  });
+
+  it("reports the invalid metadata field group", () => {
+    const draft = emptyModelMetadataDraft("model-v1");
+    expect(modelMetadataProblem(draft, "openai_chat")).toBe(
+      "Enter token limits."
+    );
+    draft.contextTokens = "1024";
+    draft.maxOutputTokens = "2048";
+    expect(modelMetadataProblem(draft, "openai_chat")).toBe(
+      "Output exceeds context."
+    );
   });
 });

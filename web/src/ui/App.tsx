@@ -79,6 +79,7 @@ import {InputOptionMenu} from "./InputOptionMenu";
 import {
   emptyModelMetadataDraft,
   ModelMetadataFields,
+  modelMetadataForModel,
   modelMetadataProblem,
   setupModelMetadata
 } from "./ModelMetadataFields";
@@ -3184,10 +3185,7 @@ function FirstRunSetup({
                     value={baseURL}
                     placeholder="https://api.example.com/v1"
                     disabled={submitting}
-                    onChange={(event) => {
-                      setBaseURL(event.target.value);
-                      setMetadata(emptyModelMetadataDraft());
-                    }}
+                    onChange={(event) => setBaseURL(event.target.value)}
                   />
                 </label>
               )}
@@ -3198,10 +3196,7 @@ function FirstRunSetup({
                     aria-label="Protocol"
                     value={protocol}
                     disabled={submitting}
-                    onChange={(event) => {
-                      setProtocol(event.target.value);
-                      setMetadata(emptyModelMetadataDraft());
-                    }}
+                    onChange={(event) => setProtocol(event.target.value)}
                   >
                     <option value="openai_chat">Chat Completions</option>
                     <option value="openai_responses">Responses</option>
@@ -3216,8 +3211,13 @@ function FirstRunSetup({
                   placeholder="Enter the exact model ID"
                   disabled={submitting}
                   onChange={(event) => {
-                    setModelID(event.target.value);
-                    setMetadata(emptyModelMetadataDraft());
+                    const nextModelID = event.target.value;
+                    setMetadata((current) => modelMetadataForModel(
+                      current,
+                      modelID,
+                      nextModelID
+                    ));
+                    setModelID(nextModelID);
                   }}
                 />
               </label>
@@ -3229,7 +3229,11 @@ function FirstRunSetup({
                 />
               )}
             </div>
-            {metadataError && <small role="alert">{metadataError}</small>}
+            {metadataError && (
+              <small className="startupError" role="alert">
+                {metadataError}
+              </small>
+            )}
           </div>
         )}
 
