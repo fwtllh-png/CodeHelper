@@ -34,10 +34,13 @@ const (
 type Provenance string
 
 const (
-	ProvenanceBundled Provenance = "bundled"
-	ProvenanceConfig  Provenance = "config"
-	ProvenanceStartup Provenance = "startup"
-	ProvenanceFixture Provenance = "fixture"
+	ProvenanceBundled           Provenance = "bundled"
+	ProvenanceConfig            Provenance = "config"
+	ProvenanceStartup           Provenance = "startup"
+	ProvenanceFixture           Provenance = "fixture"
+	ProvenanceProviderDiscovery Provenance = "provider_discovery"
+	ProvenanceOperatorConfig    Provenance = "operator_config"
+	ProvenanceMixed             Provenance = "mixed"
 )
 
 type CredentialRef struct {
@@ -70,10 +73,7 @@ func (c Capabilities) ReasoningEffortLevels() []string {
 	if !c.Reasoning {
 		return nil
 	}
-	if len(c.ReasoningEfforts) != 0 {
-		return append([]string(nil), c.ReasoningEfforts...)
-	}
-	return []string{"low", "medium", "high", "xhigh"}
+	return append([]string(nil), c.ReasoningEfforts...)
 }
 
 func (c Capabilities) SupportsReasoningEffort(effort string) bool {
@@ -230,20 +230,33 @@ func validateProvider(provider Provider) error {
 		}
 		if !model.Capabilities.Reasoning &&
 			(len(model.Capabilities.ReasoningEfforts) != 0 ||
-				model.Capabilities.DefaultReasoningEffort != "") {
+				model.Capabilities.DefaultReasoningEffort != "" ||
+				model.Capabilities.ThinkingToggle) {
 			return fmt.Errorf(
-				"provider %q model %q declares efforts without reasoning",
+				"provider %q model %q declares reasoning controls without reasoning",
+				provider.ID,
+				key,
+			)
+		}
+		if model.Capabilities.IncrementalResponses &&
+			provider.Protocol != ProtocolOpenAIResponses {
+			return fmt.Errorf(
+				"provider %q model %q declares incremental responses outside the responses protocol",
 				provider.ID,
 				key,
 			)
 		}
 		efforts := make(map[string]struct{})
 		for _, effort := range model.Capabilities.ReasoningEfforts {
-			if effort == "" {
+			if !slices.Contains(
+				[]string{"off", "minimal", "low", "medium", "high", "xhigh", "max"},
+				effort,
+			) {
 				return fmt.Errorf(
-					"provider %q model %q has an empty reasoning effort",
+					"provider %q model %q has invalid reasoning effort %q",
 					provider.ID,
 					key,
+					effort,
 				)
 			}
 			if _, exists := efforts[effort]; exists {

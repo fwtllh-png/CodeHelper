@@ -34,6 +34,30 @@ func TestResolverCreatesReadyRouteWithMetadata(t *testing.T) {
 	}
 }
 
+func TestConnectionIdentityIncludesEndpointAndNormalizesTrailingSlash(t *testing.T) {
+	resolver, err := NewResolver(DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(RouteRequest{
+		ProviderID: "openai",
+		ModelID:    "gpt-4.1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.ConnectionID() == route.WithEndpoint(
+		"https://models.example.com/v1",
+	).ConnectionID() {
+		t.Fatal("different endpoints share a connection identity")
+	}
+	if route.ConnectionID() != route.WithEndpoint(
+		route.Endpoint()+"/",
+	).ConnectionID() {
+		t.Fatal("equivalent endpoint spelling changed the connection identity")
+	}
+}
+
 func TestResolverDoesNotInferProviderFromModelName(t *testing.T) {
 	resolver, err := NewResolver(DefaultCatalog())
 	if err != nil {

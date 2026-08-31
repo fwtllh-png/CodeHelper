@@ -463,6 +463,7 @@ type ContextRebaseEnvelope struct {
 	TurnID              protocol.TurnID   `json:"turn_id"`
 	SourceWindowID      string            `json:"source_window_id"`
 	TargetWindowID      string            `json:"target_window_id"`
+	BaseRevision        uint64            `json:"base_revision"`
 	SourceContextDigest string            `json:"source_context_digest"`
 	AuthorityDigest     string            `json:"authority_digest"`
 	NarrativeDigest     string            `json:"narrative_digest,omitempty"`
@@ -476,6 +477,9 @@ func (e *ContextRebaseEnvelope) Seal() error {
 		return errors.New("context rebase envelope is nil")
 	}
 	e.Version = 1
+	if e.BaseRevision == 0 && e.Snapshot.Revision > 1 {
+		e.BaseRevision = e.Snapshot.Revision - 1
+	}
 	e.Digest = e.digest()
 	return e.Validate()
 }
@@ -485,7 +489,8 @@ func (e ContextRebaseEnvelope) Validate() error {
 		e.TurnID == "" || e.SourceWindowID == "" ||
 		e.TargetWindowID == "" || e.SourceContextDigest == "" ||
 		e.AuthorityDigest == "" || e.Digest == "" ||
-		e.Digest != e.digest() {
+		e.Digest != e.digest() ||
+		e.Snapshot.Revision != e.BaseRevision+1 {
 		return errors.New("context rebase envelope identity or digest is invalid")
 	}
 	if err := e.Snapshot.Validate(); err != nil {

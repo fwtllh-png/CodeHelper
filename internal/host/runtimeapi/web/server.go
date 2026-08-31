@@ -59,6 +59,10 @@ type UsageQuery interface {
 		context.Context,
 		usagestate.Query,
 	) ([]usagestate.Aggregate, error)
+	QueryRollup(
+		context.Context,
+		usagestate.Query,
+	) (usagestate.Rollup, error)
 }
 
 type RepositorySymbolQuery interface {
@@ -1252,21 +1256,23 @@ func (s *Server) usageQuery(
 	if err != nil {
 		return nil, err
 	}
-	values, err := dependencies.Usage.QueryAggregates(
-		r.Context(),
-		usagestate.Query{
-			SessionID:       request.SessionID,
-			ThreadID:        request.ThreadID,
-			TurnID:          request.TurnID,
-			IncludeChildren: request.IncludeChildren,
-			Provider:        request.Provider,
-			Model:           request.Model,
-			WorkspaceRoot:   dependencies.WorkspaceRoot,
-			Start:           request.Start,
-			End:             request.End,
-			Limit:           limit,
-		},
-	)
+	filter := usagestate.Query{
+		SessionID:       request.SessionID,
+		ThreadID:        request.ThreadID,
+		TurnID:          request.TurnID,
+		IncludeChildren: request.IncludeChildren,
+		Provider:        request.Provider,
+		Model:           request.Model,
+		WorkspaceRoot:   dependencies.WorkspaceRoot,
+		Start:           request.Start,
+		End:             request.End,
+		Limit:           limit,
+	}
+	values, err := dependencies.Usage.QueryAggregates(r.Context(), filter)
+	if err != nil {
+		return nil, err
+	}
+	rollup, err := dependencies.Usage.QueryRollup(r.Context(), filter)
 	if err != nil {
 		return nil, err
 	}
@@ -1274,16 +1280,9 @@ func (s *Server) usageQuery(
 	for _, value := range values {
 		result = append(result, runtimeview.UsageFrom(value))
 	}
-	scope := usagestate.Scope{
-		SessionID: request.SessionID,
-		ThreadID:  request.ThreadID,
-		TurnID:    request.TurnID,
-	}
 	return map[string]any{
-		"usage": result,
-		"rollup": runtimeview.UsageRollupFrom(
-			usagestate.Fold(scope, values),
-		),
+		"usage":  result,
+		"rollup": runtimeview.UsageRollupFrom(rollup),
 	}, nil
 }
 

@@ -268,6 +268,68 @@ func TestSubmitPlanNormalizesStructuredSteps(t *testing.T) {
 	}
 }
 
+func TestSubmitPlanCapturesDirectoryBaseline(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.Mkdir(filepath.Join(workspace, "include"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: workspace,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result := execute(t, registry, "submit_plan", map[string]any{
+		"version":        1,
+		"title":          "Directory baseline",
+		"critical_files": []any{"include"},
+		"steps": []any{map[string]any{
+			"id": "inspect", "title": "Inspect include directory",
+		}},
+	})
+	var plan interact.SubmittedPlan
+	if err := json.Unmarshal([]byte(result.Content), &plan); err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.FileBaseline) != 1 ||
+		plan.FileBaseline[0].Path != "include" ||
+		!plan.FileBaseline[0].Directory ||
+		plan.FileBaseline[0].Missing ||
+		plan.FileBaseline[0].Digest != "" {
+		t.Fatalf("directory baseline = %+v", plan.FileBaseline)
+	}
+}
+
+func TestDebugSubmitPlanDirectoryBaselineEvidence(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.Mkdir(filepath.Join(workspace, "include"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: workspace,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name: "submit_plan",
+		Arguments: mustJSON(map[string]any{
+			"version":        1,
+			"title":          "Directory baseline",
+			"critical_files": []any{"include"},
+			"steps": []any{map[string]any{
+				"id": "inspect", "title": "Inspect include directory",
+			}},
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("submit_plan result = %+v", result)
+	}
+}
+
 func TestOutstandingStepsCountsFinishedWork(t *testing.T) {
 	plan := interact.Plan{Steps: []interact.PlanStep{
 		{Title: "a", Status: interact.StepDone},

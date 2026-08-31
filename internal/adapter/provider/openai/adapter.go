@@ -179,9 +179,9 @@ func (s *meaningfulStream) Recv() (provider.StreamEvent, error) {
 func (a *Adapter) ClassifyHTTP(failure providerwire.HTTPFailure) error {
 	var payload struct {
 		Error struct {
-			Message string `json:"message"`
-			Code    string `json:"code"`
-			Type    string `json:"type"`
+			Message string          `json:"message"`
+			Code    json.RawMessage `json:"code"`
+			Type    string          `json:"type"`
 		} `json:"error"`
 	}
 	_ = json.Unmarshal([]byte(failure.Body), &payload)
@@ -191,7 +191,7 @@ func (a *Adapter) ClassifyHTTP(failure providerwire.HTTPFailure) error {
 	}
 	code := classifyHTTPFailure(
 		failure.Status,
-		payload.Error.Code,
+		jsonScalarText(payload.Error.Code),
 		payload.Error.Type,
 		message,
 	)
@@ -216,8 +216,7 @@ func classifyHTTPFailure(
 	switch {
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		return provider.FailureAuth
-	case strings.Contains(value, "insufficient_quota") ||
-		strings.Contains(value, "credits exhausted"):
+	case providerwire.IsQuotaFailure(value):
 		return provider.FailureQuota
 	case status == http.StatusTooManyRequests:
 		return provider.FailureRateLimit
@@ -232,6 +231,15 @@ func classifyHTTPFailure(
 		return provider.FailureUnknown
 	}
 }
+
+func jsonScalarText(raw json.RawMessage) string {
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		return value
+	}
+	return strings.TrimSpace(string(raw))
+}
+
 func chatBody(
 	request provider.ModelRequest,
 	messages []map[string]any,

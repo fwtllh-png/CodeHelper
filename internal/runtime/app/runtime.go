@@ -1037,8 +1037,8 @@ func (r *Runtime) capabilitiesForProfile(
 		capabilities.ModelCapabilities = modelCapabilities
 		return capabilities, nil
 	}
-	if profile.Provider == r.defaultProfile.Provider {
-		capabilities.ModelCapabilities.DisplayName, capabilities.ModelCapabilities.SelectionMode = profile.Model, "hot"
+	if profile.Provider == r.defaultProfile.Provider &&
+		profile.Model == r.defaultProfile.Model {
 		return capabilities, nil
 	}
 	return protocol.SessionProfileCapabilities{}, runtimeProblem(

@@ -626,6 +626,7 @@ func TestDiscardSessionDiscardsUnmergedWorktree(t *testing.T) {
 
 type memorySessionLifecycleStore struct {
 	summary    protocol.SessionSummary
+	threadIDs  []protocol.ThreadID
 	deleted    bool
 	discarded  bool
 	searchMiss bool
@@ -740,6 +741,9 @@ func (s *memorySessionLifecycleStore) ThreadIDs(
 	if sessionID != s.summary.SessionID {
 		return nil, errors.New("session not found")
 	}
+	if len(s.threadIDs) != 0 {
+		return append([]protocol.ThreadID(nil), s.threadIDs...), nil
+	}
 	return []protocol.ThreadID{s.summary.ThreadID}, nil
 }
 
@@ -761,10 +765,16 @@ func (s *memorySessionLifecycleStore) SessionForThread(
 	_ context.Context,
 	threadID protocol.ThreadID,
 ) (string, error) {
-	if threadID != s.summary.ThreadID {
-		return "", errors.New("thread not found")
+	if len(s.threadIDs) != 0 {
+		for _, candidate := range s.threadIDs {
+			if candidate == threadID {
+				return s.summary.SessionID, nil
+			}
+		}
+	} else if threadID == s.summary.ThreadID {
+		return s.summary.SessionID, nil
 	}
-	return s.summary.SessionID, nil
+	return "", errors.New("thread not found")
 }
 
 func (s *memorySessionLifecycleStore) ActivateThread(

@@ -124,6 +124,63 @@ func TestUsageProjectsCachedTokensAndCost(t *testing.T) {
 	}
 }
 
+func TestUsagePersistsPerCallModelMetadataProvenance(t *testing.T) {
+	repository := testRepository(t)
+	turnMetadata := testModelMetadata("bundled")
+	start := testEvent(t, 1, &protocol.TurnStartedData{
+		Provider: "provider", Model: "model", ModelMetadata: turnMetadata,
+	})
+	if err := repository.Project(t.Context(), start); err != nil {
+		t.Fatal(err)
+	}
+	callMetadata := testModelMetadata("provider_discovery")
+	for _, event := range []protocol.Event{
+		testEvent(t, 2, &protocol.UsageData{
+			Sample: 1, InputTokens: 10,
+		}),
+		testEvent(t, 3, &protocol.UsageData{
+			Sample: 2, Provider: "summary-provider", Model: "summary-model",
+			ModelMetadata: callMetadata, InputTokens: 20,
+		}),
+	} {
+		if err := repository.Project(t.Context(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	aggregates, err := repository.QueryAggregates(
+		t.Context(),
+		Query{TurnID: "turn-1"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aggregates) != 2 {
+		t.Fatalf("aggregates = %+v", aggregates)
+	}
+	got := map[string]*protocol.ModelMetadataProvenance{}
+	for _, aggregate := range aggregates {
+		got[aggregate.Model] = aggregate.ModelMetadata
+	}
+	if got["model"] == nil || got["model"].Limits != "bundled" {
+		t.Fatalf("turn metadata = %+v", got["model"])
+	}
+	if got["summary-model"] == nil ||
+		got["summary-model"].Limits != "provider_discovery" {
+		t.Fatalf("call metadata = %+v", got["summary-model"])
+	}
+
+	conflict := testEvent(t, 3, &protocol.UsageData{
+		Sample: 2, Provider: "summary-provider", Model: "summary-model",
+		ModelMetadata: testModelMetadata("operator_config"), InputTokens: 20,
+	})
+	if err := repository.Project(
+		t.Context(),
+		conflict,
+	); !errors.Is(err, ErrSequenceConflict) {
+		t.Fatalf("metadata conflict error = %v", err)
+	}
+}
+
 // TestUsageReplacesCumulativeReportsWithinACall is the regression for the bug this
 // projection was built to fix. A provider that reports input and output in
 // separate stream events sends two cumulative snapshots of the same call —
@@ -209,6 +266,16 @@ func TestUsageSumsAcrossCallsAndSplitsUnpricedOnes(t *testing.T) {
 	}
 	if got.CostMicrounits != 15 || got.PricedCalls != 1 || got.UnpricedCalls != 1 {
 		t.Fatalf("cost split = %+v, want 15 from one priced call and one unpriced", got)
+	}
+	rollup, err := repository.QueryRollup(
+		t.Context(),
+		Query{TurnID: "turn-1", Limit: 1},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rollup.Calls != 2 || rollup.InputTokens != 30 {
+		t.Fatalf("paginated detail truncated rollup: %+v", rollup)
 	}
 }
 
@@ -333,6 +400,16 @@ func testEvent(t *testing.T, sequence protocol.Cursor, data protocol.EventData) 
 		t.Fatal(err)
 	}
 	return event
+}
+
+func testModelMetadata(source string) *protocol.ModelMetadataProvenance {
+	return &protocol.ModelMetadataProvenance{
+		CanonicalID:  source,
+		WireID:       source,
+		Limits:       source,
+		Capabilities: source,
+		Pricing:      source,
+	}
 }
 
 func testRepository(t *testing.T) *Repository {

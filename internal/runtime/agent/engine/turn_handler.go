@@ -516,6 +516,7 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 	}
 	if err := send(Preparing, Event{
 		Provider: spec.Provider, Model: spec.Model,
+		ModelMetadata:   spec.ModelMetadata,
 		Purpose:         string(spec.Purpose),
 		ProfileRevision: spec.Identity.ProfileRevision,
 		Mode:            string(spec.Mode), Posture: string(spec.Posture),
@@ -925,9 +926,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		if assembly == nil {
 			assembly = providerassembly.NewResponseAssembly(sampleID)
 		}
-		if err := kernel.BeginModelSample(ctx, sampleID); err != nil {
-			return result, err
-		}
 		var modelOutputContinued bool
 		var pendingInputInjected bool
 		var modelReplay *provider.ReplayState
@@ -937,9 +935,6 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					sampleID,
 					kernelProviderRetry(*event.ProviderRetry),
 				); err != nil {
-					return err
-				}
-				if err := kernel.BeginModelSample(ctx, sampleID); err != nil {
 					return err
 				}
 			}
@@ -969,6 +964,12 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 					sampleID,
 					current,
 				)
+			},
+			func() error {
+				return kernel.BeginModelSample(ctx, sampleID)
+			},
+			func() error {
+				return kernel.FinishModelTransport(sampleID)
 			},
 			modelSend,
 		)

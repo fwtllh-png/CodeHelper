@@ -59,6 +59,11 @@ func TestSnapshotTurnSpecFreezesSessionInputs(t *testing.T) {
 	if snapshot.Provider == "" || snapshot.Model == "" {
 		t.Fatalf("snapshot = %+v", snapshot)
 	}
+	if snapshot.ModelMetadata == nil ||
+		snapshot.ModelMetadata.Limits != string(model.ProvenanceFixture) ||
+		snapshot.ModelMetadata.Capabilities != string(model.ProvenanceFixture) {
+		t.Fatalf("model metadata provenance = %+v", snapshot.ModelMetadata)
+	}
 	if snapshot.Limits.Context.ContextTokens !=
 		snapshot.Route.Model().Limits.ContextTokens ||
 		snapshot.Limits.Context.OutputCeiling !=
@@ -285,6 +290,10 @@ func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 	defer mu.Unlock()
 	if started.Mode != string(policy.ModeAct) || started.Posture != string(policy.PermissionSuggest) {
 		t.Fatalf("started context = mode=%q posture=%q", started.Mode, started.Posture)
+	}
+	if started.ModelMetadata == nil ||
+		started.ModelMetadata.Limits != string(model.ProvenanceFixture) {
+		t.Fatalf("started model metadata = %+v", started.ModelMetadata)
 	}
 	// Two write tools under Suggest → two asks even after session flipped to bypass.
 	if approvals != 2 {

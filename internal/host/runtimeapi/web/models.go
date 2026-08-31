@@ -19,9 +19,10 @@ type ModelTestResult struct {
 }
 
 type WorkspaceConnection struct {
-	Provider string `json:"provider"`
-	Endpoint string `json:"endpoint"`
-	Protocol string `json:"protocol"`
+	Provider      string              `json:"provider"`
+	Endpoint      string              `json:"endpoint"`
+	Protocol      string              `json:"protocol"`
+	ModelMetadata *SetupModelMetadata `json:"model_metadata,omitempty"`
 }
 
 func (s *Server) providerList(

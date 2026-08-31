@@ -59,6 +59,28 @@ func RetryableStatus(status int) bool {
 		status == http.StatusTooManyRequests || status >= 500
 }
 
+func IsQuotaFailure(values ...string) bool {
+	value := strings.ToLower(strings.Join(values, " "))
+	for _, marker := range []string{
+		"insufficient_quota",
+		"insufficient quota",
+		"quota exceeded",
+		"billing_hard_limit",
+		"billing hard limit",
+		"credits exhausted",
+		"credit balance",
+		"insufficient balance",
+		"account balance",
+		"out of credits",
+		"payment required",
+	} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func rateLimitMetadata(header http.Header, now time.Time) *protocol.RateLimitMetadata {
 	delay, hasDelay := retryAfter(header.Get("Retry-After"), now)
 	metadata := &protocol.RateLimitMetadata{

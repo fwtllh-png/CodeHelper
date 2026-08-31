@@ -31,7 +31,8 @@ func (c skillContributor) Contribute(
 	catalog, err := skill.Discover(skill.DiscoveryOptions{
 		Workspace: c.workspace, ConfiguredDir: c.paths.SkillsConfiguredDir,
 		UserHome: c.paths.UserHome, Locale: c.paths.SkillsLocale,
-		State: stateStore, Lock: lockStore, RuntimeVersion: buildinfo.Version,
+		IncludeBuiltins: true,
+		State:           stateStore, Lock: lockStore, RuntimeVersion: buildinfo.Version,
 	})
 	if err != nil {
 		return fmt.Errorf("skill discovery: %w", err)

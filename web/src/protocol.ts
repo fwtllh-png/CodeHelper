@@ -44,6 +44,7 @@ export interface SetupProvider {
   protocol: string;
   requires_api_key: boolean;
   custom?: boolean;
+  models?: string[];
 }
 
 export interface SetupCatalog {
@@ -57,6 +58,30 @@ export interface SetupRequest {
   api_key?: string;
   base_url?: string;
   protocol?: string;
+  model_metadata?: SetupModelMetadata;
+}
+
+export interface SetupModelMetadata {
+  canonical_id: string;
+  wire_id: string;
+  context_tokens: number;
+  max_output_tokens: number;
+  capabilities: SetupModelCapabilities;
+}
+
+export interface SetupModelCapabilities {
+  streaming: boolean;
+  reasoning: boolean;
+  reasoning_efforts?: string[];
+  default_reasoning_effort?: string;
+  tool_calls: boolean;
+  native_search: boolean;
+  incremental_responses?: boolean;
+  vision: boolean;
+  image_input: boolean;
+  prompt_cache: boolean;
+  automatic_prompt_cache?: boolean;
+  thinking_toggle?: boolean;
 }
 
 export interface SetupResult {
@@ -318,15 +343,27 @@ export interface ModelCapabilities {
   tool_calls: boolean;
   parallel_tool_calls: "supported" | "unsupported" | "unknown";
   native_search: boolean;
+  incremental_responses: boolean;
   vision: boolean;
   image_input: boolean;
   prompt_cache: boolean;
+  automatic_prompt_cache: boolean;
+  thinking_toggle: boolean;
   reasoning_efforts?: string[];
   default_reasoning_effort?: string;
+  metadata_provenance: ModelMetadataProvenance;
   credential_status: "configured" | "missing" | "invalid" | "unknown";
   availability: "available" | "unavailable";
   unavailable_reason?: string;
   selection_mode: "hot" | "restart_required" | "fixed";
+}
+
+export interface ModelMetadataProvenance {
+  canonical_id: string;
+  wire_id: string;
+  limits: string;
+  capabilities: string;
+  pricing: string;
 }
 
 export interface ModelCatalogEntry {
@@ -354,6 +391,7 @@ export interface WorkspaceConnection {
   provider: string;
   endpoint: string;
   protocol: string;
+  model_metadata?: SetupModelMetadata;
 }
 
 export interface ToolCatalogEntry {
@@ -487,12 +525,31 @@ export interface UsageRollup {
   cost_known: boolean;
 }
 
+export interface UsageAggregate {
+  session_id: string;
+  thread_id: string;
+  turn_id: string;
+  provider: string;
+  model: string;
+  model_metadata_provenance?: ModelMetadataProvenance;
+  input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number;
+  cached_tokens: number;
+  cost_microunits: number;
+  priced_calls: number;
+  unpriced_calls: number;
+  calls: number;
+  first_at: string;
+  last_at: string;
+}
+
 export interface AgentList {
   agents: AgentSummary[];
 }
 
 export interface UsageQueryResult {
-  usage: unknown[];
+  usage: UsageAggregate[];
   rollup: UsageRollup;
 }
 

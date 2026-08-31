@@ -40,23 +40,59 @@ type SessionProfilePatch struct {
 }
 
 type ModelCapabilities struct {
-	DisplayName            string   `json:"display_name"`
-	ContextWindow          uint64   `json:"context_window"`
-	MaxOutputTokens        uint64   `json:"max_output_tokens"`
-	Streaming              bool     `json:"streaming"`
-	Reasoning              bool     `json:"reasoning"`
-	ToolCalls              bool     `json:"tool_calls"`
-	ParallelToolCalls      string   `json:"parallel_tool_calls"`
-	NativeSearch           bool     `json:"native_search"`
-	Vision                 bool     `json:"vision"`
-	ImageInput             bool     `json:"image_input"`
-	PromptCache            bool     `json:"prompt_cache"`
-	ReasoningEfforts       []string `json:"reasoning_efforts,omitempty"`
-	DefaultReasoningEffort string   `json:"default_reasoning_effort,omitempty"`
-	CredentialStatus       string   `json:"credential_status"`
-	Availability           string   `json:"availability"`
-	UnavailableReason      string   `json:"unavailable_reason,omitempty"`
-	SelectionMode          string   `json:"selection_mode"`
+	DisplayName            string                  `json:"display_name"`
+	ContextWindow          uint64                  `json:"context_window"`
+	MaxOutputTokens        uint64                  `json:"max_output_tokens"`
+	Streaming              bool                    `json:"streaming"`
+	Reasoning              bool                    `json:"reasoning"`
+	ToolCalls              bool                    `json:"tool_calls"`
+	ParallelToolCalls      string                  `json:"parallel_tool_calls"`
+	NativeSearch           bool                    `json:"native_search"`
+	IncrementalResponses   bool                    `json:"incremental_responses"`
+	Vision                 bool                    `json:"vision"`
+	ImageInput             bool                    `json:"image_input"`
+	PromptCache            bool                    `json:"prompt_cache"`
+	AutomaticPromptCache   bool                    `json:"automatic_prompt_cache"`
+	ThinkingToggle         bool                    `json:"thinking_toggle"`
+	ReasoningEfforts       []string                `json:"reasoning_efforts,omitempty"`
+	DefaultReasoningEffort string                  `json:"default_reasoning_effort,omitempty"`
+	MetadataProvenance     ModelMetadataProvenance `json:"metadata_provenance"`
+	CredentialStatus       string                  `json:"credential_status"`
+	Availability           string                  `json:"availability"`
+	UnavailableReason      string                  `json:"unavailable_reason,omitempty"`
+	SelectionMode          string                  `json:"selection_mode"`
+}
+
+type ModelMetadataProvenance struct {
+	CanonicalID  string `json:"canonical_id"`
+	WireID       string `json:"wire_id"`
+	Limits       string `json:"limits"`
+	Capabilities string `json:"capabilities"`
+	Pricing      string `json:"pricing"`
+}
+
+func (p ModelMetadataProvenance) Validate() error {
+	for _, entry := range []struct {
+		field string
+		value string
+	}{
+		{field: "canonical_id", value: p.CanonicalID},
+		{field: "wire_id", value: p.WireID},
+		{field: "limits", value: p.Limits},
+		{field: "capabilities", value: p.Capabilities},
+		{field: "pricing", value: p.Pricing},
+	} {
+		switch entry.value {
+		case "bundled", "config", "startup", "fixture",
+			"provider_discovery", "operator_config", "mixed":
+		default:
+			return fmt.Errorf(
+				"model metadata %s provenance is invalid",
+				entry.field,
+			)
+		}
+	}
+	return nil
 }
 
 type SessionProfileCapabilities struct {
@@ -99,7 +135,7 @@ func (p SessionProfile) Validate() error {
 		return errors.New("session profile provider and model are invalid")
 	}
 	switch p.ReasoningEffort {
-	case "", "minimal", "low", "medium", "high", "max", "xhigh":
+	case "", "off", "minimal", "low", "medium", "high", "max", "xhigh":
 	default:
 		return errors.New("session profile reasoning_effort is invalid")
 	}
@@ -214,6 +250,40 @@ func (c SessionProfileCapabilities) Validate(profile SessionProfile) error {
 		model.MaxOutputTokens == 0 ||
 		model.MaxOutputTokens > model.ContextWindow {
 		return errors.New("session model capability identity or limits are invalid")
+	}
+	if err := model.MetadataProvenance.Validate(); err != nil {
+		return err
+	}
+	if !model.Reasoning &&
+		(len(model.ReasoningEfforts) != 0 ||
+			model.DefaultReasoningEffort != "" ||
+			model.ThinkingToggle) {
+		return errors.New("session model reasoning controls require reasoning capability")
+	}
+	seenEfforts := make(map[string]struct{}, len(model.ReasoningEfforts))
+	for _, effort := range model.ReasoningEfforts {
+		if !slices.Contains(
+			[]string{"off", "minimal", "low", "medium", "high", "xhigh", "max"},
+			effort,
+		) {
+			return fmt.Errorf("session model reasoning effort %q is invalid", effort)
+		}
+		if _, duplicate := seenEfforts[effort]; duplicate {
+			return fmt.Errorf("session model reasoning effort %q is duplicated", effort)
+		}
+		seenEfforts[effort] = struct{}{}
+	}
+	if effort := model.DefaultReasoningEffort; effort != "" {
+		if _, exists := seenEfforts[effort]; !exists {
+			return errors.New(
+				"session model default reasoning effort is not advertised",
+			)
+		}
+	}
+	if model.AutomaticPromptCache && !model.PromptCache {
+		return errors.New(
+			"session model automatic prompt cache requires prompt cache capability",
+		)
 	}
 	switch model.ParallelToolCalls {
 	case "supported", "unsupported", "unknown":

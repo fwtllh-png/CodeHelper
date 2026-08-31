@@ -177,6 +177,12 @@ Runtime 连接中断时，页面立即停止当前 Turn 的运行计时和操作
 并禁止继续提交。自动重连会重新读取 Runtime 的持久化状态，以确认该 Turn 实际为
 继续、完成或失败；Browser 不会自行伪造业务终态。
 
+启用 Subagent 时，终态 `turn.receipt` 会记录冻结的委派模式、Spawn 尝试数、成功数和
+观测结果。`delegated` 表示至少成功创建一个 Child，`blocked` 表示 Spawn 均失败，
+`retained_parent` 表示 Adaptive Turn 已执行模型采样但未尝试 Spawn，
+`not_evaluated` 表示没有足够的执行事实。Trajectory 直接显示该结果；它不推测或伪造
+模型未委派的自然语言理由。
+
 ## Session 与恢复
 
 Browser State 是可丢弃 Projection，不是事实来源。页面先为当前 Workspace 建立
@@ -199,23 +205,25 @@ Workspace 变更并允许 `Continue`。该状态不同于红色 `Failed`，也�
 
 首次进入且尚未完成 Runtime Setup 时，Web 不提供默认 Provider 或 Model。用户必须
 选择 OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible 服务，并输入准确的
-Model ID；Model 不使用内置下拉枚举。自定义服务同时填写 Base URL 与
-`openai_chat` / `openai_responses` 协议。Credential Value 只发送到本机 Loopback
-Runtime，由 Credential Control 写入操作系统 Keyring 加密保存；浏览器不持久化原始
-值，也不要求用户创建或编辑配置文件。
+Model ID。自定义 Endpoint 或未进入内置目录的 Model 还必须填写 Base URL（自定义
+Provider）、`openai_chat` / `openai_responses` 协议，以及 Canonical ID、Wire ID、
+Context、Max Output 和完整 Capability 声明。字段为空或不一致时 Runtime 拒绝构造
+Route，不会按 Model 名称或 `/models` 列表猜测能力。Credential Value 只发送到本机
+Loopback Runtime，由 Credential Control 写入操作系统 Keyring 加密保存；浏览器不
+持久化原始值。
 
 Web Settings 将 Workspace Connection 与 Session 配置分开：Connection 展示固定的
 Provider、Endpoint、Protocol 和 Keyring Credential；Models、Reasoning、Mode、
 Approval、执行目标和 Tool allowlist 属于当前 Session。Session 配置先进入 Draft，
 点击 Apply 后才通过 Runtime `profile/update` 原子生效，并显示具体变更摘要。
 
-每个 Session 独立持久化准确的 Model ID；Composer 可快速切换当前 Workspace
-其他 Session 已使用的模型，Settings 也可输入新的 Model ID。同一 Workspace 中的模型
-切换复用既有 Provider Connection、Endpoint 和 Keyring Credential，不扩大 Egress
-范围，也不影响其他 Session。模型变化会重置该 Session 的 Prompt Cache，Active Turn
-期间拒绝修改。未进入内置目录的模型只展示 Connection Baseline，并标记为未验证；
-`Test connection` 检查 Endpoint、Credential 和启动模型，`Test model` 检查 Provider
-模型目录是否包含当前填写的准确 Model ID。
+每个 Session 独立持久化准确的 Model ID，并可在 Composer 中切换当前连接已验证的
+Catalog Model。自定义 Endpoint 或未知 Model 的 Route 固定；更换 Model 时必须通过
+Connection 设置提交新模型自己的 metadata 并重启 Runtime，不能继承旧模型能力。
+模型变化会重置该 Session 的 Prompt Cache，Active Turn 期间拒绝修改。Settings 明确
+显示 Limits 与 Capabilities 的来源；`Test connection` 检查 Endpoint、Credential 和
+启动模型，`Test model` 只检查 Provider 模型目录是否包含 Model ID，不把该结果视为
+容量或能力证明。
 
 Composer 内的 Reasoning 菜单直接采用当前模型目录声明的档位。DeepSeek 显示
 Off、Low、High、Max，默认 High；其他模型保留各自完整档位，不做跨档位折算。

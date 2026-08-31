@@ -371,7 +371,7 @@ func (r *ContextRebaseRepository) commitContextRebase(
 		if currentErr != nil && !errors.Is(currentErr, sql.ErrNoRows) {
 			return currentErr
 		}
-		if currentErr == nil && revision >= envelope.Snapshot.Revision {
+		if currentErr == nil && revision != envelope.BaseRevision {
 			return errors.New("context rebase revision conflict")
 		}
 		if _, insertErr := tx.ExecContext(

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const ModelCatalogVersion = 1
+const ModelCatalogVersion = 2
 
 type ProviderCatalogEntry struct {
 	ID           string `json:"id"`

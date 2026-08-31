@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
@@ -17,6 +18,7 @@ type NarrativeGenerationResult struct {
 	Usage         provider.Usage
 	Provider      string
 	Model         string
+	ModelMetadata protocol.ModelMetadataProvenance
 	CostUSD       float64
 	CostKnown     bool
 	Attempt       uint32
@@ -24,6 +26,17 @@ type NarrativeGenerationResult struct {
 	Fallback      bool
 	FailureReason string
 	Receipt       *CompactionReceipt
+}
+
+type compactionCompletionCheck struct {
+	sourceContextDigest string
+	sourceActive        uint64
+	sourceTotal         uint64
+	hardLimit           uint64
+	input               agentcontext.MessageSnapshot
+	outputReserve       uint64
+	economicInput       uint64
+	projectHistory      agentcontext.HistoryProjector
 }
 
 func (e *Engine) stageNarrativeCandidate(
@@ -57,11 +70,22 @@ func (e *Engine) stageNarrativeCandidate(
 	if e.options.Context.SemanticNarrative == "off" {
 		routeFailure = "semantic_narrative_disabled"
 	}
+	currentWindow := e.currentWindowLedger()
+	targetWindow, windowErr := agentcontext.CreateWindowLedger(
+		currentWindow.Number + 1,
+	)
+	if windowErr != nil {
+		targetWindow = agentcontext.FallbackWindowLedger(
+			currentWindow,
+			e.options.SessionID,
+		)
+	}
 	state := agentcontext.PrepareCompactionState(
 		agentcontext.CompactionPreparation{
 			Candidate: candidate, Previous: e.compactionState().State,
 			ThreadID: threadID, TurnID: turnID,
-			TargetWindowID:     e.currentWindowLedger().ID,
+			TargetWindowID:     targetWindow.ID,
+			TargetWindow:       targetWindow,
 			StablePrefixDigest: stableDigest,
 			RouteDigest:        routeDigest,
 			RouteFailure:       routeFailure,
@@ -108,7 +132,8 @@ func (e *Engine) GenerateNarrative(
 	return NarrativeGenerationResult{
 		Artifact: result.Artifact, Usage: result.Usage,
 		Provider: result.Provider, Model: result.Model,
-		CostUSD: result.CostUSD, CostKnown: result.CostKnown,
+		ModelMetadata: result.ModelMetadata,
+		CostUSD:       result.CostUSD, CostKnown: result.CostKnown,
 		RouteDigest: result.RouteDigest,
 	}, err
 }
@@ -123,6 +148,8 @@ func (e *Engine) RunPostTurnNarrative(
 			Fallback: true, FailureReason: "disabled",
 		}, nil
 	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	maintained, err := agentcontext.RunPostTurnNarrative(
 		ctx,
 		agentcontext.PostTurnNarrativeConfig{
@@ -139,8 +166,6 @@ func (e *Engine) RunPostTurnNarrative(
 				OwnerDeltaMaxBytes:    e.options.Context.OwnerDeltaMaxBytes,
 			},
 			Load: func() agentcontext.NarrativeMaintenanceState {
-				e.mu.Lock()
-				defer e.mu.Unlock()
 				return agentcontext.NarrativeMaintenanceState{
 					Compaction: e.context.Compaction(),
 					WindowID:   e.context.Window().ID,
@@ -149,21 +174,58 @@ func (e *Engine) RunPostTurnNarrative(
 				}
 			},
 			Store: func(compaction agentcontext.Compaction) {
-				e.mu.Lock()
 				e.context.SetCompaction(compaction)
-				e.mu.Unlock()
 			},
 			Record: func(generated agentcontext.NarrativeGenerationResult) {
-				e.mu.Lock()
 				e.usage.Add(generated.Usage)
 				e.costUSD += generated.CostUSD
-				e.mu.Unlock()
 			},
-			Snapshot: e.ExportContextSnapshot,
+			Snapshot: func() (agentcontext.ContextSnapshot, error) {
+				return e.buildContextSnapshot(
+					e.history,
+					e.context.Compaction(),
+					max(uint64(1), e.sessionRevision),
+					max(uint64(1), e.stateEpoch),
+				)
+			},
 			Apply: func(snapshot agentcontext.ContextSnapshot) {
-				e.mu.Lock()
 				e.applyContextSnapshot(snapshot)
-				e.mu.Unlock()
+			},
+			Validate: func(
+				source []provider.Message,
+				candidate []provider.Message,
+			) error {
+				stable := e.promptMessages()
+				sourceWindow, err := e.measureTokenWindow(
+					agentcontext.NewMessageLedger(
+						agentcontext.LedgerInput{
+							Stable: stable, History: source,
+						},
+					).Snapshot(),
+					0,
+					0,
+				)
+				if err != nil {
+					return err
+				}
+				candidateWindow, err := e.measureTokenWindow(
+					agentcontext.NewMessageLedger(
+						agentcontext.LedgerInput{
+							Stable: stable, History: candidate,
+						},
+					).Snapshot(),
+					0,
+					0,
+				)
+				if err != nil {
+					return err
+				}
+				if candidateWindow.active >= sourceWindow.active {
+					return errors.New(
+						"context compaction did not reduce provider-visible tokens",
+					)
+				}
+				return nil
 			},
 			Commit: e.options.Context.CommitRebase,
 		},
@@ -176,6 +238,7 @@ func (e *Engine) RunPostTurnNarrative(
 		Usage:         maintained.Generation.Usage,
 		Provider:      maintained.Generation.Provider,
 		Model:         maintained.Generation.Model,
+		ModelMetadata: maintained.Generation.ModelMetadata,
 		CostUSD:       maintained.Generation.CostUSD,
 		CostKnown:     maintained.Generation.CostKnown,
 		Attempt:       maintained.Attempt,
@@ -189,6 +252,12 @@ func (e *Engine) RunPostTurnNarrative(
 		maintained.RenderedBytes,
 		maintained.Generation.Usage,
 	)
+	if result.Receipt != nil && result.Provider != "" {
+		metadata := result.ModelMetadata
+		result.Receipt.NarrativeProvider = result.Provider
+		result.Receipt.NarrativeModel = result.Model
+		result.Receipt.NarrativeMetadata = &metadata
+	}
 	return result, err
 }
 
@@ -223,13 +292,63 @@ func narrativeMaintenanceReceipt(
 func (e *Engine) completeInlineNarrative(
 	ctx context.Context,
 	history *[]provider.Message,
+	send func(State, Event) error,
+	checks ...compactionCompletionCheck,
 ) (*CompactionReceipt, error) {
 	if e.options.Context.SemanticNarrative == "post_turn" {
 		return nil, nil
 	}
-	state := e.compactionState().State
+	compaction := e.compactionState()
+	state := compaction.State
 	if state == nil || state.Phase == "completed" {
 		return nil, nil
+	}
+	if state.SourceWindowID != e.currentWindowLedger().ID {
+		compaction.State = nil
+		e.contextAuthority().SetCompaction(compaction)
+		return nil, nil
+	}
+	if state.Plan == nil {
+		return nil, fmt.Errorf(
+			"prepared compaction plan is unavailable: %s",
+			state.FallbackReason,
+		)
+	}
+	if err := agentcontext.ValidateCompactionSource(
+		*state.Plan,
+		*history,
+	); err != nil {
+		return nil, err
+	}
+	var check compactionCompletionCheck
+	if len(checks) != 0 {
+		check = checks[0]
+	}
+	if check.sourceContextDigest != "" &&
+		check.sourceContextDigest != state.SourceContextDigest {
+		return nil, errors.New("compaction source context digest is stale")
+	}
+	currentCandidate, err := e.buildCompactionCandidate(
+		*history,
+		state.Plan.Cut,
+		true,
+	)
+	if err != nil {
+		return nil, err
+	}
+	currentAuthorityDigest, err := currentCandidate.Authority.AuthorityDigest()
+	if err != nil ||
+		currentAuthorityDigest != state.Plan.DeterministicResult.AuthorityDigest {
+		return nil, errors.New("compaction authority digest is stale")
+	}
+	stableDigest, err := agentcontext.NewMessageLedger(
+		agentcontext.LedgerInput{Stable: e.promptMessages()},
+	).Snapshot().Digest()
+	if err != nil {
+		return nil, err
+	}
+	if stableDigest != state.Plan.DeterministicResult.StablePrefixDigest {
+		return nil, errors.New("compaction stable prefix digest is stale")
 	}
 	scope := e.runningScope()
 	if scope == nil || scope.state.kernel == nil {
@@ -270,11 +389,8 @@ func (e *Engine) completeInlineNarrative(
 			return nil, errors.Join(err, resolveErr)
 		}
 		if err != nil {
-			state.Phase = "fallback"
-			state.FallbackReason = err.Error()
-			result = NarrativeGenerationResult{
-				Fallback: true, FailureReason: err.Error(),
-			}
+			state.Phase, state.FallbackReason = "fallback", err.Error()
+			result = NarrativeGenerationResult{Fallback: true, FailureReason: err.Error()}
 			e.stageContextCompaction(state)
 		} else {
 			if err := scope.state.kernel.RecordSupplementalUsage(
@@ -285,6 +401,21 @@ func (e *Engine) completeInlineNarrative(
 				result.CostKnown,
 			); err != nil {
 				return nil, err
+			}
+			if send != nil {
+				usage := result.Usage
+				if err := send(Streaming, Event{
+					Usage:         &usage,
+					CostUSD:       result.CostUSD,
+					CostKnown:     result.CostKnown,
+					Sample:        e.nextSample(),
+					Provider:      result.Provider,
+					Model:         result.Model,
+					ModelMetadata: &result.ModelMetadata,
+					Purpose:       string(model.PurposeSummary),
+				}); err != nil {
+					return nil, err
+				}
 			}
 			scope.mu.Lock()
 			scope.state.contextUsage.Add(result.Usage)
@@ -302,6 +433,22 @@ func (e *Engine) completeInlineNarrative(
 	if narrativeIncluded {
 		artifact = &result.Artifact
 	}
+	if artifact == nil &&
+		e.options.Context.SemanticNarrative != "off" &&
+		check.hardLimit != 0 &&
+		check.sourceTotal <= check.hardLimit {
+		state.Phase = "prepared"
+		e.stageContextCompaction(state)
+		return nil, nil
+	}
+	if artifact == nil && len(state.Plan.RequiredKinds) != 0 {
+		return nil, protocol.NewProblem(
+			protocol.CodeResourceExhausted,
+			"context maintenance cannot preserve required continuation facts",
+			false,
+			nil,
+		)
+	}
 	completed, err := agentcontext.CompleteCompaction(
 		*state,
 		artifact,
@@ -311,7 +458,29 @@ func (e *Engine) completeInlineNarrative(
 	if err != nil {
 		return nil, err
 	}
-	compaction := e.compactionState()
+	if check.sourceActive != 0 {
+		candidateInput := check.input.WithHistory(
+			agentcontext.ProjectHistory(
+				completed.History,
+				check.projectHistory,
+			),
+		)
+		candidateWindow, measureErr := e.measureTokenWindow(
+			candidateInput,
+			check.outputReserve,
+			check.economicInput,
+		)
+		if measureErr != nil {
+			return nil, measureErr
+		}
+		if candidateWindow.active >= check.sourceActive {
+			return nil, errors.New(
+				"context compaction did not reduce provider-visible tokens",
+			)
+		}
+	}
+	compaction = e.compactionState()
+	compaction.Count++
 	compaction.State = &completed.State
 	snapshot, err := e.buildContextSnapshot(
 		completed.History,
@@ -320,6 +489,10 @@ func (e *Engine) completeInlineNarrative(
 		max(uint64(1), e.stateEpoch),
 	)
 	if err != nil {
+		return nil, err
+	}
+	snapshot.Window = state.Plan.TargetWindow
+	if err := snapshot.Seal(); err != nil {
 		return nil, err
 	}
 	threadID := state.ThreadID
@@ -380,16 +553,25 @@ func (e *Engine) completeInlineNarrative(
 	); err != nil {
 		return nil, err
 	}
-	*history = completed.History
-	e.sessionRevision = snapshot.Revision
-	e.stageContextCompaction(&completed.State)
+	e.applyContextSnapshot(snapshot)
+	scope.mu.Lock()
+	scope.state.context = e.context.Clone()
+	if scope.state.contextLedger != nil {
+		scope.state.contextLedger.ReplaceHistory(completed.History)
+	}
+	scope.mu.Unlock()
+	*history = cloneMessages(completed.History)
+	e.options.Metrics.Compaction(
+		state.Plan.SourceBytes -
+			agentcontext.HistoryBytes(completed.History),
+	)
 	status := "completed"
 	if completed.State.FallbackReason != "" {
 		status = "fallback"
 		result.Fallback = true
 		result.FailureReason = completed.State.FallbackReason
 	}
-	return &CompactionReceipt{
+	receipt := &CompactionReceipt{
 		CompactionID: state.ID, Status: status, Mode: "inline",
 		SourceWindowID:        state.SourceWindowID,
 		TargetWindowID:        state.TargetWindowID,
@@ -400,5 +582,12 @@ func (e *Engine) completeInlineNarrative(
 		FallbackReason:        completed.State.FallbackReason,
 		AuthorityDigest:       completed.AuthorityDigest,
 		AuthorityEquivalent:   true,
-	}, nil
+	}
+	if result.Provider != "" {
+		metadata := result.ModelMetadata
+		receipt.NarrativeProvider = result.Provider
+		receipt.NarrativeModel = result.Model
+		receipt.NarrativeMetadata = &metadata
+	}
+	return receipt, nil
 }

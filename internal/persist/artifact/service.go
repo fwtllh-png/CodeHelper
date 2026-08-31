@@ -107,16 +107,39 @@ func (r *Service) PrepareTurnRecovery(
 	var sourceReceipt *protocol.ExecutionReceiptData
 	terminal := false
 	terminalState := ""
+	var startedOperationID protocol.OperationID
+	var sourceThreadID protocol.ThreadID
 	var partialOutput strings.Builder
 	for _, event := range events {
-		if event.ThreadID != current.ThreadID ||
-			event.TurnID != request.SourceTurnID {
+		if event.TurnID != request.SourceTurnID {
 			continue
+		}
+		if sourceThreadID == "" {
+			sourceThreadID = event.ThreadID
+			sourceSessionID, ownerErr := r.SessionForThread(ctx, sourceThreadID)
+			if ownerErr != nil || sourceSessionID != request.SessionID {
+				return TurnRecoveryPreparation{}, resourceProblem(
+					protocol.CodeConflict,
+					"source Turn belongs to another Session",
+					false,
+					protocol.ProblemReasonSessionBusy,
+					string(request.SourceTurnID),
+				)
+			}
+		} else if event.ThreadID != sourceThreadID {
+			return TurnRecoveryPreparation{}, resourceProblem(
+				protocol.CodeConflict,
+				"source Turn has inconsistent Thread identity",
+				false,
+				protocol.ProblemReasonSessionBusy,
+				string(request.SourceTurnID),
+			)
 		}
 		switch data := event.Data.(type) {
 		case *protocol.TurnStartedData:
 			copy := *data
 			started = &copy
+			startedOperationID = event.OperationID
 		case *protocol.OutputDeltaData:
 			appendBoundedRecoveryOutput(&partialOutput, data.Text)
 		case *protocol.ToolStartData:
@@ -153,6 +176,16 @@ func (r *Service) PrepareTurnRecovery(
 		case *protocol.TurnCanceledData:
 			terminal = true
 			terminalState = "canceled: " + protocol.NormalizeCancelReason(data.Reason)
+		case *protocol.OperationRejectedData:
+			if event.OperationID == startedOperationID &&
+				protocol.FaultAllowsTurnRecovery(data.Fault) {
+				terminal = true
+				terminalState = fmt.Sprintf(
+					"interrupted before terminal commit (%s): %s",
+					data.Code,
+					data.Message,
+				)
+			}
 		}
 	}
 	if started == nil || !terminal {

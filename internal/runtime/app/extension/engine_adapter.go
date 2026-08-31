@@ -298,7 +298,8 @@ func (a *EngineAdapter) StartTurn(
 			planID, planTransition, _ := turnPlanExecution(payload)
 			return sink.Emit(&protocol.TurnStartedData{
 				Provider: event.Provider, Model: event.Model,
-				QueueID: payload.QueueID, PlanID: planID,
+				ModelMetadata: event.ModelMetadata,
+				QueueID:       payload.QueueID, PlanID: planID,
 				PlanTransition:  planTransition,
 				ProfileRevision: event.ProfileRevision,
 				Intent:          intent,
@@ -851,6 +852,9 @@ func ProtocolCompactionData(
 		NarrativeBytes:        receipt.NarrativeBytes,
 		NarrativeInputTokens:  receipt.NarrativeInputTokens,
 		NarrativeOutputTokens: receipt.NarrativeOutputTokens,
+		NarrativeProvider:     receipt.NarrativeProvider,
+		NarrativeModel:        receipt.NarrativeModel,
+		NarrativeMetadata:     receipt.NarrativeMetadata,
 		FallbackReason:        receipt.FallbackReason,
 		CapsuleBytes:          receipt.CapsuleBytes,
 		MandatoryBytes:        receipt.MandatoryBytes,
@@ -946,8 +950,9 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 	if event.Usage != nil {
 		return sink.Emit(&protocol.UsageData{
 			Sample: event.Sample, Provider: event.Provider, Model: event.Model,
-			Context:     event.SampleContext,
-			InputTokens: event.Usage.InputTokens, OutputTokens: event.Usage.OutputTokens,
+			ModelMetadata: event.ModelMetadata,
+			Context:       event.SampleContext,
+			InputTokens:   event.Usage.InputTokens, OutputTokens: event.Usage.OutputTokens,
 			ReasoningTokens: event.Usage.ReasoningTokens,
 			CachedTokens:    event.Usage.CachedTokens,
 			CostMicrounits:  CostMicrounits(event.CostUSD),

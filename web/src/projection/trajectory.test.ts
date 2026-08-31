@@ -190,6 +190,36 @@ describe("projectTrajectory", () => {
       .toMatchObject({ttftMS: 250});
   });
 
+  it("summarizes observed adaptive delegation outcomes", () => {
+    const delegated = projectTrajectory([
+      event(1, "turn.receipt", {
+        outcome: "changed",
+        delegation: {
+          mode: "adaptive",
+          outcome: "delegated",
+          attempts: 2,
+          spawned: 2
+        }
+      })
+    ]);
+    expect(delegated.records[0]?.summary)
+      .toBe("changed · Delegated to 2 subagents");
+
+    const retained = projectTrajectory([
+      event(1, "turn.receipt", {
+        outcome: "answered",
+        delegation: {
+          mode: "adaptive",
+          outcome: "retained_parent",
+          attempts: 0,
+          spawned: 0
+        }
+      })
+    ]);
+    expect(retained.records[0]?.summary)
+      .toBe("answered · Parent execution");
+  });
+
   it("aggregates average common prefix length", () => {
     const projection = projectTrajectory([
       event(1, "turn.started", {display_prompt: "Cache audit"}),

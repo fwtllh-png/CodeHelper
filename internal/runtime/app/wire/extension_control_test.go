@@ -31,10 +31,21 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(initial.Extensions) != 1 ||
-		initial.Extensions[0].Name != "review" ||
-		!initial.Extensions[0].Enabled {
+	if len(initial.Extensions) != 5 {
 		t.Fatalf("initial projection = %+v", initial.Extensions)
+	}
+	review := extensionByName(initial.Extensions, "review")
+	if review == nil || !review.Enabled {
+		t.Fatalf("review projection = %+v", review)
+	}
+	for _, name := range []string{
+		"system-code-review", "system-debugging",
+		"system-refactor", "system-test-expansion",
+	} {
+		item := extensionByName(initial.Extensions, name)
+		if item == nil || item.Source != "builtin" || !item.Enabled {
+			t.Fatalf("builtin projection %q = %+v", name, item)
+		}
 	}
 
 	channel, unsubscribe, err := control.Service.Subscribe(1)
@@ -96,8 +107,10 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(replayed, current.Extensions) {
-		t.Fatalf("replayed = %+v current = %+v", replayed, current.Extensions)
+	currentReview := extensionByName(current.Extensions, "review")
+	if len(replayed) != 1 || currentReview == nil ||
+		!reflect.DeepEqual(replayed[0], *currentReview) {
+		t.Fatalf("replayed = %+v current review = %+v", replayed, currentReview)
 	}
 	receiptsOperation := controlOperation(
 		"receipts-query", protocol.ExtensionActionReceipts, "",
@@ -123,6 +136,18 @@ func TestExtensionControlIsIdempotentReplayableAndNonBlocking(t *testing.T) {
 		len(health.Diagnostics.Alerts) != 2 {
 		t.Fatalf("health diagnostics = %+v", health.Diagnostics)
 	}
+}
+
+func extensionByName(
+	extensions []protocol.ExtensionProjection,
+	name string,
+) *protocol.ExtensionProjection {
+	for index := range extensions {
+		if extensions[index].Name == name {
+			return &extensions[index]
+		}
+	}
+	return nil
 }
 
 func controlOperation(

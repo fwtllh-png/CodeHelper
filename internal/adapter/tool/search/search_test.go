@@ -216,6 +216,28 @@ func TestSearchSchemaRequiresQueryOrPattern(t *testing.T) {
 	}
 }
 
+func TestPatternDefaultsToRegexUnlessExplicitlyDisabled(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  string
+		want bool
+	}{
+		{name: "pattern", raw: `{"pattern":"^# "}`, want: true},
+		{name: "literal query", raw: `{"query":"^# "}`, want: false},
+		{name: "explicit literal pattern", raw: `{"pattern":"^# ","regex":false}`, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input, err := parseSearchInput(json.RawMessage(test.raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if input.Regex != test.want {
+				t.Fatalf("regex = %t, want %t", input.Regex, test.want)
+			}
+		})
+	}
+}
+
 func decodeMatches(t *testing.T, content string) []map[string]any {
 	t.Helper()
 	var payload struct {

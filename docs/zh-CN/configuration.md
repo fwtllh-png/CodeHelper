@@ -89,7 +89,7 @@ durable = true
 recover_on_start = true
 
 [execution.subagent]
-delegation = "explicit"      # disabled | explicit | adaptive
+delegation = "adaptive"      # disabled | explicit | adaptive
 max_depth = 5
 max_parallel = 4
 max_resident = 8
@@ -140,7 +140,7 @@ handle_max_entities = 32
 omission_sample_max_entities = 8
 recent_tail_turns = 2
 recent_tail_max_tokens = 0 # 0 表示跟随当前 Route 的动态 Auto Compact 容量
-semantic_narrative = "off" # off | post_turn | inline
+semantic_narrative = "inline" # 默认在压缩点生成带来源引用的 continuation checkpoint
 semantic_narrative_max_input_tokens = 4096
 semantic_narrative_max_output_tokens = 512
 semantic_narrative_max_items = 32
@@ -154,6 +154,13 @@ owner_delta_max_bytes = 65536
 `ContextTokens - OutputReserve` 得到硬输入容量；只有本次请求无法同时容纳输入和输出
 保留时才触发 Tool Result Handle 化与 History Replacement。显式非零值属于 Operator
 成本或 SLA Ceiling，仍须满足顺序和模型窗口范围校验。
+
+Web 中的自定义 Endpoint 和内置目录之外的 Model 必须提交完整模型元数据，包括
+Canonical ID、Wire ID、Context、Max Output、Capabilities 和可用的 Reasoning
+Efforts。该元数据以 `operator_config` 来源保存；只返回 Model ID 的 `/models` 接口
+不能作为容量或能力来源。同名 Model 的 probe 结果按 Provider、Endpoint、Protocol 和
+Adapter 组成的 Connection Identity 隔离。旧版缺少元数据来源的自定义 Setup Record
+不会迁移为猜测值，而会重新进入 Setup Required。
 
 `recent_tail_turns` 是压缩时优先完整保留的最近 Turn 数；
 `recent_tail_max_tokens` 是这些原始消息的显式硬上限；为 `0` 时使用当前 Turn
@@ -181,19 +188,20 @@ search_backend = "duckduckgo"
 ```
 
 模型目录声明了默认 Reasoning Effort 时，空的 `reasoning_effort` 使用该默认值；
-DeepSeek 的默认值为 High，可选档位为 Off、Low、High、Max。未声明模型默认值时，
-空值继续从 Medium 开始自适应，复杂架构或 Debug 使用 High，Repair 失败后按模型支持
-的档位提升一级。显式 Effort 始终固定，且必须由所有已配置 Route 广告；不支持的值会
-在 Provider I/O 前失败。Reasoning Effort 不再改变输出容量。
+DeepSeek 的默认值为 High，可选档位为 Off、Low、High、Max。未声明 Effort 集合时，
+Runtime 不发送 `reasoning_effort`；声明了集合但没有默认值时，自适应策略只在声明的
+集合内选择。显式 Effort 始终固定，且必须由所有已配置 Route 广告；不支持的值会在
+Provider I/O 前失败。Reasoning Effort 不再改变输出容量。
 
 `max_output_tokens = 0` 会根据当前 Model Catalog 能力和输入投影后剩余的 Context
 空间，为每次请求动态计算上限。初始 Ceiling 来自模型声明的 `MaxOutputTokens`；
 正值表示 Operator 显式上限。实际请求还会被 Turn/Session Token Budget、USD Budget
 和本次输入后的剩余窗口继续收窄。
 
-`delegation = "explicit"` 只在 User、Developer、Skill 或内部 System 明确授权时暴露
-`spawn_agent`。`adaptive` 还允许模型在并行收益高于协调成本时主动委派独立工作。
-`disabled` 对模型隐藏 Agent Lifecycle Tool。
+默认的 `delegation = "adaptive"` 允许模型在并行收益高于 Spawn 与协调成本时主动委派
+独立工作；简单任务、线性依赖任务和写入范围重叠的任务仍由 Parent 完成。`explicit`
+只允许 User、Developer、Skill 或内部 System 明确授权的委派，`disabled` 对模型隐藏
+Agent Lifecycle Tool。
 
 `spawn_agent` 从当前 Runtime Turn 自动捕获 Parent Context。`context_mode` 默认是
 `task_capsule`；`fresh` 不继承 Parent Context，`last_n_turns` 最多加入
@@ -218,6 +226,13 @@ Contract 的交集，Read-only Role 固定使用 `never`。在 `suggest` 下，C
 会在 Host 中显示 Agent Path 与 Role。Host 通过 Parent Session 提交原 Request ID，
 Runtime 将决定路由到权威 Child Thread，并在重启后保留 Pending Approval。Deny 会向
 Child 返回结构化 Problem 与 `approval_denied` Tool Result。
+
+CodeHelper 在二进制中内置版本化的 `system-code-review`、`system-debugging`、
+`system-refactor` 和 `system-test-expansion` Skill。它们提供领域工作流及 Subagent
+拆分建议，不承载安全或委派授权。Skill 同名覆盖顺序为 Workspace、显式配置目录、
+User、Builtin；因此项目可以替换默认工作流。Builtin Skill 可通过现有 Skill Control
+禁用，其版本、来源和内容摘要会进入 Catalog 与 Receipt；由于内容随二进制固定，
+单独使用 Builtin Skill 不要求 Workspace Lock。
 
 Bundled `openai-responses` 路由只有在显式广告 Incremental Transport 时，才会
 按 Sticky Session Key 复用 Provider 所有的 WebSocket。第一个 Sample 发送完整
@@ -268,9 +283,16 @@ Mutation、任意 Plan 状态变化、Verification 或 Completion 推进都会�
 提示时，根据实际请求耗时和连续限流反馈逐步延长冷却。冷却等待可取消且不会占用
 Provider 并发槽。
 
-`execution.provider_retry_limit` 是单次 Model Sample 的瞬时故障重试预算。预算内由
-Runtime 自动调度并重试，不要求模型或用户轮询；预算耗尽、账户硬配额错误或 Turn
-被取消后才停止自动重试。可通过 `CODEHELPER_PROVIDER_RETRY_LIMIT` 覆盖。
+`semantic_narrative=inline` 会在压缩当前 Turn 时通过 `route.summary` 生成独立的
+结构化 Continuation Checkpoint。Checkpoint 保留文件与代码接口、当前工作和下一步，
+并要求每项引用输入消息。`off` 只保留 Truth Capsule 与原始 Tail，适合不依赖历史
+工作记忆的场景；长时间编码 Turn 不建议关闭。
+
+`execution.provider_retry_limit` 是单次 Model Sample 对 5xx、网络中断、Timeout
+等普通瞬时故障的重试预算。明确分类为 `rate_limit` 的 429 不消耗该次数预算：
+Runtime 按 Provider 返回的恢复时间或共享动态冷却持续等待并重试，直到 Provider
+恢复或 Turn 被取消；账户硬配额错误仍立即停止。等待由 Runtime 调度，不要求模型或
+用户轮询。该配置可通过 `CODEHELPER_PROVIDER_RETRY_LIMIT` 覆盖。
 
 `execution.lease_timeout` 是 Guard 完成授权到 Executor 消费 Execution Lease 之间的
 公开上限，可由 `CODEHELPER_LEASE_TIMEOUT` 或受信配置覆盖。调用 Context 的 Deadline

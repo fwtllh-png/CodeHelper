@@ -9,14 +9,15 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const SetupCatalogVersion = 1
+const SetupCatalogVersion = 2
 
 type SetupProvider struct {
-	ID             string `json:"id"`
-	DisplayName    string `json:"display_name"`
-	Protocol       string `json:"protocol"`
-	RequiresAPIKey bool   `json:"requires_api_key"`
-	Custom         bool   `json:"custom,omitempty"`
+	ID             string   `json:"id"`
+	DisplayName    string   `json:"display_name"`
+	Protocol       string   `json:"protocol"`
+	RequiresAPIKey bool     `json:"requires_api_key"`
+	Custom         bool     `json:"custom,omitempty"`
+	Models         []string `json:"models,omitempty"`
 }
 
 type SetupCatalog struct {
@@ -25,11 +26,35 @@ type SetupCatalog struct {
 }
 
 type SetupRequest struct {
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	APIKey   string `json:"api_key,omitempty"`
-	BaseURL  string `json:"base_url,omitempty"`
-	Protocol string `json:"protocol,omitempty"`
+	Provider      string              `json:"provider"`
+	Model         string              `json:"model"`
+	APIKey        string              `json:"api_key,omitempty"`
+	BaseURL       string              `json:"base_url,omitempty"`
+	Protocol      string              `json:"protocol,omitempty"`
+	ModelMetadata *SetupModelMetadata `json:"model_metadata,omitempty"`
+}
+
+type SetupModelMetadata struct {
+	CanonicalID     string                 `json:"canonical_id"`
+	WireID          string                 `json:"wire_id"`
+	ContextTokens   uint64                 `json:"context_tokens"`
+	MaxOutputTokens uint64                 `json:"max_output_tokens"`
+	Capabilities    SetupModelCapabilities `json:"capabilities"`
+}
+
+type SetupModelCapabilities struct {
+	Streaming              *bool    `json:"streaming"`
+	Reasoning              *bool    `json:"reasoning"`
+	ReasoningEfforts       []string `json:"reasoning_efforts,omitempty"`
+	DefaultReasoningEffort string   `json:"default_reasoning_effort,omitempty"`
+	ToolCalls              *bool    `json:"tool_calls"`
+	NativeSearch           *bool    `json:"native_search"`
+	IncrementalResponses   *bool    `json:"incremental_responses"`
+	Vision                 *bool    `json:"vision"`
+	ImageInput             *bool    `json:"image_input"`
+	PromptCache            *bool    `json:"prompt_cache"`
+	AutomaticPromptCache   *bool    `json:"automatic_prompt_cache"`
+	ThinkingToggle         *bool    `json:"thinking_toggle"`
 }
 
 type SetupResult struct {

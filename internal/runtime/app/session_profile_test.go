@@ -566,7 +566,7 @@ func TestSessionProfileReturnsCapabilitiesForSelectedModel(t *testing.T) {
 	}
 }
 
-func TestSessionProfileReturnsCapabilitiesForRememberedCustomModel(t *testing.T) {
+func TestSessionProfileRejectsModelWithoutExplicitMetadata(t *testing.T) {
 	defaults := runtimeTestProfile()
 	selected := defaults
 	selected.Model = "model-entered-by-user"
@@ -579,12 +579,8 @@ func TestSessionProfileReturnsCapabilitiesForRememberedCustomModel(t *testing.T)
 	t.Cleanup(func() { closeRuntime(t, runtime) })
 
 	snapshot, err := runtime.SessionProfile(t.Context(), "session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.Capabilities.ModelCapabilities.DisplayName != selected.Model ||
-		snapshot.Capabilities.ModelCapabilities.SelectionMode != "hot" {
-		t.Fatalf("custom model capabilities = %+v", snapshot.Capabilities)
+	if err == nil {
+		t.Fatalf("custom model capabilities = %+v, want rejection", snapshot.Capabilities)
 	}
 }
 
@@ -617,9 +613,13 @@ func runtimeTestCapabilities(
 			PromptCache:       true,
 			ParallelToolCalls: "unknown",
 			ReasoningEfforts:  []string{"low", "medium", "high"},
-			CredentialStatus:  "unknown",
-			Availability:      "available",
-			SelectionMode:     "restart_required",
+			MetadataProvenance: protocol.ModelMetadataProvenance{
+				CanonicalID: "fixture", WireID: "fixture",
+				Limits: "fixture", Capabilities: "fixture", Pricing: "fixture",
+			},
+			CredentialStatus: "unknown",
+			Availability:     "available",
+			SelectionMode:    "restart_required",
 		},
 		MutableFields: []string{
 			"mode",

@@ -1418,6 +1418,9 @@
               "capabilities": {
                 "type": "object",
                 "properties": {
+                  "automatic_prompt_cache": {
+                    "type": "boolean"
+                  },
                   "availability": {
                     "type": "string"
                   },
@@ -1436,8 +1439,39 @@
                   "image_input": {
                     "type": "boolean"
                   },
+                  "incremental_responses": {
+                    "type": "boolean"
+                  },
                   "max_output_tokens": {
                     "type": "integer"
+                  },
+                  "metadata_provenance": {
+                    "type": "object",
+                    "properties": {
+                      "canonical_id": {
+                        "type": "string"
+                      },
+                      "capabilities": {
+                        "type": "string"
+                      },
+                      "limits": {
+                        "type": "string"
+                      },
+                      "pricing": {
+                        "type": "string"
+                      },
+                      "wire_id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "canonical_id",
+                      "capabilities",
+                      "limits",
+                      "pricing",
+                      "wire_id"
+                    ],
+                    "additionalProperties": false
                   },
                   "native_search": {
                     "type": "boolean"
@@ -1463,6 +1497,9 @@
                   "streaming": {
                     "type": "boolean"
                   },
+                  "thinking_toggle": {
+                    "type": "boolean"
+                  },
                   "tool_calls": {
                     "type": "boolean"
                   },
@@ -1474,18 +1511,22 @@
                   }
                 },
                 "required": [
+                  "automatic_prompt_cache",
                   "availability",
                   "context_window",
                   "credential_status",
                   "display_name",
                   "image_input",
+                  "incremental_responses",
                   "max_output_tokens",
+                  "metadata_provenance",
                   "native_search",
                   "parallel_tool_calls",
                   "prompt_cache",
                   "reasoning",
                   "selection_mode",
                   "streaming",
+                  "thinking_toggle",
                   "tool_calls",
                   "vision"
                 ],
@@ -2252,6 +2293,9 @@
             "model_capabilities": {
               "type": "object",
               "properties": {
+                "automatic_prompt_cache": {
+                  "type": "boolean"
+                },
                 "availability": {
                   "type": "string"
                 },
@@ -2270,8 +2314,39 @@
                 "image_input": {
                   "type": "boolean"
                 },
+                "incremental_responses": {
+                  "type": "boolean"
+                },
                 "max_output_tokens": {
                   "type": "integer"
+                },
+                "metadata_provenance": {
+                  "type": "object",
+                  "properties": {
+                    "canonical_id": {
+                      "type": "string"
+                    },
+                    "capabilities": {
+                      "type": "string"
+                    },
+                    "limits": {
+                      "type": "string"
+                    },
+                    "pricing": {
+                      "type": "string"
+                    },
+                    "wire_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "canonical_id",
+                    "capabilities",
+                    "limits",
+                    "pricing",
+                    "wire_id"
+                  ],
+                  "additionalProperties": false
                 },
                 "native_search": {
                   "type": "boolean"
@@ -2297,6 +2372,9 @@
                 "streaming": {
                   "type": "boolean"
                 },
+                "thinking_toggle": {
+                  "type": "boolean"
+                },
                 "tool_calls": {
                   "type": "boolean"
                 },
@@ -2308,18 +2386,22 @@
                 }
               },
               "required": [
+                "automatic_prompt_cache",
                 "availability",
                 "context_window",
                 "credential_status",
                 "display_name",
                 "image_input",
+                "incremental_responses",
                 "max_output_tokens",
+                "metadata_provenance",
                 "native_search",
                 "parallel_tool_calls",
                 "prompt_cache",
                 "reasoning",
                 "selection_mode",
                 "streaming",
+                "thinking_toggle",
                 "tool_calls",
                 "vision"
               ],
@@ -5724,8 +5806,42 @@
         "narrative_input_tokens": {
           "type": "integer"
         },
+        "narrative_metadata_provenance": {
+          "type": "object",
+          "properties": {
+            "canonical_id": {
+              "type": "string"
+            },
+            "capabilities": {
+              "type": "string"
+            },
+            "limits": {
+              "type": "string"
+            },
+            "pricing": {
+              "type": "string"
+            },
+            "wire_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "canonical_id",
+            "capabilities",
+            "limits",
+            "pricing",
+            "wire_id"
+          ],
+          "additionalProperties": false
+        },
+        "narrative_model": {
+          "type": "string"
+        },
         "narrative_output_tokens": {
           "type": "integer"
+        },
+        "narrative_provider": {
+          "type": "string"
         },
         "omission_count": {
           "type": "integer"
@@ -6681,6 +6797,30 @@
         "cost_microunits": {
           "type": "integer"
         },
+        "delegation": {
+          "type": "object",
+          "properties": {
+            "attempts": {
+              "type": "integer"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "outcome": {
+              "type": "string"
+            },
+            "spawned": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "attempts",
+            "mode",
+            "outcome",
+            "spawned"
+          ],
+          "additionalProperties": false
+        },
         "diagnostic_count": {
           "type": "integer"
         },
@@ -7055,6 +7195,34 @@
             "properties": {
               "model": {
                 "type": "string"
+              },
+              "model_metadata_provenance": {
+                "type": "object",
+                "properties": {
+                  "canonical_id": {
+                    "type": "string"
+                  },
+                  "capabilities": {
+                    "type": "string"
+                  },
+                  "limits": {
+                    "type": "string"
+                  },
+                  "pricing": {
+                    "type": "string"
+                  },
+                  "wire_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "canonical_id",
+                  "capabilities",
+                  "limits",
+                  "pricing",
+                  "wire_id"
+                ],
+                "additionalProperties": false
               },
               "provider": {
                 "type": "string"
@@ -7849,6 +8017,34 @@
         "model": {
           "type": "string"
         },
+        "model_metadata_provenance": {
+          "type": "object",
+          "properties": {
+            "canonical_id": {
+              "type": "string"
+            },
+            "capabilities": {
+              "type": "string"
+            },
+            "limits": {
+              "type": "string"
+            },
+            "pricing": {
+              "type": "string"
+            },
+            "wire_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "canonical_id",
+            "capabilities",
+            "limits",
+            "pricing",
+            "wire_id"
+          ],
+          "additionalProperties": false
+        },
         "plan_id": {
           "type": "string"
         },
@@ -8293,6 +8489,34 @@
         },
         "model": {
           "type": "string"
+        },
+        "model_metadata_provenance": {
+          "type": "object",
+          "properties": {
+            "canonical_id": {
+              "type": "string"
+            },
+            "capabilities": {
+              "type": "string"
+            },
+            "limits": {
+              "type": "string"
+            },
+            "pricing": {
+              "type": "string"
+            },
+            "wire_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "canonical_id",
+            "capabilities",
+            "limits",
+            "pricing",
+            "wire_id"
+          ],
+          "additionalProperties": false
         },
         "output_tokens": {
           "type": "integer"

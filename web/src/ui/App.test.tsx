@@ -290,7 +290,7 @@ describe("projectTranscript", () => {
       target: {value: "model-released-today"}
     });
     expect(screen.getByRole("button", {name: "Existing models"})).toBeTruthy();
-    expect(screen.getByText(/Unverified metadata/)).toBeTruthy();
+    expect(screen.getByText(/"limits":"fixture"/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Test model"}));
     expect(await screen.findByText(
       "Connection succeeded and the provider listed this model"
@@ -830,12 +830,13 @@ describe("projectTranscript", () => {
     value.selectedSessionID = "";
     value.profile = undefined;
     value.setupCatalog = {
-      version: 1,
+      version: 2,
       providers: [{
         id: "deepseek",
         display_name: "DeepSeek",
         protocol: "openai_chat",
-        requires_api_key: true
+        requires_api_key: true,
+        models: ["deepseek-reasoner"]
       }, {
         id: "openai-compatible",
         display_name: "OpenAI-compatible",
@@ -876,6 +877,81 @@ describe("projectTranscript", () => {
       });
     });
     expect(screen.queryByDisplayValue("sk-live")).toBeNull();
+  });
+
+  it("requires and submits explicit metadata for a custom provider", async () => {
+    const value = snapshot();
+    value.phase = "setup";
+    value.sessions = [];
+    value.selectedSessionID = "";
+    value.profile = undefined;
+    value.setupCatalog = {
+      version: 2,
+      providers: [{
+        id: "openai-compatible",
+        display_name: "OpenAI-compatible",
+        protocol: "openai_chat",
+        requires_api_key: false,
+        custom: true
+      }]
+    };
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    fireEvent.change(screen.getByLabelText("Provider"), {
+      target: {value: "openai-compatible"}
+    });
+    fireEvent.change(screen.getByLabelText("Base URL"), {
+      target: {value: "https://models.example.com/v1"}
+    });
+    fireEvent.change(screen.getByLabelText("Model ID"), {
+      target: {value: "vendor-model"}
+    });
+    fireEvent.change(screen.getByLabelText("Canonical model ID"), {
+      target: {value: "vendor/vendor-model"}
+    });
+    fireEvent.change(screen.getByLabelText("Wire model ID"), {
+      target: {value: "vendor-model"}
+    });
+    fireEvent.change(screen.getByLabelText("Context tokens"), {
+      target: {value: "200000"}
+    });
+    fireEvent.change(screen.getByLabelText("Max output tokens"), {
+      target: {value: "24000"}
+    });
+    fireEvent.click(screen.getByRole("checkbox", {name: "Streaming"}));
+    fireEvent.click(screen.getByRole("checkbox", {name: "Tool calls"}));
+    fireEvent.click(screen.getByRole("checkbox", {name: "Reasoning"}));
+    fireEvent.change(screen.getByLabelText("Reasoning efforts"), {
+      target: {value: "off, high"}
+    });
+    fireEvent.change(screen.getByLabelText("Default reasoning effort"), {
+      target: {value: "high"}
+    });
+    fireEvent.click(screen.getByRole("button", {name: "Start CodeHelper"}));
+
+    await waitFor(() => {
+      expect(client.completeSetup).toHaveBeenCalledWith({
+        provider: "openai-compatible",
+        model: "vendor-model",
+        api_key: "",
+        base_url: "https://models.example.com/v1",
+        protocol: "openai_chat",
+        model_metadata: {
+          canonical_id: "vendor/vendor-model",
+          wire_id: "vendor-model",
+          context_tokens: 200000,
+          max_output_tokens: 24000,
+          capabilities: expect.objectContaining({
+            streaming: true,
+            tool_calls: true,
+            reasoning: true,
+            reasoning_efforts: ["off", "high"],
+            default_reasoning_effort: "high"
+          })
+        }
+      });
+    });
   });
 
   it("requests explicit discard when deleting an active session", () => {
@@ -930,7 +1006,7 @@ describe("projectTranscript", () => {
       cost_known: false
     };
     value.plan = {
-      version: 1,
+      version: 2,
       id: "plan-1",
       session_id: "session",
       thread_id: "thread",
@@ -954,7 +1030,7 @@ describe("projectTranscript", () => {
       created_at: "2026-01-01T00:00:00Z"
     };
     value.checkpoints = [{
-      version: 1,
+      version: 2,
       id: "checkpoint-1",
       session_id: "session",
       thread_id: "thread",
@@ -1417,7 +1493,7 @@ describe("projectTranscript", () => {
   it("reconfigures the Runtime provider from Connection settings", async () => {
     const value = snapshot();
     value.setupCatalog = {
-      version: 1,
+      version: 2,
       providers: [{
         id: "fixture",
         display_name: "Fixture",
@@ -1427,7 +1503,8 @@ describe("projectTranscript", () => {
         id: "deepseek",
         display_name: "DeepSeek",
         protocol: "openai_chat",
-        requires_api_key: true
+        requires_api_key: true,
+        models: ["deepseek-chat"]
       }]
     };
     const client = mockClient(value);
@@ -1499,9 +1576,8 @@ describe("projectTranscript", () => {
       })
     ]));
     render(<App client={inputClient} />);
-    fireEvent.change(screen.getByLabelText("Input options"), {
-      target: {value: "two"}
-    });
+    fireEvent.click(screen.getByRole("button", {name: "Input options"}));
+    fireEvent.click(screen.getByRole("option", {name: "two"}));
     fireEvent.click(screen.getByRole("button", {name: "Submit"}));
     expect(inputClient.replyInput).toHaveBeenCalledWith(
       "input",
@@ -1897,7 +1973,7 @@ describe("projectTranscript", () => {
       event(4, "tool.start", {
         call_id: "grep",
         tool: "search_text",
-        arguments: {query: "Serve"}
+        arguments: {pattern: "^Serve", path: "server.go"}
       }),
       event(5, "tool.result", {
         call_id: "grep",
@@ -1919,7 +1995,7 @@ describe("projectTranscript", () => {
     expect(container.querySelector("[data-terminal]")).toBeTruthy();
     expect(screen.getByText("ok example/project")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", {name: /Grep Serve/}));
+    fireEvent.click(screen.getByRole("button", {name: /Grep \^Serve · server\.go/}));
     expect(container.querySelector("[data-search='search-matches']")).toBeTruthy();
     expect(screen.getByText("2 matches · 1 files")).toBeTruthy();
     expect(screen.getByText("18:")).toBeTruthy();
@@ -2738,9 +2814,19 @@ function modelCapabilities(displayName: string) {
     tool_calls: true,
     parallel_tool_calls: "unknown" as const,
     native_search: false,
+    incremental_responses: false,
     vision: false,
     image_input: false,
     prompt_cache: true,
+    automatic_prompt_cache: false,
+    thinking_toggle: false,
+    metadata_provenance: {
+      canonical_id: "fixture",
+      wire_id: "fixture",
+      limits: "fixture",
+      capabilities: "fixture",
+      pricing: "fixture"
+    },
     credential_status: "configured" as const,
     availability: "available" as const,
     selection_mode: "hot" as const

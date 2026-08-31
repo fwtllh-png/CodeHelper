@@ -8,6 +8,8 @@ import (
 )
 
 // CapabilityRepository persists probe observations in provider_capabilities.
+// The legacy provider_id column stores a connection identity so observations
+// cannot cross endpoint or protocol boundaries.
 type CapabilityRepository struct {
 	db *sql.DB
 }
@@ -16,13 +18,14 @@ func NewCapabilityRepository(db *sql.DB) *CapabilityRepository {
 	return &CapabilityRepository{db: db}
 }
 
-// Upsert writes or replaces one observation for (provider, model, capability).
+// Upsert writes or replaces one observation for (connection, model, capability).
 func (r *CapabilityRepository) Upsert(ctx context.Context, observation CapabilityObservation) error {
 	if r == nil || r.db == nil {
 		return fmt.Errorf("capability repository is not configured")
 	}
-	if observation.ProviderID == "" || observation.ModelID == "" || observation.Capability == "" {
-		return fmt.Errorf("provider, model, and capability are required")
+	if observation.ConnectionID == "" || observation.ModelID == "" ||
+		observation.Capability == "" {
+		return fmt.Errorf("connection, model, and capability are required")
 	}
 	if observation.Source == "" {
 		observation.Source = "probe"
@@ -43,7 +46,7 @@ func (r *CapabilityRepository) Upsert(ctx context.Context, observation Capabilit
 			source = excluded.source,
 			detail = excluded.detail,
 			observed_at = excluded.observed_at
-	`, observation.ProviderID, observation.ModelID, string(observation.Capability),
+	`, observation.ConnectionID, observation.ModelID, string(observation.Capability),
 		supported, observation.Source, observation.Detail, observation.ObservedAt)
 	if err != nil {
 		return fmt.Errorf("upsert provider capability: %w", err)
@@ -51,9 +54,9 @@ func (r *CapabilityRepository) Upsert(ctx context.Context, observation Capabilit
 	return nil
 }
 
-// List returns every observation for a provider/model pair.
+// List returns every observation for a connection/model pair.
 func (r *CapabilityRepository) List(
-	ctx context.Context, providerID, modelID string,
+	ctx context.Context, connectionID, modelID string,
 ) ([]CapabilityObservation, error) {
 	if r == nil || r.db == nil {
 		return nil, nil
@@ -63,7 +66,7 @@ func (r *CapabilityRepository) List(
 		FROM provider_capabilities
 		WHERE provider_id = ? AND model_id = ?
 		ORDER BY capability
-	`, providerID, modelID)
+	`, connectionID, modelID)
 	if err != nil {
 		return nil, fmt.Errorf("list provider capabilities: %w", err)
 	}
@@ -77,7 +80,7 @@ func (r *CapabilityRepository) List(
 			detail      sql.NullString
 		)
 		if err := rows.Scan(
-			&observation.ProviderID, &observation.ModelID, &capability,
+			&observation.ConnectionID, &observation.ModelID, &capability,
 			&supported, &observation.Source, &detail, &observation.ObservedAt,
 		); err != nil {
 			return nil, err

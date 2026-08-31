@@ -70,6 +70,57 @@ description_zh-CN: 中文描述
 	}
 }
 
+func TestBuiltinSkillsAreVersionedFallbacksWithoutWorkspaceLock(t *testing.T) {
+	workspace := t.TempDir()
+	catalog, err := Discover(DiscoveryOptions{
+		Workspace: workspace, UserHome: t.TempDir(),
+		Locale: "zh-CN", IncludeBuiltins: true,
+		RuntimeVersion: "dev",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	summaries, issues := catalog.List(t.Context())
+	if len(issues) != 0 {
+		t.Fatalf("builtin issues = %+v", issues)
+	}
+	if len(summaries) != 4 {
+		t.Fatalf("builtin summaries = %+v", summaries)
+	}
+	for _, summary := range summaries {
+		if summary.Source != SourceBuiltin || summary.Version != "1.0.0" ||
+			!summary.Locked || !strings.HasPrefix(summary.Path, "builtin://") {
+			t.Fatalf("builtin summary = %+v", summary)
+		}
+		loaded, err := catalog.Load(t.Context(), summary.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.Content == "" || loaded.Source != SourceBuiltin {
+			t.Fatalf("loaded builtin = %+v", loaded)
+		}
+	}
+
+	writeSkill(
+		t, filepath.Join(workspace, ".agents", "skills"),
+		"system-code-review", "Workspace review policy", "Workspace override.",
+	)
+	overridden, err := Discover(DiscoveryOptions{
+		Workspace: workspace, UserHome: t.TempDir(), IncludeBuiltins: true,
+		RuntimeVersion: "dev",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := overridden.Load(t.Context(), "system-code-review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Source != SourceWorkspace || loaded.Content != "Workspace override." {
+		t.Fatalf("workspace did not override builtin: %+v", loaded)
+	}
+}
+
 func TestStateDisableAndMalformedStateRecovery(t *testing.T) {
 	workspace := t.TempDir()
 	home := t.TempDir()

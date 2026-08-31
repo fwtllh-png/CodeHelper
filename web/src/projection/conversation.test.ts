@@ -6,6 +6,29 @@ import {
 } from "./conversation";
 
 describe("ConversationProjection", () => {
+  it("coalesces repeated in-turn compaction updates", () => {
+    const snapshot = projectConversation([
+      event(1, "turn.compaction", {
+        phase: "mid_turn",
+        summary: "Pruned tool results"
+      }),
+      event(2, "turn.compaction", {
+        phase: "mid_turn",
+        summary: "Retained deterministic truth"
+      })
+    ]);
+    const context = snapshot.order
+      .map((id) => snapshot.nodes.get(id))
+      .filter((node) => node?.kind === "context");
+
+    expect(context).toHaveLength(1);
+    expect(context[0]).toMatchObject({
+      id: "context-turn",
+      sequence: 2,
+      summary: "Retained deterministic truth"
+    });
+  });
+
   it("replaces intermediate verification with the final verdict", () => {
     const snapshot = projectConversation([
       event(1, "turn.verification", {status: "unavailable", action: "repair"}),

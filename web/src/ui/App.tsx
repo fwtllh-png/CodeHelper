@@ -75,6 +75,13 @@ import {
 } from "./ConversationChrome";
 import type {ComposerCommand} from "./ComposerCommandMenu";
 import {experience} from "./experience";
+import {InputOptionMenu} from "./InputOptionMenu";
+import {
+  emptyModelMetadataDraft,
+  ModelMetadataFields,
+  modelMetadataProblem,
+  setupModelMetadata
+} from "./ModelMetadataFields";
 import {ReasoningMenu} from "./ReasoningMenu";
 import type {SettingsSection, ThemeMode} from "./SettingsDialog";
 import type {BackgroundActivityTarget} from "./backgroundActivity";
@@ -2827,17 +2834,12 @@ function InputComposer({
       {error && <span className="composerError">{error}</span>}
       <div className="pendingActions inputResponse">
         {options.length > 0 && (
-          <select
-            aria-label="Input options"
+          <InputOptionMenu
             value={answer}
+            options={options}
             disabled={submitting}
-            onChange={(event) => setAnswer(event.target.value)}
-          >
-            <option value="">Select an option</option>
-            {options.map((option) => (
-              <option value={option} key={option}>{option}</option>
-            ))}
-          </select>
+            onChange={setAnswer}
+          />
         )}
         <input
           aria-label="Input answer"
@@ -3068,16 +3070,28 @@ function FirstRunSetup({
   const [apiKey, setAPIKey] = useState("");
   const [baseURL, setBaseURL] = useState("");
   const [protocol, setProtocol] = useState("openai_chat");
+  const [metadata, setMetadata] = useState(emptyModelMetadataDraft);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const provider = catalog.providers.find((entry) => entry.id === providerID);
   const custom = Boolean(provider?.custom);
+  const requiresMetadata = Boolean(
+    provider && modelID.trim() &&
+    (custom || !provider.models?.includes(modelID.trim()))
+  );
+  const metadataError = requiresMetadata
+    ? modelMetadataProblem(
+        metadata,
+        custom ? protocol : provider?.protocol ?? ""
+      )
+    : "";
   const keyError = apiKeyError(apiKey);
   const ready = Boolean(
     provider &&
     modelID.trim() &&
     (!provider.requires_api_key || apiKey) &&
     (!custom || baseURL.trim()) &&
+    !metadataError &&
     !keyError
   );
 
@@ -3087,7 +3101,8 @@ function FirstRunSetup({
       provider: providerID,
       model: modelID.trim(),
       api_key: apiKey,
-      ...(custom ? {base_url: baseURL.trim(), protocol} : {})
+      ...(custom ? {base_url: baseURL.trim(), protocol} : {}),
+      ...(requiresMetadata ? {model_metadata: setupModelMetadata(metadata)} : {})
     };
     setSubmitting(true);
     setError("");
@@ -3139,6 +3154,7 @@ function FirstRunSetup({
                   setModelID("");
                   setBaseURL("");
                   setProtocol(next?.protocol || "openai_chat");
+                  setMetadata(emptyModelMetadataDraft());
                   setError("");
                 }}
               >
@@ -3168,7 +3184,10 @@ function FirstRunSetup({
                     value={baseURL}
                     placeholder="https://api.example.com/v1"
                     disabled={submitting}
-                    onChange={(event) => setBaseURL(event.target.value)}
+                    onChange={(event) => {
+                      setBaseURL(event.target.value);
+                      setMetadata(emptyModelMetadataDraft());
+                    }}
                   />
                 </label>
               )}
@@ -3179,7 +3198,10 @@ function FirstRunSetup({
                     aria-label="Protocol"
                     value={protocol}
                     disabled={submitting}
-                    onChange={(event) => setProtocol(event.target.value)}
+                    onChange={(event) => {
+                      setProtocol(event.target.value);
+                      setMetadata(emptyModelMetadataDraft());
+                    }}
                   >
                     <option value="openai_chat">Chat Completions</option>
                     <option value="openai_responses">Responses</option>
@@ -3193,10 +3215,21 @@ function FirstRunSetup({
                   value={modelID}
                   placeholder="Enter the exact model ID"
                   disabled={submitting}
-                  onChange={(event) => setModelID(event.target.value)}
+                  onChange={(event) => {
+                    setModelID(event.target.value);
+                    setMetadata(emptyModelMetadataDraft());
+                  }}
                 />
               </label>
+              {requiresMetadata && (
+                <ModelMetadataFields
+                  value={metadata}
+                  disabled={submitting}
+                  onChange={setMetadata}
+                />
+              )}
             </div>
+            {metadataError && <small role="alert">{metadataError}</small>}
           </div>
         )}
 

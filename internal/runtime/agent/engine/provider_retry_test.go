@@ -122,7 +122,7 @@ func TestProviderRetryUsesDeterministicBackoffWithoutRetryAfter(t *testing.T) {
 	}
 }
 
-func TestRateLimitRetryUsesConfiguredAttemptBudget(t *testing.T) {
+func TestRateLimitRetryContinuesBeyondTransientFailureBudget(t *testing.T) {
 	engine := &Engine{options: Options{ProviderConfig: ProviderConfig{
 		MaxRetries: 2, MaxRetryDelay: time.Second,
 	}}}
@@ -135,7 +135,7 @@ func TestRateLimitRetryUsesConfiguredAttemptBudget(t *testing.T) {
 			RetryAfterMS: 1000,
 		},
 	)
-	for retries := range uint32(2) {
+	for retries := range uint32(5) {
 		retry, ok := engine.providerRetry(
 			err,
 			false,
@@ -150,14 +150,6 @@ func TestRateLimitRetryUsesConfiguredAttemptBudget(t *testing.T) {
 				ok,
 			)
 		}
-	}
-	if retry, ok := engine.providerRetry(
-		err,
-		false,
-		2,
-		false,
-	); ok {
-		t.Fatalf("retry beyond attempt budget = %+v", retry)
 	}
 }
 
@@ -180,7 +172,7 @@ func TestEngineRetriesRateLimitUntilProviderRecovers(t *testing.T) {
 		textStream("recovered"),
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.MaxRetries = 3
+	engine.options.MaxRetries = 1
 	engine.options.MaxRetryDelay = time.Second
 
 	result, err := engine.Run(t.Context(), "retry rate limit", nil)
@@ -211,6 +203,30 @@ func TestExhaustedProviderRetryBecomesUserRecoverable(t *testing.T) {
 		recovered.Fault.Disposition != protocol.FaultRetryTurn ||
 		recovered.Fault.RecoveryAction == "" {
 		t.Fatalf("exhausted retry = %#v", recovered)
+	}
+}
+
+func TestExhaustedProviderRetryKeepsInvalidRequestTerminal(t *testing.T) {
+	original := protocol.NewProblem(
+		protocol.CodeInvalidArgument,
+		"invalid provider request",
+		false,
+		&provider.Failure{
+			Code:    provider.FailureInvalidRequest,
+			Message: "invalid provider request",
+		},
+	)
+	original.HTTPStatus = 400
+
+	recovered := protocol.ProblemOf(exhaustedProviderRetry(original))
+	if recovered.HTTPStatus != 400 ||
+		recovered.Retryable ||
+		recovered.Fault == nil ||
+		recovered.Fault.Disposition != protocol.FaultFailTurn ||
+		recovered.Fault.RetryOwner != protocol.FaultRetryOwnerNone ||
+		recovered.Fault.ResumeHint != protocol.FaultResumeFail ||
+		recovered.Fault.RecoveryAction == "" {
+		t.Fatalf("invalid request = %#v", recovered)
 	}
 }
 

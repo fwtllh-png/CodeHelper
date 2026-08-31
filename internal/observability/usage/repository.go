@@ -4,8 +4,10 @@ package usage
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
@@ -41,6 +43,7 @@ type Aggregate struct {
 	TurnID          protocol.TurnID
 	Provider        string
 	Model           string
+	ModelMetadata   *protocol.ModelMetadataProvenance
 	InputTokens     uint64
 	OutputTokens    uint64
 	ReasoningTokens uint64
@@ -105,17 +108,23 @@ func ProjectTx(ctx context.Context, tx *sql.Tx, event protocol.Event) error {
 		if err != nil {
 			return err
 		}
+		metadataJSON, err := encodeModelMetadata(data.ModelMetadata)
+		if err != nil {
+			return err
+		}
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO usage_turn_context(
-				turn_id, session_id, thread_id, provider, model, source_sequence, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?)
+				turn_id, session_id, thread_id, provider, model,
+				model_metadata_json, source_sequence, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(turn_id) DO UPDATE SET
 				provider = excluded.provider,
 				model = excluded.model,
+				model_metadata_json = excluded.model_metadata_json,
 				source_sequence = excluded.source_sequence,
 				updated_at = excluded.updated_at
 			WHERE excluded.source_sequence > usage_turn_context.source_sequence`,
-			event.TurnID, sessionID, threadID, data.Provider, data.Model,
+			event.TurnID, sessionID, threadID, data.Provider, data.Model, metadataJSON,
 			event.Sequence, timestamp(event.CreatedAt),
 		)
 		return err
@@ -140,13 +149,19 @@ func projectUsage(
 	event protocol.Event,
 	data *protocol.UsageData,
 ) error {
-	var sessionID, contextProvider, contextModel string
+	var sessionID, contextProvider, contextModel, contextMetadataJSON string
 	var threadID protocol.ThreadID
 	err := tx.QueryRowContext(ctx, `
-		SELECT session_id, thread_id, provider, model
+		SELECT session_id, thread_id, provider, model, model_metadata_json
 		FROM usage_turn_context WHERE turn_id = ?`,
 		event.TurnID,
-	).Scan(&sessionID, &threadID, &contextProvider, &contextModel)
+	).Scan(
+		&sessionID,
+		&threadID,
+		&contextProvider,
+		&contextModel,
+		&contextMetadataJSON,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("%w: turn %s", ErrContextNotFound, event.TurnID)
 	}
@@ -162,17 +177,26 @@ func projectUsage(
 	if model == "" {
 		model = contextModel
 	}
+	metadataJSON := contextMetadataJSON
+	if data.ModelMetadata != nil {
+		metadataJSON, err = encodeModelMetadata(data.ModelMetadata)
+		if err != nil {
+			return err
+		}
+	}
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO usage(
 			session_id, thread_id, turn_id, sample, event_sequence, source_sequence,
-			provider, model, input_tokens, output_tokens, reasoning_tokens,
+			provider, model, model_metadata_json,
+			input_tokens, output_tokens, reasoning_tokens,
 			cached_tokens, cost_microunits, cost_known, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(turn_id, sample) DO UPDATE SET
 			event_sequence = excluded.event_sequence,
 			source_sequence = excluded.source_sequence,
 			provider = excluded.provider,
 			model = excluded.model,
+			model_metadata_json = excluded.model_metadata_json,
 			input_tokens = excluded.input_tokens,
 			output_tokens = excluded.output_tokens,
 			reasoning_tokens = excluded.reasoning_tokens,
@@ -182,7 +206,8 @@ func projectUsage(
 			created_at = excluded.created_at
 		WHERE excluded.source_sequence > usage.source_sequence`,
 		sessionID, threadID, event.TurnID, data.Sample, event.Sequence, event.Sequence,
-		provider, model, data.InputTokens, data.OutputTokens, data.ReasoningTokens,
+		provider, model, metadataJSON,
+		data.InputTokens, data.OutputTokens, data.ReasoningTokens,
 		data.CachedTokens, data.CostMicrounits, data.CostKnown,
 		timestamp(event.CreatedAt),
 	)
@@ -197,7 +222,15 @@ func projectUsage(
 	// Replaying the same event is expected and must stay silent, but the same
 	// sequence carrying different numbers means the event log and this table
 	// disagree about what happened, which is worth refusing rather than ignoring.
-	return verifyReplay(ctx, tx, event, data, provider, model)
+	return verifyReplay(
+		ctx,
+		tx,
+		event,
+		data,
+		provider,
+		model,
+		metadataJSON,
+	)
 }
 
 func verifyReplay(
@@ -205,22 +238,24 @@ func verifyReplay(
 	tx *sql.Tx,
 	event protocol.Event,
 	data *protocol.UsageData,
-	provider, model string,
+	provider, model, metadataJSON string,
 ) error {
 	var stored struct {
 		sourceSequence                         int64
-		provider, model                        string
+		provider, model, metadataJSON          string
 		input, output, reasoning, cached, cost uint64
 		costKnown                              bool
 	}
 	err := tx.QueryRowContext(ctx, `
-		SELECT source_sequence, provider, model, input_tokens, output_tokens,
-			reasoning_tokens, cached_tokens, cost_microunits, cost_known
+		SELECT source_sequence, provider, model, model_metadata_json,
+			input_tokens, output_tokens, reasoning_tokens, cached_tokens,
+			cost_microunits, cost_known
 		FROM usage WHERE turn_id = ? AND sample = ?`,
 		event.TurnID, data.Sample,
 	).Scan(
-		&stored.sourceSequence, &stored.provider, &stored.model, &stored.input,
-		&stored.output, &stored.reasoning, &stored.cached, &stored.cost, &stored.costKnown,
+		&stored.sourceSequence, &stored.provider, &stored.model,
+		&stored.metadataJSON, &stored.input, &stored.output, &stored.reasoning,
+		&stored.cached, &stored.cost, &stored.costKnown,
 	)
 	if err != nil {
 		return err
@@ -229,6 +264,7 @@ func verifyReplay(
 		return nil
 	}
 	if stored.provider != provider || stored.model != model ||
+		stored.metadataJSON != metadataJSON ||
 		stored.input != data.InputTokens || stored.output != data.OutputTokens ||
 		stored.reasoning != data.ReasoningTokens || stored.cached != data.CachedTokens ||
 		stored.cost != data.CostMicrounits || stored.costKnown != data.CostKnown {
@@ -255,7 +291,8 @@ func (r *Repository) QueryAggregates(ctx context.Context, filter Query) ([]Aggre
 	// travels with it so a reader can tell a total from a floor.
 	query := `
 		SELECT session_id, COALESCE(thread_id, ''), COALESCE(turn_id, ''),
-			provider, model, SUM(input_tokens), SUM(output_tokens),
+			provider, model, model_metadata_json,
+			SUM(input_tokens), SUM(output_tokens),
 			SUM(reasoning_tokens), SUM(cached_tokens),
 			SUM(CASE WHEN cost_known THEN cost_microunits ELSE 0 END),
 			SUM(CASE WHEN cost_known THEN 1 ELSE 0 END),
@@ -307,8 +344,10 @@ func (r *Repository) QueryAggregates(ctx context.Context, filter Query) ([]Aggre
 		return nil, errors.New("usage query start must be before end")
 	}
 	query += `
-		GROUP BY session_id, thread_id, turn_id, provider, model
-		ORDER BY session_id, thread_id, turn_id, provider, model`
+		GROUP BY session_id, thread_id, turn_id, provider, model,
+			model_metadata_json
+		ORDER BY session_id, thread_id, turn_id, provider, model,
+			model_metadata_json`
 	if filter.Limit < 0 || filter.Limit > 1000 {
 		return nil, errors.New("usage query limit must be between 0 and 1000")
 	}
@@ -324,15 +363,20 @@ func (r *Repository) QueryAggregates(ctx context.Context, filter Query) ([]Aggre
 	var aggregates []Aggregate
 	for rows.Next() {
 		var value Aggregate
-		var firstAt, lastAt string
-		if err := rows.Scan(
+		var firstAt, lastAt, metadataJSON string
+		if scanErr := rows.Scan(
 			&value.SessionID, &value.ThreadID, &value.TurnID,
-			&value.Provider, &value.Model, &value.InputTokens, &value.OutputTokens,
+			&value.Provider, &value.Model, &metadataJSON,
+			&value.InputTokens, &value.OutputTokens,
 			&value.ReasoningTokens, &value.CachedTokens, &value.CostMicrounits,
 			&value.PricedCalls, &value.UnpricedCalls,
 			&value.Calls, &firstAt, &lastAt,
-		); err != nil {
-			return nil, err
+		); scanErr != nil {
+			return nil, scanErr
+		}
+		value.ModelMetadata, err = decodeModelMetadata(metadataJSON)
+		if err != nil {
+			return nil, fmt.Errorf("decode usage model metadata: %w", err)
 		}
 		value.FirstAt, err = parseTime(firstAt)
 		if err != nil {
@@ -345,6 +389,39 @@ func (r *Repository) QueryAggregates(ctx context.Context, filter Query) ([]Aggre
 		aggregates = append(aggregates, value)
 	}
 	return aggregates, rows.Err()
+}
+
+func encodeModelMetadata(
+	value *protocol.ModelMetadataProvenance,
+) (string, error) {
+	if value == nil {
+		return "{}", nil
+	}
+	if err := value.Validate(); err != nil {
+		return "", err
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("encode usage model metadata: %w", err)
+	}
+	return string(encoded), nil
+}
+
+func decodeModelMetadata(
+	value string,
+) (*protocol.ModelMetadataProvenance, error) {
+	switch strings.TrimSpace(value) {
+	case "", "{}", "null":
+		return nil, nil
+	}
+	var metadata protocol.ModelMetadataProvenance
+	if err := json.Unmarshal([]byte(value), &metadata); err != nil {
+		return nil, err
+	}
+	if err := metadata.Validate(); err != nil {
+		return nil, err
+	}
+	return &metadata, nil
 }
 
 func timestamp(value time.Time) string {

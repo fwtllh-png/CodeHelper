@@ -94,21 +94,31 @@ func runtimeModelCatalog(
 func catalogModelCapabilities(descriptor model.Model) protocol.ModelCapabilities {
 	capabilities := descriptor.Capabilities
 	result := protocol.ModelCapabilities{
-		DisplayName:       descriptor.ID,
-		ContextWindow:     descriptor.Limits.ContextTokens,
-		MaxOutputTokens:   descriptor.Limits.MaxOutputTokens,
-		Streaming:         capabilities.Streaming,
-		Reasoning:         capabilities.Reasoning,
-		ToolCalls:         capabilities.ToolCalls,
-		ParallelToolCalls: "unknown",
-		NativeSearch:      capabilities.NativeSearch,
-		Vision:            capabilities.Vision,
-		ImageInput:        capabilities.ImageInput,
-		PromptCache:       capabilities.PromptCache,
-		ReasoningEfforts:  capabilities.ReasoningEffortLevels(),
-		CredentialStatus:  "unknown",
-		Availability:      "available",
-		SelectionMode:     "restart_required",
+		DisplayName:          descriptor.ID,
+		ContextWindow:        descriptor.Limits.ContextTokens,
+		MaxOutputTokens:      descriptor.Limits.MaxOutputTokens,
+		Streaming:            capabilities.Streaming,
+		Reasoning:            capabilities.Reasoning,
+		ToolCalls:            capabilities.ToolCalls,
+		ParallelToolCalls:    "unknown",
+		NativeSearch:         capabilities.NativeSearch,
+		IncrementalResponses: capabilities.IncrementalResponses,
+		Vision:               capabilities.Vision,
+		ImageInput:           capabilities.ImageInput,
+		PromptCache:          capabilities.PromptCache,
+		AutomaticPromptCache: capabilities.AutomaticPromptCache,
+		ThinkingToggle:       capabilities.ThinkingToggle,
+		ReasoningEfforts:     capabilities.ReasoningEffortLevels(),
+		MetadataProvenance: protocol.ModelMetadataProvenance{
+			CanonicalID:  string(descriptor.MetadataProvenance.CanonicalID),
+			WireID:       string(descriptor.MetadataProvenance.WireID),
+			Limits:       string(descriptor.MetadataProvenance.Limits),
+			Capabilities: string(descriptor.MetadataProvenance.Capabilities),
+			Pricing:      string(descriptor.MetadataProvenance.Pricing),
+		},
+		CredentialStatus: "unknown",
+		Availability:     "available",
+		SelectionMode:    "restart_required",
 	}
 	if result.Reasoning {
 		result.DefaultReasoningEffort = capabilities.DefaultReasoningEffort
@@ -166,7 +176,9 @@ func runtimeProfileModels(
 		reasoningMutable = reasoningMutable || entry.Capabilities.Reasoning
 	}
 	mutable := make([]string, 0, 2)
-	mutable = append(mutable, "model")
+	if selectedCapabilities.SelectionMode != "fixed" {
+		mutable = append(mutable, "model")
+	}
 	if reasoningMutable {
 		mutable = append(mutable, "reasoning_effort")
 	}

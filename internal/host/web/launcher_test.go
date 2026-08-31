@@ -326,7 +326,14 @@ func TestRunContextStartsWithoutAConfigFile(t *testing.T) {
 	}
 	setupBody := strings.NewReader(
 		`{"provider":"openai-compatible","model":"local-model",` +
-			`"base_url":"http://127.0.0.1:1/v1","protocol":"openai_chat"}`,
+			`"base_url":"http://127.0.0.1:1/v1","protocol":"openai_chat",` +
+			`"model_metadata":{"canonical_id":"local-model","wire_id":"local-model",` +
+			`"context_tokens":8192,"max_output_tokens":1024,` +
+			`"capabilities":{"streaming":true,"tool_calls":true,` +
+			`"reasoning":false,"native_search":false,"vision":false,` +
+			`"incremental_responses":false,"image_input":false,` +
+			`"prompt_cache":false,"automatic_prompt_cache":false,` +
+			`"thinking_toggle":false}}}`,
 	)
 	setupRequest, err := http.NewRequest(
 		http.MethodPost, strings.TrimSuffix(setupURL, "/")+"/api/v1/setup/apply", setupBody,

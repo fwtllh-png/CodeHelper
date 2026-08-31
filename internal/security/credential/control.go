@@ -31,6 +31,7 @@ type recoveryIntent struct {
 	ExpectedGeneration uint64    `json:"expected_generation"`
 	OldReference       Reference `json:"old_reference"`
 	NewReference       Reference `json:"new_reference"`
+	Staged             bool      `json:"staged,omitempty"`
 	Phase              string    `json:"phase"`
 }
 
@@ -47,6 +48,7 @@ func OpenControl(
 	ctx context.Context,
 	dataDir, workspaceID, provider string,
 	base Reference,
+	selected Reference,
 ) (*Control, Reference, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, Reference{}, err
@@ -67,7 +69,7 @@ func OpenControl(
 		base:      base,
 		keyring:   keyringStore(),
 	}
-	if err := control.reconcile(ctx); err != nil {
+	if err := control.reconcile(ctx, selected); err != nil {
 		return nil, Reference{}, err
 	}
 	config, err := control.readConfig()
@@ -75,6 +77,9 @@ func OpenControl(
 		return nil, Reference{}, err
 	}
 	if config.Generation == 0 {
+		return control, base, nil
+	}
+	if config.Reference == (Reference{}) {
 		return control, base, nil
 	}
 	return control, config.Reference, nil
@@ -93,10 +98,143 @@ func (c *Control) Reference(ctx context.Context) (Reference, error) {
 	if err != nil {
 		return Reference{}, err
 	}
-	if config.Generation == 0 {
+	if config.Generation == 0 || config.Reference == (Reference{}) {
 		return c.base, nil
 	}
 	return config.Reference, nil
+}
+
+// Restore atomically returns a failed connection change to its prior reference.
+func (c *Control) Restore(
+	ctx context.Context,
+	current Reference,
+	previous Reference,
+) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	config, err := c.readConfig()
+	if err != nil {
+		return err
+	}
+	effective := config.Reference
+	if config.Generation == 0 || effective == (Reference{}) {
+		effective = c.base
+	}
+	if effective != current && effective != previous {
+		return errors.New("credential config generation changed")
+	}
+	if previous != c.base &&
+		previous != (Reference{}) &&
+		!c.owns(previous) {
+		return errors.New("previous credential reference is not restorable")
+	}
+	path, intent, err := c.stagedIntent(current)
+	if err != nil {
+		return err
+	}
+	if intent.OldReference != previous {
+		return errors.New("staged credential rollback target changed")
+	}
+	intent.Phase = "rollback_requested"
+	if err := writeJSONAtomic(path, intent); err != nil {
+		return err
+	}
+	if effective == current {
+		target := previous
+		if target == c.base {
+			target = Reference{}
+		}
+		if err := c.writeConfigCAS(config.Generation, target); err != nil {
+			return err
+		}
+	}
+	canDelete, err := c.canDelete(current)
+	if err != nil {
+		return err
+	}
+	if canDelete && current != previous {
+		if err := c.keyring.Delete(current.Name); err != nil {
+			return err
+		}
+	}
+	intent.Phase = "completed"
+	return writeJSONAtomic(path, intent)
+}
+
+// Activate publishes a staged reference after the surrounding Host state is
+// durable but before live runtimes are swapped.
+func (c *Control) Activate(ctx context.Context, current Reference) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	config, err := c.readConfig()
+	if err != nil {
+		return err
+	}
+	path, intent, err := c.stagedIntent(current)
+	if err != nil {
+		return err
+	}
+	effective := config.Reference
+	if config.Generation == 0 || effective == (Reference{}) {
+		effective = c.base
+	}
+	if effective != intent.OldReference {
+		return errors.New("credential config generation changed")
+	}
+	intent.Phase = "activation_requested"
+	if err := writeJSONAtomic(path, intent); err != nil {
+		return err
+	}
+	if err := c.writeConfigCAS(config.Generation, current); err != nil {
+		return err
+	}
+	intent.Phase = "config_committed"
+	return writeJSONAtomic(path, intent)
+}
+
+// Commit completes an activated rotation after every consumer has switched.
+func (c *Control) Commit(ctx context.Context, current Reference) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	config, err := c.readConfig()
+	if err != nil {
+		return err
+	}
+	if config.Reference != current {
+		return errors.New("credential config generation changed")
+	}
+	path, intent, err := c.stagedIntent(current)
+	if err != nil {
+		return err
+	}
+	if intent.Phase != "config_committed" &&
+		intent.Phase != "commit_requested" {
+		return errors.New("staged credential rotation is not active")
+	}
+	intent.Phase = "commit_requested"
+	if err := writeJSONAtomic(path, intent); err != nil {
+		return err
+	}
+	canDelete, err := c.canDelete(intent.OldReference)
+	if err != nil {
+		return err
+	}
+	if canDelete && intent.OldReference != current {
+		if err := c.keyring.Delete(intent.OldReference.Name); err != nil {
+			return err
+		}
+	}
+	intent.Phase = "completed"
+	return writeJSONAtomic(path, intent)
 }
 
 func keyringStore() store {
@@ -107,6 +245,7 @@ func (c *Control) rotate(
 	ctx context.Context,
 	current Reference,
 	secret string,
+	staged bool,
 ) (Reference, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -137,6 +276,7 @@ func (c *Control) rotate(
 		ExpectedGeneration: config.Generation,
 		OldReference:       current,
 		NewReference:       next,
+		Staged:             staged,
 		Phase:              "prepared",
 	}
 	if err := c.writeIntent(intent); err != nil {
@@ -144,6 +284,9 @@ func (c *Control) rotate(
 	}
 	if err := c.keyring.Set(next.Name, secret); err != nil {
 		return Reference{}, err
+	}
+	if staged {
+		return next, nil
 	}
 	if err := c.writeConfigCAS(config.Generation, next); err != nil {
 		_ = c.keyring.Delete(next.Name)
@@ -196,7 +339,7 @@ func (c *Control) clear(
 	return c.writeIntent(intent)
 }
 
-func (c *Control) reconcile(ctx context.Context) error {
+func (c *Control) reconcile(ctx context.Context, selected Reference) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -210,10 +353,6 @@ func (c *Control) reconcile(ctx context.Context) error {
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Name() < entries[j].Name()
 	})
-	config, err := c.readConfig()
-	if err != nil {
-		return err
-	}
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
@@ -228,23 +367,121 @@ func (c *Control) reconcile(ctx context.Context) error {
 			(intent.NewReference != (Reference{}) &&
 				!c.owns(intent.NewReference)) ||
 			(intent.Phase != "prepared" &&
+				intent.Phase != "activation_requested" &&
 				intent.Phase != "config_committed" &&
+				intent.Phase != "commit_requested" &&
+				intent.Phase != "rollback_requested" &&
 				intent.Phase != "completed") {
 			return errors.New("credential recovery intent is invalid")
 		}
 		if intent.Phase == "completed" {
 			continue
 		}
+		config, err := c.readConfig()
+		if err != nil {
+			return err
+		}
+		oldReference := intent.OldReference
+		if oldReference == c.base {
+			oldReference = Reference{}
+		}
 		committed := config.Generation > intent.ExpectedGeneration &&
 			config.Reference == intent.NewReference
-		if !committed {
-			if intent.NewReference.Kind == "keyring" {
-				if err := c.keyring.Delete(intent.NewReference.Name); err != nil {
-					return fmt.Errorf(
-						"remove uncommitted credential: %w",
-						err,
+		if intent.Staged {
+			if intent.Phase == "prepared" &&
+				selected == intent.NewReference {
+				intent.Phase = "activation_requested"
+				if err := writeJSONAtomic(path, intent); err != nil {
+					return err
+				}
+			}
+			switch intent.Phase {
+			case "prepared":
+				if committed {
+					intent.Phase = "config_committed"
+				} else {
+					if err := c.deleteOwned(intent.NewReference); err != nil {
+						return err
+					}
+					intent.Phase = "completed"
+					if err := writeJSONAtomic(path, intent); err != nil {
+						return err
+					}
+					continue
+				}
+			case "activation_requested":
+				if !committed {
+					if config.Generation != intent.ExpectedGeneration ||
+						config.Reference != oldReference {
+						return errors.New(
+							"credential activation recovery conflicts with config",
+						)
+					}
+					if err := c.writeConfigCAS(
+						config.Generation,
+						intent.NewReference,
+					); err != nil {
+						return err
+					}
+				}
+				intent.Phase = "config_committed"
+			case "rollback_requested":
+				if committed {
+					if err := c.writeConfigCAS(
+						config.Generation,
+						oldReference,
+					); err != nil {
+						return err
+					}
+				} else if config.Reference != oldReference {
+					return errors.New(
+						"credential rollback recovery conflicts with config",
 					)
 				}
+				if err := c.deleteOwned(intent.NewReference); err != nil {
+					return err
+				}
+				intent.Phase = "completed"
+				if err := writeJSONAtomic(path, intent); err != nil {
+					return err
+				}
+				continue
+			case "config_committed":
+				if !committed {
+					return errors.New(
+						"committed credential rotation is missing from config",
+					)
+				}
+				if selected == oldReference {
+					if err := c.writeConfigCAS(
+						config.Generation,
+						oldReference,
+					); err != nil {
+						return err
+					}
+					if err := c.deleteOwned(intent.NewReference); err != nil {
+						return err
+					}
+					intent.Phase = "completed"
+					if err := writeJSONAtomic(path, intent); err != nil {
+						return err
+					}
+					continue
+				}
+				if selected != intent.NewReference {
+					return errors.New(
+						"credential selection conflicts with active rotation",
+					)
+				}
+			case "commit_requested":
+				if !committed {
+					return errors.New(
+						"committed credential rotation is missing from config",
+					)
+				}
+			}
+			if err := c.deleteOwned(intent.OldReference); err != nil {
+				return err
 			}
 			intent.Phase = "completed"
 			if err := writeJSONAtomic(path, intent); err != nil {
@@ -252,14 +489,18 @@ func (c *Control) reconcile(ctx context.Context) error {
 			}
 			continue
 		}
-		canDelete, err := c.canDelete(intent.OldReference)
-		if err != nil {
-			return err
-		}
-		if canDelete && intent.OldReference != intent.NewReference {
-			if err := c.keyring.Delete(intent.OldReference.Name); err != nil {
+		if !committed {
+			if err := c.deleteOwned(intent.NewReference); err != nil {
+				return fmt.Errorf("remove uncommitted credential: %w", err)
+			}
+			intent.Phase = "completed"
+			if err := writeJSONAtomic(path, intent); err != nil {
 				return err
 			}
+			continue
+		}
+		if err := c.deleteOwned(intent.OldReference); err != nil {
+			return err
 		}
 		intent.Phase = "completed"
 		if err := writeJSONAtomic(path, intent); err != nil {
@@ -267,6 +508,41 @@ func (c *Control) reconcile(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (c *Control) stagedIntent(
+	current Reference,
+) (string, recoveryIntent, error) {
+	entries, err := os.ReadDir(c.intentDir())
+	if err != nil {
+		return "", recoveryIntent{}, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		path := filepath.Join(c.intentDir(), entry.Name())
+		var intent recoveryIntent
+		if err := readJSON(path, &intent); err != nil {
+			return "", recoveryIntent{}, err
+		}
+		if intent.Staged && intent.Phase != "completed" &&
+			intent.NewReference == current {
+			return path, intent, nil
+		}
+	}
+	return "", recoveryIntent{}, errors.New("staged credential rotation is missing")
+}
+
+func (c *Control) deleteOwned(reference Reference) error {
+	canDelete, err := c.canDelete(reference)
+	if err != nil {
+		return err
+	}
+	if !canDelete {
+		return nil
+	}
+	return c.keyring.Delete(reference.Name)
 }
 
 func (c *Control) canDelete(reference Reference) (bool, error) {

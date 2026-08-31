@@ -1,10 +1,12 @@
 package assembly
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -527,35 +529,116 @@ func (a *ResponseAssembly) ValidateExtension(previous *ResponseAssembly) error {
 	}
 	for index, before := range previous.Segments {
 		after := a.Segments[index]
-		if before.Transport.TransportRequestID !=
-			after.Transport.TransportRequestID ||
-			before.EventCount > after.EventCount ||
-			len(before.Blocks) > len(after.Blocks) ||
-			len(before.ToolFragments) > len(after.ToolFragments) ||
-			before.Usage.InputTokens > after.Usage.InputTokens ||
-			before.Usage.OutputTokens > after.Usage.OutputTokens ||
-			before.Usage.ReasoningTokens > after.Usage.ReasoningTokens ||
-			before.Usage.CachedTokens > after.Usage.CachedTokens {
+		if err := validateSegmentExtension(before, after); err != nil {
 			return fmt.Errorf(
-				"response segment %d regressed durable progress",
+				"response segment %d regressed durable progress: %w",
 				index,
+				err,
 			)
 		}
-		for key, digest := range before.Seen {
-			if after.Seen[key] != digest {
-				return fmt.Errorf(
-					"response segment %d rewrote event %q",
-					index,
-					key,
-				)
-			}
+	}
+	return nil
+}
+
+func validateSegmentExtension(before, after ResponseSegment) error {
+	if !reflect.DeepEqual(before.Transport, after.Transport) {
+		return errors.New("transport metadata changed")
+	}
+	if before.EventCount > after.EventCount ||
+		before.Usage.InputTokens > after.Usage.InputTokens ||
+		before.Usage.OutputTokens > after.Usage.OutputTokens ||
+		before.Usage.ReasoningTokens > after.Usage.ReasoningTokens ||
+		before.Usage.CachedTokens > after.Usage.CachedTokens {
+		return errors.New("counters moved backward")
+	}
+	if before.Meaningful && !after.Meaningful ||
+		before.HasSequence && !after.HasSequence ||
+		before.HasSequence &&
+			(after.LastSequence < before.LastSequence ||
+				after.LastSequence == before.LastSequence &&
+					after.LastOrdinal < before.LastOrdinal) {
+		return errors.New("stream progress moved backward")
+	}
+	if before.StopReason != "" && before.StopReason != after.StopReason ||
+		before.Error != "" && before.Error != after.Error {
+		return errors.New("terminal metadata changed")
+	}
+	if before.State != ResponseStreaming && before.State != after.State {
+		return errors.New("settled response state changed")
+	}
+	if err := validateBlockPrefix(before.Blocks, after.Blocks); err != nil {
+		return err
+	}
+	if err := validateToolFragmentPrefix(
+		before.ToolFragments,
+		after.ToolFragments,
+	); err != nil {
+		return err
+	}
+	if before.Replay != nil && !reflect.DeepEqual(before.Replay, after.Replay) {
+		return errors.New("replay state changed")
+	}
+	if err := validateResponseStatePrefix(before.Response, after.Response); err != nil {
+		return err
+	}
+	for key, digest := range before.Seen {
+		if after.Seen[key] != digest {
+			return fmt.Errorf("event %q changed", key)
 		}
-		if before.State == ResponseComplete &&
-			after.State != ResponseComplete {
-			return fmt.Errorf(
-				"response segment %d reopened a complete response",
-				index,
-			)
+	}
+	return nil
+}
+
+func validateBlockPrefix(before, after []ContentBlock) error {
+	if len(before) > len(after) {
+		return errors.New("response blocks were removed")
+	}
+	for index := range before {
+		oldBlock, newBlock := before[index], after[index]
+		oldText, newText := oldBlock.Text, newBlock.Text
+		oldBlock.Text, newBlock.Text = "", ""
+		if oldBlock.ID == "" {
+			newBlock.ID = ""
+		}
+		if !reflect.DeepEqual(oldBlock, newBlock) ||
+			!strings.HasPrefix(newText, oldText) {
+			return fmt.Errorf("response block %d changed", index)
+		}
+	}
+	return nil
+}
+
+func validateToolFragmentPrefix(
+	before, after []ToolCallFragment,
+) error {
+	if len(before) > len(after) {
+		return errors.New("tool fragments were removed")
+	}
+	for index := range before {
+		oldFragment, newFragment := before[index], after[index]
+		if oldFragment.Index != newFragment.Index ||
+			oldFragment.ID != "" && oldFragment.ID != newFragment.ID ||
+			oldFragment.Name != "" && oldFragment.Name != newFragment.Name ||
+			!strings.HasPrefix(newFragment.Arguments, oldFragment.Arguments) {
+			return fmt.Errorf("tool fragment %d changed", index)
+		}
+	}
+	return nil
+}
+
+func validateResponseStatePrefix(
+	before, after *ResponseState,
+) error {
+	if before == nil {
+		return nil
+	}
+	if after == nil || before.ID != after.ID ||
+		len(before.Output) > len(after.Output) {
+		return errors.New("response state changed")
+	}
+	for index := range before.Output {
+		if !bytes.Equal(before.Output[index], after.Output[index]) {
+			return fmt.Errorf("response output %d changed", index)
 		}
 	}
 	return nil

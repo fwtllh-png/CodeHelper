@@ -5,13 +5,13 @@ import "fmt"
 // CapabilityObservation is one probe (or user) verdict about a model ability.
 // It lives in SQLite beside the catalog and never rewrites catalog.v1.json.
 type CapabilityObservation struct {
-	ProviderID string
-	ModelID    string
-	Capability Capability
-	Supported  bool
-	Source     string // probe / user
-	Detail     string
-	ObservedAt string // RFC3339
+	ConnectionID string
+	ModelID      string
+	Capability   Capability
+	Supported    bool
+	Source       string // probe / user
+	Detail       string
+	ObservedAt   string // RFC3339
 }
 
 // ApplyProbe intersects catalog capabilities with observations.
@@ -39,6 +39,9 @@ func (c Capabilities) clear(capability Capability) Capabilities {
 		c.Streaming = false
 	case CapReasoning:
 		c.Reasoning = false
+		c.ReasoningEfforts = nil
+		c.DefaultReasoningEffort = ""
+		c.ThinkingToggle = false
 	case CapToolCalls:
 		c.ToolCalls = false
 	case CapNativeSearch:
@@ -51,6 +54,7 @@ func (c Capabilities) clear(capability Capability) Capabilities {
 		c.ImageInput = false
 	case CapPromptCache:
 		c.PromptCache = false
+		c.AutomaticPromptCache = false
 	}
 	return c
 }
@@ -98,6 +102,15 @@ func (r ReadyRoute) WithEndpoint(endpoint string) ReadyRoute {
 func (r ReadyRoute) WithCapabilities(caps Capabilities) ReadyRoute {
 	out := r
 	out.model.Capabilities = caps
+	return out
+}
+
+func (r ReadyRoute) WithCapabilitiesFrom(
+	caps Capabilities,
+	provenance Provenance,
+) ReadyRoute {
+	out := r.WithCapabilities(caps)
+	out.model.MetadataProvenance.Capabilities = provenance
 	return out
 }
 

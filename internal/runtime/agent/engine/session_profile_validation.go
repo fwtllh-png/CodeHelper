@@ -59,10 +59,9 @@ func (e *Engine) routesForProfileLocked(
 	}
 	route, ok := e.options.SelectableRoutes[model.RouteKey(profile.Provider, profile.Model)]
 	if !ok {
-		if profile.Provider != current.ProviderID() {
-			return model.RouteSet{}, errors.New("session profile provider is unavailable")
-		}
-		route = current.WithModelID(profile.Model)
+		return model.RouteSet{}, errors.New(
+			"session profile model is unavailable; configure explicit metadata before selecting it",
+		)
 	}
 	return e.options.Routes.WithAct(route)
 }

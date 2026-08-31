@@ -43,7 +43,7 @@ func Defaults() Config {
 				OmissionSampleMaxEntities:        8,
 				RecentTailTurns:                  2,
 				RecentTailMaxTokens:              0,
-				SemanticNarrative:                "off",
+				SemanticNarrative:                "inline",
 				SemanticNarrativeMaxInputTokens:  4096,
 				SemanticNarrativeMaxOutputTokens: 512,
 				SemanticNarrativeMaxItems:        32,
@@ -69,7 +69,7 @@ func Defaults() Config {
 			},
 
 			Subagent: Subagent{
-				Delegation: SubagentDelegationExplicit,
+				Delegation: SubagentDelegationAdaptive,
 				MaxDepth:   5, MaxParallel: 4, MaxResident: 8, MaxTotal: 16,
 				Workspace: SubagentWorkspaceAuto,
 			},

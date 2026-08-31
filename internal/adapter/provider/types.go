@@ -161,8 +161,8 @@ func (r ModelRequest) Validate() error {
 		return fmt.Errorf("max_output_tokens exceeds model limit %d", descriptor.Limits.MaxOutputTokens)
 	}
 	caps := descriptor.Capabilities
-	if r.ReasoningEffort != "" && r.ReasoningEffort != "off" && !caps.Reasoning {
-		return errors.New("model does not support reasoning")
+	if r.ReasoningEffort != "" && !caps.SupportsReasoningEffort(r.ReasoningEffort) {
+		return fmt.Errorf("model does not support reasoning effort %q", r.ReasoningEffort)
 	}
 	if r.NativeSearch && !caps.NativeSearch {
 		return errors.New("model does not support provider-native search")

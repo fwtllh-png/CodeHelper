@@ -162,6 +162,54 @@ func TestBundledReasoningEffortsAreExplicitAndIsolated(t *testing.T) {
 	}
 }
 
+func TestReasoningCapabilityDoesNotInventEffortLevels(t *testing.T) {
+	capabilities := Capabilities{Reasoning: true}
+	if levels := capabilities.ReasoningEffortLevels(); len(levels) != 0 {
+		t.Fatalf("undeclared reasoning efforts = %v", levels)
+	}
+	if capabilities.SupportsReasoningEffort("low") {
+		t.Fatal("undeclared reasoning effort was accepted")
+	}
+}
+
+func TestCatalogRejectsProtocolAndReasoningCapabilityContradictions(t *testing.T) {
+	base := Provider{
+		ID: "custom", Adapter: AdapterOpenAICompatible,
+		Endpoint:   "https://models.example.com/v1",
+		Protocol:   ProtocolOpenAIChat,
+		Provenance: ProvenanceOperatorConfig,
+		Models: map[string]Model{"model": {
+			ID: "model", CanonicalID: "vendor/model", WireID: "model",
+			Limits: Limits{ContextTokens: 4096, MaxOutputTokens: 1024},
+			Capabilities: Capabilities{
+				Streaming: true, IncrementalResponses: true,
+			},
+			MetadataProvenance: MetadataProvenance{
+				CanonicalID:  ProvenanceOperatorConfig,
+				WireID:       ProvenanceOperatorConfig,
+				Limits:       ProvenanceOperatorConfig,
+				Capabilities: ProvenanceOperatorConfig,
+				Pricing:      ProvenanceOperatorConfig,
+			},
+			Pricing:    Pricing{Provenance: ProvenanceOperatorConfig},
+			Provenance: ProvenanceOperatorConfig,
+		}},
+	}
+	if _, err := NewCatalog(base); err == nil ||
+		!strings.Contains(err.Error(), "responses protocol") {
+		t.Fatalf("incremental chat catalog error = %v", err)
+	}
+	entry := base.Models["model"]
+	entry.Capabilities = Capabilities{
+		Streaming: true, ThinkingToggle: true,
+	}
+	base.Models["model"] = entry
+	if _, err := NewCatalog(base); err == nil ||
+		!strings.Contains(err.Error(), "without reasoning") {
+		t.Fatalf("thinking toggle catalog error = %v", err)
+	}
+}
+
 func TestReadyRouteWithModelIDPreservesConnection(t *testing.T) {
 	resolver, err := NewResolver(DefaultCatalog())
 	if err != nil {

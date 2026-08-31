@@ -18,7 +18,7 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 var (
 	ErrCorrupt           = errors.New("sqlite database is corrupt")
@@ -169,6 +169,12 @@ func Open(ctx context.Context, path string, options ...Options) (*Store, error) 
 	if err := store.enableWAL(ctx); err != nil {
 		return nil, err
 	}
+	if version == 3 {
+		if err := store.migrateV3ToV4(ctx); err != nil {
+			return nil, err
+		}
+		version = 4
+	}
 	if version == 0 {
 		if err := store.initializeSchema(ctx); err != nil {
 			return nil, err
@@ -214,8 +220,25 @@ func (s *Store) initializeSchema(ctx context.Context) error {
 		if _, err := tx.ExecContext(ctx, schemaCurrent); err != nil {
 			return s.classify("create schema v1", err)
 		}
-		if _, err := tx.ExecContext(ctx, "PRAGMA user_version = 3"); err != nil {
+		if _, err := tx.ExecContext(ctx, "PRAGMA user_version = 4"); err != nil {
 			return s.classify("record schema version", err)
+		}
+		return nil
+	})
+}
+
+func (s *Store) migrateV3ToV4(ctx context.Context) error {
+	return s.WithTx(ctx, nil, func(tx *sql.Tx) error {
+		for _, statement := range []string{
+			`ALTER TABLE usage ADD COLUMN model_metadata_json
+			 TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(model_metadata_json))`,
+			`ALTER TABLE usage_turn_context ADD COLUMN model_metadata_json
+			 TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(model_metadata_json))`,
+			`PRAGMA user_version = 4`,
+		} {
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				return s.classify("migrate schema v3 to v4", err)
+			}
 		}
 		return nil
 	})
@@ -464,6 +487,7 @@ CREATE TABLE usage (
     source_sequence INTEGER NOT NULL DEFAULT 0,
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
+    model_metadata_json TEXT NOT NULL DEFAULT '{}',
     input_tokens INTEGER NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
     output_tokens INTEGER NOT NULL DEFAULT 0 CHECK (output_tokens >= 0),
     reasoning_tokens INTEGER NOT NULL DEFAULT 0 CHECK (reasoning_tokens >= 0),
@@ -471,6 +495,7 @@ CREATE TABLE usage (
     cost_microunits INTEGER NOT NULL DEFAULT 0 CHECK (cost_microunits >= 0),
     cost_known INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
+    CHECK (json_valid(model_metadata_json)),
     UNIQUE (turn_id, sample)
 );
 CREATE INDEX usage_session_created ON usage(session_id, created_at);
@@ -511,8 +536,10 @@ CREATE TABLE IF NOT EXISTS usage_turn_context (
     thread_id TEXT NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
+    model_metadata_json TEXT NOT NULL DEFAULT '{}',
     source_sequence INTEGER NOT NULL CHECK (source_sequence > 0),
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    CHECK (json_valid(model_metadata_json))
 );
 `
 

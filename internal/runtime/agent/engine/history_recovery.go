@@ -36,6 +36,7 @@ func (e *Engine) runCompactGate(
 	input = baseInput.WithHistory(
 		agentcontext.ProjectHistory(*history, projectHistory),
 	)
+	sourceContextDigest, _ := input.Digest()
 	window, err := e.measureTokenWindow(input, outputReserve, economicInput)
 	if err != nil {
 		return tokenWindow{}, err
@@ -56,7 +57,21 @@ func (e *Engine) runCompactGate(
 	}
 	var inlineReceipt *CompactionReceipt
 	if e.options.Context.SemanticNarrative != "off" || phase == CompactionPhasePostTurn {
-		inlineReceipt, err = e.completeInlineNarrative(ctx, history)
+		inlineReceipt, err = e.completeInlineNarrative(
+			ctx,
+			history,
+			send,
+			compactionCompletionCheck{
+				sourceContextDigest: sourceContextDigest,
+				sourceActive:        window.active,
+				sourceTotal:         window.total,
+				hardLimit:           window.hardLimit,
+				input:               baseInput,
+				outputReserve:       outputReserve,
+				economicInput:       economicInput,
+				projectHistory:      projectHistory,
+			},
+		)
 		if err != nil {
 			return tokenWindow{}, err
 		}
@@ -73,6 +88,17 @@ func (e *Engine) runCompactGate(
 		)
 		window, err = e.measureTokenWindow(
 			input, outputReserve, economicInput,
+		)
+	}
+	if err == nil &&
+		window.hardLimit != 0 &&
+		window.total > window.hardLimit &&
+		len(baseInput.Partition(agentcontext.KindContinuation)) != 0 {
+		err = protocol.NewProblem(
+			protocol.CodeResourceExhausted,
+			"partial provider output cannot be compacted within the model context window",
+			false,
+			nil,
 		)
 	}
 	return window, err
@@ -226,14 +252,15 @@ func (e *Engine) compactHistoryWithPolicy(
 			History: *history, Force: force,
 			AllowCurrentTurn: allowCurrentTurn,
 			Input:            input, OutputReserve: outputReserve,
-			RecentTailTurns:     e.options.Context.RecentTailTurns,
-			RecentTailMaxTokens: e.recentTailMaxTokens(),
-			WindowScope:         e.options.Context.Window.Scope,
-			EmergencyLimit:      e.emergencyCompactLimit(),
-			AuthorityDigest:     authorityDigest,
-			EstimateMessages:    agentcontext.EstimateMessageTokens,
-			ProjectHistory:      projectHistory,
-			PruneBeforePressure: true,
+			RecentTailTurns:          e.options.Context.RecentTailTurns,
+			RecentTailMaxTokens:      e.recentTailMaxTokens(),
+			WindowScope:              e.options.Context.Window.Scope,
+			EmergencyLimit:           e.emergencyCompactLimit(),
+			AuthorityDigest:          authorityDigest,
+			EstimateMessages:         agentcontext.EstimateMessageTokens,
+			ProjectHistory:           projectHistory,
+			PruneBeforePressure:      true,
+			RequireSemanticCandidate: e.options.Context.SemanticNarrative == "inline",
 			Measure: func(
 				snapshot agentcontext.MessageSnapshot,
 				reserve uint64,
@@ -294,7 +321,6 @@ func (e *Engine) compactHistoryWithPolicy(
 		))
 	}
 	selected := selection.Candidate
-	*history = selected.History
 	workingSet, criticalPaths := e.compactionPaths()
 	receipt := promptcontext.NewCompactionReceipt(
 		selection,
@@ -303,17 +329,17 @@ func (e *Engine) compactHistoryWithPolicy(
 		workingSet,
 		criticalPaths,
 	)
-	finished := finish(receipt)
 	durableRebase := e.options.Context.CommitRebase != nil || e.options.Context.CommitRebaseWithFacts != nil
-	if (e.options.Context.SemanticNarrative == "off" && durableRebase) ||
-		(e.options.Context.SemanticNarrative != "off" && selection.OriginalWindow.Active < e.emergencyCompactLimit()) {
+	if durableRebase || e.options.Context.SemanticNarrative != "off" {
 		state := e.stageNarrativeCandidate(*selected)
 		receipt.CompactionID, receipt.Status = state.ID, state.Phase
 		receipt.Mode = e.options.Context.SemanticNarrative
 		receipt.SourceWindowID, receipt.TargetWindowID = state.SourceWindowID, state.TargetWindowID
 		receipt.FallbackReason = state.FallbackReason
+		return receipt
 	}
-	return finished
+	*history = selected.History
+	return finish(receipt)
 }
 
 type compactionCandidate = agentcontext.CompactionCandidate

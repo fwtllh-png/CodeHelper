@@ -23,11 +23,35 @@ func (r StartTurnHandler) validateStart(payload *protocol.StartTurnPayload) erro
 	}
 	source := payload.Recovery.SourceTurnID
 	terminal := false
+	var startedOperationID protocol.OperationID
+	var sourceThreadID protocol.ThreadID
 	for _, event := range events {
 		if event.TurnID != source {
 			continue
 		}
-		if event.ThreadID != payload.ThreadID {
+		if sourceThreadID == "" {
+			sourceThreadID = event.ThreadID
+		} else if event.ThreadID != sourceThreadID {
+			return protocol.NewProblem(
+				protocol.CodeConflict,
+				"Turn recovery source has inconsistent Thread identity",
+				false,
+				nil,
+			)
+		}
+		switch data := event.Data.(type) {
+		case *protocol.TurnStartedData:
+			startedOperationID = event.OperationID
+		case *protocol.OperationRejectedData:
+			terminal = terminal ||
+				(event.OperationID == startedOperationID &&
+					protocol.FaultAllowsTurnRecovery(data.Fault))
+		default:
+			terminal = terminal || protocol.IsTerminalEvent(event.Kind)
+		}
+	}
+	if sourceThreadID != "" && sourceThreadID != payload.ThreadID {
+		if r.sessionLifecycle == nil {
 			return protocol.NewProblem(
 				protocol.CodeConflict,
 				"Turn recovery source belongs to another Thread",
@@ -35,7 +59,22 @@ func (r StartTurnHandler) validateStart(payload *protocol.StartTurnPayload) erro
 				nil,
 			)
 		}
-		terminal = terminal || protocol.IsTerminalEvent(event.Kind)
+		sourceSession, sourceErr := r.sessionLifecycle.SessionForThread(
+			r.ctx,
+			sourceThreadID,
+		)
+		targetSession, targetErr := r.sessionLifecycle.SessionForThread(
+			r.ctx,
+			payload.ThreadID,
+		)
+		if sourceErr != nil || targetErr != nil || sourceSession != targetSession {
+			return protocol.NewProblem(
+				protocol.CodeConflict,
+				"Turn recovery source belongs to another Session",
+				false,
+				nil,
+			)
+		}
 	}
 	if !terminal {
 		return protocol.NewProblem(

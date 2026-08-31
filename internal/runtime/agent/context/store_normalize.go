@@ -45,68 +45,9 @@ func NormalizePairs(
 func (s MessageSnapshot) Normalize(
 	capabilities model.Capabilities,
 ) (MessageSnapshot, NormalizationReceipt, error) {
-	calls := make(map[string][]blockPosition)
-	results := make(map[string][]blockPosition)
-	order := 0
-	for itemIndex, item := range s.items {
-		if !validRole(item.Message.Role) {
-			return MessageSnapshot{}, NormalizationReceipt{}, fmt.Errorf(
-				"context item %s has invalid role %q",
-				item.ID, item.Message.Role,
-			)
-		}
-		for blockIndex, block := range item.Message.Blocks {
-			if err := block.Validate(); err != nil {
-				return MessageSnapshot{}, NormalizationReceipt{}, fmt.Errorf(
-					"context item %s block %d: %w",
-					item.ID, blockIndex, err,
-				)
-			}
-			if err := validateBlockShape(block); err != nil {
-				return MessageSnapshot{}, NormalizationReceipt{}, fmt.Errorf(
-					"context item %s block %d: %w",
-					item.ID, blockIndex, err,
-				)
-			}
-			if block.ToolCall != nil &&
-				item.Message.Role != provider.RoleAssistant {
-				return MessageSnapshot{}, NormalizationReceipt{}, fmt.Errorf(
-					"context item %s block %d: tool call requires assistant role",
-					item.ID,
-					blockIndex,
-				)
-			}
-			if block.ToolResult != nil &&
-				item.Message.Role != provider.RoleTool {
-				return MessageSnapshot{}, NormalizationReceipt{}, fmt.Errorf(
-					"context item %s block %d: tool result requires tool role",
-					item.ID,
-					blockIndex,
-				)
-			}
-			position := blockPosition{
-				item: itemIndex, block: blockIndex, order: order,
-			}
-			order++
-			if block.ToolCall != nil {
-				calls[block.ToolCall.ID] = append(
-					calls[block.ToolCall.ID], position,
-				)
-			}
-			if block.ToolResult != nil {
-				results[block.ToolResult.CallID] = append(
-					results[block.ToolResult.CallID], position,
-				)
-			}
-		}
-	}
-	validPairs := make(map[string]struct{})
-	for id, callPositions := range calls {
-		resultPositions := results[id]
-		if len(callPositions) == 1 && len(resultPositions) == 1 &&
-			callPositions[0].order < resultPositions[0].order {
-			validPairs[id] = struct{}{}
-		}
+	calls, results, validPairs, err := scanToolPositions(s.items)
+	if err != nil {
+		return MessageSnapshot{}, NormalizationReceipt{}, err
 	}
 	receipt := NormalizationReceipt{
 		ToolCalls:   lenPositions(calls),
@@ -123,6 +64,15 @@ func (s MessageSnapshot) Normalize(
 		item.Message = CloneMessage(source.Message)
 		item.Message.Blocks = nil
 		changed := false
+		hasRetainedToolCall := messageHasRetainedToolCall(
+			source.Message,
+			validPairs,
+		)
+		preserveReplay := replaySurvivesNormalization(
+			source.Message,
+			capabilities,
+			validPairs,
+		)
 		for _, sourceBlock := range source.Message.Blocks {
 			block := CloneBlocks([]provider.ContentBlock{sourceBlock})[0]
 			if block.ToolCall != nil {
@@ -147,9 +97,9 @@ func (s MessageSnapshot) Normalize(
 					changed = true
 				}
 			case provider.ContentReasoning:
-				replayBound := source.Message.Provenance != nil &&
-					source.Message.Provenance.Replay != nil
-				if !capabilities.Reasoning && !replayBound && block.ID == "" {
+				dropReasoning := !capabilities.Reasoning &&
+					!hasRetainedToolCall && !preserveReplay
+				if dropReasoning {
 					receipt.DroppedReasoning++
 					changed = true
 					continue

@@ -96,7 +96,7 @@ func (c *Catalog) LoadPlan(ctx context.Context, name string) ([]Loaded, error) {
 	}
 	governed := false
 	for _, item := range items {
-		governed = governed || item.manifest != nil
+		governed = governed || requiresWorkspaceLock(item)
 	}
 	if governed {
 		if err := c.Verify(ctx); err != nil {
@@ -128,7 +128,7 @@ func (c *Catalog) resolveAll(ctx context.Context) ([]candidate, error) {
 	var roots []string
 	for _, name := range order {
 		item := entries[name]
-		if item.manifest != nil && enabledFor(item, state, nil) {
+		if requiresWorkspaceLock(item) && enabledFor(item, state, nil) {
 			roots = append(roots, name)
 		}
 	}
@@ -254,16 +254,20 @@ func (c *Catalog) loadCandidate(
 	item candidate,
 	locked bool,
 ) (Loaded, error) {
-	rawSkill, err := readRegularAt(item.root, item.relative, c.limits.MaxFileBytes)
-	if err != nil {
-		return Loaded{}, fmt.Errorf("read skill safely: %w", err)
-	}
-	var rawManifest []byte
-	if item.manifest != nil {
-		manifestRelative := filepath.Join(filepath.Dir(item.relative), ManifestFileName)
-		rawManifest, err = readRegularAt(item.root, manifestRelative, 64<<10)
+	rawSkill := append([]byte(nil), item.rawSkill...)
+	rawManifest := append([]byte(nil), item.rawManifest...)
+	if item.source != SourceBuiltin {
+		var err error
+		rawSkill, err = readRegularAt(item.root, item.relative, c.limits.MaxFileBytes)
 		if err != nil {
-			return Loaded{}, fmt.Errorf("read skill manifest safely: %w", err)
+			return Loaded{}, fmt.Errorf("read skill safely: %w", err)
+		}
+		if item.manifest != nil {
+			manifestRelative := filepath.Join(filepath.Dir(item.relative), ManifestFileName)
+			rawManifest, err = readRegularAt(item.root, manifestRelative, 64<<10)
+			if err != nil {
+				return Loaded{}, fmt.Errorf("read skill manifest safely: %w", err)
+			}
 		}
 	}
 	document, err := parseDocument(rawSkill)
@@ -298,6 +302,10 @@ func (c *Catalog) loadCandidate(
 	}, nil
 }
 
+func requiresWorkspaceLock(item candidate) bool {
+	return item.manifest != nil && item.source != SourceBuiltin
+}
+
 func resolvedSkills(items []candidate, locked bool) []ResolvedSkill {
 	result := make([]ResolvedSkill, 0, len(items))
 	for _, item := range items {
@@ -310,7 +318,7 @@ func resolvedSkills(items []candidate, locked bool) []ResolvedSkill {
 		result = append(result, ResolvedSkill{
 			Name: item.metadata.Name, Version: version, Source: item.source,
 			Digest: item.digest, Dependencies: dependencies,
-			Locked: locked && item.manifest != nil,
+			Locked: item.source == SourceBuiltin || locked && item.manifest != nil,
 		})
 	}
 	return result
@@ -395,6 +403,9 @@ func (c *Catalog) lockEntries() map[string]LockEntry {
 }
 
 func lockMatches(item candidate, entry LockEntry) bool {
+	if item.source == SourceBuiltin {
+		return true
+	}
 	return item.manifest != nil &&
 		entry.Name == item.metadata.Name &&
 		entry.Version == item.manifest.Version &&

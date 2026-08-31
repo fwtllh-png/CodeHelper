@@ -42,6 +42,32 @@ func TestReasoningEffortRequiresAReasoningModel(t *testing.T) {
 	}
 }
 
+func TestReasoningEffortMustBeAdvertisedByModel(t *testing.T) {
+	route := routeWithoutNativeSearch(t).WithCapabilities(model.Capabilities{
+		Streaming: true, Reasoning: true,
+		ReasoningEfforts: []string{"high"},
+	})
+	request := ModelRequest{
+		Route:           route,
+		Messages:        []Message{TextMessage(RoleUser, "hello")},
+		MaxOutputTokens: 128,
+		ReasoningEffort: "low",
+	}
+	if err := request.Validate(); err == nil ||
+		!strings.Contains(err.Error(), `reasoning effort "low"`) {
+		t.Fatalf("Validate() error = %v, want unsupported effort refusal", err)
+	}
+	request.ReasoningEffort = "off"
+	if err := request.Validate(); err == nil ||
+		!strings.Contains(err.Error(), `reasoning effort "off"`) {
+		t.Fatalf("Validate() error = %v, want undeclared off refusal", err)
+	}
+	request.ReasoningEffort = "high"
+	if err := request.Validate(); err != nil {
+		t.Fatalf("Validate() rejected advertised effort: %v", err)
+	}
+}
+
 func TestAnImageBlockRequiresImageInputOrVision(t *testing.T) {
 	route := routeWithoutNativeSearch(t)
 	request := ModelRequest{

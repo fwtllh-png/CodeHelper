@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -74,6 +75,13 @@ func (c Compaction) Validate() error {
 			state.Plan.TargetWindowID != state.TargetWindowID ||
 			state.Plan.SourceContextDigest != state.SourceContextDigest {
 			return errors.New("compaction plan fence is inconsistent")
+		}
+		if state.NarrativeInput != nil &&
+			!slices.Equal(
+				state.Plan.RequiredKinds,
+				state.NarrativeInput.RequiredKinds,
+			) {
+			return errors.New("compaction narrative requirements are inconsistent")
 		}
 	}
 	if state.NarrativeInput != nil {
@@ -160,6 +168,10 @@ func CloneCompaction(value Compaction) Compaction {
 		input.Excerpts = append(
 			[]NarrativeExcerpt(nil),
 			value.State.NarrativeInput.Excerpts...,
+		)
+		input.RequiredKinds = append(
+			[]string(nil),
+			value.State.NarrativeInput.RequiredKinds...,
 		)
 		state.NarrativeInput = &input
 	}

@@ -161,14 +161,16 @@ func searchDiscoveryTerms(kind string) []string {
 func searchDescription(kind string) string {
 	switch kind {
 	case "search_files":
-		return "Find files by path/name (fuzzy). Optional regex/case_insensitive match against paths. " +
-			"Aliases: pattern→query, glob/file_pattern→include, path/cwd/root→scope, limit→max_results."
+		return "Find files by path/name. Pattern is regex by default; query uses fuzzy matching unless regex=true. " +
+			"Aliases: glob/file_pattern→include, path/cwd/root→scope, limit→max_results."
 	case "search_project":
 		return "Search file contents and paths in the workspace. Supports regex and context lines. " +
-			"Aliases: pattern→query, glob/file_pattern→include, path/cwd/root→scope, limit→max_results, context→before/after."
+			"Pattern is regex by default; query is literal unless regex=true. " +
+			"Aliases: glob/file_pattern→include, path/cwd/root→scope, limit→max_results, context→before/after."
 	default:
 		return "Search file contents in the workspace. Supports regex and context lines. " +
-			"Aliases: pattern→query, glob/file_pattern→include, path/cwd/root→scope, limit→max_results, context→before/after."
+			"Pattern is regex by default; query is literal unless regex=true. " +
+			"Aliases: glob/file_pattern→include, path/cwd/root→scope, limit→max_results, context→before/after."
 	}
 }
 
@@ -232,8 +234,12 @@ func parseSearchInput(raw json.RawMessage) (searchInput, error) {
 			caseInsensitive = !boolField(loose, "case_sensitive")
 		}
 	}
+	regex := boolField(loose, "regex")
+	if _, explicit := loose["regex"]; !explicit {
+		_, regex = loose["pattern"]
+	}
 	return searchInput{
-		Query: query, Regex: boolField(loose, "regex"),
+		Query: query, Regex: regex,
 		Include: include, Exclude: stringListField(loose, "exclude"),
 		MaxFileBytes: int64(intField(loose, "max_file_bytes")), MaxResults: maxResults,
 		CaseInsensitive: caseInsensitive, Before: before, After: after, Scope: scope,

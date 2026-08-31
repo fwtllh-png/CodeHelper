@@ -67,6 +67,18 @@ func TestExecutionReceiptKeepsUnavailableVerification(t *testing.T) {
 	}
 }
 
+func TestExecutionReceiptAcceptsLegacyRouteWithoutModelMetadata(t *testing.T) {
+	receipt := &ExecutionReceiptData{
+		Goal: "resume an older session",
+		Routes: []ReceiptRoute{{
+			Purpose: "act", Provider: "provider", Model: "model",
+		}},
+	}
+	if err := receipt.validate(); err != nil {
+		t.Fatalf("legacy receipt route was rejected: %v", err)
+	}
+}
+
 func TestExecutionReceiptAcceptsStructuredConvergenceOutcome(t *testing.T) {
 	receipt := &ExecutionReceiptData{
 		Goal: "write a guide",
@@ -120,6 +132,32 @@ func TestExecutionReceiptValidatesSkillSelection(t *testing.T) {
 	invalid.ExplicitMatches = invalid.CandidateSize + 1
 	if err := (&ExecutionReceiptData{SkillSelection: &invalid}).validate(); err == nil {
 		t.Fatal("invalid skill selection was accepted")
+	}
+}
+
+func TestExecutionReceiptValidatesDelegationObservation(t *testing.T) {
+	valid := []*ReceiptDelegation{
+		{Mode: "adaptive", Outcome: "retained_parent"},
+		{Mode: "adaptive", Outcome: "delegated", Attempts: 2, Spawned: 2},
+		{Mode: "explicit", Outcome: "blocked", Attempts: 1},
+		{Mode: "disabled", Outcome: "not_evaluated"},
+	}
+	for _, delegation := range valid {
+		if err := (&ExecutionReceiptData{Delegation: delegation}).validate(); err != nil {
+			t.Fatalf("valid delegation %+v: %v", delegation, err)
+		}
+	}
+	invalid := []*ReceiptDelegation{
+		{Mode: "unknown", Outcome: "not_evaluated"},
+		{Mode: "disabled", Outcome: "delegated", Attempts: 1, Spawned: 1},
+		{Mode: "adaptive", Outcome: "blocked"},
+		{Mode: "explicit", Outcome: "retained_parent"},
+		{Mode: "adaptive", Outcome: "delegated", Attempts: 1, Spawned: 2},
+	}
+	for _, delegation := range invalid {
+		if err := (&ExecutionReceiptData{Delegation: delegation}).validate(); err == nil {
+			t.Fatalf("invalid delegation accepted: %+v", delegation)
+		}
 	}
 }
 

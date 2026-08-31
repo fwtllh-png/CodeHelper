@@ -20,9 +20,9 @@ func (p *StatelessProjector) Project(messages []provider.Message) []provider.Mes
 	return ProjectStatelessHistory(messages)
 }
 
-// ProjectStatelessHistory removes replay-only redundancy for providers
-// that receive the complete logical history. World patches remain append-only
-// until an explicit compaction/rebase so later turns retain the provider prefix.
+// ProjectStatelessHistory removes consumed assistant narration for providers
+// that receive the complete logical history. Reasoning remains attached to tool
+// calls because some OpenAI-compatible thinking APIs require it on replay.
 func ProjectStatelessHistory(
 	messages []provider.Message,
 ) []provider.Message {
@@ -40,7 +40,7 @@ func ProjectStatelessHistory(
 		if message.Role == provider.RoleAssistant &&
 			(message.Provenance == nil || message.Provenance.Replay == nil) &&
 			containsClosedToolCall(message.Blocks, results) {
-			message.Blocks = removeConsumedAssistantBlocks(message.Blocks)
+			message.Blocks = removeConsumedAssistantText(message.Blocks)
 		}
 		if len(message.Blocks) != 0 {
 			projected = append(projected, message)
@@ -63,10 +63,10 @@ func containsClosedToolCall(
 	return false
 }
 
-func removeConsumedAssistantBlocks(blocks []provider.ContentBlock) []provider.ContentBlock {
+func removeConsumedAssistantText(blocks []provider.ContentBlock) []provider.ContentBlock {
 	result := make([]provider.ContentBlock, 0, len(blocks))
 	for _, block := range blocks {
-		if block.Type != provider.ContentReasoning && block.Type != provider.ContentText {
+		if block.Type != provider.ContentText {
 			result = append(result, block)
 		}
 	}

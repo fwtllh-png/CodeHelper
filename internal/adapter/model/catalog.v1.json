@@ -212,7 +212,7 @@
             "image_input": false,
             "prompt_cache": true,
             "automatic_prompt_cache": true,
-            "thinking_toggle": true
+            "thinking_toggle": false
           },
           "pricing": {
             "input_per_million": 0.27,

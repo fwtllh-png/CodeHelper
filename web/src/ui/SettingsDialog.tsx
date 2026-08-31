@@ -47,6 +47,13 @@ import {
   initialBrowserNotificationSettings,
   setBrowserNotificationsEnabled
 } from "./browserNotifications";
+import {
+  emptyModelMetadataDraft,
+  ModelMetadataFields,
+  modelMetadataDraft,
+  modelMetadataProblem,
+  setupModelMetadata
+} from "./ModelMetadataFields";
 import "./SettingsDialog.css";
 
 export type ThemeMode = "light" | "dark" | "system";
@@ -696,6 +703,7 @@ function ConnectionSettings({
   const [modelID, setModelID] = useState("");
   const [baseURL, setBaseURL] = useState("");
   const [protocol, setProtocol] = useState("openai_chat");
+  const [metadata, setMetadata] = useState(emptyModelMetadataDraft);
   const [apiKey, setAPIKey] = useState("");
   const [configuring, setConfiguring] = useState(false);
   const [pending, setPending] = useState(false);
@@ -707,6 +715,16 @@ function ConnectionSettings({
     (entry) => entry.id === connection?.provider
   );
   const custom = Boolean(providerOption?.custom);
+  const requiresMetadata = Boolean(
+    providerOption && modelID.trim() &&
+    (custom || !providerOption.models?.includes(modelID.trim()))
+  );
+  const metadataError = requiresMetadata
+    ? modelMetadataProblem(
+        metadata,
+        custom ? protocol : providerOption?.protocol ?? ""
+      )
+    : "";
   const requiresKey = Boolean(
     providerOption?.requires_api_key && providerID !== connection?.provider
   );
@@ -719,15 +737,17 @@ function ConnectionSettings({
       setModelID(currentModel);
       setBaseURL(value.endpoint);
       setProtocol(value.protocol || "openai_chat");
+      setMetadata(modelMetadataDraft(value.model_metadata));
     }, onError);
   }, [client, currentModel, onError]);
   const configure = async () => {
-    if (!providerOption || !modelID.trim() || pending) return;
+    if (!providerOption || !modelID.trim() || metadataError || pending) return;
     const request: SetupRequest = {
       provider: providerID,
       model: modelID.trim(),
       api_key: apiKey,
-      ...(custom ? {base_url: baseURL.trim(), protocol} : {})
+      ...(custom ? {base_url: baseURL.trim(), protocol} : {}),
+      ...(requiresMetadata ? {model_metadata: setupModelMetadata(metadata)} : {})
     };
     setPending(true);
     try {
@@ -784,6 +804,7 @@ function ConnectionSettings({
                 setAPIKey("");
                 setBaseURL("");
                 setProtocol(next?.protocol || "openai_chat");
+                setMetadata(emptyModelMetadataDraft());
               }}
             />
           </SettingRow>
@@ -795,7 +816,10 @@ function ConnectionSettings({
                 value={baseURL}
                 placeholder="https://api.example.com/v1"
                 disabled={pending}
-                onChange={(event) => setBaseURL(event.target.value)}
+                onChange={(event) => {
+                  setBaseURL(event.target.value);
+                  setMetadata(emptyModelMetadataDraft());
+                }}
               />
             </SettingRow>
           )}
@@ -809,7 +833,10 @@ function ConnectionSettings({
                 format={(value) => value === "openai_chat"
                   ? "Chat Completions"
                   : "Responses"}
-                onChange={setProtocol}
+                onChange={(value) => {
+                  setProtocol(value);
+                  setMetadata(emptyModelMetadataDraft());
+                }}
               />
             </SettingRow>
           )}
@@ -820,9 +847,20 @@ function ConnectionSettings({
               value={modelID}
               placeholder="Enter the exact model ID"
               disabled={pending}
-              onChange={(event) => setModelID(event.target.value)}
+              onChange={(event) => {
+                setModelID(event.target.value);
+                setMetadata(emptyModelMetadataDraft());
+              }}
             />
           </SettingRow>
+          {requiresMetadata && (
+            <ModelMetadataFields
+              value={metadata}
+              disabled={pending}
+              onChange={setMetadata}
+            />
+          )}
+          {metadataError && <small role="alert">{metadataError}</small>}
           <SettingRow
             title="API key"
             description={requiresKey
@@ -845,7 +883,8 @@ function ConnectionSettings({
               type="button"
               disabled={
                 pending || !providerOption || !modelID.trim() ||
-                (custom && !baseURL.trim()) || (requiresKey && !apiKey.trim())
+                (custom && !baseURL.trim()) || (requiresKey && !apiKey.trim()) ||
+                Boolean(metadataError)
               }
               onClick={() => void configure()}
             >
@@ -887,7 +926,10 @@ function ModelCapabilityPanel({model}: {model: ModelCatalogEntry}) {
     capabilities.vision && "Vision",
     capabilities.image_input && "Image input",
     capabilities.native_search && "Native search",
-    capabilities.prompt_cache && "Prompt cache"
+    capabilities.prompt_cache && "Prompt cache",
+    capabilities.automatic_prompt_cache && "Automatic cache",
+    capabilities.incremental_responses && "Incremental responses",
+    capabilities.thinking_toggle && "Thinking toggle"
   ].filter((value): value is string => Boolean(value));
   return (
     <div className="settingsBlock modelCapabilityPanel">
@@ -902,11 +944,9 @@ function ModelCapabilityPanel({model}: {model: ModelCatalogEntry}) {
       {capabilities.unavailable_reason && (
         <p>{capabilities.unavailable_reason}</p>
       )}
-      {model.source === "connection_baseline" && (
-        <p role="status">
-          Unverified metadata inherited from the Workspace connection.
-        </p>
-      )}
+      <p role="status">
+        Metadata: <code>{JSON.stringify(capabilities.metadata_provenance)}</code>
+      </p>
       <dl className="settingsFacts">
         <div><dt>Context window</dt><dd>{capabilities.context_window.toLocaleString()}</dd></div>
         <div><dt>Max output</dt><dd>{capabilities.max_output_tokens.toLocaleString()}</dd></div>

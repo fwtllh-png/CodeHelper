@@ -94,6 +94,9 @@ func (a *toolAccount) hooks() providerassembly.ToolSampleHooks {
 				Provider: projection.Metadata.Provider,
 				Model:    projection.Metadata.Model,
 				Purpose:  string(projection.Metadata.Purpose),
+				ModelMetadata: modelMetadataProvenance(
+					projection.Metadata.MetadataProvenance,
+				),
 			})
 		},
 	}

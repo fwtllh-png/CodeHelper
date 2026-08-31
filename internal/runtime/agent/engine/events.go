@@ -2,6 +2,7 @@ package engine
 
 import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
@@ -16,10 +17,11 @@ import (
 type State string
 
 type Event struct {
-	State    State  `json:"state"`
-	Turn     uint64 `json:"turn"`
-	Provider string `json:"provider,omitempty"`
-	Model    string `json:"model,omitempty"`
+	State         State                             `json:"state"`
+	Turn          uint64                            `json:"turn"`
+	Provider      string                            `json:"provider,omitempty"`
+	Model         string                            `json:"model,omitempty"`
+	ModelMetadata *protocol.ModelMetadataProvenance `json:"model_metadata_provenance,omitempty"`
 	// Purpose is which route the turn's samples go to, and so why this provider
 	// and model rather than the session's default pair.
 	Purpose            string                 `json:"purpose,omitempty"`
@@ -67,6 +69,18 @@ type Event struct {
 	ToolOutput         *ToolOutput                 `json:"tool_output,omitempty"`
 	CatalogChanged     *CatalogChanged             `json:"catalog_changed,omitempty"`
 	MCPHealthChanged   *MCPHealthChanged           `json:"mcp_health_changed,omitempty"`
+}
+
+func modelMetadataProvenance(
+	value model.MetadataProvenance,
+) *protocol.ModelMetadataProvenance {
+	return &protocol.ModelMetadataProvenance{
+		CanonicalID:  string(value.CanonicalID),
+		WireID:       string(value.WireID),
+		Limits:       string(value.Limits),
+		Capabilities: string(value.Capabilities),
+		Pricing:      string(value.Pricing),
+	}
 }
 
 type ApprovalResolution struct {

@@ -19,9 +19,10 @@ type SubmittedPlanStep struct {
 }
 
 type PlanFileBaseline struct {
-	Path    string `json:"path"`
-	Digest  string `json:"digest,omitempty"`
-	Missing bool   `json:"missing,omitempty"`
+	Path      string `json:"path"`
+	Digest    string `json:"digest,omitempty"`
+	Missing   bool   `json:"missing,omitempty"`
+	Directory bool   `json:"directory,omitempty"`
 }
 
 type SubmittedPlan struct {

@@ -55,7 +55,8 @@ func OpenSkillControl(
 	skills, err := skillruntime.Discover(skillruntime.DiscoveryOptions{
 		Workspace: workspace, ConfiguredDir: paths.SkillsConfiguredDir,
 		UserHome: paths.UserHome, Locale: paths.SkillsLocale,
-		State: state, Lock: lock, RuntimeVersion: buildinfo.Version,
+		IncludeBuiltins: true,
+		State:           state, Lock: lock, RuntimeVersion: buildinfo.Version,
 	})
 	if err != nil {
 		return nil, err

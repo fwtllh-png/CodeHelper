@@ -84,6 +84,23 @@ func (s *Service) SetKeyring(
 	ctx context.Context,
 	secret string,
 ) (Status, error) {
+	return s.setKeyring(ctx, secret, false)
+}
+
+// StageKeyring publishes a new reference while retaining the previous managed
+// secret until Control.Commit or Control.Restore resolves the reconfiguration.
+func (s *Service) StageKeyring(
+	ctx context.Context,
+	secret string,
+) (Status, error) {
+	return s.setKeyring(ctx, secret, true)
+}
+
+func (s *Service) setKeyring(
+	ctx context.Context,
+	secret string,
+	staged bool,
+) (Status, error) {
 	if err := ctx.Err(); err != nil {
 		return Status{}, err
 	}
@@ -100,7 +117,7 @@ func (s *Service) SetKeyring(
 		return Status{}, errors.New("credential secret is invalid")
 	}
 	if s.control != nil {
-		reference, err := s.control.rotate(ctx, s.reference, secret)
+		reference, err := s.control.rotate(ctx, s.reference, secret, staged)
 		if err != nil {
 			return Status{}, err
 		}

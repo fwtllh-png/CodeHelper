@@ -12,6 +12,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
 )
 
 func TestCompatibleChatPreservesReasoningAndOmitsExplicitCacheKey(t *testing.T) {
@@ -66,6 +67,47 @@ func TestCompatibleChatPreservesReasoningAndOmitsExplicitCacheKey(t *testing.T) 
 	}
 	if !bytes.Contains(call.Body, []byte(`"type":"image_url"`)) {
 		t.Fatalf("image input missing: %s", call.Body)
+	}
+}
+
+func TestCompatibleChatStatelessProjectionPreservesToolCallReasoning(t *testing.T) {
+	adapter := compatibleAdapter(t)
+	request := compatibleRequest(t)
+	request.ReasoningEffort = "high"
+	request.Messages = contextview.ProjectStatelessHistory([]provider.Message{
+		provider.TextMessage(provider.RoleUser, "inspect"),
+		{
+			Role: provider.RoleAssistant,
+			Blocks: []provider.ContentBlock{
+				{Type: provider.ContentReasoning, Text: "reasoning"},
+				{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{
+					ID: "call_1", Name: "read", Arguments: `{}`,
+				}},
+			},
+		},
+		{
+			Role: provider.RoleTool,
+			Blocks: []provider.ContentBlock{{
+				Type: provider.ContentToolResult,
+				ToolResult: &provider.ToolResult{
+					CallID: "call_1", Content: "ok",
+				},
+			}},
+		},
+	})
+
+	call, err := adapter.Prepare(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	if err := json.Unmarshal(call.Body, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Messages[1]["reasoning_content"] != "reasoning" {
+		t.Fatalf("tool-call reasoning missing after stateless projection: %#v", body.Messages[1])
 	}
 }
 
@@ -265,6 +307,22 @@ func TestCompatibleHTTPFailurePreservesTypedContextError(t *testing.T) {
 	}
 	if failure.Code != provider.FailureContextWindowExceeded ||
 		failure.RequestID != "request-1" {
+		t.Fatalf("failure = %+v", failure)
+	}
+}
+
+func TestCompatibleHTTPFailureClassifiesNumericQuotaCode(t *testing.T) {
+	adapter := compatibleAdapter(t)
+	err := adapter.ClassifyHTTP(providerwire.HTTPFailure{
+		Status: http.StatusTooManyRequests,
+		Body: `{"error":{"message":"account balance is insufficient",` +
+			`"code":10003,"type":"rate_limit_error"}}`,
+	})
+	var failure *provider.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("failure = %T %v", err, err)
+	}
+	if failure.Code != provider.FailureQuota {
 		t.Fatalf("failure = %+v", failure)
 	}
 }

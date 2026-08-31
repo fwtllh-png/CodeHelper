@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -25,6 +26,13 @@ const (
 	NarrativeRationale  = "rationale"
 	NarrativePreference = "preference"
 	NarrativeUnresolved = "unresolved"
+	NarrativeTechnical  = "technical_concept"
+	NarrativeFileCode   = "file_and_code"
+	NarrativeErrorFix   = "error_and_fix"
+	NarrativePendingJob = "pending_job"
+	NarrativeCurrent    = "current_work"
+	NarrativeNextStep   = "next_step"
+	NarrativeCritical   = "critical_context"
 )
 
 type NarrativeExcerpt struct {
@@ -44,6 +52,7 @@ type NarrativeInputArtifact struct {
 	AuthorityDigest string             `json:"authority_digest"`
 	RouteDigest     string             `json:"route_digest"`
 	PrivacyClass    string             `json:"privacy_class"`
+	RequiredKinds   []string           `json:"required_kinds,omitempty"`
 	Excerpts        []NarrativeExcerpt `json:"excerpts"`
 	Digest          string             `json:"digest"`
 	ExpiresAt       time.Time          `json:"expires_at"`
@@ -81,6 +90,7 @@ type CompactedContext struct {
 	SourceContextDigest string             `json:"source_context_digest"`
 	StablePrefixDigest  string             `json:"stable_prefix_digest"`
 	Truth               TruthCapsule       `json:"truth"`
+	Head                provider.Message   `json:"head"`
 	Narrative           *NarrativeArtifact `json:"narrative,omitempty"`
 	Tail                []provider.Message `json:"tail"`
 	TailTurns           []uint64           `json:"tail_turns,omitempty"`
@@ -90,63 +100,70 @@ type CompactedContext struct {
 	Digest              string             `json:"digest"`
 }
 
-type CompactionPlan struct {
-	Version             int                    `json:"version"`
-	ID                  string                 `json:"id"`
-	Phase               string                 `json:"phase"`
-	Trigger             string                 `json:"trigger"`
-	SourceWindowID      string                 `json:"source_window_id"`
-	TargetWindowID      string                 `json:"target_window_id"`
-	SourceContextDigest string                 `json:"source_context_digest"`
-	Cut                 int                    `json:"cut"`
-	RemovedMessageIDs   []string               `json:"removed_message_ids"`
-	TailMessageIDs      []string               `json:"tail_message_ids"`
-	Truth               TruthCapsule           `json:"truth"`
-	NarrativeInput      NarrativeInputArtifact `json:"narrative_input"`
-	DeterministicResult CompactedContext       `json:"deterministic_result"`
-	Digest              string                 `json:"digest"`
+type PreparedCompaction struct {
+	Version             int                     `json:"version"`
+	ID                  string                  `json:"id"`
+	Phase               string                  `json:"phase"`
+	Trigger             string                  `json:"trigger"`
+	SourceWindowID      string                  `json:"source_window_id"`
+	TargetWindowID      string                  `json:"target_window_id"`
+	TargetWindow        WindowLedger            `json:"target_window"`
+	SourceContextDigest string                  `json:"source_context_digest"`
+	SourceHistoryDigest string                  `json:"source_history_digest"`
+	SourceBytes         int                     `json:"source_bytes"`
+	SourceTokens        uint64                  `json:"source_tokens"`
+	RetainedTokens      uint64                  `json:"retained_tokens"`
+	Cut                 int                     `json:"cut"`
+	RemovedMessageIDs   []string                `json:"removed_message_ids"`
+	TailMessageIDs      []string                `json:"tail_message_ids"`
+	RequiredKinds       []string                `json:"required_kinds,omitempty"`
+	Truth               TruthCapsule            `json:"truth"`
+	NarrativeInput      *NarrativeInputArtifact `json:"narrative_input,omitempty"`
+	DeterministicResult CompactedContext        `json:"deterministic_result"`
+	Digest              string                  `json:"digest"`
 }
 
-func (p *CompactionPlan) Seal() error {
+type CompactionPlan = PreparedCompaction
+
+func (p *PreparedCompaction) Seal() error {
 	if p == nil {
 		return errors.New("compaction plan is nil")
 	}
 	p.Version = NarrativeSchemaVersion
 	p.RemovedMessageIDs = append([]string(nil), p.RemovedMessageIDs...)
+	p.RequiredKinds = append([]string(nil), p.RequiredKinds...)
 	if len(p.DeterministicResult.TailTurns) !=
 		len(p.DeterministicResult.Tail) {
 		return errors.New("compaction plan tail turn count is invalid")
 	}
-	p.TailMessageIDs = make(
-		[]string,
-		len(p.DeterministicResult.Tail),
-	)
-	for index, message := range p.DeterministicResult.Tail {
-		message.Turn = p.DeterministicResult.TailTurns[index]
-		p.TailMessageIDs[index] = StableMessageID(
-			p.DeterministicResult.ThreadID,
-			message,
-			index,
-		)
-	}
+	p.TailMessageIDs = append([]string(nil), p.TailMessageIDs...)
 	p.Digest = p.digest()
 	return p.Validate()
 }
 
-func (p CompactionPlan) Validate() error {
+func (p PreparedCompaction) Validate() error {
 	if p.Version != NarrativeSchemaVersion || p.ID == "" ||
 		p.Phase == "" || p.Trigger == "" ||
 		p.SourceWindowID == "" || p.TargetWindowID == "" ||
-		p.SourceContextDigest == "" || p.Cut < 1 ||
+		p.SourceContextDigest == "" || p.SourceHistoryDigest == "" ||
+		p.SourceBytes < 1 || p.Cut < 1 ||
 		len(p.RemovedMessageIDs) != p.Cut ||
 		p.Digest == "" || p.Digest != p.digest() {
 		return errors.New("compaction plan identity or digest is invalid")
 	}
+	if !p.TargetWindow.Valid() || p.TargetWindow.ID != p.TargetWindowID {
+		return errors.New("compaction plan target window is invalid")
+	}
+	if p.SourceTokens != 0 && p.RetainedTokens >= p.SourceTokens {
+		return errors.New("compaction plan does not reduce source tokens")
+	}
 	if err := p.Truth.Validate(); err != nil {
 		return err
 	}
-	if err := p.NarrativeInput.Validate(time.Time{}); err != nil {
-		return err
+	if p.NarrativeInput != nil {
+		if err := p.NarrativeInput.Validate(time.Time{}); err != nil {
+			return err
+		}
 	}
 	if err := p.DeterministicResult.Validate(); err != nil {
 		return err
@@ -155,40 +172,26 @@ func (p CompactionPlan) Validate() error {
 		p.DeterministicResult.SourceWindowID != p.SourceWindowID ||
 		p.DeterministicResult.TargetWindowID != p.TargetWindowID ||
 		p.DeterministicResult.SourceContextDigest != p.SourceContextDigest ||
-		p.DeterministicResult.Truth.Digest != p.Truth.Digest ||
-		p.NarrativeInput.ThreadID != p.DeterministicResult.ThreadID ||
-		p.NarrativeInput.SourceWindowID != p.SourceWindowID {
+		p.DeterministicResult.Truth.Digest != p.Truth.Digest {
 		return errors.New("compaction plan deterministic result fence is invalid")
 	}
+	if p.NarrativeInput != nil &&
+		(p.NarrativeInput.ThreadID != p.DeterministicResult.ThreadID ||
+			p.NarrativeInput.SourceWindowID != p.SourceWindowID) {
+		return errors.New("compaction plan narrative input fence is invalid")
+	}
 	authorityDigest, err := p.Truth.AuthorityDigest()
-	if err != nil || p.NarrativeInput.AuthorityDigest != authorityDigest ||
-		p.DeterministicResult.AuthorityDigest != authorityDigest {
+	if err != nil || p.DeterministicResult.AuthorityDigest != authorityDigest {
 		return errors.New("compaction plan authority fence is invalid")
 	}
-	if len(p.TailMessageIDs) != len(p.DeterministicResult.Tail) {
-		return errors.New("compaction plan tail identity count is invalid")
-	}
-	for index, message := range p.DeterministicResult.Tail {
-		message.Turn = p.DeterministicResult.TailTurns[index]
-		expected := StableMessageID(
-			p.DeterministicResult.ThreadID,
-			message,
-			index,
-		)
-		if p.TailMessageIDs[index] != expected {
-			return fmt.Errorf(
-				"compaction plan tail identity %d for thread %s is invalid: got %s want %s",
-				index,
-				p.DeterministicResult.ThreadID,
-				p.TailMessageIDs[index],
-				expected,
-			)
-		}
+	if p.NarrativeInput != nil &&
+		p.NarrativeInput.AuthorityDigest != authorityDigest {
+		return errors.New("compaction plan narrative authority fence is invalid")
 	}
 	return nil
 }
 
-func (p CompactionPlan) digest() string {
+func (p PreparedCompaction) digest() string {
 	p.Digest = ""
 	encoded, _ := json.Marshal(p)
 	return digestString(string(encoded))
@@ -218,6 +221,7 @@ func BuildNarrativeInput(
 	limits NarrativeLimits,
 	now time.Time,
 	ttl time.Duration,
+	requiredKinds ...[]string,
 ) (NarrativeInputArtifact, error) {
 	limits = normalizeNarrativeLimits(limits)
 	if threadID == "" || sourceWindowID == "" ||
@@ -231,13 +235,22 @@ func BuildNarrativeInput(
 		excerpt NarrativeExcerpt
 		index   int
 	}
+	toolCalls := make(map[string]provider.ToolCall)
+	for _, message := range removed {
+		for _, block := range message.Blocks {
+			if block.ToolCall != nil {
+				toolCalls[block.ToolCall.ID] = *block.ToolCall
+			}
+		}
+	}
 	var candidates []ranked
 	for index, message := range removed {
 		if message.Role != provider.RoleUser &&
-			message.Role != provider.RoleAssistant {
+			message.Role != provider.RoleAssistant &&
+			message.Role != provider.RoleTool {
 			continue
 		}
-		text := strings.TrimSpace(message.Text())
+		text := narrativeMessageText(message, toolCalls)
 		if text == "" {
 			continue
 		}
@@ -266,6 +279,9 @@ func BuildNarrativeInput(
 			return candidates[i].excerpt.Turn >
 				candidates[j].excerpt.Turn
 		}
+		if candidates[i].index != candidates[j].index {
+			return candidates[i].index > candidates[j].index
+		}
 		return candidates[i].excerpt.MessageID <
 			candidates[j].excerpt.MessageID
 	})
@@ -274,6 +290,12 @@ func BuildNarrativeInput(
 		SourceWindowID: sourceWindowID, AuthorityDigest: authorityDigest,
 		RouteDigest: routeDigest, PrivacyClass: NarrativePrivacyClass,
 		ExpiresAt: now.UTC().Add(ttl),
+	}
+	if len(requiredKinds) != 0 {
+		artifact.RequiredKinds = append(
+			[]string(nil),
+			requiredKinds[0]...,
+		)
 	}
 	selected := make([]ranked, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -305,8 +327,16 @@ func BuildNarrativeInput(
 		return selected[i].index < selected[j].index
 	})
 	artifact.Excerpts = artifact.Excerpts[:0]
+	selectedToolContext := false
 	for _, value := range selected {
 		artifact.Excerpts = append(artifact.Excerpts, value.excerpt)
+		selectedToolContext = selectedToolContext ||
+			value.excerpt.Role == provider.RoleTool
+	}
+	if slices.Contains(artifact.RequiredKinds, NarrativeFileCode) &&
+		!selectedToolContext {
+		return NarrativeInputArtifact{},
+			errors.New("narrative input cannot retain required tool context")
 	}
 	artifact.Digest = artifact.digest()
 	encoded, err := json.Marshal(artifact)
@@ -344,6 +374,10 @@ func RebindNarrativeInput(
 	artifact.AuthorityDigest = authorityDigest
 	artifact.RouteDigest = routeDigest
 	artifact.Excerpts = append([]NarrativeExcerpt(nil), previous.Excerpts...)
+	artifact.RequiredKinds = append(
+		[]string(nil),
+		previous.RequiredKinds...,
+	)
 	artifact.ExpiresAt = now.UTC().Add(ttl)
 	artifact.Digest = artifact.digest()
 	encoded, err := json.Marshal(artifact)
@@ -370,12 +404,22 @@ func (a NarrativeInputArtifact) Validate(now time.Time) error {
 		return errors.New("narrative input artifact is stale")
 	}
 	seen := make(map[string]struct{}, len(a.Excerpts))
+	for _, kind := range a.RequiredKinds {
+		if !validNarrativeKind(kind) {
+			return errors.New("narrative required kind is invalid")
+		}
+	}
+	if !sort.StringsAreSorted(a.RequiredKinds) ||
+		len(deduplicateStrings(a.RequiredKinds)) != len(a.RequiredKinds) {
+		return errors.New("narrative required kinds are not canonical")
+	}
 	for _, excerpt := range a.Excerpts {
 		if excerpt.MessageID == "" || excerpt.Text == "" ||
 			excerpt.Digest != digestString(excerpt.Text) ||
 			!utf8.ValidString(excerpt.Text) ||
 			excerpt.Role != provider.RoleUser &&
-				excerpt.Role != provider.RoleAssistant {
+				excerpt.Role != provider.RoleAssistant &&
+				excerpt.Role != provider.RoleTool {
 			return errors.New("narrative excerpt is invalid")
 		}
 		if _, duplicate := seen[excerpt.MessageID]; duplicate {
@@ -408,10 +452,17 @@ func ValidateNarrativeJSON(
 		return NarrativeArtifact{}, errors.New("narrative output size or encoding is invalid")
 	}
 	var payload struct {
-		Decisions   *[]narrativeJSONItem `json:"decisions"`
-		Rationale   *[]narrativeJSONItem `json:"rationale"`
-		Preferences *[]narrativeJSONItem `json:"preferences"`
-		Unresolved  *[]narrativeJSONItem `json:"unresolved"`
+		TechnicalConcepts *[]narrativeJSONItem `json:"technical_concepts"`
+		FilesAndCode      *[]narrativeJSONItem `json:"files_and_code"`
+		ErrorsAndFixes    *[]narrativeJSONItem `json:"errors_and_fixes"`
+		PendingJobs       *[]narrativeJSONItem `json:"pending_jobs"`
+		CurrentWork       *[]narrativeJSONItem `json:"current_work"`
+		NextSteps         *[]narrativeJSONItem `json:"next_steps"`
+		CriticalContext   *[]narrativeJSONItem `json:"critical_context"`
+		Decisions         *[]narrativeJSONItem `json:"decisions"`
+		Rationale         *[]narrativeJSONItem `json:"rationale"`
+		Preferences       *[]narrativeJSONItem `json:"preferences"`
+		Unresolved        *[]narrativeJSONItem `json:"unresolved"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -425,8 +476,12 @@ func ValidateNarrativeJSON(
 		}
 		return NarrativeArtifact{}, err
 	}
-	if payload.Decisions == nil || payload.Rationale == nil ||
-		payload.Preferences == nil || payload.Unresolved == nil {
+	if payload.TechnicalConcepts == nil || payload.FilesAndCode == nil ||
+		payload.ErrorsAndFixes == nil || payload.PendingJobs == nil ||
+		payload.CurrentWork == nil || payload.NextSteps == nil ||
+		payload.CriticalContext == nil || payload.Decisions == nil ||
+		payload.Rationale == nil || payload.Preferences == nil ||
+		payload.Unresolved == nil {
 		return NarrativeArtifact{},
 			errors.New("narrative output is missing a required array")
 	}
@@ -435,6 +490,7 @@ func ValidateNarrativeJSON(
 		sources[excerpt.MessageID] = excerpt
 	}
 	var items []NarrativeItem
+	counts := make(map[string]int)
 	appendItems := func(kind string, values []narrativeJSONItem) error {
 		for _, value := range values {
 			text := strings.TrimSpace(value.Text)
@@ -460,6 +516,7 @@ func ValidateNarrativeJSON(
 			}
 			item.ID = stableNarrativeItemID(item)
 			items = append(items, item)
+			counts[kind]++
 			if len(items) > limits.MaxItems {
 				return errors.New("narrative item count exceeds limit")
 			}
@@ -470,6 +527,13 @@ func ValidateNarrativeJSON(
 		kind  string
 		items []narrativeJSONItem
 	}{
+		{NarrativeFileCode, *payload.FilesAndCode},
+		{NarrativeCurrent, *payload.CurrentWork},
+		{NarrativeNextStep, *payload.NextSteps},
+		{NarrativePendingJob, *payload.PendingJobs},
+		{NarrativeCritical, *payload.CriticalContext},
+		{NarrativeTechnical, *payload.TechnicalConcepts},
+		{NarrativeErrorFix, *payload.ErrorsAndFixes},
 		{NarrativeDecision, *payload.Decisions},
 		{NarrativeRationale, *payload.Rationale},
 		{NarrativePreference, *payload.Preferences},
@@ -477,6 +541,14 @@ func ValidateNarrativeJSON(
 	} {
 		if err := appendItems(values.kind, values.items); err != nil {
 			return NarrativeArtifact{}, err
+		}
+	}
+	for _, kind := range input.RequiredKinds {
+		if counts[kind] == 0 {
+			return NarrativeArtifact{}, fmt.Errorf(
+				"narrative output is missing required %q context",
+				kind,
+			)
 		}
 	}
 	seen := make(map[string]struct{}, len(items))
@@ -549,6 +621,7 @@ func (c *CompactedContext) Seal() error {
 		return err
 	}
 	c.AuthorityDigest = authority
+	c.Head = CloneMessage(c.Head)
 	if c.Narrative != nil {
 		if err := c.Narrative.Validate(time.Time{}); err != nil {
 			return err
@@ -590,6 +663,11 @@ func (c CompactedContext) Validate() error {
 		c.TailDigest == "" || c.Digest == "" || c.Digest != c.digest() {
 		return errors.New("compacted context identity or digest is invalid")
 	}
+	if _, found, err := ParseTruthCapsule(c.Head.Text()); err != nil {
+		return err
+	} else if !found {
+		return errors.New("compacted context head has no truth capsule")
+	}
 	if len(c.TailTurns) != len(c.Tail) {
 		return errors.New("compacted context tail turn count is invalid")
 	}
@@ -622,6 +700,11 @@ func (c CompactedContext) Validate() error {
 		return errors.New("compacted context tail has an open tool pair")
 	}
 	return nil
+}
+
+func HistoryDigest(messages []provider.Message) string {
+	encoded, _ := json.Marshal(CloneMessages(messages))
+	return digestString(string(encoded))
 }
 
 func (c CompactedContext) digest() string {
@@ -661,7 +744,11 @@ func stableNarrativeItemID(item NarrativeItem) string {
 
 func validNarrativeKind(kind string) bool {
 	return kind == NarrativeDecision || kind == NarrativeRationale ||
-		kind == NarrativePreference || kind == NarrativeUnresolved
+		kind == NarrativePreference || kind == NarrativeUnresolved ||
+		kind == NarrativeTechnical || kind == NarrativeFileCode ||
+		kind == NarrativeErrorFix || kind == NarrativePendingJob ||
+		kind == NarrativeCurrent || kind == NarrativeNextStep ||
+		kind == NarrativeCritical
 }
 
 func normalizeNarrativeLimits(limits NarrativeLimits) NarrativeLimits {
@@ -701,6 +788,8 @@ func narrativePriority(message provider.Message, text string) int {
 	case strings.Contains(lower, "unresolved") ||
 		strings.Contains(lower, "todo"):
 		return 2
+	case message.Role == provider.RoleTool:
+		return 2
 	case message.Role == provider.RoleUser:
 		return 3
 	case message.Role == provider.RoleAssistant:
@@ -708,6 +797,28 @@ func narrativePriority(message provider.Message, text string) int {
 	default:
 		return 6
 	}
+}
+
+func narrativeMessageText(
+	message provider.Message,
+	toolCalls map[string]provider.ToolCall,
+) string {
+	var parts []string
+	for _, block := range message.Blocks {
+		switch {
+		case block.Type == provider.ContentText && strings.TrimSpace(block.Text) != "":
+			parts = append(parts, strings.TrimSpace(block.Text))
+		case block.Type == provider.ContentReasoning && strings.TrimSpace(block.Text) != "":
+			parts = append(parts, "Reasoning: "+strings.TrimSpace(block.Text))
+		case block.ToolResult != nil:
+			label := "Tool result"
+			if call, ok := toolCalls[block.ToolResult.CallID]; ok {
+				label = "Tool " + call.Name + " arguments: " + call.Arguments + "\nResult"
+			}
+			parts = append(parts, label+":\n"+block.ToolResult.Content)
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
 }
 
 func utf8Prefix(value string, maximum int) string {

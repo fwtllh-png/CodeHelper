@@ -99,7 +99,15 @@ Turn 能解释失败，又不会把半闭合 Tool Exchange 当成已提交历史
 
 Narrative 请求通过 `route.summary`，禁用 Tool 与 Native Search。输入 Artifact、Source
 Message ID 和 Digest 都持久化；输出必须引用已知 Source。Provider、解析、超时或
-Staleness 失败会降级到 Truth + Tail，不能改写业务 Turn 结果。
+Staleness 失败不能改写业务 Turn 结果。没有必须保留的未完成工作时可降级到
+Truth + Tail；存在权威未完成 Todo 时必须生成对应 Continuation Checkpoint，否则不能
+以缺少工作记忆的 fallback 继续执行。
+
+默认使用 `inline`。Narrative 是一份 Continuation Checkpoint：除决策、理由、偏好和
+未决问题外，还可保留关键技术概念、文件与代码接口、错误与修复、待办、当前工作、
+下一步和关键上下文。Required Kinds 来自权威 Todo、Changes 和 Critical Paths，而不是
+仅凭出现过 Tool Result 推导。每项继续绑定 Source Message ID 与 Digest；缺少必需
+continuation 类别时拒绝该次语义压缩。
 
 ## 自适应 Stream Checkpoint
 

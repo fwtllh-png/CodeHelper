@@ -7,7 +7,7 @@ import (
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
-func TestStatelessProjectionKeepsWorldPatchesAndCollapsesConsumedReasoning(t *testing.T) {
+func TestStatelessProjectionKeepsWorldPatchesAndToolCallReasoning(t *testing.T) {
 	worldV1 := provider.TextMessage(provider.RoleSystem, "world v1")
 	full, err := agentcontext.ProjectWorld([]agentcontext.WorldSection{{
 		ID: "workspace", Digest: "v1", Message: &worldV1,
@@ -36,8 +36,9 @@ func TestStatelessProjectionKeepsWorldPatchesAndCollapsesConsumedReasoning(t *te
 	history = append(history, pending)
 	projected := ProjectStatelessHistory(history)
 	if len(projected) != 5 || projected[0].Text() != "world v1" ||
-		len(projected[1].Blocks) != 1 ||
-		projected[1].Blocks[0].ToolCall == nil ||
+		len(projected[1].Blocks) != 2 ||
+		projected[1].Blocks[0].Type != provider.ContentReasoning ||
+		projected[1].Blocks[1].ToolCall == nil ||
 		projected[3].Text() != "world v2" ||
 		projected[4].Blocks[0].Type != provider.ContentReasoning {
 		t.Fatalf("projected messages = %+v", projected)

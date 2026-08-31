@@ -55,25 +55,35 @@ func TestRuntimeModelCatalogMarksOnlySelectableProviderModelsHot(t *testing.T) {
 }
 
 func TestRuntimeSelectableRoutesKeepsCustomRouteFixed(t *testing.T) {
-	resolver, err := model.NewResolver(model.DefaultCatalog())
-	if err != nil {
-		t.Fatal(err)
+	descriptor := &model.Model{
+		ID: "future-model", CanonicalID: "vendor/future-model",
+		WireID:       "future-model",
+		Limits:       model.Limits{ContextTokens: 200_000, MaxOutputTokens: 24_000},
+		Capabilities: model.Capabilities{Streaming: true, ToolCalls: true},
+		MetadataProvenance: model.MetadataProvenance{
+			CanonicalID:  model.ProvenanceOperatorConfig,
+			WireID:       model.ProvenanceOperatorConfig,
+			Limits:       model.ProvenanceOperatorConfig,
+			Capabilities: model.ProvenanceOperatorConfig,
+		},
+		Provenance: model.ProvenanceOperatorConfig,
 	}
-	selected, err := resolver.Resolve(model.RouteRequest{
-		ProviderID: "deepseek",
-		ModelID:    "deepseek-chat",
+	selected, err := resolveExecRoute(execRouteOptions{
+		ProviderID: "openai-compatible", ModelID: "future-model",
+		BaseURL:  "https://models.example.com/v1",
+		Protocol: model.ProtocolOpenAIChat, Model: descriptor,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	selected = selected.WithModelID("future-model")
 	selectable, err := runtimeSelectableRoutes(selected, false)
 	if err != nil {
 		t.Fatal(err)
 	}
+	capabilities := selectedModelCapabilities(selected)
+	capabilities.SelectionMode = "fixed"
 	_, models := runtimeModelCatalog(
-		selected,
-		selectedModelCapabilities(selected),
+		selected, capabilities,
 		selectable,
 	)
 	for _, entry := range models.Models {
@@ -81,8 +91,14 @@ func TestRuntimeSelectableRoutesKeepsCustomRouteFixed(t *testing.T) {
 			continue
 		}
 		if entry.Capabilities.SelectionMode != "fixed" ||
-			entry.Source != "connection_baseline" {
+			entry.Source != "connection_baseline" ||
+			entry.Capabilities.MetadataProvenance.Limits !=
+				string(model.ProvenanceOperatorConfig) {
 			t.Fatalf("selected fixed model = %+v", entry)
 		}
+	}
+	profiles, mutable := runtimeProfileModels(models, selected.ProviderID(), capabilities)
+	if len(profiles) != 0 || len(mutable) != 0 {
+		t.Fatalf("fixed route profiles=%+v mutable=%v", profiles, mutable)
 	}
 }

@@ -187,6 +187,12 @@ func (s MessageSnapshot) WithHistory(history []provider.Message) MessageSnapshot
 	return ledger.Snapshot()
 }
 
+func (l *MessageLedger) ReplaceHistory(history []provider.Message) {
+	if l != nil && l.replace(KindHistory, history) {
+		l.revision++
+	}
+}
+
 func (l *MessageLedger) replace(kind MessageKind, messages []provider.Message) bool {
 	if reflect.DeepEqual(l.partitions[kind], messages) {
 		return false

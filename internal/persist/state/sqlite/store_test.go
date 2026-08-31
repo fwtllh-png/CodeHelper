@@ -20,7 +20,7 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	assertPragma(t, store.DB(), "user_version", "3")
+	assertPragma(t, store.DB(), "user_version", "4")
 	assertPragma(t, store.DB(), "journal_mode", "wal")
 	assertPragma(t, store.DB(), "foreign_keys", "1")
 	assertPragma(t, store.DB(), "busy_timeout", "137")
@@ -55,7 +55,13 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 
 	assertTableColumns(t, store.DB(), "threads", "source_cursor")
 	assertTableColumns(t, store.DB(), "usage",
-		"sample", "source_sequence", "cost_known")
+		"sample", "source_sequence", "cost_known", "model_metadata_json")
+	assertTableColumns(
+		t,
+		store.DB(),
+		"usage_turn_context",
+		"model_metadata_json",
+	)
 	assertTableColumns(t, store.DB(), "agent_nodes",
 		"workspace_root", "session_id", "path", "execution_root", "revision",
 		"owned_paths_json",
@@ -64,6 +70,57 @@ func TestOpenCreatesSchemaAndConfiguresPragmas(t *testing.T) {
 	assertTableColumns(t, store.DB(), "agent_integrations",
 		"workspace_root", "agent_id", "preview_digest", "status",
 		"revision", "candidate_json", "source_sequence")
+}
+
+func TestOpenMigratesV3UsageModelMetadata(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v3Schema := strings.ReplaceAll(
+		schemaCurrent,
+		"    model_metadata_json TEXT NOT NULL DEFAULT '{}',\n",
+		"",
+	)
+	v3Schema = strings.Replace(
+		v3Schema,
+		"    CHECK (json_valid(model_metadata_json)),\n",
+		"",
+		1,
+	)
+	v3Schema = strings.Replace(
+		v3Schema,
+		"    updated_at TEXT NOT NULL,\n    CHECK (json_valid(model_metadata_json))\n",
+		"    updated_at TEXT NOT NULL\n",
+		1,
+	)
+	if _, err := raw.ExecContext(t.Context(), v3Schema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(
+		t.Context(),
+		"PRAGMA user_version = 3",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated, err := Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = migrated.Close() })
+	assertPragma(t, migrated.DB(), "user_version", "4")
+	assertTableColumns(t, migrated.DB(), "usage", "model_metadata_json")
+	assertTableColumns(
+		t,
+		migrated.DB(),
+		"usage_turn_context",
+		"model_metadata_json",
+	)
 }
 
 func TestTransactionCommitRollbackAndForeignKeys(t *testing.T) {

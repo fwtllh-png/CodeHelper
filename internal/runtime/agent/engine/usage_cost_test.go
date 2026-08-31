@@ -54,6 +54,11 @@ func TestEngineAttachesCostToStreamingUsage(t *testing.T) {
 	if streamed[0].Provider == "" || streamed[0].Model == "" {
 		t.Fatalf("usage event does not name the model that answered: %+v", streamed[0])
 	}
+	if streamed[0].ModelMetadata == nil ||
+		streamed[0].ModelMetadata.Limits != "fixture" ||
+		streamed[0].ModelMetadata.Capabilities != "fixture" {
+		t.Fatalf("usage event metadata provenance = %+v", streamed[0].ModelMetadata)
+	}
 }
 
 // TestEngineNumbersUsageBySampleAcrossCalls pins the boundary an aggregator needs.

@@ -88,6 +88,7 @@ type LifecycleConfig struct {
 	TurnCoordinatorRuntime turnkernel.CoordinatorRuntime
 	ReleaseTurnResources   func(TurnIdentity)
 	SessionID              string
+	DelegationMode         string
 	InputHost              *interact.Host
 	ProfileRevision        uint64
 }

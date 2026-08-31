@@ -57,21 +57,22 @@ type Agent struct {
 }
 
 type Usage struct {
-	SessionID       string            `json:"session_id"`
-	ThreadID        protocol.ThreadID `json:"thread_id"`
-	TurnID          protocol.TurnID   `json:"turn_id"`
-	Provider        string            `json:"provider"`
-	Model           string            `json:"model"`
-	InputTokens     uint64            `json:"input_tokens"`
-	OutputTokens    uint64            `json:"output_tokens"`
-	ReasoningTokens uint64            `json:"reasoning_tokens"`
-	CachedTokens    uint64            `json:"cached_tokens"`
-	CostMicrounits  uint64            `json:"cost_microunits"`
-	PricedCalls     uint64            `json:"priced_calls"`
-	UnpricedCalls   uint64            `json:"unpriced_calls"`
-	Calls           uint64            `json:"calls"`
-	FirstAt         time.Time         `json:"first_at"`
-	LastAt          time.Time         `json:"last_at"`
+	SessionID       string                            `json:"session_id"`
+	ThreadID        protocol.ThreadID                 `json:"thread_id"`
+	TurnID          protocol.TurnID                   `json:"turn_id"`
+	Provider        string                            `json:"provider"`
+	Model           string                            `json:"model"`
+	ModelMetadata   *protocol.ModelMetadataProvenance `json:"model_metadata_provenance,omitempty"`
+	InputTokens     uint64                            `json:"input_tokens"`
+	OutputTokens    uint64                            `json:"output_tokens"`
+	ReasoningTokens uint64                            `json:"reasoning_tokens"`
+	CachedTokens    uint64                            `json:"cached_tokens"`
+	CostMicrounits  uint64                            `json:"cost_microunits"`
+	PricedCalls     uint64                            `json:"priced_calls"`
+	UnpricedCalls   uint64                            `json:"unpriced_calls"`
+	Calls           uint64                            `json:"calls"`
+	FirstAt         time.Time                         `json:"first_at"`
+	LastAt          time.Time                         `json:"last_at"`
 }
 
 type UsageRollup struct {
@@ -130,7 +131,8 @@ func UsageFrom(value usagestate.Aggregate) Usage {
 	return Usage{
 		SessionID: value.SessionID, ThreadID: value.ThreadID, TurnID: value.TurnID,
 		Provider: value.Provider, Model: value.Model,
-		InputTokens: value.InputTokens, OutputTokens: value.OutputTokens,
+		ModelMetadata: value.ModelMetadata,
+		InputTokens:   value.InputTokens, OutputTokens: value.OutputTokens,
 		ReasoningTokens: value.ReasoningTokens, CachedTokens: value.CachedTokens,
 		CostMicrounits: value.CostMicrounits,
 		PricedCalls:    value.PricedCalls, UnpricedCalls: value.UnpricedCalls,

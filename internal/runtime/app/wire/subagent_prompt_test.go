@@ -59,13 +59,21 @@ func TestSimpleModelTurnDoesNotSpawnAgent(t *testing.T) {
 	}
 	timer := time.NewTimer(15 * time.Second)
 	defer timer.Stop()
+	var receipt *protocol.ExecutionReceiptData
 	for {
 		select {
 		case event := <-events:
 			switch event.Kind {
+			case protocol.EventExecutionReceipt:
+				receipt, _ = event.Data.(*protocol.ExecutionReceiptData)
 			case protocol.EventTurnCompleted:
 				if got := session.Subagents().List(subagent.ListFilter{}); len(got) != 0 {
 					t.Fatalf("simple turn spawned agents: %+v", got)
+				}
+				if receipt == nil || receipt.Delegation == nil ||
+					receipt.Delegation.Mode != "adaptive" ||
+					receipt.Delegation.Outcome != "retained_parent" {
+					t.Fatalf("simple turn delegation receipt = %+v", receipt)
 				}
 				return
 			case protocol.EventTurnFailed, protocol.EventTurnCanceled:

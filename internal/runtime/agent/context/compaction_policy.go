@@ -47,7 +47,11 @@ type CompactionSelectionRequest struct {
 	// PruneBeforePressure shrinks already-consumed, handle-backed tool results
 	// using the caller's dynamic surface budget even when compaction is not due.
 	PruneBeforePressure bool
-	Prune               func(
+	// RequireSemanticCandidate prevents surface pruning from satisfying a
+	// pressure-triggered compaction by itself. The pruned history is still used
+	// as input when building the semantic candidate.
+	RequireSemanticCandidate bool
+	Prune                    func(
 		*[]provider.Message,
 		MessageSnapshot,
 		uint64,
@@ -113,7 +117,8 @@ func SelectCompaction(
 		}
 		return result, nil
 	}
-	pruningEnough := pruned.Results != 0 &&
+	pruningEnough := !request.RequireSemanticCandidate &&
+		pruned.Results != 0 &&
 		(request.RecentTailMaxTokens == 0 ||
 			request.EstimateMessages(working) <= request.RecentTailMaxTokens) &&
 		(prunedWindow.Active <= prunedWindow.CompactLimit &&
@@ -170,6 +175,9 @@ func SelectCompaction(
 		candidate.AuthorityDigest = authorityDigest
 		candidate.SourceWindowID = original.Projection.ID
 		candidate.SourceContextDigest, _ = input.Digest()
+		candidate.SourceHistory = CloneMessages(request.History)
+		candidate.SourceHistoryDigest = HistoryDigest(request.History)
+		candidate.SourceTokens = original.Active
 		candidate.RetainedTokens = window.Active
 		if request.Force ||
 			window.Active <= original.CompactLimit ||

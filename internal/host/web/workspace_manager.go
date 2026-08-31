@@ -176,10 +176,15 @@ func (m *workspaceRuntimeManager) Reconfigure(
 	}
 	sort.Strings(ids)
 	prepared := make(map[string]*preparedWebRuntime, len(active))
-	closePrepared := func() {
+	var stagedControl *credential.Control
+	var stagedReference credential.Reference
+	closePrepared := func() error {
+		var closeErr error
 		for _, runtime := range prepared {
 			runtime.close()
+			closeErr = errors.Join(closeErr, runtime.rollbackCredential())
 		}
+		return closeErr
 	}
 	for index, id := range ids {
 		current := active[id]
@@ -188,8 +193,7 @@ func (m *workspaceRuntimeManager) Reconfigure(
 		options.workspace = root
 		candidate, loadErr := loadWebSetupConfig(options, selection, reference)
 		if loadErr != nil {
-			closePrepared()
-			return loadErr
+			return errors.Join(loadErr, closePrepared())
 		}
 		secret := ""
 		if index == 0 {
@@ -206,24 +210,32 @@ func (m *workspaceRuntimeManager) Reconfigure(
 			repositories,
 			stderr,
 			secret,
+			stagedControl,
+			stagedReference,
 		)
 		if prepareErr != nil {
-			closePrepared()
-			return prepareErr
+			return errors.Join(prepareErr, closePrepared())
 		}
 		prepared[id] = replacement
+		if replacement.credentialActivate != nil {
+			stagedControl = replacement.credentialControl
+			stagedReference = replacement.credentialReference
+		}
+	}
+	if stagedControl != nil {
+		value := stagedReference
+		selection.Credential = &value
+		reference = value
 	}
 	if err := idleWorkspaceRuntimes(ctx, active); err != nil {
-		closePrepared()
-		return err
+		return errors.Join(err, closePrepared())
 	}
 	roots := make([]string, 0, len(ids))
 	for _, id := range ids {
 		roots = append(roots, active[id].dependencies.WorkspaceRoot)
 	}
 	if err := saveWebSetupSelection(m.dataDir, "", selection); err != nil {
-		closePrepared()
-		return err
+		return errors.Join(err, closePrepared())
 	}
 	previousProfile := active[ids[0]].application.DefaultProfile()
 	nextProfile := prepared[ids[0]].application.DefaultProfile()
@@ -233,8 +245,21 @@ func (m *workspaceRuntimeManager) Reconfigure(
 		nextProfile,
 	); err != nil {
 		_ = saveWebSetupSelection(m.dataDir, "", previousSelection)
-		closePrepared()
-		return err
+		return errors.Join(err, closePrepared())
+	}
+	for _, runtime := range prepared {
+		if err := runtime.activateCredential(); err != nil {
+			rollbackErr := repositories.Sessions.RebindWorkspaceProfiles(
+				ctx,
+				roots,
+				previousProfile,
+			)
+			rollbackErr = errors.Join(
+				rollbackErr,
+				saveWebSetupSelection(m.dataDir, "", previousSelection),
+			)
+			return errors.Join(err, rollbackErr, closePrepared())
+		}
 	}
 	replaced := make([]string, 0, len(ids))
 	for _, id := range ids {
@@ -255,8 +280,7 @@ func (m *workspaceRuntimeManager) Reconfigure(
 				rollbackErr,
 				saveWebSetupSelection(m.dataDir, "", previousSelection),
 			)
-			closePrepared()
-			return errors.Join(err, rollbackErr)
+			return errors.Join(err, rollbackErr, closePrepared())
 		}
 		replaced = append(replaced, id)
 	}
@@ -266,6 +290,15 @@ func (m *workspaceRuntimeManager) Reconfigure(
 	m.reference = reference
 	m.active = prepared
 	m.mu.Unlock()
+	for _, runtime := range prepared {
+		if commitErr := runtime.commitCredential(); commitErr != nil {
+			_, _ = fmt.Fprintf(
+				stderr,
+				"codehelper: finalize credential rotation: %v\n",
+				commitErr,
+			)
+		}
+	}
 	for _, runtime := range active {
 		runtime.close()
 	}
@@ -445,6 +478,7 @@ func (m *workspaceRuntimeManager) Add(
 			prepared, loadErr = prepareWebRuntime(
 				ctx, options, loaded, selection, root, identity,
 				store, repositories, stderr, "",
+				nil, credential.Reference{},
 			)
 		}
 

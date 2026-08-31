@@ -138,6 +138,28 @@ func TestReceiptReportsProviderRetrySummary(t *testing.T) {
 	}
 }
 
+func TestReceiptRetainsModelMetadataProvenance(t *testing.T) {
+	recorder := New("inspect model")
+	metadata := &protocol.ModelMetadataProvenance{
+		CanonicalID:  "operator_config",
+		WireID:       "operator_config",
+		Limits:       "operator_config",
+		Capabilities: "operator_config",
+	}
+	recorder.Observe(agentengine.Event{
+		Provider:      "openai-compatible",
+		Model:         "custom-model",
+		Purpose:       "act",
+		ModelMetadata: metadata,
+	})
+	receipt := recorder.Build(Observations{})
+	if len(receipt.Routes) != 1 ||
+		receipt.Routes[0].ModelMetadata == nil ||
+		receipt.Routes[0].ModelMetadata.Limits != "operator_config" {
+		t.Fatalf("receipt routes = %+v", receipt.Routes)
+	}
+}
+
 func TestReceiptProjectsSkillSelectionDiagnostics(t *testing.T) {
 	selection := receiptSkillSelection(agentengine.SkillSelectionMetrics{
 		Method: "weighted_lexical_v1", CatalogSize: 1024,
@@ -697,6 +719,49 @@ func TestReceiptCarriesOnlyTerminalCompletionDeclaration(t *testing.T) {
 		receipt.Completion.CallID != "complete-1" ||
 		receipt.Completion.Summary != "implemented and verified" {
 		t.Fatalf("receipt = %+v", receipt)
+	}
+}
+
+func TestReceiptReportsObservedAdaptiveDelegation(t *testing.T) {
+	retained := New("small change")
+	retained.Observe(agentengine.Event{
+		ModelExecution: &agentengine.ModelExecution{Kind: "model_sample"},
+	})
+	got := retained.Build(Observations{delegationMode: "adaptive"})
+	if got.Delegation == nil ||
+		got.Delegation.Outcome != "retained_parent" ||
+		got.Delegation.Attempts != 0 || got.Delegation.Spawned != 0 {
+		t.Fatalf("retained delegation = %+v", got.Delegation)
+	}
+
+	delegated := New("parallel review")
+	delegated.Observe(agentengine.Event{
+		State: agentengine.RunningTools,
+		ToolCall: &provider.ToolCall{
+			Name: "spawn_agent", ID: "spawn-1",
+		},
+		Result: &tool.Result{Content: "started"},
+	})
+	got = delegated.Build(Observations{delegationMode: "adaptive"})
+	if got.Delegation == nil ||
+		got.Delegation.Outcome != "delegated" ||
+		got.Delegation.Attempts != 1 || got.Delegation.Spawned != 1 {
+		t.Fatalf("successful delegation = %+v", got.Delegation)
+	}
+
+	blocked := New("parallel review")
+	blocked.Observe(agentengine.Event{
+		State: agentengine.RunningTools,
+		ToolCall: &provider.ToolCall{
+			Name: "spawn_agent", ID: "spawn-1",
+		},
+		Result: &tool.Result{Content: "denied", IsError: true},
+	})
+	got = blocked.Build(Observations{delegationMode: "adaptive"})
+	if got.Delegation == nil ||
+		got.Delegation.Outcome != "blocked" ||
+		got.Delegation.Attempts != 1 || got.Delegation.Spawned != 0 {
+		t.Fatalf("blocked delegation = %+v", got.Delegation)
 	}
 }
 

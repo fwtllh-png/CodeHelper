@@ -3238,12 +3238,13 @@ textarea:disabled {
 }
 
 .inputResponse {
+  position: relative;
   flex-wrap: nowrap;
 }
 
-.inputResponse select {
-  min-width: 120px;
-  flex: 0 1 300px;
+.inputOptionRoot {
+  min-width: 180px;
+  flex: 0 1 420px;
 }
 
 .inputResponse input {
@@ -3649,7 +3650,8 @@ textarea:disabled {
     flex-wrap: wrap;
   }
 
-  .inputResponse select {
+  .inputOptionRoot {
+    min-width: 0;
     max-width: none;
     flex-basis: 100%;
   }

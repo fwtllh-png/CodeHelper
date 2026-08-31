@@ -226,6 +226,193 @@ func TestC3CoordinatorRuntimeRequeuesRunningModelEffect(t *testing.T) {
 	}
 }
 
+func TestModelTransportBoundaryIsDurablyQuiescent(t *testing.T) {
+	store := NewMemoryTerminalEnvelopeStore(nil, nil)
+	runtime, err := NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := runtime.Open(
+		t.Context(),
+		"turn-transport-boundary",
+		NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []Command{
+		StartTurn{},
+		PreparationFinished{},
+		ModelSampleRequested{SampleID: "sample-1"},
+	} {
+		if err := handle.Coordinator.Submit(t.Context(), command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	effect, err := handle.Dispatcher.Start(
+		EffectSampleProvider,
+		"sample-1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assembly := providerassembly.NewResponseAssembly("sample-1")
+	if err := assembly.BeginTransport(provider.TransportMetadata{
+		LogicalRequestID: "sample-1", TransportRequestID: "transport-1",
+		Attempt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []provider.StreamEvent{
+		{Type: provider.EventTextDelta, Text: "partial"},
+		{Type: provider.EventMessageStop, StopReason: provider.StopReasonMaxTokens},
+	} {
+		if _, err := assembly.Apply(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := handle.Coordinator.Submit(
+		t.Context(),
+		ModelSampleProgressRecorded{
+			EffectID: effect.ID, SampleID: "sample-1",
+			Attempt: effect.Attempt, Assembly: *assembly,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := handle.Dispatcher.Requeue(
+		EffectSampleProvider,
+		"sample-1",
+	); err != nil {
+		t.Fatal(err)
+	}
+	state := handle.Coordinator.Snapshot()
+	if state.ActiveSampleID != "" ||
+		state.SampleLedger["sample-1"].Status != SampleRequested ||
+		state.SampleLedger["sample-1"].ProviderRetries != 0 ||
+		state.PendingEffects[effect.ID].Status != EffectRequested {
+		t.Fatalf("transport boundary state = %+v", state)
+	}
+	if err := handle.Coordinator.Submit(
+		t.Context(),
+		ContextCompactionRequested{
+			CompactionID: "compact-1",
+			PlanDigest:   "sha256:plan",
+		},
+	); err != nil {
+		t.Fatalf("compaction at transport boundary: %v", err)
+	}
+	compactionEffect, err := handle.Dispatcher.Start(
+		EffectGenerateNarrative,
+		"compact-1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := handle.Dispatcher.Resolve(EffectResultReceived{
+		EffectID: compactionEffect.ID,
+		Success:  true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := handle.Dispatcher.Start(
+		EffectSampleProvider,
+		"sample-1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restarted.Attempt != 2 {
+		t.Fatalf("next transport attempt = %d", restarted.Attempt)
+	}
+}
+
+func TestCompleteAssemblyRecoveryResolvesWithoutProviderRestart(t *testing.T) {
+	store := NewMemoryTerminalEnvelopeStore(nil, nil)
+	first, err := NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := first.Open(
+		t.Context(),
+		"turn-complete-assembly",
+		NewState(protocol.TurnIntentAnswer, "act", 1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []Command{
+		StartTurn{},
+		PreparationFinished{},
+		ModelSampleRequested{SampleID: "sample-1"},
+	} {
+		if err := handle.Coordinator.Submit(t.Context(), command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	effect, err := handle.Dispatcher.Start(
+		EffectSampleProvider,
+		"sample-1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assembly := providerassembly.NewResponseAssembly("sample-1")
+	if err := assembly.BeginTransport(provider.TransportMetadata{
+		LogicalRequestID: "sample-1", TransportRequestID: "transport-1",
+		Attempt: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []provider.StreamEvent{
+		{Type: provider.EventTextDelta, Text: "complete"},
+		{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+	} {
+		if _, err := assembly.Apply(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := handle.Coordinator.Submit(
+		t.Context(),
+		ModelSampleProgressRecorded{
+			EffectID: effect.ID, SampleID: "sample-1",
+			Attempt: effect.Attempt, Assembly: *assembly,
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Release(t.Context(), "turn-complete-assembly"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := second.Restore(
+		t.Context(),
+		"turn-complete-assembly",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := restored.Coordinator.Snapshot()
+	if state.ActiveSampleID != "" ||
+		state.SampleLedger["sample-1"].Status != SampleRequested {
+		t.Fatalf("restored complete assembly = %+v", state)
+	}
+	if err := restored.Dispatcher.Resolve(ModelSampleResultReceived{
+		EffectID: effect.ID, SampleID: "sample-1", Text: "complete",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state = restored.Coordinator.Snapshot()
+	if state.SampleLedger["sample-1"].Status != SampleCompleted ||
+		state.ActiveSampleID != "" ||
+		len(state.PendingEffects) != 0 {
+		t.Fatalf("resolved complete assembly = %+v", state)
+	}
+}
+
 func TestC5CoordinatorRestorePreservesDurableEffectPayload(t *testing.T) {
 	store := NewMemoryTerminalEnvelopeStore(nil, nil)
 	first, err := NewStoreCoordinatorRuntime(store)

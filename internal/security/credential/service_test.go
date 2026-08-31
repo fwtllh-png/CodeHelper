@@ -161,7 +161,7 @@ func TestCredentialControlRecoversRotationAndDeferredCleanup(t *testing.T) {
 		root: root, registry: registry, namespace: "workspace-provider",
 		base: control.base, keyring: storage,
 	}
-	if err := restarted.reconcile(t.Context()); err != nil {
+	if err := restarted.reconcile(t.Context(), Reference{}); err != nil {
 		t.Fatal(err)
 	}
 	if storage.values["provider/old"] != "old-secret" {
@@ -180,7 +180,7 @@ func TestCredentialControlRecoversRotationAndDeferredCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := restarted.reconcile(t.Context()); err != nil {
+	if err := restarted.reconcile(t.Context(), Reference{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := storage.values[status.Reference.Name]; exists {
@@ -199,7 +199,7 @@ func TestCredentialControlRecoversRotationAndDeferredCleanup(t *testing.T) {
 	if storage.values[second.Reference.Name] != "newer-secret" {
 		t.Fatal("active credential was deleted before clear restart")
 	}
-	if err := restarted.reconcile(t.Context()); err != nil {
+	if err := restarted.reconcile(t.Context(), Reference{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := storage.values[second.Reference.Name]; exists {
@@ -239,6 +239,276 @@ func TestCredentialControlLiveReloadPublishesCurrentReference(t *testing.T) {
 	}
 }
 
+func TestCredentialControlRestoresFailedRotation(t *testing.T) {
+	registry := t.TempDir()
+	storage := &memoryStore{values: map[string]string{
+		"provider/old": "old-secret",
+	}}
+	control := &Control{
+		root:      filepath.Join(registry, "workspace"),
+		registry:  registry,
+		namespace: "workspace",
+		base:      Reference{Kind: "keyring", Name: "provider/old"},
+		keyring:   storage,
+	}
+	service := New(
+		control.base,
+		WithControl(control),
+		WithLiveReload(),
+	)
+	rotated, err := service.StageKeyring(t.Context(), "new-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.Restore(
+		t.Context(),
+		rotated.Reference,
+		control.base,
+	); err != nil {
+		t.Fatal(err)
+	}
+	current, err := control.Reference(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != control.base {
+		t.Fatalf("restored reference = %+v", current)
+	}
+	if _, exists := storage.values[rotated.Reference.Name]; exists {
+		t.Fatal("rolled-back credential remains in keyring")
+	}
+	if storage.values[control.base.Name] != "old-secret" {
+		t.Fatal("previous credential was changed")
+	}
+}
+
+func TestCredentialControlKeepsPreviousManagedSecretUntilStagedCommit(
+	t *testing.T,
+) {
+	registry := t.TempDir()
+	const previousName = "web/workspace/00000000000000000000000000000000"
+	storage := &memoryStore{values: map[string]string{
+		previousName: "old-secret",
+	}}
+	control := &Control{
+		root: filepath.Join(registry, "workspace"), registry: registry,
+		namespace: "workspace",
+		base:      Reference{Kind: "keyring", Name: previousName},
+		keyring:   storage,
+	}
+	service := New(
+		control.base,
+		WithControl(control),
+		WithLiveReload(),
+	)
+	staged, err := service.StageKeyring(t.Context(), "new-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.Activate(t.Context(), staged.Reference); err != nil {
+		t.Fatal(err)
+	}
+	if storage.values[previousName] != "old-secret" {
+		t.Fatal("activated rotation deleted the rollback credential")
+	}
+	if err := control.Commit(t.Context(), staged.Reference); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := storage.values[previousName]; exists {
+		t.Fatal("committed staged rotation retained the old managed credential")
+	}
+	if storage.values[staged.Reference.Name] != "new-secret" {
+		t.Fatal("committed staged rotation deleted the active credential")
+	}
+}
+
+func TestCredentialControlRecoveryRollsBackUnactivatedStage(t *testing.T) {
+	registry := t.TempDir()
+	storage := &memoryStore{values: map[string]string{
+		"provider/old": "old-secret",
+	}}
+	control := &Control{
+		root: filepath.Join(registry, "workspace"), registry: registry,
+		namespace: "workspace",
+		base:      Reference{Kind: "keyring", Name: "provider/old"},
+		keyring:   storage,
+	}
+	staged, err := New(
+		control.base,
+		WithControl(control),
+		WithLiveReload(),
+	).StageKeyring(t.Context(), "new-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted := &Control{
+		root: control.root, registry: registry, namespace: control.namespace,
+		base: control.base, keyring: storage,
+	}
+	if err := restarted.reconcile(t.Context(), Reference{}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := restarted.Reference(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != control.base {
+		t.Fatalf("recovered reference = %+v", current)
+	}
+	if _, exists := storage.values[staged.Reference.Name]; exists {
+		t.Fatal("unactivated staged credential survived recovery")
+	}
+	if storage.values[control.base.Name] != "old-secret" {
+		t.Fatal("recovery deleted the active credential")
+	}
+}
+
+func TestCredentialControlRecoveryActivatesSelectedStage(t *testing.T) {
+	registry := t.TempDir()
+	const previousName = "web/workspace/00000000000000000000000000000000"
+	storage := &memoryStore{values: map[string]string{
+		previousName: "old-secret",
+	}}
+	control := &Control{
+		root: filepath.Join(registry, "workspace"), registry: registry,
+		namespace: "workspace",
+		base:      Reference{Kind: "keyring", Name: previousName},
+		keyring:   storage,
+	}
+	staged, err := New(
+		control.base,
+		WithControl(control),
+		WithLiveReload(),
+	).StageKeyring(t.Context(), "new-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted := &Control{
+		root: control.root, registry: registry, namespace: control.namespace,
+		base: control.base, keyring: storage,
+	}
+	if err := restarted.reconcile(
+		t.Context(),
+		staged.Reference,
+	); err != nil {
+		t.Fatal(err)
+	}
+	current, err := restarted.Reference(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != staged.Reference {
+		t.Fatalf("selected staged reference = %+v", current)
+	}
+	if _, exists := storage.values[control.base.Name]; exists {
+		t.Fatal("recovered activation retained previous managed credential")
+	}
+	if storage.values[staged.Reference.Name] != "new-secret" {
+		t.Fatal("recovered activation deleted selected credential")
+	}
+}
+
+func TestCredentialControlRecoveryCompletesRequestedRollback(t *testing.T) {
+	registry := t.TempDir()
+	const previousName = "web/workspace/00000000000000000000000000000000"
+	storage := &memoryStore{values: map[string]string{
+		previousName: "old-secret",
+	}}
+	control := &Control{
+		root: filepath.Join(registry, "workspace"), registry: registry,
+		namespace: "workspace",
+		base:      Reference{Kind: "keyring", Name: previousName},
+		keyring:   storage,
+	}
+	staged, err := New(
+		control.base,
+		WithControl(control),
+		WithLiveReload(),
+	).StageKeyring(t.Context(), "new-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.Activate(t.Context(), staged.Reference); err != nil {
+		t.Fatal(err)
+	}
+	path, intent, err := control.stagedIntent(staged.Reference)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent.Phase = "rollback_requested"
+	if err := writeJSONAtomic(path, intent); err != nil {
+		t.Fatal(err)
+	}
+	restarted := &Control{
+		root: control.root, registry: registry, namespace: control.namespace,
+		base: control.base, keyring: storage,
+	}
+	if err := restarted.reconcile(t.Context(), Reference{}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := restarted.Reference(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != control.base {
+		t.Fatalf("rollback recovery reference = %+v", current)
+	}
+	if _, exists := storage.values[staged.Reference.Name]; exists {
+		t.Fatal("rollback recovery retained staged credential")
+	}
+	if storage.values[previousName] != "old-secret" {
+		t.Fatal("rollback recovery deleted previous credential")
+	}
+}
+
+func TestCredentialControlRecoveryUsesRestoredSelection(t *testing.T) {
+	registry := t.TempDir()
+	const previousName = "web/workspace/00000000000000000000000000000000"
+	storage := &memoryStore{values: map[string]string{
+		previousName: "old-secret",
+	}}
+	control := &Control{
+		root: filepath.Join(registry, "workspace"), registry: registry,
+		namespace: "workspace",
+		base:      Reference{Kind: "keyring", Name: previousName},
+		keyring:   storage,
+	}
+	staged, err := New(
+		control.base,
+		WithControl(control),
+		WithLiveReload(),
+	).StageKeyring(t.Context(), "new-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := control.Activate(t.Context(), staged.Reference); err != nil {
+		t.Fatal(err)
+	}
+	restarted := &Control{
+		root: control.root, registry: registry, namespace: control.namespace,
+		base: control.base, keyring: storage,
+	}
+	if err := restarted.reconcile(
+		t.Context(),
+		Reference{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	current, err := restarted.Reference(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current != control.base {
+		t.Fatalf("restored selection reference = %+v", current)
+	}
+	if _, exists := storage.values[staged.Reference.Name]; exists {
+		t.Fatal("restored selection retained staged credential")
+	}
+	if storage.values[previousName] != "old-secret" {
+		t.Fatal("restored selection deleted previous credential")
+	}
+}
+
 func TestCredentialControlRemovesPreparedOrphan(t *testing.T) {
 	registry := t.TempDir()
 	storage := &memoryStore{values: map[string]string{
@@ -260,7 +530,7 @@ func TestCredentialControlRemovesPreparedOrphan(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.reconcile(t.Context()); err != nil {
+	if err := control.reconcile(t.Context(), Reference{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := storage.values["web/workspace-provider/00000000000000000000000000000000"]; exists {
@@ -290,7 +560,7 @@ func TestCredentialControlRetriesPreparedOrphanDeletion(t *testing.T) {
 	if err := control.writeIntent(intent); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.reconcile(t.Context()); err == nil {
+	if err := control.reconcile(t.Context(), Reference{}); err == nil {
 		t.Fatal("expected transient keyring deletion failure")
 	}
 	var retained recoveryIntent
@@ -304,7 +574,7 @@ func TestCredentialControlRetriesPreparedOrphanDeletion(t *testing.T) {
 		t.Fatalf("intent phase = %q", retained.Phase)
 	}
 	storage.deleteErr = nil
-	if err := control.reconcile(t.Context()); err != nil {
+	if err := control.reconcile(t.Context(), Reference{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, exists := storage.values[name]; exists {
@@ -327,7 +597,7 @@ func TestCredentialControlNeverDeletesCustomWebKeyringName(t *testing.T) {
 	if _, err := service.SetKeyring(t.Context(), "managed-secret"); err != nil {
 		t.Fatal(err)
 	}
-	if err := control.reconcile(t.Context()); err != nil {
+	if err := control.reconcile(t.Context(), Reference{}); err != nil {
 		t.Fatal(err)
 	}
 	if storage.values["web/custom"] != "external-secret" {

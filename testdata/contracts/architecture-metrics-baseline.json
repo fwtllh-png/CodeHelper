@@ -118,9 +118,12 @@
       "path": "internal/adapter/provider/wire",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 423,
+        "production_lines": 444,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Centralized explicit hard-quota evidence so retry policy can distinguish terminal billing failures from transient rate limits."
       }
     },
     {
@@ -176,9 +179,12 @@
       "path": "internal/adapter/provider/openai",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1953,
+        "production_lines": 1960,
         "options_fields": 0,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Preserve numeric vendor error codes and classify explicit quota exhaustion without converting transient 429 responses."
       }
     },
     {
@@ -187,9 +193,12 @@
       "path": "internal/adapter/provider/anthropic",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 641,
+        "production_lines": 674,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Add typed Anthropic HTTP classification so temporary rate limits remain retryable while billing exhaustion terminates."
       }
     },
     {
@@ -306,9 +315,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 21,
-        "production_lines": 7871,
+        "production_lines": 8172,
         "options_fields": 6,
         "mutex_fields": 5
+      },
+      "relaxations": {
+        "production_lines": "Implement atomic compaction commit and live adoption, provider-visible reduction checks, and crash-safe transport continuation recovery."
       }
     },
     {
@@ -317,9 +329,12 @@
       "path": "internal/runtime/agent/turnkernel",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 8032,
+        "production_lines": 8120,
         "options_fields": 0,
         "mutex_fields": 8
+      },
+      "relaxations": {
+        "production_lines": "Persist quiescent max-token transport boundaries and resolve checkpointed complete assemblies without provider replay."
       }
     },
     {
@@ -567,8 +582,8 @@
       "kind": "file",
       "path": "internal/runtime/agent/context/store_normalize.go",
       "limits": {
-        "lines": 296,
-        "max_function_lines": 130
+        "lines": 226,
+        "max_function_lines": 80
       }
     },
     {
@@ -662,9 +677,12 @@
       "path": "internal/runtime/agent/context",
       "limits": {
         "internal_fanout": 7,
-        "production_lines": 9037,
+        "production_lines": 9387,
         "options_fields": 0,
         "mutex_fields": 3
+      },
+      "relaxations": {
+        "production_lines": "Add immutable prepared compaction fences, semantic continuation requirements, exact rebase validation, and replay-safe normalization."
       }
     },
     {

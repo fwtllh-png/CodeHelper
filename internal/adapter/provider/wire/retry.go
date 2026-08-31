@@ -11,7 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const RetryPolicyRevision = "provider-retry/v1"
+const RetryPolicyRevision = "provider-retry/v2"
 
 type RetryPolicy struct {
 	MaxRetries int
@@ -41,10 +41,14 @@ func (p RetryPolicy) Decide(
 	if limit < 1 && protocol.IsRetryable(err) {
 		limit = 1
 	}
+	if limit < 1 {
+		limit = 1
+	}
 	eligible := false
 	switch failure.Code {
-	case provider.FailureRateLimit,
-		provider.FailureServer,
+	case provider.FailureRateLimit:
+		eligible, limit = true, 0
+	case provider.FailureServer,
 		provider.FailureTransport,
 		provider.FailureStreamClosed,
 		provider.FailureTimeout:
@@ -60,9 +64,6 @@ func (p RetryPolicy) Decide(
 	}
 	if !eligible {
 		return RetryDecision{}, false
-	}
-	if limit < 1 {
-		limit = 1
 	}
 	decision := protocol.DecideRecovery(
 		RecoveryFault(err, failure),

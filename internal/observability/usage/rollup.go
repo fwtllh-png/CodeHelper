@@ -79,6 +79,9 @@ func (r Rollup) Cost() string {
 // QueryRollup folds every matching aggregate row into one total for the scope
 // the filter names.
 func (r *Repository) QueryRollup(ctx context.Context, filter Query) (Rollup, error) {
+	// Pagination applies only to detail rows. A scope total must include every
+	// matching call, even when its accompanying detail response is bounded.
+	filter.Limit = 0
 	aggregates, err := r.QueryAggregates(ctx, filter)
 	if err != nil {
 		return Rollup{}, err

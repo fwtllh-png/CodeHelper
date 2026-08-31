@@ -104,6 +104,7 @@ func TestContextRebaseCommitIsAtomicIdempotentAndRecoverable(t *testing.T) {
 	}
 	conflict := envelope
 	conflict.Snapshot.Revision++
+	conflict.BaseRevision = conflict.Snapshot.Revision - 1
 	if err := conflict.Snapshot.Seal(); err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +203,21 @@ func TestContextRebaseCommitIsAtomicIdempotentAndRecoverable(t *testing.T) {
 		batch,
 	); err != nil {
 		t.Fatalf("atomic replay failed: %v", err)
+	}
+	stale := nextEnvelope
+	stale.CompactionID = "compact-stale"
+	stale.Snapshot.Compaction.State.ID = stale.CompactionID
+	if err := stale.Snapshot.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	if err := stale.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitContextRebase(
+		t.Context(),
+		stale,
+	); err == nil {
+		t.Fatal("stale base revision committed a context rebase")
 	}
 	if err := repository.CommitContextRebase(
 		t.Context(),

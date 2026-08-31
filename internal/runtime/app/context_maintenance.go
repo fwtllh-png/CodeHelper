@@ -52,6 +52,7 @@ func (s *runtimeSink) publishPostTurnContextMaintenance(
 				),
 				Provider:        result.Provider,
 				Model:           result.Model,
+				ModelMetadata:   &result.ModelMetadata,
 				InputTokens:     result.Usage.InputTokens,
 				OutputTokens:    result.Usage.OutputTokens,
 				ReasoningTokens: result.Usage.ReasoningTokens,

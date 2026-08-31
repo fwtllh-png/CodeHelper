@@ -232,9 +232,10 @@ type ReceiptBudget struct {
 // events a turn emits, but not why they were chosen, and "why did this turn use
 // the expensive model" is the question a per-purpose routing table creates.
 type ReceiptRoute struct {
-	Purpose  string `json:"purpose"`
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
+	Purpose       string                   `json:"purpose"`
+	Provider      string                   `json:"provider"`
+	Model         string                   `json:"model"`
+	ModelMetadata *ModelMetadataProvenance `json:"model_metadata_provenance,omitempty"`
 }
 
 type ReceiptSkill struct {
@@ -275,6 +276,13 @@ type ReceiptModelExecution struct {
 	SampleReasons     map[string]int `json:"sample_reasons,omitempty"`
 }
 
+type ReceiptDelegation struct {
+	Mode     string `json:"mode"`
+	Outcome  string `json:"outcome"`
+	Attempts int    `json:"attempts"`
+	Spawned  int    `json:"spawned"`
+}
+
 // ExecutionReceiptData is the per-turn audit record: what the turn was asked to
 // do, what it touched, what verified it, and what it cost.
 // It is emitted for completed and failed turns alike, immediately before the
@@ -297,6 +305,7 @@ type ExecutionReceiptData struct {
 	ProviderRetry      *ReceiptProviderRetry  `json:"provider_retry,omitempty"`
 	ModelExecution     ReceiptModelExecution  `json:"model_execution"`
 	ToolExecution      map[string]int         `json:"tool_execution"`
+	Delegation         *ReceiptDelegation     `json:"delegation,omitempty"`
 
 	// Routes are the routes the turn actually sampled on, one entry per purpose.
 	// It is what the turn did, not the table it could have used: a slot the turn
@@ -411,6 +420,20 @@ func (d *ExecutionReceiptData) validate() error {
 		d.WorkspaceIsolation != "worktree" {
 		return errors.New("receipt workspace isolation is invalid")
 	}
+	if err := validateReceiptDelegation(d.Delegation); err != nil {
+		return err
+	}
+	for _, route := range d.Routes {
+		if route.Purpose == "" || route.Provider == "" || route.Model == "" {
+			return errors.New("receipt route identity is incomplete")
+		}
+		// ModelMetadata is optional only for persisted pre-contract receipts.
+		if route.ModelMetadata != nil {
+			if err := route.ModelMetadata.Validate(); err != nil {
+				return err
+			}
+		}
+	}
 	if d.Completion != nil {
 		if err := d.Completion.validate(); err != nil {
 			return err
@@ -500,6 +523,44 @@ func (d *ExecutionReceiptData) validate() error {
 				return errors.New("receipt evidence risk needs a kind and a path")
 			}
 		}
+	}
+	return nil
+}
+
+func validateReceiptDelegation(delegation *ReceiptDelegation) error {
+	if delegation == nil {
+		return nil
+	}
+	switch delegation.Mode {
+	case "disabled", "explicit", "adaptive":
+	default:
+		return errors.New("receipt delegation mode is invalid")
+	}
+	if delegation.Attempts < 0 || delegation.Spawned < 0 ||
+		delegation.Spawned > delegation.Attempts {
+		return errors.New("receipt delegation counts are invalid")
+	}
+	switch delegation.Outcome {
+	case "delegated":
+		if delegation.Spawned == 0 || delegation.Mode == "disabled" {
+			return errors.New("receipt delegated outcome is inconsistent")
+		}
+	case "blocked":
+		if delegation.Attempts == 0 || delegation.Spawned != 0 ||
+			delegation.Mode == "disabled" {
+			return errors.New("receipt blocked delegation outcome is inconsistent")
+		}
+	case "retained_parent":
+		if delegation.Mode != "adaptive" ||
+			delegation.Attempts != 0 || delegation.Spawned != 0 {
+			return errors.New("receipt retained-parent delegation outcome is inconsistent")
+		}
+	case "not_evaluated":
+		if delegation.Attempts != 0 || delegation.Spawned != 0 {
+			return errors.New("receipt non-evaluated delegation outcome is inconsistent")
+		}
+	default:
+		return errors.New("receipt delegation outcome is invalid")
 	}
 	return nil
 }

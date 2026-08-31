@@ -1,8 +1,12 @@
 package model
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 )
 
 type RouteRequest struct {
@@ -52,6 +56,22 @@ func (r ReadyRoute) Adapter() AdapterID        { return r.adapter }
 func (r ReadyRoute) Endpoint() string          { return r.endpoint }
 func (r ReadyRoute) Protocol() WireProtocol    { return r.protocol }
 func (r ReadyRoute) Credential() CredentialRef { return r.credential }
+
+// ConnectionID isolates observations by the complete non-secret provider
+// transport identity. Model IDs alone are not portable across endpoints.
+func (r ReadyRoute) ConnectionID() string {
+	endpoint := strings.TrimRight(r.endpoint, "/")
+	if parsed, err := url.Parse(endpoint); err == nil {
+		parsed.Scheme = strings.ToLower(parsed.Scheme)
+		parsed.Host = strings.ToLower(parsed.Host)
+		endpoint = strings.TrimRight(parsed.String(), "/")
+	}
+	sum := sha256.Sum256([]byte(
+		r.providerID + "\x00" + string(r.adapter) + "\x00" +
+			endpoint + "\x00" + string(r.protocol),
+	))
+	return "connection_" + hex.EncodeToString(sum[:16])
+}
 
 // WithCredential selects an explicit non-secret workspace credential reference.
 func (r ReadyRoute) WithCredential(reference CredentialRef) ReadyRoute {

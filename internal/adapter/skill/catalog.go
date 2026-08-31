@@ -30,9 +30,16 @@ func Discover(options DiscoveryOptions) (*Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
+	var builtins []candidate
+	if options.IncludeBuiltins {
+		builtins, err = discoverBuiltins()
+		if err != nil {
+			return nil, err
+		}
+	}
 	entries := make(map[string]candidate)
 	var order []string
-	for _, item := range native {
+	for _, item := range append(native, builtins...) {
 		if _, exists := entries[item.metadata.Name]; exists {
 			continue
 		}

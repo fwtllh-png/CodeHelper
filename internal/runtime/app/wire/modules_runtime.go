@@ -172,6 +172,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		Journal:           state.security.journal,
 		WorkspaceTurnGate: workspaceTurnGate}, TelemetryConfig: agentengine.TelemetryConfig{Metrics: session.metrics,
 		Observability: engineObservability(state)}, LifecycleConfig: agentengine.LifecycleConfig{TurnCoordinatorRuntime: contextRuntime.coordinator,
+		DelegationMode: execution.Subagent.Delegation,
 		ReleaseTurnResources: session.turnProcessReleaser(
 			session.processes,
 			"main",

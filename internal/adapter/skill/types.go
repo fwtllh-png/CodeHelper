@@ -20,6 +20,7 @@ const (
 	SourceWorkspace  Source = "workspace"
 	SourceConfigured Source = "configured"
 	SourceUser       Source = "user"
+	SourceBuiltin    Source = "builtin"
 )
 
 type Metadata struct {

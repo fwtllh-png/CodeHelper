@@ -682,7 +682,12 @@ func TestPlanExecutionSurvivesPlanningPolicyChange(t *testing.T) {
 		Engine: &profileTestEngine{}, SessionProfiles: profiles,
 		DefaultProfile:      profile,
 		ProfileCapabilities: runtimeTestCapabilities(profile),
-		SessionLifecycle:    artifactLifecycle(), SessionArtifacts: artifacts,
+		ProfileModels: map[string]protocol.ModelCapabilities{
+			profile.Provider + "\x00other-model": runtimeTestCapabilities(
+				profile,
+			).ModelCapabilities,
+		},
+		SessionLifecycle: artifactLifecycle(), SessionArtifacts: artifacts,
 	})
 	t.Cleanup(func() { closeRuntime(t, runtime) })
 
@@ -1033,6 +1038,74 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	}
 	if len(replayed) != 6 {
 		t.Fatalf("Recovery preparation emitted historical operations: %+v", replayed)
+	}
+}
+
+func TestTurnRecoveryUsesRecoverableStartOperationRejection(t *testing.T) {
+	events := NewMemoryEventStore(4)
+	meta := protocol.EventMeta{
+		Sequence: 1, OperationID: "operation-source",
+		ThreadID: "thread-source", TurnID: "turn-source", ItemID: "item-source",
+	}
+	started, err := protocol.NewEvent(meta, &protocol.TurnStartedData{
+		Provider: "fixture", Model: "fixture-model",
+		Prompt: "Continue implementation",
+		Intent: protocol.TurnIntentWorkspaceChange,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), started); err != nil {
+		t.Fatal(err)
+	}
+	meta.Sequence++
+	rejected, err := protocol.NewEvent(meta, &protocol.OperationRejectedData{
+		Code:    protocol.CodeUnavailable,
+		Message: "terminal envelope could not be committed",
+		Fault: &protocol.FaultMetadata{
+			Origin:         protocol.FaultOriginPersistence,
+			Disposition:    protocol.FaultRetryStep,
+			SideEffects:    protocol.SideEffectDraft,
+			RecoveryAction: "retry the idempotent terminal commit",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), rejected); err != nil {
+		t.Fatal(err)
+	}
+	profile := runtimeTestProfile()
+	lifecycle := artifactLifecycle()
+	lifecycle.threadIDs = []protocol.ThreadID{"thread-source", "thread-profile"}
+	runtime := NewRuntime(Options{
+		Engine: &profileTestEngine{}, EventStore: events,
+		SessionProfiles:     &memoryProfileStore{profile: profile},
+		DefaultProfile:      profile,
+		ProfileCapabilities: runtimeTestCapabilities(profile),
+		SessionLifecycle:    lifecycle,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+
+	prepared, err := runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version:   protocol.WorkflowIntentVersion,
+			Action:    protocol.TurnRecoveryContinue,
+			SessionID: "session-profile", SourceTurnID: "turn-source",
+			IdempotencyKey: "continue-rejected-source",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Recovery.SourceTurnID != "turn-source" ||
+		!strings.Contains(
+			prepared.Prompt,
+			"interrupted before terminal commit (unavailable): "+
+				"terminal envelope could not be committed",
+		) {
+		t.Fatalf("recovery preparation = %+v", prepared)
 	}
 }
 

@@ -76,7 +76,41 @@ func (*Adapter) OpenStream(body io.ReadCloser, _ providerwire.PreparedCall) (pro
 	return NewStream(body)
 }
 func (*Adapter) ClassifyHTTP(failure providerwire.HTTPFailure) error {
-	return providerwire.GenericHTTPFailure(failure)
+	var payload struct {
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	_ = json.Unmarshal([]byte(failure.Body), &payload)
+	message := payload.Error.Message
+	if message == "" {
+		message = fmt.Sprintf("provider returned HTTP %d", failure.Status)
+	}
+	var code provider.FailureCode
+	switch {
+	case failure.Status == http.StatusUnauthorized ||
+		failure.Status == http.StatusForbidden:
+		code = provider.FailureAuth
+	case providerwire.IsQuotaFailure(payload.Error.Type, message):
+		code = provider.FailureQuota
+	case failure.Status == http.StatusTooManyRequests:
+		code = provider.FailureRateLimit
+	case failure.Status >= 500:
+		code = provider.FailureServer
+	default:
+		return providerwire.GenericHTTPFailure(failure)
+	}
+	return providerwire.TypedHTTPFailure(
+		failure,
+		code,
+		message,
+		providerwire.FirstHeader(
+			failure.Header,
+			"Request-Id",
+			"X-Request-Id",
+		),
+	)
 }
 func messages(
 	input []provider.Message,

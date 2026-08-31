@@ -18,9 +18,22 @@ func TestDefaultsUseExtendedTurnBudget(t *testing.T) {
 	if defaults.Execution.MaxSteps != 64 {
 		t.Fatalf("default max steps = %d, want 64", defaults.Execution.MaxSteps)
 	}
+	if defaults.Execution.Subagent.Delegation != SubagentDelegationAdaptive {
+		t.Fatalf(
+			"default subagent delegation = %q, want %q",
+			defaults.Execution.Subagent.Delegation,
+			SubagentDelegationAdaptive,
+		)
+	}
 	if defaults.Context.Compact.TruthMaxBytes != 0 {
 		t.Fatalf("default truth max bytes = %d, want automatic",
 			defaults.Context.Compact.TruthMaxBytes)
+	}
+	if defaults.Context.Compact.SemanticNarrative != "inline" {
+		t.Fatalf(
+			"default semantic narrative = %q, want inline",
+			defaults.Context.Compact.SemanticNarrative,
+		)
 	}
 }
 

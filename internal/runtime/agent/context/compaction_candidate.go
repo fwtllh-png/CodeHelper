@@ -99,10 +99,13 @@ func (a Authority) BuildSummary(request SummaryRequest) SummaryResult {
 type CompactionCandidate struct {
 	Cut                 int
 	History             []provider.Message
+	SourceHistory       []provider.Message
 	Removed             []provider.Message
 	ToSummarize         []provider.Message
 	Rendered            string
+	SourceBytes         int
 	RetainedBytes       int
+	SourceTokens        uint64
 	RetainedTokens      uint64
 	SummaryTruncated    bool
 	Sections            []string
@@ -116,6 +119,8 @@ type CompactionCandidate struct {
 	Retention           RetentionReceipt
 	SourceWindowID      string
 	SourceContextDigest string
+	SourceHistoryDigest string
+	RequiredKinds       []string
 }
 
 type CompactionCandidateInput struct {
@@ -224,17 +229,34 @@ func BuildCompactionCandidate(
 	}
 	return CompactionCandidate{
 		Cut: input.Cut, History: history,
-		Removed:     CloneMessages(input.Removed),
-		ToSummarize: CloneMessages(input.ToSummarize),
-		Rendered:    rendered.Text, RetainedBytes: HistoryBytes(history),
+		SourceHistory:    CloneMessages(input.OriginalHistory),
+		Removed:          CloneMessages(input.Removed),
+		ToSummarize:      CloneMessages(input.ToSummarize),
+		Rendered:         rendered.Text,
+		SourceBytes:      HistoryBytes(input.OriginalHistory),
+		RetainedBytes:    HistoryBytes(history),
 		SummaryTruncated: rendered.Truncated,
 		Sections:         append([]string(nil), rendered.Sections...),
 		Truth:            mergeReceipt, Capsule: capsule, Authority: authority,
-		CompatibilityHash: capsule.CompatibilityHash,
-		NarrativeIncluded: rendered.NarrativeIncluded,
-		CapsuleBytes:      rendered.CapsuleBytes,
-		Retention:         retention,
+		CompatibilityHash:   capsule.CompatibilityHash,
+		NarrativeIncluded:   rendered.NarrativeIncluded,
+		CapsuleBytes:        rendered.CapsuleBytes,
+		Retention:           retention,
+		SourceHistoryDigest: HistoryDigest(input.OriginalHistory),
+		RequiredKinds:       RequiredNarrativeKinds(input.Summary),
 	}, nil
+}
+
+func RequiredNarrativeKinds(summary Summary) []string {
+	var required []string
+	if len(summary.Changes) != 0 || len(summary.CriticalPaths) != 0 {
+		required = append(required, NarrativeFileCode)
+	}
+	if len(summary.Todos) != 0 {
+		required = append(required, NarrativeCurrent, NarrativeNextStep)
+	}
+	sort.Strings(required)
+	return required
 }
 
 func truthCapsules(messages []provider.Message) ([]TruthCapsule, error) {
@@ -257,6 +279,7 @@ type CompactionPreparation struct {
 	ThreadID           protocol.ThreadID
 	TurnID             protocol.TurnID
 	TargetWindowID     string
+	TargetWindow       WindowLedger
 	StablePrefixDigest string
 	RouteDigest        string
 	RouteFailure       string
@@ -270,6 +293,10 @@ type CompactionPreparation struct {
 // that can later generate and rebase an optional semantic narrative.
 func PrepareCompactionState(input CompactionPreparation) *CompactionState {
 	candidate := input.Candidate
+	targetWindow := input.TargetWindow
+	if !targetWindow.Valid() && input.TargetWindowID != "" {
+		targetWindow, _ = NewWindowLedger(input.TargetWindowID, 1)
+	}
 	state := &CompactionState{
 		ID: stableCompactionID(
 			input.ThreadID,
@@ -282,61 +309,19 @@ func PrepareCompactionState(input CompactionPreparation) *CompactionState {
 		Phase:               "prepared",
 		Truth:               candidate.Capsule,
 		SourceWindowID:      candidate.SourceWindowID,
-		TargetWindowID:      input.TargetWindowID,
+		TargetWindowID:      targetWindow.ID,
 		SourceContextDigest: candidate.SourceContextDigest,
 	}
-	if input.RouteFailure != "" {
-		state.Phase = "fallback"
-		state.FallbackReason = input.RouteFailure
-		state.PlanDigest = FallbackCompactionPlanDigest(state)
-		return state
-	}
-	narrativeInput, err := BuildNarrativeInput(
-		input.ThreadID,
-		candidate.SourceWindowID,
-		candidate.AuthorityDigest,
-		input.RouteDigest,
-		candidate.Removed,
-		input.NarrativeLimits,
-		input.Now,
-		input.InputTTL,
-	)
-	if err == nil && len(narrativeInput.Excerpts) == 0 {
-		previous := input.Previous
-		if previous != nil && previous.Phase == "prepared" &&
-			previous.TurnID == input.TurnID &&
-			previous.NarrativeInput != nil &&
-			len(previous.NarrativeInput.Excerpts) != 0 &&
-			previous.NarrativeInput.AuthorityDigest ==
-				candidate.AuthorityDigest &&
-			previous.NarrativeInput.RouteDigest == input.RouteDigest {
-			narrativeInput, err = RebindNarrativeInput(
-				*previous.NarrativeInput,
-				candidate.SourceWindowID,
-				candidate.AuthorityDigest,
-				input.RouteDigest,
-				input.NarrativeLimits,
-				input.Now,
-				input.InputTTL,
-			)
-		}
-	}
-	if err != nil {
-		state.Phase = "fallback"
-		state.FallbackReason = err.Error()
-		state.PlanDigest = FallbackCompactionPlanDigest(state)
-		return state
-	}
-	state.NarrativeInput = &narrativeInput
 	compacted := CompactedContext{
 		CompactionID:        state.ID,
 		ThreadID:            input.ThreadID,
 		TurnID:              input.TurnID,
 		SourceWindowID:      candidate.SourceWindowID,
-		TargetWindowID:      input.TargetWindowID,
+		TargetWindowID:      targetWindow.ID,
 		SourceContextDigest: candidate.SourceContextDigest,
 		StablePrefixDigest:  input.StablePrefixDigest,
 		Truth:               candidate.Capsule,
+		Head:                CloneMessage(candidate.History[0]),
 		Tail:                CloneMessages(candidate.History[1:]),
 	}
 	digestErr := compacted.Seal()
@@ -344,18 +329,73 @@ func PrepareCompactionState(input CompactionPreparation) *CompactionState {
 		ID: state.ID, Phase: "prepared",
 		Trigger:             input.Trigger,
 		SourceWindowID:      candidate.SourceWindowID,
-		TargetWindowID:      input.TargetWindowID,
+		TargetWindowID:      targetWindow.ID,
+		TargetWindow:        targetWindow,
 		SourceContextDigest: candidate.SourceContextDigest,
+		SourceHistoryDigest: candidate.SourceHistoryDigest,
+		SourceBytes:         candidate.SourceBytes,
+		SourceTokens:        candidate.SourceTokens,
+		RetainedTokens:      candidate.RetainedTokens,
 		Cut:                 candidate.Cut,
+		RequiredKinds:       append([]string(nil), candidate.RequiredKinds...),
 		Truth:               candidate.Capsule,
-		NarrativeInput:      narrativeInput,
 		DeterministicResult: compacted,
 	}
-	for index, message := range candidate.Removed {
+	for index := range candidate.Removed {
+		source := candidate.SourceHistory[index]
 		plan.RemovedMessageIDs = append(
 			plan.RemovedMessageIDs,
-			StableMessageID(input.ThreadID, message, index),
+			StableMessageID(input.ThreadID, source, index),
 		)
+	}
+	for index, message := range candidate.SourceHistory[candidate.Cut:] {
+		plan.TailMessageIDs = append(
+			plan.TailMessageIDs,
+			StableMessageID(input.ThreadID, message, candidate.Cut+index),
+		)
+	}
+	if input.RouteFailure == "" {
+		narrativeInput, err := BuildNarrativeInput(
+			input.ThreadID,
+			candidate.SourceWindowID,
+			candidate.AuthorityDigest,
+			input.RouteDigest,
+			candidate.Removed,
+			input.NarrativeLimits,
+			input.Now,
+			input.InputTTL,
+			candidate.RequiredKinds,
+		)
+		if err == nil && len(narrativeInput.Excerpts) == 0 {
+			previous := input.Previous
+			if previous != nil && previous.Phase == "prepared" &&
+				previous.TurnID == input.TurnID &&
+				previous.NarrativeInput != nil &&
+				len(previous.NarrativeInput.Excerpts) != 0 &&
+				previous.NarrativeInput.AuthorityDigest ==
+					candidate.AuthorityDigest &&
+				previous.NarrativeInput.RouteDigest == input.RouteDigest {
+				narrativeInput, err = RebindNarrativeInput(
+					*previous.NarrativeInput,
+					candidate.SourceWindowID,
+					candidate.AuthorityDigest,
+					input.RouteDigest,
+					input.NarrativeLimits,
+					input.Now,
+					input.InputTTL,
+				)
+			}
+		}
+		if err != nil {
+			state.Phase = "fallback"
+			state.FallbackReason = err.Error()
+		} else {
+			state.NarrativeInput = &narrativeInput
+			plan.NarrativeInput = &narrativeInput
+		}
+	} else {
+		state.Phase = "fallback"
+		state.FallbackReason = input.RouteFailure
 	}
 	if digestErr == nil {
 		digestErr = plan.Seal()

@@ -620,11 +620,99 @@ func TestStartTurnRecoverySourceMustBeTerminalInTheSameThread(t *testing.T) {
 	}); protocol.CodeOf(err) != protocol.CodeConflict {
 		t.Fatalf("cross-Thread recovery error = %v", err)
 	}
+	lifecycle := artifactLifecycle()
+	lifecycle.summary.ThreadID = "thread-other"
+	lifecycle.threadIDs = []protocol.ThreadID{"thread-source", "thread-other"}
+	handler.sessionLifecycle = lifecycle
+	if err := handler.validateStart(&protocol.StartTurnPayload{
+		ThreadID: "thread-other", Recovery: recovery,
+	}); err != nil {
+		t.Fatalf("same-Session cross-Thread recovery error = %v", err)
+	}
 	recovery.SourceTurnID = "turn-missing"
 	if err := handler.validateStart(&protocol.StartTurnPayload{
 		ThreadID: "thread-source", Recovery: recovery,
 	}); protocol.CodeOf(err) != protocol.CodeConflict {
 		t.Fatalf("missing recovery error = %v", err)
+	}
+}
+
+func TestStartTurnRecoveryAcceptsRecoverableStartOperationRejection(t *testing.T) {
+	events := NewMemoryEventStore(4)
+	meta := protocol.EventMeta{
+		Sequence: 1, OperationID: "operation-source",
+		ThreadID: "thread-source", TurnID: "turn-source", ItemID: "item-source",
+	}
+	started, err := protocol.NewEvent(meta, &protocol.TurnStartedData{
+		Provider: "test", Model: "test", Prompt: "continue work",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), started); err != nil {
+		t.Fatal(err)
+	}
+	meta.Sequence++
+	rejected, err := protocol.NewEvent(meta, &protocol.OperationRejectedData{
+		Code:    protocol.CodeUnavailable,
+		Message: "terminal envelope could not be committed",
+		Fault: &protocol.FaultMetadata{
+			Origin:      protocol.FaultOriginPersistence,
+			Disposition: protocol.FaultRetryStep,
+			SideEffects: protocol.SideEffectDraft,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), rejected); err != nil {
+		t.Fatal(err)
+	}
+	handler := StartTurnHandler{Runtime: &Runtime{
+		ctx: t.Context(), events: events,
+	}}
+	recovery := &protocol.TurnRecoveryContext{
+		Action: protocol.TurnRecoveryContinue, SourceTurnID: "turn-source",
+	}
+	if err := handler.validateStart(&protocol.StartTurnPayload{
+		ThreadID: "thread-source", Recovery: recovery,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	meta = protocol.EventMeta{
+		Sequence: 3, OperationID: "operation-other",
+		ThreadID: "thread-source", TurnID: "turn-other", ItemID: "item-other",
+	}
+	otherStarted, err := protocol.NewEvent(meta, &protocol.TurnStartedData{
+		Provider: "test", Model: "test", Prompt: "other work",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), otherStarted); err != nil {
+		t.Fatal(err)
+	}
+	meta.Sequence++
+	meta.OperationID = "child-operation"
+	childRejected, err := protocol.NewEvent(meta, &protocol.OperationRejectedData{
+		Code:    protocol.CodeUnavailable,
+		Message: "child operation failed",
+		Fault: &protocol.FaultMetadata{
+			Disposition: protocol.FaultRetryStep,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), childRejected); err != nil {
+		t.Fatal(err)
+	}
+	recovery.SourceTurnID = "turn-other"
+	if err := handler.validateStart(&protocol.StartTurnPayload{
+		ThreadID: "thread-source", Recovery: recovery,
+	}); protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("child rejection recovery error = %v, want conflict", err)
 	}
 }
 

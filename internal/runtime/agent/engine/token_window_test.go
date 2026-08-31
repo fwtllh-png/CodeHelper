@@ -331,6 +331,12 @@ func TestTokenWindowFinishOnlyRetainsCompletionToolsAtOperatorEmergencyLimit(t *
 	if len(runtime.requests) != 1 {
 		t.Fatalf("requests = %+v", runtime.requests)
 	}
+	if runtime.requests[0].ReasoningEffort != "" {
+		t.Fatalf(
+			"finish-only reasoning effort = %q for a non-reasoning route",
+			runtime.requests[0].ReasoningEffort,
+		)
+	}
 	names := make(map[string]bool, len(runtime.requests[0].Tools))
 	for _, definition := range runtime.requests[0].Tools {
 		names[definition.Name] = true

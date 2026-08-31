@@ -63,10 +63,12 @@ type TurnSpec struct {
 	Route          model.ReadyRoute
 	Provider       string
 	Model          string
+	ModelMetadata  *protocol.ModelMetadataProvenance
 	Mode           policy.Mode
 	Posture        policy.Permission
 	Workspace      string
 	Sandbox        string
+	DelegationMode string
 	Policy         *policy.Runtime
 	Kernel         turnkernel.Policy
 	Limits         TurnLimits
@@ -190,10 +192,14 @@ func SnapshotTurnSpec(
 		Purpose:  purpose,
 		Route:    route,
 		Provider: route.ProviderID(), Model: route.Model().ID,
+		ModelMetadata: modelMetadataProvenance(
+			route.Model().MetadataProvenance,
+		),
 		Mode: security.Mode, Posture: security.Permission,
 		Workspace: options.Workspace, Sandbox: sandboxIdentity(options.Tools),
-		Policy: security,
-		Kernel: kernelPolicy,
+		DelegationMode: options.DelegationMode,
+		Policy:         security,
+		Kernel:         kernelPolicy,
 		Limits: TurnLimits{
 			MaxSteps:        options.MaxSteps,
 			MaxOutputTokens: options.MaxOutputTokens,

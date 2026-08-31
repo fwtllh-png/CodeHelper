@@ -129,6 +129,31 @@ func TestSelectionMatchesASCIINameAdjacentToCJKText(t *testing.T) {
 	}
 }
 
+func TestSelectionMatchesContainedChineseTriggerPhrase(t *testing.T) {
+	selection, err := selectSummaries([]Summary{
+		{
+			Name:           "system-code-review",
+			Description:    "Reviews changes. 代码审查 代码评审",
+			ModelInvocable: true,
+		},
+		{
+			Name:           "system-debugging",
+			Description:    "Diagnoses failures. 复杂调试 故障排查",
+			ModelInvocable: true,
+		},
+	}, SelectionRequest{
+		Query: "代码审查一下这些变更", Mode: SelectionCandidate,
+		Limit: DefaultSelectionLimit,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(selection.Candidates) == 0 ||
+		selection.Candidates[0].Name != "system-code-review" {
+		t.Fatalf("Chinese trigger selection = %+v", selection.Candidates)
+	}
+}
+
 func TestSelectionNameBoundaryRejectsEmbeddedASCIIWord(t *testing.T) {
 	if containsSelectionPhrase("use myubomclitool now", "ubomcli") {
 		t.Fatal("embedded ASCII name was treated as a skill-name boundary")

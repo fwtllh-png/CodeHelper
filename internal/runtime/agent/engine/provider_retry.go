@@ -45,6 +45,19 @@ func (e *Engine) providerRetry(
 }
 
 func exhaustedProviderRetry(err error) error {
+	if problem, ok := errors.AsType[*protocol.Problem](err); ok &&
+		!problem.Retryable {
+		problem.Fault = &protocol.FaultMetadata{
+			Origin:         protocol.FaultOriginProvider,
+			Stage:          protocol.FaultStageModelSample,
+			Disposition:    protocol.FaultFailTurn,
+			SideEffects:    protocol.SideEffectUnchanged,
+			RetryOwner:     protocol.FaultRetryOwnerNone,
+			ResumeHint:     protocol.FaultResumeFail,
+			RecoveryAction: "correct the provider request or configuration before starting a new turn",
+		}
+		return err
+	}
 	fault := protocol.FaultMetadata{
 		Origin: protocol.FaultOriginProvider, Disposition: protocol.FaultRetryTurn, SideEffects: protocol.SideEffectUnchanged,
 		RecoveryAction: "retry the turn from its durable checkpoint",

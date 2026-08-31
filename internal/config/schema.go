@@ -155,7 +155,7 @@ type Execution struct {
 	IdleTimeout   time.Duration `json:"idle_timeout" toml:"-"`
 	MaxConcurrent int           `json:"max_concurrent" toml:"max_concurrent"`
 	RateLimit     float64       `json:"rate_limit" toml:"rate_limit"`
-	// ProviderRetryLimit bounds retries of transient Provider failures.
+	// ProviderRetryLimit bounds non-rate-limit transient Provider retries.
 	ProviderRetryLimit int    `json:"provider_retry_limit" toml:"provider_retry_limit"`
 	BudgetTokens       uint64 `json:"budget_tokens" toml:"budget_tokens"`
 	// TurnBudgetTokens is an optional cumulative operator ceiling. Zero leaves

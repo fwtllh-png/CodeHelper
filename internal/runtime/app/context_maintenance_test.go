@@ -24,6 +24,10 @@ func TestContextCompactionUsageSampleIsStablePerAttempt(t *testing.T) {
 }
 
 func TestPostTurnCompactionReceiptProducesValidProtocolEvent(t *testing.T) {
+	metadata := &protocol.ModelMetadataProvenance{
+		CanonicalID: "bundled", WireID: "bundled", Limits: "bundled",
+		Capabilities: "bundled", Pricing: "bundled",
+	}
 	data := appextension.ProtocolCompactionData(&agentengine.CompactionReceipt{
 		CompactionID:        "compact-1",
 		Status:              "completed",
@@ -36,11 +40,18 @@ func TestPostTurnCompactionReceiptProducesValidProtocolEvent(t *testing.T) {
 		AuthorityEquivalent: true,
 		DownshiftPolicy:     agentcontext.DownshiftRuntimeTruthOnly,
 		NarrativeIncluded:   true,
+		NarrativeProvider:   "provider",
+		NarrativeModel:      "summary-model",
+		NarrativeMetadata:   metadata,
 	})
 	if _, err := protocol.NewEvent(protocol.EventMeta{
 		Sequence: 1, OperationID: "op-1", ThreadID: "thread-1",
 		TurnID: "turn-1", ItemID: "item-1",
 	}, data); err != nil {
 		t.Fatalf("post-turn compaction event = %v", err)
+	}
+	if data.NarrativeMetadata == nil ||
+		data.NarrativeMetadata.Limits != "bundled" {
+		t.Fatalf("post-turn narrative metadata = %+v", data)
 	}
 }

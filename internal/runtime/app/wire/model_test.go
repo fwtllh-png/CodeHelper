@@ -6,9 +6,10 @@ import (
 	"testing"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
-func TestResolveModelMetadataConfigAndOverride(t *testing.T) {
+func TestResolveModelMetadataFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "model.json")
 	data := []byte(`{
 		"canonical_id":"configured-model",
@@ -21,19 +22,93 @@ func TestResolveModelMetadataConfigAndOverride(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	descriptor, err := resolveModelMetadata(
+		"custom",
+		ModelMetadataOptions{Path: path},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descriptor.Limits.ContextTokens != 32768 ||
+		descriptor.MetadataProvenance.Limits != model.ProvenanceOperatorConfig ||
+		descriptor.MetadataProvenance.Capabilities != model.ProvenanceOperatorConfig ||
+		descriptor.MetadataProvenance.Pricing != model.ProvenanceOperatorConfig ||
+		!descriptor.Pricing.Known {
+		t.Fatalf("descriptor = %+v", descriptor)
+	}
+}
+
+func TestResolveStructuredModelMetadataPreservesCapabilitiesAndProvenance(t *testing.T) {
 	descriptor, err := resolveModelMetadata("custom", ModelMetadataOptions{
-		Path: path, ContextTokens: 65536, MaxOutputTokens: 8192,
-		ContextSet: true, OutputSet: true,
+		Descriptor: &model.Model{
+			ID: "custom", CanonicalID: "vendor/custom", WireID: "custom",
+			Limits: model.Limits{
+				ContextTokens: 200_000, MaxOutputTokens: 24_000,
+			},
+			Capabilities: model.Capabilities{
+				Streaming: true, Reasoning: true, ToolCalls: true,
+				PromptCache:            true,
+				ReasoningEfforts:       []string{"off", "high"},
+				DefaultReasoningEffort: "high",
+			},
+			MetadataProvenance: model.MetadataProvenance{
+				CanonicalID:  model.ProvenanceOperatorConfig,
+				WireID:       model.ProvenanceOperatorConfig,
+				Limits:       model.ProvenanceOperatorConfig,
+				Capabilities: model.ProvenanceOperatorConfig,
+				Pricing:      model.ProvenanceOperatorConfig,
+			},
+			Provenance: model.ProvenanceOperatorConfig,
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if descriptor.Limits.ContextTokens != 65536 ||
-		descriptor.MetadataProvenance.Limits != model.ProvenanceStartup ||
-		descriptor.MetadataProvenance.Capabilities != model.ProvenanceConfig ||
-		descriptor.MetadataProvenance.Pricing != model.ProvenanceConfig ||
-		!descriptor.Pricing.Known {
+	if descriptor.Limits.ContextTokens != 200_000 ||
+		descriptor.Limits.MaxOutputTokens != 24_000 ||
+		!descriptor.Capabilities.Reasoning ||
+		descriptor.Capabilities.DefaultReasoningEffort != "high" ||
+		descriptor.MetadataProvenance.Limits != model.ProvenanceOperatorConfig {
 		t.Fatalf("descriptor = %+v", descriptor)
+	}
+}
+
+func TestStructuredModelMetadataDrivesRouteCapacity(t *testing.T) {
+	metadata := ModelMetadataOptions{Descriptor: &model.Model{
+		ID: "same-model", CanonicalID: "vendor/same-model", WireID: "same-model",
+		Limits: model.Limits{
+			ContextTokens: 200_000, MaxOutputTokens: 24_000,
+		},
+		Capabilities: model.Capabilities{Streaming: true, ToolCalls: true},
+		MetadataProvenance: model.MetadataProvenance{
+			CanonicalID:  model.ProvenanceOperatorConfig,
+			WireID:       model.ProvenanceOperatorConfig,
+			Limits:       model.ProvenanceOperatorConfig,
+			Capabilities: model.ProvenanceOperatorConfig,
+			Pricing:      model.ProvenanceOperatorConfig,
+		},
+		Pricing:    model.Pricing{Provenance: model.ProvenanceOperatorConfig},
+		Provenance: model.ProvenanceOperatorConfig,
+	}}
+	descriptor, err := resolveModelMetadata("same-model", metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolveExecRoute(execRouteOptions{
+		ProviderID: "openai-compatible", ModelID: "same-model",
+		BaseURL:  "https://models.example.com/v1",
+		Protocol: model.ProtocolOpenAIChat,
+		Model:    descriptor,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capacity := agentcontext.ResolveCapacity(route, 0, 0, 0)
+	if capacity.ContextTokens != 200_000 ||
+		capacity.OutputCeiling != 24_000 ||
+		capacity.HardInputTokens != 176_000 ||
+		capacity.LimitSource != model.ProvenanceOperatorConfig {
+		t.Fatalf("capacity = %+v", capacity)
 	}
 }
 
@@ -51,9 +126,7 @@ func TestResolveModelMetadataRejectsUnknownFacts(t *testing.T) {
 
 func TestResolveModelMetadataAllowsExplicitUnknownPricing(t *testing.T) {
 	descriptor, err := resolveModelMetadata("custom", ModelMetadataOptions{
-		ContextTokens: 128_000, ContextSet: true,
-		MaxOutputTokens: 8_192, OutputSet: true,
-		Capabilities: "streaming,tool_calls", CapabilitiesSet: true,
+		Descriptor: operatorModel("custom", 128_000, 8_192),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -90,9 +163,7 @@ func TestEndpointOverrideUsesCatalogAdapterWithoutNameInference(t *testing.T) {
 		t.Fatalf("unknown provider adapter = %q, want openai_compatible", lookalike.Adapter())
 	}
 	futureModel, err := resolveModelMetadata("gpt-future", ModelMetadataOptions{
-		ContextTokens: 128_000, ContextSet: true,
-		MaxOutputTokens: 8_192, OutputSet: true,
-		Capabilities: "streaming,tool_calls", CapabilitiesSet: true,
+		Descriptor: operatorModel("gpt-future", 128_000, 8_192),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -110,22 +181,50 @@ func TestEndpointOverrideUsesCatalogAdapterWithoutNameInference(t *testing.T) {
 	}
 }
 
-func TestResolveModelMetadataRejectsPartialOverrides(t *testing.T) {
+func TestResolveModelMetadataRejectsConflictingSources(t *testing.T) {
 	if _, err := resolveModelMetadata("custom", ModelMetadataOptions{
-		ContextTokens: 4096, ContextSet: true,
+		Path: "model.json", Descriptor: operatorModel("custom", 4096, 1024),
 	}); err == nil {
-		t.Fatal("resolveModelMetadata() accepted partial limits")
+		t.Fatal("resolveModelMetadata() accepted conflicting sources")
 	}
 }
 
 func TestResolveModelMetadataRejectsNonUSDPricing(t *testing.T) {
-	if _, err := resolveModelMetadata("custom", ModelMetadataOptions{
-		ContextTokens: 4096, MaxOutputTokens: 1024,
-		ContextSet: true, OutputSet: true,
-		Capabilities: "streaming", CapabilitiesSet: true,
-		InputPerMillion: 1, OutputPerMillion: 2, Currency: "CNY",
-		InputPriceSet: true, OutputPriceSet: true, CurrencySet: true,
-	}); err == nil {
+	path := filepath.Join(t.TempDir(), "model.json")
+	data := []byte(`{
+		"canonical_id":"custom",
+		"wire_id":"custom",
+		"context_tokens":4096,
+		"max_output_tokens":1024,
+		"capabilities":{"streaming":true},
+		"pricing":{"input_per_million":1,"output_per_million":2,"currency":"CNY"}
+	}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveModelMetadata(
+		"custom",
+		ModelMetadataOptions{Path: path},
+	); err == nil {
 		t.Fatal("resolveModelMetadata() accepted non-USD pricing")
+	}
+}
+
+func operatorModel(id string, contextTokens, outputTokens uint64) *model.Model {
+	return &model.Model{
+		ID: id, CanonicalID: id, WireID: id,
+		Limits: model.Limits{
+			ContextTokens: contextTokens, MaxOutputTokens: outputTokens,
+		},
+		Capabilities: model.Capabilities{Streaming: true, ToolCalls: true},
+		MetadataProvenance: model.MetadataProvenance{
+			CanonicalID:  model.ProvenanceOperatorConfig,
+			WireID:       model.ProvenanceOperatorConfig,
+			Limits:       model.ProvenanceOperatorConfig,
+			Capabilities: model.ProvenanceOperatorConfig,
+			Pricing:      model.ProvenanceOperatorConfig,
+		},
+		Pricing:    model.Pricing{Provenance: model.ProvenanceOperatorConfig},
+		Provenance: model.ProvenanceOperatorConfig,
 	}
 }

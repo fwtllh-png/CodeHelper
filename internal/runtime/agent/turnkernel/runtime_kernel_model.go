@@ -174,6 +174,30 @@ func (s *RuntimeKernel) ProviderRetries(sampleID string) uint32 {
 	return s.state.SampleLedger[sampleID].ProviderRetries
 }
 
+func (s *RuntimeKernel) FinishModelTransport(sampleID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	from := s.state.Phase
+	effect, _, err := s.dispatcher.Routed(
+		EffectSampleProvider,
+		sampleID,
+	)
+	if err != nil {
+		return err
+	}
+	if err := s.dispatcher.Requeue(
+		EffectSampleProvider,
+		sampleID,
+	); err != nil {
+		return err
+	}
+	s.recordAcceptedLocked(
+		EffectRequeued{EffectID: effect.ID},
+		from,
+	)
+	return nil
+}
+
 func (s *RuntimeKernel) SampleAssembly(
 	sampleID string,
 ) *providerassembly.ResponseAssembly {

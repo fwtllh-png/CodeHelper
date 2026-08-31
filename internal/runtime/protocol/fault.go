@@ -105,6 +105,17 @@ func CloneFaultMetadata(source *FaultMetadata) *FaultMetadata {
 func DispositionOf(err error) FaultDisposition {
 	return runtimefault.DispositionOf(err)
 }
+func FaultAllowsTurnRecovery(fault *FaultMetadata) bool {
+	if fault == nil {
+		return false
+	}
+	switch fault.Disposition {
+	case FaultRetryStep, FaultRetryTurn, FaultResumeTurn:
+		return true
+	default:
+		return false
+	}
+}
 func DecideRecovery(err error, context RecoveryContext) RecoveryDecision {
 	return runtimefault.Decide(err, context)
 }

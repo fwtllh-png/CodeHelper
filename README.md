@@ -68,10 +68,12 @@ codehelper
 `make install` 默认把完整的自包含二进制安装到 `~/.local/bin/codehelper`。安装后可在
 任意目录运行 `codehelper`，当前目录自动成为 Workspace 并打开本机页面。已有 Web
 Supervisor 运行时，新目录会注册为另一个独立 Workspace Runtime，并在同一侧栏中展示，
-无需再启动一个 Web 服务。首次进入时不会预选 Provider 或 Model，用户必须在页面中选择 OpenAI、Anthropic、DeepSeek 或自定义
-OpenAI-Compatible 服务，并填写 Model ID。API Key 由操作系统 Keyring 加密保存，
-非敏感选择由 Runtime 管理；无需创建或编辑配置文件。每个 Session 可独立保存和
-切换 Model ID，也可直接输入尚未进入内置目录的新模型。
+无需再启动一个 Web 服务。首次进入时不会预选 Provider 或 Model，用户必须在页面中选择
+OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible 服务，并填写 Model ID。
+自定义 Endpoint 或未进入内置目录的模型还必须显式填写 Context、Output 和 Capability
+元数据；Runtime 不猜测模型限制。API Key 由操作系统 Keyring 加密保存，非敏感选择与
+元数据由 Runtime 管理；无需创建或编辑配置文件。Session 只可在当前连接已验证的模型间
+切换；新增未知模型需要从 Connection 设置提交其元数据并重启 Runtime。
 
 源码开发时仍可使用 `make start`。自定义安装位置使用
 `make install PREFIX=/usr/local`，卸载使用 `make uninstall`。

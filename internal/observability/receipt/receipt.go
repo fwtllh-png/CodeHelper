@@ -38,6 +38,8 @@ type Recorder struct {
 	providerRetry      *protocol.ReceiptProviderRetry
 	modelExecution     protocol.ReceiptModelExecution
 	toolExecution      map[string]int
+	delegationAttempts int
+	delegationSpawned  int
 	toolsSucceeded     []string
 	toolsFailed        []string
 	approvals          int
@@ -87,7 +89,8 @@ type Observations struct {
 	measurement *turnkernel.TerminalMeasurementSnapshot
 	// spend is the thread's pool as the engine sees it, before this turn's own
 	// usage is folded in.
-	spend agentengine.BudgetSnapshot
+	spend          agentengine.BudgetSnapshot
+	delegationMode string
 }
 
 func New(goal string) *Recorder {
@@ -258,6 +261,7 @@ func (r *Recorder) Freeze(
 		conflicts:      engine.RollbackConflicts(),
 		measurement:    measurement,
 		spend:          engine.BudgetSnapshot(),
+		delegationMode: spec.DelegationMode,
 	}
 }
 
@@ -275,6 +279,7 @@ func (r *Recorder) observeRoute(event agentengine.Event) {
 	}
 	r.routes = append(r.routes, protocol.ReceiptRoute{
 		Purpose: event.Purpose, Provider: event.Provider, Model: event.Model,
+		ModelMetadata: event.ModelMetadata,
 	})
 }
 
@@ -294,6 +299,12 @@ func (r *Recorder) observeTool(event agentengine.Event) {
 		r.toolExecution = make(map[string]int)
 	}
 	r.toolExecution[kind]++
+	if event.ToolCall.Name == "spawn_agent" {
+		r.delegationAttempts++
+		if !event.Result.IsError {
+			r.delegationSpawned++
+		}
+	}
 	if event.Result.IsError {
 		r.toolExecution["failed"]++
 		r.toolsFailed = appendUniqueString(r.toolsFailed, event.ToolCall.Name)
@@ -387,8 +398,14 @@ func (r *Recorder) Build(
 		ProviderRetry:      r.providerRetry,
 		ModelExecution:     r.modelExecution,
 		ToolExecution:      r.toolExecution,
-		Routes:             append([]protocol.ReceiptRoute(nil), r.routes...),
-		ToolsSucceeded:     r.toolsSucceeded, ToolsFailed: r.toolsFailed,
+		Delegation: delegationReceipt(
+			observed.delegationMode,
+			r.modelExecution.ModelSamples,
+			r.delegationAttempts,
+			r.delegationSpawned,
+		),
+		Routes:         append([]protocol.ReceiptRoute(nil), r.routes...),
+		ToolsSucceeded: r.toolsSucceeded, ToolsFailed: r.toolsFailed,
 		Skills:             append([]protocol.ReceiptSkill(nil), r.skills...),
 		SkillSelection:     observed.skillSelection,
 		ApprovalsRequested: r.approvals,
@@ -441,6 +458,29 @@ func (r *Recorder) Build(
 		})
 	}
 	return receipt
+}
+
+func delegationReceipt(
+	mode string,
+	modelSamples int,
+	attempts int,
+	spawned int,
+) *protocol.ReceiptDelegation {
+	if mode == "" {
+		return nil
+	}
+	outcome := "not_evaluated"
+	switch {
+	case spawned > 0:
+		outcome = "delegated"
+	case attempts > 0:
+		outcome = "blocked"
+	case mode == "adaptive" && modelSamples > 0:
+		outcome = "retained_parent"
+	}
+	return &protocol.ReceiptDelegation{
+		Mode: mode, Outcome: outcome, Attempts: attempts, Spawned: spawned,
+	}
 }
 
 func receiptSkillSelection(

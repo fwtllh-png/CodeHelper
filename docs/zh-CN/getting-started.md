@@ -47,16 +47,18 @@ Web 和二进制构建后，会比较 Owner Lease 中的构建身份；若已有
 首次进入且尚未完成 Runtime Setup 时，页面会要求：
 
 1. 显式选择 OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible Provider；
-2. 输入准确的 Model ID；自定义服务还需填写 Base URL 和协议；
+2. 输入准确的 Model ID；自定义服务还需填写 Base URL、协议、Canonical/Wire ID、
+   Context、Max Output 和完整 Capability 声明；
 3. 填写所需的 API Key 并启动 Runtime。
 
 没有默认 Provider 或 Model，也不通过内置枚举限制 Model ID。API Key 由操作系统
 Keyring 加密保存，不写入仓库、浏览器存储或 Setup Record；非敏感选择由 Runtime
 管理。Setup 完成后，页面依次引导选择 Workspace、创建 Session，再进入 Composer，
-不会代替用户自动创建 Session。其余配置使用安全默认值。每个 Session 可从 Composer
-快速切换历史 Model，也可在 Settings 中独立选择当前
-Workspace 已使用的 Model ID，或输入新的准确 Model ID；选择持久化到该 Session，
-不会改变其他 Session。Web 只监听 `127.0.0.1`，默认选择空闲端口。
+不会代替用户自动创建 Session。Runtime 不从 Model ID 或 `/models` 列表猜测容量与
+能力。每个 Session 可从 Composer 快速切换当前 Provider Catalog 已验证的 Model；
+自定义 Endpoint 和未知 Model 是固定 Connection，新增或替换时必须在 Settings 的
+Connection 页面重新提交显式元数据并重启 Runtime。Web 只监听 `127.0.0.1`，默认选择
+空闲端口。
 
 ## 4. 直接运行二进制
 

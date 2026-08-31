@@ -2627,6 +2627,44 @@ func TestFailedTurnFinalizesDurableHistoryBeforeTerminalEvent(t *testing.T) {
 	}
 }
 
+func TestFailedTurnDiscardsCompactionPreparedFromFailedTransaction(t *testing.T) {
+	runtime := &stagedCompactionFailureProvider{}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	runtime.engine = engine
+	engine.history = []provider.Message{
+		messageWithText(provider.RoleUser, "durable request", 1),
+		messageWithText(provider.RoleAssistant, "durable answer", 1),
+	}
+	engine.context.SetCompaction(agentcontext.Compaction{
+		Count: 1,
+		State: &agentcontext.CompactionState{
+			ID: "detached-durable-compaction", Phase: "fallback",
+		},
+	})
+	engine.turn = 1
+	var terminal Event
+
+	_, err := engine.Run(t.Context(), "new request", func(event Event) error {
+		if event.State == Failed {
+			terminal = event
+		}
+		return nil
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "provider failed") {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if strings.Contains(err.Error(), "truth capsule") {
+		t.Fatalf("failed transaction leaked compaction state: %v", err)
+	}
+	if len(terminal.SecondaryIssues) != 0 {
+		t.Fatalf("terminal secondary issues = %+v", terminal.SecondaryIssues)
+	}
+	if state := engine.context.Compaction().State; state != nil {
+		t.Fatalf("detached compaction state survived finalization: %+v", state)
+	}
+}
+
 func TestFailedTurnCompactsWithinOversizedDurableLastTurn(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&errorStream{err: errors.New("provider failed")},
@@ -3293,6 +3331,25 @@ func testHTTPProvider(
 type scriptedProvider struct {
 	streams  []provider.Stream
 	requests []provider.ModelRequest
+}
+
+type stagedCompactionFailureProvider struct {
+	engine *Engine
+}
+
+func (p *stagedCompactionFailureProvider) Stream(
+	context.Context,
+	provider.ModelRequest,
+) (provider.Stream, error) {
+	p.engine.stageContextCompaction(&agentcontext.CompactionState{
+		ID: "failed-turn-compaction", Phase: "fallback",
+	})
+	return nil, protocol.NewProblem(
+		protocol.CodeInvalidArgument,
+		"provider failed",
+		false,
+		nil,
+	)
 }
 
 type cancelProvider struct{}

@@ -339,7 +339,9 @@ export class ConversationProjection {
       case "thread.compacted":
       case "turn.compaction":
         this.put({
-          id: event.id,
+          id: event.kind === "turn.compaction"
+            ? `context-${event.turn_id}`
+            : event.id,
           kind: "context",
           turnID: event.turn_id,
           sequence: event.sequence,
@@ -979,6 +981,12 @@ function toolSummary(tool: string, value: unknown): string {
   const args = isRecord(value) ? value : {};
   if (tool === "result_get") {
     return `Read full result · ${readableArg(args, ["handle", "result_id", "id"]) || "result handle"}`;
+  }
+  if (["text_search", "search_text", "search_project", "grep"].includes(tool)) {
+    const expression = readableArg(args, ["query", "pattern"]);
+    const path = readableArg(args, ["path", "cwd", "root"]);
+    if (expression && path) return `${expression} · ${path}`;
+    if (expression || path) return expression || path;
   }
   const summary = readableArg(args, [
     "description", "path", "file_path", "query", "pattern", "cmd", "command",

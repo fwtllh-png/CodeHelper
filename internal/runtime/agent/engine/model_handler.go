@@ -37,6 +37,16 @@ func (e *Engine) reasoningEffort(scope *Scope, reason string) string {
 	)
 }
 
+func finishOnlyReasoningEffort(
+	capabilities model.Capabilities,
+) string {
+	efforts := capabilities.ReasoningEffortLevels()
+	if len(efforts) != 0 {
+		return efforts[0]
+	}
+	return ""
+}
+
 func (e *Engine) modelStep(
 	ctx context.Context,
 	history *[]provider.Message,
@@ -51,6 +61,8 @@ func (e *Engine) modelStep(
 	capturedReplay **provider.ReplayState,
 	assembly *providerassembly.ResponseAssembly,
 	checkpoint func(*providerassembly.ResponseAssembly) error,
+	beginAttempt func() error,
+	finishTransport func() error,
 	send func(State, Event) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, uint64, error) {
 	if continued != nil {
@@ -69,9 +81,22 @@ func (e *Engine) modelStep(
 		return nil, nil, provider.Usage{}, 0,
 			fmt.Errorf("restore provider response assembly: %w", err)
 	}
+	scope := e.runningScope()
+	if scope == nil {
+		return nil, nil, provider.Usage{}, 0, errors.New("turn scope is not active")
+	}
+	catalog := e.scopeCatalog(scope)
+	definitions, advertised, err := e.toolDefinitionsFromSnapshot(
+		catalog,
+		scope.spec.Request,
+	)
+	if err != nil {
+		return nil, nil, provider.Usage{}, 0, err
+	}
 	if assembly.State == providerassembly.ResponseComplete {
 		calls, err := assembly.ExecutableToolCalls()
 		if err == nil {
+			bindToolCalls(calls, catalog, advertised)
 			if continued != nil {
 				*continued = assembly.TransportCount() > 1
 			}
@@ -82,10 +107,6 @@ func (e *Engine) modelStep(
 				assembly.TotalUsage(), 0, nil
 		}
 	}
-	scope := e.runningScope()
-	if scope == nil {
-		return nil, nil, provider.Usage{}, 0, errors.New("turn scope is not active")
-	}
 	admittedHistory, err := e.admitToolResultHistory(*history)
 	if err != nil {
 		return nil, nil, provider.Usage{}, 0, err
@@ -94,7 +115,6 @@ func (e *Engine) modelStep(
 	if err := e.emitMCPHealthChanges(scope.spec.MCP, send); err != nil {
 		return nil, nil, provider.Usage{}, 0, err
 	}
-	catalog := e.scopeCatalog(scope)
 	_, imageReopenAvailable := catalog.Lookup(tool.ImageReopenToolName)
 	if imageReopenAvailable {
 		if err := e.options.Tools.BindImageHandles(ctx, *history); err != nil {
@@ -105,10 +125,6 @@ func (e *Engine) modelStep(
 		if err := send(CallingModel, Event{CatalogChanged: changed}); err != nil {
 			return nil, nil, provider.Usage{}, 0, err
 		}
-	}
-	definitions, advertised, err := e.toolDefinitionsFromSnapshot(catalog, scope.spec.Request)
-	if err != nil {
-		return nil, nil, provider.Usage{}, 0, err
 	}
 	stableContext, worldDelta, worldReceipts, worldProjection, err := e.projectWorldState(
 		ctx, *history, catalog, advertised,
@@ -174,7 +190,9 @@ func (e *Engine) modelStep(
 		reasoningEffort := baseReasoningEffort
 		nativeSearch := e.options.NativeSearch
 		if convergenceOnly {
-			reasoningEffort = "low"
+			reasoningEffort = finishOnlyReasoningEffort(
+				route.Model().Capabilities,
+			)
 			nativeSearch = false
 		}
 		remainingCalls := tool.RemainingBusinessCalls(
@@ -272,7 +290,10 @@ func (e *Engine) modelStep(
 					}
 					return !tool.FinishOnlyDefinitionAllowed(catalog, definition)
 				})
-			reasoningEffort, nativeSearch = "low", false
+			reasoningEffort = finishOnlyReasoningEffort(
+				route.Model().Capabilities,
+			)
+			nativeSearch = false
 		}
 		snapshot = project()
 		snapshot, normalization, normalizationErr := snapshot.Normalize(
@@ -339,6 +360,11 @@ func (e *Engine) modelStep(
 			maxOutputTokens,
 		)
 		messages := snapshot.Messages()
+		if beginAttempt != nil {
+			if err := beginAttempt(); err != nil {
+				return nil, nil, totalUsage, lastEstimate, err
+			}
+		}
 		providerAttempt++
 		if err := send(CallingModel, Event{
 			ModelExecution: &ModelExecution{
@@ -407,7 +433,11 @@ func (e *Engine) modelStep(
 								copy,
 							),
 							Sample: call.index, Provider: call.provider,
-							Model: call.model, SampleContext: call.context,
+							Model: call.model,
+							ModelMetadata: modelMetadataProvenance(
+								route.Model().MetadataProvenance,
+							),
+							SampleContext: call.context,
 						})
 					}
 					return send(Streaming, Event{
@@ -514,6 +544,11 @@ func (e *Engine) modelStep(
 			continuationMessages = nil
 			continuedBlocks = nil
 			continuations = 0
+			if finishTransport != nil {
+				if err := finishTransport(); err != nil {
+					return nil, nil, totalUsage, lastEstimate, err
+				}
+			}
 			attempt = -1
 			continue
 		}
@@ -542,6 +577,11 @@ func (e *Engine) modelStep(
 					e.turn,
 				),
 			)
+			if finishTransport != nil {
+				if err := finishTransport(); err != nil {
+					return nil, nil, totalUsage, lastEstimate, err
+				}
+			}
 			continuations++
 			attempt = -1
 			continue
@@ -563,23 +603,7 @@ func (e *Engine) modelStep(
 			if capturedReplay != nil {
 				*capturedReplay = replay
 			}
-			for index := range calls {
-				binding, known := catalog.Binding(calls[index].Name)
-				entry, _ := catalog.Lookup(calls[index].Name)
-				unavailable := known &&
-					entry.Descriptor.Visibility == tool.VisibleModel &&
-					entry.Descriptor.Availability == tool.AvailabilityUnavailable
-				if !known || (!advertised[calls[index].Name] && !unavailable) {
-
-					calls[index].CatalogID = catalog.CatalogID
-					calls[index].CatalogGeneration = catalog.Generation
-					continue
-				}
-				calls[index].CatalogID = binding.CatalogID
-				calls[index].CatalogGeneration = binding.Generation
-				calls[index].CatalogRevision = binding.Revision
-				calls[index].CatalogAuthority = binding.Authority
-			}
+			bindToolCalls(calls, catalog, advertised)
 			return completeBlocks, calls, totalUsage, lastEstimate, nil
 		}
 		contextChanged, recoveryErr := e.recoverContextOverflow(
@@ -618,6 +642,29 @@ func (e *Engine) modelStep(
 			return nil, nil, totalUsage, lastEstimate, waitErr
 		}
 		providerRetries++
+	}
+}
+
+func bindToolCalls(
+	calls []provider.ToolCall,
+	catalog tool.CatalogSnapshot,
+	advertised map[string]bool,
+) {
+	for index := range calls {
+		binding, known := catalog.Binding(calls[index].Name)
+		entry, _ := catalog.Lookup(calls[index].Name)
+		unavailable := known &&
+			entry.Descriptor.Visibility == tool.VisibleModel &&
+			entry.Descriptor.Availability == tool.AvailabilityUnavailable
+		if !known || (!advertised[calls[index].Name] && !unavailable) {
+			calls[index].CatalogID = catalog.CatalogID
+			calls[index].CatalogGeneration = catalog.Generation
+			continue
+		}
+		calls[index].CatalogID = binding.CatalogID
+		calls[index].CatalogGeneration = binding.Generation
+		calls[index].CatalogRevision = binding.Revision
+		calls[index].CatalogAuthority = binding.Authority
 	}
 }
 

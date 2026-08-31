@@ -111,6 +111,101 @@ func TestResponseAssemblyDeduplicatesAndRejectsReorderedEvents(t *testing.T) {
 	}
 }
 
+func TestResponseAssemblyRejectsDurablePrefixRewrites(t *testing.T) {
+	assembly := NewResponseAssembly("sample-prefix")
+	if err := assembly.BeginTransport(TransportMetadata{
+		LogicalRequestID: "sample-prefix", TransportRequestID: "request-1",
+		Attempt: 1, RequestBytes: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []StreamEvent{
+		{Type: EventTextDelta, Text: "one"},
+		{
+			Type: EventToolCallDelta,
+			ToolCall: &ToolCallFragment{
+				Index: 0, ID: "call-1", Name: "read", Arguments: `{"a":1}`,
+			},
+		},
+		{
+			Type: EventReplayState,
+			Replay: &ReplayState{
+				Version: 1,
+				Data:    json.RawMessage(`{"state":"one"}`),
+			},
+		},
+		{
+			Type: EventResponseState,
+			Response: &ResponseState{
+				ID: "response-1",
+				Output: []json.RawMessage{
+					json.RawMessage(`{"type":"one"}`),
+				},
+			},
+		},
+	} {
+		if _, err := assembly.Apply(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name   string
+		mutate func(*ResponseAssembly)
+	}{
+		{
+			name: "transport",
+			mutate: func(value *ResponseAssembly) {
+				value.Segments[0].Transport.RequestBytes = 11
+			},
+		},
+		{
+			name: "block",
+			mutate: func(value *ResponseAssembly) {
+				value.Segments[0].Blocks[0].Text = "two"
+			},
+		},
+		{
+			name: "tool fragment",
+			mutate: func(value *ResponseAssembly) {
+				value.Segments[0].ToolFragments[0].Arguments = `{"a":2}`
+			},
+		},
+		{
+			name: "replay",
+			mutate: func(value *ResponseAssembly) {
+				value.Segments[0].Replay.Data =
+					json.RawMessage(`{"state":"two"}`)
+			},
+		},
+		{
+			name: "response",
+			mutate: func(value *ResponseAssembly) {
+				value.Segments[0].Response.Output[0] =
+					json.RawMessage(`{"type":"two"}`)
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mutated := CloneResponseAssembly(assembly)
+			test.mutate(mutated)
+			if err := mutated.ValidateExtension(assembly); err == nil {
+				t.Fatal("durable prefix rewrite was accepted")
+			}
+		})
+	}
+	extended := CloneResponseAssembly(assembly)
+	if _, err := extended.Apply(StreamEvent{
+		Type: EventTextDelta,
+		Text: " continued",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := extended.ValidateExtension(assembly); err != nil {
+		t.Fatalf("legitimate extension rejected: %v", err)
+	}
+}
+
 func TestResponseAssemblyAcceptsSparseMonotonicProviderSequences(t *testing.T) {
 	assembly := NewResponseAssembly("sample-sparse")
 	if err := assembly.BeginTransport(TransportMetadata{

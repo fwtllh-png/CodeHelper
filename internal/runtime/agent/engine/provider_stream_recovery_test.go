@@ -70,6 +70,57 @@ func TestR3DisconnectAfterConfirmedChunkContinuesWithoutLoss(t *testing.T) {
 	}
 }
 
+func TestMaxTokensCreatesQuiescentTransportBoundary(t *testing.T) {
+	store := turnkernel.NewMemoryTerminalEnvelopeStore(nil, nil)
+	coordinators, err := turnkernel.NewStoreCoordinatorRuntime(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "partial"},
+			{
+				Type:       provider.EventMessageStop,
+				StopReason: provider.StopReasonMaxTokens,
+			},
+		}},
+		textStream(" answer"),
+	}}
+	engine := newEngine(t, runtime, nil)
+	engine.options.TurnCoordinatorRuntime = coordinators
+	result, err := engine.RunForTurn(
+		t.Context(),
+		"turn-max-token-boundary",
+		"review",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "partial answer" {
+		t.Fatalf("result = %+v", result)
+	}
+	facts, err := store.LoadDomainFacts(
+		t.Context(),
+		"turn-max-token-boundary",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var boundary *turnkernel.DomainFact
+	for index := range facts {
+		if facts[index].Command == "effect_requeued" {
+			boundary = &facts[index]
+			break
+		}
+	}
+	if boundary == nil ||
+		boundary.State.ActiveSampleID != "" ||
+		boundary.State.SampleLedger["turn-1-step-1"].ProviderRetries != 0 {
+		t.Fatalf("max-token boundary = %+v", boundary)
+	}
+}
+
 func TestR3IncompleteToolFragmentIsRetainedAndExecutedOnlyAfterClosure(
 	t *testing.T,
 ) {
@@ -453,6 +504,148 @@ func TestR3EnginePersistsProviderRecoveryBoundaries(t *testing.T) {
 			progress,
 			assembly,
 			len(facts),
+		)
+	}
+}
+
+func TestR3CompleteAssemblyDoesNotRestartProviderTransport(t *testing.T) {
+	assembly := providerassembly.NewResponseAssembly("sample-complete")
+	if err := assembly.BeginTransport(provider.TransportMetadata{
+		LogicalRequestID:   "sample-complete",
+		TransportRequestID: "transport-1",
+		Attempt:            1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []provider.StreamEvent{
+		{Type: provider.EventTextDelta, Text: "durable"},
+		{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+	} {
+		if _, err := assembly.Apply(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	scope := attachTestScope(t, engine)
+	scope.spec.Request = TurnRequest{Prompt: "review"}
+	catalog, err := engine.options.Tools.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope.spec.Catalog = catalog
+	begun := 0
+	history := []provider.Message{
+		provider.TextMessage(provider.RoleUser, "review"),
+	}
+	blocks, _, _, _, err := engine.modelStep(
+		t.Context(),
+		&history,
+		provider.Usage{},
+		"sample-complete",
+		"normal",
+		0,
+		false,
+		false,
+		nil,
+		nil,
+		nil,
+		assembly,
+		nil,
+		func() error {
+			begun++
+			return nil
+		},
+		nil,
+		func(State, Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if begun != 0 || providerassembly.BlocksText(blocks) != "durable" {
+		t.Fatalf("begin=%d blocks=%+v", begun, blocks)
+	}
+}
+
+func TestR3CompleteToolAssemblyUsesFrozenCatalogBinding(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	scope := attachTestScope(t, engine)
+	scope.spec.Request = TurnRequest{Prompt: "echo evidence"}
+	var err error
+	scope.spec.Catalog, err = registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, ok := scope.spec.Catalog.Binding("echo")
+	if !ok {
+		t.Fatal("echo binding is absent from frozen catalog")
+	}
+	assembly := providerassembly.NewResponseAssembly("sample-tool-complete")
+	if err := assembly.BeginTransport(provider.TransportMetadata{
+		LogicalRequestID:   "sample-tool-complete",
+		TransportRequestID: "transport-1",
+		Attempt:            1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []provider.StreamEvent{
+		{
+			Type: provider.EventToolCallDelta,
+			ToolCall: &provider.ToolCallFragment{
+				Index: 0, ID: "call-1", Name: "echo",
+				Arguments: `{"text":"evidence"}`,
+			},
+		},
+		{
+			Type:       provider.EventMessageStop,
+			StopReason: provider.StopReasonToolUse,
+		},
+	} {
+		if _, err := assembly.Apply(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history := []provider.Message{
+		provider.TextMessage(provider.RoleUser, "echo evidence"),
+	}
+	begun := 0
+	_, calls, _, _, err := engine.modelStep(
+		t.Context(),
+		&history,
+		provider.Usage{},
+		"sample-tool-complete",
+		"normal",
+		0,
+		false,
+		false,
+		nil,
+		nil,
+		nil,
+		assembly,
+		nil,
+		func() error {
+			begun++
+			return nil
+		},
+		nil,
+		func(State, Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if begun != 0 || len(calls) != 1 ||
+		calls[0].CatalogID != binding.CatalogID ||
+		calls[0].CatalogGeneration != binding.Generation ||
+		calls[0].CatalogRevision != binding.Revision ||
+		calls[0].CatalogAuthority != binding.Authority {
+		t.Fatalf(
+			"begin=%d calls=%+v binding=%+v",
+			begun,
+			calls,
+			binding,
 		)
 	}
 }

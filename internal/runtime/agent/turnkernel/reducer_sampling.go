@@ -175,10 +175,18 @@ func applyModelSampleResult(
 		command.Error != "" &&
 		current.ActiveSampleID == "" &&
 		current.SampleLedger[command.SampleID].Status == SampleRequested
+	recoveredComplete := ok &&
+		effect.Status == EffectRequested &&
+		command.Error == "" &&
+		current.ActiveSampleID == "" &&
+		current.SampleLedger[command.SampleID].Status == SampleRequested &&
+		current.SampleLedger[command.SampleID].Assembly != nil &&
+		current.SampleLedger[command.SampleID].Assembly.State ==
+			providerassembly.ResponseComplete
 	if !ok ||
 		effect.Kind != EffectSampleProvider ||
 		effect.CallID != command.SampleID ||
-		(!running && !scheduledAbort) {
+		(!running && !scheduledAbort && !recoveredComplete) {
 		return illegal(current, command, "sample result effect is not running")
 	}
 	success := command.Error == ""

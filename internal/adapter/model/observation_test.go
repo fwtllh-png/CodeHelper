@@ -7,29 +7,47 @@ import (
 )
 
 func TestApplyProbeTightensWithoutTrustAndWidensOnlyWithTrust(t *testing.T) {
-	base := model.Capabilities{Streaming: true, Vision: true, Reasoning: false}
+	base := model.Capabilities{
+		Streaming: true, Vision: true, Reasoning: true,
+		ReasoningEfforts:       []string{"off", "high"},
+		DefaultReasoningEffort: "high",
+		ThinkingToggle:         true,
+		PromptCache:            true, AutomaticPromptCache: true,
+	}
 	observations := []model.CapabilityObservation{
-		{Capability: model.CapVision, Supported: false, Source: "probe"},
-		{Capability: model.CapReasoning, Supported: true, Source: "probe"},
+		{ConnectionID: "connection-1", Capability: model.CapVision, Supported: false, Source: "probe"},
+		{ConnectionID: "connection-1", Capability: model.CapReasoning, Supported: false, Source: "probe"},
+		{ConnectionID: "connection-1", Capability: model.CapPromptCache, Supported: false, Source: "probe"},
 	}
 
 	tightened := model.ApplyProbe(base, observations, false)
 	if tightened.Vision {
 		t.Fatal("probe unsupported must clear vision")
 	}
-	if tightened.Reasoning {
-		t.Fatal("probe supported must not widen without --trust-probe")
+	if tightened.Reasoning || len(tightened.ReasoningEfforts) != 0 ||
+		tightened.DefaultReasoningEffort != "" || tightened.ThinkingToggle {
+		t.Fatalf("reasoning dependencies survived probe tightening: %+v", tightened)
+	}
+	if tightened.PromptCache || tightened.AutomaticPromptCache {
+		t.Fatalf("prompt cache dependencies survived probe tightening: %+v", tightened)
 	}
 	if !tightened.Streaming {
 		t.Fatal("unrelated bits must stay")
 	}
+}
 
-	widened := model.ApplyProbe(base, observations, true)
-	if widened.Vision {
-		t.Fatal("unsupported still clears under trust")
+func TestApplyProbeWidensOnlyWithTrust(t *testing.T) {
+	observation := []model.CapabilityObservation{{
+		ConnectionID: "connection-1",
+		Capability:   model.CapReasoning,
+		Supported:    true,
+		Source:       "probe",
+	}}
+	if model.ApplyProbe(model.Capabilities{}, observation, false).Reasoning {
+		t.Fatal("supported probe widened capabilities without trust")
 	}
-	if !widened.Reasoning {
-		t.Fatal("supported must widen with --trust-probe")
+	if !model.ApplyProbe(model.Capabilities{}, observation, true).Reasoning {
+		t.Fatal("trusted supported probe did not widen capabilities")
 	}
 }
 
@@ -49,7 +67,7 @@ func TestReadyRouteWithCapabilitiesDoesNotMutateOriginal(t *testing.T) {
 	}
 	updated := route.WithCapabilities(model.ApplyProbe(
 		route.Model().Capabilities,
-		[]model.CapabilityObservation{{Capability: model.CapVision, Supported: false}},
+		[]model.CapabilityObservation{{ConnectionID: "connection-1", Capability: model.CapVision, Supported: false}},
 		false,
 	))
 	if updated.Model().Capabilities.Vision {

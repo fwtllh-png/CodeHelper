@@ -10,7 +10,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
@@ -23,21 +26,26 @@ import (
 )
 
 const (
-	webSetupVersion       = 1
-	webSupervisorScope    = "web-supervisor"
-	customProviderID      = "openai-compatible"
-	customContextTokens   = 128_000
-	customMaxOutputTokens = 8_192
+	webSetupVersion    = 2
+	webSupervisorScope = "web-supervisor"
+	customProviderID   = "openai-compatible"
 )
 
 var setupModelIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$`)
 
+var setupProviderAliases = map[string][]string{
+	"deepseek": {"deepseek-v4-flash"},
+}
+
 type webSetupSelection struct {
-	Version  int    `json:"version"`
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
-	BaseURL  string `json:"base_url,omitempty"`
-	Protocol string `json:"protocol,omitempty"`
+	Version            int                         `json:"version"`
+	Provider           string                      `json:"provider"`
+	Model              string                      `json:"model"`
+	BaseURL            string                      `json:"base_url,omitempty"`
+	Protocol           string                      `json:"protocol,omitempty"`
+	Metadata           *webhost.SetupModelMetadata `json:"model_metadata,omitempty"`
+	MetadataProvenance model.Provenance            `json:"metadata_provenance"`
+	Credential         *credential.Reference       `json:"credential,omitempty"`
 }
 
 type webSetupAttempt struct {
@@ -62,6 +70,7 @@ func webSetupCatalog() webhost.SetupCatalog {
 			ID: id, DisplayName: displayNames[id],
 			Protocol:       string(provider.Protocol),
 			RequiresAPIKey: provider.Credential.Kind != "",
+			Models:         setupKnownModels(catalog, provider),
 		})
 	}
 	providers = append(providers, webhost.SetupProvider{
@@ -71,6 +80,29 @@ func webSetupCatalog() webhost.SetupCatalog {
 	return webhost.SetupCatalog{
 		Version: webhost.SetupCatalogVersion, Providers: providers,
 	}
+}
+
+func setupKnownModels(
+	catalog *model.Catalog,
+	selected model.Provider,
+) []string {
+	counts := make(map[string]int)
+	for _, provider := range catalog.Providers() {
+		if !setupProviderOwns(selected.ID, provider.ID) {
+			continue
+		}
+		for modelID := range provider.Models {
+			counts[modelID]++
+		}
+	}
+	models := make([]string, 0, len(counts))
+	for modelID, count := range counts {
+		if _, direct := selected.Models[modelID]; direct || count == 1 {
+			models = append(models, modelID)
+		}
+	}
+	sort.Strings(models)
+	return models
 }
 
 func resolveWebSetup(request webhost.SetupRequest) (
@@ -98,9 +130,17 @@ func resolveWebSetup(request webhost.SetupRequest) (
 				"custom provider model id is invalid",
 			)
 		}
+		metadata, err := resolveSetupModelMetadata(
+			protocolName,
+			request.ModelMetadata,
+		)
+		if err != nil {
+			return webSetupSelection{}, credential.Reference{}, err
+		}
 		return webSetupSelection{
 			Version: webSetupVersion, Provider: customProviderID, Model: modelID,
-			BaseURL: baseURL, Protocol: protocolName,
+			BaseURL: baseURL, Protocol: protocolName, Metadata: metadata,
+			MetadataProvenance: model.ProvenanceOperatorConfig,
 		}, credential.Reference{}, nil
 	}
 
@@ -122,7 +162,7 @@ func resolveWebSetup(request webhost.SetupRequest) (
 	if !directlyKnown {
 		if matched, found := uniqueSetupProviderForModel(
 			catalog,
-			provider.Adapter,
+			provider,
 			modelID,
 		); found {
 			routeProvider = matched
@@ -136,10 +176,34 @@ func resolveWebSetup(request webhost.SetupRequest) (
 	if !directlyKnown {
 		baseURL = provider.Endpoint
 	}
+	var metadata *webhost.SetupModelMetadata
+	if !directlyKnown {
+		var err error
+		metadata, err = resolveSetupModelMetadata(
+			string(routeProvider.Protocol),
+			request.ModelMetadata,
+		)
+		if err != nil {
+			return webSetupSelection{}, credential.Reference{}, err
+		}
+	} else if request.ModelMetadata != nil {
+		return webSetupSelection{}, credential.Reference{}, invalidSetup(
+			"model metadata is not accepted for a catalog model",
+		)
+	}
 	return webSetupSelection{
-			Version: webSetupVersion, Provider: providerID, Model: modelID,
+			Version:  webSetupVersion,
+			Provider: providerID,
+			Model:    modelID,
 			BaseURL:  baseURL,
 			Protocol: string(routeProvider.Protocol),
+			Metadata: metadata,
+			MetadataProvenance: func() model.Provenance {
+				if metadata != nil {
+					return model.ProvenanceOperatorConfig
+				}
+				return model.ProvenanceBundled
+			}(),
 		}, credential.Reference{
 			Kind: routeProvider.Credential.Kind, Name: routeProvider.Credential.Name,
 		}, nil
@@ -147,13 +211,14 @@ func resolveWebSetup(request webhost.SetupRequest) (
 
 func uniqueSetupProviderForModel(
 	catalog *model.Catalog,
-	adapter model.AdapterID,
+	selected model.Provider,
 	modelID string,
 ) (model.Provider, bool) {
 	var match model.Provider
 	found := false
 	for _, provider := range catalog.Providers() {
-		if provider.Adapter != adapter {
+		if provider.Adapter != selected.Adapter ||
+			!setupProviderOwns(selected.ID, provider.ID) {
 			continue
 		}
 		if _, exists := provider.Models[modelID]; !exists {
@@ -166,6 +231,11 @@ func uniqueSetupProviderForModel(
 		found = true
 	}
 	return match, found
+}
+
+func setupProviderOwns(selectedID, candidateID string) bool {
+	return selectedID == candidateID ||
+		slices.Contains(setupProviderAliases[selectedID], candidateID)
 }
 
 func validateSetupBaseURL(value string) (string, error) {
@@ -190,10 +260,164 @@ func setupModelMetadata(selection webSetupSelection) wire.ModelMetadataOptions {
 	if selection.BaseURL == "" {
 		return wire.ModelMetadataOptions{}
 	}
-	return wire.ModelMetadataOptions{
-		ContextTokens: customContextTokens, ContextSet: true,
-		MaxOutputTokens: customMaxOutputTokens, OutputSet: true,
-		Capabilities: "streaming,tool_calls", CapabilitiesSet: true,
+	if selection.Metadata == nil {
+		return wire.ModelMetadataOptions{}
+	}
+	metadata := selection.Metadata
+	capabilities, _ := setupCapabilities(metadata.Capabilities)
+	return wire.ModelMetadataOptions{Descriptor: &model.Model{
+		ID: selection.Model, CanonicalID: metadata.CanonicalID, WireID: metadata.WireID,
+		Limits: model.Limits{
+			ContextTokens: metadata.ContextTokens, MaxOutputTokens: metadata.MaxOutputTokens,
+		},
+		Capabilities: capabilities,
+		Pricing:      model.Pricing{Provenance: selection.MetadataProvenance},
+		MetadataProvenance: model.MetadataProvenance{
+			CanonicalID:  selection.MetadataProvenance,
+			WireID:       selection.MetadataProvenance,
+			Limits:       selection.MetadataProvenance,
+			Capabilities: selection.MetadataProvenance,
+			Pricing:      selection.MetadataProvenance,
+		},
+		Provenance: selection.MetadataProvenance,
+	}}
+}
+
+func resolveSetupModelMetadata(
+	protocolName string,
+	input *webhost.SetupModelMetadata,
+) (*webhost.SetupModelMetadata, error) {
+	if input == nil {
+		return nil, invalidSetup("custom provider model metadata is required")
+	}
+	metadata := *input
+	metadata.CanonicalID = strings.TrimSpace(metadata.CanonicalID)
+	metadata.WireID = strings.TrimSpace(metadata.WireID)
+	metadata.Capabilities.ReasoningEfforts = append(
+		[]string(nil),
+		metadata.Capabilities.ReasoningEfforts...,
+	)
+	for index := range metadata.Capabilities.ReasoningEfforts {
+		metadata.Capabilities.ReasoningEfforts[index] =
+			strings.TrimSpace(metadata.Capabilities.ReasoningEfforts[index])
+	}
+	metadata.Capabilities.DefaultReasoningEffort =
+		strings.TrimSpace(metadata.Capabilities.DefaultReasoningEffort)
+	capabilities, err := setupCapabilities(metadata.Capabilities)
+	if err != nil {
+		return nil, err
+	}
+	metadata.Capabilities = setupCapabilitiesDTO(capabilities)
+	if !setupModelIDPattern.MatchString(metadata.CanonicalID) ||
+		!setupModelIDPattern.MatchString(metadata.WireID) {
+		return nil, invalidSetup("custom model canonical_id and wire_id are required")
+	}
+	if metadata.ContextTokens == 0 || metadata.MaxOutputTokens == 0 {
+		return nil, invalidSetup("custom model context and output limits must be positive")
+	}
+	if metadata.MaxOutputTokens > metadata.ContextTokens {
+		return nil, invalidSetup("custom model output limit exceeds context limit")
+	}
+	if !capabilities.Streaming {
+		return nil, invalidSetup("custom model must declare streaming capability")
+	}
+	if !capabilities.Reasoning &&
+		(len(capabilities.ReasoningEfforts) != 0 ||
+			capabilities.DefaultReasoningEffort != "" ||
+			capabilities.ThinkingToggle) {
+		return nil, invalidSetup(
+			"custom model reasoning controls require reasoning capability",
+		)
+	}
+	seen := make(map[string]struct{}, len(capabilities.ReasoningEfforts))
+	for _, effort := range capabilities.ReasoningEfforts {
+		if !slices.Contains(
+			[]string{"off", "minimal", "low", "medium", "high", "xhigh", "max"},
+			effort,
+		) {
+			return nil, invalidSetup("custom model reasoning effort is invalid")
+		}
+		if _, duplicate := seen[effort]; duplicate {
+			return nil, invalidSetup("custom model reasoning efforts must be unique")
+		}
+		seen[effort] = struct{}{}
+	}
+	if capabilities.DefaultReasoningEffort != "" &&
+		!slices.Contains(
+			capabilities.ReasoningEfforts,
+			capabilities.DefaultReasoningEffort,
+		) {
+		return nil, invalidSetup(
+			"custom model default reasoning effort must be declared",
+		)
+	}
+	if capabilities.AutomaticPromptCache && !capabilities.PromptCache {
+		return nil, invalidSetup(
+			"custom model automatic prompt cache requires prompt cache capability",
+		)
+	}
+	if capabilities.IncrementalResponses &&
+		protocolName != string(model.ProtocolOpenAIResponses) {
+		return nil, invalidSetup(
+			"custom model incremental responses require openai_responses protocol",
+		)
+	}
+	return &metadata, nil
+}
+
+func setupCapabilities(
+	input webhost.SetupModelCapabilities,
+) (model.Capabilities, error) {
+	required := []*bool{
+		input.Streaming,
+		input.Reasoning,
+		input.ToolCalls,
+		input.NativeSearch,
+		input.IncrementalResponses,
+		input.Vision,
+		input.ImageInput,
+		input.PromptCache,
+		input.AutomaticPromptCache,
+		input.ThinkingToggle,
+	}
+	if slices.Contains(required, nil) {
+		return model.Capabilities{}, invalidSetup(
+			"custom model capability declaration is incomplete",
+		)
+	}
+	return model.Capabilities{
+		Streaming:              *input.Streaming,
+		Reasoning:              *input.Reasoning,
+		ReasoningEfforts:       append([]string(nil), input.ReasoningEfforts...),
+		DefaultReasoningEffort: input.DefaultReasoningEffort,
+		ToolCalls:              *input.ToolCalls,
+		NativeSearch:           *input.NativeSearch,
+		IncrementalResponses:   *input.IncrementalResponses,
+		Vision:                 *input.Vision,
+		ImageInput:             *input.ImageInput,
+		PromptCache:            *input.PromptCache,
+		AutomaticPromptCache:   *input.AutomaticPromptCache,
+		ThinkingToggle:         *input.ThinkingToggle,
+	}, nil
+}
+
+func setupCapabilitiesDTO(
+	input model.Capabilities,
+) webhost.SetupModelCapabilities {
+	value := func(input bool) *bool { return &input }
+	return webhost.SetupModelCapabilities{
+		Streaming:              value(input.Streaming),
+		Reasoning:              value(input.Reasoning),
+		ReasoningEfforts:       append([]string(nil), input.ReasoningEfforts...),
+		DefaultReasoningEffort: input.DefaultReasoningEffort,
+		ToolCalls:              value(input.ToolCalls),
+		NativeSearch:           value(input.NativeSearch),
+		IncrementalResponses:   value(input.IncrementalResponses),
+		Vision:                 value(input.Vision),
+		ImageInput:             value(input.ImageInput),
+		PromptCache:            value(input.PromptCache),
+		AutomaticPromptCache:   value(input.AutomaticPromptCache),
+		ThinkingToggle:         value(input.ThinkingToggle),
 	}
 }
 
@@ -208,12 +432,19 @@ func setupRuntimeProviderID(selection webSetupSelection) string {
 	}
 	if routeProvider, found := uniqueSetupProviderForModel(
 		catalog,
-		provider.Adapter,
+		provider,
 		selection.Model,
 	); found {
 		return routeProvider.ID
 	}
 	return selection.Provider
+}
+
+func setupWireModelID(selection webSetupSelection, modelID string) string {
+	if selection.Metadata != nil && modelID == selection.Model {
+		return selection.Metadata.WireID
+	}
+	return modelID
 }
 
 func setupSelectionPath(dataDir, _ string) string {
@@ -254,25 +485,46 @@ func loadWebSetupSelection(dataDir, workspaceID string) (webSetupSelection, bool
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return webSetupSelection{}, false, errors.New("Web setup selection has trailing data")
 	}
+	if selection.Provider == customProviderID && selection.Metadata == nil {
+		return webSetupSelection{}, false, nil
+	}
 	request := webhost.SetupRequest{
 		Provider: selection.Provider, Model: selection.Model,
 		BaseURL: selection.BaseURL, Protocol: selection.Protocol, APIKey: "persisted",
+		ModelMetadata: selection.Metadata,
 	}
 	resolved, _, err := resolveWebSetup(request)
 	if err != nil {
+		if selection.Version < webSetupVersion &&
+			selection.BaseURL != "" && selection.Metadata == nil {
+			return webSetupSelection{}, false, nil
+		}
 		return webSetupSelection{}, false, err
 	}
-	if resolved != selection && !canUpgradeSetupSelection(selection, resolved) {
+	if selection.Credential != nil {
+		if selection.Credential.Kind != "keyring" ||
+			!strings.HasPrefix(selection.Credential.Name, "web/") {
+			return webSetupSelection{}, false, errors.New(
+				"Web setup credential reference is invalid",
+			)
+		}
+		value := *selection.Credential
+		resolved.Credential = &value
+	}
+	if !reflect.DeepEqual(resolved, selection) &&
+		!canUpgradeSetupSelection(selection, resolved) {
 		return webSetupSelection{}, false, errors.New("Web setup selection is not canonical")
 	}
 	return resolved, true, nil
 }
 
 func canUpgradeSetupSelection(previous, resolved webSetupSelection) bool {
-	return previous.Version == webSetupVersion &&
+	return (previous.Version == 1 || previous.Version == webSetupVersion) &&
 		previous.Provider != customProviderID &&
 		previous.Provider == resolved.Provider &&
 		previous.Model == resolved.Model &&
+		(previous.MetadataProvenance == "" ||
+			previous.MetadataProvenance == resolved.MetadataProvenance) &&
 		resolved.BaseURL == ""
 }
 

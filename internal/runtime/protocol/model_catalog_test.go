@@ -10,9 +10,13 @@ func TestModelCatalogRequiresHonestSelectionAndAvailabilityMetadata(t *testing.T
 		Streaming:         true,
 		ToolCalls:         true,
 		ParallelToolCalls: "unknown",
-		CredentialStatus:  "unknown",
-		Availability:      "available",
-		SelectionMode:     "restart_required",
+		MetadataProvenance: ModelMetadataProvenance{
+			CanonicalID: "fixture", WireID: "fixture",
+			Limits: "fixture", Capabilities: "fixture", Pricing: "fixture",
+		},
+		CredentialStatus: "unknown",
+		Availability:     "available",
+		SelectionMode:    "restart_required",
 	}
 	catalog := ModelCatalog{
 		Version: ModelCatalogVersion,
@@ -24,6 +28,11 @@ func TestModelCatalogRequiresHonestSelectionAndAvailabilityMetadata(t *testing.T
 	if err := catalog.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	catalog.Models[0].Capabilities.MetadataProvenance.Limits = "guessed"
+	if err := catalog.Validate(); err == nil {
+		t.Fatal("model catalog accepted an unknown metadata provenance")
+	}
+	catalog.Models[0].Capabilities.MetadataProvenance.Limits = "fixture"
 	catalog.Models[0].Capabilities.SelectionMode = "hot"
 	catalog.Models[0].Capabilities.Availability = "unavailable"
 	if err := catalog.Validate(); err == nil {

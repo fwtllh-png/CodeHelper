@@ -589,11 +589,29 @@ function spanTitle(span: TraceSpan): string {
 function receiptSummary(data: Record<string, unknown>): string {
   const latency = isRecord(data.latency) ? Number(data.latency.total_ms ?? 0) : 0;
   const tokens = Number(data.input_tokens ?? 0) + Number(data.output_tokens ?? 0);
+  const delegation = delegationSummary(data.delegation);
   return [
     summary(data.outcome ?? "Recorded"),
+    delegation,
     latency > 0 ? `${latency} ms` : "",
     tokens > 0 ? `${tokens} tokens` : ""
   ].filter(Boolean).join(" · ");
+}
+
+function delegationSummary(value: unknown): string {
+  if (!isRecord(value)) return "";
+  switch (text(value.outcome)) {
+    case "delegated": {
+      const spawned = finiteNumber(value.spawned) ?? 0;
+      return `Delegated to ${spawned} subagent${spawned === 1 ? "" : "s"}`;
+    }
+    case "retained_parent":
+      return "Parent execution";
+    case "blocked":
+      return "Delegation blocked";
+    default:
+      return "";
+  }
 }
 
 function usageSummary(data: Record<string, unknown>): string {

@@ -1463,7 +1463,7 @@ func (*resultRetrieval) Descriptor() Descriptor {
 			"type": "object",
 			"properties": map[string]any{
 				"handle":     map[string]any{"type": "string", "minLength": float64(1)},
-				"mode":       map[string]any{"type": "string", "enum": []any{"metadata", "summary", "head", "tail", "lines", "query", "bytes"}},
+				"mode":       map[string]any{"type": "string", "enum": []any{"metadata", "summary", "head", "tail", "lines", "query", "bytes", "full"}},
 				"start_line": map[string]any{"type": "integer"},
 				"max_lines":  map[string]any{"type": "integer"},
 				"query":      map[string]any{"type": "string"},
@@ -1502,6 +1502,9 @@ func (t *resultRetrieval) Execute(_ context.Context, raw json.RawMessage) (Resul
 	}
 	if input.Mode == "" {
 		input.Mode = "summary"
+	}
+	if input.Mode == "full" {
+		input.Mode = "bytes"
 	}
 	if input.Offset < 0 || input.StartLine < 0 || input.MaxLines < 0 || input.MaxBytes < 0 {
 		return Result{}, errors.New("offset and limits must not be negative")

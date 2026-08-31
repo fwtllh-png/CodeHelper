@@ -185,3 +185,16 @@ func prepareSessionDeltaForTest(
 	}
 	return NewSessionDelta(snapshot, accounting, state.Manifest)
 }
+
+func TestCloneCompactionDeepCopiesNarrativeRequiredKinds(t *testing.T) {
+	original := Compaction{State: &CompactionState{
+		NarrativeInput: &NarrativeInputArtifact{
+			RequiredKinds: []string{NarrativeCurrent},
+		},
+	}}
+	cloned := CloneCompaction(original)
+	cloned.State.NarrativeInput.RequiredKinds[0] = NarrativeNextStep
+	if original.State.NarrativeInput.RequiredKinds[0] != NarrativeCurrent {
+		t.Fatal("clone mutated sealed narrative requirements")
+	}
+}

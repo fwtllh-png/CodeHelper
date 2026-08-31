@@ -98,18 +98,19 @@ func (d UnknownEventData) MarshalJSON() ([]byte, error) {
 }
 
 type TurnStartedData struct {
-	Provider           string         `json:"provider"`
-	Model              string         `json:"model"`
-	QueueID            string         `json:"queue_id,omitempty"`
-	PlanID             string         `json:"plan_id,omitempty"`
-	PlanTransition     PlanTransition `json:"plan_transition,omitempty"`
-	ProfileRevision    uint64         `json:"profile_revision,omitempty"`
-	Intent             TurnIntent     `json:"intent,omitempty"`
-	Mode               string         `json:"mode,omitempty"`
-	Posture            string         `json:"posture,omitempty"`
-	Workspace          string         `json:"workspace,omitempty"`
-	WorkspaceIsolation string         `json:"workspace_isolation,omitempty"`
-	Sandbox            string         `json:"sandbox,omitempty"`
+	Provider           string                   `json:"provider"`
+	Model              string                   `json:"model"`
+	ModelMetadata      *ModelMetadataProvenance `json:"model_metadata_provenance,omitempty"`
+	QueueID            string                   `json:"queue_id,omitempty"`
+	PlanID             string                   `json:"plan_id,omitempty"`
+	PlanTransition     PlanTransition           `json:"plan_transition,omitempty"`
+	ProfileRevision    uint64                   `json:"profile_revision,omitempty"`
+	Intent             TurnIntent               `json:"intent,omitempty"`
+	Mode               string                   `json:"mode,omitempty"`
+	Posture            string                   `json:"posture,omitempty"`
+	Workspace          string                   `json:"workspace,omitempty"`
+	WorkspaceIsolation string                   `json:"workspace_isolation,omitempty"`
+	Sandbox            string                   `json:"sandbox,omitempty"`
 	// Prompt is model-visible durable reconstruction input. Optional for older events.
 	Prompt string `json:"prompt,omitempty"`
 	// DisplayPrompt omits expanded editor context and is safe for chat projection.
@@ -134,9 +135,14 @@ func (d *TurnStartedData) validate() error {
 			planErr = errors.New("turn started plan profile revision is required")
 		}
 	}
+	var metadataErr error
+	if d.ModelMetadata != nil {
+		metadataErr = d.ModelMetadata.Validate()
+	}
 	return errors.Join(
 		require(d.Provider != "" && d.Model != "", "turn started provider and model are required"),
 		planErr,
+		metadataErr,
 		require(NormalizeTurnIntent(d.Intent).Valid(), "turn started intent is invalid"),
 		require(slices.Contains([]string{"", "shared", "worktree"}, d.WorkspaceIsolation), "turn started workspace isolation is invalid"),
 		require(!slices.ContainsFunc(d.Images, func(value EditorContextReference) bool { return value.Kind != EditorContextImage }), "turn images must contain only image context"),
@@ -228,10 +234,11 @@ func (d *CitationData) validate() error {
 // UsageData is one provider call's cumulative usage. Aggregators retain the
 // latest event per Sample and sum across Samples to avoid double-counting.
 type UsageData struct {
-	Sample   uint32             `json:"sample"`
-	Provider string             `json:"provider,omitempty"`
-	Model    string             `json:"model,omitempty"`
-	Context  *SampleContextData `json:"context,omitempty"`
+	Sample        uint32                   `json:"sample"`
+	Provider      string                   `json:"provider,omitempty"`
+	Model         string                   `json:"model,omitempty"`
+	ModelMetadata *ModelMetadataProvenance `json:"model_metadata_provenance,omitempty"`
+	Context       *SampleContextData       `json:"context,omitempty"`
 
 	InputTokens     uint64 `json:"input_tokens"`
 	OutputTokens    uint64 `json:"output_tokens"`
@@ -344,6 +351,11 @@ type SampleContextData struct {
 func (*UsageData) eventKind() EventKind { return EventUsage }
 
 func (d *UsageData) validate() error {
+	if d.ModelMetadata != nil {
+		if err := d.ModelMetadata.Validate(); err != nil {
+			return err
+		}
+	}
 	if d.Context == nil || d.Context.ProviderProjection == nil {
 		return nil
 	}
@@ -1131,29 +1143,32 @@ type TurnCompactionData struct {
 	Sections []string `json:"sections,omitempty"`
 	// SummaryTruncated reports that the summary budget cut sections, so a host can
 	// distinguish a complete account of the removed history from a partial one.
-	SummaryTruncated      bool                  `json:"summary_truncated,omitempty"`
-	RemovedTurns          []uint64              `json:"removed_turns,omitempty"`
-	PrunedToolResults     int                   `json:"pruned_tool_results,omitempty"`
-	PrunedBytes           int                   `json:"pruned_bytes,omitempty"`
-	TruthGeneration       uint64                `json:"truth_generation,omitempty"`
-	TruthEntities         int                   `json:"truth_entities,omitempty"`
-	CriticalFacts         int                   `json:"critical_facts,omitempty"`
-	CompatibilityHash     string                `json:"compatibility_hash,omitempty"`
-	CompatibilityMatched  bool                  `json:"compatibility_matched,omitempty"`
-	AuthorityDigest       string                `json:"authority_digest,omitempty"`
-	AuthorityEquivalent   bool                  `json:"authority_equivalent,omitempty"`
-	ModelDownshifted      bool                  `json:"model_downshifted,omitempty"`
-	DownshiftPolicy       string                `json:"downshift_policy,omitempty"`
-	NarrativeIncluded     bool                  `json:"narrative_included,omitempty"`
-	NarrativeBytes        int                   `json:"narrative_bytes,omitempty"`
-	NarrativeInputTokens  uint64                `json:"narrative_input_tokens,omitempty"`
-	NarrativeOutputTokens uint64                `json:"narrative_output_tokens,omitempty"`
-	FallbackReason        string                `json:"fallback_reason,omitempty"`
-	CapsuleBytes          int                   `json:"capsule_bytes,omitempty"`
-	MandatoryBytes        int                   `json:"mandatory_bytes,omitempty"`
-	MandatoryEntities     int                   `json:"mandatory_entities,omitempty"`
-	OmissionCount         int                   `json:"omission_count,omitempty"`
-	Retention             []TruthRetentionCount `json:"retention,omitempty"`
+	SummaryTruncated      bool                     `json:"summary_truncated,omitempty"`
+	RemovedTurns          []uint64                 `json:"removed_turns,omitempty"`
+	PrunedToolResults     int                      `json:"pruned_tool_results,omitempty"`
+	PrunedBytes           int                      `json:"pruned_bytes,omitempty"`
+	TruthGeneration       uint64                   `json:"truth_generation,omitempty"`
+	TruthEntities         int                      `json:"truth_entities,omitempty"`
+	CriticalFacts         int                      `json:"critical_facts,omitempty"`
+	CompatibilityHash     string                   `json:"compatibility_hash,omitempty"`
+	CompatibilityMatched  bool                     `json:"compatibility_matched,omitempty"`
+	AuthorityDigest       string                   `json:"authority_digest,omitempty"`
+	AuthorityEquivalent   bool                     `json:"authority_equivalent,omitempty"`
+	ModelDownshifted      bool                     `json:"model_downshifted,omitempty"`
+	DownshiftPolicy       string                   `json:"downshift_policy,omitempty"`
+	NarrativeIncluded     bool                     `json:"narrative_included,omitempty"`
+	NarrativeBytes        int                      `json:"narrative_bytes,omitempty"`
+	NarrativeInputTokens  uint64                   `json:"narrative_input_tokens,omitempty"`
+	NarrativeOutputTokens uint64                   `json:"narrative_output_tokens,omitempty"`
+	NarrativeProvider     string                   `json:"narrative_provider,omitempty"`
+	NarrativeModel        string                   `json:"narrative_model,omitempty"`
+	NarrativeMetadata     *ModelMetadataProvenance `json:"narrative_metadata_provenance,omitempty"`
+	FallbackReason        string                   `json:"fallback_reason,omitempty"`
+	CapsuleBytes          int                      `json:"capsule_bytes,omitempty"`
+	MandatoryBytes        int                      `json:"mandatory_bytes,omitempty"`
+	MandatoryEntities     int                      `json:"mandatory_entities,omitempty"`
+	OmissionCount         int                      `json:"omission_count,omitempty"`
+	Retention             []TruthRetentionCount    `json:"retention,omitempty"`
 }
 
 func (*TurnCompactionData) eventKind() EventKind { return EventTurnCompaction }
@@ -1177,6 +1192,16 @@ func (d *TurnCompactionData) validate() error {
 		(d.CompatibilityHash == "" || d.DownshiftPolicy == "" ||
 			d.AuthorityDigest == "" || !d.AuthorityEquivalent) {
 		return errors.New("turn compaction truth metadata is incomplete")
+	}
+	if d.NarrativeProvider != "" || d.NarrativeModel != "" ||
+		d.NarrativeMetadata != nil {
+		if d.NarrativeProvider == "" || d.NarrativeModel == "" ||
+			d.NarrativeMetadata == nil {
+			return errors.New("turn compaction narrative route is incomplete")
+		}
+		if err := d.NarrativeMetadata.Validate(); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -13,12 +13,13 @@ import (
 )
 
 type ToolSampleMetadata struct {
-	Index    uint32
-	Provider string
-	Model    string
-	Purpose  model.Purpose
-	CallID   string
-	Pricing  model.Pricing
+	Index              uint32
+	Provider           string
+	Model              string
+	Purpose            model.Purpose
+	CallID             string
+	Pricing            model.Pricing
+	MetadataProvenance model.MetadataProvenance
 }
 
 type ToolSampleProjection struct {
@@ -89,11 +90,12 @@ func (a *ToolSampleAccount) stream(
 		purpose = model.PurposeAct
 	}
 	metadata := ToolSampleMetadata{
-		Provider: request.Route.ProviderID(),
-		Model:    request.Route.Model().ID,
-		Purpose:  purpose,
-		CallID:   tool.InvocationIdentityFrom(ctx).CallID,
-		Pricing:  request.Route.Model().Pricing,
+		Provider:           request.Route.ProviderID(),
+		Model:              request.Route.Model().ID,
+		Purpose:            purpose,
+		CallID:             tool.InvocationIdentityFrom(ctx).CallID,
+		Pricing:            request.Route.Model().Pricing,
+		MetadataProvenance: request.Route.Model().MetadataProvenance,
 	}
 	if a.hooks.NextSample != nil {
 		metadata.Index = a.hooks.NextSample()

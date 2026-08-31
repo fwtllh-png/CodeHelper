@@ -733,17 +733,7 @@ func terminalStatus(event protocol.Event) TurnStatus {
 }
 
 func recoverableTurnFault(fault *protocol.FaultMetadata) bool {
-	if fault == nil {
-		return false
-	}
-	switch fault.Disposition {
-	case protocol.FaultRetryStep,
-		protocol.FaultRetryTurn,
-		protocol.FaultResumeTurn:
-		return true
-	default:
-		return false
-	}
+	return protocol.FaultAllowsTurnRecovery(fault)
 }
 
 func confirmsOperation(kind protocol.EventKind) bool {

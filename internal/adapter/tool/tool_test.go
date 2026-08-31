@@ -362,6 +362,7 @@ func TestResultRetrievalModesAreBoundedAndPagePastInlineContent(t *testing.T) {
 		{name: "lines", arguments: `{"mode":"lines","start_line":3,"max_lines":1}`, contains: "needle-three"},
 		{name: "query", arguments: `{"mode":"query","query":"needle"}`, contains: "needle-three"},
 		{name: "bytes", arguments: `{"mode":"bytes","offset":25}`, contains: "line4"},
+		{name: "full alias", arguments: `{"mode":"full"}`, contains: "line1"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

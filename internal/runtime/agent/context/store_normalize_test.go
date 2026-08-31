@@ -1,6 +1,7 @@
 package agentcontext
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -80,6 +81,114 @@ func TestNormalizeProjectsUnsupportedModalities(t *testing.T) {
 		t.Fatalf(
 			"supported receipt=%+v messages=%+v",
 			supportedReceipt, supported.Messages(),
+		)
+	}
+}
+
+func TestNormalizePreservesReasoningBoundToToolCall(t *testing.T) {
+	snapshot := NewMessageLedger(LedgerInput{History: []provider.Message{
+		{
+			Role: provider.RoleAssistant,
+			Blocks: []provider.ContentBlock{
+				{Type: provider.ContentReasoning, Text: "required replay"},
+				{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{
+					ID: "call_1", Name: "fixture", Arguments: `{}`,
+				}},
+			},
+		},
+		toolResultContextMessage("call_1", 1),
+	}}).Snapshot()
+
+	normalized, receipt, err := snapshot.Normalize(model.Capabilities{
+		ToolCalls: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := normalized.Messages()
+	if receipt.DroppedReasoning != 0 ||
+		len(messages) != 2 ||
+		len(messages[0].Blocks) != 2 ||
+		messages[0].Blocks[0].Type != provider.ContentReasoning {
+		t.Fatalf("receipt=%+v messages=%+v", receipt, messages)
+	}
+}
+
+func TestNormalizePreservesReasoningBoundToVersionedReplay(t *testing.T) {
+	message := provider.Message{
+		Role: provider.RoleAssistant,
+		Blocks: []provider.ContentBlock{
+			{Type: provider.ContentReasoning, Text: "required replay"},
+			{Type: provider.ContentText, Text: "answer"},
+		},
+	}
+	message.Provenance = &provider.AssistantProvenance{
+		Adapter:  model.AdapterOpenAICompatible,
+		Provider: "provider",
+		Model:    "model",
+		Replay: &provider.ReplayState{
+			Version:       provider.ReplayVersion,
+			ContentDigest: provider.MessageContentDigest(message),
+			Data:          json.RawMessage(`{"state":"replay"}`),
+		},
+	}
+	normalized, receipt, err := NewMessageLedger(
+		LedgerInput{History: []provider.Message{message}},
+	).Snapshot().Normalize(model.Capabilities{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := normalized.Messages()
+	if receipt.DroppedReasoning != 0 ||
+		len(messages) != 1 ||
+		len(messages[0].Blocks) != 2 ||
+		messages[0].Provenance == nil ||
+		messages[0].Provenance.Replay == nil {
+		t.Fatalf("receipt=%+v messages=%+v", receipt, messages)
+	}
+}
+
+func TestNormalizeDropsReasoningAfterOrphanToolCallIsRemoved(t *testing.T) {
+	message := provider.Message{
+		Role: provider.RoleAssistant,
+		Blocks: []provider.ContentBlock{
+			{
+				Type: provider.ContentReasoning,
+				ID:   "rs_orphan",
+				Text: "orphan reasoning",
+			},
+			{Type: provider.ContentToolCall, ToolCall: &provider.ToolCall{
+				ID: "orphan", Name: "fixture", Arguments: `{}`,
+			}},
+		},
+	}
+	message.Provenance = &provider.AssistantProvenance{
+		Adapter:  model.AdapterOpenAICompatible,
+		Provider: "provider",
+		Model:    "model",
+		Replay: &provider.ReplayState{
+			Version:       provider.ReplayVersion,
+			ContentDigest: provider.MessageContentDigest(message),
+			Data:          json.RawMessage(`{"state":"orphan"}`),
+		},
+	}
+	snapshot := NewMessageLedger(
+		LedgerInput{History: []provider.Message{message}},
+	).Snapshot()
+
+	normalized, receipt, err := snapshot.Normalize(model.Capabilities{
+		ToolCalls: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(normalized.Messages()) != 0 ||
+		receipt.DroppedOrphans != 1 ||
+		receipt.DroppedReasoning != 1 {
+		t.Fatalf(
+			"receipt=%+v messages=%+v",
+			receipt,
+			normalized.Messages(),
 		)
 	}
 }

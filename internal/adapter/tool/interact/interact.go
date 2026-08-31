@@ -191,7 +191,9 @@ func (e *executor) Descriptor() tool.Descriptor {
 								},
 								"expected_evidence": map[string]any{"type": "string"},
 								"affected_files": map[string]any{
-									"type": "array", "items": map[string]any{"type": "string"},
+									"type":        "array",
+									"description": "Workspace files or directories affected by the step.",
+									"items":       map[string]any{"type": "string"},
 								},
 							},
 							"required":             []string{"title"},
@@ -199,11 +201,15 @@ func (e *executor) Descriptor() tool.Descriptor {
 						},
 						"minItems": float64(1),
 					},
-					"notes":                map[string]any{"type": "string"},
-					"objective":            map[string]any{"type": "string"},
-					"context_summary":      map[string]any{"type": "string"},
-					"sources_used":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-					"critical_files":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"notes":           map[string]any{"type": "string"},
+					"objective":       map[string]any{"type": "string"},
+					"context_summary": map[string]any{"type": "string"},
+					"sources_used":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"critical_files": map[string]any{
+						"type":        "array",
+						"description": "Existing workspace files or directories that anchor the plan.",
+						"items":       map[string]any{"type": "string"},
+					},
 					"constraints":          map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 					"recommended_approach": map[string]any{"type": "string"},
 					"verification_plan":    map[string]any{"type": "string"},
@@ -402,6 +408,20 @@ func (t *Tools) capturePlanBaseline(plan SubmittedPlan) ([]PlanFileBaseline, err
 			continue
 		}
 		if err != nil {
+			directory, directoryErr := workspace.OpenDirectory(name)
+			if directoryErr == nil {
+				if closeErr := directory.Close(); closeErr != nil {
+					return nil, fmt.Errorf(
+						"capture plan baseline directory %q: %w",
+						name,
+						closeErr,
+					)
+				}
+				baseline = append(baseline, PlanFileBaseline{
+					Path: name, Directory: true,
+				})
+				continue
+			}
 			return nil, fmt.Errorf("capture plan baseline %q: %w", name, err)
 		}
 		digest := sha256.New()
