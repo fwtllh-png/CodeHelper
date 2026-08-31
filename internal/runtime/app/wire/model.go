@@ -122,7 +122,7 @@ func validateResolvedModelMetadata(descriptor model.Model) error {
 	seen := make(map[string]struct{}, len(capabilities.ReasoningEfforts))
 	for _, effort := range capabilities.ReasoningEfforts {
 		if !slices.Contains(
-			[]string{"off", "minimal", "low", "medium", "high", "xhigh", "max"},
+			[]string{"none", "off", "minimal", "low", "medium", "high", "xhigh", "max"},
 			effort,
 		) {
 			return fmt.Errorf("reasoning effort %q is invalid", effort)

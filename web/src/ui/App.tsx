@@ -2012,14 +2012,18 @@ export function App({client}: Props) {
                         ...modelOptions,
                         {value: "__configure__", label: "New model..."}
                       ]}
-                      disabled={!profileMutable(snapshot, "model") ||
-                        Boolean(profilePending)}
+                      disabled={Boolean(profilePending)}
                       onChange={(model) => {
                         if (model === "__configure__") {
-                          setSettingsSection("models");
+                          setSettingsSection(
+                            profileMutable(snapshot, "model")
+                              ? "models"
+                              : "connection"
+                          );
                           setSettingsOpen(true);
                           return;
                         }
+                        if (!profileMutable(snapshot, "model")) return;
                         const target = snapshot.models.find(
                           (entry) =>
                             entry.provider === selectedProvider &&

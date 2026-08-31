@@ -93,7 +93,7 @@ func planningDecision(
 	effect Effect,
 ) *Decision {
 	if r == nil || r.Mode == ModePlan ||
-		verificationTool(invocation.Tool) ||
+		planningExemptTool(invocation.Tool) ||
 		!consequentialPlanningEffect(effect.Kind) {
 		return nil
 	}
@@ -123,10 +123,10 @@ func planningDecision(
 	return nil
 }
 
-func verificationTool(name string) bool {
+func planningExemptTool(name string) bool {
 	switch name {
 	case "quality_test", "quality_diagnostics", "quality_review",
-		"quality_verify", "quality_process_smoke":
+		"quality_verify", "quality_process_smoke", "git_push":
 		return true
 	default:
 		return false

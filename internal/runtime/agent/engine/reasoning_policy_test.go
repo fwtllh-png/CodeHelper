@@ -76,6 +76,13 @@ func TestFinishOnlyReasoningEffortUsesAdvertisedCapabilities(t *testing.T) {
 			want: "off",
 		},
 		{
+			name: "provider none",
+			capabilities: model.Capabilities{
+				Reasoning: true, ReasoningEfforts: []string{"none", "high"},
+			},
+			want: "none",
+		},
+		{
 			name: "only advertised level",
 			capabilities: model.Capabilities{
 				Reasoning: true, ReasoningEfforts: []string{"high"},

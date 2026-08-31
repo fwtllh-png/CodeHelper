@@ -311,7 +311,7 @@ func TestCompatibleHTTPFailurePreservesTypedContextError(t *testing.T) {
 	}
 }
 
-func TestCompatibleHTTPFailureClassifiesNumericQuotaCode(t *testing.T) {
+func TestCompatibleHTTPFailureTreatsAmbiguousQuota429AsRateLimit(t *testing.T) {
 	adapter := compatibleAdapter(t)
 	err := adapter.ClassifyHTTP(providerwire.HTTPFailure{
 		Status: http.StatusTooManyRequests,
@@ -322,7 +322,21 @@ func TestCompatibleHTTPFailureClassifiesNumericQuotaCode(t *testing.T) {
 	if !errors.As(err, &failure) {
 		t.Fatalf("failure = %T %v", err, err)
 	}
-	if failure.Code != provider.FailureQuota {
+	if failure.Code != provider.FailureRateLimit {
+		t.Fatalf("failure = %+v", failure)
+	}
+}
+
+func TestCompatibleHTTPFailureRetriesInsufficientQuota429(t *testing.T) {
+	adapter := compatibleAdapter(t)
+	err := adapter.ClassifyHTTP(providerwire.HTTPFailure{
+		Status: http.StatusTooManyRequests,
+		Body: `{"error":{"message":"Allocated quota exceeded, please increase your quota limit.",` +
+			`"code":"insufficient_quota","type":"invalid_request_error"}}`,
+	})
+	var failure *provider.Failure
+	if !errors.As(err, &failure) ||
+		failure.Code != provider.FailureRateLimit {
 		t.Fatalf("failure = %+v", failure)
 	}
 }

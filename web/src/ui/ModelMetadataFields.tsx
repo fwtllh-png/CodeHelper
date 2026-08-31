@@ -91,7 +91,7 @@ function efforts(value: string): string[] {
 }
 
 const modelIDPattern = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/;
-const validEfforts = "off minimal low medium high xhigh max".split(" ");
+const validEfforts = "none off minimal low medium high xhigh max".split(" ");
 
 export function modelMetadataProblem(
   draft: ModelMetadataDraft,
@@ -171,6 +171,19 @@ const limitFields: TextField[] = [
   {key: "maxOutputTokens", label: "Max output tokens", type: "number"}
 ];
 
+const reasoningFields: TextField[] = [
+  {
+    key: "reasoningEfforts",
+    label: "Reasoning efforts",
+    placeholder: "none, low, medium, high, xhigh"
+  },
+  {
+    key: "defaultReasoningEffort",
+    label: "Default reasoning effort",
+    placeholder: "high"
+  }
+];
+
 export function ModelMetadataFields({
   value,
   disabled,
@@ -183,15 +196,13 @@ export function ModelMetadataFields({
   const updateText = (key: TextFieldKey, text: string) => {
     onChange({...value, [key]: text});
   };
-  const detected = [
-    value.capabilities.streaming && "streaming",
-    value.capabilities.tool_calls && "tools",
-    value.capabilities.reasoning && "reasoning"
-  ].filter(Boolean).join(", ");
   return (
     <>
       <div className="settingsFacts">
-        {limitFields.map(({key, label, type}) => (
+        {[
+          ...limitFields,
+          ...(value.capabilities.reasoning ? reasoningFields : [])
+        ].map(({key, label, type, placeholder}) => (
           <label className="selectField" key={key}>
             <span>{label}</span>
             <input
@@ -200,6 +211,7 @@ export function ModelMetadataFields({
               min="1"
               step="1"
               aria-label={label}
+              placeholder={placeholder}
               value={value[key]}
               disabled={disabled}
               onChange={(event) => updateText(key, event.target.value)}
@@ -207,7 +219,6 @@ export function ModelMetadataFields({
           </label>
         ))}
       </div>
-      {detected && <small className="startupNote">Detected: {detected}</small>}
     </>
   );
 }

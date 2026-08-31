@@ -1,7 +1,9 @@
-import {describe, expect, it} from "vitest";
+import {render, screen} from "@testing-library/react";
+import {describe, expect, it, vi} from "vitest";
 
 import {
   emptyModelMetadataDraft,
+  ModelMetadataFields,
   modelMetadataProblem
 } from "./ModelMetadataFields";
 
@@ -16,6 +18,21 @@ function validDraft() {
 }
 
 describe("modelMetadataProblem", () => {
+  it("shows explicit effort metadata for reasoning models", () => {
+    const draft = validDraft();
+    draft.capabilities.reasoning = true;
+    render(
+      <ModelMetadataFields
+        value={draft}
+        disabled={false}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Reasoning efforts")).toBeTruthy();
+    expect(screen.getByLabelText("Default reasoning effort")).toBeTruthy();
+  });
+
   it("accepts complete explicit metadata", () => {
     const draft = validDraft();
     draft.capabilities.reasoning = true;

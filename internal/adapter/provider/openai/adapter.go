@@ -189,12 +189,16 @@ func (a *Adapter) ClassifyHTTP(failure providerwire.HTTPFailure) error {
 	if message == "" {
 		message = fmt.Sprintf("provider returned HTTP %d", failure.Status)
 	}
-	code := classifyHTTPFailure(
-		failure.Status,
-		jsonScalarText(payload.Error.Code),
-		payload.Error.Type,
-		message,
-	)
+	code := provider.FailureRateLimit
+	if a.id != model.AdapterOpenAICompatible ||
+		failure.Status != http.StatusTooManyRequests {
+		code = classifyHTTPFailure(
+			failure.Status,
+			jsonScalarText(payload.Error.Code),
+			payload.Error.Type,
+			message,
+		)
+	}
 	return providerwire.TypedHTTPFailure(
 		failure,
 		code,

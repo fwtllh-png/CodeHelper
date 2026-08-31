@@ -206,7 +206,7 @@ func TestExhaustedProviderRetryBecomesUserRecoverable(t *testing.T) {
 	}
 }
 
-func TestExhaustedProviderRetryKeepsInvalidRequestTerminal(t *testing.T) {
+func TestInvalidProviderRequestRemainsManualButPreservesDraft(t *testing.T) {
 	original := protocol.NewProblem(
 		protocol.CodeInvalidArgument,
 		"invalid provider request",
@@ -222,9 +222,9 @@ func TestExhaustedProviderRetryKeepsInvalidRequestTerminal(t *testing.T) {
 	if recovered.HTTPStatus != 400 ||
 		recovered.Retryable ||
 		recovered.Fault == nil ||
-		recovered.Fault.Disposition != protocol.FaultFailTurn ||
-		recovered.Fault.RetryOwner != protocol.FaultRetryOwnerNone ||
-		recovered.Fault.ResumeHint != protocol.FaultResumeFail ||
+		recovered.Fault.Disposition != protocol.FaultRetryTurn ||
+		recovered.Fault.RetryOwner != protocol.FaultRetryOwnerHost ||
+		recovered.Fault.ResumeHint != protocol.FaultResumeRetryTurn ||
 		recovered.Fault.RecoveryAction == "" {
 		t.Fatalf("invalid request = %#v", recovered)
 	}

@@ -50,11 +50,11 @@ func exhaustedProviderRetry(err error) error {
 		problem.Fault = &protocol.FaultMetadata{
 			Origin:         protocol.FaultOriginProvider,
 			Stage:          protocol.FaultStageModelSample,
-			Disposition:    protocol.FaultFailTurn,
+			Disposition:    protocol.FaultRetryTurn,
 			SideEffects:    protocol.SideEffectUnchanged,
-			RetryOwner:     protocol.FaultRetryOwnerNone,
-			ResumeHint:     protocol.FaultResumeFail,
-			RecoveryAction: "correct the provider request or configuration before starting a new turn",
+			RetryOwner:     protocol.FaultRetryOwnerHost,
+			ResumeHint:     protocol.FaultResumeRetryTurn,
+			RecoveryAction: "correct the provider request or configuration, then retry from the durable checkpoint",
 		}
 		return err
 	}

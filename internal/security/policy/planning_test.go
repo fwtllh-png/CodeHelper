@@ -85,6 +85,29 @@ func TestPlanningDoesNotGateVerificationTools(t *testing.T) {
 	}
 }
 
+func TestPlanningDoesNotGateGitPush(t *testing.T) {
+	runtime := DefaultRuntime(ModeAct, PermissionBypass)
+	runtime.ConfigurePlanning(PlanningRequired)
+	push := planningInvocation(
+		"git_push",
+		tool.CapabilityExternal,
+		[]tool.Resource{
+			{Kind: "vcs", ID: ".", Access: tool.AccessWrite},
+			{Kind: "vcs_remote", ID: "origin", Access: tool.AccessWrite},
+			{Kind: "vcs_branch", ID: "main", Access: tool.AccessWrite},
+		},
+	)
+	push.Effect = tool.EffectContract{
+		Mode: tool.EffectFixed, Kind: tool.EffectExternalMutation,
+		Risk: tool.RiskHigh, Reversibility: tool.Irreversible,
+		WorkspaceTransaction: tool.TransactionNone,
+		Approval:             tool.ApprovalPolicyOnce,
+	}
+	if decision := runtime.Evaluate(push); decision.Action != ActionAllow {
+		t.Fatalf("git push decision = %+v", decision)
+	}
+}
+
 func TestUnknownPlanningPolicyFailsClosed(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
 	runtime.ConfigurePlanning("unknown")

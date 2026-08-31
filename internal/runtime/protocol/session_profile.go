@@ -135,7 +135,7 @@ func (p SessionProfile) Validate() error {
 		return errors.New("session profile provider and model are invalid")
 	}
 	switch p.ReasoningEffort {
-	case "", "off", "minimal", "low", "medium", "high", "max", "xhigh":
+	case "", "none", "off", "minimal", "low", "medium", "high", "max", "xhigh":
 	default:
 		return errors.New("session profile reasoning_effort is invalid")
 	}
@@ -263,7 +263,7 @@ func (c SessionProfileCapabilities) Validate(profile SessionProfile) error {
 	seenEfforts := make(map[string]struct{}, len(model.ReasoningEfforts))
 	for _, effort := range model.ReasoningEfforts {
 		if !slices.Contains(
-			[]string{"off", "minimal", "low", "medium", "high", "xhigh", "max"},
+			[]string{"none", "off", "minimal", "low", "medium", "high", "xhigh", "max"},
 			effort,
 		) {
 			return fmt.Errorf("session model reasoning effort %q is invalid", effort)

@@ -542,6 +542,25 @@ describe("projectTranscript", () => {
     });
   });
 
+  it("keeps fixed model selector available for connection reconfiguration", async () => {
+    const value = snapshot();
+    value.profile!.capabilities.mutable_fields =
+      value.profile!.capabilities.mutable_fields.filter(
+        (field) => field !== "model"
+      );
+    value.models[0]!.capabilities.selection_mode = "fixed";
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    const selector = screen.getByLabelText("Model") as HTMLSelectElement;
+    expect(selector.disabled).toBe(false);
+    fireEvent.change(selector, {target: {value: "__configure__"}});
+
+    expect(await screen.findByRole("dialog", {name: "Settings"})).toBeTruthy();
+    expect(screen.getByRole("heading", {name: "Connection"})).toBeTruthy();
+    expect(client.updateProfile).not.toHaveBeenCalled();
+  });
+
   it("changes the advertised reasoning effort from the composer menu", async () => {
     const value = snapshot();
     value.models[0]!.capabilities = {
@@ -908,7 +927,8 @@ describe("projectTranscript", () => {
       target: {value: "vendor-model"}
     });
     fireEvent.click(screen.getByRole("button", {name: "Detect model"}));
-    await screen.findByText("Detected: streaming, tools, reasoning");
+    expect(await screen.findByLabelText("Reasoning efforts")).toBeTruthy();
+    expect(screen.getByLabelText("Default reasoning effort")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Start CodeHelper"}));
 
     await waitFor(() => {

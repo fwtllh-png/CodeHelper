@@ -249,7 +249,7 @@ func validateProvider(provider Provider) error {
 		efforts := make(map[string]struct{})
 		for _, effort := range model.Capabilities.ReasoningEfforts {
 			if !slices.Contains(
-				[]string{"off", "minimal", "low", "medium", "high", "xhigh", "max"},
+				[]string{"none", "off", "minimal", "low", "medium", "high", "xhigh", "max"},
 				effort,
 			) {
 				return fmt.Errorf(
