@@ -1,8 +1,10 @@
 package modelcatalog
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,7 +15,9 @@ import (
 	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
+	provideropenai "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
 	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
 )
@@ -21,7 +25,132 @@ import (
 var NewRegistry, New = router.NewRegistry, router.New
 
 type liveModelRow struct {
-	ID string `json:"id"`
+	ID              string `json:"id"`
+	Name            string `json:"name,omitempty"`
+	DisplayName     string `json:"display_name,omitempty"`
+	ContextWindow   uint64 `json:"context_window,omitempty"`
+	ContextLength   uint64 `json:"context_length,omitempty"`
+	MaxTokens       uint64 `json:"max_tokens,omitempty"`
+	MaxOutputTokens uint64 `json:"max_output_tokens,omitempty"`
+}
+
+type DiscoveredModel struct {
+	ID              string `json:"id"`
+	Name            string `json:"name,omitempty"`
+	ContextTokens   uint64 `json:"context_tokens,omitempty"`
+	MaxOutputTokens uint64 `json:"max_output_tokens,omitempty"`
+}
+
+func ProbeCapabilities(
+	ctx context.Context,
+	baseURL, apiKey, modelID string,
+) (model.Capabilities, error) {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	target := base + "/chat/completions"
+	gate := &egress.Gate{Enforce: true}
+	if !gate.AllowURL(target) && !gate.AllowURL(base) {
+		return model.Capabilities{}, fmt.Errorf("model probe endpoint host cannot be granted")
+	}
+	body, err := json.Marshal(map[string]any{
+		"model": modelID,
+		"messages": []map[string]string{{
+			"role":    "user",
+			"content": "Call capability_probe once with an empty object.",
+		}},
+		"max_tokens": 32,
+		"stream":     true,
+		"tools": []map[string]any{{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "capability_probe",
+				"description": "Verify function calling support.",
+				"parameters": map[string]any{
+					"type":                 "object",
+					"properties":           map[string]any{},
+					"additionalProperties": false,
+				},
+			},
+		}},
+		"tool_choice": "required",
+	})
+	if err != nil {
+		return model.Capabilities{}, err
+	}
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		target,
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return model.Capabilities{}, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "text/event-stream")
+	if strings.TrimSpace(apiKey) != "" {
+		request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(apiKey))
+	}
+	response, err := egress.WrapClient(
+		&http.Client{Timeout: 20 * time.Second},
+		gate,
+	).Do(request)
+	if err != nil {
+		return model.Capabilities{}, fmt.Errorf("model capability probe unreachable")
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return model.Capabilities{}, fmt.Errorf(
+			"model capability probe HTTP %d",
+			response.StatusCode,
+		)
+	}
+	stream, err := provideropenai.NewStream(
+		response.Body,
+		model.ProtocolOpenAIChat,
+	)
+	if err != nil {
+		return model.Capabilities{}, err
+	}
+	var capabilities model.Capabilities
+	for {
+		event, receiveErr := stream.Recv()
+		if receiveErr != nil {
+			if errors.Is(receiveErr, io.EOF) {
+				break
+			}
+			return model.Capabilities{}, receiveErr
+		}
+		switch event.Type {
+		case provider.EventMessageStart:
+			capabilities.Streaming = true
+		case provider.EventReasoningDelta:
+			capabilities.Reasoning = true
+		case provider.EventToolCallDelta:
+			capabilities.ToolCalls = true
+		}
+	}
+	return capabilities, nil
+}
+
+func ProbeCapabilitiesWithCredential(
+	ctx context.Context,
+	baseURL string,
+	credential model.CredentialRef,
+	modelID string,
+) (model.Capabilities, error) {
+	apiKey := ""
+	if credential.Kind != "" && credential.Name != "" {
+		var err error
+		apiKey, err = httpclient.DefaultCredentials().Resolve(ctx, credential)
+		if err != nil {
+			return model.Capabilities{}, fmt.Errorf(
+				"resolve credential %s: %w",
+				credential.Name,
+				err,
+			)
+		}
+	}
+	return ProbeCapabilities(ctx, baseURL, apiKey, modelID)
 }
 
 func List(
@@ -56,6 +185,34 @@ func List(
 			return nil, fmt.Errorf("resolve credential %s: %w", credential.Name, err)
 		}
 	}
+	return discover(
+		ctx,
+		catalogProvider,
+		baseURL,
+		apiKey,
+	)
+}
+
+func Discover(
+	ctx context.Context,
+	providerID, baseURL, apiKey string,
+) (map[string]any, error) {
+	providerID = strings.TrimSpace(providerID)
+	catalogProvider, ok := model.DefaultCatalog().Provider(providerID)
+	if !ok {
+		if providerID == "" || strings.TrimSpace(baseURL) == "" {
+			return nil, fmt.Errorf("unknown provider %q", providerID)
+		}
+		catalogProvider = model.Provider{ID: providerID, Endpoint: baseURL}
+	}
+	return discover(ctx, catalogProvider, baseURL, strings.TrimSpace(apiKey))
+}
+
+func discover(
+	ctx context.Context,
+	catalogProvider model.Provider,
+	baseURL, apiKey string,
+) (map[string]any, error) {
 	base := strings.TrimRight(catalogProvider.Endpoint, "/")
 	if strings.TrimSpace(baseURL) != "" {
 		base = strings.TrimRight(strings.TrimSpace(baseURL), "/")
@@ -114,15 +271,35 @@ func liveModelResult(provider, source, endpointHost string, data []byte) (map[st
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, fmt.Errorf("decode models payload: %w", err)
 	}
-	ids := make([]string, 0, len(payload.Data))
+	models := make([]DiscoveredModel, 0, len(payload.Data))
 	for _, row := range payload.Data {
 		if id := strings.TrimSpace(row.ID); id != "" {
-			ids = append(ids, id)
+			name := strings.TrimSpace(row.Name)
+			if name == "" {
+				name = strings.TrimSpace(row.DisplayName)
+			}
+			contextTokens := row.ContextWindow
+			if contextTokens == 0 {
+				contextTokens = row.ContextLength
+			}
+			maxOutputTokens := row.MaxOutputTokens
+			if maxOutputTokens == 0 {
+				maxOutputTokens = row.MaxTokens
+			}
+			models = append(models, DiscoveredModel{
+				ID: id, Name: name,
+				ContextTokens:   contextTokens,
+				MaxOutputTokens: maxOutputTokens,
+			})
 		}
+	}
+	ids := make([]string, len(models))
+	for index := range models {
+		ids[index] = models[index].ID
 	}
 	result := map[string]any{
 		"provider": provider, "source": source, "live": true,
-		"models": ids, "count": len(ids),
+		"models": ids, "model_metadata": models, "count": len(ids),
 	}
 	if endpointHost != "" {
 		result["endpoint_host"] = endpointHost

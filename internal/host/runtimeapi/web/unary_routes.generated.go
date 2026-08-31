@@ -74,6 +74,8 @@ func unaryRouteHandler(path string) (unaryHandler, bool) {
 		return (*Server).sessionUpdate, true
 	case "setup/apply":
 		return (*Server).setupApply, true
+	case "setup/probe":
+		return (*Server).setupProbe, true
 	case "system/describe":
 		return (*Server).systemDescribe, true
 	case "system/diagnostics":

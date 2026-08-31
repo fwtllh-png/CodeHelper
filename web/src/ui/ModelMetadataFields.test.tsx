@@ -2,7 +2,6 @@ import {describe, expect, it} from "vitest";
 
 import {
   emptyModelMetadataDraft,
-  modelMetadataForModel,
   modelMetadataProblem
 } from "./ModelMetadataFields";
 
@@ -63,22 +62,6 @@ describe("modelMetadataProblem", () => {
       "Incremental responses require Responses."
     );
     expect(modelMetadataProblem(draft, "openai_responses")).toBe("");
-  });
-
-  it("keeps model identities synchronized until explicitly overridden", () => {
-    const initial = modelMetadataForModel(
-      emptyModelMetadataDraft(),
-      "",
-      "model-v1"
-    );
-    expect(initial.canonicalID).toBe("model-v1");
-    expect(initial.wireID).toBe("model-v1");
-    expect(initial.capabilities.streaming).toBe(true);
-
-    initial.canonicalID = "vendor/model-v1";
-    const changed = modelMetadataForModel(initial, "model-v1", "model-v2");
-    expect(changed.canonicalID).toBe("vendor/model-v1");
-    expect(changed.wireID).toBe("model-v2");
   });
 
   it("reports the invalid metadata field group", () => {

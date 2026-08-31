@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -371,6 +372,79 @@ func runWeb(
 	setupOptions := &webhost.SetupOptions{
 		WorkspaceRoot: workspaceRoot, WorkspaceIdentity: workspaceIdentity,
 		Catalog: webSetupCatalog(),
+		Probe: func(
+			requestContext context.Context,
+			request webhost.SetupProbeRequest,
+		) (webhost.SetupProbeResult, error) {
+			baseURL, probeErr := validateSetupBaseURL(request.BaseURL)
+			if probeErr != nil {
+				return webhost.SetupProbeResult{}, probeErr
+			}
+			modelID := strings.TrimSpace(request.Model)
+			if !setupModelIDPattern.MatchString(modelID) {
+				return webhost.SetupProbeResult{}, invalidSetup(
+					"custom provider model id is invalid",
+				)
+			}
+			if strings.TrimSpace(request.Protocol) !=
+				string(model.ProtocolOpenAIChat) {
+				return webhost.SetupProbeResult{}, invalidSetup(
+					"automatic capability probing currently requires Chat Completions",
+				)
+			}
+			var reference credential.Reference
+			if strings.TrimSpace(request.APIKey) != "" {
+				reference = credential.Reference{}
+			} else {
+				_, recovered, credentialErr := credential.OpenControl(
+					requestContext,
+					dataDir,
+					webSupervisorScope,
+					request.Provider,
+					credential.Reference{},
+					credential.Reference{},
+				)
+				if credentialErr != nil {
+					return webhost.SetupProbeResult{}, credentialErr
+				}
+				reference = recovered
+			}
+			probed, probeErr := wire.ProbeModelConnection(
+				requestContext,
+				customProviderID,
+				baseURL,
+				modelID,
+				strings.TrimSpace(request.APIKey),
+				model.CredentialRef{
+					Kind: reference.Kind,
+					Name: reference.Name,
+				},
+			)
+			if probeErr != nil {
+				return webhost.SetupProbeResult{}, probeErr
+			}
+			result := webhost.SetupProbeResult{
+				Capabilities: setupCapabilitiesDTO(probed.Capabilities),
+			}
+			for _, value := range probed.Models {
+				result.Models = append(result.Models, webhost.SetupDiscoveredModel{
+					ID: value.ID, Name: value.Name,
+					ContextTokens:   value.ContextTokens,
+					MaxOutputTokens: value.MaxOutputTokens,
+				})
+			}
+			if !slices.ContainsFunc(result.Models, func(
+				value webhost.SetupDiscoveredModel,
+			) bool {
+				return value.ID == modelID
+			}) {
+				result.Models = append(result.Models, webhost.SetupDiscoveredModel{
+					ID: modelID,
+				})
+			}
+			result.Warning = probed.Warning
+			return result, nil
+		},
 		Apply: func(
 			requestContext context.Context,
 			request webhost.SetupRequest,

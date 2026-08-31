@@ -51,7 +51,7 @@ import {
   emptyModelMetadataDraft,
   ModelMetadataFields,
   modelMetadataDraft,
-  modelMetadataForModel,
+  modelMetadataFromProbe,
   modelMetadataProblem,
   setupModelMetadata
 } from "./ModelMetadataFields";
@@ -705,6 +705,9 @@ function ConnectionSettings({
   const [baseURL, setBaseURL] = useState("");
   const [protocol, setProtocol] = useState("openai_chat");
   const [metadata, setMetadata] = useState(emptyModelMetadataDraft);
+  const [probed, setProbed] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [probeError, setProbeError] = useState("");
   const [apiKey, setAPIKey] = useState("");
   const [configuring, setConfiguring] = useState(false);
   const [pending, setPending] = useState(false);
@@ -720,7 +723,7 @@ function ConnectionSettings({
     providerOption && modelID.trim() &&
     (custom || !providerOption.models?.includes(modelID.trim()))
   );
-  const metadataError = requiresMetadata
+  const metadataError = requiresMetadata && probed
     ? modelMetadataProblem(
         metadata,
         custom ? protocol : providerOption?.protocol ?? ""
@@ -742,7 +745,8 @@ function ConnectionSettings({
     }, onError);
   }, [client, currentModel, onError]);
   const configure = async () => {
-    if (!providerOption || !modelID.trim() || metadataError || pending) return;
+    if (!providerOption || !modelID.trim() || metadataError ||
+        (requiresMetadata && !probed) || pending) return;
     const request: SetupRequest = {
       provider: providerID,
       model: modelID.trim(),
@@ -758,6 +762,28 @@ function ConnectionSettings({
     } catch (error) {
       onError(error);
       setPending(false);
+    }
+  };
+  const probeModel = async () => {
+    if (!custom || !baseURL.trim() || !modelID.trim() || probing) return;
+    setProbing(true);
+    setProbeError("");
+    try {
+      const result = await client.probeSetup({
+        provider: providerID,
+        base_url: baseURL.trim(),
+        protocol,
+        model: modelID.trim(),
+        ...(apiKey.trim() ? {api_key: apiKey.trim()} : {})
+      });
+      setMetadata(modelMetadataFromProbe(modelID.trim(), result));
+      setProbed(true);
+      setProbeError(result.warning ?? "");
+    } catch (error) {
+      setProbed(false);
+      setProbeError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setProbing(false);
     }
   };
   return (
@@ -806,6 +832,8 @@ function ConnectionSettings({
                 setBaseURL("");
                 setProtocol(next?.protocol || "openai_chat");
                 setMetadata(emptyModelMetadataDraft());
+                setProbed(false);
+                setProbeError("");
               }}
             />
           </SettingRow>
@@ -817,7 +845,10 @@ function ConnectionSettings({
                 value={baseURL}
                 placeholder="https://api.example.com/v1"
                 disabled={pending}
-                onChange={(event) => setBaseURL(event.target.value)}
+                onChange={(event) => {
+                  setBaseURL(event.target.value);
+                  setProbed(false);
+                }}
               />
             </SettingRow>
           )}
@@ -831,7 +862,10 @@ function ConnectionSettings({
                 format={(value) => value === "openai_chat"
                   ? "Chat Completions"
                   : "Responses"}
-                onChange={setProtocol}
+                onChange={(value) => {
+                  setProtocol(value);
+                  setProbed(false);
+                }}
               />
             </SettingRow>
           )}
@@ -844,16 +878,13 @@ function ConnectionSettings({
               disabled={pending}
               onChange={(event) => {
                 const nextModelID = event.target.value;
-                setMetadata((current) => modelMetadataForModel(
-                  current,
-                  modelID,
-                  nextModelID
-                ));
+                setMetadata(emptyModelMetadataDraft(nextModelID.trim()));
                 setModelID(nextModelID);
+                setProbed(false);
               }}
             />
           </SettingRow>
-          {requiresMetadata && (
+          {requiresMetadata && probed && (
             <ModelMetadataFields
               value={metadata}
               disabled={pending}
@@ -864,6 +895,21 @@ function ConnectionSettings({
             <small className="settingsError" role="alert">
               {metadataError}
             </small>
+          )}
+          {requiresMetadata && (
+            <button
+              type="button"
+              className="settingsHeaderAction"
+              disabled={
+                probing || !baseURL.trim() || !modelID.trim()
+              }
+              onClick={() => void probeModel()}
+            >
+              {probing ? "Detecting..." : "Detect model"}
+            </button>
+          )}
+          {probeError && (
+            <small className="settingsError" role="alert">{probeError}</small>
           )}
           <SettingRow
             title="API key"
@@ -879,7 +925,10 @@ function ConnectionSettings({
               value={apiKey}
               placeholder="Use saved key"
               disabled={pending}
-              onChange={(event) => setAPIKey(event.target.value)}
+              onChange={(event) => {
+                setAPIKey(event.target.value);
+                setProbed(false);
+              }}
             />
           </SettingRow>
           <div className="settingsButtonRow">
@@ -888,6 +937,7 @@ function ConnectionSettings({
               disabled={
                 pending || !providerOption || !modelID.trim() ||
                 (custom && !baseURL.trim()) || (requiresKey && !apiKey.trim()) ||
+                (requiresMetadata && !probed) ||
                 Boolean(metadataError)
               }
               onClick={() => void configure()}

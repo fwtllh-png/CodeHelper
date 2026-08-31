@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 	"sync"
+
+	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
 
 	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
 
@@ -419,7 +420,15 @@ func (m *ThreadManager) CompactThread(
 		return errors.New("thread engine is nil")
 	}
 	beforeID, _ := engine.TokenWindowIdentity()
-	receipt := engine.CompactForced()
+	result, err := engine.CompactForcedDurable(
+		ctx,
+		payload.ThreadID,
+		payload.TurnID,
+	)
+	if err != nil {
+		return err
+	}
+	receipt := result.Receipt
 	summary := "context already within budget; no messages compacted"
 	if receipt != nil {
 		summary = appextension.FormatCompactionSummary(receipt)
@@ -430,7 +439,7 @@ func (m *ThreadManager) CompactThread(
 		return err
 	}
 	windowID, windowNumber := engine.TokenWindowIdentity()
-	if windowID == beforeID {
+	if receipt == nil && windowID == beforeID {
 		windowID, windowNumber = engine.AdvanceTokenWindow()
 	}
 	window := m.recordWindow(
@@ -812,7 +821,13 @@ func (m *ThreadManager) forThread(id protocol.ThreadID) (*EngineAdapter, error) 
 	if adapter == nil {
 		return nil, fmt.Errorf("create engine for thread %s: factory returned nil", id)
 	}
-	if err := m.restoreWindow(context.Background(), id, adapter, restorer); err != nil {
+	restoredWindow, err := m.restoreWindow(
+		context.Background(),
+		id,
+		adapter,
+		restorer,
+	)
+	if err != nil {
 		return nil, err
 	}
 	if deltas != nil {
@@ -822,6 +837,26 @@ func (m *ThreadManager) forThread(id protocol.ThreadID) (*EngineAdapter, error) 
 		}
 		if err := adapter.RestoreSessionDelta(raw); err != nil {
 			return nil, fmt.Errorf("apply session delta for %s: %w", id, err)
+		}
+		if restoredWindow != nil && len(raw) != 0 {
+			engine := adapter.Underlying()
+			windowID, windowNumber := engine.TokenWindowIdentity()
+			if restoredWindow.WindowNumber > windowNumber {
+				if err := m.applyRestoredWindow(
+					id,
+					adapter,
+					restoredWindow,
+				); err != nil {
+					return nil, err
+				}
+			} else {
+				m.syncWindowRecord(
+					id,
+					restoredWindow.FirstWindowID,
+					windowID,
+					windowNumber,
+				)
+			}
 		}
 	}
 
@@ -836,17 +871,28 @@ func (m *ThreadManager) restoreWindow(
 	id protocol.ThreadID,
 	adapter *EngineAdapter,
 	restorer WindowRestorer,
-) error {
+) (*protocol.ThreadCompactedData, error) {
 	if restorer == nil {
-		return nil
+		return nil, nil
 	}
 	data, err := restorer(ctx, id)
 	if err != nil {
-		return fmt.Errorf("restore compacted window for %s: %w", id, err)
+		return nil, fmt.Errorf("restore compacted window for %s: %w", id, err)
 	}
 	if data == nil || len(data.ReplacementHistory) == 0 {
-		return nil
+		return nil, nil
 	}
+	if err := m.applyRestoredWindow(id, adapter, data); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func (m *ThreadManager) applyRestoredWindow(
+	id protocol.ThreadID,
+	adapter *EngineAdapter,
+	data *protocol.ThreadCompactedData,
+) error {
 	messages, err := sessionhistory.DecodeCompactedHistory(data.ReplacementHistory)
 	if err != nil {
 		return err
@@ -857,18 +903,32 @@ func (m *ThreadManager) restoreWindow(
 			return fmt.Errorf("restore token window for %s: %w", id, err)
 		}
 	}
+	m.syncWindowRecord(
+		id,
+		data.FirstWindowID,
+		data.WindowID,
+		data.WindowNumber,
+	)
+	return nil
+}
+
+func (m *ThreadManager) syncWindowRecord(
+	id protocol.ThreadID,
+	firstID string,
+	windowID string,
+	windowNumber uint64,
+) {
 	m.mu.Lock()
 	m.windows[id] = &compactWindow{
-		Number:   data.WindowNumber,
-		FirstID:  data.FirstWindowID,
-		Current:  data.WindowID,
+		Number:   windowNumber,
+		FirstID:  firstID,
+		Current:  windowID,
 		restored: true,
 	}
 	if m.windows[id].FirstID == "" {
-		m.windows[id].FirstID = data.WindowID
+		m.windows[id].FirstID = windowID
 	}
 	m.mu.Unlock()
-	return nil
 }
 
 func (m *ThreadManager) recordWindow(

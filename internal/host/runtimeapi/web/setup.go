@@ -61,11 +61,33 @@ type SetupResult struct {
 	Ready bool `json:"ready"`
 }
 
+type SetupProbeRequest struct {
+	Provider string `json:"provider"`
+	BaseURL  string `json:"base_url"`
+	Protocol string `json:"protocol"`
+	Model    string `json:"model"`
+	APIKey   string `json:"api_key,omitempty"`
+}
+
+type SetupProbeResult struct {
+	Models       []SetupDiscoveredModel `json:"models,omitempty"`
+	Capabilities SetupModelCapabilities `json:"capabilities"`
+	Warning      string                 `json:"warning,omitempty"`
+}
+
+type SetupDiscoveredModel struct {
+	ID              string `json:"id"`
+	Name            string `json:"name,omitempty"`
+	ContextTokens   uint64 `json:"context_tokens,omitempty"`
+	MaxOutputTokens uint64 `json:"max_output_tokens,omitempty"`
+}
+
 type SetupOptions struct {
 	WorkspaceRoot     string
 	WorkspaceIdentity protocol.WorkspaceIdentity
 	Catalog           SetupCatalog
 	Apply             func(context.Context, SetupRequest) error
+	Probe             func(context.Context, SetupProbeRequest) (SetupProbeResult, error)
 }
 
 func (o SetupOptions) validate() error {
@@ -82,6 +104,17 @@ func (o SetupOptions) validate() error {
 		return errors.New("setup apply handler is required")
 	}
 	return nil
+}
+
+func (s *Server) setupProbe(r *http.Request, _ Dependencies) (any, error) {
+	if s.setup == nil || s.setup.Probe == nil {
+		return nil, unavailable("Runtime setup probe is unavailable")
+	}
+	var request SetupProbeRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return s.setup.Probe(r.Context(), request)
 }
 
 func (s *Server) setupApply(r *http.Request, _ Dependencies) (any, error) {

@@ -879,7 +879,7 @@ describe("projectTranscript", () => {
     expect(screen.queryByDisplayValue("sk-live")).toBeNull();
   });
 
-  it("requires and submits explicit metadata for a custom provider", async () => {
+  it("detects and submits custom provider metadata", async () => {
     const value = snapshot();
     value.phase = "setup";
     value.sessions = [];
@@ -907,21 +907,8 @@ describe("projectTranscript", () => {
     fireEvent.change(screen.getByLabelText("Model ID"), {
       target: {value: "vendor-model"}
     });
-    fireEvent.change(screen.getByLabelText("Context tokens"), {
-      target: {value: "200000"}
-    });
-    fireEvent.change(screen.getByLabelText("Max output tokens"), {
-      target: {value: "24000"}
-    });
-    fireEvent.click(screen.getByText("Advanced model configuration"));
-    fireEvent.click(screen.getByRole("checkbox", {name: "Tool calls"}));
-    fireEvent.click(screen.getByRole("checkbox", {name: "Reasoning"}));
-    fireEvent.change(screen.getByLabelText("Reasoning efforts"), {
-      target: {value: "off, high"}
-    });
-    fireEvent.change(screen.getByLabelText("Default reasoning effort"), {
-      target: {value: "high"}
-    });
+    fireEvent.click(screen.getByRole("button", {name: "Detect model"}));
+    await screen.findByText("Detected: streaming, tools, reasoning");
     fireEvent.click(screen.getByRole("button", {name: "Start CodeHelper"}));
 
     await waitFor(() => {
@@ -940,8 +927,8 @@ describe("projectTranscript", () => {
             streaming: true,
             tool_calls: true,
             reasoning: true,
-            reasoning_efforts: ["off", "high"],
-            default_reasoning_effort: "high"
+            reasoning_efforts: [],
+            default_reasoning_effort: undefined
           })
         }
       });
@@ -2665,6 +2652,25 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
     setArchivedVisible: vi.fn(async () => {}),
     createSession: vi.fn(async () => {}),
 		completeSetup: vi.fn(async () => {}),
+    probeSetup: vi.fn(async () => ({
+      models: [{
+        id: "vendor-model",
+        context_tokens: 200000,
+        max_output_tokens: 24000
+      }],
+      capabilities: {
+        streaming: true,
+        reasoning: true,
+        tool_calls: true,
+        native_search: false,
+        incremental_responses: false,
+        vision: false,
+        image_input: false,
+        prompt_cache: false,
+        automatic_prompt_cache: false,
+        thinking_toggle: false
+      }
+    })),
     selectSession: vi.fn(async () => {}),
     updateSession: vi.fn(async () => {}),
     deleteSession: vi.fn(async () => {}),

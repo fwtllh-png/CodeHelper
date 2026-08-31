@@ -1,6 +1,7 @@
 package modelcatalog
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -44,5 +45,76 @@ func TestProbeReportsWhetherConnectionListsExactModel(t *testing.T) {
 		if got != test.want {
 			t.Fatalf("Probe(%q) = %v, want %v", test.model, got, test.want)
 		}
+	}
+}
+
+func TestDiscoverPreservesOptionalCapacityMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		response http.ResponseWriter,
+		_ *http.Request,
+	) {
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"data":[{
+			"id":"model-a",
+			"display_name":"Model A",
+			"context_length":65536,
+			"max_output_tokens":4096
+		}]}`))
+	}))
+	defer server.Close()
+
+	result, err := Discover(
+		t.Context(),
+		"openai-compatible",
+		server.URL,
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, ok := result["model_metadata"].([]DiscoveredModel)
+	if !ok || len(models) != 1 ||
+		models[0].ID != "model-a" ||
+		models[0].Name != "Model A" ||
+		models[0].ContextTokens != 65_536 ||
+		models[0].MaxOutputTokens != 4_096 {
+		t.Fatalf("discovered models = %#v", result["model_metadata"])
+	}
+}
+
+func TestProbeCapabilitiesObservesStreamToolAndReasoning(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		response http.ResponseWriter,
+		request *http.Request,
+	) {
+		if request.URL.Path != "/chat/completions" {
+			http.NotFound(response, request)
+			return
+		}
+		response.Header().Set("Content-Type", "text/event-stream")
+		for _, data := range []string{
+			`{"choices":[{"delta":{"reasoning_content":"checking"}}]}`,
+			`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","function":{"name":"capability_probe","arguments":"{}"}}]}}]}`,
+			`{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}`,
+		} {
+			_, _ = fmt.Fprintf(response, "data: %s\n\n", data)
+		}
+		_, _ = fmt.Fprint(response, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	capabilities, err := ProbeCapabilities(
+		t.Context(),
+		server.URL,
+		"secret",
+		"model-a",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !capabilities.Streaming ||
+		!capabilities.ToolCalls ||
+		!capabilities.Reasoning {
+		t.Fatalf("capabilities = %+v", capabilities)
 	}
 }

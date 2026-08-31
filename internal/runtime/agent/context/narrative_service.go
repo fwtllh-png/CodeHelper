@@ -103,8 +103,13 @@ func RunPostTurnNarrative(
 	result := PostTurnNarrativeResult{
 		State: state, Attempt: state.Attempt,
 	}
+	var artifact *NarrativeArtifact
 	if state.Phase == "rebasing" && state.Narrative != nil {
 		result.Generation.Artifact = *state.Narrative
+		artifact = state.Narrative
+	} else if state.Phase == "fallback" {
+		result.Fallback = true
+		result.FailureReason = state.FallbackReason
 	} else {
 		if state.Attempt > uint32(config.RetryLimit) {
 			state.Phase = "fallback"
@@ -114,46 +119,54 @@ func RunPostTurnNarrative(
 			result.State = state
 			result.Fallback = true
 			result.FailureReason = state.FallbackReason
-			return result, nil
-		}
-		state.Phase = "generating_narrative"
-		state.Attempt++
-		current.Compaction.State = state
-		config.Store(current.Compaction)
+		} else {
+			state.Phase = "generating_narrative"
+			state.Attempt++
+			current.Compaction.State = state
+			config.Store(current.Compaction)
 
-		generated, err := GenerateNarrative(
-			ctx,
-			config.Generator,
-			state.Truth,
-			*state.NarrativeInput,
-			createdTurn,
-		)
-		result.Generation = generated
-		result.Attempt = state.Attempt
-		if err != nil {
-			state.Phase = "fallback"
-			state.FallbackReason = err.Error()
-			latest := config.Load()
-			if latest.Compaction.State != nil &&
-				latest.Compaction.State.ID == state.ID {
-				latest.Compaction.State.Phase = state.Phase
-				latest.Compaction.State.FallbackReason = state.FallbackReason
-				config.Store(latest.Compaction)
+			generated, err := GenerateNarrative(
+				ctx,
+				config.Generator,
+				state.Truth,
+				*state.NarrativeInput,
+				createdTurn,
+			)
+			result.Generation = generated
+			result.Attempt = state.Attempt
+			if err != nil {
+				state.Phase = "fallback"
+				state.FallbackReason = err.Error()
+				latest := config.Load()
+				if latest.Compaction.State != nil &&
+					latest.Compaction.State.ID == state.ID {
+					latest.Compaction.State.Phase = state.Phase
+					latest.Compaction.State.FallbackReason = state.FallbackReason
+					config.Store(latest.Compaction)
+				}
+				result.State = state
+				result.Fallback = true
+				result.FailureReason = err.Error()
+			} else {
+				if config.Record != nil {
+					config.Record(generated)
+				}
+				state.Phase = "rebasing"
+				state.Narrative = &generated.Artifact
+				current.Compaction.State = state
+				config.Store(current.Compaction)
+				artifact = state.Narrative
 			}
-			result.State = state
-			result.Fallback = true
-			result.FailureReason = err.Error()
-			return result, nil
 		}
-		if config.Record != nil {
-			config.Record(generated)
-		}
-		state.Phase = "rebasing"
-		state.Narrative = &generated.Artifact
-		current.Compaction.State = state
-		config.Store(current.Compaction)
 	}
 	result.State = state
+	if artifact == nil && state.Plan != nil &&
+		len(state.Plan.RequiredKinds) != 0 {
+		return result, fmt.Errorf(
+			"context maintenance cannot preserve required narrative kinds: %s",
+			strings.Join(state.Plan.RequiredKinds, ", "),
+		)
+	}
 
 	latest := config.Load()
 	if latest.Compaction.State == nil ||
@@ -163,7 +176,7 @@ func RunPostTurnNarrative(
 	}
 	completed, err := CompleteCompaction(
 		*state,
-		&result.Generation.Artifact,
+		artifact,
 		latest.History,
 		config.SummaryMaxBytes,
 	)
@@ -206,9 +219,11 @@ func RunPostTurnNarrative(
 	}
 	config.Apply(envelope.Snapshot)
 	result.State = &completed.State
-	result.Included = true
+	result.Included = artifact != nil
 	result.RenderedBytes = completed.RenderedBytes
-	result.Generation.Artifact = *completed.State.Narrative
+	if completed.State.Narrative != nil {
+		result.Generation.Artifact = *completed.State.Narrative
+	}
 	return result, nil
 }
 

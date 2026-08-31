@@ -88,6 +88,27 @@ export interface SetupResult {
   ready: boolean;
 }
 
+export interface SetupProbeRequest {
+  provider: string;
+  base_url: string;
+  protocol: string;
+  model: string;
+  api_key?: string;
+}
+
+export interface SetupDiscoveredModel {
+  id: string;
+  name?: string;
+  context_tokens?: number;
+  max_output_tokens?: number;
+}
+
+export interface SetupProbeResult {
+  models?: SetupDiscoveredModel[];
+  capabilities: SetupModelCapabilities;
+  warning?: string;
+}
+
 export interface WorkspaceDescriptor {
   id: string;
   root: string;

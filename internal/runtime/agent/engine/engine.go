@@ -272,8 +272,34 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 	if err != nil {
 		return err
 	}
+	routeChanged := tokenWindowRouteChanged(
+		e.options.Routes.Act(),
+		routes.Act(),
+	)
 	e.options.Routes = routes
 	e.options.Route = routes.Act()
+	if routeChanged {
+		current := e.context.Window()
+		next, windowErr := agentcontext.CreateWindowLedger(current.Number + 1)
+		if windowErr != nil {
+			next = agentcontext.FallbackWindowLedger(
+				current,
+				fmt.Sprintf(
+					"%s:%s:%s",
+					e.options.SessionID,
+					routes.Act().ProviderID(),
+					routes.Act().Model().ID,
+				),
+			)
+		}
+		e.context.SetWindow(next)
+		compaction := e.context.Compaction()
+		if compaction.State != nil &&
+			compaction.State.Phase != "completed" {
+			compaction.State = nil
+			e.context.SetCompaction(compaction)
+		}
+	}
 	e.options.ReasoningEffort = profile.ReasoningEffort
 	e.options.MaxSteps = profile.MaxSteps
 	e.options.ProfileRevision = profile.Revision
@@ -288,6 +314,21 @@ func (e *Engine) ApplySessionProfile(profile protocol.SessionProfile) error {
 	)
 	e.applySessionPolicyLocked(profile)
 	return nil
+}
+
+func tokenWindowRouteChanged(current, next model.ReadyRoute) bool {
+	if current.Validate() != nil || next.Validate() != nil {
+		return true
+	}
+	currentModel := current.Model()
+	nextModel := next.Model()
+	return current.ProviderID() != next.ProviderID() ||
+		current.Adapter() != next.Adapter() ||
+		current.Protocol() != next.Protocol() ||
+		currentModel.ID != nextModel.ID ||
+		currentModel.WireID != nextModel.WireID ||
+		currentModel.Limits.ContextTokens != nextModel.Limits.ContextTokens ||
+		currentModel.Limits.MaxOutputTokens != nextModel.Limits.MaxOutputTokens
 }
 
 func cloneContextBudgets(

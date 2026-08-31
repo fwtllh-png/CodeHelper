@@ -395,6 +395,16 @@
       "requires_capability": true
     },
     {
+      "path": "/api/v1/setup/probe",
+      "method": "POST",
+      "request": "setup_probe_request",
+      "response": "setup_probe_result",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": false,
+      "requires_capability": true
+    },
+    {
       "path": "/api/v1/system/describe",
       "method": "POST",
       "request": "empty",

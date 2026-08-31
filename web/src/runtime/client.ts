@@ -41,6 +41,8 @@ import type {
   SessionProfileUpdateResult,
   SessionSummary,
   SetupCatalog,
+  SetupProbeRequest,
+  SetupProbeResult,
   SetupRequest,
   SetupResult,
   TraceSnapshot,
@@ -615,6 +617,10 @@ export class RuntimeClient {
     );
     if (!result.ready) throw new Error("Runtime setup did not become ready");
     await this.start();
+  }
+
+  async probeSetup(request: SetupProbeRequest): Promise<SetupProbeResult> {
+    return this.call<SetupProbeResult>("setup/probe", request);
   }
 
   async updateSession(

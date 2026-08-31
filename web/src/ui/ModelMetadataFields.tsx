@@ -1,6 +1,7 @@
 import type {
   SetupModelCapabilities,
-  SetupModelMetadata
+  SetupModelMetadata,
+  SetupProbeResult
 } from "../protocol";
 import "./SettingsDialog.css";
 
@@ -54,24 +55,34 @@ export function modelMetadataDraft(
   };
 }
 
-export function modelMetadataForModel(
-  draft: ModelMetadataDraft,
-  previousModelID: string,
-  modelID: string
+export function modelMetadataFromProbe(
+  modelID: string,
+  result: SetupProbeResult
 ): ModelMetadataDraft {
-  const previous = previousModelID.trim();
-  const next = modelID.trim();
+  const discovered = result.models?.find((model) => model.id === modelID);
   return {
-    ...draft,
-    canonicalID:
-      !draft.canonicalID.trim() || draft.canonicalID.trim() === previous
-        ? next
-        : draft.canonicalID,
-    wireID:
-      !draft.wireID.trim() || draft.wireID.trim() === previous
-        ? next
-        : draft.wireID,
-    capabilities: {...draft.capabilities, streaming: true}
+    canonicalID: modelID,
+    wireID: modelID,
+    contextTokens: discovered?.context_tokens
+      ? String(discovered.context_tokens)
+      : "",
+    maxOutputTokens: discovered?.max_output_tokens
+      ? String(discovered.max_output_tokens)
+      : "",
+    capabilities: {
+      streaming: result.capabilities.streaming,
+      reasoning: result.capabilities.reasoning,
+      tool_calls: result.capabilities.tool_calls,
+      native_search: false,
+      incremental_responses: false,
+      vision: false,
+      image_input: false,
+      prompt_cache: false,
+      automatic_prompt_cache: false,
+      thinking_toggle: false
+    },
+    reasoningEfforts: "",
+    defaultReasoningEffort: ""
   };
 }
 
@@ -140,26 +151,6 @@ export function setupModelMetadata(
   };
 }
 
-type BooleanCapabilityKey = Exclude<
-  keyof SetupModelCapabilities,
-  "reasoning_efforts" | "default_reasoning_effort"
->;
-
-const capabilityFields: Array<{
-  key: BooleanCapabilityKey;
-  label: string;
-}> = [
-  {key: "tool_calls", label: "Tool calls"},
-  {key: "reasoning", label: "Reasoning"},
-  {key: "native_search", label: "Native search"},
-  {key: "vision", label: "Vision"},
-  {key: "image_input", label: "Image input"},
-  {key: "prompt_cache", label: "Prompt cache"},
-  {key: "automatic_prompt_cache", label: "Automatic prompt cache"},
-  {key: "incremental_responses", label: "Incremental responses"},
-  {key: "thinking_toggle", label: "Thinking toggle"}
-];
-
 type TextFieldKey =
   | "canonicalID"
   | "wireID"
@@ -180,20 +171,6 @@ const limitFields: TextField[] = [
   {key: "maxOutputTokens", label: "Max output tokens", type: "number"}
 ];
 
-const identityFields: TextField[] = [
-  {key: "canonicalID", label: "Canonical model ID"},
-  {key: "wireID", label: "Wire model ID"}
-];
-
-const reasoningFields: TextField[] = [
-  {
-    key: "reasoningEfforts",
-    label: "Reasoning efforts",
-    placeholder: "off, low, high"
-  },
-  {key: "defaultReasoningEffort", label: "Default reasoning effort"}
-];
-
 export function ModelMetadataFields({
   value,
   disabled,
@@ -203,18 +180,14 @@ export function ModelMetadataFields({
   disabled: boolean;
   onChange: (value: ModelMetadataDraft) => void;
 }) {
-  const setCapability = (
-    key: BooleanCapabilityKey,
-    checked: boolean
-  ) => {
-    onChange({
-      ...value,
-      capabilities: {...value.capabilities, [key]: checked}
-    });
-  };
   const updateText = (key: TextFieldKey, text: string) => {
     onChange({...value, [key]: text});
   };
+  const detected = [
+    value.capabilities.streaming && "streaming",
+    value.capabilities.tool_calls && "tools",
+    value.capabilities.reasoning && "reasoning"
+  ].filter(Boolean).join(", ");
   return (
     <>
       <div className="settingsFacts">
@@ -234,52 +207,7 @@ export function ModelMetadataFields({
           </label>
         ))}
       </div>
-      <details className="settingsCatalogDetails">
-        <summary>Advanced model configuration</summary>
-        <div className="startupFields" data-custom>
-          {identityFields.map(({key, label}) => (
-            <label className="selectField" key={key}>
-              <span>{label}</span>
-              <input
-                className="settingsSelect"
-                aria-label={label}
-                value={value[key]}
-                disabled={disabled}
-                onChange={(event) => updateText(key, event.target.value)}
-              />
-            </label>
-          ))}
-          {capabilityFields.map(({key, label}) => (
-            <label className="settingsPreferenceControl" key={key}>
-              <input
-                type="checkbox"
-                aria-label={label}
-                checked={Boolean(value.capabilities[key])}
-                disabled={disabled}
-                onChange={(event) => setCapability(key, event.target.checked)}
-              />
-              <span>{label}</span>
-            </label>
-          ))}
-          {value.capabilities.reasoning && (
-            <>
-              {reasoningFields.map(({key, label, placeholder}) => (
-                <label className="selectField" key={key}>
-                  <span>{label}</span>
-                  <input
-                    className="settingsSelect"
-                    aria-label={label}
-                    placeholder={placeholder}
-                    value={value[key]}
-                    disabled={disabled}
-                    onChange={(event) => updateText(key, event.target.value)}
-                  />
-                </label>
-              ))}
-            </>
-          )}
-        </div>
-      </details>
+      {detected && <small className="startupNote">Detected: {detected}</small>}
     </>
   );
 }

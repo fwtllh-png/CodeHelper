@@ -1160,6 +1160,135 @@ func TestPostTurnNarrativeRetriesRebaseWithoutResampling(t *testing.T) {
 	}
 }
 
+func TestPostTurnNarrativeFailureCommitsDeterministicFallback(t *testing.T) {
+	engine := newEngine(
+		t,
+		narrativeFailureProvider{},
+		tool.NewRegistry(nil, nil),
+	)
+	engine.options.Context.SemanticNarrative = "post_turn"
+	engine.options.Workspace = t.TempDir()
+	engine.options.WorkspaceIdentity = "workspace:test"
+	engine.sessionRevision = 1
+	engine.history = []provider.Message{
+		messageWithText(
+			provider.RoleUser,
+			"old context "+strings.Repeat("detail ", 300),
+			1,
+		),
+		messageWithText(
+			provider.RoleAssistant,
+			strings.Repeat("answer ", 300),
+			1,
+		),
+		messageWithText(provider.RoleUser, "continue", 2),
+	}
+	beforeBytes := agentcontext.HistoryBytes(engine.history)
+	var committed *agentcontext.ContextRebaseEnvelope
+	engine.options.Context.CommitRebase = func(
+		_ context.Context,
+		envelope agentcontext.ContextRebaseEnvelope,
+	) error {
+		copy := envelope
+		committed = &copy
+		return nil
+	}
+
+	result, err := engine.CompactForcedDurable(
+		t.Context(),
+		"thread-1",
+		"turn-1",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if committed == nil ||
+		result.Receipt == nil ||
+		result.Receipt.Status != "fallback" ||
+		!result.Fallback ||
+		engine.sessionRevision != 2 ||
+		agentcontext.HistoryBytes(engine.history) >= beforeBytes {
+		t.Fatalf(
+			"committed=%+v result=%+v revision=%d history_bytes=%d/%d",
+			committed,
+			result,
+			engine.sessionRevision,
+			agentcontext.HistoryBytes(engine.history),
+			beforeBytes,
+		)
+	}
+}
+
+func TestCompactForcedDurableCompletesInlineRebase(t *testing.T) {
+	engine := newEngine(
+		t,
+		&sourceEchoNarrativeProvider{},
+		tool.NewRegistry(nil, nil),
+	)
+	engine.options.Context.SemanticNarrative = "inline"
+	engine.options.Workspace = t.TempDir()
+	engine.options.WorkspaceIdentity = "workspace:test"
+	engine.sessionRevision = 1
+	engine.history = []provider.Message{
+		messageWithText(
+			provider.RoleUser,
+			"old context "+strings.Repeat("detail ", 300),
+			1,
+		),
+		messageWithText(
+			provider.RoleAssistant,
+			strings.Repeat("answer ", 300),
+			1,
+		),
+		messageWithText(provider.RoleUser, "continue", 2),
+	}
+	beforeBytes := agentcontext.HistoryBytes(engine.history)
+	beforeWindow := engine.context.Window()
+	var committed *agentcontext.ContextRebaseEnvelope
+	engine.options.Context.CommitRebase = func(
+		_ context.Context,
+		envelope agentcontext.ContextRebaseEnvelope,
+	) error {
+		copy := envelope
+		committed = &copy
+		return nil
+	}
+
+	result, err := engine.CompactForcedDurable(
+		t.Context(),
+		"thread-1",
+		"turn-2",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterWindow := engine.context.Window()
+	if committed == nil ||
+		result.Receipt == nil ||
+		result.Receipt.Status != "completed" ||
+		afterWindow.ID == beforeWindow.ID ||
+		afterWindow.ID != committed.TargetWindowID ||
+		agentcontext.HistoryBytes(engine.history) >= beforeBytes {
+		t.Fatalf(
+			"committed=%+v receipt=%+v window=%+v history_bytes=%d/%d",
+			committed,
+			result.Receipt,
+			afterWindow,
+			agentcontext.HistoryBytes(engine.history),
+			beforeBytes,
+		)
+	}
+}
+
+type narrativeFailureProvider struct{}
+
+func (narrativeFailureProvider) Stream(
+	context.Context,
+	provider.ModelRequest,
+) (provider.Stream, error) {
+	return nil, errors.New("injected narrative failure")
+}
+
 type sourceEchoNarrativeProvider struct {
 	requests int
 }

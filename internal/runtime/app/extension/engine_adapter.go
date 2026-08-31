@@ -765,10 +765,20 @@ func (a *EngineAdapter) ReplyInput(
 }
 
 func (a *EngineAdapter) CompactThread(
-	_ context.Context, _ *protocol.CompactThreadPayload, sink EngineSink,
+	ctx context.Context,
+	payload *protocol.CompactThreadPayload,
+	sink EngineSink,
 ) error {
 	beforeID, _ := a.engine.TokenWindowIdentity()
-	receipt := a.engine.CompactForced()
+	result, err := a.engine.CompactForcedDurable(
+		ctx,
+		payload.ThreadID,
+		payload.TurnID,
+	)
+	if err != nil {
+		return err
+	}
+	receipt := result.Receipt
 	summary := "context already within budget; no messages compacted"
 	if receipt != nil {
 		summary = FormatCompactionSummary(receipt)
@@ -778,7 +788,7 @@ func (a *EngineAdapter) CompactThread(
 		return err
 	}
 	windowID, windowNumber := a.engine.TokenWindowIdentity()
-	if windowID == beforeID {
+	if receipt == nil && windowID == beforeID {
 		windowID, windowNumber = a.engine.AdvanceTokenWindow()
 	}
 	data := &protocol.ThreadCompactedData{

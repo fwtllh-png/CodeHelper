@@ -38,6 +38,7 @@ export const webRPCRoutes = [
   "session/status",
   "session/update",
   "setup/apply",
+  "setup/probe",
   "system/describe",
   "system/diagnostics",
   "system/readiness",

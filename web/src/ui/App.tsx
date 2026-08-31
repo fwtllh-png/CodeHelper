@@ -79,7 +79,7 @@ import {InputOptionMenu} from "./InputOptionMenu";
 import {
   emptyModelMetadataDraft,
   ModelMetadataFields,
-  modelMetadataForModel,
+  modelMetadataFromProbe,
   modelMetadataProblem,
   setupModelMetadata
 } from "./ModelMetadataFields";
@@ -3072,6 +3072,9 @@ function FirstRunSetup({
   const [baseURL, setBaseURL] = useState("");
   const [protocol, setProtocol] = useState("openai_chat");
   const [metadata, setMetadata] = useState(emptyModelMetadataDraft);
+  const [probed, setProbed] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [probeError, setProbeError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const provider = catalog.providers.find((entry) => entry.id === providerID);
@@ -3080,7 +3083,7 @@ function FirstRunSetup({
     provider && modelID.trim() &&
     (custom || !provider.models?.includes(modelID.trim()))
   );
-  const metadataError = requiresMetadata
+  const metadataError = requiresMetadata && probed
     ? modelMetadataProblem(
         metadata,
         custom ? protocol : provider?.protocol ?? ""
@@ -3092,6 +3095,7 @@ function FirstRunSetup({
     modelID.trim() &&
     (!provider.requires_api_key || apiKey) &&
     (!custom || baseURL.trim()) &&
+    (!requiresMetadata || probed) &&
     !metadataError &&
     !keyError
   );
@@ -3113,6 +3117,28 @@ function FirstRunSetup({
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
       setSubmitting(false);
+    }
+  };
+  const probeModel = async () => {
+    if (!custom || !baseURL.trim() || !modelID.trim() || probing) return;
+    setProbing(true);
+    setProbeError("");
+    try {
+      const result = await client.probeSetup({
+        provider: providerID,
+        base_url: baseURL.trim(),
+        protocol,
+        model: modelID.trim(),
+        ...(apiKey.trim() ? {api_key: apiKey.trim()} : {})
+      });
+      setMetadata(modelMetadataFromProbe(modelID.trim(), result));
+      setProbed(true);
+      setProbeError(result.warning ?? "");
+    } catch (value) {
+      setProbed(false);
+      setProbeError(value instanceof Error ? value.message : String(value));
+    } finally {
+      setProbing(false);
     }
   };
 
@@ -3156,6 +3182,8 @@ function FirstRunSetup({
                   setBaseURL("");
                   setProtocol(next?.protocol || "openai_chat");
                   setMetadata(emptyModelMetadataDraft());
+                  setProbed(false);
+                  setProbeError("");
                   setError("");
                 }}
               >
@@ -3185,7 +3213,10 @@ function FirstRunSetup({
                     value={baseURL}
                     placeholder="https://api.example.com/v1"
                     disabled={submitting}
-                    onChange={(event) => setBaseURL(event.target.value)}
+                    onChange={(event) => {
+                      setBaseURL(event.target.value);
+                      setProbed(false);
+                    }}
                   />
                 </label>
               )}
@@ -3196,7 +3227,10 @@ function FirstRunSetup({
                     aria-label="Protocol"
                     value={protocol}
                     disabled={submitting}
-                    onChange={(event) => setProtocol(event.target.value)}
+                    onChange={(event) => {
+                      setProtocol(event.target.value);
+                      setProbed(false);
+                    }}
                   >
                     <option value="openai_chat">Chat Completions</option>
                     <option value="openai_responses">Responses</option>
@@ -3212,16 +3246,13 @@ function FirstRunSetup({
                   disabled={submitting}
                   onChange={(event) => {
                     const nextModelID = event.target.value;
-                    setMetadata((current) => modelMetadataForModel(
-                      current,
-                      modelID,
-                      nextModelID
-                    ));
+                    setMetadata(emptyModelMetadataDraft(nextModelID.trim()));
                     setModelID(nextModelID);
+                    setProbed(false);
                   }}
                 />
               </label>
-              {requiresMetadata && (
+              {requiresMetadata && probed && (
                 <ModelMetadataFields
                   value={metadata}
                   disabled={submitting}
@@ -3255,7 +3286,10 @@ function FirstRunSetup({
                   ? "Enter API key"
                   : "Optional API key"}
                 disabled={submitting}
-                onChange={(event) => setAPIKey(event.target.value)}
+                onChange={(event) => {
+                  setAPIKey(event.target.value);
+                  setProbed(false);
+                }}
               />
             </div>
             <p className="startupNote">
@@ -3263,6 +3297,19 @@ function FirstRunSetup({
               to this project, a config file, or browser storage.
             </p>
             {keyError && <p className="startupError">{keyError}</p>}
+            {requiresMetadata && (
+              <button
+                type="button"
+                className="settingsHeaderAction"
+                disabled={
+                  probing || !baseURL.trim() || !modelID.trim() || Boolean(keyError)
+                }
+                onClick={() => void probeModel()}
+              >
+                {probing ? "Detecting..." : "Detect model"}
+              </button>
+            )}
+            {probeError && <p className="startupError">{probeError}</p>}
           </div>
         )}
 

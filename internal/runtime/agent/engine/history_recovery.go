@@ -211,14 +211,69 @@ func (e *Engine) CompactForced() *CompactionReceipt {
 	return receipt
 }
 
+// CompactForcedDurable completes any prepared rebase before exposing the
+// replacement history to an explicit thread.compact operation.
+func (e *Engine) CompactForcedDurable(
+	ctx context.Context,
+	threadID protocol.ThreadID,
+	turnID protocol.TurnID,
+) (NarrativeGenerationResult, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	receipt := e.compactHistory(
+		&e.history,
+		true,
+		TurnIdentity{
+			ThreadID: string(threadID),
+			TurnID:   string(turnID),
+		},
+	)
+	e.reconcileWorldBaseline(e.history)
+	if receipt == nil {
+		return NarrativeGenerationResult{}, nil
+	}
+	state := e.context.Compaction().State
+	if state == nil || state.ID != receipt.CompactionID ||
+		state.Phase == "completed" {
+		return NarrativeGenerationResult{Receipt: receipt}, nil
+	}
+	result, err := e.completePreparedCompactionLocked(ctx, threadID, turnID)
+	if maintained := result.Receipt; maintained != nil {
+		receipt.Status = maintained.Status
+		receipt.Mode = e.options.Context.SemanticNarrative
+		receipt.SourceWindowID = maintained.SourceWindowID
+		receipt.TargetWindowID = maintained.TargetWindowID
+		receipt.TruthGeneration = maintained.TruthGeneration
+		receipt.TruthEntities = maintained.TruthEntities
+		receipt.CompatibilityHash = maintained.CompatibilityHash
+		receipt.AuthorityDigest = maintained.AuthorityDigest
+		receipt.AuthorityEquivalent = maintained.AuthorityEquivalent
+		receipt.DownshiftPolicy = maintained.DownshiftPolicy
+		receipt.NarrativeIncluded = maintained.NarrativeIncluded
+		receipt.NarrativeBytes = maintained.NarrativeBytes
+		receipt.NarrativeInputTokens = maintained.NarrativeInputTokens
+		receipt.NarrativeOutputTokens = maintained.NarrativeOutputTokens
+		receipt.NarrativeProvider = maintained.NarrativeProvider
+		receipt.NarrativeModel = maintained.NarrativeModel
+		receipt.NarrativeMetadata = maintained.NarrativeMetadata
+		receipt.FallbackReason = maintained.FallbackReason
+	}
+	result.Receipt = receipt
+	return result, err
+}
+
 func (e *Engine) reconcileWorldBaseline(history []provider.Message) {
 	e.context.ReconcileWorld(history)
 }
 
-func (e *Engine) compactHistory(history *[]provider.Message, force bool) *CompactionReceipt {
+func (e *Engine) compactHistory(
+	history *[]provider.Message,
+	force bool,
+	identities ...TurnIdentity,
+) *CompactionReceipt {
 	input := agentcontext.NewMessageLedger(agentcontext.LedgerInput{Stable: e.promptMessages()}).Snapshot()
 	return e.compactHistoryWithPolicy(
-		history, force, false, input, 0, 0, nil,
+		history, force, false, input, 0, 0, nil, identities...,
 	)
 }
 
@@ -230,6 +285,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	outputReserve uint64,
 	economicInput uint64,
 	projectHistory agentcontext.HistoryProjector,
+	identities ...TurnIdentity,
 ) *CompactionReceipt {
 	if len(*history) <= 1 {
 		return nil
@@ -331,7 +387,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	)
 	durableRebase := e.options.Context.CommitRebase != nil || e.options.Context.CommitRebaseWithFacts != nil
 	if durableRebase || e.options.Context.SemanticNarrative != "off" {
-		state := e.stageNarrativeCandidate(*selected)
+		state := e.stageNarrativeCandidate(*selected, identities...)
 		receipt.CompactionID, receipt.Status = state.ID, state.Phase
 		receipt.Mode = e.options.Context.SemanticNarrative
 		receipt.SourceWindowID, receipt.TargetWindowID = state.SourceWindowID, state.TargetWindowID

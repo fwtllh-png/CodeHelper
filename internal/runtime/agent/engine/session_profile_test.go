@@ -9,6 +9,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
@@ -197,6 +198,86 @@ func TestSessionProfileSelectsAvailableModelBetweenTurns(t *testing.T) {
 	if spec.Route.Model().ID != "deepseek-reasoner" ||
 		spec.Profile.ReasoningEffort != "high" {
 		t.Fatalf("turn spec route/profile = %+v / %+v", spec.Route.Model(), spec.Profile)
+	}
+}
+
+func TestSessionProfileModelChangeRotatesTokenWindowAndPreparedCompaction(t *testing.T) {
+	resolver, err := model.NewResolver(model.DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat, err := resolver.Resolve(model.RouteRequest{
+		ProviderID: "deepseek",
+		ModelID:    "deepseek-chat",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reasoner, err := resolver.Resolve(model.RouteRequest{
+		ProviderID: "deepseek",
+		ModelID:    "deepseek-reasoner",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes, err := model.NewRouteSet(chat, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := New(Options{
+		ProviderConfig: ProviderConfig{
+			Provider: &scriptedProvider{},
+			Route:    chat,
+			Routes:   routes,
+			SelectableRoutes: map[string]model.ReadyRoute{
+				model.RouteKey(chat.ProviderID(), chat.Model().ID):         chat,
+				model.RouteKey(reasoner.ProviderID(), reasoner.Model().ID): reasoner,
+			},
+			MaxOutputTokens: 128,
+		},
+		ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := engine.context.Window()
+	observed := protocol.SampleContextData{
+		ContextDigest:   "sha256:old-model",
+		EstimatedTokens: 100,
+	}
+	before.Observe(observed, 175, 0)
+	engine.context.SetWindow(before)
+	engine.context.SetCompaction(agentcontext.Compaction{
+		State: &agentcontext.CompactionState{
+			ID:    "old-model-candidate",
+			Phase: "prepared",
+		},
+	})
+
+	profile := protocol.SessionProfile{
+		Version:             protocol.SessionProfileVersion,
+		Revision:            2,
+		Mode:                "act",
+		Provider:            "deepseek",
+		Model:               "deepseek-reasoner",
+		ReasoningEffort:     "high",
+		ApprovalPosture:     "suggest",
+		ExecutionTarget:     "local",
+		MaxSteps:            8,
+		PromptCacheRevision: 2,
+	}
+	if err := engine.ApplySessionProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	after := engine.context.Window()
+	if after.ID == before.ID ||
+		after.Number != before.Number+1 ||
+		after.PrefillObserved ||
+		after.LastProviderInputTokens != 0 {
+		t.Fatalf("rotated window=%+v, old=%+v", after, before)
+	}
+	if state := engine.context.Compaction().State; state != nil {
+		t.Fatalf("old-model compaction survived route change: %+v", state)
 	}
 }
 

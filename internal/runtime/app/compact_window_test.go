@@ -11,6 +11,7 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -133,6 +134,105 @@ func TestCompactWindowChainAndResume(t *testing.T) {
 			"resumed token window=%s/%d, want %s/%d",
 			windowID, windowNumber, compacted.WindowID, compacted.WindowNumber,
 		)
+	}
+}
+
+func TestThreadResumeKeepsCompactedWindowNewerThanTerminalDelta(t *testing.T) {
+	seed, err := newTestAgentEngine(agentengine.Options{
+		ProviderConfig: agentengine.ProviderConfig{
+			Provider:        &threadEchoProvider{},
+			Route:           runtimeTestRoute(t),
+			MaxOutputTokens: 128,
+		},
+		ToolConfig: agentengine.ToolConfig{
+			Tools: tool.NewRegistry(nil, nil),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldWindow, err := agentcontext.NewWindowLedger("window-old", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := agentcontext.WorkspaceBinding{
+		WorkspaceIdentity: "workspace:test",
+	}
+	binding.Seal()
+	oldMessage := provider.TextMessage(provider.RoleUser, "old terminal history")
+	oldMessage.Turn = 1
+	snapshot := agentcontext.ContextSnapshot{
+		Version:   agentcontext.ContextSnapshotVersion,
+		Epoch:     1,
+		Revision:  1,
+		Turn:      1,
+		History:   []provider.Message{oldMessage},
+		Workspace: binding,
+		Window:    oldWindow,
+	}
+	if err := snapshot.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	accounting := agentcontext.AccountingDelta{TurnID: "turn-1"}
+	accounting.Seal()
+	delta, err := agentcontext.NewSessionDelta(snapshot, accounting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawDelta, err := json.Marshal(delta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newMessage := provider.TextMessage(
+		provider.RoleSystem,
+		"new compacted history",
+	)
+	encoded, err := sessionhistory.EncodeCompactedHistory(
+		[]provider.Message{newMessage},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manager := NewThreadManager(func() (*EngineAdapter, error) {
+		clone, err := seed.CloneEmpty()
+		if err != nil {
+			return nil, err
+		}
+		return AdaptEngine(clone), nil
+	})
+	manager.SetWindowRestorer(func(
+		context.Context,
+		protocol.ThreadID,
+	) (*protocol.ThreadCompactedData, error) {
+		return &protocol.ThreadCompactedData{
+			ReplacementHistory: encoded,
+			WindowNumber:       2,
+			FirstWindowID:      "window-old",
+			WindowID:           "window-compacted",
+		}, nil
+	})
+	manager.SetSessionDeltaRestorer(func(
+		context.Context,
+		protocol.ThreadID,
+	) (json.RawMessage, error) {
+		return rawDelta, nil
+	})
+
+	history, err := manager.History("thread-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].Text() != "new compacted history" {
+		t.Fatalf("restored history = %+v", history)
+	}
+	adapter, err := manager.forThread("thread-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowID, windowNumber := adapter.Underlying().TokenWindowIdentity()
+	if windowID != "window-compacted" || windowNumber != 2 {
+		t.Fatalf("restored window = %s/%d", windowID, windowNumber)
 	}
 }
 

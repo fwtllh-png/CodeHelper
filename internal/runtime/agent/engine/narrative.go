@@ -41,10 +41,15 @@ type compactionCompletionCheck struct {
 
 func (e *Engine) stageNarrativeCandidate(
 	candidate compactionCandidate,
+	identities ...TurnIdentity,
 ) *agentcontext.CompactionState {
 	scope := e.runningScope()
 	threadID := protocol.ThreadID(e.options.SessionID)
 	turnID := protocol.TurnID("")
+	if len(identities) != 0 {
+		threadID = protocol.ThreadID(identities[0].ThreadID)
+		turnID = protocol.TurnID(identities[0].TurnID)
+	}
 	if scope != nil {
 		if scope.spec.Identity.ThreadID != "" {
 			threadID = protocol.ThreadID(scope.spec.Identity.ThreadID)
@@ -150,6 +155,14 @@ func (e *Engine) RunPostTurnNarrative(
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	return e.completePreparedCompactionLocked(ctx, threadID, turnID)
+}
+
+func (e *Engine) completePreparedCompactionLocked(
+	ctx context.Context,
+	threadID protocol.ThreadID,
+	turnID protocol.TurnID,
+) (NarrativeGenerationResult, error) {
 	maintained, err := agentcontext.RunPostTurnNarrative(
 		ctx,
 		agentcontext.PostTurnNarrativeConfig{
@@ -270,15 +283,18 @@ func narrativeMaintenanceReceipt(
 	if state == nil {
 		return nil
 	}
-	return &CompactionReceipt{
-		CompactionID: state.ID, Status: state.Phase, Mode: "post_turn",
+	status := state.Phase
+	if state.FallbackReason != "" {
+		status = "fallback"
+	}
+	receipt := &CompactionReceipt{
+		CompactionID: state.ID, Status: status, Mode: "post_turn",
 		Phase:                 CompactionPhasePostTurn,
 		SourceWindowID:        state.SourceWindowID,
 		TargetWindowID:        state.TargetWindowID,
 		TruthGeneration:       state.Truth.Generation,
 		TruthEntities:         len(state.Truth.Entities),
 		CompatibilityHash:     state.Truth.CompatibilityHash,
-		AuthorityDigest:       state.NarrativeInput.AuthorityDigest,
 		AuthorityEquivalent:   true,
 		DownshiftPolicy:       state.Truth.DownshiftPolicy,
 		NarrativeIncluded:     included,
@@ -287,6 +303,13 @@ func narrativeMaintenanceReceipt(
 		NarrativeOutputTokens: usage.OutputTokens,
 		FallbackReason:        state.FallbackReason,
 	}
+	if state.NarrativeInput != nil {
+		receipt.AuthorityDigest = state.NarrativeInput.AuthorityDigest
+	} else if state.Plan != nil {
+		receipt.AuthorityDigest =
+			state.Plan.DeterministicResult.AuthorityDigest
+	}
+	return receipt
 }
 
 func (e *Engine) completeInlineNarrative(
