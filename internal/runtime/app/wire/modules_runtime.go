@@ -90,6 +90,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		MaxRetryDelay:       execution.Timeout,
 		RateLimitMaxRetries: execution.RateLimitRetryLimit,
 		RateLimitMaxWait:    execution.RateLimitWaitBudget(),
+		TokensPerMinute:     execution.TokensPerMinute,
 	}, ContextConfig: agentengine.ContextConfig{StaticContext: prompt.Messages,
 		ContextBudgets: budgets,
 		CodingPolicy:   execution.Tools && snapshot.Config.Context.CodingPolicy.Enabled,
@@ -108,11 +109,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		EvidenceLimit:         snapshot.Config.Context.Evidence.MaxEntries,
 		SummaryMaxBytes:       snapshot.Config.Context.Compact.SummaryMaxBytes,
 		MaxDigestEntries:      snapshot.Config.Context.Compact.MaxDigestEntries,
-		Context: engineContextPolicy(
-			snapshot.Config.Context.Compact,
-			contextRuntime.commit,
-			contextRuntime.commitWithFacts,
-		),
+		Context: engineContextPolicy(snapshot.Config.Context),
 
 		PromptCacheKey: promptcontext.StickyCacheKey(
 			state.config.runtimeSessionID,

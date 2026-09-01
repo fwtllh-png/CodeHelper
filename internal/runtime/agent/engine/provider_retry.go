@@ -114,19 +114,24 @@ func (e *Engine) recoverContextOverflow(
 			provider.FailureContextWindowExceeded {
 		return false, nil
 	}
-	receipt := e.compactHistoryWithPolicy(
-		history,
-		true,
-		true,
-		input,
-		outputReserve,
-		0,
-		nil,
+	before := e.projectGateHistory(*history, e.contextViewProject(nil))
+	beforeWindow, measureErr := e.measureTokenWindow(
+		input.WithHistory(before), outputReserve, 0,
 	)
-	if receipt == nil || receipt.RetainedTokens >= receipt.OriginalTokens {
+	if measureErr != nil || !e.foldOldestVisibleTail(*history, true) {
 		return false, nil
 	}
-	receipt.Phase = CompactionPhaseMidTurn
+	e.applyWorkingSetGC(history)
+	after := e.projectGateHistory(*history, e.contextViewProject(nil))
+	afterWindow, measureErr := e.measureTokenWindow(
+		input.WithHistory(after), outputReserve, 0,
+	)
+	if measureErr != nil || agentcontext.HistoryBytes(after) >= agentcontext.HistoryBytes(before) {
+		return false, nil
+	}
+	receipt := viewFoldReceipt(
+		CompactionPhaseMidTurn, before, after, beforeWindow, afterWindow,
+	)
 	if err := send(Compacting, Event{Compaction: receipt}); err != nil {
 		return false, err
 	}

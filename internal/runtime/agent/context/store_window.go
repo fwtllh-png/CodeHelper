@@ -47,11 +47,24 @@ type WindowPolicy struct {
 	Scope                                      string
 }
 
-const (
-	DefaultPreparePercent   uint64 = 75
-	DefaultCompactPercent   uint64 = 80
-	DefaultEmergencyPercent uint64 = 90
-)
+// WindowThresholds resolve operator ceilings. Zero values mean "no early
+// compact tier": the compact and emergency limits equal the hard input
+// capacity. Percents are not derived here.
+func WindowThresholds(policy WindowPolicy, hardInputCapacity uint64) (uint64, uint64, uint64) {
+	compact := hardInputCapacity
+	if policy.AutoTokens != 0 {
+		compact = min(policy.AutoTokens, hardInputCapacity)
+	}
+	prepare := compact
+	if policy.PrepareTokens != 0 {
+		prepare = min(policy.PrepareTokens, compact)
+	}
+	emergency := hardInputCapacity
+	if policy.EmergencyTokens != 0 {
+		emergency = min(policy.EmergencyTokens, hardInputCapacity)
+	}
+	return prepare, compact, emergency
+}
 
 type BudgetSnapshot struct {
 	WindowID             string `json:"window_id,omitempty"`
@@ -67,33 +80,19 @@ type BudgetSnapshot struct {
 	HardInputTokens      uint64 `json:"hard_input_tokens,omitempty"`
 	LimitSource          string `json:"limit_source,omitempty"`
 	OutputSource         string `json:"output_source,omitempty"`
-	AutoCompactTokens    uint64 `json:"auto_compact_tokens"`
-	PrepareTokens        uint64 `json:"prepare_tokens,omitempty"`
-	EmergencyTokens      uint64 `json:"emergency_tokens,omitempty"`
-	EstimatedTokens      uint64 `json:"estimated_tokens,omitempty"`
+	AutoCompactTokens       uint64 `json:"auto_compact_tokens"`
+	PrepareTokens           uint64 `json:"prepare_tokens,omitempty"`
+	EmergencyTokens         uint64 `json:"emergency_tokens,omitempty"`
+	RecentTailTurns         int    `json:"recent_tail_turns,omitempty"`
+	KeepRecentToolResults   int    `json:"keep_recent_tool_results,omitempty"`
+	HistoryTokenCeiling     uint64 `json:"history_token_ceiling,omitempty"`
+	Digest                  string `json:"digest,omitempty"`
+	NarrativeMode           string `json:"narrative_mode,omitempty"`
+	EstimatedTokens         uint64 `json:"estimated_tokens,omitempty"`
 	MaxContextTokens     uint64 `json:"max_context_tokens,omitempty"`
 	Compactions          int    `json:"compactions"`
 }
 
-func WindowThresholds(policy WindowPolicy, hardInputCapacity uint64) (uint64, uint64, uint64) {
-	compact := percentOf(hardInputCapacity, DefaultCompactPercent)
-	if policy.AutoTokens != 0 {
-		compact = min(policy.AutoTokens, hardInputCapacity)
-	}
-	prepare := min(percentOf(hardInputCapacity, DefaultPreparePercent), compact)
-	if policy.PrepareTokens != 0 {
-		prepare = min(policy.PrepareTokens, compact)
-	}
-	emergency := max(percentOf(hardInputCapacity, DefaultEmergencyPercent), compact)
-	if policy.EmergencyTokens != 0 {
-		emergency = min(policy.EmergencyTokens, hardInputCapacity)
-	}
-	return prepare, compact, emergency
-}
-
-func percentOf(value, percent uint64) uint64 {
-	return value/100*percent + value%100*percent/100
-}
 
 func NewWindowLedger(id string, number uint64) (WindowLedger, error) {
 	if id == "" || number == 0 {

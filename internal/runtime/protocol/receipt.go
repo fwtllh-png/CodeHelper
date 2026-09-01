@@ -182,10 +182,15 @@ type ReceiptContextBudget struct {
 	ToolDefinitionTokens uint64 `json:"tool_definition_tokens,omitempty"`
 	PendingTokens        uint64 `json:"pending_tokens,omitempty"`
 	OutputReserve        uint64 `json:"output_reserve,omitempty"`
-	AutoCompactTokens    uint64 `json:"auto_compact_tokens"`
-	PrepareTokens        uint64 `json:"prepare_tokens,omitempty"`
-	EmergencyTokens      uint64 `json:"emergency_tokens,omitempty"`
-	EstimatedTokens      uint64 `json:"estimated_tokens,omitempty"`
+	AutoCompactTokens       uint64 `json:"auto_compact_tokens"`
+	PrepareTokens           uint64 `json:"prepare_tokens,omitempty"`
+	EmergencyTokens         uint64 `json:"emergency_tokens,omitempty"`
+	RecentTailTurns         int    `json:"recent_tail_turns,omitempty"`
+	KeepRecentToolResults   int    `json:"keep_recent_tool_results,omitempty"`
+	HistoryTokenCeiling     uint64 `json:"history_token_ceiling,omitempty"`
+	Digest                  string `json:"digest,omitempty"`
+	NarrativeMode           string `json:"narrative_mode,omitempty"`
+	EstimatedTokens         uint64 `json:"estimated_tokens,omitempty"`
 	MaxContextTokens     uint64 `json:"max_context_tokens,omitempty"`
 	Compactions          int    `json:"compactions"`
 }
@@ -340,7 +345,7 @@ type ExecutionReceiptData struct {
 	EditorContext []EditorContextReceipt `json:"editor_context,omitempty"`
 	Catalog       *ReceiptCatalog        `json:"catalog,omitempty"`
 
-	// ContextBudget reports how close the thread is to its next compaction.
+	// ContextBudget reports the public view contract and replacement ceiling.
 	ContextBudget *ReceiptContextBudget `json:"context_budget,omitempty"`
 
 	// Evidence reports what lookups established and which changes are still

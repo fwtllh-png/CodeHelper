@@ -109,21 +109,22 @@ func RetainedTailCuts(
 		return cuts
 	}
 	minimumStart := recentTurnStart(history, recentTurns)
-	recentTurnsFit := minimumStart < 0 ||
-		recentMaxTokens == 0 ||
-		estimateTokens(history[minimumStart:]) <= recentMaxTokens
-	filtered := cuts[:0]
+	var preferred, fallback []int
 	for _, cut := range cuts {
-		if minimumStart >= 0 && cut > minimumStart && recentTurnsFit {
-			continue
-		}
 		if recentMaxTokens != 0 &&
 			estimateTokens(history[cut:]) > recentMaxTokens {
 			continue
 		}
-		filtered = append(filtered, cut)
+		if minimumStart >= 0 && cut <= minimumStart {
+			preferred = append(preferred, cut)
+			continue
+		}
+		fallback = append(fallback, cut)
 	}
-	return filtered
+	if len(preferred) != 0 {
+		return preferred
+	}
+	return fallback
 }
 
 func compactionCuts(

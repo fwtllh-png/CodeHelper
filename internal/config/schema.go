@@ -45,14 +45,25 @@ type Context struct {
 	WorkingSet   WorkingSet   `json:"working_set" toml:"working_set"`
 	Evidence     Evidence     `json:"evidence" toml:"evidence"`
 	CodingPolicy CodingPolicy `json:"coding_policy" toml:"coding_policy"`
+	View         View         `json:"view" toml:"view"`
 	Compact      Compact      `json:"compact" toml:"compact"`
 }
 
-// Compact configures what happens when a thread outgrows its context window.
-//
-// Zero thresholds derive 75% prepare, 80% compact, and 90% emergency limits
-// from the active route's hard input capacity. Scope is total or
-// body_after_prefix.
+// View is the public model-visible working-set contract. Defaults come from
+// remaining hard input, explicit operator values, or this protocol. There is
+// no hidden window percent.
+type View struct {
+	RecentTailTurns       int    `json:"recent_tail_turns" toml:"recent_tail_turns"`
+	KeepRecentToolResults int    `json:"keep_recent_tool_results" toml:"keep_recent_tool_results"`
+	HistoryTokenCeiling   int    `json:"history_token_ceiling" toml:"history_token_ceiling"`
+	Digest                string `json:"digest" toml:"digest"`
+	NarrativeMode         string `json:"narrative_mode" toml:"narrative_mode"`
+}
+
+// Compact configures overflow replacement and digest generation limits.
+// Zero token thresholds mean no early compact ceiling: the working set is
+// bounded by context.view, and replacement runs only when a request cannot
+// fit hard input. Scope is total or body_after_prefix.
 type Compact struct {
 	PrepareTokens                    int           `json:"prepare_tokens" toml:"prepare_tokens"`
 	AutoCompactTokens                int           `json:"auto_compact_tokens" toml:"auto_compact_tokens"`
@@ -68,9 +79,6 @@ type Compact struct {
 	FailureMaxEntities               int           `json:"failure_max_entities" toml:"failure_max_entities"`
 	HandleMaxEntities                int           `json:"handle_max_entities" toml:"handle_max_entities"`
 	OmissionSampleMaxEntities        int           `json:"omission_sample_max_entities" toml:"omission_sample_max_entities"`
-	RecentTailTurns                  int           `json:"recent_tail_turns" toml:"recent_tail_turns"`
-	RecentTailMaxTokens              int           `json:"recent_tail_max_tokens" toml:"recent_tail_max_tokens"`
-	SemanticNarrative                string        `json:"semantic_narrative" toml:"semantic_narrative"`
 	SemanticNarrativeMaxInputTokens  int           `json:"semantic_narrative_max_input_tokens" toml:"semantic_narrative_max_input_tokens"`
 	SemanticNarrativeMaxOutputTokens int           `json:"semantic_narrative_max_output_tokens" toml:"semantic_narrative_max_output_tokens"`
 	SemanticNarrativeMaxItems        int           `json:"semantic_narrative_max_items" toml:"semantic_narrative_max_items"`
@@ -164,7 +172,10 @@ type Execution struct {
 	// RateLimitWait is the maximum cumulative 429 wait per Model Sample.
 	// Zero inherits Timeout when the engine is constructed.
 	RateLimitWait time.Duration `json:"rate_limit_wait" toml:"-"`
-	BudgetTokens  uint64        `json:"budget_tokens" toml:"budget_tokens"`
+	// TokensPerMinute is the Operator TPM contract for Provider Throughput
+	// Admission. Zero means unknown; Runtime does not invent a model default.
+	TokensPerMinute uint64 `json:"tokens_per_minute" toml:"tokens_per_minute"`
+	BudgetTokens    uint64 `json:"budget_tokens" toml:"budget_tokens"`
 	// TurnBudgetTokens is an optional cumulative operator ceiling. Zero leaves
 	// the Turn uncapped; each request remains bounded by model capacity.
 	TurnBudgetTokens uint64   `json:"turn_budget_tokens" toml:"turn_budget_tokens"`
@@ -351,9 +362,11 @@ type Overrides struct {
 	CompactFailureMaxEntities               *int
 	CompactHandleMaxEntities                *int
 	CompactOmissionSampleMaxEntities        *int
-	CompactRecentTailTurns                  *int
-	CompactRecentTailMaxTokens              *int
-	CompactSemanticNarrative                *string
+	ViewRecentTailTurns                     *int
+	ViewKeepRecentToolResults               *int
+	ViewHistoryTokenCeiling                 *int
+	ViewDigest                              *string
+	ViewNarrativeMode                       *string
 	CompactSemanticNarrativeMaxInputTokens  *int
 	CompactSemanticNarrativeMaxOutputTokens *int
 	CompactSemanticNarrativeMaxItems        *int
@@ -386,6 +399,7 @@ type Overrides struct {
 	ProviderRetryLimit    *int
 	RateLimitRetryLimit   *int
 	RateLimitWait         *time.Duration
+	TokensPerMinute       *uint64
 	BudgetTokens          *uint64
 	TurnBudgetTokens      *uint64
 	BudgetUSD             *float64

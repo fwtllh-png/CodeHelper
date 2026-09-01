@@ -342,6 +342,11 @@ Turn 开始时冻结 `ContextCapacity`：模型 Context Window 扣除模型能�
 Ceiling 和 Turn/Session Budget 共同确定的 Output Reserve 后，得到硬输入容量。
 默认 Prepare、Auto Compact 与 Emergency 都等于该容量，不再按百分比提前触发；
 Operator 可显式配置更小的成本或延迟 Ceiling。Transport 类型不得暗中套用固定档位。
+Provider Throughput 是第三条独立容量平面：`execution.tokens_per_minute` 或 Token
+专用限流 Header 给出已知 Burst 时，Runtime 在发送前按 `投影输入 + 输出保留` 准入；
+未知则跳过 Token Admission，不按模型名称发明 TPM。超过已知 Burst 或等待将超过
+预算时，先对可见 Tail 做一次因果组折叠再重新准入；仍超则拒绝或等待，不会静默
+重探，也不会改写 Durable History。
 
 Tool Result 在执行边界按硬输入容量、并行 Batch 大小与 ResultStore Capacity 取得
 本次 Token Budget；完整原文保存在 Durable Content Store，模型只接收带稳定
@@ -439,8 +444,10 @@ Provenance 不匹配导致下一 Turn 失败。
 
 Terminal Envelope 不再重复写入完整 Session Snapshot，而是引用 CAS 中的 Context
 Manifest。CAS 先按 Digest 幂等 Stage，SQLite 再提交 Manifest 可达性和 Terminal
-事实。Inline Narrative 使用 `generate_narrative` 与 `commit_context_rebase` Durable
-Effect；Rebase 由 `runtime/app/persistence` 单点提交，提交成功后 Engine 才替换 History。
+事实。采样路径按公开合同 `context.view.recent_tail_turns` 和剩余硬输入（或显式
+`context.view.history_token_ceiling`）投影原文，超窗时再用一次 Visible Tail
+Fold；History Replacement 只发生在显式 `thread.compact` 或 Turn 终态维护。
+`context.view.narrative_mode=post_turn` 写独立 Digest 分区，不阻塞下一轮 Sample。
 
 ## 可观测性架构
 

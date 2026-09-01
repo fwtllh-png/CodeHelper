@@ -8,6 +8,7 @@ import (
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerratelimit "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/ratelimit"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -83,6 +84,34 @@ func (r *Router) RouteCooldown(route model.ReadyRoute) time.Duration {
 		return 0
 	}
 	return source.RouteCooldown(route)
+}
+
+func (r *Router) DecideThroughput(
+	route model.ReadyRoute,
+	required uint64,
+	operatorLimit uint64,
+) providerratelimit.Decision {
+	source, ok := r.transport.(interface {
+		DecideThroughput(model.ReadyRoute, uint64, uint64) providerratelimit.Decision
+	})
+	if !ok {
+		return providerratelimit.Decision{
+			Status: providerratelimit.StatusAdmit,
+			Source: providerratelimit.SourceUnknown,
+			Reason: providerratelimit.ReasonUnknown,
+		}
+	}
+	return source.DecideThroughput(route, required, operatorLimit)
+}
+
+func (r *Router) ReserveThroughput(route model.ReadyRoute, tokens uint64) {
+	source, ok := r.transport.(interface {
+		ReserveThroughput(model.ReadyRoute, uint64)
+	})
+	if !ok {
+		return
+	}
+	source.ReserveThroughput(route, tokens)
 }
 
 func (r *Router) Stream(ctx context.Context, request provider.ModelRequest) (provider.Stream, error) {

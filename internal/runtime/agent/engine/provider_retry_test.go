@@ -361,6 +361,9 @@ func TestContextOverflowRetriesOnlyAfterVisibleCompaction(t *testing.T) {
 			after,
 		)
 	}
+	if !strings.Contains(engine.history[0].Text(), "old request") {
+		t.Fatalf("overflow fold replaced durable history: %+v", engine.history)
+	}
 }
 
 func TestCancellationDuringProviderDelayDoesNotCallProviderAgain(t *testing.T) {

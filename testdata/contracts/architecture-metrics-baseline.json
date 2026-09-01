@@ -63,9 +63,12 @@
       "path": "internal/adapter/tool/result",
       "limits": {
         "internal_fanout": 8,
-        "production_lines": 444,
+        "production_lines": 497,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Collapse consumed tool results outside the recent tail on every sample."
       }
     },
     {
@@ -112,13 +115,14 @@
       "kind": "package",
       "path": "internal/adapter/provider/router",
       "limits": {
-        "internal_fanout": 4,
-        "production_lines": 130,
+        "internal_fanout": 5,
+        "production_lines": 159,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "Expose route cooldown remaining so the engine can wait out a known governor window before the next provider probe."
+        "internal_fanout": "Forward provider throughput admission through the shared ratelimit governor.",
+        "production_lines": "Expose DecideThroughput and ReserveThroughput so Engine admission uses the same route-scoped governor as HTTP cooldown."
       }
     },
     {
@@ -141,12 +145,12 @@
       "path": "internal/adapter/provider/httpclient",
       "limits": {
         "internal_fanout": 10,
-        "production_lines": 1083,
+        "production_lines": 1108,
         "options_fields": 0,
         "mutex_fields": 1
       },
       "relaxations": {
-        "production_lines": "Publish remaining route cooldown from the shared governor so retry decisions can include Provider Reset without holding a concurrency slot."
+        "production_lines": "Add read-only throughput Decide/Reserve on the shared token window so Engine can refuse oversized TPM requests before Stream."
       }
     },
     {
@@ -230,12 +234,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 61,
-        "production_lines": 7181,
+        "production_lines": 7182,
         "options_fields": 60,
         "mutex_fields": 6
       },
       "relaxations": {
-        "production_lines": "Bind Child Runtime persistence to the owning user Session, and wire the public rate-limit recovery budget from execution config instead of a hidden retry delay."
+        "production_lines": "Wire execution.tokens_per_minute into Engine so Provider Throughput Admission uses the public Operator TPM contract."
       }
     },
     {
@@ -244,12 +248,12 @@
       "path": "internal/runtime/app/extension",
       "limits": {
         "internal_fanout": 15,
-        "production_lines": 1940,
+        "production_lines": 1941,
         "options_fields": 0,
         "mutex_fields": 2
       },
       "relaxations": {
-        "production_lines": "Project engine provider.attempt facts onto the durable protocol event, including retry delays, completion timestamps, and rate-limit budget counters."
+        "production_lines": "Pass optional thread.compact focus into post-turn narrative without blocking the next sample."
       }
     },
     {
@@ -332,13 +336,14 @@
       "kind": "package",
       "path": "internal/runtime/agent/engine",
       "limits": {
-        "internal_fanout": 21,
-        "production_lines": 8452,
+        "internal_fanout": 22,
+        "production_lines": 8502,
         "options_fields": 6,
         "mutex_fields": 5
       },
       "relaxations": {
-        "production_lines": "Emit provider.attempt lifecycle facts, skip doubled usage snapshots, and enforce a public rate-limit recovery budget instead of unbounded 429 waits."
+        "internal_fanout": "Consume the provider ratelimit governor for send-time TPM admission without history replacement.",
+        "production_lines": "Expose the context.view contract on sample snapshots and honor keep_recent_tool_results without replacing durable history."
       }
     },
     {
@@ -392,12 +397,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6429,
+        "production_lines": 6444,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "Publish provider.attempt transport facts, cumulative usage subset validation, and rate-limit recovery budget counters."
+        "production_lines": "Publish context.view fields on the context budget receipt."
       }
     },
     {
@@ -471,12 +476,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 350,
-        "max_function_lines": 259
+        "lines": 351,
+        "max_function_lines": 260
       },
       "relaxations": {
-        "lines": "Wire public rate-limit wait and attempt budgets from execution config into engine options.",
-        "max_function_lines": "Same construction path now also derives RateLimitMaxWait from execution.timeout when the wait field is zero."
+        "lines": "Wire execution.tokens_per_minute into Engine ProviderConfig.",
+        "max_function_lines": "Same construction path now also threads the Operator TPM contract into TokensPerMinute."
       }
     },
     {
@@ -574,8 +579,12 @@
       "kind": "file",
       "path": "internal/runtime/agent/engine/world_state.go",
       "limits": {
-        "lines": 76,
-        "max_function_lines": 64
+        "lines": 80,
+        "max_function_lines": 68
+      },
+      "relaxations": {
+        "lines": "Project the mandatory session-state partition on every World State build.",
+        "max_function_lines": "Project the mandatory session-state partition on every World State build."
       }
     },
     {
@@ -708,12 +717,12 @@
       "path": "internal/runtime/agent/context",
       "limits": {
         "internal_fanout": 7,
-        "production_lines": 9412,
+        "production_lines": 9690,
         "options_fields": 0,
         "mutex_fields": 3
       },
       "relaxations": {
-        "production_lines": "Add immutable prepared compaction fences, semantic continuation requirements, exact rebase validation, replay-safe normalization, and capacity-derived 75/80/90 compaction thresholds."
+        "production_lines": "Fold the oldest visible tail on the sample path without replacing durable history."
       }
     },
     {
@@ -722,12 +731,12 @@
       "path": "internal/runtime/agent/prompt",
       "limits": {
         "internal_fanout": 8,
-        "production_lines": 2505,
+        "production_lines": 2520,
         "options_fields": 22,
         "mutex_fields": 1
       },
       "relaxations": {
-        "production_lines": "Clarify that completed tool-use samples are not incomplete-output continuations."
+        "production_lines": "Project the optional post-turn narrative digest through World State."
       }
     },
     {

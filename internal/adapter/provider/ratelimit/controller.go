@@ -18,6 +18,11 @@ type routeState struct {
 	nextRequest time.Time
 	lastRequest time.Time
 	penalty     time.Duration
+	commits     []tokenCommit
+	tokenLimit  uint64
+	remaining   *uint64
+	remainingAt time.Time
+	resetAt     time.Time
 }
 
 // Controller coordinates static pacing and Provider-driven cooldowns for all
@@ -91,9 +96,11 @@ func (c *Controller) Observe(
 	header http.Header,
 	err error,
 ) error {
-	metadata := Metadata(header, time.Now())
+	now := time.Now()
+	metadata := Metadata(header, now)
 	c.mu.Lock()
 	state := c.state(key)
+	applyTokenHeaders(state, header, now)
 	switch {
 	case status == http.StatusTooManyRequests:
 		base := max(
@@ -127,7 +134,7 @@ func (c *Controller) Observe(
 				state.nextRequest,
 				time.Now().Add(requestInterval(requestsPerSecond)),
 			)
-			if requestsPerSecond <= 0 {
+			if requestsPerSecond <= 0 && !hasTokenAdmissionState(state) {
 				delete(c.routes, key)
 			}
 		}
@@ -155,6 +162,13 @@ func Metadata(header http.Header, now time.Time) *protocol.RateLimitMetadata {
 		return nil
 	}
 	return metadata
+}
+
+func hasTokenAdmissionState(state *routeState) bool {
+	return state.tokenLimit > 0 ||
+		state.remaining != nil ||
+		len(state.commits) > 0 ||
+		!state.resetAt.IsZero()
 }
 
 func (c *Controller) state(key string) *routeState {

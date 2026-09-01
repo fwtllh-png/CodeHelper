@@ -36,9 +36,8 @@ type CompactionSelectionRequest struct {
 	OutputReserve       uint64
 	RecentTailTurns     int
 	RecentTailMaxTokens uint64
-	WindowScope         string
-	EmergencyLimit      uint64
-	AuthorityDigest     string
+	WindowScope     string
+	AuthorityDigest string
 	EstimateMessages    func([]provider.Message) uint64
 	// ProjectHistory builds the exact Provider-visible history for measurement.
 	// Durable History remains the authority used to build compaction candidates.
@@ -47,11 +46,7 @@ type CompactionSelectionRequest struct {
 	// PruneBeforePressure shrinks already-consumed, handle-backed tool results
 	// using the caller's dynamic surface budget even when compaction is not due.
 	PruneBeforePressure bool
-	// RequireSemanticCandidate prevents surface pruning from satisfying a
-	// pressure-triggered compaction by itself. The pruned history is still used
-	// as input when building the semantic candidate.
-	RequireSemanticCandidate bool
-	Prune                    func(
+	Prune               func(
 		*[]provider.Message,
 		MessageSnapshot,
 		uint64,
@@ -117,8 +112,7 @@ func SelectCompaction(
 		}
 		return result, nil
 	}
-	pruningEnough := !request.RequireSemanticCandidate &&
-		pruned.Results != 0 &&
+	pruningEnough := pruned.Results != 0 &&
 		(request.RecentTailMaxTokens == 0 ||
 			request.EstimateMessages(working) <= request.RecentTailMaxTokens) &&
 		(prunedWindow.Active <= prunedWindow.CompactLimit &&
@@ -139,6 +133,41 @@ func SelectCompaction(
 		request.RecentTailMaxTokens,
 		request.EstimateMessages,
 	)
+	if accept := selectReducingCandidate(
+		request, working, cuts, original, workingWindow, input, project, &result,
+	); accept {
+		return result, nil
+	}
+	if request.Force {
+		if accept := selectReducingCandidate(
+			request,
+			working,
+			compactionCuts(working, request.AllowCurrentTurn),
+			original,
+			workingWindow,
+			input,
+			project,
+			&result,
+		); accept {
+			return result, nil
+		}
+	}
+	if pruned.Results != 0 {
+		result.History = working
+	}
+	return result, nil
+}
+
+func selectReducingCandidate(
+	request CompactionSelectionRequest,
+	working []provider.Message,
+	cuts []int,
+	original WindowMeasurement,
+	workingWindow WindowMeasurement,
+	input MessageSnapshot,
+	project func([]provider.Message) MessageSnapshot,
+	result *CompactionSelection,
+) bool {
 	for _, cut := range cuts {
 		candidate, buildErr := request.Build(working, cut, true)
 		if buildErr != nil {
@@ -187,11 +216,8 @@ func SelectCompaction(
 			result.History = candidate.History
 			result.RetainedWindow = window
 			result.Candidate = &candidate
-			return result, nil
+			return true
 		}
 	}
-	if pruned.Results != 0 {
-		result.History = working
-	}
-	return result, nil
+	return false
 }

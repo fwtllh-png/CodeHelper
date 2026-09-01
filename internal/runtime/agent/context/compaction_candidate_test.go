@@ -4,7 +4,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 )
@@ -72,7 +71,7 @@ func TestRepeatedCompactionRetainsActiveUserGoal(t *testing.T) {
 	}
 }
 
-func TestCompactionFenceRejectsChangedHistoryInSameWindow(t *testing.T) {
+func TestCompactionCandidateRecordsSourceHistoryDigest(t *testing.T) {
 	source := []provider.Message{
 		messageAt(provider.RoleUser, strings.Repeat("old context ", 50), 1),
 		messageAt(provider.RoleAssistant, "retained tail", 2),
@@ -98,32 +97,17 @@ func TestCompactionFenceRejectsChangedHistoryInSameWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	authority, err := candidate.Authority.AuthorityDigest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	candidate.SourceWindowID = "window-1"
-	candidate.SourceContextDigest = "sha256:context"
-	candidate.AuthorityDigest = authority
-	state := PrepareCompactionState(CompactionPreparation{
-		Candidate: candidate, ThreadID: "thread-1", TurnID: "turn-2",
-		TargetWindowID: "window-2", StablePrefixDigest: "sha256:stable",
-		RouteFailure: "semantic_narrative_disabled", Trigger: "off",
-		NarrativeLimits: DefaultNarrativeLimits(), Now: time.Now().UTC(),
-		InputTTL: time.Hour,
-	})
-	if state.Plan == nil {
-		t.Fatalf("prepared state = %+v", state)
+	if candidate.SourceHistoryDigest != HistoryDigest(source) {
+		t.Fatalf(
+			"source digest = %s, want %s",
+			candidate.SourceHistoryDigest,
+			HistoryDigest(source),
+		)
 	}
 	changed := CloneMessages(source)
 	changed[1] = messageAt(provider.RoleAssistant, "changed tail", 2)
-	if _, err := CompleteCompaction(
-		*state,
-		nil,
-		changed,
-		4096,
-	); err == nil || !strings.Contains(err.Error(), "source history digest") {
-		t.Fatalf("stale source error = %v", err)
+	if HistoryDigest(changed) == candidate.SourceHistoryDigest {
+		t.Fatal("changed tail kept the same source digest")
 	}
 }
 

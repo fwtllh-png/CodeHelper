@@ -33,9 +33,23 @@ func normalizeEngineOptions(options *Options) error {
 	switch options.Context.SemanticNarrative {
 	case "", "off":
 		options.Context.SemanticNarrative = "off"
-	case "post_turn", "inline":
+	case "post_turn":
 	default:
 		return errors.New("semantic narrative mode is invalid")
+	}
+	switch options.Context.Digest {
+	case "", "ledger":
+		options.Context.Digest = "ledger"
+	case "ledger+narrative":
+	default:
+		return errors.New("context view digest is invalid")
+	}
+	if options.Context.Digest == "ledger+narrative" &&
+		options.Context.SemanticNarrative != "post_turn" {
+		return errors.New("ledger+narrative digest requires post_turn narrative")
+	}
+	if options.Context.RecentTailTurns <= 0 {
+		options.Context.RecentTailTurns = agentcontext.DefaultRecentTailTurns
 	}
 	options.Context.NarrativeLimits =
 		options.Context.NarrativeLimits.Normalized()

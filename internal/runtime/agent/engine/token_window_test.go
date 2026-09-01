@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -261,12 +262,22 @@ func TestBodyScopeStillCompactsBeforeTheHardTotalWindow(t *testing.T) {
 			provider.TextMessage(provider.RoleSystem, strings.Repeat("s", 13_000)),
 		},
 	}).Snapshot()
-	window, err := engine.runCompactGate(t.Context(), &history, input, 128, CompactionPhasePreSampling, false, func(_ State, event Event) error {
-		receipt = event.Compaction
-		return nil
-	}, 0, nil)
-	if err != nil || receipt == nil || window.total > window.hardLimit {
+	before := cloneMessages(history)
+	window, err := engine.runCompactGate(
+		t.Context(), &history, input, 128, CompactionPhasePreSampling, false,
+		func(_ State, event Event) error {
+			receipt = event.Compaction
+			return nil
+		}, 0, engine.contextViewProject(nil),
+	)
+	if err != nil && protocol.CodeOf(err) != protocol.CodeResourceExhausted {
 		t.Fatalf("window=%+v receipt=%+v error=%v", window, receipt, err)
+	}
+	if !reflect.DeepEqual(history, before) {
+		t.Fatalf("body-scope gate replaced history: %+v", history)
+	}
+	if err == nil && window.total > window.hardLimit {
+		t.Fatalf("admitted overflowing window=%+v", window)
 	}
 }
 
@@ -313,7 +324,7 @@ func TestCompactGateMeasuresStatelessProviderProjection(t *testing.T) {
 	}
 }
 
-func TestTokenWindowFinishOnlyRetainsCompletionToolsAtOperatorEmergencyLimit(t *testing.T) {
+func TestTokenWindowEmergencyLimitDoesNotForceFinishOnlyTools(t *testing.T) {
 	runtime := &scriptedProvider{streams: []provider.Stream{textStream("done")}}
 	registry := declarationRegistry(t, true)
 	if err := registry.Register(finishProcessTool{}); err != nil {
@@ -322,7 +333,7 @@ func TestTokenWindowFinishOnlyRetainsCompletionToolsAtOperatorEmergencyLimit(t *
 	engine := newEngine(t, runtime, registry)
 	engine.options.Context.Window.EmergencyTokens = 2_500
 	engine.options.StaticContext = []provider.Message{
-		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 11_000)),
+		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 6_000)),
 	}
 
 	if _, err := engine.Run(t.Context(), "finish", nil); err != nil {
@@ -333,7 +344,7 @@ func TestTokenWindowFinishOnlyRetainsCompletionToolsAtOperatorEmergencyLimit(t *
 	}
 	if runtime.requests[0].ReasoningEffort != "" {
 		t.Fatalf(
-			"finish-only reasoning effort = %q for a non-reasoning route",
+			"reasoning effort = %q for a non-reasoning route",
 			runtime.requests[0].ReasoningEffort,
 		)
 	}
@@ -341,12 +352,8 @@ func TestTokenWindowFinishOnlyRetainsCompletionToolsAtOperatorEmergencyLimit(t *
 	for _, definition := range runtime.requests[0].Tools {
 		names[definition.Name] = true
 	}
-	if !names["turn_complete"] || !names["quality_verify"] ||
-		!names["write_fixture"] || !names["exec_command"] || len(names) != 4 {
-		t.Fatalf(
-			"finish-only tools = %+v, want completion tools",
-			names,
-		)
+	if !names["turn_complete"] || !names["result_get"] {
+		t.Fatalf("tools = %+v, want the ordinary catalog", names)
 	}
 }
 
@@ -362,7 +369,7 @@ func TestTokenWindowFinishOnlyExecutesCompletionMutation(t *testing.T) {
 	engine := newEngine(t, runtime, registry)
 	engine.options.Context.Window.EmergencyTokens = 2_500
 	engine.options.StaticContext = []provider.Message{
-		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 11_000)),
+		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 6_000)),
 	}
 
 	result, err := engine.Run(t.Context(), "finish", nil)
@@ -386,7 +393,7 @@ func TestTokenWindowFinishOnlyReturnsUnadvertisedToolAsRecoverableFailure(t *tes
 	engine := newEngine(t, runtime, declarationRegistry(t, true))
 	engine.options.Context.Window.EmergencyTokens = 2_500
 	engine.options.StaticContext = []provider.Message{
-		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 10_700)),
+		provider.TextMessage(provider.RoleSystem, strings.Repeat("x", 6_000)),
 	}
 
 	result, err := engine.Run(t.Context(), "finish", nil)

@@ -62,6 +62,7 @@ type Engine struct {
 	scopeMu         sync.Mutex
 	options         Options
 	history         []provider.Message
+	viewFold        viewFoldState
 	mailboxHold     []PendingInput
 	turn            uint64
 	usage           provider.Usage
@@ -73,11 +74,10 @@ type Engine struct {
 	journal         *workspacejournal.Manager
 	turnIDs         map[string]uint64
 	historyTurns    map[string]uint64
-
-	planMu      sync.Mutex
-	planText    string
-	plan        interact.Plan
-	planReceipt *promptcontext.Receipt
+	planMu          sync.Mutex
+	planText        string
+	plan            interact.Plan
+	planReceipt     *promptcontext.Receipt
 
 	context         agentcontext.Authority
 	prefixMu        sync.Mutex

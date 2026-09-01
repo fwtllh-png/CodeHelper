@@ -64,8 +64,19 @@
   隐藏常量二次收紧用户配置。
 - 必要的绝对安全上限必须定义为公开 Protocol 或 Config Contract，同时提供
   Validation、中文文档和边界测试。仅在实现文件中声明常量不构成合法来源。
-- 性能优化的软预算与正确性保护的硬边界必须分离。TTFT、成本或缓存优化不得通过
-  提前丢弃仍在模型有效上下文窗口内的用户语义来实现。
+- 性能优化的软预算与正确性保护的硬边界必须分离。模型可见上下文是有界工作集：
+  Goal、约束、未验证变更、当前请求和最近因果链。这些 mandatory 事实由每轮
+  `session_state` 分区从 Ledger 投影，不依赖 compact 事件。`post_turn` Narrative
+  只写可选 Digest 分区，Timeout 不得挡住下一轮 Sample。完整 transcript 保留在
+  Durable Journal，不作为模型上下文。TTFT、成本或缓存优化不得丢掉 mandatory
+  用户语义，也不得用隐藏百分比替代公开的 `context.view.recent_tail_turns` 与
+  剩余硬输入 residual 契约。`context.view.history_token_ceiling=0` 表示
+  Mandatory 分区之后的剩余容量，不是窗口百分比。
+- 模型窗口、经济预算和 Provider Throughput 是三个独立容量平面。Operator 通过
+  `execution.tokens_per_minute` 声明 TPM；`0` 表示未知，不发明按模型名称的默认值。
+  合法工作集超过已知 Burst 或等待将超过预算时，先做一次 Visible Tail Fold 再
+  重新准入；仍超则延迟或拒绝，不得静默重探同一 Digest，也不得因此改写 Durable
+  History。
 - 动态策略必须覆盖不同 Context Window、Output Reserve、Provider Projection Mode
   和缓存状态的参数化测试，禁止只针对某个模型规格编写固定期望值测试。
 

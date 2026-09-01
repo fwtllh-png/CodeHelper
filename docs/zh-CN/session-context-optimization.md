@@ -64,9 +64,16 @@ Interaction、未验证 Change 和开放 Diagnostic 等 Mandatory Fact 不能由
 耗尽时返回带 Scope、Used、Limit 和 Resource 的结构化 `resource_exhausted`，并保留
 可恢复状态；它不是一个由模型无关固定值触发的永久失败。
 
-`recent_tail_turns` 是保留偏好，`recent_tail_max_tokens` 是原始 Tail 的显式容量
-上限。未显式配置时，Tail 容量跟随当前 Turn 冻结的硬输入容量；两者
-冲突时以有效 Token 上限为准，并只在安全 Tool Pair 边界切分。
+`context.view.recent_tail_turns` 是原文 Turn 数的主边界，
+`context.view.history_token_ceiling` 是原始 Tail 的 token residual。未显式配置时，
+该 residual 等于当前 Turn 冻结的硬输入容量减去 Mandatory 分区（Stable、
+`session_state` 等）；显式正值是更紧的 Operator Ceiling。
+`keep_recent_tool_results=0` 只保留仍在 Tail 内的原文 Tool Result。投影从最新
+闭合因果组向前填充，两者先到达者为准，并只在安全 Tool Pair 边界切分。
+采样路径超窗、超过已知 TPM Burst、或等待将超过 `execution.rate_limit_wait` 时，
+对可见 Tail 做一次因果组折叠（`mode=view`），不改写 Durable History；仍超则
+`resource_exhausted`。短于等待预算的滚动窗口等待不折叠。History Replacement
+只发生在显式 `thread.compact` 与 Turn 终态维护。
 
 ## Compaction 流程
 
@@ -91,23 +98,25 @@ Turn 能解释失败，又不会把半闭合 Tool Exchange 当成已提交历史
 
 ## Semantic Narrative
 
-`semantic_narrative` 支持：
+`context.view.narrative_mode` 支持：
 
 - `off`：只使用 Truth + Tail；
-- `post_turn`：业务终态提交后维护下一 Turn Context；
-- `inline`：在安全边界暂停当前 Turn，以 Durable Effect 生成并提交 Rebase。
+- `post_turn`：业务终态提交后维护下一 Turn 的独立 Digest 分区。
+
+`digest` 只允许 `ledger` 或 `ledger+narrative`。Session State 始终 mandatory，
+因此没有 `digest=off`。
 
 Narrative 请求通过 `route.summary`，禁用 Tool 与 Native Search。输入 Artifact、Source
 Message ID 和 Digest 都持久化；输出必须引用已知 Source。Provider、解析、超时或
-Staleness 失败不能改写业务 Turn 结果。没有必须保留的未完成工作时可降级到
-Truth + Tail；存在权威未完成 Todo 时必须生成对应 Continuation Checkpoint，否则不能
-以缺少工作记忆的 fallback 继续执行。
+Staleness 失败不能改写业务 Turn 结果，也不会替换 Durable History。没有必须保留的
+未完成工作时可降级到 Ledger 投影的 Session State；存在权威未完成 Todo 时必须生成
+对应 Continuation Checkpoint，否则不能以缺少工作记忆的 fallback 继续执行。
 
-默认使用 `inline`。Narrative 是一份 Continuation Checkpoint：除决策、理由、偏好和
-未决问题外，还可保留关键技术概念、文件与代码接口、错误与修复、待办、当前工作、
-下一步和关键上下文。Required Kinds 来自权威 Todo、Changes 和 Critical Paths，而不是
-仅凭出现过 Tool Result 推导。每项继续绑定 Source Message ID 与 Digest；缺少必需
-continuation 类别时拒绝该次语义压缩。
+默认使用 `narrative_mode=post_turn`。Narrative 是一份非权威 Continuation Checkpoint：除决策、理由、
+偏好和未决问题外，还可保留关键技术概念、文件与代码接口、错误与修复、待办、当前
+工作、下一步和关键上下文。Required Kinds 来自权威 Todo、Changes 和 Critical Paths，
+而不是仅凭出现过 Tool Result 推导。每项继续绑定 Source Message ID 与 Digest；缺少
+必需 continuation 类别时拒绝该次语义压缩。
 
 ## 自适应 Stream Checkpoint
 

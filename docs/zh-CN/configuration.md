@@ -67,6 +67,7 @@ rate_limit = 0                    # 0 = 仅根据 Provider 反馈动态限流
 provider_retry_limit = 3          # 每次 Model Sample 的瞬时故障重试预算
 rate_limit_retry_limit = 0        # 0 = 不限制 429 次数；仍受累计等待预算约束
 rate_limit_wait = "0s"            # 0 = 继承 timeout，作为单次 Sample 累计 429 等待上限
+tokens_per_minute = 0             # 0 = TPM 未知，不按模型名称发明默认值；只做请求冷却
 budget_tokens = 0            # 0 表示不设置累计 Session Token 上限
 turn_budget_tokens = 0       # 0 表示不设置累计 Turn Token 上限
 budget_usd = 0               # 0 表示不增加成本上限
@@ -125,10 +126,17 @@ max_bytes = 4096
 [context.coding_policy]
 enabled = true
 
+[context.view]
+recent_tail_turns = 2
+keep_recent_tool_results = 0 # 0 表示只保留 Tail 内的原文 Tool Result
+history_token_ceiling = 0 # 0 表示 Mandatory 分区之后的剩余硬输入容量
+digest = "ledger" # 或 "ledger+narrative"；session_state 始终 mandatory
+narrative_mode = "post_turn" # 不阻塞 Sample；仅允许 off 或 post_turn
+
 [context.compact]
-prepare_tokens = 0 # 0 表示当前模型硬输入容量的 75%
-auto_compact_tokens = 0 # 0 表示当前模型硬输入容量的 80%
-emergency_tokens = 0 # 0 表示当前模型硬输入容量的 90%
+prepare_tokens = 0 # 0 表示不设提前压缩档；非 0 为 Operator Ceiling
+auto_compact_tokens = 0 # 0 表示不设提前压缩档；非 0 为 Operator Ceiling
+emergency_tokens = 0 # 0 表示不设提前压缩档；非 0 为 Operator Ceiling
 scope = "total" # 或 "body_after_prefix"
 summary_max_bytes = 0 # 0 表示使用当前 Turn 的硬输入容量作为渲染 Ceiling
 max_digest_entries = 120
@@ -140,9 +148,6 @@ verified_change_retention_turns = 32
 failure_max_entities = 24
 handle_max_entities = 32
 omission_sample_max_entities = 8
-recent_tail_turns = 2
-recent_tail_max_tokens = 0 # 0 表示跟随当前 Route 的动态 Auto Compact 容量
-semantic_narrative = "inline" # 默认在压缩点生成带来源引用的 continuation checkpoint
 semantic_narrative_max_input_tokens = 4096
 semantic_narrative_max_output_tokens = 512
 semantic_narrative_max_items = 32
@@ -152,10 +157,13 @@ semantic_narrative_retry_limit = 1
 owner_delta_max_segments = 16
 owner_delta_max_bytes = 65536
 
-三个窗口阈值为 `0` 时，Runtime 不设置提前压缩档位，而是按当前 Route 的
-`ContextTokens - OutputReserve` 得到硬输入容量；只有本次请求无法同时容纳输入和输出
-保留时才触发 Tool Result Handle 化与 History Replacement。显式非零值属于 Operator
-成本或 SLA Ceiling，仍须满足顺序和模型窗口范围校验。
+每次 Sample 先把不在最近 `context.view.recent_tail_turns` 内的已消费 Tool Result
+收成 Handle，再只把最近这些 Turn 投影给模型。完整 transcript 留在 Durable
+Journal。超窗时对可见 Tail 做一次因果组折叠，仍放不下则 `resource_exhausted`。
+`context.compact.prepare_tokens` / `auto_compact_tokens` / `emergency_tokens`
+为 `0` 时不设提前压缩档位，也不会出现在默认 Context Budget 快照里。History
+Replacement 留给显式 `thread.compact` 与 Turn 终态维护。显式非零值属于
+Operator 成本或 SLA Ceiling，仍须满足顺序和模型窗口范围校验。
 
 Web 中的自定义 Endpoint 和内置目录之外的 Model 必须提交完整模型元数据，包括
 Canonical ID、Wire ID、Context、Max Output、Capabilities 和可用的 Reasoning
@@ -164,11 +172,27 @@ Efforts。该元数据以 `operator_config` 来源保存；只返回 Model ID �
 Adapter 组成的 Connection Identity 隔离。旧版缺少元数据来源的自定义 Setup Record
 不会迁移为猜测值，而会重新进入 Setup Required。
 
-`recent_tail_turns` 是压缩时优先完整保留的最近 Turn 数；
-`recent_tail_max_tokens` 是这些原始消息的显式硬上限；为 `0` 时使用当前 Turn
-冻结的硬输入容量。若最近 Turn 本身超过有效上限，
-终态维护会在安全的 Tool Call/Result 边界内继续压缩当前 Turn，并通过 Truth Capsule
-和 durable rebase 保留目标、事实与变更，而不是把超大的原始 transcript 带入下一 Turn。
+`context.view.recent_tail_turns` 是模型可见原文的主边界，默认 2。更早 Turn 的
+Tool Result 会被 Handle 化。`keep_recent_tool_results=0` 表示只保留仍落在该
+Tail 内的原文结果，不再发明第二个 N；正值是额外保留最近 N 条 Tool Result
+原文。Goal、未完成 Todo 和未验证 Change 是每轮必带的 `session_state` 分区，
+从 Plan / Evidence Ledger 确定性生成，不依赖 compact 事件。Working Set 与
+Evidence 仍按各自分区预算投影。`truth_max_bytes` 约束该 Mandatory 分区；
+放不下时在 Sample 前拒绝，而不是丢掉 Goal。
+
+`context.view.history_token_ceiling` 为 `0` 时，原文 Tail 的 token 上限等于当前
+Turn 冻结的硬输入容量减去 Stable / `session_state` 等 Mandatory 分区，而不是
+窗口百分比。投影从最新闭合因果组向前填充，直到 `recent_tail_turns` 或该剩余
+容量先到达，且不拆 Tool Pair、不隐藏当前用户请求。Operator 显式正值是更紧的
+SLA Ceiling，仍不能超过剩余硬输入。若当前 Turn 本身超过该上限，溢出路径只再
+折叠一次可见 Tail，仍放不下则 `resource_exhausted`。
+
+`digest` 只允许 `ledger` 或 `ledger+narrative`。`ledger` 是 Mandatory Session
+State；`narrative_mode=post_turn` 另加非阻塞 Narrative 分区。`digest=off` 非法，
+因为 Session State 不能关掉。`digest=ledger+narrative` 时 `narrative_mode` 必须
+是 `post_turn`。Context Budget 快照报告这些 view 字段；只有 Operator 显式设置
+时才报告 `prepare_tokens` / `emergency_tokens`。
+
 [route]
 lock = false
 
@@ -285,10 +309,23 @@ Mutation、任意 Plan 状态变化、Verification 或 Completion 推进都会�
 提示时，根据实际请求耗时和连续限流反馈逐步延长冷却。冷却等待可取消且不会占用
 Provider 并发槽。
 
-`semantic_narrative=inline` 会在压缩当前 Turn 时通过 `route.summary` 生成独立的
-结构化 Continuation Checkpoint。Checkpoint 保留文件与代码接口、当前工作和下一步，
-并要求每项引用输入消息。`off` 只保留 Truth Capsule 与原始 Tail，适合不依赖历史
-工作记忆的场景；长时间编码 Turn 不建议关闭。
+`execution.tokens_per_minute` 是运维侧声明的 Provider Throughput 合同，单位为每分钟
+Token。它与模型 Context Window、`budget_tokens` / `turn_budget_tokens` 经济预算是三个
+独立容量平面。默认 `0` 表示未知：Runtime 不按模型名称发明 TPM，也不在发送前按 Token
+做 Admission；请求冷却仍然生效。非零值或 Provider 返回的 Token 专用 Header
+（`X-RateLimit-*-Tokens`、`Anthropic-Ratelimit-Tokens-*`）成为已知 Burst 后，准入按
+`投影输入 + 输出保留` 计算，缓存 Token 在合同未声明免费前计入全量。超过已知 Burst
+的合法工作集先对可见 Tail 做一次因果组折叠再重新准入；仍超过 Burst 才拒绝
+（`resource_exhausted` / `provider_throughput` / `exceeds_route_burst`），
+不会静默重探同一 Digest，也不会改写 Durable History。滚动窗口不足时等待，累计
+等待将超过 `execution.rate_limit_wait` 时同样先折叠一次，仍不足则拒绝
+（`wait_exceeds_budget`）。通用 `RateLimit-Remaining` 不当作 Token 合同。Host
+不实现 Governor。该字段可由 `CODEHELPER_TOKENS_PER_MINUTE` 覆盖。
+
+`context.view.narrative_mode=post_turn` 在业务终态提交后通过 `route.summary` 生成独立的
+结构化 Continuation Checkpoint，不阻塞下一轮 Sample。Checkpoint 保留文件与
+代码接口、当前工作和下一步，并要求每项引用输入消息。`off` 只保留 Truth Capsule
+与原始 Tail。`inline` 不再合法。
 
 `execution.provider_retry_limit` 是单次 Model Sample 对 5xx、网络中断、Timeout
 等普通瞬时故障的重试预算。明确分类为 `rate_limit` 的 429 不消耗该次数预算，改由
@@ -306,7 +343,8 @@ Rate Limit Recovery Budget 约束：
   Provider 并发槽。
 
 上述字段可通过 `CODEHELPER_PROVIDER_RETRY_LIMIT`、
-`CODEHELPER_RATE_LIMIT_RETRY_LIMIT` 和 `CODEHELPER_RATE_LIMIT_WAIT` 覆盖。账户硬配额
+`CODEHELPER_RATE_LIMIT_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_WAIT` 和
+`CODEHELPER_TOKENS_PER_MINUTE` 覆盖。账户硬配额
 错误仍立即停止。等待由 Runtime 调度，不要求模型或用户轮询。
 
 `execution.lease_timeout` 是 Guard 完成授权到 Executor 消费 Execution Lease 之间的
@@ -341,12 +379,14 @@ follow-up 的生命周期上限；每次 follow-up 只预留该 Agent 的剩余�
 `context.compact` 先为 Mandatory Truth 和未闭合因果组分配空间，再保留
 Protected/Refreshable Truth、Raw Tail 和可选 Narrative。新增计划、Pending Input
 或写工具预留如果会超过 Mandatory 上界，会在状态或副作用提交前返回
-`resource_exhausted`。`post_turn` Narrative 在业务终态提交后维护 Context；
-默认 `truth_max_bytes=0`，Runtime 按当前 Route 扣除 Output Reserve 后的硬输入
-Token 容量动态派生字节上限，并受公开的 1 MiB 安全上限及显式
-`summary_max_bytes` 约束；显式非零配置仍优先。
-`inline` 在安全 Tool Pair 边界提交独立 Context Rebase。两种模式都使用
-`route.summary`，禁用工具和原生搜索，失败时保留确定性的 Truth + Tail。
+`resource_exhausted`。`post_turn` Narrative 在业务终态提交后生成滚动 Digest
+分区，不得持锁或挡住下一轮 Sample；Timeout 或 Provider 失败只记录
+`fallback=ledger`，Session State 继续从 Ledger 投影。`thread.compact` 可带可选
+`focus`（最长 4096 字节）引导这次 Digest，但立即应用确定性 History Replacement，
+不把窗口留给 Narrative。默认 `truth_max_bytes=0`，Runtime 按当前 Route 扣除 Output
+Reserve 后的硬输入 Token 容量动态派生字节上限，并受公开的 1 MiB 安全上限及
+显式 `summary_max_bytes` 约束；显式非零配置仍优先。Narrative 使用
+`route.summary`，禁用工具和原生搜索。
 Tool 执行前从当前 Turn 的硬输入容量申请 Result Budget，并按并行 Batch 数量分配，
 同时受 ResultStore Capacity 收窄。超过预算的模型可见内容替换为带 Handle 与 Digest
 的投影，完整原文仍由 Content Store 持有。后续 Sample 只有在
@@ -498,7 +538,7 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | --- | --- |
 | `CODEHELPER_PROVIDER`、`CODEHELPER_MODEL`、`CODEHELPER_PROTOCOL` | 主模型路由 |
 | `CODEHELPER_MODE`、`CODEHELPER_WORKSPACE`、`CODEHELPER_TOOLS` | 执行行为 |
-| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_LEASE_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT`、`CODEHELPER_PROVIDER_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_WAIT` | 限制 |
+| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_LEASE_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT`、`CODEHELPER_PROVIDER_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_WAIT`、`CODEHELPER_TOKENS_PER_MINUTE` | 限制 |
 | `CODEHELPER_BUDGET_TOKENS`、`CODEHELPER_BUDGET_USD` | 会话预算 |
 | `CODEHELPER_SUBAGENT_*` | 委派模式、Tree 限制、Child 预算、Wall Time 与 Workspace 策略 |
 | `CODEHELPER_VERIFY_*` | 验证行为 |
@@ -507,7 +547,8 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | `CODEHELPER_CREDENTIAL_KIND`、`CODEHELPER_CREDENTIAL_NAME` | Secret 引用 |
 | `CODEHELPER_INDEX_*`、`CODEHELPER_REPO_MAP_*` | 仓库上下文 |
 | `CODEHELPER_WORKING_SET_*`、`CODEHELPER_EVIDENCE_*` | 会话上下文 |
-| `CODEHELPER_COMPACT_*` | Token Window 压缩 |
+| `CODEHELPER_VIEW_*` | 模型可见工作集（tail / residual / digest / narrative） |
+| `CODEHELPER_COMPACT_*` | 显式 Replacement 与 Digest 生成上限 |
 | `CODEHELPER_VISION_*`、`CODEHELPER_WEB_SEARCH_BACKEND` | 专用 Adapter |
 
 权威列表位于 `internal/config/environment.go` 的环境变量应用逻辑。

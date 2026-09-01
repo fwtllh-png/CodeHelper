@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
@@ -201,9 +202,16 @@ func TestWorkspaceTurnFinalizesAfterNoProgressBudget(t *testing.T) {
 	}
 	engine := newEngine(t, runtime, registry)
 	engine.options.MaxSteps = 64
+	route := mustTestRouteWithContext(t, 65_536)
+	engine.options.Route = route
+	routes, err := model.NewRouteSet(route, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.options.Routes = routes
 
 	var terminal Event
-	_, err := engine.RunForTurnWithIntentAndAttachments(
+	_, err = engine.RunForTurnWithIntentAndAttachments(
 		t.Context(),
 		"no-progress-turn",
 		"modify the workspace",

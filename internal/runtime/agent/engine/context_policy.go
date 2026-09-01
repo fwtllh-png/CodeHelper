@@ -1,11 +1,10 @@
 package engine
 
 import (
-	"context"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
 )
 
 type ContextPolicy struct {
@@ -19,15 +18,8 @@ type ContextPolicy struct {
 	OwnerDeltaMaxBytes    int
 	RecentTailTurns       int
 	RecentTailMaxTokens   uint64
-	CommitRebase          func(
-		context.Context,
-		agentcontext.ContextRebaseEnvelope,
-	) error
-	CommitRebaseWithFacts func(
-		context.Context,
-		agentcontext.ContextRebaseEnvelope,
-		turnkernel.DomainFactBatch,
-	) error
+	KeepRecentToolResults int
+	Digest                string
 }
 
 func (e *Engine) contextCapacity() agentcontext.Capacity {
@@ -56,8 +48,57 @@ func (e *Engine) emergencyCompactLimit() uint64 {
 }
 
 func (e *Engine) recentTailMaxTokens() uint64 {
-	if configured := e.options.Context.RecentTailMaxTokens; configured != 0 {
-		return configured
+	return e.options.Context.RecentTailMaxTokens
+}
+
+func (e *Engine) estimateTokens(messages []provider.Message) uint64 {
+	if len(messages) == 0 {
+		return 0
 	}
-	return e.autoCompactLimit()
+	if e.options.TokenEstimator != nil {
+		tokens, err := e.options.TokenEstimator.Estimate(messages)
+		if err == nil {
+			return tokens
+		}
+	}
+	return agentcontext.EstimateMessageTokens(messages)
+}
+
+func (e *Engine) estimateNonTailTokens(history []provider.Message) uint64 {
+	var mandatory []provider.Message
+	mandatory = append(mandatory, e.promptMessages()...)
+	for _, message := range history {
+		if agentcontext.IsWorldStateMessage(message) {
+			mandatory = append(mandatory, message)
+		}
+	}
+	return e.estimateTokens(mandatory)
+}
+
+// rawTailTokenBudget is leftover hard input after mandatory partitions, then
+// the optional operator history_token_ceiling. Zero operator does
+// not invent a percent of the window.
+func (e *Engine) rawTailTokenBudget(
+	history []provider.Message,
+) (uint64, bool) {
+	hard := e.contextCapacity().HardInputTokens
+	operator := e.recentTailMaxTokens()
+	if hard == 0 && operator == 0 {
+		return 0, false
+	}
+	residual := operator
+	if hard != 0 {
+		leftover := uint64(0)
+		if nonTail := e.estimateNonTailTokens(history); nonTail < hard {
+			leftover = hard - nonTail
+		}
+		if operator == 0 {
+			return leftover, true
+		}
+		if leftover < operator {
+			return leftover, true
+		}
+		residual = operator
+	}
+	return residual, true
 }

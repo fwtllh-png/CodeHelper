@@ -168,20 +168,35 @@ func (s Snapshot) Validate() error {
 		return fieldError(fieldCompactVerifiedChangeRetentionTurns, s.Provenance,
 			"must be positive")
 	}
-	if err := checkRange(fieldCompactRecentTailTurns, compaction.RecentTailTurns, 128); err != nil {
+	view := s.Config.Context.View
+	if err := checkRange(fieldViewRecentTailTurns, view.RecentTailTurns, 128); err != nil {
 		return err
 	}
-	if compaction.RecentTailMaxTokens != 0 &&
-		compaction.RecentTailMaxTokens < 256 ||
-		compaction.RecentTailMaxTokens > 64<<20 {
-		return fieldError(fieldCompactRecentTailMaxTokens, s.Provenance,
+	if view.KeepRecentToolResults < 0 || view.KeepRecentToolResults > 128 {
+		return fieldError(fieldViewKeepRecentToolResults, s.Provenance,
+			"must be between 0 and 128")
+	}
+	if view.HistoryTokenCeiling != 0 &&
+		view.HistoryTokenCeiling < 256 ||
+		view.HistoryTokenCeiling > 64<<20 {
+		return fieldError(fieldViewHistoryTokenCeiling, s.Provenance,
 			"must be zero or between 256 and 67108864")
 	}
-	switch compaction.SemanticNarrative {
-	case "off", "post_turn", "inline":
+	switch view.Digest {
+	case "ledger", "ledger+narrative":
 	default:
-		return fieldError(fieldCompactSemanticNarrative, s.Provenance,
-			"must be off, post_turn, or inline")
+		return fieldError(fieldViewDigest, s.Provenance,
+			"must be ledger or ledger+narrative")
+	}
+	switch view.NarrativeMode {
+	case "off", "post_turn":
+	default:
+		return fieldError(fieldViewNarrativeMode, s.Provenance,
+			"must be off or post_turn")
+	}
+	if view.Digest == "ledger+narrative" && view.NarrativeMode != "post_turn" {
+		return fieldError(fieldViewNarrativeMode, s.Provenance,
+			"must be post_turn when digest is ledger+narrative")
 	}
 	for _, limit := range []struct {
 		field   string

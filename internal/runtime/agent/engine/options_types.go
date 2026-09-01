@@ -29,6 +29,7 @@ type ProviderConfig struct {
 	MaxRetryDelay       time.Duration
 	RateLimitMaxRetries int
 	RateLimitMaxWait    time.Duration
+	TokensPerMinute     uint64
 	ReasoningEffort     string
 	NativeSearch        bool
 	TokenEstimator      TokenEstimator

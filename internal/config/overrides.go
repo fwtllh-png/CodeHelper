@@ -47,6 +47,27 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 		overrides.CodingPolicyEnabled, &config.Context.CodingPolicy.Enabled,
 		fieldCodingPolicyEnabled, SourceStartup, provenance,
 	)
+	view := &config.Context.View
+	applyInt(
+		overrides.ViewRecentTailTurns, &view.RecentTailTurns,
+		fieldViewRecentTailTurns, SourceStartup, provenance,
+	)
+	applyInt(
+		overrides.ViewKeepRecentToolResults, &view.KeepRecentToolResults,
+		fieldViewKeepRecentToolResults, SourceStartup, provenance,
+	)
+	applyInt(
+		overrides.ViewHistoryTokenCeiling, &view.HistoryTokenCeiling,
+		fieldViewHistoryTokenCeiling, SourceStartup, provenance,
+	)
+	applyString(
+		overrides.ViewDigest, &view.Digest,
+		fieldViewDigest, SourceStartup, provenance,
+	)
+	applyString(
+		overrides.ViewNarrativeMode, &view.NarrativeMode,
+		fieldViewNarrativeMode, SourceStartup, provenance,
+	)
 	compaction := &config.Context.Compact
 	applyInt(
 		overrides.CompactPrepareTokens, &compaction.PrepareTokens,
@@ -85,8 +106,6 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 		{overrides.CompactFailureMaxEntities, &compaction.FailureMaxEntities, fieldCompactFailureMaxEntities},
 		{overrides.CompactHandleMaxEntities, &compaction.HandleMaxEntities, fieldCompactHandleMaxEntities},
 		{overrides.CompactOmissionSampleMaxEntities, &compaction.OmissionSampleMaxEntities, fieldCompactOmissionSampleMaxEntities},
-		{overrides.CompactRecentTailTurns, &compaction.RecentTailTurns, fieldCompactRecentTailTurns},
-		{overrides.CompactRecentTailMaxTokens, &compaction.RecentTailMaxTokens, fieldCompactRecentTailMaxTokens},
 		{overrides.CompactSemanticNarrativeMaxInputTokens, &compaction.SemanticNarrativeMaxInputTokens, fieldCompactSemanticNarrativeMaxInputTokens},
 		{overrides.CompactSemanticNarrativeMaxOutputTokens, &compaction.SemanticNarrativeMaxOutputTokens, fieldCompactSemanticNarrativeMaxOutputTokens},
 		{overrides.CompactSemanticNarrativeMaxItems, &compaction.SemanticNarrativeMaxItems, fieldCompactSemanticNarrativeMaxItems},
@@ -97,13 +116,6 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	} {
 		applyInt(value.source, value.target, value.field, SourceStartup, provenance)
 	}
-	applyString(
-		overrides.CompactSemanticNarrative,
-		&compaction.SemanticNarrative,
-		fieldCompactSemanticNarrative,
-		SourceStartup,
-		provenance,
-	)
 	applyDuration(
 		overrides.CompactSemanticNarrativeTimeout,
 		&compaction.SemanticNarrativeTimeout,
@@ -135,6 +147,7 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyInt(overrides.ProviderRetryLimit, &execution.ProviderRetryLimit, fieldProviderRetryLimit, SourceStartup, provenance)
 	applyInt(overrides.RateLimitRetryLimit, &execution.RateLimitRetryLimit, fieldRateLimitRetryLimit, SourceStartup, provenance)
 	applyDuration(overrides.RateLimitWait, &execution.RateLimitWait, fieldRateLimitWait, SourceStartup, provenance)
+	applyUint64(overrides.TokensPerMinute, &execution.TokensPerMinute, fieldTokensPerMinute, SourceStartup, provenance)
 	applyUint64(overrides.BudgetTokens, &execution.BudgetTokens, fieldBudgetTokens, SourceStartup, provenance)
 	applyUint64(overrides.TurnBudgetTokens, &execution.TurnBudgetTokens, fieldTurnBudgetTokens, SourceStartup, provenance)
 	applyFloat64(overrides.BudgetUSD, &execution.BudgetUSD, fieldBudgetUSD, SourceStartup, provenance)

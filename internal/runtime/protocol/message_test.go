@@ -113,7 +113,7 @@ func TestOperationTaggedUnionRoundTrip(t *testing.T) {
 			RequestID: "approval_1", Decision: ApprovalApprove,
 			PlanID: strings.Repeat("a", 64),
 		},
-		&CompactThreadPayload{ThreadID: threadID, TurnID: turnID, ItemID: itemID},
+		&CompactThreadPayload{ThreadID: threadID, TurnID: turnID, ItemID: itemID, Focus: "parser"},
 		&ForkThreadPayload{ThreadID: threadID, TurnID: turnID, ItemID: itemID, NewThreadID: "thread_fork"},
 		&RevertTurnPayload{ThreadID: threadID, TurnID: turnID, ItemID: itemID, TargetTurnID: "turn_previous"},
 	}
@@ -133,6 +133,16 @@ func TestOperationTaggedUnionRoundTrip(t *testing.T) {
 		if decoded.Kind != operation.Kind {
 			t.Fatalf("kind = %q, want %q", decoded.Kind, operation.Kind)
 		}
+	}
+}
+
+func TestCompactThreadRejectsOversizedFocus(t *testing.T) {
+	_, err := NewOperation(&CompactThreadPayload{
+		ThreadID: "thread_test", TurnID: "turn_test", ItemID: "item_test",
+		Focus: strings.Repeat("x", MaxCompactFocusBytes+1),
+	})
+	if err == nil {
+		t.Fatal("oversized compact focus was accepted")
 	}
 }
 
@@ -438,6 +448,10 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 		&OutputDeltaData{Text: "hello"},
 		&ReasoningDeltaData{Text: "think"},
 		&UsageData{},
+		&TurnCompactionData{
+			Phase: "pre_sampling", Status: "folded", Mode: "view",
+			Summary: "folded oldest visible tail", OriginalBytes: 8, RetainedBytes: 3,
+		},
 		&ProviderAttemptData{
 			SampleID: "sample-1", Attempt: 1, Status: ProviderAttemptRetryWait,
 			FailureCode: "rate_limit", HTTPStatus: 429,

@@ -35,6 +35,12 @@ const (
 	fieldEvidenceMaxBytes      = "context.evidence.max_bytes"
 	fieldCodingPolicyEnabled   = "context.coding_policy.enabled"
 
+	fieldViewRecentTailTurns       = "context.view.recent_tail_turns"
+	fieldViewKeepRecentToolResults = "context.view.keep_recent_tool_results"
+	fieldViewHistoryTokenCeiling   = "context.view.history_token_ceiling"
+	fieldViewDigest                = "context.view.digest"
+	fieldViewNarrativeMode         = "context.view.narrative_mode"
+
 	fieldCompactAutoTokens                       = "context.compact.auto_compact_tokens"
 	fieldCompactPrepareTokens                    = "context.compact.prepare_tokens"
 	fieldCompactEmergencyTokens                  = "context.compact.emergency_tokens"
@@ -49,9 +55,6 @@ const (
 	fieldCompactFailureMaxEntities               = "context.compact.failure_max_entities"
 	fieldCompactHandleMaxEntities                = "context.compact.handle_max_entities"
 	fieldCompactOmissionSampleMaxEntities        = "context.compact.omission_sample_max_entities"
-	fieldCompactRecentTailTurns                  = "context.compact.recent_tail_turns"
-	fieldCompactRecentTailMaxTokens              = "context.compact.recent_tail_max_tokens"
-	fieldCompactSemanticNarrative                = "context.compact.semantic_narrative"
 	fieldCompactSemanticNarrativeMaxInputTokens  = "context.compact.semantic_narrative_max_input_tokens"
 	fieldCompactSemanticNarrativeMaxOutputTokens = "context.compact.semantic_narrative_max_output_tokens"
 	fieldCompactSemanticNarrativeMaxItems        = "context.compact.semantic_narrative_max_items"
@@ -84,6 +87,7 @@ const (
 	fieldProviderRetryLimit    = "execution.provider_retry_limit"
 	fieldRateLimitRetryLimit   = "execution.rate_limit_retry_limit"
 	fieldRateLimitWait         = "execution.rate_limit_wait"
+	fieldTokensPerMinute       = "execution.tokens_per_minute"
 	fieldBudgetTokens          = "execution.budget_tokens"
 	fieldTurnBudgetTokens      = "execution.turn_budget_tokens"
 	fieldBudgetUSD             = "execution.budget_usd"
@@ -167,6 +171,11 @@ func defaultProvenance() map[string]Source {
 		fieldEvidenceMaxEntries:                      SourceDefault,
 		fieldEvidenceMaxBytes:                        SourceDefault,
 		fieldCodingPolicyEnabled:                     SourceDefault,
+		fieldViewRecentTailTurns:                     SourceDefault,
+		fieldViewKeepRecentToolResults:               SourceDefault,
+		fieldViewHistoryTokenCeiling:                 SourceDefault,
+		fieldViewDigest:                              SourceDefault,
+		fieldViewNarrativeMode:                       SourceDefault,
 		fieldCompactAutoTokens:                       SourceDefault,
 		fieldCompactPrepareTokens:                    SourceDefault,
 		fieldCompactEmergencyTokens:                  SourceDefault,
@@ -181,9 +190,6 @@ func defaultProvenance() map[string]Source {
 		fieldCompactFailureMaxEntities:               SourceDefault,
 		fieldCompactHandleMaxEntities:                SourceDefault,
 		fieldCompactOmissionSampleMaxEntities:        SourceDefault,
-		fieldCompactRecentTailTurns:                  SourceDefault,
-		fieldCompactRecentTailMaxTokens:              SourceDefault,
-		fieldCompactSemanticNarrative:                SourceDefault,
 		fieldCompactSemanticNarrativeMaxInputTokens:  SourceDefault,
 		fieldCompactSemanticNarrativeMaxOutputTokens: SourceDefault,
 		fieldCompactSemanticNarrativeMaxItems:        SourceDefault,
@@ -216,6 +222,7 @@ func defaultProvenance() map[string]Source {
 		fieldProviderRetryLimit:    SourceDefault,
 		fieldRateLimitRetryLimit:   SourceDefault,
 		fieldRateLimitWait:         SourceDefault,
+		fieldTokensPerMinute:       SourceDefault,
 		fieldBudgetTokens:          SourceDefault,
 		fieldTurnBudgetTokens:      SourceDefault,
 		fieldBudgetUSD:             SourceDefault,

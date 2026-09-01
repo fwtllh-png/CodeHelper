@@ -19,8 +19,9 @@ import (
 )
 
 type Compaction struct {
-	Count int              `json:"count"`
-	State *CompactionState `json:"state,omitempty"`
+	Count  int                `json:"count"`
+	State  *CompactionState   `json:"state,omitempty"`
+	Digest *NarrativeArtifact `json:"digest,omitempty"`
 }
 
 type CompactionState struct {
@@ -40,9 +41,26 @@ type CompactionState struct {
 	FallbackReason      string                  `json:"fallback_reason,omitempty"`
 }
 
+// DropInvalidState clears an in-flight compaction fence that cannot be
+// sealed. Sample-path compaction applies immediately; leftover prepared
+// identity from a failed transaction must not block durable finalization.
+func (c *Compaction) DropInvalidState() {
+	if c == nil || c.State == nil {
+		return
+	}
+	if err := (*c).Validate(); err != nil {
+		c.State = nil
+	}
+}
+
 func (c Compaction) Validate() error {
 	if c.Count < 0 {
 		return errors.New("compaction count is invalid")
+	}
+	if c.Digest != nil {
+		if err := c.Digest.Validate(time.Time{}); err != nil {
+			return err
+		}
 	}
 	if c.State == nil {
 		return nil
@@ -139,8 +157,12 @@ func digestText(value string) string {
 }
 
 func CloneCompaction(value Compaction) Compaction {
+	cloned := Compaction{Count: value.Count}
+	if value.Digest != nil {
+		cloned.Digest = cloneNarrativeArtifact(value.Digest)
+	}
 	if value.State == nil {
-		return value
+		return cloned
 	}
 	state := *value.State
 	state.Truth.Entities = append(
@@ -176,21 +198,25 @@ func CloneCompaction(value Compaction) Compaction {
 		state.NarrativeInput = &input
 	}
 	if value.State.Narrative != nil {
-		narrative := *value.State.Narrative
-		narrative.Body.Items = append(
-			[]NarrativeItem(nil),
-			value.State.Narrative.Body.Items...,
-		)
-		for index := range narrative.Body.Items {
-			narrative.Body.Items[index].SourceMessageIDs = append(
-				[]string(nil),
-				narrative.Body.Items[index].SourceMessageIDs...,
-			)
-		}
-		state.Narrative = &narrative
+		state.Narrative = cloneNarrativeArtifact(value.State.Narrative)
 	}
-	value.State = &state
-	return value
+	cloned.State = &state
+	return cloned
+}
+
+func cloneNarrativeArtifact(value *NarrativeArtifact) *NarrativeArtifact {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	cloned.Body.Items = append([]NarrativeItem(nil), value.Body.Items...)
+	for index := range cloned.Body.Items {
+		cloned.Body.Items[index].SourceMessageIDs = append(
+			[]string(nil),
+			value.Body.Items[index].SourceMessageIDs...,
+		)
+	}
+	return &cloned
 }
 
 type SessionState struct {

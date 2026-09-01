@@ -207,9 +207,9 @@ func (e *Engine) finalizeTerminalContext(
 	case failure != nil && !errors.Is(failure, context.Canceled):
 		candidate = append(candidate, e.failedTurnContextMessage(transaction, failure))
 		original = cloneMessages(candidate)
-		// The failed transaction is excluded above, so any compaction prepared
-		// from that transaction cannot be completed against durable history.
-		e.contextAuthority().SetCompaction(e.context.Compaction())
+		compaction := e.context.Compaction()
+		compaction.State = nil
+		e.contextAuthority().SetCompaction(compaction)
 	}
 	maintenanceErr := e.runTerminalCompactGate(&candidate, true, send)
 	if maintenanceErr != nil {

@@ -1,0 +1,197 @@
+package engine
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerratelimit "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/ratelimit"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+)
+
+type throughputGovernor interface {
+	DecideThroughput(model.ReadyRoute, uint64, uint64) providerratelimit.Decision
+	ReserveThroughput(model.ReadyRoute, uint64)
+}
+
+type throughputShrink func() (uint64, bool)
+
+func (e *Engine) admitProviderThroughput(
+	ctx context.Context,
+	route model.ReadyRoute,
+	required uint64,
+	waited *time.Duration,
+	shrink throughputShrink,
+) error {
+	governor, ok := e.options.Provider.(throughputGovernor)
+	if !ok {
+		return nil
+	}
+	decision := governor.DecideThroughput(
+		route, required, e.options.TokensPerMinute,
+	)
+	if shrink != nil &&
+		throughputShouldShrink(decision, e.options.RateLimitMaxWait, waited) {
+		if next, folded := shrink(); folded {
+			required = next
+			decision = governor.DecideThroughput(
+				route, required, e.options.TokensPerMinute,
+			)
+		}
+	}
+	switch decision.Status {
+	case providerratelimit.StatusAdmit:
+		if decision.Source != providerratelimit.SourceUnknown {
+			governor.ReserveThroughput(route, required)
+		}
+		return nil
+	case providerratelimit.StatusWait:
+		already := time.Duration(0)
+		if waited != nil {
+			already = *waited
+		}
+		if e.options.RateLimitMaxWait > 0 &&
+			already+decision.Wait > e.options.RateLimitMaxWait {
+			return throughputRefusal(
+				decision,
+				providerratelimit.ReasonWaitExceedsBudget,
+				true,
+			)
+		}
+		if err := waitRetryDelay(ctx, decision.Wait); err != nil {
+			return err
+		}
+		if waited != nil {
+			*waited += decision.Wait
+		}
+		retried := governor.DecideThroughput(
+			route, required, e.options.TokensPerMinute,
+		)
+		if retried.Status != providerratelimit.StatusAdmit {
+			return throughputRefusal(retried, retried.Reason, false)
+		}
+		governor.ReserveThroughput(route, required)
+		return nil
+	default:
+		return throughputRefusal(decision, decision.Reason, false)
+	}
+}
+
+func (e *Engine) abortOversizedRateLimitRetry(
+	ctx context.Context,
+	route model.ReadyRoute,
+	required uint64,
+	retry ProviderRetry,
+	shrink throughputShrink,
+) error {
+	if retry.Failure.Code != provider.FailureRateLimit ||
+		!e.throughputRefuses(route, required) {
+		return nil
+	}
+	if shrink != nil {
+		if next, folded := shrink(); folded {
+			required = next
+			if !e.throughputRefuses(route, required) {
+				return nil
+			}
+		}
+	}
+	return e.admitProviderThroughput(ctx, route, required, nil, nil)
+}
+
+func (e *Engine) throughputRefuses(
+	route model.ReadyRoute,
+	required uint64,
+) bool {
+	governor, ok := e.options.Provider.(throughputGovernor)
+	if !ok {
+		return false
+	}
+	decision := governor.DecideThroughput(
+		route, required, e.options.TokensPerMinute,
+	)
+	return decision.Status == providerratelimit.StatusRefuse
+}
+
+func throughputShouldShrink(
+	decision providerratelimit.Decision,
+	maxWait time.Duration,
+	waited *time.Duration,
+) bool {
+	if decision.Status == providerratelimit.StatusRefuse {
+		return decision.Reason == providerratelimit.ReasonExceedsBurst
+	}
+	if decision.Status != providerratelimit.StatusWait || maxWait <= 0 {
+		return false
+	}
+	already := time.Duration(0)
+	if waited != nil {
+		already = *waited
+	}
+	return already+decision.Wait > maxWait
+}
+
+func (e *Engine) foldWorkingSetForThroughput(
+	history *[]provider.Message,
+	projectHistory agentcontext.HistoryProjector,
+	input agentcontext.MessageSnapshot,
+	outputReserve uint64,
+	phase string,
+	send func(State, Event) error,
+) (uint64, bool) {
+	if history == nil {
+		return 0, false
+	}
+	before := e.projectGateHistory(*history, projectHistory)
+	beforeWindow, err := e.measureTokenWindow(
+		input.WithHistory(before), outputReserve, 0,
+	)
+	if err != nil || !e.foldOldestVisibleTail(*history, true) {
+		return 0, false
+	}
+	e.applyWorkingSetGC(history)
+	after := e.projectGateHistory(*history, projectHistory)
+	afterWindow, err := e.measureTokenWindow(
+		input.WithHistory(after), outputReserve, 0,
+	)
+	if err != nil {
+		return 0, false
+	}
+	receipt := viewFoldReceipt(
+		phase, before, after, beforeWindow, afterWindow,
+	)
+	receipt.TruncationReason = "throughput_tail_fold"
+	if send != nil {
+		_ = send(Compacting, Event{Compaction: receipt})
+	}
+	return afterWindow.accounting.FullActiveTokens + outputReserve, true
+}
+
+func throughputRefusal(
+	decision providerratelimit.Decision,
+	reason string,
+	retryable bool,
+) error {
+	if reason == "" {
+		reason = decision.Reason
+	}
+	problem := protocol.NewProblem(
+		protocol.CodeResourceExhausted,
+		fmt.Sprintf(
+			"provider throughput admission refused: required %d tokens, available %d, limit %d",
+			decision.Required,
+			decision.Available,
+			decision.Limit,
+		),
+		retryable,
+		nil,
+	)
+	problem.Details = &protocol.ProblemDetails{
+		Reason:     protocol.ProblemReasonProviderThroughput,
+		ResourceID: reason,
+	}
+	return problem
+}

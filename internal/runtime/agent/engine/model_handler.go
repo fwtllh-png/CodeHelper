@@ -67,6 +67,7 @@ func (e *Engine) modelStep(
 	finishTransport func() error,
 	send func(State, Event) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, uint64, error) {
+	e.viewFold.folded = false
 	var rateLimitRetries uint32
 	var rateLimitWaited time.Duration
 	if continued != nil {
@@ -209,7 +210,7 @@ func (e *Engine) modelStep(
 		statelessProjector := contextview.NewStatelessProjector(
 			route.Model().Capabilities.IncrementalResponses,
 		)
-		projectHistory := statelessProjector.Project
+		projectHistory := e.contextViewProject(statelessProjector.Project)
 		project := func() agentcontext.MessageSnapshot {
 			return contextLedger.Project(agentcontext.LedgerProjection{
 				Stable: stableContext, History: projectHistory(*history), Dynamic: turnContext,
@@ -241,22 +242,6 @@ func (e *Engine) modelStep(
 		if err != nil {
 			return nil, nil, totalUsage, window.estimated, err
 		}
-		if window.hardLimit > 0 &&
-			window.active >= e.prepareCompactLimit() {
-			turnContext = append(
-				turnContext,
-				promptcontext.ContextWindowFeedback(e.turn),
-			)
-			snapshot = project()
-			window, err = e.runCompactGate(
-				ctx,
-				history, snapshot, maxOutputTokens, phase, true, gateSend,
-				admission.AllowedInput, projectHistory,
-			)
-			if err != nil {
-				return nil, nil, totalUsage, window.estimated, err
-			}
-		}
 		if admission.Budgeted && window.active > admission.AllowedInput &&
 			!economicFinishOnly {
 			finalAdmission := e.economicAdmission(
@@ -282,9 +267,7 @@ func (e *Engine) modelStep(
 				contextview.EconomicBudgetError(admission, window.active)
 		}
 		finishOnly = finishOnly || convergenceOnly || budgetFinishOnly ||
-			economicFinishOnly ||
-			window.hardLimit > 0 &&
-				window.active >= e.emergencyCompactLimit()
+			economicFinishOnly
 		if finishOnly {
 			requestTools = slices.DeleteFunc(
 				append([]provider.ToolDefinition(nil), requestTools...),
@@ -363,6 +346,25 @@ func (e *Engine) modelStep(
 			&attribution,
 			maxOutputTokens,
 		)
+		shrinkThroughput := func() (uint64, bool) {
+			next, ok := e.foldWorkingSetForThroughput(
+				history, projectHistory, snapshot, maxOutputTokens,
+				phase, gateSend,
+			)
+			if ok {
+				snapshot = project()
+			}
+			return next, ok
+		}
+		if err := e.admitProviderThroughput(
+			ctx,
+			route,
+			windowProjection.FullActiveTokens+maxOutputTokens,
+			&rateLimitWaited,
+			shrinkThroughput,
+		); err != nil {
+			return nil, nil, totalUsage, lastEstimate, err
+		}
 		messages := snapshot.Messages()
 		if beginAttempt != nil {
 			if err := beginAttempt(); err != nil {
@@ -518,6 +520,15 @@ func (e *Engine) modelStep(
 				},
 			)
 			if retryable && ctx.Err() == nil {
+				if abort := e.abortOversizedRateLimitRetry(
+					ctx,
+					route,
+					windowProjection.FullActiveTokens+maxOutputTokens,
+					retry,
+					shrinkThroughput,
+				); abort != nil {
+					return nil, nil, totalUsage, lastEstimate, abort
+				}
 				if sendErr := send(CallingModel, Event{
 					ProviderRetry: &retry,
 					ModelExecution: e.providerAttemptRetry(
@@ -691,6 +702,15 @@ func (e *Engine) modelStep(
 			}
 			return blocks, nil, totalUsage, lastEstimate,
 				exhaustedSampleRetry(err, meaningful)
+		}
+		if abort := e.abortOversizedRateLimitRetry(
+			ctx,
+			route,
+			windowProjection.FullActiveTokens+maxOutputTokens,
+			retry,
+			shrinkThroughput,
+		); abort != nil {
+			return blocks, nil, totalUsage, lastEstimate, abort
 		}
 		if sendErr := send(CallingModel, Event{
 			ProviderRetry: &retry,

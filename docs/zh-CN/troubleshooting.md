@@ -55,6 +55,10 @@ Web Settings 会显示 Provider、Model、Credential 状态与校验结果。确
 - 429 等待受 `execution.rate_limit_wait`（默认继承 `execution.timeout`）和
   `execution.rate_limit_retry_limit` 约束。超出预算时 Turn 进入可恢复 Blocked，
   消息为 `provider rate limit retry budget exhausted`，不会无限透明重试。
+- 合法工作集超过已知 TPM（`execution.tokens_per_minute` 或 Token 专用 Header）时，
+  Runtime 先对可见 Tail 做一次因果组折叠再重新准入；仍超则拒绝或等待，公开原因为
+  `resource_exhausted` / `provider_throughput`，不会把同一 Digest 再探一次
+  Provider，也不会改写 Durable History。
 
 若请求达到数十万 Token 且 Provider Projection 为 `complete_http_sse`，每次工具调用后的
 新 Sample 和每次 429 Attempt 都可能重新发送完整 Context。详细证据、只读排查字段和优化方案见

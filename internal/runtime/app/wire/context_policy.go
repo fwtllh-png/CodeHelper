@@ -1,7 +1,6 @@
 package wire
 
 import (
-	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -15,19 +14,12 @@ import (
 	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
 	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
 )
 
 type contextRuntimeBinding struct {
-	durable         *durableCoordinatorRuntime
-	coordinator     turnkernel.CoordinatorRuntime
-	commit          func(context.Context, agentcontext.ContextRebaseEnvelope) error
-	commitWithFacts func(
-		context.Context,
-		agentcontext.ContextRebaseEnvelope,
-		turnkernel.DomainFactBatch,
-	) error
+	durable     *durableCoordinatorRuntime
+	coordinator turnkernel.CoordinatorRuntime
 }
 
 func bindMemoryScopes(
@@ -101,58 +93,51 @@ func buildContextRuntime(
 	if err != nil {
 		return contextRuntimeBinding{}, err
 	}
-	rebases := apppersistence.NewContextRebaseRepository(store)
 	return contextRuntimeBinding{
 		durable: durable, coordinator: durable,
-		commit:          rebases.CommitContextRebase,
-		commitWithFacts: rebases.CommitContextRebaseWithFacts,
 	}, nil
 }
 
 func engineContextPolicy(
-	configuration config.Compact,
-	commit func(context.Context, agentcontext.ContextRebaseEnvelope) error,
-	commitWithFacts func(
-		context.Context,
-		agentcontext.ContextRebaseEnvelope,
-		turnkernel.DomainFactBatch,
-	) error,
+	configuration config.Context,
 ) agentengine.ContextPolicy {
+	compact := configuration.Compact
+	view := configuration.View
 	return agentengine.ContextPolicy{
 		Window: agentengine.CompactWindowPolicy{
-			PrepareTokens:   uint64(configuration.PrepareTokens),
-			AutoTokens:      uint64(configuration.AutoCompactTokens),
-			EmergencyTokens: uint64(configuration.EmergencyTokens),
-			Scope:           configuration.Scope,
+			PrepareTokens:   uint64(compact.PrepareTokens),
+			AutoTokens:      uint64(compact.AutoCompactTokens),
+			EmergencyTokens: uint64(compact.EmergencyTokens),
+			Scope:           compact.Scope,
 		},
 		TruthRetention: agentcontext.RetentionPolicy{
-			TruthMaxBytes:        configuration.TruthMaxBytes,
-			TruthMaxEntities:     configuration.TruthMaxEntities,
-			MandatoryMaxEntities: configuration.MandatoryMaxEntities,
-			FactMaxEntities:      configuration.FactMaxEntities,
-			FailureMaxEntities:   configuration.FailureMaxEntities,
-			HandleMaxEntities:    configuration.HandleMaxEntities,
-			OmissionSampleMaxEntities: configuration.
+			TruthMaxBytes:        compact.TruthMaxBytes,
+			TruthMaxEntities:     compact.TruthMaxEntities,
+			MandatoryMaxEntities: compact.MandatoryMaxEntities,
+			FactMaxEntities:      compact.FactMaxEntities,
+			FailureMaxEntities:   compact.FailureMaxEntities,
+			HandleMaxEntities:    compact.HandleMaxEntities,
+			OmissionSampleMaxEntities: compact.
 				OmissionSampleMaxEntities,
 			VerifiedChangeRetentionTurns: uint64(
-				configuration.VerifiedChangeRetentionTurns,
+				compact.VerifiedChangeRetentionTurns,
 			),
 		},
-		SemanticNarrative: configuration.SemanticNarrative,
+		SemanticNarrative: view.NarrativeMode,
+		Digest:            view.Digest,
 		NarrativeLimits: agentcontext.NarrativeLimits{
-			MaxInputBytes:  configuration.SemanticNarrativeMaxInputTokens * 4,
-			MaxOutputBytes: configuration.SemanticNarrativeMaxOutputTokens * 4,
-			MaxItems:       configuration.SemanticNarrativeMaxItems,
-			ItemMaxBytes:   configuration.SemanticNarrativeItemMaxBytes,
+			MaxInputBytes:  compact.SemanticNarrativeMaxInputTokens * 4,
+			MaxOutputBytes: compact.SemanticNarrativeMaxOutputTokens * 4,
+			MaxItems:       compact.SemanticNarrativeMaxItems,
+			ItemMaxBytes:   compact.SemanticNarrativeItemMaxBytes,
 		},
-		NarrativeTimeout:      configuration.SemanticNarrativeTimeout,
-		NarrativeRetryLimit:   configuration.SemanticNarrativeRetryLimit,
-		OwnerDeltaMaxSegments: configuration.OwnerDeltaMaxSegments,
-		OwnerDeltaMaxBytes:    configuration.OwnerDeltaMaxBytes,
-		RecentTailTurns:       configuration.RecentTailTurns,
-		RecentTailMaxTokens:   uint64(configuration.RecentTailMaxTokens),
-		CommitRebase:          commit,
-		CommitRebaseWithFacts: commitWithFacts,
+		NarrativeTimeout:      compact.SemanticNarrativeTimeout,
+		NarrativeRetryLimit:   compact.SemanticNarrativeRetryLimit,
+		OwnerDeltaMaxSegments: compact.OwnerDeltaMaxSegments,
+		OwnerDeltaMaxBytes:    compact.OwnerDeltaMaxBytes,
+		RecentTailTurns:       view.RecentTailTurns,
+		RecentTailMaxTokens:   uint64(view.HistoryTokenCeiling),
+		KeepRecentToolResults: view.KeepRecentToolResults,
 	}
 }
 

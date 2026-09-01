@@ -10,10 +10,7 @@ context.compact.omission_sample_max_entities
 context.compact.owner_delta_max_bytes
 context.compact.owner_delta_max_segments
 context.compact.prepare_tokens
-context.compact.recent_tail_max_tokens
-context.compact.recent_tail_turns
 context.compact.scope
-context.compact.semantic_narrative
 context.compact.semantic_narrative_item_max_bytes
 context.compact.semantic_narrative_max_input_tokens
 context.compact.semantic_narrative_max_items
@@ -33,6 +30,11 @@ context.index.max_files
 context.repo_map.enabled
 context.repo_map.max_bytes
 context.repo_map.max_directories
+context.view.digest
+context.view.history_token_ceiling
+context.view.keep_recent_tool_results
+context.view.narrative_mode
+context.view.recent_tail_turns
 context.working_set.enabled
 context.working_set.max_bytes
 context.working_set.max_entries
@@ -72,6 +74,7 @@ execution.subagent.wall_time
 execution.subagent.workspace
 execution.timeout
 execution.tls_handshake_timeout
+execution.tokens_per_minute
 execution.tools
 execution.turn_budget_tokens
 execution.verify.command

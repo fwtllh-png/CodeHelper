@@ -26,6 +26,7 @@ type NarrativeGeneratorConfig struct {
 	TokenEstimator TokenEstimator
 	Limits         NarrativeLimits
 	Timeout        time.Duration
+	Focus          string
 }
 
 type NarrativeGenerationResult struct {
@@ -37,194 +38,6 @@ type NarrativeGenerationResult struct {
 	CostUSD       float64
 	CostKnown     bool
 	RouteDigest   string
-}
-
-type NarrativeMaintenanceState struct {
-	Compaction Compaction
-	WindowID   string
-	Revision   uint64
-	History    []provider.Message
-}
-
-type PostTurnNarrativeConfig struct {
-	Generator       NarrativeGeneratorConfig
-	RetryLimit      int
-	SummaryMaxBytes int
-	ManifestLimits  ManifestLimits
-	Load            func() NarrativeMaintenanceState
-	Store           func(Compaction)
-	Record          func(NarrativeGenerationResult)
-	Snapshot        func() (ContextSnapshot, error)
-	Apply           func(ContextSnapshot)
-	Validate        func([]provider.Message, []provider.Message) error
-	Commit          func(context.Context, ContextRebaseEnvelope) error
-}
-
-type PostTurnNarrativeResult struct {
-	Generation    NarrativeGenerationResult
-	State         *CompactionState
-	Attempt       uint32
-	Fallback      bool
-	FailureReason string
-	Included      bool
-	RenderedBytes int
-}
-
-func RunPostTurnNarrative(
-	ctx context.Context,
-	config PostTurnNarrativeConfig,
-	threadID protocol.ThreadID,
-	turnID protocol.TurnID,
-	createdTurn uint64,
-) (PostTurnNarrativeResult, error) {
-	if config.Load == nil || config.Store == nil ||
-		config.Snapshot == nil || config.Apply == nil {
-		return PostTurnNarrativeResult{},
-			errors.New("post-turn narrative state hooks are incomplete")
-	}
-	current := config.Load()
-	state := current.Compaction.State
-	if state == nil || state.Phase == "completed" ||
-		state.NarrativeInput == nil {
-		return PostTurnNarrativeResult{
-			Fallback: true, FailureReason: "no_pending_input",
-		}, nil
-	}
-	if state.ThreadID != "" && state.ThreadID != threadID {
-		return PostTurnNarrativeResult{},
-			errors.New("post-turn narrative thread identity is stale")
-	}
-	if state.ThreadID != "" {
-		threadID = state.ThreadID
-	}
-	if state.TurnID != "" {
-		turnID = state.TurnID
-	}
-	result := PostTurnNarrativeResult{
-		State: state, Attempt: state.Attempt,
-	}
-	var artifact *NarrativeArtifact
-	if state.Phase == "rebasing" && state.Narrative != nil {
-		result.Generation.Artifact = *state.Narrative
-		artifact = state.Narrative
-	} else if state.Phase == "fallback" {
-		result.Fallback = true
-		result.FailureReason = state.FallbackReason
-	} else {
-		if state.Attempt > uint32(config.RetryLimit) {
-			state.Phase = "fallback"
-			state.FallbackReason = "retry_limit"
-			current.Compaction.State = state
-			config.Store(current.Compaction)
-			result.State = state
-			result.Fallback = true
-			result.FailureReason = state.FallbackReason
-		} else {
-			state.Phase = "generating_narrative"
-			state.Attempt++
-			current.Compaction.State = state
-			config.Store(current.Compaction)
-
-			generated, err := GenerateNarrative(
-				ctx,
-				config.Generator,
-				state.Truth,
-				*state.NarrativeInput,
-				createdTurn,
-			)
-			result.Generation = generated
-			result.Attempt = state.Attempt
-			if err != nil {
-				state.Phase = "fallback"
-				state.FallbackReason = err.Error()
-				latest := config.Load()
-				if latest.Compaction.State != nil &&
-					latest.Compaction.State.ID == state.ID {
-					latest.Compaction.State.Phase = state.Phase
-					latest.Compaction.State.FallbackReason = state.FallbackReason
-					config.Store(latest.Compaction)
-				}
-				result.State = state
-				result.Fallback = true
-				result.FailureReason = err.Error()
-			} else {
-				if config.Record != nil {
-					config.Record(generated)
-				}
-				state.Phase = "rebasing"
-				state.Narrative = &generated.Artifact
-				current.Compaction.State = state
-				config.Store(current.Compaction)
-				artifact = state.Narrative
-			}
-		}
-	}
-	result.State = state
-	if artifact == nil && state.Plan != nil &&
-		len(state.Plan.RequiredKinds) != 0 {
-		return result, fmt.Errorf(
-			"context maintenance cannot preserve required narrative kinds: %s",
-			strings.Join(state.Plan.RequiredKinds, ", "),
-		)
-	}
-
-	latest := config.Load()
-	if latest.Compaction.State == nil ||
-		latest.Compaction.State.ID != state.ID ||
-		latest.WindowID != state.SourceWindowID {
-		return result, errors.New("narrative result is stale")
-	}
-	completed, err := CompleteCompaction(
-		*state,
-		artifact,
-		latest.History,
-		config.SummaryMaxBytes,
-	)
-	if err != nil {
-		return result, err
-	}
-	if config.Validate != nil {
-		if err := config.Validate(
-			latest.History,
-			completed.History,
-		); err != nil {
-			return result, err
-		}
-	}
-	snapshot, err := config.Snapshot()
-	if err != nil {
-		return result, err
-	}
-	snapshot.Revision++
-	snapshot.Compaction.Count++
-	snapshot.Window = state.Plan.TargetWindow
-	envelope, err := BuildRebaseEnvelope(RebaseRequest{
-		Completed: completed, Snapshot: snapshot,
-		ThreadID: threadID, TurnID: turnID,
-		ManifestLimits: config.ManifestLimits,
-	})
-	if err != nil {
-		return result, err
-	}
-	if config.Commit != nil {
-		if err := config.Commit(ctx, envelope); err != nil {
-			return result, err
-		}
-	}
-	latest = config.Load()
-	if latest.Compaction.State == nil ||
-		latest.Compaction.State.ID != state.ID ||
-		latest.Revision+1 != envelope.Snapshot.Revision {
-		return result, errors.New("context rebase revision conflict")
-	}
-	config.Apply(envelope.Snapshot)
-	result.State = &completed.State
-	result.Included = artifact != nil
-	result.RenderedBytes = completed.RenderedBytes
-	if completed.State.Narrative != nil {
-		result.Generation.Artifact = *completed.State.Narrative
-	}
-	return result, nil
 }
 
 func SummaryRouteDigest(routes model.RouteSet) (string, error) {
@@ -276,11 +89,13 @@ func GenerateNarrative(
 			Capsule TruthCapsule `json:"capsule"`
 		} `json:"truth"`
 		Input NarrativeInputArtifact `json:"input"`
+		Focus string                 `json:"focus,omitempty"`
 	}{
 		Truth: struct {
 			Capsule TruthCapsule `json:"capsule"`
 		}{Capsule: truth},
 		Input: input,
+		Focus: strings.TrimSpace(options.Focus),
 	})
 	if err != nil {
 		return NarrativeGenerationResult{}, err

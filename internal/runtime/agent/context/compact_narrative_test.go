@@ -273,75 +273,37 @@ func TestNarrativeInputBudgetCoversCanonicalArtifact(t *testing.T) {
 	}
 }
 
-func TestContinuationCheckpointMustReduceSourceContext(t *testing.T) {
+func TestNarrativeJSONValidatesAgainstBuiltInput(t *testing.T) {
 	now := time.Now().UTC()
-	compatibility := Compatibility{
-		SchemaVersion: TruthSchemaVersion,
-		Adapter:       "openai", Provider: "test", Model: "test",
-		ContextTokens: 4096, ToolCalls: true,
-		SummaryMaxBytes: 4096, MaxDigestEntries: 10,
-		DownshiftPolicy: DownshiftRuntimeTruthOnly,
-	}
-	truth := BuildTruthCapsule(TruthProjection{
-		Compatibility: compatibility,
-		ModelID:       "test",
-		ContextTokens: 4096,
-		Summary:       Summary{Goal: "continue"},
-	})
-	authority, err := truth.AuthorityDigest()
+	input, err := BuildNarrativeInput(
+		"thread-1",
+		"window-1",
+		"sha256:authority",
+		"sha256:route",
+		[]provider.Message{
+			messageAt(provider.RoleUser, "continue", 1),
+		},
+		DefaultNarrativeLimits(),
+		now,
+		time.Hour,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := []provider.Message{
-		messageAt(provider.RoleUser, "continue", 1),
-	}
-	candidate, err := BuildCompactionCandidate(CompactionCandidateInput{
-		Cut: 1, Removed: source, ToSummarize: source,
-		OriginalHistory: source,
-		Summary:         Summary{Window: 1, Goal: "continue"},
-		CurrentTruth:    truth,
-		RetentionPolicy: DefaultRetentionPolicy(),
-		Turn:            1,
-		SummaryMaxBytes: 4096,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	candidate.SourceWindowID = "window-1"
-	candidate.SourceContextDigest = "sha256:context"
-	candidate.AuthorityDigest = authority
-	state := PrepareCompactionState(CompactionPreparation{
-		Candidate: candidate, ThreadID: "thread-1", TurnID: "turn-1",
-		TargetWindowID: "window-2", StablePrefixDigest: "sha256:stable",
-		RouteDigest: "sha256:route", Trigger: "inline",
-		NarrativeLimits: DefaultNarrativeLimits(), Now: now, InputTTL: time.Hour,
-	})
-	if state.Plan == nil || state.NarrativeInput == nil {
-		t.Fatalf("prepared state = %+v", state)
+	if len(input.Excerpts) == 0 {
+		t.Fatal("expected excerpts")
 	}
 	raw := strings.Replace(
 		`{"technical_concepts":[],"files_and_code":[],"errors_and_fixes":[],"pending_jobs":[],"current_work":[],"next_steps":[],"critical_context":[],"decisions":[],"rationale":[],"preferences":[],"unresolved":[]}`,
 		`"preferences":[]`,
 		`"preferences":[{"text":"continue","source_message_ids":["`+
-			state.NarrativeInput.Excerpts[0].MessageID+`"]}]`,
+			input.Excerpts[0].MessageID+`"]}]`,
 		1,
 	)
-	artifact, err := ValidateNarrativeJSON(
-		[]byte(raw), *state.NarrativeInput, DefaultNarrativeLimits(), 2, now,
-	)
-	if err != nil {
+	if _, err := ValidateNarrativeJSON(
+		[]byte(raw), input, DefaultNarrativeLimits(), 2, now,
+	); err != nil {
 		t.Fatal(err)
-	}
-	state.Plan.SourceBytes = 1
-	state.Plan.Digest = state.Plan.digest()
-	state.PlanDigest = state.Plan.Digest
-	if _, err := CompleteCompaction(
-		*state,
-		&artifact,
-		source,
-		4096,
-	); err == nil || !strings.Contains(err.Error(), "did not reduce") {
-		t.Fatalf("CompleteCompaction() error = %v", err)
 	}
 }
 

@@ -777,6 +777,7 @@ func (a *EngineAdapter) CompactThread(
 		ctx,
 		payload.ThreadID,
 		payload.TurnID,
+		payload.Focus,
 	)
 	if err != nil {
 		return err

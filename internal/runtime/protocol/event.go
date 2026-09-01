@@ -1249,7 +1249,7 @@ func (d *TurnCompactionData) validate() error {
 	if d.Status != "" {
 		switch d.Status {
 		case "started", "prepared", "summarizing", "rebasing",
-			"completed", "fallback":
+			"completed", "fallback", "folded":
 		default:
 			return errors.New("compaction status is invalid")
 		}

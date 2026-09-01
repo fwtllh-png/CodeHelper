@@ -12,6 +12,8 @@ func TestCapacityPathsDoNotReintroduceLegacyTiers(t *testing.T) {
 	for path, forbidden := range map[string][]string{
 		"internal/runtime/agent/context/store_window.go": {
 			"limit * 55 / 100", "limit * 65 / 100", "limit * 85 / 100",
+			"DefaultPreparePercent", "DefaultCompactPercent",
+			"DefaultEmergencyPercent",
 		},
 		"internal/runtime/agent/engine/model_handler.go": {
 			"min(modelLimit, 16_384)",

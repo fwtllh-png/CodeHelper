@@ -10,15 +10,14 @@ import (
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
-func TestCompactGatePrunesOnlyConsumedToolResultBeforeSummaryReplacement(t *testing.T) {
+func TestCompactGateGCOutsideRecentTailDoesNotTouchLatestTurn(t *testing.T) {
 	results := tool.NewResultStore(32 << 10)
 	engine := newEngine(
 		t,
 		&scriptedProvider{},
 		tool.NewRegistry(nil, results),
 	)
-	engine.options.Context.Window.AutoTokens = 1800
-	content := "HEAD-" + strings.Repeat("model-visible-result ", 700) + "-TAIL"
+	content := "HEAD-" + strings.Repeat("model-visible-result ", 80) + "-TAIL"
 	encoded, err := json.Marshal(tool.Result{Content: content})
 	if err != nil {
 		t.Fatal(err)
@@ -27,12 +26,14 @@ func TestCompactGatePrunesOnlyConsumedToolResultBeforeSummaryReplacement(t *test
 		messageWithText(provider.RoleUser, "inspect the output", 1),
 		toolCallMessage(1, "call-consumed", "file_read", `{"path":"old.txt"}`),
 		toolResultMessage(1, "call-consumed", string(encoded)),
-		toolCallMessage(1, "call-latest", "file_read", `{"path":"latest.txt"}`),
-		toolResultMessage(1, "call-latest", string(encoded)),
+		messageWithText(provider.RoleUser, "inspect the latest", 2),
+		toolCallMessage(2, "call-latest", "file_read", `{"path":"latest.txt"}`),
+		toolResultMessage(2, "call-latest", string(encoded)),
+		messageWithText(provider.RoleUser, "continue", 3),
 	}
 	original := cloneMessages(history)
 	var receipt *CompactionReceipt
-	window, err := engine.runCompactGate(
+	if _, err := engine.runCompactGate(
 		t.Context(),
 		&history,
 		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
@@ -44,26 +45,17 @@ func TestCompactGatePrunesOnlyConsumedToolResultBeforeSummaryReplacement(t *test
 			return nil
 		},
 		0,
-		nil,
-	)
-	if err != nil {
+		engine.contextViewProject(nil),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if receipt == nil ||
-		receipt.RemovedMessages != 0 ||
-		receipt.PrunedToolResults != 1 ||
-		receipt.PrunedBytes <= 0 ||
-		receipt.TruncationReason != "tool_result_surface_pruning" ||
-		receipt.AuthorityDigest == "" ||
-		!receipt.AuthorityEquivalent ||
-		window.active <= window.compactLimit {
-		t.Fatalf("window=%+v receipt=%+v", window, receipt)
+	if receipt != nil {
+		t.Fatalf("gc should not emit a replacement receipt: %+v", receipt)
 	}
 	if len(history) != len(original) ||
-		messageToolCalls(history[1])[0].ID != "call-consumed" ||
 		messageToolResultID(history[2]) != "call-consumed" ||
-		history[4].Blocks[0].ToolResult.Content !=
-			original[4].Blocks[0].ToolResult.Content {
+		history[5].Blocks[0].ToolResult.Content !=
+			original[5].Blocks[0].ToolResult.Content {
 		t.Fatalf("tool pairing changed: %+v", history)
 	}
 	var projected tool.Result
@@ -73,25 +65,18 @@ func TestCompactGatePrunesOnlyConsumedToolResultBeforeSummaryReplacement(t *test
 	); err != nil {
 		t.Fatal(err)
 	}
-	if projected.Handle == "" ||
-		!strings.Contains(projected.Content, "HEAD-") ||
-		!strings.Contains(projected.Content, "-TAIL") {
-		t.Fatalf("projected result = %+v", projected)
+	if projected.Handle == "" {
+		t.Fatalf("older turn result was not collapsed: %+v", projected)
 	}
 	full, found := results.Get(projected.Handle)
 	if !found || full != content {
 		t.Fatalf("full result bytes=%d found=%t", len(full), found)
 	}
-	if original[2].Blocks[0].ToolResult.Content ==
-		history[2].Blocks[0].ToolResult.Content {
-		t.Fatal("model-visible result was not pruned")
-	}
 }
 
-func TestStatelessDefaultCompactsLargeHistoryIntoTruthCapsule(t *testing.T) {
+func TestStatelessDefaultKeepsLargeOlderTurnsOutOfTheProjection(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.Route = reasoningRoute(t)
-	engine.options.Context.Window.AutoTokens = 24 << 10
 	history := []provider.Message{
 		messageWithText(provider.RoleUser, strings.Repeat("first context ", 5000), 1),
 		messageWithText(provider.RoleAssistant, "first answer", 1),
@@ -112,23 +97,23 @@ func TestStatelessDefaultCompactsLargeHistoryIntoTruthCapsule(t *testing.T) {
 			return nil
 		},
 		0,
-		nil,
+		engine.contextViewProject(nil),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt == nil || receipt.RemovedMessages == 0 {
-		t.Fatalf("large stateless history was not replaced: %+v", receipt)
+	if receipt != nil {
+		t.Fatalf("history under the hard limit was replaced: %+v", receipt)
 	}
-	if window.active > engine.autoCompactLimit() {
-		t.Fatalf(
-			"compacted active tokens = %d, want <= %d",
-			window.active,
-			engine.autoCompactLimit(),
-		)
+	if !strings.Contains(history[0].Text(), "first context") {
+		t.Fatalf("durable older turn was rewritten: %q", history[0].Text())
 	}
-	if !strings.Contains(history[0].Text(), "<codehelper_truth_capsule>") {
-		t.Fatalf("first retained message is not a truth capsule: %q", history[0].Text())
+	viewed := engine.contextViewProject(nil)(history)
+	if len(viewed) != 3 || !strings.Contains(viewed[0].Text(), "second context") {
+		t.Fatalf("projected tail = %+v", viewed)
+	}
+	if window.active == 0 {
+		t.Fatal("projected window was empty")
 	}
 }
 
@@ -224,8 +209,7 @@ func TestCompactGatePrunesConsumedHandleResultUsingDynamicSurfaceBudget(t *testi
 		&scriptedProvider{},
 		tool.NewRegistry(nil, results),
 	)
-	scope := attachTestScope(t, engine)
-	scope.state.toolSurfaceItemBytes = 96
+	engine.options.Context.RecentTailTurns = 1
 	large := strings.Repeat("result ", 160)
 	encoded, err := json.Marshal(tool.Result{Content: large})
 	if err != nil {
@@ -234,11 +218,11 @@ func TestCompactGatePrunesConsumedHandleResultUsingDynamicSurfaceBudget(t *testi
 	history := []provider.Message{
 		toolCallMessage(1, "old", "file_read", `{}`),
 		toolResultMessage(1, "old", string(encoded)),
-		toolCallMessage(1, "latest", "file_read", `{}`),
-		toolResultMessage(1, "latest", string(encoded)),
+		messageWithText(provider.RoleUser, "continue", 2),
+		toolCallMessage(2, "latest", "file_read", `{}`),
+		toolResultMessage(2, "latest", string(encoded)),
 	}
 	latest := history[len(history)-1].Blocks[0].ToolResult.Content
-	var receipt *CompactionReceipt
 	if _, err := engine.runCompactGate(
 		t.Context(),
 		&history,
@@ -246,18 +230,14 @@ func TestCompactGatePrunesConsumedHandleResultUsingDynamicSurfaceBudget(t *testi
 		0,
 		CompactionPhaseMidTurn,
 		true,
-		func(_ State, event Event) error {
-			receipt = event.Compaction
-			return nil
-		},
+		func(State, Event) error { return nil },
 		0,
-		nil,
+		engine.contextViewProject(nil),
 	); err != nil {
 		t.Fatal(err)
 	}
-	if receipt == nil || receipt.PrunedToolResults != 1 ||
-		history[len(history)-1].Blocks[0].ToolResult.Content != latest {
-		t.Fatalf("receipt=%+v history=%+v", receipt, history)
+	if history[len(history)-1].Blocks[0].ToolResult.Content != latest {
+		t.Fatalf("latest result was rewritten: %+v", history)
 	}
 	var projected tool.Result
 	if err := json.Unmarshal(

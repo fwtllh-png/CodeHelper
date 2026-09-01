@@ -90,6 +90,60 @@ func PruneSurfaces(
 	return stats, window, nil
 }
 
+// CollapseSurfacesBefore replaces consumed tool results before start with
+// handle-backed projections. Messages at and after start keep their raw
+// surfaces. Durable journal events are unchanged; only the working history
+// projection is rewritten.
+func CollapseSurfacesBefore(
+	history *[]provider.Message,
+	registry *tool.Registry,
+	start int,
+) PruneStats {
+	if history == nil || registry == nil || start <= 0 {
+		return PruneStats{}
+	}
+	names := ToolCallNames(*history)
+	var stats PruneStats
+	limit := min(start, len(*history))
+	for messageIndex := 0; messageIndex < limit; messageIndex++ {
+		message := &(*history)[messageIndex]
+		for blockIndex := range message.Blocks {
+			block := &message.Blocks[blockIndex]
+			if block.Type != provider.ContentToolResult ||
+				block.ToolResult == nil {
+				continue
+			}
+			name := names[block.ToolResult.CallID]
+			if name == "" {
+				continue
+			}
+			var value tool.Result
+			if err := json.Unmarshal(
+				[]byte(block.ToolResult.Content),
+				&value,
+			); err != nil {
+				continue
+			}
+			projected, changed := registry.PruneResultSurface(name, value, 1)
+			if !changed {
+				continue
+			}
+			encoded, err := json.Marshal(tool.ModelResult(name, projected))
+			if err != nil || len(encoded) >= len(block.ToolResult.Content) {
+				continue
+			}
+			stats.Results++
+			stats.Bytes += len(block.ToolResult.Content) - len(encoded)
+			block.ToolResult.Content = string(encoded)
+			block.ToolResult.IsError = projected.IsError
+			block.ToolResult.Admission = adaptercontent.CloneAdmissionReceipt(
+				projected.Admission,
+			)
+		}
+	}
+	return stats
+}
+
 func latestToolCallIDs(messages []provider.Message) map[string]struct{} {
 	for messageIndex := len(messages) - 1; messageIndex >= 0; messageIndex-- {
 		var result map[string]struct{}

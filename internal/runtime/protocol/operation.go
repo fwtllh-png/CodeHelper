@@ -386,10 +386,13 @@ func (p *InputReplyPayload) validate() error {
 	return nil
 }
 
+const MaxCompactFocusBytes = 4096
+
 type CompactThreadPayload struct {
 	ThreadID ThreadID `json:"thread_id"`
 	TurnID   TurnID   `json:"turn_id"`
 	ItemID   ItemID   `json:"item_id"`
+	Focus    string   `json:"focus,omitempty"`
 }
 
 func (*CompactThreadPayload) operationKind() OperationKind { return OperationCompactThread }
@@ -399,7 +402,13 @@ func (p *CompactThreadPayload) references() (*ThreadID, *TurnID, *ItemID) {
 }
 
 func (p *CompactThreadPayload) validate() error {
-	return validateReferences(p.ThreadID, p.TurnID, p.ItemID)
+	if err := validateReferences(p.ThreadID, p.TurnID, p.ItemID); err != nil {
+		return err
+	}
+	if len(p.Focus) > MaxCompactFocusBytes {
+		return errors.New("thread compact focus exceeds 4096 bytes")
+	}
+	return nil
 }
 
 type ForkThreadPayload struct {

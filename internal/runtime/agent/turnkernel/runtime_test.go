@@ -293,28 +293,6 @@ func TestModelTransportBoundaryIsDurablyQuiescent(t *testing.T) {
 		state.PendingEffects[effect.ID].Status != EffectRequested {
 		t.Fatalf("transport boundary state = %+v", state)
 	}
-	if err := handle.Coordinator.Submit(
-		t.Context(),
-		ContextCompactionRequested{
-			CompactionID: "compact-1",
-			PlanDigest:   "sha256:plan",
-		},
-	); err != nil {
-		t.Fatalf("compaction at transport boundary: %v", err)
-	}
-	compactionEffect, err := handle.Dispatcher.Start(
-		EffectGenerateNarrative,
-		"compact-1",
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := handle.Dispatcher.Resolve(EffectResultReceived{
-		EffectID: compactionEffect.ID,
-		Success:  true,
-	}); err != nil {
-		t.Fatal(err)
-	}
 	restarted, err := handle.Dispatcher.Start(
 		EffectSampleProvider,
 		"sample-1",

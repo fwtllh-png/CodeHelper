@@ -33,6 +33,14 @@ func Defaults() Config {
 			Evidence:     Evidence{Enabled: true, MaxEntries: 24, MaxBytes: 4 << 10},
 			CodingPolicy: CodingPolicy{Enabled: true},
 
+			View: View{
+				RecentTailTurns:       2,
+				KeepRecentToolResults: 0,
+				HistoryTokenCeiling:   0,
+				Digest:                "ledger",
+				NarrativeMode:         "post_turn",
+			},
+
 			Compact: Compact{
 				Scope: "total", SummaryMaxBytes: 0, MaxDigestEntries: 120,
 				TruthMaxBytes: 0, TruthMaxEntities: 256,
@@ -41,9 +49,6 @@ func Defaults() Config {
 				FailureMaxEntities:               24,
 				HandleMaxEntities:                32,
 				OmissionSampleMaxEntities:        8,
-				RecentTailTurns:                  2,
-				RecentTailMaxTokens:              0,
-				SemanticNarrative:                "inline",
 				SemanticNarrativeMaxInputTokens:  4096,
 				SemanticNarrativeMaxOutputTokens: 512,
 				SemanticNarrativeMaxItems:        32,
@@ -64,6 +69,7 @@ func Defaults() Config {
 			ProviderRetryLimit:  3,
 			RateLimitRetryLimit: 0,
 			RateLimitWait:       0,
+			TokensPerMinute:     0,
 
 			Verify: Verify{
 				Mode: "soft", Scope: "diagnostics", OnFailure: "fail",

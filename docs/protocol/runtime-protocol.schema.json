@@ -2787,6 +2787,9 @@
     "thread.compact": {
       "type": "object",
       "properties": {
+        "focus": {
+          "type": "string"
+        },
         "item_id": {
           "type": "string"
         },
@@ -6714,6 +6717,9 @@
             "compactions": {
               "type": "integer"
             },
+            "digest": {
+              "type": "string"
+            },
             "emergency_tokens": {
               "type": "integer"
             },
@@ -6723,8 +6729,17 @@
             "full_active_tokens": {
               "type": "integer"
             },
+            "history_token_ceiling": {
+              "type": "integer"
+            },
+            "keep_recent_tool_results": {
+              "type": "integer"
+            },
             "max_context_tokens": {
               "type": "integer"
+            },
+            "narrative_mode": {
+              "type": "string"
             },
             "observed": {
               "type": "boolean"
@@ -6739,6 +6754,9 @@
               "type": "integer"
             },
             "prepare_tokens": {
+              "type": "integer"
+            },
+            "recent_tail_turns": {
               "type": "integer"
             },
             "tool_definition_tokens": {

@@ -10,14 +10,19 @@ prerequisites:
   - runtime-stream-cancel-errors
 code_paths:
   - internal/adapter/provider/httpclient
+  - internal/adapter/provider/ratelimit
   - internal/adapter/provider/assembly
   - internal/runtime/agent/engine
 test_paths:
   - internal/adapter/provider/httpclient/client_test.go
+  - internal/adapter/provider/ratelimit/admission_test.go
   - internal/adapter/provider/fault_injection_test.go
   - internal/runtime/agent/engine/engine_test.go
+  - internal/runtime/agent/engine/throughput_test.go
 source_of_truth:
   - internal/adapter/provider/httpclient/client.go
+  - internal/adapter/provider/ratelimit/admission.go
+  - internal/runtime/agent/engine/throughput.go
   - internal/runtime/protocol/problem.go
 status: draft
 last_verified: null
@@ -81,6 +86,7 @@ Behavior Transactional。
 | 关注点 | 源码 |
 | --- | --- |
 | HTTP Lifecycle | `httpclient/client.go` |
+| Token Admission | `ratelimit/admission.go`、`engine/throughput.go` |
 | SSE | `provider/sse.go` |
 | Fault Fixture | `provider/fault_injection_test.go` |
 | Engine Retry | `agent/engine/provider_retry.go` |
@@ -113,6 +119,12 @@ Pre-meaningful Failure。
 - 429 使用公开 Rate Limit Recovery Budget（`execution.rate_limit_wait` 默认继承
   `execution.timeout`，`execution.rate_limit_retry_limit` 默认不限次数）；耗尽后
   转为可恢复 Blocked，不无限透明等待。
+- Provider Throughput 是独立于模型窗口和经济预算的第三条容量平面。
+  `execution.tokens_per_minute` 默认 `0` 表示未知，不按模型名称发明 TPM；已知
+  Burst 时按 `投影输入 + 输出保留` 在发送前准入。超过 Burst 或等待将超过预算时，
+  先对可见 Tail 做一次因果组折叠再重新准入；仍超则返回
+  `resource_exhausted` / `provider_throughput`，不静默重探同一 Digest，也不改写
+  Durable History。
 - 部分 5xx 仍按 `execution.provider_retry_limit` 处理。
 - Malformed/Oversized SSE Decode 失败。
 - Cancellation 中断 Backoff 与 Rate Wait。

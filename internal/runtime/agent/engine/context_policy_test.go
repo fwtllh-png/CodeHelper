@@ -13,9 +13,9 @@ func TestContextWindowThresholdsDerivePrepareFromExplicitCompactLimit(t *testing
 		CompactWindowPolicy{AutoTokens: 512},
 		3072,
 	)
-	if prepare != 512 || compact != 512 || emergency != 2764 {
+	if prepare != 512 || compact != 512 || emergency != 3072 {
 		t.Fatalf(
-			"thresholds = (%d, %d, %d), want (512, 512, 2764)",
+			"thresholds = (%d, %d, %d), want (512, 512, 3072)",
 			prepare,
 			compact,
 			emergency,
@@ -23,7 +23,7 @@ func TestContextWindowThresholdsDerivePrepareFromExplicitCompactLimit(t *testing
 	}
 }
 
-func TestDefaultCompactionThresholdsUseHardInputCapacityPercentages(t *testing.T) {
+func TestDefaultCompactionThresholdsEqualHardInputWithoutOperatorCeiling(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.MaxOutputTokens = 0
 	for _, contextTokens := range []uint64{4096, 64 << 10, 128 << 10, 1 << 20} {
@@ -67,20 +67,17 @@ func TestDefaultCompactionThresholdsUseHardInputCapacityPercentages(t *testing.T
 			engine.contextCapacity().HardInputTokens,
 		)
 		hardInput := contextTokens - outputTokens
-		wantPrepare := hardInput * agentcontext.DefaultPreparePercent / 100
-		wantCompact := hardInput * agentcontext.DefaultCompactPercent / 100
-		wantEmergency := hardInput * agentcontext.DefaultEmergencyPercent / 100
-		if prepare != wantPrepare || compact != wantCompact ||
-			emergency != wantEmergency {
+		if prepare != hardInput || compact != hardInput ||
+			emergency != hardInput {
 			t.Fatalf(
 				"context=%d thresholds=(%d,%d,%d), want (%d,%d,%d)",
 				contextTokens,
 				prepare,
 				compact,
 				emergency,
-				wantPrepare,
-				wantCompact,
-				wantEmergency,
+				hardInput,
+				hardInput,
+				hardInput,
 			)
 		}
 	}
@@ -121,18 +118,99 @@ func TestContextCapacityHonorsOperatorAndTokenBudgetCeilings(t *testing.T) {
 	}
 }
 
-func TestRecentTailDefaultTracksDynamicCompactionLimit(t *testing.T) {
+func TestContextBudgetSnapshotReportsViewContractNotDefaultTiers(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
-	engine.options.Route = reasoningRoute(t)
-	engine.options.Routes, _ = model.NewRouteSet(engine.options.Route, nil, false)
+	engine.options.Context.Digest = "ledger"
+	engine.options.Context.SemanticNarrative = "post_turn"
+	snapshot := engine.contextBudgetSnapshot(nil)
+	if snapshot.PrepareTokens != 0 || snapshot.EmergencyTokens != 0 {
+		t.Fatalf("default snapshot still reports compact tiers: %+v", snapshot)
+	}
+	if snapshot.RecentTailTurns != agentcontext.DefaultRecentTailTurns ||
+		snapshot.Digest != "ledger" ||
+		snapshot.NarrativeMode != "post_turn" {
+		t.Fatalf("view snapshot = %+v", snapshot)
+	}
+	engine.options.Context.Window.PrepareTokens = 600
+	engine.options.Context.Window.EmergencyTokens = 900
+	snapshot = engine.contextBudgetSnapshot(nil)
+	if snapshot.PrepareTokens == 0 || snapshot.EmergencyTokens == 0 {
+		t.Fatalf("operator snapshot omitted ceilings: %+v", snapshot)
+	}
+}
 
-	if got, want := engine.recentTailMaxTokens(), engine.autoCompactLimit(); got != want {
-		t.Fatalf("recent tail limit = %d, want dynamic compact limit %d", got, want)
+func TestRecentTailDefaultUsesTurnBoundNotWindowPercent(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	if got := engine.recentTailTurns(); got != agentcontext.DefaultRecentTailTurns {
+		t.Fatalf("recent tail turns = %d, want %d", got, agentcontext.DefaultRecentTailTurns)
+	}
+	if got := engine.recentTailMaxTokens(); got != 0 {
+		t.Fatalf("recent tail token ceiling = %d, want 0", got)
 	}
 
 	engine.options.Context.RecentTailMaxTokens = 12345
 	if got := engine.recentTailMaxTokens(); got != 12345 {
 		t.Fatalf("explicit recent tail limit = %d, want 12345", got)
+	}
+}
+
+func TestRawTailTokenBudgetUsesLeftoverHardInputNotWindowPercent(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, nil)
+	engine.options.MaxOutputTokens = 0
+	for _, contextTokens := range []uint64{4096, 64 << 10, 128 << 10, 1 << 20} {
+		outputTokens := max(uint64(1), contextTokens/4)
+		catalog, err := model.NewCatalog(model.Provider{
+			ID: "dynamic-window", Adapter: model.AdapterOpenAICompatible,
+			Endpoint:   "http://127.0.0.1:1",
+			Protocol:   model.ProtocolOpenAIResponses,
+			Provenance: model.ProvenanceFixture,
+			Models: map[string]model.Model{"model": {
+				ID: "model", CanonicalID: "model", WireID: "model",
+				Limits: model.Limits{
+					ContextTokens:   contextTokens,
+					MaxOutputTokens: outputTokens,
+				},
+				Capabilities: model.Capabilities{
+					Streaming: true, Reasoning: true, ToolCalls: true,
+				},
+				Provenance: model.ProvenanceFixture,
+			}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolver, err := model.NewResolver(catalog)
+		if err != nil {
+			t.Fatal(err)
+		}
+		route, err := resolver.Resolve(model.RouteRequest{
+			ProviderID: "dynamic-window", ModelID: "model",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		engine.options.Route = route
+		engine.options.Routes, _ = model.NewRouteSet(route, nil, false)
+		hard := engine.contextCapacity().HardInputTokens
+		budget, limited := engine.rawTailTokenBudget(nil)
+		if !limited || budget != hard {
+			t.Fatalf(
+				"context=%d residual=%d limited=%t, want leftover hard input %d",
+				contextTokens, budget, limited, hard,
+			)
+		}
+		if budget*5 == hard*4 {
+			t.Fatalf("residual reintroduced an 80 percent window gate: %d", budget)
+		}
+		engine.options.Context.RecentTailMaxTokens = hard / 2
+		budget, limited = engine.rawTailTokenBudget(nil)
+		if !limited || budget != hard/2 {
+			t.Fatalf(
+				"operator ceiling = %d limited=%t, want %d",
+				budget, limited, hard/2,
+			)
+		}
+		engine.options.Context.RecentTailMaxTokens = 0
 	}
 }
 

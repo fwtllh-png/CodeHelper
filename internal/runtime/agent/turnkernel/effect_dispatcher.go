@@ -292,8 +292,7 @@ func C2RoutedEffect(kind EffectKind) bool {
 
 func C3RoutedEffect(kind EffectKind) bool {
 	switch kind {
-	case EffectSampleProvider, EffectRunVerification,
-		EffectGenerateNarrative, EffectCommitContextRebase:
+	case EffectSampleProvider, EffectRunVerification:
 		return true
 	default:
 		return false

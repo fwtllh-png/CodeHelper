@@ -15,11 +15,18 @@ test_paths:
   - internal/runtime/agent/context/compact_compact_test.go
   - internal/runtime/agent/context/compact_retention_test.go
   - internal/runtime/agent/context/compact_narrative_test.go
+  - internal/runtime/agent/context/narrative_digest_test.go
+  - internal/runtime/agent/context/session_state_test.go
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/engine/narrative_test.go
+  - internal/runtime/agent/engine/session_state_test.go
   - internal/runtime/app/compact_window_test.go
 source_of_truth:
+  - internal/runtime/agent/context/session_state.go
+  - internal/runtime/agent/context/narrative_digest.go
   - internal/runtime/agent/context/compact_compact.go
+  - internal/runtime/agent/engine/session_state.go
+  - internal/runtime/agent/engine/narrative.go
   - internal/runtime/agent/engine/compaction.go
 status: draft
 last_verified: null
@@ -54,8 +61,12 @@ flowchart TD
     T --> Q
 ```
 
-Partition Budget 在 Assembly 时限制每个 Source。History Compaction 在 First Sample 前
-或 Mid-turn 触发，并在检查 Context Capacity 时为 Model Output Token 预留空间。
+Partition Budget 在 Assembly 时限制每个 Source。采样路径先按
+`context.view.recent_tail_turns` 取最新原文，再按 token residual 从最新闭合因果组向前填充：
+`context.view.history_token_ceiling=0` 表示 Mandatory 分区之后的剩余硬输入，显式正值是
+Operator Ceiling。超窗时对可见 Tail 再做一次因果组折叠，仍放不下则
+`resource_exhausted`。History Replacement 留给显式 `thread.compact` 与 Turn 终态
+维护，不再作为每轮 Sample 的默认动作。
 
 ## Capacity Accounting
 
@@ -77,7 +88,10 @@ Token Estimate 是带 Method 的 Evidence，不是精确 Provider Bill；Actual 
 执行预算与 Context 容量不是同一个概念。单 Turn 未显式配置 Token Ceiling 时，从当前
 模型 Context Window 派生；Child Tree 未显式配置时，再由父 Turn 容量和并发度派生。
 显式值是 Operator Ceiling，不能扩大模型或父级边界。预算耗尽产生带 Scope、Used 和
-Limit 的可恢复 `resource_exhausted`，而不是由模型无关固定值直接终止任务。
+Limit 的可恢复 `resource_exhausted`，而不是由模型无关固定值直接终止任务。Provider
+Throughput（`execution.tokens_per_minute`）是第三条容量平面：合法工作集超过已知
+Burst 或等待将超过预算时，先做一次 Visible Tail Fold 再重新准入；仍超则延迟或
+拒绝，不静默重探，也不把 `provider_throughput` 当作 History Replacement 原因。
 
 ## 三类信息损失
 
@@ -93,17 +107,25 @@ History。
 Compaction 是 Model-context Loss，不一定删除 Durable Data。Audit/Reconstruction 仍可
 保留不再进入 Next Sample 的 Event。
 
-模型可见顺序固定为 Stable Prefix、Truth Capsule、非权威 Narrative、Recent Raw Tail、
-Dynamic World State 和 Continuation。预算按 Mandatory Truth、未闭合因果组、其他
-Truth、Additional Tail、Narrative 的顺序分配，Narrative 永远不能挤占 Authority。
+模型可见顺序固定为 Stable Prefix、Session State（Mandatory Truth）、非权威
+Narrative、Recent Raw Tail、Dynamic World State 和 Continuation。Session State
+每轮从 Ledger 投影，不是 compact 产物；Goal、未完成 Todo 和未验证 Change 在
+没有任何 History Replacement 时也必须可见。预算按 Mandatory Truth、未闭合因果组、
+其他 Truth、Additional Tail、Narrative 的顺序分配，Narrative 永远不能挤占
+Authority。
 
-`prepare`、`compact`、`emergency` 默认分别位于模型 Hard Limit 的 55%、65% 和 85%。
-Emergency 路径跳过 Narrative，并限制继续扩大 Context 的工具调用。
+模型可见历史由 ContextView 投影，而不是等窗口快满再一次性压缩。公开合同是
+`[context.view]`：默认保留最近 `recent_tail_turns`（2）个 Turn 的原文，但不超过
+Mandatory 分区之后的剩余硬输入（或显式 `history_token_ceiling`）。
+`keep_recent_tool_results=0` 只保留 Tail 内原文结果。被 residual 裁掉的更早
+Turn 上的已消费 Tool Result 每轮收成 Handle。`prepare` / `compact` /
+`emergency` 的百分比档位已删除：阈值为 0 时等于硬输入容量，且默认不出现在
+Context Budget 快照。`narrative_mode` 默认 `post_turn`，不得阻塞下一轮 Sample。
 
 ## Truth Retention 与 Admission
 
-确定性 Compaction 从 Observed Goal、Open Todo、Failure、Change、Critical Path、
-Lookup Fact 与 Content Handle 构造 Truth。Entity 分成：
+确定性 Session State 从 Observed Goal、Open Todo、Failure、Change、Critical Path、
+Lookup Fact 与 Content Handle 构造 Truth Capsule。Entity 分成：
 
 ```text
 mandatory -> protected by kind quota -> refreshable by rank -> omission
@@ -124,28 +146,39 @@ Narrative 只表达方案选择原因、偏好、约束关系和未决方向。�
 Artifact，每个 Excerpt 有稳定 Message ID 和 Digest；输出必须是严格 JSON，并为每项
 引用已知 Source ID。它不能声明测试、修改、审批或权限事实。
 
-`post_turn` 在业务 Terminal 提交后维护 Context；`inline` 在安全 Sample 边界通过
-`generate_narrative` 和 `commit_context_rebase` Durable Effect 执行。两者都通过
-`summary` Route，禁用 Tool 与 Native Search。Provider、解析、Timeout 或 Staleness
-失败只产生 `fallback=truth_tail`。
+`post_turn` 在业务 Terminal 提交后生成非权威 Digest 分区，不得阻塞下一轮
+Sample，也不得把 200K 窗口留到 Timeout。只允许 `off` 或 `post_turn`。
+成功时 Narrative 进入 World 分区 `narrative`，不是 History Replacement。失败时
+保留 Ledger 投影的 Session State。`thread.compact` 立即做确定性替换，可选
+`focus`（公开上限 4096 字节）只影响随后的 Digest。Narrative 通过 `summary`
+Route，禁用 Tool 与 Native Search。Provider、解析、Timeout 或 Staleness 失败只
+产生 `fallback=ledger`。
 
 ## Turn Integrity
 
-Cut 发生在 Causal Group 边界，保持 Assistant Tool Call 与 Tool Result 配对。
-Skill/Constitution Fragment 从旧 History 删除并重新注入；Recent Tail 原样保留。
+采样路径的 Visible Tail Fold 发生在 Causal Group 边界，保持 Assistant Tool Call 与
+Tool Result 配对，且不改写 Durable History。显式 compact 仍从旧 History 删除
+Skill/Constitution Fragment 并重新注入。
 
 ## Receipts
 
-Compaction Receipt 报告 Original/Retained Byte 与 Message、Removed Turn、Retained
-Section、Truncation Reason、Working Set、Critical Path 和 Prompt Context Receipt。
+采样路径的 Fold Receipt 使用 `status=folded`、`mode=view`。窗口溢出为
+`truncation_reason=visible_tail_fold`，TPM Burst 折叠为
+`throughput_tail_fold`。History Replacement Receipt 仍报告
+Original/Retained Byte 与 Message、Removed Turn、Retained Section、Working Set、
+Critical Path 和 Prompt Context Receipt。
 
 ## 代码地图
 
 | 关注点 | 源码 |
 | --- | --- |
 | Partition Retain | `prompt/context.go` |
+| Session State | `agent/context/session_state.go`、`agent/engine/session_state.go` |
+| Narrative Digest | `agent/context/narrative_digest.go`、`agent/engine/narrative.go` |
 | Truth/Retention | `agent/context/compact_truth.go`、`compact_retention.go` |
 | Narrative Artifact | `agent/context/compact_narrative.go`、`narrative_service.go` |
+| Public View Contract | `config` `[context.view]`、`agent/context/view.go` |
+| Visible Tail Fold | `agent/context/view.go`、`agent/engine/context_view.go`、`agent/engine/throughput.go` |
 | Cut/Replacement | `agent/engine/history_recovery.go` |
 | Narrative Effect | `agent/engine/narrative.go`、`agent/turnkernel` |
 | Thread Compact | `persist/history/compact.go` |

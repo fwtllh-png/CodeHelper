@@ -288,13 +288,6 @@ func (m *ThreadManager) StartTurn(
 	m.bindTurn(string(payload.TurnID), payload.ThreadID)
 	m.enter(payload.ThreadID)
 	defer m.leave(payload.ThreadID)
-	if engine := adapter.Underlying(); engine != nil {
-		_, _ = engine.RunPostTurnNarrative(
-			context.WithoutCancel(ctx),
-			payload.ThreadID,
-			payload.TurnID,
-		)
-	}
 	return adapter.StartTurn(ctx, payload, sink)
 }
 
@@ -424,6 +417,7 @@ func (m *ThreadManager) CompactThread(
 		ctx,
 		payload.ThreadID,
 		payload.TurnID,
+		payload.Focus,
 	)
 	if err != nil {
 		return err

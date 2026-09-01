@@ -252,13 +252,15 @@ max_output_tokens = 16384
 max_steps = 12
 turn_budget_tokens = 600000
 
+[context.view]
+recent_tail_turns = 2
+history_token_ceiling = 32768
+
 [context.compact]
 scope = "total"
 prepare_tokens = 65536
 auto_compact_tokens = 98304
 emergency_tokens = 131072
-recent_tail_turns = 2
-recent_tail_max_tokens = 32768
 summary_max_bytes = 32768
 ```
 
@@ -520,8 +522,11 @@ ActiveContextView，并依赖自动 Prefix Cache。
 - `context.compact.prepare_tokens`
 - `context.compact.auto_compact_tokens`
 - `context.compact.emergency_tokens`
-- `context.compact.recent_tail_turns`
-- `context.compact.recent_tail_max_tokens`
+- `context.view.recent_tail_turns`
+- `context.view.history_token_ceiling`
+- `context.view.keep_recent_tool_results`
+- `context.view.digest`
+- `context.view.narrative_mode`
 - `context.compact.summary_max_bytes`
 
 若现有字段无法表达 Tool/Image/Finalization 生命周期，再增加公开配置或协议字段。每个新增字段必须包含：

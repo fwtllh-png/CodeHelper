@@ -99,3 +99,34 @@ func toolResultMessage(t *testing.T, id, content string) provider.Message {
 		}},
 	}
 }
+
+func TestCollapseSurfacesBeforeRewritesOlderResultsOnly(t *testing.T) {
+	store := tool.NewResultStore(32 << 10)
+	registry := tool.NewRegistry(nil, store)
+	oldContent := strings.Repeat("old-result ", 200)
+	newContent := strings.Repeat("new-result ", 200)
+	history := []provider.Message{
+		toolCallMessage("call-old", "file_read"),
+		toolResultMessage(t, "call-old", oldContent),
+		toolCallMessage("call-new", "file_read"),
+		toolResultMessage(t, "call-new", newContent),
+	}
+	stats := CollapseSurfacesBefore(&history, registry, 2)
+	if stats.Results != 1 {
+		t.Fatalf("collapsed = %d, want 1", stats.Results)
+	}
+	var oldProjected, newProjected tool.Result
+	if err := json.Unmarshal([]byte(history[1].Blocks[0].ToolResult.Content), &oldProjected); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(history[3].Blocks[0].ToolResult.Content), &newProjected); err != nil {
+		t.Fatal(err)
+	}
+	if oldProjected.Handle == "" || newProjected.Content != newContent {
+		t.Fatalf("old=%+v new=%+v", oldProjected, newProjected)
+	}
+	full, found := store.Get(oldProjected.Handle)
+	if !found || full != oldContent {
+		t.Fatalf("stored old result found=%t", found)
+	}
+}

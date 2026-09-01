@@ -74,6 +74,8 @@ type WorldProjectionInput struct {
 	Evidence     agentcontext.EvidenceSnapshot
 	PlanText     string
 	PlanReceipt  *Receipt
+	SessionState string
+	Narrative    string
 }
 
 type WorldProjectionResult struct {
@@ -185,6 +187,22 @@ func ProjectWorldState(
 			input.Turn,
 		))
 		receipts = append(receipts, *input.PlanReceipt)
+	}
+	if strings.TrimSpace(input.SessionState) != "" {
+		appendSection(
+			PartitionSessionState,
+			"session://session-state",
+			input.SessionState,
+			"",
+		)
+	}
+	if strings.TrimSpace(input.Narrative) != "" {
+		appendSection(
+			PartitionNarrative,
+			"session://narrative",
+			input.Narrative,
+			"",
+		)
 	}
 	projection, err := agentcontext.ProjectWorld(
 		sections,

@@ -45,6 +45,10 @@ func (e *Engine) projectWorldState(
 		planReceipt = &copy
 	}
 	e.planMu.Unlock()
+	sessionState, err := e.sessionStatePartition()
+	if err != nil {
+		return nil, nil, nil, agentcontext.WorldProjection{}, err
+	}
 	projected, err := promptcontext.ProjectWorldState(
 		promptcontext.WorldProjectionInput{
 			Context: ctx, History: history, Stable: e.promptMessages(),
@@ -55,6 +59,7 @@ func (e *Engine) projectWorldState(
 			Budgets: e.options.ContextBudgets, Repository: e.options.RepoContext,
 			WorkingSet: e.workingLedger().Select(e.turn, e.options.WorkingSetLimit),
 			Evidence:   evidence, PlanText: plan, PlanReceipt: planReceipt,
+			SessionState: sessionState, Narrative: e.narrativePartition(),
 		},
 	)
 	if err != nil {

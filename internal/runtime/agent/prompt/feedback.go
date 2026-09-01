@@ -7,12 +7,6 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 )
 
-func ContextWindowFeedback(turn uint64) provider.Message {
-	return feedback(turn,
-		"[context_window]\nStop broad exploration. Complete the smallest coherent "+
-			"verified result and declare any concrete remaining work.")
-}
-
 func IncompleteOutputFeedback(
 	reason provider.StopReason,
 	fragments []provider.ToolCallFragment,

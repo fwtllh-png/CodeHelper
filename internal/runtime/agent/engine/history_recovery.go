@@ -16,9 +16,22 @@ import (
 const compactScopeBodyAfterPrefix = "body_after_prefix"
 
 func (e *Engine) compact() *CompactionReceipt {
+	e.resetViewFold()
 	receipt := e.compactHistory(&e.history, false)
 	e.reconcileWorldBaseline(e.history)
 	return receipt
+}
+
+func (e *Engine) projectGateHistory(
+	history []provider.Message,
+	projectHistory agentcontext.HistoryProjector,
+) []provider.Message {
+	if projectHistory != nil {
+		return agentcontext.ProjectHistory(history, projectHistory)
+	}
+	return agentcontext.ProjectContextViewFrom(
+		history, e.visibleTailStart(history),
+	)
 }
 
 func (e *Engine) runCompactGate(
@@ -32,11 +45,10 @@ func (e *Engine) runCompactGate(
 	economicInput uint64,
 	projectHistory agentcontext.HistoryProjector,
 ) (tokenWindow, error) {
+	e.applyWorkingSetGC(history)
 	baseInput := input
-	input = baseInput.WithHistory(
-		agentcontext.ProjectHistory(*history, projectHistory),
-	)
-	sourceContextDigest, _ := input.Digest()
+	projected := e.projectGateHistory(*history, projectHistory)
+	input = baseInput.WithHistory(projected)
 	window, err := e.measureTokenWindow(input, outputReserve, economicInput)
 	if err != nil {
 		return tokenWindow{}, err
@@ -44,62 +56,85 @@ func (e *Engine) runCompactGate(
 	recentTailMaxTokens := e.recentTailMaxTokens()
 	forceTailBudget := phase == CompactionPhasePostTurn &&
 		allowCurrentTurn &&
+		recentTailMaxTokens != 0 &&
 		agentcontext.EstimateMessageTokens(*history) > recentTailMaxTokens
-	receipt := e.compactHistoryWithPolicy(
-		history, forceTailBudget, allowCurrentTurn, input, outputReserve,
-		economicInput, projectHistory,
-	)
-	if receipt != nil {
-		receipt.Phase = phase
-		if err := send(Compacting, Event{Compaction: receipt}); err != nil {
-			return tokenWindow{}, err
-		}
-	}
-	var inlineReceipt *CompactionReceipt
-	if e.options.Context.SemanticNarrative != "off" || phase == CompactionPhasePostTurn {
-		inlineReceipt, err = e.completeInlineNarrative(
-			ctx,
-			history,
-			send,
-			compactionCompletionCheck{
-				sourceContextDigest: sourceContextDigest,
-				sourceActive:        window.active,
-				sourceTotal:         window.total,
-				hardLimit:           window.hardLimit,
-				input:               baseInput,
-				outputReserve:       outputReserve,
-				economicInput:       economicInput,
-				projectHistory:      projectHistory,
-			},
-		)
+	overHard := window.hardLimit != 0 && window.total > window.hardLimit
+	operatorCeiling := window.compactLimit != 0 &&
+		window.compactLimit < window.hardLimit &&
+		window.active >= window.compactLimit
+	if phase == CompactionPhasePostTurn {
+		e.resetViewFold()
+		projected = e.projectGateHistory(*history, projectHistory)
+		input = baseInput.WithHistory(projected)
+		window, err = e.measureTokenWindow(input, outputReserve, economicInput)
 		if err != nil {
 			return tokenWindow{}, err
 		}
-		if inlineReceipt != nil {
-			inlineReceipt.Phase = phase
-			if err := send(Compacting, Event{Compaction: inlineReceipt}); err != nil {
+		overHard = window.hardLimit != 0 && window.total > window.hardLimit
+		operatorCeiling = window.compactLimit != 0 &&
+			window.compactLimit < window.hardLimit &&
+			window.active >= window.compactLimit
+		var receipt *CompactionReceipt
+		if overHard || operatorCeiling || forceTailBudget ||
+			window.compactLimit != 0 && window.active >= window.compactLimit {
+			receipt = e.compactHistoryWithPolicy(
+				history, overHard || forceTailBudget, allowCurrentTurn, input,
+				outputReserve, economicInput, projectHistory,
+			)
+		}
+		if receipt != nil {
+			receipt.Phase = phase
+			if err := send(Compacting, Event{Compaction: receipt}); err != nil {
 				return tokenWindow{}, err
 			}
+			projected = e.projectGateHistory(*history, projectHistory)
+			input = baseInput.WithHistory(projected)
+			window, err = e.measureTokenWindow(
+				input, outputReserve, economicInput,
+			)
 		}
+		if err == nil &&
+			window.hardLimit != 0 &&
+			window.total > window.hardLimit &&
+			len(baseInput.Partition(agentcontext.KindContinuation)) != 0 {
+			err = protocol.NewProblem(
+				protocol.CodeResourceExhausted,
+				"partial provider output cannot be compacted within the model context window",
+				false,
+				nil,
+			)
+		}
+		return window, err
 	}
-	if receipt != nil || inlineReceipt != nil {
-		input = baseInput.WithHistory(
-			agentcontext.ProjectHistory(*history, projectHistory),
-		)
-		window, err = e.measureTokenWindow(
-			input, outputReserve, economicInput,
-		)
+	if (overHard || operatorCeiling) && e.foldOldestVisibleTail(*history, allowCurrentTurn) {
+		e.applyWorkingSetGC(history)
+		before := projected
+		beforeWindow := window
+		projected = e.projectGateHistory(*history, projectHistory)
+		input = baseInput.WithHistory(projected)
+		window, err = e.measureTokenWindow(input, outputReserve, economicInput)
+		if err != nil {
+			return tokenWindow{}, err
+		}
+		receipt := viewFoldReceipt(phase, before, projected, beforeWindow, window)
+		if err := send(Compacting, Event{Compaction: receipt}); err != nil {
+			return tokenWindow{}, err
+		}
+		overHard = window.hardLimit != 0 && window.total > window.hardLimit
 	}
 	if err == nil &&
 		window.hardLimit != 0 &&
 		window.total > window.hardLimit &&
 		len(baseInput.Partition(agentcontext.KindContinuation)) != 0 {
-		err = protocol.NewProblem(
+		return window, protocol.NewProblem(
 			protocol.CodeResourceExhausted,
 			"partial provider output cannot be compacted within the model context window",
 			false,
 			nil,
 		)
+	}
+	if err == nil && overHard {
+		return window, compactionBudgetError(window)
 	}
 	return window, err
 }
@@ -174,10 +209,13 @@ func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudget
 	input := agentcontext.NewMessageLedger(value).Snapshot()
 	window, _ := e.measureTokenWindow(input, e.maxOutputFor(e.activeRoute()), 0)
 	capacity := e.contextCapacity()
-	return ContextBudgetSnapshot{
+	snapshot := ContextBudgetSnapshot{
 		ActiveTokens: window.active, AutoCompactTokens: window.compactLimit,
-		PrepareTokens:   e.prepareCompactLimit(),
-		EmergencyTokens: e.emergencyCompactLimit(),
+		RecentTailTurns:       e.recentTailTurns(),
+		KeepRecentToolResults: e.options.Context.KeepRecentToolResults,
+		HistoryTokenCeiling:   e.recentTailMaxTokens(),
+		Digest:                e.options.Context.Digest,
+		NarrativeMode:         e.options.Context.SemanticNarrative,
 		EstimatedTokens: window.estimated, MaxContextTokens: window.hardLimit,
 		HardInputTokens: capacity.HardInputTokens,
 		LimitSource:     string(capacity.LimitSource),
@@ -192,6 +230,13 @@ func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudget
 		OutputReserve:        window.accounting.OutputReserve,
 		Compactions:          e.compactionTotal(),
 	}
+	if e.options.Context.Window.PrepareTokens != 0 {
+		snapshot.PrepareTokens = e.prepareCompactLimit()
+	}
+	if e.options.Context.Window.EmergencyTokens != 0 {
+		snapshot.EmergencyTokens = e.emergencyCompactLimit()
+	}
+	return snapshot
 }
 
 // Compact applies the auto budget policy under the engine lock.
@@ -206,20 +251,23 @@ func (e *Engine) Compact() *CompactionReceipt {
 func (e *Engine) CompactForced() *CompactionReceipt {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.resetViewFold()
 	receipt := e.compactHistory(&e.history, true)
 	e.reconcileWorldBaseline(e.history)
 	return receipt
 }
 
-// CompactForcedDurable completes any prepared rebase before exposing the
-// replacement history to an explicit thread.compact operation.
+// CompactForcedDurable applies a forced history replacement. Semantic
+// narrative is post-turn only and does not block this operation.
 func (e *Engine) CompactForcedDurable(
 	ctx context.Context,
 	threadID protocol.ThreadID,
 	turnID protocol.TurnID,
+	focus string,
 ) (NarrativeGenerationResult, error) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	e.resetViewFold()
+	source := cloneMessages(e.history)
 	receipt := e.compactHistory(
 		&e.history,
 		true,
@@ -229,34 +277,26 @@ func (e *Engine) CompactForcedDurable(
 		},
 	)
 	e.reconcileWorldBaseline(e.history)
+	e.mu.Unlock()
+	result, err := e.generatePostTurnDigest(ctx, threadID, turnID, focus, source)
 	if receipt == nil {
-		return NarrativeGenerationResult{}, nil
+		return result, err
 	}
-	state := e.context.Compaction().State
-	if state == nil || state.ID != receipt.CompactionID ||
-		state.Phase == "completed" {
-		return NarrativeGenerationResult{Receipt: receipt}, nil
-	}
-	result, err := e.completePreparedCompactionLocked(ctx, threadID, turnID)
-	if maintained := result.Receipt; maintained != nil {
-		receipt.Status = maintained.Status
-		receipt.Mode = e.options.Context.SemanticNarrative
-		receipt.SourceWindowID = maintained.SourceWindowID
-		receipt.TargetWindowID = maintained.TargetWindowID
-		receipt.TruthGeneration = maintained.TruthGeneration
-		receipt.TruthEntities = maintained.TruthEntities
-		receipt.CompatibilityHash = maintained.CompatibilityHash
-		receipt.AuthorityDigest = maintained.AuthorityDigest
-		receipt.AuthorityEquivalent = maintained.AuthorityEquivalent
-		receipt.DownshiftPolicy = maintained.DownshiftPolicy
-		receipt.NarrativeIncluded = maintained.NarrativeIncluded
-		receipt.NarrativeBytes = maintained.NarrativeBytes
-		receipt.NarrativeInputTokens = maintained.NarrativeInputTokens
-		receipt.NarrativeOutputTokens = maintained.NarrativeOutputTokens
-		receipt.NarrativeProvider = maintained.NarrativeProvider
-		receipt.NarrativeModel = maintained.NarrativeModel
-		receipt.NarrativeMetadata = maintained.NarrativeMetadata
-		receipt.FallbackReason = maintained.FallbackReason
+	if result.Receipt != nil {
+		receipt.Status = result.Receipt.Status
+		receipt.Mode = "post_turn"
+		receipt.SourceWindowID = result.Receipt.SourceWindowID
+		receipt.TargetWindowID = result.Receipt.TargetWindowID
+		receipt.AuthorityDigest = result.Receipt.AuthorityDigest
+		receipt.AuthorityEquivalent = result.Receipt.AuthorityEquivalent
+		receipt.NarrativeIncluded = result.Receipt.NarrativeIncluded
+		receipt.NarrativeBytes = result.Receipt.NarrativeBytes
+		receipt.NarrativeInputTokens = result.Receipt.NarrativeInputTokens
+		receipt.NarrativeOutputTokens = result.Receipt.NarrativeOutputTokens
+		receipt.NarrativeProvider = result.Receipt.NarrativeProvider
+		receipt.NarrativeModel = result.Receipt.NarrativeModel
+		receipt.NarrativeMetadata = result.Receipt.NarrativeMetadata
+		receipt.FallbackReason = result.Receipt.FallbackReason
 	}
 	result.Receipt = receipt
 	return result, err
@@ -287,6 +327,7 @@ func (e *Engine) compactHistoryWithPolicy(
 	projectHistory agentcontext.HistoryProjector,
 	identities ...TurnIdentity,
 ) *CompactionReceipt {
+	e.applyWorkingSetGC(history)
 	if len(*history) <= 1 {
 		return nil
 	}
@@ -308,15 +349,13 @@ func (e *Engine) compactHistoryWithPolicy(
 			History: *history, Force: force,
 			AllowCurrentTurn: allowCurrentTurn,
 			Input:            input, OutputReserve: outputReserve,
-			RecentTailTurns:          e.options.Context.RecentTailTurns,
-			RecentTailMaxTokens:      e.recentTailMaxTokens(),
-			WindowScope:              e.options.Context.Window.Scope,
-			EmergencyLimit:           e.emergencyCompactLimit(),
-			AuthorityDigest:          authorityDigest,
-			EstimateMessages:         agentcontext.EstimateMessageTokens,
-			ProjectHistory:           projectHistory,
-			PruneBeforePressure:      true,
-			RequireSemanticCandidate: e.options.Context.SemanticNarrative == "inline",
+			RecentTailTurns:     e.options.Context.RecentTailTurns,
+			RecentTailMaxTokens: e.recentTailMaxTokens(),
+			WindowScope:         e.options.Context.Window.Scope,
+			AuthorityDigest: authorityDigest,
+			EstimateMessages:    agentcontext.EstimateMessageTokens,
+			ProjectHistory:      projectHistory,
+			PruneBeforePressure: true,
 			Measure: func(
 				snapshot agentcontext.MessageSnapshot,
 				reserve uint64,
@@ -385,15 +424,6 @@ func (e *Engine) compactHistoryWithPolicy(
 		workingSet,
 		criticalPaths,
 	)
-	durableRebase := e.options.Context.CommitRebase != nil || e.options.Context.CommitRebaseWithFacts != nil
-	if durableRebase || e.options.Context.SemanticNarrative != "off" {
-		state := e.stageNarrativeCandidate(*selected, identities...)
-		receipt.CompactionID, receipt.Status = state.ID, state.Phase
-		receipt.Mode = e.options.Context.SemanticNarrative
-		receipt.SourceWindowID, receipt.TargetWindowID = state.SourceWindowID, state.TargetWindowID
-		receipt.FallbackReason = state.FallbackReason
-		return receipt
-	}
 	*history = selected.History
 	return finish(receipt)
 }
@@ -459,6 +489,7 @@ func (e *Engine) History() []provider.Message {
 func (e *Engine) ReplaceHistory(messages []provider.Message) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.resetViewFold()
 	e.history = cloneMessages(messages)
 	agentcontext.ReconcileHistoryTurns(&e.historyTurns, e.history, "", 0)
 	e.advanceTokenWindow()
@@ -495,6 +526,7 @@ func (e *Engine) Fork() (*Engine, error) {
 		)
 	}
 	forked.history = cloneMessages(e.history)
+	forked.viewFold = e.viewFold
 	forked.mailboxHold = append([]PendingInput(nil), e.mailboxHold...)
 	forked.turn = e.turn
 	forked.context = e.context.Clone()

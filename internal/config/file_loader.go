@@ -29,6 +29,7 @@ type executionFileConfig struct {
 	ProviderRetryLimit    *int     `toml:"provider_retry_limit"`
 	RateLimitRetryLimit   *int     `toml:"rate_limit_retry_limit"`
 	RateLimitWait         *string  `toml:"rate_limit_wait"`
+	TokensPerMinute       *uint64  `toml:"tokens_per_minute"`
 	BudgetTokens          *uint64  `toml:"budget_tokens"`
 	TurnBudgetTokens      *uint64  `toml:"turn_budget_tokens"`
 	BudgetUSD             *float64 `toml:"budget_usd"`
@@ -122,6 +123,13 @@ type fileConfig struct {
 		CodingPolicy struct {
 			Enabled *bool `toml:"enabled"`
 		} `toml:"coding_policy"`
+		View struct {
+			RecentTailTurns       *int    `toml:"recent_tail_turns"`
+			KeepRecentToolResults *int    `toml:"keep_recent_tool_results"`
+			HistoryTokenCeiling   *int    `toml:"history_token_ceiling"`
+			Digest                *string `toml:"digest"`
+			NarrativeMode         *string `toml:"narrative_mode"`
+		} `toml:"view"`
 		Compact struct {
 			PrepareTokens                    *int    `toml:"prepare_tokens"`
 			AutoCompactTokens                *int    `toml:"auto_compact_tokens"`
@@ -137,9 +145,6 @@ type fileConfig struct {
 			FailureMaxEntities               *int    `toml:"failure_max_entities"`
 			HandleMaxEntities                *int    `toml:"handle_max_entities"`
 			OmissionSampleMaxEntities        *int    `toml:"omission_sample_max_entities"`
-			RecentTailTurns                  *int    `toml:"recent_tail_turns"`
-			RecentTailMaxTokens              *int    `toml:"recent_tail_max_tokens"`
-			SemanticNarrative                *string `toml:"semantic_narrative"`
 			SemanticNarrativeMaxInputTokens  *int    `toml:"semantic_narrative_max_input_tokens"`
 			SemanticNarrativeMaxOutputTokens *int    `toml:"semantic_narrative_max_output_tokens"`
 			SemanticNarrativeMaxItems        *int    `toml:"semantic_narrative_max_items"`
@@ -237,6 +242,27 @@ func applyFile(
 		input.Context.CodingPolicy.Enabled, &config.Context.CodingPolicy.Enabled,
 		fieldCodingPolicyEnabled, source, provenance,
 	)
+	view := &config.Context.View
+	applyInt(
+		input.Context.View.RecentTailTurns, &view.RecentTailTurns,
+		fieldViewRecentTailTurns, source, provenance,
+	)
+	applyInt(
+		input.Context.View.KeepRecentToolResults, &view.KeepRecentToolResults,
+		fieldViewKeepRecentToolResults, source, provenance,
+	)
+	applyInt(
+		input.Context.View.HistoryTokenCeiling, &view.HistoryTokenCeiling,
+		fieldViewHistoryTokenCeiling, source, provenance,
+	)
+	applyString(
+		input.Context.View.Digest, &view.Digest,
+		fieldViewDigest, source, provenance,
+	)
+	applyString(
+		input.Context.View.NarrativeMode, &view.NarrativeMode,
+		fieldViewNarrativeMode, source, provenance,
+	)
 	compaction := &config.Context.Compact
 	applyInt(
 		input.Context.Compact.PrepareTokens, &compaction.PrepareTokens,
@@ -275,8 +301,6 @@ func applyFile(
 		{input.Context.Compact.FailureMaxEntities, &compaction.FailureMaxEntities, fieldCompactFailureMaxEntities},
 		{input.Context.Compact.HandleMaxEntities, &compaction.HandleMaxEntities, fieldCompactHandleMaxEntities},
 		{input.Context.Compact.OmissionSampleMaxEntities, &compaction.OmissionSampleMaxEntities, fieldCompactOmissionSampleMaxEntities},
-		{input.Context.Compact.RecentTailTurns, &compaction.RecentTailTurns, fieldCompactRecentTailTurns},
-		{input.Context.Compact.RecentTailMaxTokens, &compaction.RecentTailMaxTokens, fieldCompactRecentTailMaxTokens},
 		{input.Context.Compact.SemanticNarrativeMaxInputTokens, &compaction.SemanticNarrativeMaxInputTokens, fieldCompactSemanticNarrativeMaxInputTokens},
 		{input.Context.Compact.SemanticNarrativeMaxOutputTokens, &compaction.SemanticNarrativeMaxOutputTokens, fieldCompactSemanticNarrativeMaxOutputTokens},
 		{input.Context.Compact.SemanticNarrativeMaxItems, &compaction.SemanticNarrativeMaxItems, fieldCompactSemanticNarrativeMaxItems},
@@ -287,10 +311,6 @@ func applyFile(
 	} {
 		applyInt(value.source, value.target, value.field, source, provenance)
 	}
-	applyString(
-		input.Context.Compact.SemanticNarrative, &compaction.SemanticNarrative,
-		fieldCompactSemanticNarrative, source, provenance,
-	)
 	applyDurationString(
 		input.Context.Compact.SemanticNarrativeTimeout,
 		&compaction.SemanticNarrativeTimeout,
@@ -370,6 +390,7 @@ func applyExecutionFile(
 	applyInt(input.ProviderRetryLimit, &execution.ProviderRetryLimit, fieldProviderRetryLimit, source, provenance)
 	applyInt(input.RateLimitRetryLimit, &execution.RateLimitRetryLimit, fieldRateLimitRetryLimit, source, provenance)
 	applyDurationString(input.RateLimitWait, &execution.RateLimitWait, fieldRateLimitWait, source, provenance)
+	applyUint64(input.TokensPerMinute, &execution.TokensPerMinute, fieldTokensPerMinute, source, provenance)
 	applyUint64(input.BudgetTokens, &execution.BudgetTokens, fieldBudgetTokens, source, provenance)
 	applyUint64(input.TurnBudgetTokens, &execution.TurnBudgetTokens, fieldTurnBudgetTokens, source, provenance)
 	applyFloat64(input.BudgetUSD, &execution.BudgetUSD, fieldBudgetUSD, source, provenance)

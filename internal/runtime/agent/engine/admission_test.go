@@ -98,7 +98,7 @@ func TestStatelessVisionModelKeepsHistoricalImageUntilExplicitCompaction(t *test
 	route = route.WithCapabilities(caps)
 	engine.options.Route = route
 	engine.options.Routes, _ = model.NewRouteSet(route, nil, false)
-	engine.options.Context.RecentTailTurns = 1
+	engine.options.Context.RecentTailTurns = 3
 	image := provider.Attachment{
 		Name: "screen.png", MediaType: "image/png", Data: []byte("png"),
 	}

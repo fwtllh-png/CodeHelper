@@ -28,6 +28,7 @@ const (
 	ProblemReasonStaleProfileRevision = "stale_profile_revision"
 	ProblemReasonUnsupported          = "unsupported"
 	ProblemReasonWrongSession         = "wrong_session"
+	ProblemReasonProviderThroughput   = "provider_throughput"
 )
 
 func NewProblem(code ErrorCode, message string, retryable bool, cause error) *Problem {

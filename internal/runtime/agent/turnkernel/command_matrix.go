@@ -7,7 +7,6 @@ const (
 	CommandFamilySampling     CommandFamily = "sampling"
 	CommandFamilyTool         CommandFamily = "tool"
 	CommandFamilyInteraction  CommandFamily = "interaction"
-	CommandFamilyContext      CommandFamily = "context"
 	CommandFamilyVerification CommandFamily = "verification"
 	CommandFamilyTerminal     CommandFamily = "terminal"
 	CommandFamilyEffect       CommandFamily = "effect"
@@ -49,8 +48,6 @@ var commandContracts = []CommandContract{
 	{Name: "input_required", Family: CommandFamilyInteraction, AllowedPhases: []Phase{PhaseExecutingTools}},
 	{Name: "input_resolved", Family: CommandFamilyInteraction, AllowedPhases: []Phase{PhaseAwaitingInput}},
 	{Name: "input_result_received", Family: CommandFamilyInteraction, AllowedPhases: []Phase{PhaseAwaitingInput}},
-	{Name: "context_compaction_requested", Family: CommandFamilyContext, AllowedPhases: []Phase{PhaseSampling}},
-	{Name: "context_rebase_requested", Family: CommandFamilyContext, AllowedPhases: []Phase{PhaseSampling}},
 	{Name: "verification_started", Family: CommandFamilyVerification, AllowedPhases: []Phase{PhaseSampling}},
 	{Name: "verification_finished", Family: CommandFamilyVerification, AllowedPhases: []Phase{PhaseVerifying}},
 	{Name: "completion_evaluated", Family: CommandFamilyVerification},

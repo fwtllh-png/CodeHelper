@@ -119,30 +119,6 @@ func (Reducer) Apply(current State, command Command) (Transition, error) {
 			return Transition{}, err
 		}
 
-	case ContextCompactionRequested:
-		if err := applyContextEffectRequested(
-			&transition,
-			current,
-			command,
-			value.CompactionID,
-			value.PlanDigest,
-			EffectGenerateNarrative,
-		); err != nil {
-			return Transition{}, err
-		}
-
-	case ContextRebaseRequested:
-		if err := applyContextEffectRequested(
-			&transition,
-			current,
-			command,
-			value.CompactionID,
-			value.PlanDigest,
-			EffectCommitContextRebase,
-		); err != nil {
-			return Transition{}, err
-		}
-
 	case ProviderRetryRequested:
 		if err := applyProviderRetry(&transition, current, value); err != nil {
 			return Transition{}, err

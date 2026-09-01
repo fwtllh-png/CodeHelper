@@ -2317,11 +2317,11 @@ func TestEngineCompactionMergesTruthCapsulesAcrossGenerations(t *testing.T) {
 		messageWithText(provider.RoleAssistant, strings.Repeat("later ", 400), 2),
 		messageWithText(provider.RoleUser, "third request", 3),
 	)
-	if receipt := engine.compact(); receipt == nil {
+	if receipt := engine.CompactForced(); receipt == nil {
 		t.Fatal("expected a second compaction")
 	}
 	second := engine.history[0].Text()
-	if !strings.Contains(second, "Goal: also accept trailing commas in calls") {
+	if !strings.Contains(second, "also accept trailing commas in calls") {
 		t.Fatalf("second summary lost the current goal:\n%s", second)
 	}
 	secondCapsule, found, err := agentcontext.ParseTruthCapsule(second)
@@ -2477,36 +2477,30 @@ func TestMidTurnCompactionCutsClosedToolPairsWithinActiveTurn(t *testing.T) {
 		toolCallMessage(1, "call_3", "read", `{}`),
 		toolResultMessage(1, "call_3", "latest"),
 	}
-	original := agentcontext.HistoryBytes(history)
+	before := cloneMessages(history)
 	var receipt *CompactionReceipt
 	snapshot := agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot()
-	_, err := engine.runCompactGate(t.Context(), &history, snapshot, 128, CompactionPhaseMidTurn, true, func(_ State, event Event) error {
-		receipt = event.Compaction
-		return nil
-	}, 0, nil)
-	if err != nil {
+	window, err := engine.runCompactGate(
+		t.Context(), &history, snapshot, 128, CompactionPhaseMidTurn, true,
+		func(_ State, event Event) error {
+			receipt = event.Compaction
+			return nil
+		}, 0, engine.contextViewProject(nil),
+	)
+	if err != nil && protocol.CodeOf(err) != protocol.CodeResourceExhausted {
 		t.Fatal(err)
 	}
-	if receipt == nil || receipt.RetainedBytes >= receipt.OriginalBytes ||
-		receipt.RetainedTokens > engine.options.Context.Window.AutoTokens ||
-		receipt.OriginalBytes != original {
-		t.Fatalf("mid-turn receipt = %+v", receipt)
-	}
-	capsule, found, parseErr := agentcontext.ParseTruthCapsule(history[0].Text())
-	if parseErr != nil || !found ||
-		!truthEntityContains(capsule, agentcontext.EntityGoal, "fix the parser") {
-		t.Fatalf(
-			"summary lost active goal: capsule=%+v found=%t err=%v",
-			capsule,
-			found,
-			parseErr,
-		)
+	if !reflect.DeepEqual(history, before) {
+		t.Fatalf("sample-path gate replaced history: %+v", history)
 	}
 	assertToolPairs(t, history)
-	if len(history) != 3 ||
-		messageToolCalls(history[1])[0].ID != "call_3" ||
-		messageToolResultID(history[2]) != "call_3" {
-		t.Fatalf("mid-turn history = %+v", history)
+	if receipt != nil &&
+		(receipt.TruncationReason != "visible_tail_fold" ||
+			receipt.RetainedBytes >= receipt.OriginalBytes) {
+		t.Fatalf("mid-turn fold receipt = %+v", receipt)
+	}
+	if err == nil && window.hardLimit != 0 && window.total > window.hardLimit {
+		t.Fatalf("admitted an overflowing window: %+v", window)
 	}
 }
 
@@ -2519,12 +2513,13 @@ func TestMidTurnCompactionFailsClosedWhenNoSafeCandidateFits(t *testing.T) {
 	}
 	before := cloneMessages(history)
 	snapshot := agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot()
-	window, err := engine.runCompactGate(t.Context(), &history, snapshot, 128, CompactionPhaseMidTurn, true, func(State, Event) error {
-		t.Fatal("failed compaction emitted an event")
-		return nil
-	}, 0, nil)
-	if err != nil || window.total <= window.hardLimit {
-		t.Fatalf("window=%+v error=%v", window, err)
+	window, err := engine.runCompactGate(
+		t.Context(), &history, snapshot, 128, CompactionPhaseMidTurn, true,
+		func(State, Event) error { return nil }, 0, engine.contextViewProject(nil),
+	)
+	if protocol.CodeOf(err) != protocol.CodeResourceExhausted ||
+		window.hardLimit == 0 || window.total <= window.hardLimit {
+		t.Fatalf("window=%+v error=%v, want resource_exhausted", window, err)
 	}
 	if !reflect.DeepEqual(history, before) {
 		t.Fatalf("failed compaction changed history: %+v", history)
@@ -2767,7 +2762,7 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 		}},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.Context.Window.AutoTokens = 300
+	engine.options.Context.Window.AutoTokens = 500
 	engine.options.SummaryMaxBytes = 2 << 10
 	engine.options.StaticContextReceipts = []promptcontext.Receipt{{
 		Kind: promptcontext.PartitionBase, SourcePath: "builtin://base-system",
@@ -2775,31 +2770,29 @@ func TestEngineEmitsStructuredCompactionReceipt(t *testing.T) {
 		Digest: "sha256:base",
 	}}
 	engine.history = []provider.Message{
-		messageWithText(provider.RoleUser, strings.Repeat("old ", 100), 1),
-		messageWithText(provider.RoleAssistant, strings.Repeat("answer ", 100), 1),
+		messageWithText(provider.RoleUser, strings.Repeat("old ", 200), 1),
+		messageWithText(provider.RoleAssistant, strings.Repeat("answer ", 200), 1),
 	}
 	engine.turn = 1
-	var compaction *CompactionReceipt
+	var fold *CompactionReceipt
 	var states []State
 	if _, err := engine.Run(t.Context(), "new request", func(event Event) error {
 		states = append(states, event.State)
-		if event.State == Compacting {
-			compaction = event.Compaction
+		if event.State == Compacting &&
+			event.Compaction != nil &&
+			event.Compaction.Phase == CompactionPhasePreSampling &&
+			fold == nil {
+			fold = event.Compaction
 		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if compaction == nil ||
-		compaction.Phase != CompactionPhasePreSampling ||
-		compaction.RemovedMessages != 2 ||
-		len(compaction.ContextReceipts) < 3 ||
-		compaction.TruthGeneration != 1 ||
-		compaction.TruthEntities == 0 ||
-		compaction.CompatibilityHash == "" ||
-		compaction.DownshiftPolicy != agentcontext.DownshiftRuntimeTruthOnly ||
-		compaction.RetainedTokens > engine.options.Context.Window.AutoTokens {
-		t.Fatalf("compaction event = %+v", compaction)
+	if fold == nil ||
+		fold.TruncationReason != "visible_tail_fold" ||
+		fold.RemovedMessages < 1 ||
+		fold.RetainedBytes >= fold.OriginalBytes {
+		t.Fatalf("pre-sampling fold = %+v", fold)
 	}
 	assertStateOrder(t, states, Preparing, Compacting, CallingModel)
 }
@@ -2825,28 +2818,27 @@ func TestEnginePreSamplingGateBeforeModelCall(t *testing.T) {
 		}},
 	}}
 	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
-	engine.options.Context.Window.AutoTokens = 200
+	engine.options.Context.Window.AutoTokens = 500
 	engine.options.SummaryMaxBytes = 2 << 10
 	engine.history = []provider.Message{
-		messageWithText(provider.RoleUser, strings.Repeat("old ", 80), 1),
-		messageWithText(provider.RoleAssistant, strings.Repeat("ans ", 80), 1),
+		messageWithText(provider.RoleUser, strings.Repeat("old ", 200), 1),
+		messageWithText(provider.RoleAssistant, strings.Repeat("ans ", 200), 1),
 	}
 	engine.turn = 1
-	var sawCompact bool
+	var sawPreSampling bool
 	var states []State
 	if _, err := engine.Run(t.Context(), "fresh", func(event Event) error {
 		states = append(states, event.State)
-		if event.State == Compacting {
-			sawCompact = true
-			if event.Compaction == nil || event.Compaction.Phase != CompactionPhasePreSampling {
-				t.Fatalf("pre-sampling receipt = %+v", event.Compaction)
-			}
+		if event.State == Compacting &&
+			event.Compaction != nil &&
+			event.Compaction.Phase == CompactionPhasePreSampling {
+			sawPreSampling = true
 		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !sawCompact {
+	if !sawPreSampling {
 		t.Fatal("expected pre-sampling compact gate")
 	}
 	assertStateOrder(t, states, Preparing, Compacting, CallingModel)
@@ -3306,6 +3298,39 @@ func toolResultMessage(turn uint64, id string, content string) provider.Message 
 
 func testRoute(t testing.TB) model.ReadyRoute {
 	return testRouteProtocol(t, "http://127.0.0.1:1", model.ProtocolOpenAIChat)
+}
+
+func mustTestRouteWithContext(t testing.TB, contextTokens uint64) model.ReadyRoute {
+	t.Helper()
+	catalog, err := model.NewCatalog(model.Provider{
+		ID: "test", Adapter: model.AdapterOpenAICompatible,
+		Endpoint: "http://127.0.0.1:1", Protocol: model.ProtocolOpenAIChat,
+		Provenance: model.ProvenanceFixture,
+		Models: map[string]model.Model{"model": {
+			ID: "model", CanonicalID: "model", WireID: "model",
+			Limits: model.Limits{
+				ContextTokens: contextTokens, MaxOutputTokens: 1024,
+			},
+			Capabilities: model.Capabilities{Streaming: true, ToolCalls: true},
+			Pricing: model.Pricing{
+				InputPerMillion: 1, OutputPerMillion: 1,
+				Currency: "USD", Known: true, Provenance: model.ProvenanceFixture,
+			},
+			Provenance: model.ProvenanceFixture,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver, err := model.NewResolver(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(model.RouteRequest{ProviderID: "test", ModelID: "model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return route
 }
 
 func testRouteProtocol(t testing.TB, endpoint string, protocol model.WireProtocol) model.ReadyRoute {

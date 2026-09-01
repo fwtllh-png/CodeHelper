@@ -29,11 +29,12 @@ func TestDefaultsUseExtendedTurnBudget(t *testing.T) {
 		t.Fatalf("default truth max bytes = %d, want automatic",
 			defaults.Context.Compact.TruthMaxBytes)
 	}
-	if defaults.Context.Compact.SemanticNarrative != "inline" {
-		t.Fatalf(
-			"default semantic narrative = %q, want inline",
-			defaults.Context.Compact.SemanticNarrative,
-		)
+	if defaults.Context.View.NarrativeMode != "post_turn" ||
+		defaults.Context.View.Digest != "ledger" ||
+		defaults.Context.View.RecentTailTurns != 2 ||
+		defaults.Context.View.KeepRecentToolResults != 0 ||
+		defaults.Context.View.HistoryTokenCeiling != 0 {
+		t.Fatalf("default view = %+v", defaults.Context.View)
 	}
 }
 
@@ -587,6 +588,39 @@ provider_retry_limit = 5
 	}
 }
 
+func TestTokensPerMinuteHasProvenanceAndUnknownDefault(t *testing.T) {
+	if Defaults().Execution.TokensPerMinute != 0 {
+		t.Fatalf("default tokens_per_minute = %d", Defaults().Execution.TokensPerMinute)
+	}
+	path := writeConfig(t, `
+[execution]
+tokens_per_minute = 500000
+`)
+	fromFile, err := Load(LoadOptions{
+		Path: path, LookupEnv: envLookup(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromFile.Config.Execution.TokensPerMinute != 500000 ||
+		fromFile.Provenance[fieldTokensPerMinute] != SourceFile {
+		t.Fatalf("file tokens_per_minute = %+v", fromFile)
+	}
+	fromEnv, err := Load(LoadOptions{
+		Path: path,
+		LookupEnv: envLookup(map[string]string{
+			"CODEHELPER_TOKENS_PER_MINUTE": "250000",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromEnv.Config.Execution.TokensPerMinute != 250000 ||
+		fromEnv.Provenance[fieldTokensPerMinute] != SourceEnv {
+		t.Fatalf("environment tokens_per_minute = %+v", fromEnv)
+	}
+}
+
 func TestRateLimitRecoveryBudgetHasProvenanceAndValidation(t *testing.T) {
 	if Defaults().Execution.RateLimitRetryLimit != 0 ||
 		Defaults().Execution.RateLimitWait != 0 ||
@@ -1022,6 +1056,73 @@ scope = "body_after_prefix"
 	if snapshot.Provenance[fieldCompactAutoTokens] != SourceEnv ||
 		snapshot.Provenance[fieldCompactScope] != SourceStartup {
 		t.Fatalf("provenance = %+v", snapshot.Provenance)
+	}
+}
+
+func TestViewRejectsInlineNarrativeMode(t *testing.T) {
+	_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
+		"CODEHELPER_VIEW_NARRATIVE_MODE": "inline",
+	})})
+	var fieldErr *FieldError
+	if !errors.As(err, &fieldErr) ||
+		fieldErr.Field != fieldViewNarrativeMode {
+		t.Fatalf(
+			"Load(inline) error = %v, want %s field error",
+			err,
+			fieldViewNarrativeMode,
+		)
+	}
+}
+
+func TestViewRejectsDigestOff(t *testing.T) {
+	_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
+		"CODEHELPER_VIEW_DIGEST": "off",
+	})})
+	var fieldErr *FieldError
+	if !errors.As(err, &fieldErr) || fieldErr.Field != fieldViewDigest {
+		t.Fatalf("Load(digest=off) error = %v, want %s", err, fieldViewDigest)
+	}
+}
+
+func TestViewRejectsLegacyCompactTailField(t *testing.T) {
+	path := writeConfig(t, `
+[context.compact]
+recent_tail_turns = 4
+`)
+	_, err := Load(LoadOptions{Path: path})
+	if err == nil {
+		t.Fatal("legacy compact.recent_tail_turns was accepted")
+	}
+}
+
+func TestViewFileAndEnvOverride(t *testing.T) {
+	path := writeConfig(t, `
+[context.view]
+recent_tail_turns = 3
+keep_recent_tool_results = 0
+history_token_ceiling = 4096
+digest = "ledger"
+narrative_mode = "off"
+`)
+	snapshot, err := Load(LoadOptions{
+		Path: path,
+		LookupEnv: envLookup(map[string]string{
+			"CODEHELPER_VIEW_NARRATIVE_MODE": "post_turn",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := snapshot.Config.Context.View
+	if view.RecentTailTurns != 3 ||
+		view.HistoryTokenCeiling != 4096 ||
+		view.Digest != "ledger" ||
+		view.NarrativeMode != "post_turn" {
+		t.Fatalf("view = %+v", view)
+	}
+	if snapshot.Provenance[fieldViewRecentTailTurns] != SourceFile ||
+		snapshot.Provenance[fieldViewNarrativeMode] != SourceEnv {
+		t.Fatalf("view provenance = %+v", snapshot.Provenance)
 	}
 }
 

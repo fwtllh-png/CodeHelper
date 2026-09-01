@@ -158,7 +158,7 @@ func (a Authority) Snapshot(request SnapshotRequest) (ContextSnapshot, error) {
 		WorkingSet:   working,
 		Evidence:     evidence,
 		Failures:     a.Failures().Delta(),
-		Compaction:   a.Compaction(),
+		Compaction:   durableCompaction(a.Compaction()),
 		Plan:         &plan,
 		World:        a.World(),
 		Workspace:    workspace,
@@ -187,6 +187,11 @@ func evidencePaths(delta EvidenceDelta) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func durableCompaction(value Compaction) Compaction {
+	value.DropInvalidState()
+	return value
 }
 
 func CaptureWorkspaceBindingForEvidence(
