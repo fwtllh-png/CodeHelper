@@ -41,6 +41,20 @@ Web Settings 会显示 Provider、Model、Credential 状态与校验结果。确
 
 不要把原始 Secret 放进日志、Issue、Fixture 或受 Git 跟踪文件。
 
+## 工具调用后反复出现“消息被截断”
+
+不要根据模型 reasoning 中的 “Your message was cut off” 判断 Runtime 已截断输出。先核对
+目标 Sample 的结构化 `stop_reason`：
+
+- `tool_use` 是正常工具边界；
+- `max_tokens`、`incomplete` 或 `content_filter` 才属于不完整输出分类；
+- Runtime 只有在真实不完整时才会产生结构化 `[continue_after_incomplete]` Feedback；
+- HTTP 429 `rate_limit` 是 Provider 请求失败与等待重试，不是输出截断。
+
+若请求达到数十万 Token 且 Provider Projection 为 `complete_http_sse`，每次工具调用后的
+新 Sample 和每次 429 Attempt 都可能重新发送完整 Context。详细证据、只读排查字段和优化方案见
+[Provider TPM 限流与错误“消息截断”问题分析](./provider-tpm-rate-limit-and-false-truncation-analysis.md)。
+
 ## Tool 被拒绝
 
 检查 Approval 中展示的 Tool、Resource、Workspace、Mode、Posture 与拒绝原因。

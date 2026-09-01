@@ -266,6 +266,9 @@ func childEngineOptions(
 	if spec.MaxCostUSD > 0 {
 		options.Budget.MaxCostUSD = spec.MaxCostUSD
 	}
+	if spec.SessionID != "" {
+		options.SessionID = spec.SessionID
+	}
 	if spec.Workspace != "" {
 		options.Workspace = spec.Workspace
 		options.WorkspaceIsolation = app.SessionIsolationWorktree
@@ -331,7 +334,7 @@ func childRoleAllowsTool(spec app.ChildSpec, descriptor tool.Descriptor) bool {
 			if descriptor.Capability == tool.CapabilityRead {
 				return true
 			}
-		case "verify":
+		case "verify", "process.read_only":
 			if descriptor.Capability == tool.CapabilityProcess {
 				return true
 			}

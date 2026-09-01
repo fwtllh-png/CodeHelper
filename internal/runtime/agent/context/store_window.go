@@ -47,6 +47,12 @@ type WindowPolicy struct {
 	Scope                                      string
 }
 
+const (
+	DefaultPreparePercent   uint64 = 75
+	DefaultCompactPercent   uint64 = 80
+	DefaultEmergencyPercent uint64 = 90
+)
+
 type BudgetSnapshot struct {
 	WindowID             string `json:"window_id,omitempty"`
 	WindowNumber         uint64 `json:"window_number,omitempty"`
@@ -70,19 +76,23 @@ type BudgetSnapshot struct {
 }
 
 func WindowThresholds(policy WindowPolicy, hardInputCapacity uint64) (uint64, uint64, uint64) {
-	compact := hardInputCapacity
+	compact := percentOf(hardInputCapacity, DefaultCompactPercent)
 	if policy.AutoTokens != 0 {
 		compact = min(policy.AutoTokens, hardInputCapacity)
 	}
-	prepare := compact
+	prepare := min(percentOf(hardInputCapacity, DefaultPreparePercent), compact)
 	if policy.PrepareTokens != 0 {
 		prepare = min(policy.PrepareTokens, compact)
 	}
-	emergency := hardInputCapacity
+	emergency := max(percentOf(hardInputCapacity, DefaultEmergencyPercent), compact)
 	if policy.EmergencyTokens != 0 {
 		emergency = min(policy.EmergencyTokens, hardInputCapacity)
 	}
 	return prepare, compact, emergency
+}
+
+func percentOf(value, percent uint64) uint64 {
+	return value/100*percent + value%100*percent/100
 }
 
 func NewWindowLedger(id string, number uint64) (WindowLedger, error) {

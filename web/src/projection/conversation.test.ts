@@ -368,6 +368,30 @@ describe("ConversationProjection", () => {
     });
   });
 
+  it("keeps expected plan-gate retries out of chat", () => {
+    const snapshot = projectConversation([
+      event(1, "tool.start", {
+        call_id: "spawn-before-plan",
+        tool: "spawn_agent",
+        arguments: {task_name: "audit"}
+      }),
+      event(2, "tool.result", {
+        call_id: "spawn-before-plan",
+        tool: "spawn_agent",
+        output: "localized policy message",
+        is_error: true,
+        recovery: {
+          error_category: "plan_required",
+          required_action: "submit_plan",
+          retry_original: false
+        }
+      })
+    ]);
+
+    expect(snapshot.nodes.has("tool-spawn-before-plan")).toBe(false);
+    expect(snapshot.order).not.toContain("tool-spawn-before-plan");
+  });
+
   it("tracks pending interaction and active turn state from facts", () => {
     const projection = new ConversationProjection();
     projection.apply(event(1, "turn.started", {display_prompt: "Change it"}));
@@ -502,6 +526,7 @@ describe("ConversationProjection", () => {
     expect(snapshot.nodes.get("tool-write-1")).toMatchObject({
       kind: "tool",
       variant: "diff",
+      summary: "main.go · +1 -1",
       approvalDecision: "approve",
       editPlan: {
         id: "plan-1",
@@ -546,7 +571,7 @@ describe("ConversationProjection", () => {
       variant: "shell",
       state: "failed",
       summary: "compile_exit=0",
-      errorSummary: "exit 1",
+      errorSummary: "c++ source.cpp -o build/test && ./build/test",
       output: "compile_exit=0\ntest_exit=1",
       changes: [{path: "build/test"}],
       command: {exitCode: 1}
@@ -584,6 +609,40 @@ describe("ConversationProjection", () => {
           path: "main.go",
           before: "old\n",
           after: "new\n"
+        }]
+      }
+    });
+  });
+
+  it("projects file_write content into the diff card", () => {
+    const snapshot = projectConversation([
+      event(1, "tool.start", {
+        call_id: "write-1",
+        tool: "file_write",
+        arguments: {
+          path: "generated.txt",
+          content: "first line\nsecond line\n"
+        }
+      }),
+      event(2, "tool.result", {
+        call_id: "write-1",
+        tool: "file_write",
+        output: "written",
+        changes: [{path: "generated.txt", kind: "created", added: 2, removed: 0}],
+        is_error: false
+      })
+    ]);
+
+    expect(snapshot.nodes.get("tool-write-1")).toMatchObject({
+      kind: "tool",
+      variant: "diff",
+      summary: "generated.txt · +2 -0",
+      editPlan: {
+        files: [{
+          path: "generated.txt",
+          after: "first line\nsecond line\n",
+          beforeExists: false,
+          afterExists: true
         }]
       }
     });

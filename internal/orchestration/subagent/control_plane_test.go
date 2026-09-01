@@ -2,6 +2,7 @@ package subagent_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -97,6 +98,16 @@ func TestRoleCatalogAndAgentControlFreezeSpawnContract(t *testing.T) {
 		agent.DelegationTrigger != subagent.TriggerDeveloper ||
 		!strings.Contains(agent.RoleInstructions, "do not modify") {
 		t.Fatalf("spawned agent = %+v", agent)
+	}
+}
+
+func TestReviewRoleAllowsReadOnlyProcesses(t *testing.T) {
+	role, err := subagent.DefaultRoleCatalog().Resolve(subagent.RoleReview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(role.AllowedTools, "process.read_only") {
+		t.Fatalf("review allowed tools = %v, want process.read_only", role.AllowedTools)
 	}
 }
 

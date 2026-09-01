@@ -1641,7 +1641,8 @@ describe("projectTranscript", () => {
     ];
     value.conversation = projectConversation(value.events);
     const completedView = render(<App client={mockClient(value)} />);
-    fireEvent.click(screen.getByRole("button", {name: /^Edit/}));
+    const edit = screen.getByRole("button", {name: "Edit config.ts · +1 -1"});
+    fireEvent.click(edit);
 
     expect(completedView.container.querySelector(".diffFooter")?.textContent)
       .toBe("+1 -1 · 1 file");
@@ -2000,6 +2001,59 @@ describe("projectTranscript", () => {
     expect(container.querySelector("[data-search='search-matches']")).toBeTruthy();
     expect(screen.getByText("2 matches · 1 files")).toBeTruthy();
     expect(screen.getByText("18:")).toBeTruthy();
+  });
+
+  it("shows the executed command instead of the exit code in a failed Bash summary", () => {
+    const value = snapshot([
+      event(1, "tool.start", {
+        call_id: "bash-failed",
+        tool: "exec_command",
+        arguments: {command: "go test ./...", cwd: "."}
+      }),
+      event(2, "tool.result", {
+        call_id: "bash-failed",
+        tool: "exec_command",
+        output: "package tests failed",
+        is_error: true
+      }),
+      event(3, "command.execution", {
+        call_id: "bash-failed",
+        command: "go test ./...",
+        status: "failed",
+        exit_code: 1
+      })
+    ]);
+    render(<App client={mockClient(value)} />);
+
+    expect(screen.getByRole("button", {name: "Bash go test ./..."})).toBeTruthy();
+    expect(screen.queryByRole("button", {name: "Bash exit 1"})).toBeNull();
+  });
+
+  it("shows file_write content in the expanded Write card", () => {
+    const value = snapshot([
+      event(1, "tool.start", {
+        call_id: "write-content",
+        tool: "file_write",
+        arguments: {
+          path: "generated.txt",
+          content: "first line\nsecond line\n"
+        }
+      }),
+      event(2, "tool.result", {
+        call_id: "write-content",
+        tool: "file_write",
+        output: "written",
+        changes: [{path: "generated.txt", kind: "created", added: 2, removed: 0}],
+        is_error: false
+      })
+    ]);
+    render(<App client={mockClient(value)} />);
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "Write generated.txt · +2 -0"
+    }));
+    expect(screen.getByText("first line")).toBeTruthy();
+    expect(screen.getByText("second line")).toBeTruthy();
   });
 
   it("shows structured recovery details beside a failed edit preview", () => {

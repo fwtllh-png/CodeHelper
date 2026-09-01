@@ -50,8 +50,9 @@ type Context struct {
 
 // Compact configures what happens when a thread outgrows its context window.
 //
-// AutoCompactTokens is the active-window threshold. Zero derives 65% of the
-// model window. Scope is total or body_after_prefix.
+// Zero thresholds derive 75% prepare, 80% compact, and 90% emergency limits
+// from the active route's hard input capacity. Scope is total or
+// body_after_prefix.
 type Compact struct {
 	PrepareTokens                    int           `json:"prepare_tokens" toml:"prepare_tokens"`
 	AutoCompactTokens                int           `json:"auto_compact_tokens" toml:"auto_compact_tokens"`

@@ -460,6 +460,10 @@ export class ConversationProjection {
     if (!node) return;
     const output = stringValue(event.data.output) || node.output;
     const failed = Boolean(event.data.is_error);
+    if (failed && isPlanGateRetry(event.data.recovery)) {
+      this.remove(node.id);
+      return;
+    }
     const changes = Array.isArray(event.data.changes)
       ? event.data.changes.filter(isRecord)
       : [];
@@ -515,7 +519,7 @@ export class ConversationProjection {
     this.put({
       ...node,
       errorSummary: failed
-        ? exitCode === undefined ? "Command failed" : `exit ${exitCode}`
+        ? stringValue(event.data.command)
         : node.errorSummary,
       command: {
         command: stringValue(event.data.command),
@@ -676,6 +680,13 @@ export class ConversationProjection {
     this.touch();
   }
 
+  private remove(id: string): void {
+    if (!this.nodes.delete(id)) return;
+    const index = this.order.indexOf(id);
+    if (index >= 0) this.order.splice(index, 1);
+    this.touch();
+  }
+
   private touch(): void {
     this.dirty = true;
   }
@@ -756,6 +767,13 @@ function deliverablePathKey(threadID: string, path: string): string {
 
 function stringValue(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
+}
+
+function isPlanGateRetry(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return value.error_category === "plan_required" &&
+    value.required_action === "submit_plan" &&
+    value.retry_original === false;
 }
 
 function userImages(value: unknown): readonly ProjectedUserImage[] {
@@ -888,12 +906,13 @@ function editPlanFromArguments(
       }))
     });
   }
-  if (tool !== "file_edit" && tool !== "edit_file") {
+  const write = tool.includes("write");
+  if (!write && tool !== "file_edit" && tool !== "edit_file") {
     return undefined;
   }
   const path = stringValue(input?.path);
   const before = stringValue(input?.old);
-  const after = stringValue(input?.new);
+  const after = stringValue(write ? input?.content : input?.new);
   if (!path || !after || before === after) return undefined;
   return Object.freeze({
     id: "",
@@ -903,7 +922,7 @@ function editPlanFromArguments(
       kind: "modified",
       before,
       after,
-      beforeExists: true,
+      beforeExists: !write,
       afterExists: true
     }])
   });
@@ -1019,5 +1038,5 @@ function changeSummary(changes: readonly Record<string, unknown>[]): string {
     added += Number(change.added ?? change.added_lines ?? 0);
     removed += Number(change.removed ?? change.removed_lines ?? 0);
   }
-  return `+${added} -${removed} · ${changes.length} file${changes.length === 1 ? "" : "s"}`;
+  return `${stringValue(changes[0]?.path)} · +${added} -${removed}`;
 }

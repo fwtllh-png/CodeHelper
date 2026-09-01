@@ -334,7 +334,11 @@ func (r *Runtime) evaluate(invocation Invocation) Decision {
 	if decision := planningDecision(r, invocation, effect); decision != nil {
 		return *decision
 	}
-	permissionAction, err := permissionDecision(r.Permission, invocation.Capability, effect.Risk)
+	permissionAction, err := permissionDecision(
+		r.Permission,
+		invocation.Capability,
+		effect,
+	)
 	if err != nil {
 		return decisionFromError(err)
 	}
@@ -377,10 +381,12 @@ func decisionFromError(err error) Decision {
 func modeDecision(mode Mode, capability tool.Capability, effect EffectKind) error {
 	switch mode {
 	case ModePlan:
-		if capability != tool.CapabilityRead && effect != EffectSessionMutation {
+		if capability != tool.CapabilityRead &&
+			effect != EffectProcessReadOnly &&
+			effect != EffectSessionMutation {
 			return decisionError(
 				"mode_denied",
-				"plan mode only allows reads and bounded session state updates",
+				"plan mode only allows reads, read-only processes, and bounded session state updates",
 			)
 		}
 	case ModeAct, ModeOperate:
@@ -390,21 +396,27 @@ func modeDecision(mode Mode, capability tool.Capability, effect EffectKind) erro
 	return nil
 }
 
-func permissionDecision(permission Permission, capability tool.Capability, risk RiskLevel) (Action, error) {
+func permissionDecision(
+	permission Permission,
+	capability tool.Capability,
+	effect Effect,
+) (Action, error) {
 	if permission != PermissionSuggest && permission != PermissionAuto &&
 		permission != PermissionBypass && permission != PermissionNever {
 		return ActionDeny, decisionError("permission_unknown", "unknown permission is denied")
 	}
 	if permission == PermissionNever {
-		if capability == tool.CapabilityRead {
+		if capability == tool.CapabilityRead ||
+			effect.Kind == EffectProcessReadOnly {
 			return ActionAllow, nil
 		}
 		return ActionDeny, decisionError("permission_denied", "never posture denies side effects")
 	}
-	if risk == RiskCritical {
+	if effect.Risk == RiskCritical {
 		return ActionDeny, decisionError("permission_denied", "critical-risk execution is denied")
 	}
-	if permission == PermissionBypass || capability == tool.CapabilityRead || risk == RiskLow {
+	if permission == PermissionBypass || capability == tool.CapabilityRead ||
+		effect.Risk == RiskLow {
 		return ActionAllow, nil
 	}
 	return ActionAsk, nil
@@ -484,7 +496,9 @@ func Validate(runtime *Runtime) error {
 	); err != nil {
 		return fmt.Errorf("mode: %w", err)
 	}
-	if _, err := permissionDecision(runtime.Permission, tool.CapabilityRead, RiskLow); err != nil {
+	if _, err := permissionDecision(runtime.Permission, tool.CapabilityRead, Effect{
+		Kind: EffectWorkspaceRead, Risk: RiskLow, Reversibility: "reversible",
+	}); err != nil {
 		return fmt.Errorf("permission: %w", err)
 	}
 	if err := validatePlanning(runtime.PlanningPolicy); err != nil {

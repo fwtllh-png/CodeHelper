@@ -224,6 +224,71 @@ func TestChildAuthorityIsParentAndRoleIntersection(t *testing.T) {
 	}
 }
 
+func TestReviewChildAllowsOnlyReadOnlyProcessEffects(t *testing.T) {
+	parent := tool.NewRegistry(nil, nil)
+	child := tool.NewRegistry(nil, nil)
+	register := func(registry *tool.Registry) {
+		t.Helper()
+		err := registry.Register(authorityTestTool{descriptor: tool.Descriptor{
+			Name: "exec_command", Description: "exec_command",
+			InputSchema: map[string]any{"type": "object"},
+			Visibility:  tool.VisibleModel, Capability: tool.CapabilityProcess,
+			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
+			SandboxRequirement: tool.SandboxStrong,
+			Availability:       tool.AvailabilityAvailable,
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	register(parent)
+	register(child)
+
+	role, err := subagent.DefaultRoleCatalog().Resolve(subagent.RoleReview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := app.ChildSpec{
+		ReadOnly: true, AllowedTools: role.AllowedTools, CanDelegate: false,
+	}
+	options := childEngineOptions(
+		agentengine.Options{SecurityConfig: agentengine.SecurityConfig{
+			Security: policy.DefaultRuntime(
+				policy.ModeAct,
+				policy.PermissionSuggest,
+			),
+		}},
+		spec,
+	)
+	restrictChildTools(options.Security, spec, parent, child)
+
+	readOnly := policy.Invocation{
+		CallID: "read-only", Tool: "exec_command",
+		Arguments:  json.RawMessage(`{"command":"rg needle ."}`),
+		Capability: tool.CapabilityProcess, Access: tool.AccessRead,
+		Sandbox: tool.SandboxStrong, Validated: true,
+		Resources: []tool.Resource{
+			{Kind: "process", ID: "workspace", Access: tool.AccessRead},
+		},
+	}
+	if decision := options.Security.Evaluate(readOnly); decision.Action != policy.ActionAllow {
+		t.Fatalf("read-only process decision = %+v, want allow", decision)
+	}
+
+	mutating := readOnly
+	mutating.CallID = "mutating"
+	mutating.Arguments = json.RawMessage(
+		`{"command":"printf changed > file","write_paths":["file"]}`,
+	)
+	mutating.Resources = append(mutating.Resources, tool.Resource{
+		Kind: "file", Path: "file", Access: tool.AccessWrite,
+	})
+	decision := options.Security.Evaluate(mutating)
+	if decision.Action != policy.ActionDeny || decision.Code != "mode_denied" {
+		t.Fatalf("mutating process decision = %+v, want mode_denied", decision)
+	}
+}
+
 func TestDelegatingReadOnlyRoleRetainsOnlyAgentLifecycleWrites(t *testing.T) {
 	parent := tool.NewRegistry(nil, nil)
 	child := tool.NewRegistry(nil, nil)

@@ -24,6 +24,9 @@ func ToolInstructions(enabled bool, domain string) string {
 	base := "Use only the supplied tools and honor their schemas and policy decisions. " +
 		"Batch independent read-only calls in one response, use focused ranges, and do " +
 		"not reread unchanged files when existing evidence answers the question. " +
+		"A completed tool call is a normal sample boundary, not a truncated response. " +
+		"Only report or reason about output truncation when the current request contains " +
+		"the structured [continue_after_incomplete] feedback. " +
 		"Before ending a tool-enabled Turn, choose one structured state: call " +
 		"request_user_input when progress truly requires a user answer and wait in the " +
 		"same Turn, or call turn_complete. Ordinary assistant text is provisional and " +

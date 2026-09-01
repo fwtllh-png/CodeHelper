@@ -8,7 +8,10 @@
 > [Session Context、Memory 与持久化](./session-context-optimization.md)，容量常量治理见
 > [固定阈值审计与动态容量治理](./fixed-threshold-audit.md)，真实 Session 结果见
 > [长会话 Token 与调用开销优化实测报告](./token-cost-optimization-effect-report.md)。
-> [提升 Prompt Cache 命中率的优化方案](./prompt-cache-hit-rate-optimization.md)。
+> Prompt Cache 见
+> [提升 Prompt Cache 命中率的优化方案](./prompt-cache-hit-rate-optimization.md)，超大完整请求触发
+> Provider TPM 限流及错误“消息截断”叙述的专项分析见
+> [Provider TPM 限流与错误“消息截断”问题分析](./provider-tpm-rate-limit-and-false-truncation-analysis.md)。
 
 ## 0. 实施状态
 
@@ -80,8 +83,9 @@ Sample 数”的近似线性增长。基于第 2 节真实样本，预期异常�
 
 证据等级：
 
-- **已证实**：Usage 不是流式事件重复累加造成的假象；Provider Calls 和完整上下文重放是
-  主要消耗来源。
+- **已证实**：Provider Calls 和完整上下文重放是真实的主要消耗来源；但当前跨层 Usage
+  累计契约仍可能把同一 Sample 的累计快照再次相加，单调用排障必须用 Provider 原始 Usage、
+  Request Context 和 SQLite 投影交叉核对，详见专项问题分析。
 - **已证实**：`turn_budget_tokens=0` 的当前语义是不设置累计 Turn Token 上限；Context Window
   只能保护单次请求容量。
 - **高度相关**：428 KiB 历史 Tool Result 与 100K 级输入处于同一量级；准确贡献应以每个

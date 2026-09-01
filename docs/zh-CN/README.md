@@ -30,6 +30,7 @@ CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景�
 5. [本机 DeepSeek 一键配置与运行](./deepseek-local.md)
 6. [安全模型](./security.md)
 7. [排障指南](./troubleshooting.md)
+8. [Provider TPM 限流与错误“消息截断”问题分析](./provider-tpm-rate-limit-and-false-truncation-analysis.md)
 
 ### 我要使用 Web 工作区
 
@@ -49,13 +50,14 @@ CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景�
 7. [Session Context、Memory 与持久化](./session-context-optimization.md)
 8. [固定阈值审计与动态容量治理](./fixed-threshold-audit.md)
 9. [长会话 Token 与调用开销优化方案](./token-cost-optimization-plan.md)
-10. [安全模型](./security.md)
-11. [本地开发与脚本](./development.md)
-12. [源码阅读路线指南](./reading-guide.md)
-13. [Agent 指南](./agent-guide.md)
-14. [CONTRIBUTING.md](../../CONTRIBUTING.md)
-15. [文档治理](./documentation-governance.md)
-16. [后续规划](./roadmap.md)
+10. [Provider TPM 限流与错误“消息截断”问题分析](./provider-tpm-rate-limit-and-false-truncation-analysis.md)
+11. [安全模型](./security.md)
+12. [本地开发与脚本](./development.md)
+13. [源码阅读路线指南](./reading-guide.md)
+14. [Agent 指南](./agent-guide.md)
+15. [CONTRIBUTING.md](../../CONTRIBUTING.md)
+16. [文档治理](./documentation-governance.md)
+17. [后续规划](./roadmap.md)
 
 ## 文档事实来源
 

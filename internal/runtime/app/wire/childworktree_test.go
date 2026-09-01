@@ -425,3 +425,13 @@ func TestChildEngineOptionsOnlySharesHostJournalUnderSerializedStrategy(t *testi
 		t.Fatalf("serialized read-only child options = %+v", readOnly)
 	}
 }
+
+func TestChildEngineOptionsUsesOwningSession(t *testing.T) {
+	seed := agentengine.Options{LifecycleConfig: agentengine.LifecycleConfig{
+		SessionID: "process-internal",
+	}}
+	options := childEngineOptions(seed, app.ChildSpec{SessionID: "session-user"})
+	if options.SessionID != "session-user" {
+		t.Fatalf("child session = %q, want owning session", options.SessionID)
+	}
+}

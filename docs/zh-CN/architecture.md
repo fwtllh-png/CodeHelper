@@ -404,8 +404,9 @@ Workspace 对账同时重写 History 中已压缩的 Truth Capsule，不能让�
 `verified/current` 声明继续进入下一次采样。Fork 血缘、子 Thread Context 基线与当前
 Active Session Thread 属于关系型 Lifecycle State，而不是 Host-local State。
 
-Plan Mode 的 Workspace 只读性由 Policy Effect 强制：普通 Write/Process/Network
-继续拒绝，只有 Resource 为 Session Plan 的低风险状态更新可通过。`submit_plan`
+Plan Mode 的 Workspace 只读性由 Policy Effect 强制：普通 Write、写入型 Process
+与 Network 继续拒绝；Strong Sandbox 中最终归类为 `process.read_only` 的命令可执行，
+Resource 为 Session Plan 的低风险状态更新也可通过。`submit_plan`
 生成版本化 JSON Artifact，并在 Artifact Body 内记录 Revision、Supersedes Identity、
 步骤依赖、验证证据与文件摘要。Plan 在提交后自动批准并继续当前 Turn，不经过独立的
 用户审批或执行按钮。Runtime 在恢复时重新校验 Session/Thread/Profile 和文件摘要。

@@ -13,9 +13,9 @@ func TestContextWindowThresholdsDerivePrepareFromExplicitCompactLimit(t *testing
 		CompactWindowPolicy{AutoTokens: 512},
 		3072,
 	)
-	if prepare != 512 || compact != 512 || emergency != 3072 {
+	if prepare != 512 || compact != 512 || emergency != 2764 {
 		t.Fatalf(
-			"thresholds = (%d, %d, %d), want (512, 512, 3072)",
+			"thresholds = (%d, %d, %d), want (512, 512, 2764)",
 			prepare,
 			compact,
 			emergency,
@@ -23,7 +23,7 @@ func TestContextWindowThresholdsDerivePrepareFromExplicitCompactLimit(t *testing
 	}
 }
 
-func TestDefaultCompactionThresholdsUseHardInputCapacity(t *testing.T) {
+func TestDefaultCompactionThresholdsUseHardInputCapacityPercentages(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
 	engine.options.MaxOutputTokens = 0
 	for _, contextTokens := range []uint64{4096, 64 << 10, 128 << 10, 1 << 20} {
@@ -66,17 +66,42 @@ func TestDefaultCompactionThresholdsUseHardInputCapacity(t *testing.T) {
 			engine.options.Context.Window,
 			engine.contextCapacity().HardInputTokens,
 		)
-		want := contextTokens - outputTokens
-		if prepare != want || compact != want || emergency != want {
+		hardInput := contextTokens - outputTokens
+		wantPrepare := hardInput * agentcontext.DefaultPreparePercent / 100
+		wantCompact := hardInput * agentcontext.DefaultCompactPercent / 100
+		wantEmergency := hardInput * agentcontext.DefaultEmergencyPercent / 100
+		if prepare != wantPrepare || compact != wantCompact ||
+			emergency != wantEmergency {
 			t.Fatalf(
-				"context=%d thresholds=(%d,%d,%d), want hard input %d",
+				"context=%d thresholds=(%d,%d,%d), want (%d,%d,%d)",
 				contextTokens,
 				prepare,
 				compact,
 				emergency,
-				want,
+				wantPrepare,
+				wantCompact,
+				wantEmergency,
 			)
 		}
+	}
+}
+
+func TestCompactionThresholdsPreserveExplicitOverrides(t *testing.T) {
+	prepare, compact, emergency := agentcontext.WindowThresholds(
+		CompactWindowPolicy{
+			PrepareTokens:   600,
+			AutoTokens:      700,
+			EmergencyTokens: 900,
+		},
+		1000,
+	)
+	if prepare != 600 || compact != 700 || emergency != 900 {
+		t.Fatalf(
+			"thresholds = (%d,%d,%d), want explicit (600,700,900)",
+			prepare,
+			compact,
+			emergency,
+		)
 	}
 }
 

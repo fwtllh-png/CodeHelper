@@ -157,6 +157,18 @@ func TestEffectRiskDrivesApprovalWithoutToolNameExceptions(t *testing.T) {
 			want: ActionAsk,
 		},
 		{
+			name: "never read-only process allows", permission: PermissionNever,
+			call: effectInvocation("exec_command", CapabilityProcess, tool.AccessRead, tool.SandboxStrong,
+				tool.Resource{Kind: "process", ID: "workspace", Access: tool.AccessRead}),
+			want: ActionAllow,
+		},
+		{
+			name: "never process write denies", permission: PermissionNever,
+			call: effectInvocation("exec_command", CapabilityProcess, tool.AccessRead, tool.SandboxStrong,
+				tool.Resource{Kind: "file", Path: "a.go", Access: tool.AccessWrite}),
+			want: ActionDeny,
+		},
+		{
 			name:       "auto strong loopback fixture auto reviews",
 			permission: PermissionAuto,
 			call: effectInvocation(
@@ -185,6 +197,32 @@ func TestEffectRiskDrivesApprovalWithoutToolNameExceptions(t *testing.T) {
 				t.Fatalf("decision = %+v, want %s", decision, test.want)
 			}
 		})
+	}
+}
+
+func TestPlanModeAllowsOnlyReadOnlyProcessEffects(t *testing.T) {
+	runtime := DefaultRuntime(ModePlan, PermissionNever)
+	readOnly := effectInvocation(
+		"exec_command",
+		CapabilityProcess,
+		tool.AccessRead,
+		tool.SandboxStrong,
+		tool.Resource{Kind: "process", ID: "workspace", Access: tool.AccessRead},
+	)
+	if decision := runtime.Evaluate(readOnly); decision.Action != ActionAllow {
+		t.Fatalf("read-only process decision = %+v, want allow", decision)
+	}
+
+	mutating := effectInvocation(
+		"exec_command",
+		CapabilityProcess,
+		tool.AccessRead,
+		tool.SandboxStrong,
+		tool.Resource{Kind: "file", Path: "a.go", Access: tool.AccessWrite},
+	)
+	decision := runtime.Evaluate(mutating)
+	if decision.Action != ActionDeny || decision.Code != "mode_denied" {
+		t.Fatalf("mutating process decision = %+v, want mode_denied", decision)
 	}
 }
 

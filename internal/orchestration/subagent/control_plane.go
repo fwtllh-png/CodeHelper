@@ -187,7 +187,7 @@ func DefaultRoleCatalog() RoleCatalog {
 		{
 			Role: RoleReview, Profile: "review", Stance: StanceReadOnly,
 			Instructions: "Review independently for correctness and regressions; lead with evidence-backed findings.",
-			AllowedTools: []string{"read", "search"}, CanDelegate: false,
+			AllowedTools: []string{"read", "search", "process.read_only"}, CanDelegate: false,
 		},
 		{
 			Role: RoleImplementer, Profile: "implement", Stance: StanceWrite,

@@ -218,9 +218,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 61,
-        "production_lines": 7015,
+        "production_lines": 7176,
         "options_fields": 60,
         "mutex_fields": 6
+      },
+      "relaxations": {
+        "production_lines": "Bind Child Runtime persistence to the owning user Session so internal process-scoped Session IDs never leak into the Web session list."
       }
     },
     {
@@ -393,8 +396,11 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/runtime.go",
       "limits": {
-        "lines": 353,
+        "lines": 356,
         "max_function_lines": 50
+      },
+      "relaxations": {
+        "lines": "Keep child Workspace and Session identity overrides explicit and independent at the Runtime construction boundary."
       }
     },
     {
@@ -555,8 +561,11 @@
       "kind": "file",
       "path": "internal/runtime/agent/context/store_window.go",
       "limits": {
-        "lines": 234,
+        "lines": 242,
         "max_function_lines": 48
+      },
+      "relaxations": {
+        "lines": "Derive prepare, compact, and emergency thresholds from authoritative hard-input capacity instead of fixed token defaults."
       }
     },
     {
@@ -677,12 +686,12 @@
       "path": "internal/runtime/agent/context",
       "limits": {
         "internal_fanout": 7,
-        "production_lines": 9387,
+        "production_lines": 9412,
         "options_fields": 0,
         "mutex_fields": 3
       },
       "relaxations": {
-        "production_lines": "Add immutable prepared compaction fences, semantic continuation requirements, exact rebase validation, and replay-safe normalization."
+        "production_lines": "Add immutable prepared compaction fences, semantic continuation requirements, exact rebase validation, replay-safe normalization, and capacity-derived 75/80/90 compaction thresholds."
       }
     },
     {
@@ -691,9 +700,12 @@
       "path": "internal/runtime/agent/prompt",
       "limits": {
         "internal_fanout": 8,
-        "production_lines": 2502,
+        "production_lines": 2505,
         "options_fields": 22,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Clarify that completed tool-use samples are not incomplete-output continuations."
       }
     },
     {

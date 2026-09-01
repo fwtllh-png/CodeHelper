@@ -124,9 +124,9 @@ max_bytes = 4096
 enabled = true
 
 [context.compact]
-prepare_tokens = 0 # 0 表示根据当前模型 Context Window 动态计算
-auto_compact_tokens = 0 # 0 表示根据当前模型 Context Window 动态计算
-emergency_tokens = 0 # 0 表示根据当前模型 Context Window 动态计算
+prepare_tokens = 0 # 0 表示当前模型硬输入容量的 75%
+auto_compact_tokens = 0 # 0 表示当前模型硬输入容量的 80%
+emergency_tokens = 0 # 0 表示当前模型硬输入容量的 90%
 scope = "total" # 或 "body_after_prefix"
 summary_max_bytes = 0 # 0 表示使用当前 Turn 的硬输入容量作为渲染 Ceiling
 max_digest_entries = 120
