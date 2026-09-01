@@ -232,6 +232,41 @@ func TestUsageReplacesCumulativeReportsWithinACall(t *testing.T) {
 	}
 }
 
+func TestUsageProjectionRefusesRegressionAndImpossibleDoubling(t *testing.T) {
+	repository := testRepository(t)
+	start := testEvent(t, 1, &protocol.TurnStartedData{Provider: "provider", Model: "model"})
+	if err := repository.Project(t.Context(), start); err != nil {
+		t.Fatal(err)
+	}
+	baseline := testEvent(t, 2, &protocol.UsageData{
+		Sample: 1, InputTokens: 100, OutputTokens: 20, ReasoningTokens: 4, CachedTokens: 10,
+	})
+	if err := repository.Project(t.Context(), baseline); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []protocol.Event{
+		testEvent(t, 3, &protocol.UsageData{
+			Sample: 1, InputTokens: 50, OutputTokens: 20, ReasoningTokens: 4, CachedTokens: 10,
+		}),
+		testEvent(t, 4, &protocol.UsageData{
+			Sample: 1, InputTokens: 200, OutputTokens: 40, ReasoningTokens: 8, CachedTokens: 20,
+		}),
+	} {
+		if err := repository.Project(t.Context(), event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	aggregates, err := repository.QueryAggregates(t.Context(), Query{TurnID: "turn-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(aggregates) != 1 || aggregates[0].InputTokens != 100 ||
+		aggregates[0].OutputTokens != 20 || aggregates[0].ReasoningTokens != 4 ||
+		aggregates[0].CachedTokens != 10 {
+		t.Fatalf("unsafe usage overwrite stored %+v", aggregates)
+	}
+}
+
 // TestUsageSumsAcrossCallsAndSplitsUnpricedOnes covers the other half of the
 // aggregation rule: separate provider calls do add up, and a zero cost is only
 // reported as a cost when the model had pricing at all.

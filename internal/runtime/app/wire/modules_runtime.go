@@ -85,7 +85,12 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		ReasoningEffort: reasoningEffort,
 		NativeSearch:    execution.NativeSearch,
 
-		MaxSteps: execution.MaxSteps, MaxRetries: execution.ProviderRetryLimit}, ContextConfig: agentengine.ContextConfig{StaticContext: prompt.Messages,
+		MaxSteps:            execution.MaxSteps,
+		MaxRetries:          execution.ProviderRetryLimit,
+		MaxRetryDelay:       execution.Timeout,
+		RateLimitMaxRetries: execution.RateLimitRetryLimit,
+		RateLimitMaxWait:    execution.RateLimitWaitBudget(),
+	}, ContextConfig: agentengine.ContextConfig{StaticContext: prompt.Messages,
 		ContextBudgets: budgets,
 		CodingPolicy:   execution.Tools && snapshot.Config.Context.CodingPolicy.Enabled,
 

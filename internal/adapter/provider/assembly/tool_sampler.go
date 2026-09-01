@@ -135,7 +135,9 @@ func (s *toolSampleStream) Recv() (provider.StreamEvent, error) {
 		return event, err
 	}
 	if event.Type == provider.EventUsage && event.Usage != nil {
-		s.usage.Add(*event.Usage)
+		// Stream usage is cumulative for this transport, so merge the latest
+		// snapshot instead of double-counting repeated Provider reports.
+		s.usage = provider.MergeCumulative(s.usage, *event.Usage)
 		projection := ToolSampleProjection{
 			Usage: s.usage, Metadata: s.metadata,
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -72,6 +73,16 @@ func New(
 		}
 	}
 	return &Router{registry: registry, transport: transport}, nil
+}
+
+func (r *Router) RouteCooldown(route model.ReadyRoute) time.Duration {
+	source, ok := r.transport.(interface {
+		RouteCooldown(model.ReadyRoute) time.Duration
+	})
+	if !ok {
+		return 0
+	}
+	return source.RouteCooldown(route)
 }
 
 func (r *Router) Stream(ctx context.Context, request provider.ModelRequest) (provider.Stream, error) {

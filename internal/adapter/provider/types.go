@@ -291,11 +291,69 @@ type Usage struct {
 func (u Usage) Total() uint64 {
 	return u.InputTokens + u.OutputTokens
 }
+
+// Consistent reports whether subset counters stay inside their totals.
+func (u Usage) Consistent() bool {
+	return u.CachedTokens <= u.InputTokens && u.ReasoningTokens <= u.OutputTokens
+}
+
 func (u *Usage) Add(other Usage) {
 	u.InputTokens += other.InputTokens
 	u.OutputTokens += other.OutputTokens
 	u.ReasoningTokens += other.ReasoningTokens
 	u.CachedTokens += other.CachedTokens
+}
+
+// MergeCumulative keeps the latest per-transport snapshot without shrinking a
+// counter. Adapters emit cumulative snapshots; this merge makes category-specific
+// or repeated reports idempotent. Distinct transports still use Add.
+func MergeCumulative(current, update Usage) Usage {
+	merged := update
+	if current.InputTokens > merged.InputTokens {
+		merged.InputTokens = current.InputTokens
+	}
+	if current.OutputTokens > merged.OutputTokens {
+		merged.OutputTokens = current.OutputTokens
+	}
+	if current.ReasoningTokens > merged.ReasoningTokens {
+		merged.ReasoningTokens = current.ReasoningTokens
+	}
+	if current.CachedTokens > merged.CachedTokens {
+		merged.CachedTokens = current.CachedTokens
+	}
+	if merged.Transport == (TransportMetadata{}) {
+		merged.Transport = current.Transport
+	}
+	return merged
+}
+
+// SameSnapshot reports whether two usage values name the same counters.
+func SameSnapshot(left, right Usage) bool {
+	return left.InputTokens == right.InputTokens &&
+		left.OutputTokens == right.OutputTokens &&
+		left.ReasoningTokens == right.ReasoningTokens &&
+		left.CachedTokens == right.CachedTokens
+}
+
+// DoubledSnapshot is the Usage.Add-on-cumulative bug: every reported counter
+// becomes twice the previous snapshot of the same transport.
+func DoubledSnapshot(previous, next Usage) bool {
+	if previous.InputTokens == 0 || previous.OutputTokens == 0 {
+		return false
+	}
+	if next.InputTokens != previous.InputTokens*2 ||
+		next.OutputTokens != previous.OutputTokens*2 {
+		return false
+	}
+	if previous.ReasoningTokens != 0 &&
+		next.ReasoningTokens != previous.ReasoningTokens*2 {
+		return false
+	}
+	if previous.CachedTokens != 0 &&
+		next.CachedTokens != previous.CachedTokens*2 {
+		return false
+	}
+	return true
 }
 
 type ToolCallFragment struct {
@@ -322,23 +380,25 @@ type Citation struct {
 	End      int    `json:"end,omitempty"`
 }
 type StreamEvent struct {
-	Type           StreamEventType   `json:"type"`
-	EventID        string            `json:"event_id,omitempty"`
-	Sequenced      bool              `json:"sequenced,omitempty"`
-	Sequence       uint64            `json:"sequence,omitempty"`
-	Ordinal        uint32            `json:"ordinal,omitempty"`
-	StopReason     StopReason        `json:"stop_reason,omitempty"`
-	Index          int               `json:"index,omitempty"`
-	Block          *ContentBlock     `json:"block,omitempty"`
-	Text           string            `json:"text,omitempty"`
-	Signature      string            `json:"signature,omitempty"`
-	ToolCall       *ToolCallFragment `json:"tool_call,omitempty"`
-	Search         *SearchResult     `json:"search,omitempty"`
-	Citation       *Citation         `json:"citation,omitempty"`
-	Usage          *Usage            `json:"usage,omitempty"`
-	Replay         *ReplayState      `json:"replay,omitempty"`
-	ReplayFragment json.RawMessage   `json:"-"`
-	Response       *ResponseState    `json:"response,omitempty"`
+	Type       StreamEventType   `json:"type"`
+	EventID    string            `json:"event_id,omitempty"`
+	Sequenced  bool              `json:"sequenced,omitempty"`
+	Sequence   uint64            `json:"sequence,omitempty"`
+	Ordinal    uint32            `json:"ordinal,omitempty"`
+	StopReason StopReason        `json:"stop_reason,omitempty"`
+	Index      int               `json:"index,omitempty"`
+	Block      *ContentBlock     `json:"block,omitempty"`
+	Text       string            `json:"text,omitempty"`
+	Signature  string            `json:"signature,omitempty"`
+	ToolCall   *ToolCallFragment `json:"tool_call,omitempty"`
+	Search     *SearchResult     `json:"search,omitempty"`
+	Citation   *Citation         `json:"citation,omitempty"`
+	// Usage is the cumulative snapshot for this transport attempt. Adapters
+	// must normalize Provider-specific delta reports before exposing them.
+	Usage          *Usage          `json:"usage,omitempty"`
+	Replay         *ReplayState    `json:"replay,omitempty"`
+	ReplayFragment json.RawMessage `json:"-"`
+	Response       *ResponseState  `json:"response,omitempty"`
 }
 
 type ResponseState struct {
@@ -421,6 +481,7 @@ type TransportMetadata struct {
 	TransportRequestID     string            `json:"transport_request_id,omitempty"`
 	Attempt                uint32            `json:"attempt,omitempty"`
 	RequestBytes           uint64            `json:"request_bytes"`
+	RouteCooldownWaitMS    uint64            `json:"route_cooldown_wait_ms,omitempty"`
 	LogicalRequestDigest   string            `json:"logical_request_digest,omitempty"`
 	TransportPayloadDigest string            `json:"transport_payload_digest,omitempty"`
 	Incremental            bool              `json:"incremental,omitempty"`

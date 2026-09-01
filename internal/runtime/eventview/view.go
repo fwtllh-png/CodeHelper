@@ -34,7 +34,8 @@ type InteractionUpdate struct {
 }
 type AccountingUpdate struct {
 	Base
-	Usage *protocol.UsageData
+	Usage   *protocol.UsageData
+	Attempt *protocol.ProviderAttemptData
 }
 type EvidenceUpdate struct {
 	Base
@@ -132,6 +133,8 @@ func Project(event protocol.Event) (Update, error) {
 		return InteractionUpdate{Base: base, ResolvedRequest: data.RequestID, ResolvedValue: data.Answer}, nil
 	case *protocol.UsageData:
 		return AccountingUpdate{Base: base, Usage: data}, nil
+	case *protocol.ProviderAttemptData:
+		return AccountingUpdate{Base: base, Attempt: data}, nil
 	case *protocol.DiagnosticsData:
 		return EvidenceUpdate{Base: base, Diagnostics: data}, nil
 	case *protocol.ExecutionReceiptData:

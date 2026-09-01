@@ -250,6 +250,26 @@ export function projectTrajectory(
           {output: data, failed: event.kind.endsWith(".failed")}
         ));
         break;
+      case "provider.attempt": {
+        const sampleID = text(data.sample_id) || event.id;
+        const attempt = finiteNumber(data.attempt) ?? 0;
+        put(record(event, "receipt", "ATTEMPT", providerAttemptSummary(data), {
+          id: `attempt-${event.turn_id}-${sampleID}-${attempt}`,
+          output: data,
+          failed: data.status === "failed",
+          timing: Object.fromEntries(
+            Object.entries({
+              started_at: data.started_at,
+              finished_at: data.finished_at,
+              retry_at: data.retry_at,
+              provider_retry_after_ms: data.provider_retry_after_ms,
+              effective_delay_ms: data.effective_delay_ms,
+              route_cooldown_wait_ms: data.route_cooldown_wait_ms
+            }).filter(([, value]) => value !== undefined && value !== null && value !== "")
+          )
+        }));
+        break;
+      }
       case "usage": {
         const context = isRecord(data.context) ? data.context : undefined;
         if (Boolean(context?.prefix_compared)) {
@@ -612,6 +632,31 @@ function delegationSummary(value: unknown): string {
     default:
       return "";
   }
+}
+
+function providerAttemptSummary(data: Record<string, unknown>): string {
+  const status = text(data.status);
+  const failure = text(data.failure_code);
+  const stop = text(data.stop_reason);
+  if (status === "retry_wait" && failure === "rate_limit") {
+    return "Provider rate limited, waiting to retry";
+  }
+  if (status === "retry_wait") {
+    return `Provider retrying · ${failure || "request failed"}`;
+  }
+  if (status === "incomplete") {
+    return `Provider output incomplete · ${stop || "continuing"}`;
+  }
+  if (status === "completed" && stop === "tool_use") {
+    return "Tool call complete, continuing this turn";
+  }
+  if (status === "completed") {
+    return `Provider completed · ${stop || "end_turn"}`;
+  }
+  if (status === "failed") {
+    return `Provider attempt failed · ${failure || "error"}`;
+  }
+  return `Provider attempt ${status || "started"}`;
 }
 
 function usageSummary(data: Record<string, unknown>): string {

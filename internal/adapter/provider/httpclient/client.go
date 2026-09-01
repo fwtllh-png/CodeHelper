@@ -77,13 +77,17 @@ func (c *Client) httpClient() *http.Client {
 	}
 	return egress.WrapClient(base, c.Egress)
 }
+func (c *Client) RouteCooldown(route model.ReadyRoute) time.Duration {
+	return c.limits.Remaining(providerratelimit.Key(route))
+}
+
 func (c *Client) Execute(
 	ctx context.Context,
 	request provider.ModelRequest,
 	call providerwire.PreparedCall,
 	adapter providerwire.Adapter,
 ) (provider.Stream, error) {
-	requestContext, requestCancel, credential, err := c.begin(ctx, request.Route)
+	requestContext, requestCancel, credential, cooldownWait, err := c.begin(ctx, request.Route)
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +143,7 @@ func (c *Client) Execute(
 		call,
 		adapter,
 		transportRequestID, requestCancel, providerratelimit.Key(request.Route),
+		cooldownWait,
 	)
 	if transferred {
 		release = false
@@ -148,22 +153,23 @@ func (c *Client) Execute(
 func (c *Client) begin(
 	ctx context.Context,
 	route model.ReadyRoute,
-) (context.Context, context.CancelFunc, string, error) {
-	if err := c.limits.Wait(
+) (context.Context, context.CancelFunc, string, time.Duration, error) {
+	cooldownWait, err := c.limits.Wait(
 		ctx,
 		providerratelimit.Key(route),
 		c.RequestsPerSecond,
-	); err != nil {
-		return nil, nil, "", err
+	)
+	if err != nil {
+		return nil, nil, "", cooldownWait, err
 	}
 	if err := c.acquire(ctx); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", cooldownWait, err
 	}
 	requestContext, cancel := context.WithCancel(ctx)
-	fail := func(err error) (context.Context, context.CancelFunc, string, error) {
+	fail := func(err error) (context.Context, context.CancelFunc, string, time.Duration, error) {
 		cancel()
 		c.release()
-		return nil, nil, "", err
+		return nil, nil, "", cooldownWait, err
 	}
 	resolver := c.Credentials
 	if resolver == nil {
@@ -175,7 +181,7 @@ func (c *Client) begin(
 			protocol.CodeUnavailable, "resolve provider credential", false, err,
 		))
 	}
-	return requestContext, cancel, credential, nil
+	return requestContext, cancel, credential, cooldownWait, nil
 }
 
 func (c *Client) acquire(ctx context.Context) error {

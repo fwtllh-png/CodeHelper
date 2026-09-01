@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"time"
+
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
@@ -90,10 +92,20 @@ type ApprovalResolution struct {
 }
 
 type ModelExecution struct {
-	Kind     string `json:"kind"`
-	SampleID string `json:"sample_id"`
-	Attempt  uint32 `json:"attempt,omitempty"`
-	Reason   string `json:"reason,omitempty"`
+	Kind                 string                     `json:"kind"`
+	SampleID             string                     `json:"sample_id"`
+	Attempt              uint32                     `json:"attempt,omitempty"`
+	Status               string                     `json:"status,omitempty"`
+	Reason               string                     `json:"reason,omitempty"`
+	ProjectedInputTokens uint64                     `json:"projected_input_tokens,omitempty"`
+	Transport            provider.TransportMetadata `json:"transport,omitempty"`
+	StopReason           provider.StopReason        `json:"stop_reason,omitempty"`
+	StartedAt            time.Time                  `json:"started_at,omitempty"`
+	FinishedAt           time.Time                  `json:"finished_at,omitempty"`
+	RateLimitRetries     uint32                     `json:"rate_limit_retries,omitempty"`
+	RateLimitRetryLimit  uint32                     `json:"rate_limit_retry_limit,omitempty"`
+	RateLimitWaited      time.Duration              `json:"rate_limit_waited,omitempty"`
+	RateLimitWaitBudget  time.Duration              `json:"rate_limit_wait_budget,omitempty"`
 }
 
 type ModelReasoning struct {

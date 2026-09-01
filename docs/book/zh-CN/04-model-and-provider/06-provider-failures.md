@@ -110,7 +110,10 @@ Pre-meaningful Failure。
 
 - Header 前 Deadline 会取消 Request。
 - Non-retryable 4xx 立即返回。
-- 429/部分 5xx 按 Bounded Policy 处理。
+- 429 使用公开 Rate Limit Recovery Budget（`execution.rate_limit_wait` 默认继承
+  `execution.timeout`，`execution.rate_limit_retry_limit` 默认不限次数）；耗尽后
+  转为可恢复 Blocked，不无限透明等待。
+- 部分 5xx 仍按 `execution.provider_retry_limit` 处理。
 - Malformed/Oversized SSE Decode 失败。
 - Cancellation 中断 Backoff 与 Rate Wait。
 - Redirect/Debug 不得不安全转发 Credential。

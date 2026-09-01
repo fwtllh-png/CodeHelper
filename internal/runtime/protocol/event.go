@@ -20,6 +20,7 @@ const (
 	EventSearchResult       EventKind = "search.result"
 	EventCitation           EventKind = "citation"
 	EventUsage              EventKind = "usage"
+	EventProviderAttempt    EventKind = "provider.attempt"
 	EventToolState          EventKind = "tool.state"
 	EventToolStart          EventKind = "tool.start"
 	EventToolOutput         EventKind = "tool.output"
@@ -265,6 +266,65 @@ type ProviderProjectionData struct {
 	LogicalTransportEquivalent bool   `json:"logical_transport_equivalent"`
 }
 
+const (
+	ProviderAttemptStarted    = "started"
+	ProviderAttemptRetryWait  = "retry_wait"
+	ProviderAttemptIncomplete = "incomplete"
+	ProviderAttemptCompleted  = "completed"
+	ProviderAttemptFailed     = "failed"
+)
+
+// ProviderAttemptData is a content-safe transport fact. It distinguishes
+// Provider retries, genuine incomplete output recovery, and normal tool-use
+// boundaries without relying on assistant-generated prose.
+type ProviderAttemptData struct {
+	SampleID              string                  `json:"sample_id"`
+	Attempt               uint32                  `json:"attempt"`
+	Status                string                  `json:"status"`
+	Reason                string                  `json:"reason,omitempty"`
+	FailureCode           string                  `json:"failure_code,omitempty"`
+	ErrorCode             ErrorCode               `json:"error_code,omitempty"`
+	HTTPStatus            int                     `json:"http_status,omitempty"`
+	ProviderRetryAfterMS  uint64                  `json:"provider_retry_after_ms,omitempty"`
+	EffectiveDelayMS      uint64                  `json:"effective_delay_ms,omitempty"`
+	RouteCooldownWaitMS   uint64                  `json:"route_cooldown_wait_ms,omitempty"`
+	RetryAt               *time.Time              `json:"retry_at,omitempty"`
+	PolicyRevision        string                  `json:"policy_revision,omitempty"`
+	RequestBytes          uint64                  `json:"request_bytes,omitempty"`
+	ProjectedInputTokens  uint64                  `json:"projected_input_tokens,omitempty"`
+	Projection            *ProviderProjectionData `json:"projection,omitempty"`
+	StopReason            string                  `json:"stop_reason,omitempty"`
+	StartedAt             *time.Time              `json:"started_at,omitempty"`
+	FinishedAt            *time.Time              `json:"finished_at,omitempty"`
+	RateLimitRetries      uint32                  `json:"rate_limit_retries,omitempty"`
+	RateLimitRetryLimit   uint32                  `json:"rate_limit_retry_limit,omitempty"`
+	RateLimitWaitedMS     uint64                  `json:"rate_limit_waited_ms,omitempty"`
+	RateLimitWaitBudgetMS uint64                  `json:"rate_limit_wait_budget_ms,omitempty"`
+}
+
+func (*ProviderAttemptData) eventKind() EventKind { return EventProviderAttempt }
+
+func (d *ProviderAttemptData) validate() error {
+	if d.SampleID == "" || d.Attempt == 0 {
+		return errors.New("provider attempt sample_id and attempt are required")
+	}
+	if !slices.Contains([]string{
+		ProviderAttemptStarted, ProviderAttemptRetryWait,
+		ProviderAttemptIncomplete, ProviderAttemptCompleted,
+		ProviderAttemptFailed,
+	}, d.Status) {
+		return errors.New("provider attempt status is invalid")
+	}
+	if d.Status == ProviderAttemptRetryWait && d.FailureCode == "" {
+		return errors.New("provider retry wait failure_code is required")
+	}
+	if (d.Status == ProviderAttemptIncomplete || d.Status == ProviderAttemptCompleted) &&
+		d.StopReason == "" {
+		return errors.New("finished provider attempt stop_reason is required")
+	}
+	return nil
+}
+
 // SampleContextData is low-cardinality token attribution for one provider call.
 // It contains counts and content-safe digests, never prompt or tool content.
 type SampleContextData struct {
@@ -351,6 +411,12 @@ type SampleContextData struct {
 func (*UsageData) eventKind() EventKind { return EventUsage }
 
 func (d *UsageData) validate() error {
+	if d.CachedTokens > d.InputTokens {
+		return errors.New("cached tokens cannot exceed input tokens")
+	}
+	if d.ReasoningTokens > d.OutputTokens {
+		return errors.New("reasoning tokens cannot exceed output tokens")
+	}
 	if d.ModelMetadata != nil {
 		if err := d.ModelMetadata.Validate(); err != nil {
 			return err

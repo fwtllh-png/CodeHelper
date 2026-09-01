@@ -879,6 +879,9 @@ func TestClientDerivesSharedCooldownFromRateLimitedRequest(t *testing.T) {
 	if attempts.Load() != 1 {
 		t.Fatalf("provider attempts = %d, want shared cooldown before retry", attempts.Load())
 	}
+	if cooldown := client.RouteCooldown(request.Route); cooldown <= 0 {
+		t.Fatalf("route cooldown = %s, want remaining governor wait", cooldown)
+	}
 }
 
 func TestClientClassifiesTransportErrors(t *testing.T) {

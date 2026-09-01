@@ -73,9 +73,12 @@ Content Block，避免 Replay 改变其 Role。
 
 ## Usage 与 Cost
 
-一个 Turn 可产生多个 Provider Sample，包括 Tool-side Model Call。Usage 在一个 Sample
-内是 Cumulative，因此 Aggregation 保留每个 Sample 的最后报告，而不是累加所有 Delta。
-Sample Index 与 Purpose 区分 Main Act、Vision 等调用。
+一个 Turn 可产生多个 Provider Sample，包括 Tool-side Model Call。`StreamEvent.Usage`
+是当前 Transport 的累计快照，不是 Delta；Adapter 必须先归一化再暴露。Aggregation
+保留每个 Sample 的最后报告，而不是累加所有 Event。Sample Index 与 Purpose 区分
+Main Act、Vision 等调用。Transport Attempt、429 等待和最终 `stop_reason` 由
+`provider.attempt` 公开，不能从 Sample 编号跳跃反推。429 等待受公开 Recovery
+Budget 约束，耗尽后进入可恢复 Blocked，而不是继续透明重探。
 
 Cost 使用实际 Sample Route；`CostKnown` 区分零价格和未知价格。Latency 分离 Queue、
 Model、First Token、Tool、Approval 与 Verification。
@@ -101,6 +104,7 @@ Cost 使用该 Sample 的 Actual Route/Pricing Provenance，而非 Turn Default 
 | StreamEvent/Usage | `provider/types.go` |
 | Decoder | `provider/openai`、`provider/anthropic` |
 | Engine | `agent/engine/model_handler.go` |
+| Transport Attempt | `runtime/protocol` 的 `provider.attempt` |
 | Stream Assembly | `adapter/provider/assembly/stream_consumer.go` |
 | Tool Sample | `agent/engine/toolsample.go` |
 | Usage Store | `observability/usage` |

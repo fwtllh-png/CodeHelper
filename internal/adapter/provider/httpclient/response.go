@@ -3,6 +3,7 @@ package httpclient
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
@@ -18,6 +19,7 @@ func (c *Client) openResponse(
 	transportRequestID string,
 	cancel context.CancelFunc,
 	rateLimitKey string,
+	cooldownWait time.Duration,
 ) (provider.Stream, bool, error) {
 	if response.StatusCode >= 200 && response.StatusCode < 300 {
 		c.limits.Observe(rateLimitKey, c.RequestsPerSecond, response.StatusCode, response.Header, nil)
@@ -28,9 +30,11 @@ func (c *Client) openResponse(
 			c.recordFailure(err)
 			return nil, false, err
 		}
+		metadata := completeTransportMetadata(request, call, transportRequestID)
+		metadata.RouteCooldownWaitMS = uint64(cooldownWait / time.Millisecond)
 		return c.wrapStream(
 			stream,
-			completeTransportMetadata(request, call, transportRequestID),
+			metadata,
 			cancel,
 		), true, nil
 	}

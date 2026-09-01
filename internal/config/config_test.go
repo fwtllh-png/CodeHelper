@@ -587,6 +587,67 @@ provider_retry_limit = 5
 	}
 }
 
+func TestRateLimitRecoveryBudgetHasProvenanceAndValidation(t *testing.T) {
+	if Defaults().Execution.RateLimitRetryLimit != 0 ||
+		Defaults().Execution.RateLimitWait != 0 ||
+		Defaults().Execution.RateLimitWaitBudget() != 2*time.Minute {
+		t.Fatalf(
+			"default rate limit budget = retries=%d wait=%s derived=%s",
+			Defaults().Execution.RateLimitRetryLimit,
+			Defaults().Execution.RateLimitWait,
+			Defaults().Execution.RateLimitWaitBudget(),
+		)
+	}
+	path := writeConfig(t, `
+[execution]
+rate_limit_retry_limit = 2
+rate_limit_wait = "90s"
+`)
+	fromFile, err := Load(LoadOptions{
+		Path: path, LookupEnv: envLookup(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromFile.Config.Execution.RateLimitRetryLimit != 2 ||
+		fromFile.Config.Execution.RateLimitWait != 90*time.Second ||
+		fromFile.Config.Execution.RateLimitWaitBudget() != 90*time.Second ||
+		fromFile.Provenance[fieldRateLimitRetryLimit] != SourceFile ||
+		fromFile.Provenance[fieldRateLimitWait] != SourceFile {
+		t.Fatalf("file rate limit budget = %+v", fromFile)
+	}
+	fromEnv, err := Load(LoadOptions{
+		Path: path,
+		LookupEnv: envLookup(map[string]string{
+			"CODEHELPER_RATE_LIMIT_RETRY_LIMIT": "4",
+			"CODEHELPER_RATE_LIMIT_WAIT":        "30s",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromEnv.Config.Execution.RateLimitRetryLimit != 4 ||
+		fromEnv.Config.Execution.RateLimitWait != 30*time.Second ||
+		fromEnv.Provenance[fieldRateLimitRetryLimit] != SourceEnv ||
+		fromEnv.Provenance[fieldRateLimitWait] != SourceEnv {
+		t.Fatalf("environment rate limit budget = %+v", fromEnv)
+	}
+	invalidRetries := -1
+	_, err = Load(LoadOptions{
+		Overrides: Overrides{RateLimitRetryLimit: &invalidRetries},
+	})
+	if err == nil || !strings.Contains(err.Error(), fieldRateLimitRetryLimit) {
+		t.Fatalf("negative rate limit retry limit error = %v", err)
+	}
+	invalidWait := -time.Second
+	_, err = Load(LoadOptions{
+		Overrides: Overrides{RateLimitWait: &invalidWait},
+	})
+	if err == nil || !strings.Contains(err.Error(), fieldRateLimitWait) {
+		t.Fatalf("negative rate limit wait error = %v", err)
+	}
+}
+
 func TestVisionConfigFileAndValidation(t *testing.T) {
 	path := writeConfig(t, `
 [vision]

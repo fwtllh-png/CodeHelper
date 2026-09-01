@@ -265,6 +265,32 @@ describe("projectTrajectory", () => {
 
     expect(projection.prefixTokens).toBe(0);
   });
+
+  it("projects provider attempts as structured transport facts", () => {
+    const projection = projectTrajectory([
+      event(1, "turn.started", {display_prompt: "Work"}),
+      event(2, "provider.attempt", {
+        sample_id: "sample-1",
+        attempt: 1,
+        status: "retry_wait",
+        failure_code: "rate_limit",
+        http_status: 429,
+        provider_retry_after_ms: 2500
+      }),
+      event(3, "provider.attempt", {
+        sample_id: "sample-1",
+        attempt: 1,
+        status: "completed",
+        stop_reason: "tool_use"
+      })
+    ]);
+    const attempts = projection.records.filter((record) => record.label === "ATTEMPT");
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      summary: "Tool call complete, continuing this turn",
+      failed: false
+    });
+  });
 });
 
 function event(

@@ -65,6 +65,8 @@ idle_timeout = "1m"             # 每个流事件都会续期
 max_concurrent = 8
 rate_limit = 0                    # 0 = 仅根据 Provider 反馈动态限流
 provider_retry_limit = 3          # 每次 Model Sample 的瞬时故障重试预算
+rate_limit_retry_limit = 0        # 0 = 不限制 429 次数；仍受累计等待预算约束
+rate_limit_wait = "0s"            # 0 = 继承 timeout，作为单次 Sample 累计 429 等待上限
 budget_tokens = 0            # 0 表示不设置累计 Session Token 上限
 turn_budget_tokens = 0       # 0 表示不设置累计 Turn Token 上限
 budget_usd = 0               # 0 表示不增加成本上限
@@ -289,10 +291,23 @@ Provider 并发槽。
 工作记忆的场景；长时间编码 Turn 不建议关闭。
 
 `execution.provider_retry_limit` 是单次 Model Sample 对 5xx、网络中断、Timeout
-等普通瞬时故障的重试预算。明确分类为 `rate_limit` 的 429 不消耗该次数预算：
-Runtime 按 Provider 返回的恢复时间或共享动态冷却持续等待并重试，直到 Provider
-恢复或 Turn 被取消；账户硬配额错误仍立即停止。等待由 Runtime 调度，不要求模型或
-用户轮询。该配置可通过 `CODEHELPER_PROVIDER_RETRY_LIMIT` 覆盖。
+等普通瞬时故障的重试预算。明确分类为 `rate_limit` 的 429 不消耗该次数预算，改由
+Rate Limit Recovery Budget 约束：
+
+- `execution.rate_limit_retry_limit` 是单次 Sample 允许的 429 恢复次数。默认 `0`
+  表示不按次数封顶。
+- `execution.rate_limit_wait` 是单次 Sample 的累计 429 等待上限。默认 `0` 继承
+  公开字段 `execution.timeout`（默认 `2m`），不是隐藏经验常量。
+- 达到任一边界时，Runtime 返回可恢复的 `provider rate limit retry budget exhausted`，
+  不把 429 伪装成模型截断，也不丢失已完成 Tool Side Effect。用户可从 Durable
+  Checkpoint 继续或取消。
+- 已知 `Retry-After`、Reset 或 Route Cooldown 时，下一次 Attempt 必须等满剩余窗口，
+  不会被瞬时故障的单次 Delay Cap 截短后立即重探同一请求。等待可取消，且不占用
+  Provider 并发槽。
+
+上述字段可通过 `CODEHELPER_PROVIDER_RETRY_LIMIT`、
+`CODEHELPER_RATE_LIMIT_RETRY_LIMIT` 和 `CODEHELPER_RATE_LIMIT_WAIT` 覆盖。账户硬配额
+错误仍立即停止。等待由 Runtime 调度，不要求模型或用户轮询。
 
 `execution.lease_timeout` 是 Guard 完成授权到 Executor 消费 Execution Lease 之间的
 公开上限，可由 `CODEHELPER_LEASE_TIMEOUT` 或受信配置覆盖。调用 Context 的 Deadline
@@ -483,7 +498,7 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 | --- | --- |
 | `CODEHELPER_PROVIDER`、`CODEHELPER_MODEL`、`CODEHELPER_PROTOCOL` | 主模型路由 |
 | `CODEHELPER_MODE`、`CODEHELPER_WORKSPACE`、`CODEHELPER_TOOLS` | 执行行为 |
-| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_LEASE_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT`、`CODEHELPER_PROVIDER_RETRY_LIMIT` | 限制 |
+| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_LEASE_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT`、`CODEHELPER_PROVIDER_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_WAIT` | 限制 |
 | `CODEHELPER_BUDGET_TOKENS`、`CODEHELPER_BUDGET_USD` | 会话预算 |
 | `CODEHELPER_SUBAGENT_*` | 委派模式、Tree 限制、Child 预算、Wall Time 与 Workspace 策略 |
 | `CODEHELPER_VERIFY_*` | 验证行为 |

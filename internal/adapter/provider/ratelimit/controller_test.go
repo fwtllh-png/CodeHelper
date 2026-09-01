@@ -68,11 +68,32 @@ func TestControllerCooldownIsCancelableAndRouteScoped(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(t.Context(), time.Millisecond)
 	defer cancel()
-	if err := controller.Wait(ctx, "limited", 0); err == nil {
+	if _, err := controller.Wait(ctx, "limited", 0); err == nil {
 		t.Fatal("limited route ignored cancellation")
 	}
-	if err := controller.Wait(t.Context(), "other", 0); err != nil {
+	if _, err := controller.Wait(t.Context(), "other", 0); err != nil {
 		t.Fatalf("independent route was throttled: %v", err)
+	}
+}
+
+func TestControllerRemainingReportsKnownCooldown(t *testing.T) {
+	var controller Controller
+	if remaining := controller.Remaining("missing"); remaining != 0 {
+		t.Fatalf("missing remaining = %s", remaining)
+	}
+	controller.Observe(
+		"limited",
+		0,
+		http.StatusTooManyRequests,
+		http.Header{"Retry-After": {"1"}},
+		nil,
+	)
+	remaining := controller.Remaining("limited")
+	if remaining < 500*time.Millisecond || remaining > time.Second {
+		t.Fatalf("remaining = %s", remaining)
+	}
+	if other := controller.Remaining("other"); other != 0 {
+		t.Fatalf("unrelated remaining = %s", other)
 	}
 }
 

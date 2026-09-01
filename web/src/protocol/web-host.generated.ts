@@ -72,6 +72,7 @@ export const webEventKinds = [
   "search.result",
   "citation",
   "usage",
+  "provider.attempt",
   "tool.state",
   "tool.start",
   "tool.output",

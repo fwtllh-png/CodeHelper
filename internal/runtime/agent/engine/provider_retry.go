@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
@@ -31,16 +32,28 @@ func kernelProviderFailure(err error) *provider.Failure {
 	return &failure
 }
 
+type rateLimitBudget struct {
+	retries  uint32
+	waited   time.Duration
+	cooldown time.Duration
+}
+
 func (e *Engine) providerRetry(
 	err error,
 	meaningful bool,
 	retries uint32,
 	contextChanged bool,
+	budget rateLimitBudget,
 ) (ProviderRetry, bool) {
 	return providerwire.RetryPolicy{
-		MaxRetries: e.options.MaxRetries,
-		MaxDelay:   e.options.MaxRetryDelay,
-		Now:        e.options.Observability.Now,
+		MaxRetries:          e.options.MaxRetries,
+		MaxDelay:            e.options.MaxRetryDelay,
+		RateLimitMaxRetries: e.options.RateLimitMaxRetries,
+		RateLimitMaxWait:    e.options.RateLimitMaxWait,
+		RateLimitRetries:    budget.retries,
+		RateLimitWaited:     budget.waited,
+		RouteCooldown:       budget.cooldown,
+		Now:                 e.options.Observability.Now,
 	}.Decide(err, meaningful, retries, contextChanged)
 }
 
@@ -67,6 +80,25 @@ func exhaustedProviderRetry(err error) error {
 		return err
 	}
 	return protocol.NewFault(protocol.CodeUnavailable, "provider could not complete the model sample: "+errorText(err), true, fault, err)
+}
+
+func exhaustedRateLimitRetry(err error) error {
+	recovered := exhaustedProviderRetry(err)
+	var problem *protocol.Problem
+	if errors.As(recovered, &problem) && problem != nil {
+		problem.Message = "provider rate limit retry budget exhausted"
+	}
+	return recovered
+}
+
+func (e *Engine) routeCooldown(route model.ReadyRoute) time.Duration {
+	source, ok := e.options.Provider.(interface {
+		RouteCooldown(model.ReadyRoute) time.Duration
+	})
+	if !ok {
+		return 0
+	}
+	return source.RouteCooldown(route)
 }
 
 func (e *Engine) recoverContextOverflow(

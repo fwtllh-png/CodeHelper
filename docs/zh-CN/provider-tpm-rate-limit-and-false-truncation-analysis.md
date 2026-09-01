@@ -1,7 +1,9 @@
 # Provider TPM 限流与错误“消息截断”问题分析及优化方案
 
 > 状态：问题与根因已通过持久化 Turn Fact、Event、Usage Context 和 Provider
-> Transport Receipt 交叉验证；本文中的优化项除特别标注外均为待实现方案。
+> Transport Receipt 交叉验证。9.1 观测修复和 9.2 Rate Limit Recovery Budget
+> （公开等待/次数边界、可恢复耗尽、已知冷却不再立即重探）已在当前工作树落地；
+> 9.3 及之后的 Throughput Admission 与截断历史治理仍为待实现方案。
 >
 > 本文讨论长会话中工具调用后反复出现“消息被截断”叙述、Provider 429 重试和完整
 > Context 重放的叠加问题。通用 Token 工作集治理见
@@ -260,9 +262,9 @@ Provider Retry Policy 将失败分类后决定恢复动作：
 - Retry-After 缺失时使用本地 Backoff；存在时优先使用 Provider 值，但 Engine Delay 可由
   `MaxRetryDelay` 限制。
 
-当前设计可以避免瞬时 429 直接导致 Turn 失败，但没有独立的“最大累计等待”“最大 429
+现场版本可以避免瞬时 429 直接导致 Turn 失败，但当时没有独立的“最大累计等待”“最大 429
 Attempt”或“重试前 Token Admission”契约。对 700K 级完整请求，这会把限流转化成长时间透明
-重试和重复传输。
+重试和重复传输。9.2 已补上 Recovery Budget；按已知 TPM Burst 拒绝探测仍属 9.3。
 
 ### 4.3 Provider Projection
 
@@ -522,6 +524,20 @@ Governor。等待期间不占用 Provider 并发槽，且能被 Turn Cancel 唤�
 3. 仍不满足时返回结构化 Resource Exhaustion 或等待下一 Window；
 4. 不循环发送相同 Digest 的请求探测 Provider。
 
+当前工作树已落地 P0-4 与 P0-5 中不依赖 TPM Contract 的部分：
+
+- 公开配置 `execution.rate_limit_retry_limit` 与 `execution.rate_limit_wait`，进入
+  Schema、Provenance、中文配置文档和边界测试。`rate_limit_wait=0` 派生自
+  `execution.timeout`。
+- 达到次数或累计等待边界时，返回可恢复
+  `provider rate limit retry budget exhausted`，保留已完成 Tool Side Effect。
+- 已知 Retry-After / Route Cooldown 时，Engine 等待完整剩余窗口，不再用
+  `MaxRetryDelay` 截短后立即重探；Governor `Wait` 仍在占用并发槽之前、且可取消。
+- `provider.attempt` 公开 `rate_limit_retries`、`rate_limit_retry_limit`、
+  `rate_limit_waited_ms` 和 `rate_limit_wait_budget_ms`。
+- 在缺少 Operator/Header TPM Burst Contract 时，不发明按模型名称的 TPM 默认值；
+  请求大于已知 Burst 的准入与 `provider_throughput` Rebase 仍属 9.3。
+
 ### 9.3 P1：按 Provider Throughput 控制工作集
 
 现有 Hard Capacity 和 Economic Admission 之外，增加 Throughput Admission：
@@ -687,7 +703,7 @@ SQLite 中可能已经累计翻倍的最终 Usage Row 作为唯一证据。
 
 ### 12.3 临时缓解
 
-- 取消不再值得等待的 Turn，避免无界透明等待；
+- 取消不再值得等待的 Turn，或等待 Rate Limit Recovery Budget 耗尽后的可恢复入口；
 - 使用显式 Turn Token Budget 和更小的 Operator Active Context Ceiling；
 - 在安全边界执行 Context Compaction/Rebase，确认产生新的 `context_rebases`；
 - 批量独立只读工具，减少一工具一 Sample；

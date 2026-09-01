@@ -247,6 +247,12 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 	if err := applyEnvInt(lookup, "CODEHELPER_PROVIDER_RETRY_LIMIT", fieldProviderRetryLimit, &execution.ProviderRetryLimit, provenance); err != nil {
 		return err
 	}
+	if err := applyEnvInt(lookup, "CODEHELPER_RATE_LIMIT_RETRY_LIMIT", fieldRateLimitRetryLimit, &execution.RateLimitRetryLimit, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvDuration(lookup, "CODEHELPER_RATE_LIMIT_WAIT", fieldRateLimitWait, &execution.RateLimitWait, provenance); err != nil {
+		return err
+	}
 	if err := applyEnvUint64(lookup, "CODEHELPER_BUDGET_TOKENS", fieldBudgetTokens, &execution.BudgetTokens, provenance); err != nil {
 		return err
 	}

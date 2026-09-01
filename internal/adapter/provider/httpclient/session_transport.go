@@ -14,14 +14,15 @@ import (
 )
 
 type sessionAttempt struct {
-	client      *Client
-	call        providerwire.PreparedCall
-	credential  string
-	ctx         context.Context
-	cancel      context.CancelFunc
-	traceHeader http.Header
-	requestID   string
-	transferred bool
+	client       *Client
+	call         providerwire.PreparedCall
+	credential   string
+	ctx          context.Context
+	cancel       context.CancelFunc
+	traceHeader  http.Header
+	requestID    string
+	transferred  bool
+	cooldownWait time.Duration
 }
 
 func (c *Client) BeginSession(
@@ -29,7 +30,7 @@ func (c *Client) BeginSession(
 	route model.ReadyRoute,
 	call providerwire.PreparedCall,
 ) (providerwire.SessionAttempt, error) {
-	requestContext, cancel, credential, err := c.begin(ctx, route)
+	requestContext, cancel, credential, cooldownWait, err := c.begin(ctx, route)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +39,8 @@ func (c *Client) BeginSession(
 	return &sessionAttempt{
 		client: c, call: call, credential: credential,
 		ctx: requestContext, cancel: cancel,
-		traceHeader: traceHeader,
+		traceHeader:  traceHeader,
+		cooldownWait: cooldownWait,
 	}, nil
 }
 func (a *sessionAttempt) Dial(endpoint string) (providerwire.Socket, context.CancelFunc, error) {
@@ -93,6 +95,7 @@ func (a *sessionAttempt) Wrap(stream provider.Stream, metadata provider.Transpor
 		a.ProviderRequest()
 	}
 	metadata.TransportRequestID = a.requestID
+	metadata.RouteCooldownWaitMS = uint64(a.cooldownWait / time.Millisecond)
 	return a.client.wrapStream(stream, metadata, a.cancel)
 }
 func (a *sessionAttempt) Close() {

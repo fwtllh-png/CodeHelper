@@ -858,6 +858,7 @@
             "search.result",
             "citation",
             "usage",
+            "provider.attempt",
             "tool.state",
             "tool.start",
             "tool.output",
@@ -4896,6 +4897,135 @@
       },
       "additionalProperties": false
     },
+    "provider.attempt": {
+      "type": "object",
+      "properties": {
+        "attempt": {
+          "type": "integer"
+        },
+        "effective_delay_ms": {
+          "type": "integer"
+        },
+        "error_code": {
+          "type": "string"
+        },
+        "failure_code": {
+          "type": "string"
+        },
+        "finished_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "http_status": {
+          "type": "integer"
+        },
+        "policy_revision": {
+          "type": "string"
+        },
+        "projected_input_tokens": {
+          "type": "integer"
+        },
+        "projection": {
+          "type": "object",
+          "properties": {
+            "context_revision": {
+              "type": "integer"
+            },
+            "delta_digest": {
+              "type": "string"
+            },
+            "fallback_reason": {
+              "type": "string"
+            },
+            "incremental_eligible": {
+              "type": "boolean"
+            },
+            "input_digest": {
+              "type": "string"
+            },
+            "logical_items": {
+              "type": "integer"
+            },
+            "logical_transport_equivalent": {
+              "type": "boolean"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "property_digest": {
+              "type": "string"
+            },
+            "route_digest": {
+              "type": "string"
+            },
+            "stable_prefix_digest": {
+              "type": "string"
+            },
+            "transport_items": {
+              "type": "integer"
+            },
+            "window_id": {
+              "type": "string"
+            },
+            "window_number": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "logical_transport_equivalent",
+            "mode"
+          ],
+          "additionalProperties": false
+        },
+        "provider_retry_after_ms": {
+          "type": "integer"
+        },
+        "rate_limit_retries": {
+          "type": "integer"
+        },
+        "rate_limit_retry_limit": {
+          "type": "integer"
+        },
+        "rate_limit_wait_budget_ms": {
+          "type": "integer"
+        },
+        "rate_limit_waited_ms": {
+          "type": "integer"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "request_bytes": {
+          "type": "integer"
+        },
+        "retry_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "route_cooldown_wait_ms": {
+          "type": "integer"
+        },
+        "sample_id": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string"
+        },
+        "stop_reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempt",
+        "sample_id",
+        "status"
+      ],
+      "additionalProperties": false
+    },
     "reasoning.completed": {
       "type": "object",
       "properties": {
@@ -8680,6 +8810,13 @@
       "item_owner": "turn",
       "durability": "retained",
       "correlation": "plan",
+      "terminal": false
+    },
+    "provider.attempt": {
+      "class": "audit",
+      "item_owner": "turn",
+      "durability": "retained",
+      "correlation": "sample",
       "terminal": false
     },
     "reasoning.completed": {

@@ -24,6 +24,7 @@ type stream struct {
 	reasoningIndex map[int]int
 	signatures     map[int]string
 	nextReasoning  int
+	usage          provider.Usage
 }
 
 func NewStream(body io.ReadCloser) (provider.Stream, error) {
@@ -62,6 +63,11 @@ func (s *stream) Recv() (provider.StreamEvent, error) {
 			return provider.StreamEvent{}, err
 		}
 		for index, event := range events {
+			if event.Type == provider.EventUsage && event.Usage != nil {
+				s.usage = provider.MergeCumulative(s.usage, *event.Usage)
+				usage := s.usage
+				event.Usage = &usage
+			}
 			if record.ID != "" {
 				event.EventID = fmt.Sprintf(
 					"%s#%d",

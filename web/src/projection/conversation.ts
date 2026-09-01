@@ -241,6 +241,10 @@ export class ConversationProjection {
         break;
       case "tool.result":
         this.finishTool(event);
+        this.markToolContinued(event);
+        break;
+      case "provider.attempt":
+        this.applyProviderAttempt(event);
         break;
       case "command.execution":
         this.updateCommandExecution(event);
@@ -530,7 +534,39 @@ export class ConversationProjection {
     });
   }
 
+  private applyProviderAttempt(event: RuntimeEvent): void {
+    const presentation = providerAttemptPresentation(event.data);
+    if (!presentation) return;
+    this.put({
+      id: providerStateID(event.turn_id),
+      kind: "status",
+      turnID: event.turn_id,
+      sequence: event.sequence,
+      title: presentation.title,
+      text: presentation.text,
+      failed: false,
+      warning: presentation.warning,
+      recoverable: false
+    });
+  }
+
+  private markToolContinued(event: RuntimeEvent): void {
+    if (Boolean(event.data.is_error)) return;
+    const id = providerStateID(event.turn_id);
+    const previous = this.nodes.get(id);
+    if (previous?.kind !== "status") return;
+    this.put({
+      ...previous,
+      sequence: event.sequence,
+      title: "Continuing this turn",
+      text: "Tool finished. Continuing the same turn.",
+      warning: false,
+      failed: false
+    });
+  }
+
   private finishTurn(event: RuntimeEvent, failed: boolean): void {
+    this.remove(providerStateID(event.turn_id));
     this.activeTurns.delete(event.turn_id);
     for (const [key, pending] of this.approvals) {
       if (pending.turn_id === event.turn_id) this.approvals.delete(key);
@@ -1039,4 +1075,46 @@ function changeSummary(changes: readonly Record<string, unknown>[]): string {
     removed += Number(change.removed ?? change.removed_lines ?? 0);
   }
   return `${stringValue(changes[0]?.path)} · +${added} -${removed}`;
+}
+
+function providerStateID(turnID: string): string {
+  return `provider-state-${turnID}`;
+}
+
+function providerAttemptPresentation(data: Record<string, unknown>): {
+  title: string;
+  text: string;
+  warning?: boolean;
+} | undefined {
+  const status = stringValue(data.status);
+  const failure = stringValue(data.failure_code);
+  const stop = stringValue(data.stop_reason);
+  if (status === "retry_wait" && failure === "rate_limit") {
+    return {
+      title: "Provider rate limited",
+      text: "Waiting to retry. This is a request limit, not a truncated message.",
+      warning: true
+    };
+  }
+  if (status === "retry_wait") {
+    return {
+      title: "Provider retrying",
+      text: "Waiting to retry a failed provider request.",
+      warning: true
+    };
+  }
+  if (status === "incomplete") {
+    return {
+      title: "Provider output incomplete",
+      text: "Safely continuing from the confirmed output.",
+      warning: true
+    };
+  }
+  if (status === "completed" && stop === "tool_use") {
+    return {
+      title: "Continuing this turn",
+      text: "Tool call requested. This is a normal sample boundary, not a truncated message."
+    };
+  }
+  return undefined;
 }

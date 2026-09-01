@@ -438,6 +438,10 @@ func TestEventTaggedUnionRoundTrip(t *testing.T) {
 		&OutputDeltaData{Text: "hello"},
 		&ReasoningDeltaData{Text: "think"},
 		&UsageData{},
+		&ProviderAttemptData{
+			SampleID: "sample-1", Attempt: 1, Status: ProviderAttemptRetryWait,
+			FailureCode: "rate_limit", HTTPStatus: 429,
+		},
 		&ToolStateData{State: "running"},
 		&ToolStartData{Tool: "read_file", CallID: "call_0", Arguments: json.RawMessage(`{"path":"a.go"}`)},
 		&ToolResultData{

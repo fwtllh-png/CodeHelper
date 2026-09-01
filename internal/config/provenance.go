@@ -82,6 +82,8 @@ const (
 	fieldMaxConcurrent         = "execution.max_concurrent"
 	fieldRateLimit             = "execution.rate_limit"
 	fieldProviderRetryLimit    = "execution.provider_retry_limit"
+	fieldRateLimitRetryLimit   = "execution.rate_limit_retry_limit"
+	fieldRateLimitWait         = "execution.rate_limit_wait"
 	fieldBudgetTokens          = "execution.budget_tokens"
 	fieldTurnBudgetTokens      = "execution.turn_budget_tokens"
 	fieldBudgetUSD             = "execution.budget_usd"
@@ -212,6 +214,8 @@ func defaultProvenance() map[string]Source {
 		fieldMaxConcurrent:         SourceDefault,
 		fieldRateLimit:             SourceDefault,
 		fieldProviderRetryLimit:    SourceDefault,
+		fieldRateLimitRetryLimit:   SourceDefault,
+		fieldRateLimitWait:         SourceDefault,
 		fieldBudgetTokens:          SourceDefault,
 		fieldTurnBudgetTokens:      SourceDefault,
 		fieldBudgetUSD:             SourceDefault,

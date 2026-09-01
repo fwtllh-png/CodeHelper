@@ -255,7 +255,10 @@ func (a *ResponseAssembly) Apply(event StreamEvent) (bool, error) {
 			return false, err
 		}
 	case EventUsage:
-		segment.Usage.Add(*event.Usage)
+		// Provider adapters expose cumulative snapshots within one transport.
+		// Max-consistent merge keeps category-specific or repeated reports
+		// idempotent while TotalUsage still sums distinct transports.
+		segment.Usage = provider.MergeCumulative(segment.Usage, *event.Usage)
 	case EventReplayState:
 		if segment.Replay != nil {
 			return false, errors.New("provider emitted duplicate replay state")

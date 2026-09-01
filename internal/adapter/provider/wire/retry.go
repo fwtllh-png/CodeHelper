@@ -11,12 +11,17 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-const RetryPolicyRevision = "provider-retry/v2"
+const RetryPolicyRevision = "provider-retry/v3"
 
 type RetryPolicy struct {
-	MaxRetries int
-	MaxDelay   time.Duration
-	Now        func() time.Time
+	MaxRetries          int
+	MaxDelay            time.Duration
+	RateLimitMaxRetries int
+	RateLimitMaxWait    time.Duration
+	RateLimitRetries    uint32
+	RateLimitWaited     time.Duration
+	RouteCooldown       time.Duration
+	Now                 func() time.Time
 }
 
 type RetryDecision struct {
@@ -45,9 +50,16 @@ func (p RetryPolicy) Decide(
 		limit = 1
 	}
 	eligible := false
+	attempt := int(retries)
 	switch failure.Code {
 	case provider.FailureRateLimit:
-		eligible, limit = true, 0
+		eligible = true
+		attempt = int(p.RateLimitRetries)
+		if p.RateLimitMaxRetries > 0 {
+			limit = p.RateLimitMaxRetries
+		} else {
+			limit = 0
+		}
 	case provider.FailureServer,
 		provider.FailureTransport,
 		provider.FailureStreamClosed,
@@ -71,7 +83,7 @@ func (p RetryPolicy) Decide(
 			Owner:       protocol.FaultRetryOwnerEngine,
 			Idempotent:  true,
 			Progress:    meaningful,
-			Attempt:     int(retries),
+			Attempt:     attempt,
 			MaxAttempts: limit,
 		},
 	)
@@ -79,15 +91,31 @@ func (p RetryPolicy) Decide(
 		decision.Action != protocol.RecoveryWait {
 		return RetryDecision{}, false
 	}
+	backoffRetries := retries
+	if failure.Code == provider.FailureRateLimit {
+		backoffRetries = p.RateLimitRetries
+	}
 	delayMS := failure.RetryAfterMS
 	if delayMS == 0 {
-		delayMS = uint64(retryBackoff(retries) / time.Millisecond)
+		delayMS = uint64(retryBackoff(backoffRetries) / time.Millisecond)
 	}
-	maxDelayMS := uint64(p.MaxDelay / time.Millisecond)
-	if maxDelayMS > 0 && delayMS > maxDelayMS {
-		delayMS = maxDelayMS
+	needed := time.Duration(delayMS) * time.Millisecond
+	if p.RouteCooldown > needed {
+		needed = p.RouteCooldown
 	}
-	delay := time.Duration(delayMS) * time.Millisecond
+	providerSpecified := failure.RetryAfterMS > 0 || p.RouteCooldown > 0
+	if !providerSpecified && p.MaxDelay > 0 && needed > p.MaxDelay {
+		needed = p.MaxDelay
+	}
+	if failure.Code == provider.FailureRateLimit &&
+		p.RateLimitMaxWait > 0 &&
+		p.RateLimitWaited+needed > p.RateLimitMaxWait {
+		return RetryDecision{}, false
+	}
+	if failure.Code != provider.FailureRateLimit &&
+		p.MaxDelay > 0 && needed > p.MaxDelay {
+		needed = p.MaxDelay
+	}
 	now := time.Now()
 	if p.Now != nil {
 		now = p.Now()
@@ -95,7 +123,7 @@ func (p RetryPolicy) Decide(
 	return RetryDecision{
 		Attempt: int(retries + 1), Retry: retries + 1,
 		Code: protocol.CodeOf(err), Category: FailureCategory(err, failure.Code),
-		Failure: failure, EffectiveDelay: delay, RetryAt: now.Add(delay),
+		Failure: failure, EffectiveDelay: needed, RetryAt: now.Add(needed),
 		PolicyRevision: RetryPolicyRevision,
 	}, true
 }

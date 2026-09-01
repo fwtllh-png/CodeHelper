@@ -39,7 +39,8 @@ func (c *Controller) Wait(
 	ctx context.Context,
 	key string,
 	requestsPerSecond float64,
-) error {
+) (time.Duration, error) {
+	var waited time.Duration
 	for {
 		c.mu.Lock()
 		state := c.state(key)
@@ -49,18 +50,38 @@ func (c *Controller) Wait(
 			state.nextRequest = now.Add(interval)
 			state.lastRequest = now
 			c.mu.Unlock()
-			return nil
+			return waited, nil
 		}
 		delay := state.nextRequest.Sub(now)
 		c.mu.Unlock()
+		started := time.Now()
 		timer := time.NewTimer(delay)
 		select {
 		case <-timer.C:
+			waited += time.Since(started)
 		case <-ctx.Done():
 			timer.Stop()
-			return ctx.Err()
+			waited += time.Since(started)
+			return waited, ctx.Err()
 		}
 	}
+}
+
+func (c *Controller) Remaining(key string) time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.routes == nil {
+		return 0
+	}
+	state := c.routes[key]
+	if state == nil {
+		return 0
+	}
+	remaining := time.Until(state.nextRequest)
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
 }
 
 func (c *Controller) Observe(

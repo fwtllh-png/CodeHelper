@@ -1635,6 +1635,50 @@ func TestEngineGuaranteesOneRetryForStructuredTransportFailure(t *testing.T) {
 	}
 }
 
+func TestEnginePublishesProviderAttemptLifecycle(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"provider stream transport failed",
+			true,
+			syscall.ECONNRESET,
+		)},
+		textStream("ok"),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	var attempts []ModelExecution
+	if _, err := engine.Run(t.Context(), "retry transport", func(event Event) error {
+		if event.ModelExecution != nil && event.ModelExecution.Kind == "provider_attempt" {
+			attempts = append(attempts, *event.ModelExecution)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 5 {
+		t.Fatalf("provider attempts = %+v, want started/failed/retry_wait/started/completed", attempts)
+	}
+	if attempts[0].Status != protocol.ProviderAttemptStarted ||
+		attempts[0].Attempt != 1 || attempts[0].StartedAt.IsZero() {
+		t.Fatalf("first started attempt = %+v", attempts[0])
+	}
+	if attempts[1].Status != protocol.ProviderAttemptFailed || attempts[1].Attempt != 1 {
+		t.Fatalf("failed attempt = %+v", attempts[1])
+	}
+	if attempts[2].Status != protocol.ProviderAttemptRetryWait ||
+		attempts[2].Attempt != 1 {
+		t.Fatalf("retry wait = %+v", attempts[2])
+	}
+	if attempts[3].Status != protocol.ProviderAttemptStarted || attempts[3].Attempt != 2 {
+		t.Fatalf("second started attempt = %+v", attempts[3])
+	}
+	if attempts[4].Status != protocol.ProviderAttemptCompleted ||
+		attempts[4].StopReason != provider.StopReasonEndTurn ||
+		attempts[4].FinishedAt.IsZero() {
+		t.Fatalf("completed attempt = %+v", attempts[4])
+	}
+}
+
 func TestTurnCatalogSnapshotRejectsReplacementAndRemainsFrozen(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	oldExecutor := &countingCatalogExecutor{descriptor: echoDescriptor()}

@@ -252,3 +252,26 @@ func routeWithoutNativeSearch(t *testing.T) model.ReadyRoute {
 	}
 	return route
 }
+
+func TestMergeCumulativeKeepsTheHighWaterMark(t *testing.T) {
+	got := MergeCumulative(
+		Usage{InputTokens: 100, CachedTokens: 40},
+		Usage{OutputTokens: 8, ReasoningTokens: 2},
+	)
+	if got.InputTokens != 100 || got.OutputTokens != 8 ||
+		got.ReasoningTokens != 2 || got.CachedTokens != 40 {
+		t.Fatalf("merged usage = %+v", got)
+	}
+	if !SameSnapshot(got, MergeCumulative(got, got)) {
+		t.Fatal("repeated cumulative snapshot changed")
+	}
+	previous := Usage{
+		InputTokens: 690_000, OutputTokens: 1_200, ReasoningTokens: 400, CachedTokens: 80_000,
+	}
+	doubled := Usage{
+		InputTokens: 1_380_000, OutputTokens: 2_400, ReasoningTokens: 800, CachedTokens: 160_000,
+	}
+	if !DoubledSnapshot(previous, doubled) || DoubledSnapshot(previous, got) {
+		t.Fatal("doubled-snapshot detector missed the Add-on-cumulative pattern")
+	}
+}

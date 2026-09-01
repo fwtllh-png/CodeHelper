@@ -377,6 +377,28 @@ func TestResponseAssemblyAttributesUsageAcrossTransportAttempts(t *testing.T) {
 	}
 }
 
+func TestResponseAssemblyRetainsLatestCumulativeUsageWithinTransport(t *testing.T) {
+	assembly := NewResponseAssembly("sample-cumulative")
+	if err := assembly.BeginTransport(TransportMetadata{
+		LogicalRequestID: "sample-cumulative", TransportRequestID: "transport-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, usage := range []Usage{
+		{InputTokens: 10},
+		{OutputTokens: 2},
+		{InputTokens: 10, OutputTokens: 2},
+		{InputTokens: 10, OutputTokens: 2},
+	} {
+		if _, err := assembly.Apply(StreamEvent{Type: EventUsage, Usage: &usage}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := assembly.CurrentUsage(); got.InputTokens != 10 || got.OutputTokens != 2 {
+		t.Fatalf("usage = %+v, want max-consistent cumulative snapshot", got)
+	}
+}
+
 func TestResponseAssemblyDisconnectAtEveryBoundaryRetainsConfirmedData(
 	t *testing.T,
 ) {

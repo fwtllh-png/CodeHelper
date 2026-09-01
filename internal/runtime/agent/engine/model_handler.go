@@ -7,11 +7,13 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
+	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
 	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
@@ -65,6 +67,8 @@ func (e *Engine) modelStep(
 	finishTransport func() error,
 	send func(State, Event) error,
 ) ([]provider.ContentBlock, []provider.ToolCall, provider.Usage, uint64, error) {
+	var rateLimitRetries uint32
+	var rateLimitWaited time.Duration
 	if continued != nil {
 		*continued = false
 	}
@@ -366,14 +370,19 @@ func (e *Engine) modelStep(
 			}
 		}
 		providerAttempt++
+		attemptStarted := time.Now()
 		if err := send(CallingModel, Event{
 			ModelExecution: &ModelExecution{
 				Kind: "provider_attempt", SampleID: sampleID,
-				Attempt: providerAttempt, Reason: sampleReason,
+				Attempt: providerAttempt, Status: protocol.ProviderAttemptStarted,
+				Reason:               sampleReason,
+				ProjectedInputTokens: windowProjection.FullActiveTokens,
+				StartedAt:            attemptStarted,
 			},
 		}); err != nil {
 			return nil, nil, totalUsage, lastEstimate, err
 		}
+		var lastPublishedUsage *provider.Usage
 		call := sample{
 			index: e.nextSample(), provider: route.ProviderID(),
 			model: route.Model().ID, pricing: route.Model().Pricing, context: &attribution,
@@ -415,6 +424,12 @@ func (e *Engine) modelStep(
 							projected.Transport,
 						)
 						copy := *projected.Usage
+						if lastPublishedUsage != nil &&
+							(provider.SameSnapshot(*lastPublishedUsage, copy) ||
+								provider.DoubledSnapshot(*lastPublishedUsage, copy)) {
+							return nil
+						}
+						lastPublishedUsage = &copy
 						if call.observe != nil {
 							call.observe(
 								call.context,
@@ -496,10 +511,20 @@ func (e *Engine) modelStep(
 				false,
 				providerRetries,
 				contextChanged,
+				rateLimitBudget{
+					retries:  rateLimitRetries,
+					waited:   rateLimitWaited,
+					cooldown: e.routeCooldown(route),
+				},
 			)
 			if retryable && ctx.Err() == nil {
 				if sendErr := send(CallingModel, Event{
 					ProviderRetry: &retry,
+					ModelExecution: e.providerAttemptRetry(
+						sampleID, providerAttempt, attemptStarted,
+						windowProjection.FullActiveTokens, assembly,
+						rateLimitRetries, rateLimitWaited,
+					),
 				}); sendErr != nil {
 					return nil, nil, totalUsage, lastEstimate, sendErr
 				}
@@ -509,11 +534,15 @@ func (e *Engine) modelStep(
 				); waitErr != nil {
 					return nil, nil, totalUsage, lastEstimate, waitErr
 				}
+				if retry.Failure.Code == provider.FailureRateLimit {
+					rateLimitRetries++
+					rateLimitWaited += retry.EffectiveDelay
+				}
 				providerRetries++
 				continue
 			}
 			return nil, nil, totalUsage, lastEstimate,
-				exhaustedProviderRetry(err)
+				exhaustedSampleRetry(err, false)
 		}
 		e.prefixMu.Lock()
 		e.prefixManifest = prefixManifest
@@ -523,6 +552,34 @@ func (e *Engine) modelStep(
 		usage, meaningful := consumed.Usage, consumed.Meaningful
 		replay := consumed.Replay
 		totalUsage.Add(usage)
+		attemptStatus := protocol.ProviderAttemptFailed
+		if err == nil {
+			attemptStatus = protocol.ProviderAttemptCompleted
+		} else {
+			var incomplete *providerassembly.IncompleteOutputError
+			if errors.As(err, &incomplete) {
+				attemptStatus = protocol.ProviderAttemptIncomplete
+			}
+		}
+		attemptExecution := &ModelExecution{
+			Kind: "provider_attempt", SampleID: sampleID,
+			Attempt: providerAttempt, Status: attemptStatus,
+			ProjectedInputTokens: windowProjection.FullActiveTokens,
+			StartedAt:            attemptStarted,
+			FinishedAt:           time.Now(),
+		}
+		if len(assembly.Segments) != 0 {
+			segment := assembly.Segments[len(assembly.Segments)-1]
+			attemptExecution.Transport = segment.Transport
+			attemptExecution.StopReason = segment.StopReason
+		}
+		if attemptStatus == protocol.ProviderAttemptCompleted &&
+			attemptExecution.StopReason == "" {
+			attemptExecution.StopReason = provider.StopReasonEndTurn
+		}
+		if sendErr := send(CallingModel, Event{ModelExecution: attemptExecution}); sendErr != nil {
+			return nil, nil, totalUsage, lastEstimate, sendErr
+		}
 		pending := e.drainPending()
 		if ctx.Err() == nil && len(pending) != 0 {
 			if pendingInputInjected != nil {
@@ -622,16 +679,26 @@ func (e *Engine) modelStep(
 			meaningful,
 			providerRetries,
 			contextChanged,
+			rateLimitBudget{
+				retries:  rateLimitRetries,
+				waited:   rateLimitWaited,
+				cooldown: e.routeCooldown(route),
+			},
 		)
 		if !retryable || ctx.Err() != nil {
 			if ctx.Err() != nil {
 				return blocks, nil, totalUsage, lastEstimate, ctx.Err()
 			}
 			return blocks, nil, totalUsage, lastEstimate,
-				exhaustedProviderRetry(err)
+				exhaustedSampleRetry(err, meaningful)
 		}
 		if sendErr := send(CallingModel, Event{
 			ProviderRetry: &retry,
+			ModelExecution: e.providerAttemptRetry(
+				sampleID, providerAttempt, attemptStarted,
+				windowProjection.FullActiveTokens, assembly,
+				rateLimitRetries, rateLimitWaited,
+			),
 		}); sendErr != nil {
 			return nil, nil, totalUsage, lastEstimate, sendErr
 		}
@@ -641,8 +708,49 @@ func (e *Engine) modelStep(
 		); waitErr != nil {
 			return nil, nil, totalUsage, lastEstimate, waitErr
 		}
+		if retry.Failure.Code == provider.FailureRateLimit {
+			rateLimitRetries++
+			rateLimitWaited += retry.EffectiveDelay
+		}
 		providerRetries++
 	}
+}
+
+func exhaustedSampleRetry(err error, meaningful bool) error {
+	if providerwire.ClassifyFailure(err, meaningful).Code ==
+		provider.FailureRateLimit {
+		return exhaustedRateLimitRetry(err)
+	}
+	return exhaustedProviderRetry(err)
+}
+
+func (e *Engine) providerAttemptRetry(
+	sampleID string,
+	attempt uint32,
+	started time.Time,
+	projectedInputTokens uint64,
+	assembly *providerassembly.ResponseAssembly,
+	rateLimitRetries uint32,
+	rateLimitWaited time.Duration,
+) *ModelExecution {
+	execution := &ModelExecution{
+		Kind: "provider_attempt", SampleID: sampleID,
+		Attempt: attempt, Status: protocol.ProviderAttemptRetryWait,
+		ProjectedInputTokens: projectedInputTokens,
+		StartedAt:            started,
+		RateLimitRetries:     rateLimitRetries,
+		RateLimitWaited:      rateLimitWaited,
+		RateLimitWaitBudget:  e.options.RateLimitMaxWait,
+	}
+	if e.options.RateLimitMaxRetries > 0 {
+		execution.RateLimitRetryLimit = uint32(e.options.RateLimitMaxRetries)
+	}
+	if assembly != nil && len(assembly.Segments) != 0 {
+		segment := assembly.Segments[len(assembly.Segments)-1]
+		execution.Transport = segment.Transport
+		execution.StopReason = segment.StopReason
+	}
+	return execution
 }
 
 func bindToolCalls(

@@ -161,6 +161,29 @@ func TestRecordedHostEventSequenceContract(t *testing.T) {
 	}
 }
 
+func TestProjectProviderAttemptAsAccountingFact(t *testing.T) {
+	event, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "op", ThreadID: "thread",
+		TurnID: "turn", ItemID: "item",
+	}, &protocol.ProviderAttemptData{
+		SampleID: "sample-1", Attempt: 1, Status: protocol.ProviderAttemptRetryWait,
+		FailureCode: "rate_limit", HTTPStatus: 429,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	update, err := Project(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accounting, ok := update.(AccountingUpdate)
+	if !ok || accounting.Attempt == nil ||
+		accounting.Attempt.FailureCode != "rate_limit" ||
+		accounting.Traits().Class != protocol.EventClassAudit {
+		t.Fatalf("update = %#v", update)
+	}
+}
+
 func TestProjectAgentEventsWithoutHostPayloadSwitches(t *testing.T) {
 	for _, data := range []protocol.EventData{
 		&protocol.AgentSpawnedData{

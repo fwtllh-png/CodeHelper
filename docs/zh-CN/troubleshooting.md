@@ -49,7 +49,12 @@ Web Settings 会显示 Provider、Model、Credential 状态与校验结果。确
 - `tool_use` 是正常工具边界；
 - `max_tokens`、`incomplete` 或 `content_filter` 才属于不完整输出分类；
 - Runtime 只有在真实不完整时才会产生结构化 `[continue_after_incomplete]` Feedback；
-- HTTP 429 `rate_limit` 是 Provider 请求失败与等待重试，不是输出截断。
+- HTTP 429 `rate_limit` 是 Provider 请求失败与等待重试，不是输出截断；
+- 同一逻辑 Sample 的 Attempt 以 `provider.attempt` 事件公开，不要从 Usage Sample
+  编号跳跃反推重试次数；
+- 429 等待受 `execution.rate_limit_wait`（默认继承 `execution.timeout`）和
+  `execution.rate_limit_retry_limit` 约束。超出预算时 Turn 进入可恢复 Blocked，
+  消息为 `provider rate limit retry budget exhausted`，不会无限透明重试。
 
 若请求达到数十万 Token 且 Provider Projection 为 `complete_http_sse`，每次工具调用后的
 新 Sample 和每次 429 Attempt 都可能重新发送完整 Context。详细证据、只读排查字段和优化方案见

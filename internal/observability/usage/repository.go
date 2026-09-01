@@ -141,8 +141,9 @@ func ProjectTx(ctx context.Context, tx *sql.Tx, event protocol.Event) error {
 // from counting the same tokens twice for providers that report input and output
 // in separate events.
 //
-// A row is only overwritten by an event later in the stream, which makes replay
-// idempotent: re-projecting an event the row already reflects changes nothing.
+// A row is only overwritten by a later event whose counters do not shrink and
+// do not look like the previous snapshot added to itself. That keeps replay
+// idempotent and refuses the Usage.Add-on-cumulative doubling failure.
 func projectUsage(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -204,7 +205,25 @@ func projectUsage(
 			cost_microunits = excluded.cost_microunits,
 			cost_known = excluded.cost_known,
 			created_at = excluded.created_at
-		WHERE excluded.source_sequence > usage.source_sequence`,
+		WHERE excluded.source_sequence > usage.source_sequence
+			AND excluded.input_tokens >= usage.input_tokens
+			AND excluded.output_tokens >= usage.output_tokens
+			AND excluded.reasoning_tokens >= usage.reasoning_tokens
+			AND excluded.cached_tokens >= usage.cached_tokens
+			AND NOT (
+				usage.input_tokens > 0
+				AND usage.output_tokens > 0
+				AND excluded.input_tokens = usage.input_tokens * 2
+				AND excluded.output_tokens = usage.output_tokens * 2
+				AND (
+					usage.reasoning_tokens = 0
+					OR excluded.reasoning_tokens = usage.reasoning_tokens * 2
+				)
+				AND (
+					usage.cached_tokens = 0
+					OR excluded.cached_tokens = usage.cached_tokens * 2
+				)
+			)`,
 		sessionID, threadID, event.TurnID, data.Sample, event.Sequence, event.Sequence,
 		provider, model, metadataJSON,
 		data.InputTokens, data.OutputTokens, data.ReasoningTokens,

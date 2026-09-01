@@ -157,8 +157,14 @@ type Execution struct {
 	MaxConcurrent int           `json:"max_concurrent" toml:"max_concurrent"`
 	RateLimit     float64       `json:"rate_limit" toml:"rate_limit"`
 	// ProviderRetryLimit bounds non-rate-limit transient Provider retries.
-	ProviderRetryLimit int    `json:"provider_retry_limit" toml:"provider_retry_limit"`
-	BudgetTokens       uint64 `json:"budget_tokens" toml:"budget_tokens"`
+	ProviderRetryLimit int `json:"provider_retry_limit" toml:"provider_retry_limit"`
+	// RateLimitRetryLimit bounds 429 recoveries per Model Sample.
+	// Zero leaves the attempt count unbounded; the wait budget still applies.
+	RateLimitRetryLimit int `json:"rate_limit_retry_limit" toml:"rate_limit_retry_limit"`
+	// RateLimitWait is the maximum cumulative 429 wait per Model Sample.
+	// Zero inherits Timeout when the engine is constructed.
+	RateLimitWait time.Duration `json:"rate_limit_wait" toml:"-"`
+	BudgetTokens  uint64        `json:"budget_tokens" toml:"budget_tokens"`
 	// TurnBudgetTokens is an optional cumulative operator ceiling. Zero leaves
 	// the Turn uncapped; each request remains bounded by model capacity.
 	TurnBudgetTokens uint64   `json:"turn_budget_tokens" toml:"turn_budget_tokens"`
@@ -168,6 +174,16 @@ type Execution struct {
 	Verify           Verify   `json:"verify" toml:"verify"`
 	Subagent         Subagent `json:"subagent" toml:"subagent"`
 	Journal          Journal  `json:"journal" toml:"journal"`
+}
+
+// RateLimitWaitBudget is the cumulative 429 wait bound used by the engine.
+// A zero RateLimitWait inherits Timeout so the default is a public contract
+// field rather than a hidden constant.
+func (e Execution) RateLimitWaitBudget() time.Duration {
+	if e.RateLimitWait > 0 {
+		return e.RateLimitWait
+	}
+	return e.Timeout
 }
 
 // Journal configures the edit-transaction journal.
@@ -368,6 +384,8 @@ type Overrides struct {
 	MaxConcurrent         *int
 	RateLimit             *float64
 	ProviderRetryLimit    *int
+	RateLimitRetryLimit   *int
+	RateLimitWait         *time.Duration
 	BudgetTokens          *uint64
 	TurnBudgetTokens      *uint64
 	BudgetUSD             *float64

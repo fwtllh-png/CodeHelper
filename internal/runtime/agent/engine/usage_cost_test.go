@@ -79,7 +79,7 @@ func TestEngineNumbersUsageBySampleAcrossCalls(t *testing.T) {
 			{Type: provider.EventToolCallDelta, Index: 0, ToolCall: &provider.ToolCallFragment{
 				ID: "call-1", Name: "echo", Arguments: `{"text":"hi"}`,
 			}},
-			{Type: provider.EventUsage, Usage: &provider.Usage{OutputTokens: 20}},
+			{Type: provider.EventUsage, Usage: &provider.Usage{InputTokens: 100, OutputTokens: 20}},
 			{Type: provider.EventMessageStop},
 		}},
 		// Second call answers with text.
@@ -116,5 +116,33 @@ func TestEngineNumbersUsageBySampleAcrossCalls(t *testing.T) {
 	}
 	if streamed[2].Usage.InputTokens != 150 || streamed[2].Usage.OutputTokens != 30 {
 		t.Fatalf("second call total = %+v, want only its own tokens", streamed[2].Usage)
+	}
+}
+
+func TestEngineDoesNotRepublishIdenticalOrDoubledUsage(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "done"},
+			{Type: provider.EventUsage, Usage: &provider.Usage{InputTokens: 100, OutputTokens: 20}},
+			{Type: provider.EventUsage, Usage: &provider.Usage{InputTokens: 100, OutputTokens: 20}},
+			{Type: provider.EventUsage, Usage: &provider.Usage{InputTokens: 200, OutputTokens: 40}},
+			{Type: provider.EventMessageStop},
+		}},
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	var streamed []Event
+	if _, err := engine.Run(t.Context(), "work", func(event Event) error {
+		if event.State == Streaming && event.Usage != nil {
+			streamed = append(streamed, event)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(streamed) != 1 {
+		t.Fatalf("streaming usage events = %d, want the first snapshot only", len(streamed))
+	}
+	if streamed[0].Usage.InputTokens != 100 || streamed[0].Usage.OutputTokens != 20 {
+		t.Fatalf("published usage = %+v, want the original snapshot", streamed[0].Usage)
 	}
 }

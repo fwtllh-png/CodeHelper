@@ -180,6 +180,67 @@ describe("ConversationProjection", () => {
     }
   });
 
+  it("distinguishes rate-limit wait, incomplete continuation, and tool boundaries", () => {
+    const snapshot = projectConversation([
+      turnEvent(1, "turn-one", "provider.attempt", {
+        sample_id: "sample-1",
+        attempt: 1,
+        status: "retry_wait",
+        failure_code: "rate_limit",
+        http_status: 429
+      }),
+      turnEvent(2, "turn-one", "provider.attempt", {
+        sample_id: "sample-1",
+        attempt: 2,
+        status: "incomplete",
+        stop_reason: "max_tokens"
+      }),
+      turnEvent(3, "turn-one", "provider.attempt", {
+        sample_id: "sample-1",
+        attempt: 3,
+        status: "completed",
+        stop_reason: "tool_use"
+      }),
+      turnEvent(4, "turn-one", "tool.start", {
+        call_id: "call-1",
+        tool: "file_read",
+        arguments: {path: "README.md"}
+      }),
+      turnEvent(5, "turn-one", "tool.result", {
+        call_id: "call-1",
+        tool: "file_read",
+        output: "# Project"
+      })
+    ]);
+    const status = snapshot.nodes.get("provider-state-turn-one");
+    expect(status).toMatchObject({
+      kind: "status",
+      title: "Continuing this turn",
+      text: "Tool finished. Continuing the same turn.",
+      failed: false,
+      warning: false
+    });
+  });
+
+  it("does not treat model cut-off prose as a runtime state", () => {
+    const snapshot = projectConversation([
+      turnEvent(1, "turn-one", "reasoning.completed", {
+        text: "Your message was cut off after the tool call."
+      }),
+      turnEvent(2, "turn-one", "provider.attempt", {
+        sample_id: "sample-1",
+        attempt: 1,
+        status: "completed",
+        stop_reason: "tool_use"
+      })
+    ]);
+    const status = [...snapshot.nodes.values()].filter((node) => node.kind === "status");
+    expect(status).toMatchObject([{
+      title: "Continuing this turn",
+      text: "Tool call requested. This is a normal sample boundary, not a truncated message."
+    }]);
+  });
+
   it("presents a user interruption as paused rather than failed", () => {
     const snapshot = projectConversation([
       event(1, "turn.canceled", {reason: "user_interrupted"})

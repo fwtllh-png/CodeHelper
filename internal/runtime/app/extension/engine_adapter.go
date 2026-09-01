@@ -544,6 +544,9 @@ func (a *EngineAdapter) StartTurn(
 		case agentengine.Streaming:
 			return emitRichEngineEvent(sink, event)
 		case agentengine.CallingModel:
+			if data := providerAttemptData(event); data != nil {
+				return sink.Emit(data)
+			}
 			return nil
 		case agentengine.Compacting:
 			if event.Compaction == nil {
@@ -997,6 +1000,69 @@ func emitRichEngineEvent(sink EngineSink, event agentengine.Event) error {
 		}
 	}
 	return nil
+}
+
+func providerAttemptData(event agentengine.Event) *protocol.ProviderAttemptData {
+	execution := event.ModelExecution
+	if execution == nil || execution.Kind != "provider_attempt" || execution.Status == "" {
+		return nil
+	}
+	data := &protocol.ProviderAttemptData{
+		SampleID: execution.SampleID, Attempt: execution.Attempt,
+		Status: execution.Status, Reason: execution.Reason,
+		ProjectedInputTokens: execution.ProjectedInputTokens,
+		RequestBytes:         execution.Transport.RequestBytes,
+		RouteCooldownWaitMS:  execution.Transport.RouteCooldownWaitMS,
+		StopReason:           string(execution.StopReason),
+	}
+	if !execution.StartedAt.IsZero() {
+		started := execution.StartedAt
+		data.StartedAt = &started
+	}
+	if !execution.FinishedAt.IsZero() {
+		finished := execution.FinishedAt
+		data.FinishedAt = &finished
+	}
+	projection := execution.Transport.Projection
+	if projection.Mode != "" {
+		data.Projection = &protocol.ProviderProjectionData{
+			Mode:                       string(projection.Mode),
+			IncrementalEligible:        projection.IncrementalEligible,
+			FallbackReason:             string(projection.FallbackReason),
+			RouteDigest:                projection.RouteDigest,
+			PropertyDigest:             projection.PropertyDigest,
+			StablePrefixDigest:         projection.StablePrefixDigest,
+			InputDigest:                projection.InputDigest,
+			DeltaDigest:                projection.DeltaDigest,
+			ContextRevision:            projection.ContextRevision,
+			WindowID:                   projection.WindowID,
+			WindowNumber:               projection.WindowNumber,
+			LogicalItems:               projection.LogicalItems,
+			TransportItems:             projection.TransportItems,
+			LogicalTransportEquivalent: projection.LogicalTransportEquivalent,
+		}
+	}
+	if retry := event.ProviderRetry; retry != nil {
+		data.FailureCode = string(retry.Failure.Code)
+		data.ErrorCode = retry.Code
+		data.HTTPStatus = retry.Failure.HTTPStatus
+		data.ProviderRetryAfterMS = retry.Failure.RetryAfterMS
+		if retry.EffectiveDelay > 0 {
+			data.EffectiveDelayMS = uint64(retry.EffectiveDelay / time.Millisecond)
+		}
+		retryAt := retry.RetryAt
+		data.RetryAt = &retryAt
+		data.PolicyRevision = retry.PolicyRevision
+	}
+	data.RateLimitRetries = execution.RateLimitRetries
+	data.RateLimitRetryLimit = execution.RateLimitRetryLimit
+	if execution.RateLimitWaited > 0 {
+		data.RateLimitWaitedMS = uint64(execution.RateLimitWaited / time.Millisecond)
+	}
+	if execution.RateLimitWaitBudget > 0 {
+		data.RateLimitWaitBudgetMS = uint64(execution.RateLimitWaitBudget / time.Millisecond)
+	}
+	return data
 }
 
 func nonEmpty(value, fallback string) string {

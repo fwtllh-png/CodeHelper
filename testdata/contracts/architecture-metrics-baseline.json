@@ -85,9 +85,12 @@
       "path": "internal/adapter/provider",
       "limits": {
         "internal_fanout": 2,
-        "production_lines": 820,
+        "production_lines": 881,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Share one cumulative usage merge contract so adapters refuse Add-on-snapshot doubling and keep cached/reasoning counters inside their totals."
       }
     },
     {
@@ -96,9 +99,12 @@
       "path": "internal/adapter/provider/assembly",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 1708,
+        "production_lines": 1709,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Merge per-transport usage as a max-consistent cumulative snapshot instead of adding provider reports."
       }
     },
     {
@@ -107,9 +113,12 @@
       "path": "internal/adapter/provider/router",
       "limits": {
         "internal_fanout": 4,
-        "production_lines": 121,
+        "production_lines": 130,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Expose route cooldown remaining so the engine can wait out a known governor window before the next provider probe."
       }
     },
     {
@@ -118,12 +127,12 @@
       "path": "internal/adapter/provider/wire",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 444,
+        "production_lines": 472,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "Centralized explicit hard-quota evidence so retry policy can distinguish terminal billing failures from transient rate limits."
+        "production_lines": "Distinguish hard-quota failures from rate limits and apply a public 429 recovery budget so known Retry-After/cooldown is not truncated into a probe loop."
       }
     },
     {
@@ -132,9 +141,12 @@
       "path": "internal/adapter/provider/httpclient",
       "limits": {
         "internal_fanout": 10,
-        "production_lines": 1081,
+        "production_lines": 1083,
         "options_fields": 0,
         "mutex_fields": 1
+      },
+      "relaxations": {
+        "production_lines": "Publish remaining route cooldown from the shared governor so retry decisions can include Provider Reset without holding a concurrency slot."
       }
     },
     {
@@ -193,12 +205,12 @@
       "path": "internal/adapter/provider/anthropic",
       "limits": {
         "internal_fanout": 3,
-        "production_lines": 674,
+        "production_lines": 680,
         "options_fields": 0,
         "mutex_fields": 0
       },
       "relaxations": {
-        "production_lines": "Add typed Anthropic HTTP classification so temporary rate limits remain retryable while billing exhaustion terminates."
+        "production_lines": "Normalize Anthropic category-specific usage into the shared cumulative snapshot contract."
       }
     },
     {
@@ -218,12 +230,12 @@
       "path": "internal/runtime/app/wire",
       "limits": {
         "internal_fanout": 61,
-        "production_lines": 7176,
+        "production_lines": 7181,
         "options_fields": 60,
         "mutex_fields": 6
       },
       "relaxations": {
-        "production_lines": "Bind Child Runtime persistence to the owning user Session so internal process-scoped Session IDs never leak into the Web session list."
+        "production_lines": "Bind Child Runtime persistence to the owning user Session, and wire the public rate-limit recovery budget from execution config instead of a hidden retry delay."
       }
     },
     {
@@ -232,9 +244,12 @@
       "path": "internal/runtime/app/extension",
       "limits": {
         "internal_fanout": 15,
-        "production_lines": 1859,
+        "production_lines": 1940,
         "options_fields": 0,
         "mutex_fields": 2
+      },
+      "relaxations": {
+        "production_lines": "Project engine provider.attempt facts onto the durable protocol event, including retry delays, completion timestamps, and rate-limit budget counters."
       }
     },
     {
@@ -318,12 +333,12 @@
       "path": "internal/runtime/agent/engine",
       "limits": {
         "internal_fanout": 21,
-        "production_lines": 8172,
+        "production_lines": 8452,
         "options_fields": 6,
         "mutex_fields": 5
       },
       "relaxations": {
-        "production_lines": "Implement atomic compaction commit and live adoption, provider-visible reduction checks, and crash-safe transport continuation recovery."
+        "production_lines": "Emit provider.attempt lifecycle facts, skip doubled usage snapshots, and enforce a public rate-limit recovery budget instead of unbounded 429 waits."
       }
     },
     {
@@ -377,9 +392,12 @@
       "path": "internal/runtime/protocol",
       "limits": {
         "internal_fanout": 1,
-        "production_lines": 6195,
+        "production_lines": 6429,
         "options_fields": 0,
         "mutex_fields": 0
+      },
+      "relaxations": {
+        "production_lines": "Publish provider.attempt transport facts, cumulative usage subset validation, and rate-limit recovery budget counters."
       }
     },
     {
@@ -453,8 +471,12 @@
       "kind": "file",
       "path": "internal/runtime/app/wire/modules_runtime.go",
       "limits": {
-        "lines": 344,
-        "max_function_lines": 253
+        "lines": 350,
+        "max_function_lines": 259
+      },
+      "relaxations": {
+        "lines": "Wire public rate-limit wait and attempt budgets from execution config into engine options.",
+        "max_function_lines": "Same construction path now also derives RateLimitMaxWait from execution.timeout when the wait field is zero."
       }
     },
     {

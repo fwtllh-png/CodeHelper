@@ -40,6 +40,7 @@ var eventData = []struct {
 	{EventSearchResult, func() EventData { return &SearchResultData{} }},
 	{EventCitation, func() EventData { return &CitationData{} }},
 	{EventUsage, func() EventData { return &UsageData{} }},
+	{EventProviderAttempt, func() EventData { return &ProviderAttemptData{} }},
 	{EventToolState, func() EventData { return &ToolStateData{} }},
 	{EventToolStart, func() EventData { return &ToolStartData{} }},
 	{EventToolOutput, func() EventData { return &ToolOutputData{} }},

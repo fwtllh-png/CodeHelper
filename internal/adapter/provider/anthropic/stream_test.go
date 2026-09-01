@@ -91,10 +91,10 @@ func TestStreamCountsCachedInputTokens(t *testing.T) {
 	var usage provider.Usage
 	for _, event := range events {
 		if event.Type == provider.EventUsage {
-			usage.Add(*event.Usage)
+			usage = *event.Usage
 		}
 	}
-	if usage.InputTokens != 159 || usage.CachedTokens != 120 {
+	if usage.InputTokens != 159 || usage.OutputTokens != 4 || usage.CachedTokens != 120 {
 		t.Fatalf("usage = %+v, want 159 input including the 120 read from cache", usage)
 	}
 	// The two breakdown fields must stay inside their totals, or every consumer

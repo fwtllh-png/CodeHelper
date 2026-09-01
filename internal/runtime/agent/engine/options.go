@@ -81,6 +81,12 @@ func normalizeEngineOptions(options *Options) error {
 	if options.MaxRetryDelay == 0 {
 		options.MaxRetryDelay = 2 * time.Minute
 	}
+	if options.RateLimitMaxRetries < 0 {
+		return errors.New("rate limit max retries cannot be negative")
+	}
+	if options.RateLimitMaxWait < 0 {
+		return errors.New("rate limit max wait cannot be negative")
+	}
 	return nil
 }
 

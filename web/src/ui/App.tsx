@@ -2482,7 +2482,9 @@ const TranscriptItem = memo(function TranscriptItem({
           ? <CirclePause size={16} />
           : entry.failed || entry.blocked
             ? <AlertTriangle size={16} />
-            : <Check size={16} />}
+            : entry.warning
+              ? <LoaderCircle size={16} />
+              : <Check size={16} />}
         <div><strong>{entry.title}</strong><span>{entry.text}</span></div>
         {entry.recoverable && entry.turnID && entry.recovery && (
           <div className="turnRecovery">

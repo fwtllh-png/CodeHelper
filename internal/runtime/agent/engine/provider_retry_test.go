@@ -60,6 +60,7 @@ func TestProviderRetryMatrix(t *testing.T) {
 				test.meaningful,
 				test.retries,
 				test.contextChanged,
+				rateLimitBudget{},
 			)
 			if ok != test.want {
 				t.Fatalf("retryable = %t, want %t: %+v", ok, test.want, retry)
@@ -81,7 +82,7 @@ func TestProviderRetryMatrix(t *testing.T) {
 	}
 }
 
-func TestProviderRetryCapsProviderDelay(t *testing.T) {
+func TestProviderRetryHonorsKnownRateLimitDelay(t *testing.T) {
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	engine := &Engine{options: Options{ProviderConfig: ProviderConfig{MaxRetries: 1, MaxRetryDelay: 5 * time.Second}, TelemetryConfig: TelemetryConfig{Observability: trace.Runtime{Clock: func() time.Time { return now }}}}}
 	err := protocol.NewProblem(
@@ -93,11 +94,29 @@ func TestProviderRetryCapsProviderDelay(t *testing.T) {
 			RetryAfterMS: uint64(time.Hour / time.Millisecond),
 		},
 	)
-	retry, ok := engine.providerRetry(err, false, 0, false)
+	retry, ok := engine.providerRetry(err, false, 0, false, rateLimitBudget{})
 	if !ok ||
-		retry.EffectiveDelay != 5*time.Second ||
-		!retry.RetryAt.Equal(now.Add(5*time.Second)) {
+		retry.EffectiveDelay != time.Hour ||
+		!retry.RetryAt.Equal(now.Add(time.Hour)) {
 		t.Fatalf("retry = %+v", retry)
+	}
+}
+
+func TestProviderRetryExhaustsWhenRateLimitWaitExceedsBudget(t *testing.T) {
+	engine := &Engine{options: Options{ProviderConfig: ProviderConfig{
+		MaxRetries: 1, MaxRetryDelay: 5 * time.Second, RateLimitMaxWait: 2 * time.Minute,
+	}}}
+	err := protocol.NewProblem(
+		protocol.CodeUnavailable,
+		"rate limited",
+		true,
+		&provider.Failure{
+			Code: provider.FailureRateLimit, Message: "rate limited",
+			RetryAfterMS: uint64(time.Hour / time.Millisecond),
+		},
+	)
+	if retry, ok := engine.providerRetry(err, false, 0, false, rateLimitBudget{}); ok {
+		t.Fatalf("retry = %+v, want exhausted wait budget", retry)
 	}
 }
 
@@ -112,11 +131,11 @@ func TestProviderRetryUsesDeterministicBackoffWithoutRetryAfter(t *testing.T) {
 			Code: provider.FailureServer, Message: "server unavailable",
 		},
 	)
-	first, ok := engine.providerRetry(err, false, 0, false)
+	first, ok := engine.providerRetry(err, false, 0, false, rateLimitBudget{})
 	if !ok || first.EffectiveDelay != 10*time.Millisecond {
 		t.Fatalf("first retry = %+v", first)
 	}
-	second, ok := engine.providerRetry(err, false, 1, false)
+	second, ok := engine.providerRetry(err, false, 1, false, rateLimitBudget{})
 	if !ok || second.EffectiveDelay != 22*time.Millisecond {
 		t.Fatalf("second retry = %+v", second)
 	}
@@ -141,6 +160,7 @@ func TestRateLimitRetryContinuesBeyondTransientFailureBudget(t *testing.T) {
 			false,
 			retries,
 			false,
+			rateLimitBudget{},
 		)
 		if !ok || retry.EffectiveDelay != time.Second {
 			t.Fatalf(
@@ -184,6 +204,66 @@ func TestEngineRetriesRateLimitUntilProviderRecovers(t *testing.T) {
 	}
 }
 
+func TestEngineExhaustsRateLimitWaitBudgetWithoutSecondProbe(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"rate limited",
+			true,
+			&provider.Failure{
+				Code: provider.FailureRateLimit, Message: "rate limited",
+				RetryAfterMS: uint64(time.Second / time.Millisecond),
+			},
+		)},
+		textStream("should not run"),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.RateLimitMaxWait = 50 * time.Millisecond
+
+	_, err := engine.Run(t.Context(), "exhaust rate limit wait", nil)
+	problem := protocol.ProblemOf(err)
+	if problem == nil ||
+		problem.Message != "provider rate limit retry budget exhausted" ||
+		problem.Fault == nil ||
+		problem.Fault.Disposition != protocol.FaultRetryTurn {
+		t.Fatalf("exhausted wait = %#v", err)
+	}
+	if len(runtime.requests) != 1 {
+		t.Fatalf("provider requests = %d, want 1", len(runtime.requests))
+	}
+}
+
+func TestEngineExhaustsRateLimitAttemptBudget(t *testing.T) {
+	rateLimited := func() provider.Stream {
+		return &errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"rate limited",
+			true,
+			&provider.Failure{
+				Code: provider.FailureRateLimit, Message: "rate limited",
+				RetryAfterMS: 1,
+			},
+		)}
+	}
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		rateLimited(),
+		rateLimited(),
+		textStream("should not run"),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.RateLimitMaxRetries = 1
+
+	_, err := engine.Run(t.Context(), "exhaust rate limit attempts", nil)
+	problem := protocol.ProblemOf(err)
+	if problem == nil ||
+		problem.Message != "provider rate limit retry budget exhausted" {
+		t.Fatalf("exhausted attempts = %#v", err)
+	}
+	if len(runtime.requests) != 2 {
+		t.Fatalf("provider requests = %d, want 2", len(runtime.requests))
+	}
+}
+
 func TestExhaustedProviderRetryBecomesUserRecoverable(t *testing.T) {
 	original := protocol.NewProblem(
 		protocol.CodeUnavailable,
@@ -203,6 +283,12 @@ func TestExhaustedProviderRetryBecomesUserRecoverable(t *testing.T) {
 		recovered.Fault.Disposition != protocol.FaultRetryTurn ||
 		recovered.Fault.RecoveryAction == "" {
 		t.Fatalf("exhausted retry = %#v", recovered)
+	}
+	limited := protocol.ProblemOf(exhaustedRateLimitRetry(original))
+	if limited.Message != "provider rate limit retry budget exhausted" ||
+		limited.Fault == nil ||
+		limited.Fault.Disposition != protocol.FaultRetryTurn {
+		t.Fatalf("exhausted rate limit = %#v", limited)
 	}
 }
 

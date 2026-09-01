@@ -54,6 +54,41 @@ func TestChatStreamNormalizesTextReasoningToolAndUsage(t *testing.T) {
 	}
 }
 
+func TestChatStreamRepeatedUsageStaysCumulative(t *testing.T) {
+	input := strings.Join([]string{
+		`data: {"choices":[{"delta":{"content":"hello"},"finish_reason":null}]}`,
+		"",
+		`data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":1}}`,
+		"",
+		`data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":3,"completion_tokens_details":{"reasoning_tokens":1}}}`,
+		"",
+		`data: [DONE]`,
+		"",
+		"",
+	}, "\n")
+	stream, err := NewStream(io.NopCloser(strings.NewReader(input)), model.ProtocolOpenAIChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := provider.Drain(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var usage []provider.Usage
+	for _, event := range events {
+		if event.Type == provider.EventUsage && event.Usage != nil {
+			usage = append(usage, *event.Usage)
+		}
+	}
+	if len(usage) != 2 {
+		t.Fatalf("usage events = %d, want 2 cumulative snapshots", len(usage))
+	}
+	merged := provider.MergeCumulative(usage[0], usage[1])
+	if merged.InputTokens != 7 || merged.OutputTokens != 3 || merged.ReasoningTokens != 1 {
+		t.Fatalf("merged usage = %+v", merged)
+	}
+}
+
 func TestResponsesStream(t *testing.T) {
 	input := strings.Join([]string{
 		`data: {"type":"response.reasoning_summary_text.delta","delta":"thinking"}`,

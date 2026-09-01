@@ -23,13 +23,15 @@ type ProviderConfig struct {
 	Routes           model.RouteSet
 	SelectableRoutes map[string]model.ReadyRoute
 
-	MaxOutputTokens uint64
-	MaxSteps        int
-	MaxRetries      int
-	MaxRetryDelay   time.Duration
-	ReasoningEffort string
-	NativeSearch    bool
-	TokenEstimator  TokenEstimator
+	MaxOutputTokens     uint64
+	MaxSteps            int
+	MaxRetries          int
+	MaxRetryDelay       time.Duration
+	RateLimitMaxRetries int
+	RateLimitMaxWait    time.Duration
+	ReasoningEffort     string
+	NativeSearch        bool
+	TokenEstimator      TokenEstimator
 }
 
 type ContextConfig struct {
