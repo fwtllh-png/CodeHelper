@@ -7,7 +7,7 @@ import "github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
 const DefaultRecentTailTurns = 2
 
 // RecentToolResultStart is the earliest message that still holds one of the
-// keep most recent tool results. keep<=0 means no extra keep beyond the tail.
+// keep most recent tool results. keep<=0 means no extra keep.
 func RecentToolResultStart(history []provider.Message, keep int) int {
 	if keep <= 0 {
 		return len(history)
@@ -23,6 +23,42 @@ func RecentToolResultStart(history []provider.Message, keep int) int {
 		}
 	}
 	return 0
+}
+
+// UnconsumedToolResultStart is the first tool result after the latest
+// user or assistant message. Those results are the current open round.
+// A later user or assistant message consumes every earlier result.
+func UnconsumedToolResultStart(history []provider.Message) int {
+	anchor := -1
+	for index, message := range history {
+		if IsWorldStateMessage(message) {
+			continue
+		}
+		if message.Role == provider.RoleAssistant ||
+			message.Role == provider.RoleUser {
+			anchor = index
+		}
+	}
+	for index := anchor + 1; index < len(history); index++ {
+		if messageHasToolResult(history[index]) {
+			return index
+		}
+	}
+	return len(history)
+}
+
+// WorkingSetGCStart is the first message after the write-once prefix.
+// keep<=0 keeps only the unconsumed round. A positive keep also retains
+// the last keep tool results. The open round is never split. Sample
+// projection does not rewrite messages before this point.
+func WorkingSetGCStart(history []provider.Message, keep int) int {
+	start := UnconsumedToolResultStart(history)
+	if keep > 0 {
+		if extra := RecentToolResultStart(history, keep); extra < start {
+			return extra
+		}
+	}
+	return start
 }
 
 func messageHasToolResult(message provider.Message) bool {

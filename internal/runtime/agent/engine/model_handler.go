@@ -401,7 +401,7 @@ func (e *Engine) modelStep(
 					ContextRevision: attribution.ContextRevision,
 					WindowID:        attribution.WindowID,
 					WindowNumber:    attribution.WindowNumber,
-					Retry: providerRetries > 0 ||
+					Retry: providerRetries > 0 || rateLimitRetries > 0 ||
 						assembly.TransportCount() > 0,
 					RecoveryID: providerassembly.ProjectionRecoveryID(
 						scope.spec.Request.Recovery,
@@ -548,8 +548,9 @@ func (e *Engine) modelStep(
 				if retry.Failure.Code == provider.FailureRateLimit {
 					rateLimitRetries++
 					rateLimitWaited += retry.EffectiveDelay
+				} else {
+					providerRetries++
 				}
-				providerRetries++
 				continue
 			}
 			return nil, nil, totalUsage, lastEstimate,
@@ -731,8 +732,9 @@ func (e *Engine) modelStep(
 		if retry.Failure.Code == provider.FailureRateLimit {
 			rateLimitRetries++
 			rateLimitWaited += retry.EffectiveDelay
+		} else {
+			providerRetries++
 		}
-		providerRetries++
 	}
 }
 

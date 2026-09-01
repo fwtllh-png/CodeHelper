@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -11,35 +10,38 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
-func TestWorkingSetGCCollapsesOlderTurnResultsAndKeepsTailRaw(t *testing.T) {
+func TestCompactGateKeepsAdmittedToolResultsAppendOnly(t *testing.T) {
 	results := tool.NewResultStore(32 << 10)
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, results))
 	oldContent := "HEAD-" + strings.Repeat("old-result ", 400) + "-TAIL"
 	newContent := "HEAD-" + strings.Repeat("new-result ", 400) + "-TAIL"
 	history := []provider.Message{
-		messageWithText(provider.RoleUser, "read old", 1),
+		messageWithText(provider.RoleUser, "read files", 1),
 		toolCallMessage(1, "call-old", "file_read", `{"path":"old.txt"}`),
 		toolResultMessage(1, "call-old", string(mustJSON(t, tool.Result{Content: oldContent}))),
-		messageWithText(provider.RoleUser, "read new", 2),
-		toolCallMessage(2, "call-new", "file_read", `{"path":"new.txt"}`),
-		toolResultMessage(2, "call-new", string(mustJSON(t, tool.Result{Content: newContent}))),
-		messageWithText(provider.RoleUser, "continue", 3),
+		messageWithText(provider.RoleAssistant, "next file", 1),
+		toolCallMessage(1, "call-new", "file_read", `{"path":"new.txt"}`),
+		toolResultMessage(1, "call-new", string(mustJSON(t, tool.Result{Content: newContent}))),
 	}
-	if collapsed := engine.applyWorkingSetGC(&history); collapsed != 1 {
-		t.Fatalf("collapsed = %d, want 1", collapsed)
-	}
-	var oldProjected, newProjected tool.Result
-	if err := json.Unmarshal([]byte(history[2].Blocks[0].ToolResult.Content), &oldProjected); err != nil {
+	original := cloneMessages(history)
+	if _, err := engine.runCompactGate(
+		t.Context(),
+		&history,
+		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
+		128,
+		CompactionPhaseMidTurn,
+		true,
+		func(State, Event) error { return nil },
+		0,
+		engine.contextViewProject(nil),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal([]byte(history[5].Blocks[0].ToolResult.Content), &newProjected); err != nil {
-		t.Fatal(err)
-	}
-	if oldProjected.Handle == "" || newProjected.Content != newContent {
-		t.Fatalf("old=%+v new=%+v", oldProjected, newProjected)
-	}
-	if full, found := results.Get(oldProjected.Handle); !found || full != oldContent {
-		t.Fatalf("stored old result found=%t", found)
+	if history[2].Blocks[0].ToolResult.Content !=
+		original[2].Blocks[0].ToolResult.Content ||
+		history[5].Blocks[0].ToolResult.Content !=
+			original[5].Blocks[0].ToolResult.Content {
+		t.Fatalf("admitted tool results were rewritten: %+v", history)
 	}
 }
 
@@ -84,31 +86,35 @@ func TestContextViewOperatorTailCeilingClipsBeforeHardInput(t *testing.T) {
 	if len(viewed) != 1 || viewed[0].Text() != "current request" {
 		t.Fatalf("operator ceiling view = %+v", viewed)
 	}
-	if collapsed := engine.applyWorkingSetGC(&history); collapsed != 0 {
-		t.Fatalf("text-only residual GC = %d", collapsed)
-	}
 }
 
-func TestWorkingSetGCCollapsesResidualDroppedToolTurn(t *testing.T) {
+func TestContextViewResidualDropsOlderTurnWithoutRewritingToolResult(t *testing.T) {
 	results := tool.NewResultStore(32 << 10)
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, results))
 	engine.options.Context.RecentTailMaxTokens = 48
 	oldContent := "HEAD-" + strings.Repeat("old-result ", 80) + "-TAIL"
+	encoded := string(mustJSON(t, tool.Result{Content: oldContent}))
 	history := []provider.Message{
 		messageWithText(provider.RoleUser, "read old", 1),
 		toolCallMessage(1, "call-old", "file_read", `{"path":"old.txt"}`),
-		toolResultMessage(1, "call-old", string(mustJSON(t, tool.Result{Content: oldContent}))),
+		toolResultMessage(1, "call-old", encoded),
 		messageWithText(provider.RoleUser, "current request", 2),
 	}
-	if collapsed := engine.applyWorkingSetGC(&history); collapsed != 1 {
-		t.Fatalf("collapsed = %d, want residual-dropped turn", collapsed)
-	}
-	var projected tool.Result
-	if err := json.Unmarshal([]byte(history[2].Blocks[0].ToolResult.Content), &projected); err != nil {
+	if _, err := engine.runCompactGate(
+		t.Context(),
+		&history,
+		agentcontext.NewMessageLedger(agentcontext.LedgerInput{}).Snapshot(),
+		0,
+		CompactionPhaseMidTurn,
+		true,
+		func(State, Event) error { return nil },
+		0,
+		engine.contextViewProject(nil),
+	); err != nil {
 		t.Fatal(err)
 	}
-	if projected.Handle == "" {
-		t.Fatalf("residual-dropped tool result stayed raw: %+v", projected)
+	if history[2].Blocks[0].ToolResult.Content != encoded {
+		t.Fatalf("view residual rewrote durable tool result: %+v", history[2])
 	}
 	viewed := engine.contextViewProject(nil)(history)
 	if len(viewed) == 0 || viewed[len(viewed)-1].Text() != "current request" {

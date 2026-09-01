@@ -121,7 +121,7 @@ func (p RetryPolicy) Decide(
 		now = p.Now()
 	}
 	return RetryDecision{
-		Attempt: int(retries + 1), Retry: retries + 1,
+		Attempt: int(p.RateLimitRetries + retries + 1), Retry: p.RateLimitRetries + retries + 1,
 		Code: protocol.CodeOf(err), Category: FailureCategory(err, failure.Code),
 		Failure: failure, EffectiveDelay: needed, RetryAt: now.Add(needed),
 		PolicyRevision: RetryPolicyRevision,

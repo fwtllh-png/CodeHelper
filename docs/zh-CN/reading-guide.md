@@ -861,7 +861,7 @@ go list -deps ./cmd/codehelper
 go test -run TestName -v ./internal/path/to/package
 
 # 核心架构与恢复
-make architecture-ratchet
+make hotspot-baseline
 make turn-kernel-convergence-exit-gate
 make reliability-gate
 

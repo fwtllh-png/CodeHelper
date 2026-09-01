@@ -59,7 +59,7 @@ git diff --check
 | `make protocol-schema` | 生成 Runtime Protocol Schema |
 | `make web-experience-check` | 校验 Web 体验契约 |
 | `make host-journey-contract` | 校验 Runtime 与 Web 主旅程 |
-| `make architecture-ratchet` | 校验架构预算 |
+| `make hotspot-baseline` | 校验热点职责归属 |
 | `make security-side-effect-check` | 校验生产副作用入口 Inventory 与 Owner Allowlist |
 
 `web/dist` 是被 Git 忽略的本地构建目录。`make build` 先执行 `web-build`，再使用
@@ -118,8 +118,8 @@ make protocol-schema
 - Web 只监听 `127.0.0.1`，不得增加通用公网 HTTP Host。
 - Credential Secret 只进入环境变量、受保护文件或 OS Keyring。
 
-架构预算位于 `testdata/contracts/architecture-metrics-baseline.json`。新增职责应先拆分
-Owner，而不是持续扩大热点文件；确需调整预算时必须记录非空理由。
+热点职责位于 `testdata/contracts/hotspot-baseline.json`。新增职责应先拆分 Owner，
+而不是把无关符号堆进同一热点文件。不要用行数、Fanout 或函数长度棘轮否决合理改动。
 
 ## 发布
 

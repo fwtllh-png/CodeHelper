@@ -10,7 +10,7 @@ import (
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 )
 
-func TestCompactGateGCOutsideRecentTailDoesNotTouchLatestTurn(t *testing.T) {
+func TestCompactGateDoesNotRewriteOlderAdmittedToolResults(t *testing.T) {
 	results := tool.NewResultStore(32 << 10)
 	engine := newEngine(
 		t,
@@ -29,7 +29,6 @@ func TestCompactGateGCOutsideRecentTailDoesNotTouchLatestTurn(t *testing.T) {
 		messageWithText(provider.RoleUser, "inspect the latest", 2),
 		toolCallMessage(2, "call-latest", "file_read", `{"path":"latest.txt"}`),
 		toolResultMessage(2, "call-latest", string(encoded)),
-		messageWithText(provider.RoleUser, "continue", 3),
 	}
 	original := cloneMessages(history)
 	var receipt *CompactionReceipt
@@ -65,12 +64,12 @@ func TestCompactGateGCOutsideRecentTailDoesNotTouchLatestTurn(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if projected.Handle == "" {
-		t.Fatalf("older turn result was not collapsed: %+v", projected)
+	if projected.Handle != "" || projected.Content != content {
+		t.Fatalf("older turn result was rewritten: %+v", projected)
 	}
-	full, found := results.Get(projected.Handle)
-	if !found || full != content {
-		t.Fatalf("full result bytes=%d found=%t", len(full), found)
+	if history[2].Blocks[0].ToolResult.Content !=
+		original[2].Blocks[0].ToolResult.Content {
+		t.Fatal("older admitted tool result bytes changed")
 	}
 }
 
@@ -154,7 +153,7 @@ func TestToolResultPruningSkipsMalformedAndRetrievalResults(t *testing.T) {
 	}
 }
 
-func TestCompactGateKeepsConsumedResultsBelowDynamicPressureThreshold(t *testing.T) {
+func TestCompactGateKeepsConsumedSameTurnResultsAppendOnly(t *testing.T) {
 	results := tool.NewResultStore(32 << 10)
 	engine := newEngine(
 		t,
@@ -195,14 +194,30 @@ func TestCompactGateKeepsConsumedResultsBelowDynamicPressureThreshold(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt != nil || agentcontext.HistoryBytes(history) !=
-		agentcontext.HistoryBytes(before) ||
-		history[len(history)-1].Blocks[0].ToolResult.Content != latest {
-		t.Fatalf("below-pressure history changed: receipt=%+v history=%+v", receipt, history)
+	if receipt != nil {
+		t.Fatalf("gc should not emit a replacement receipt: %+v", receipt)
+	}
+	if history[len(history)-1].Blocks[0].ToolResult.Content != latest {
+		t.Fatalf("latest result was rewritten: %+v", history)
+	}
+	var first, second tool.Result
+	if err := json.Unmarshal([]byte(history[1].Blocks[0].ToolResult.Content), &first); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(history[3].Blocks[0].ToolResult.Content), &second); err != nil {
+		t.Fatal(err)
+	}
+	if first.Handle != "" || second.Handle != "" ||
+		first.Content != large || second.Content != large {
+		t.Fatalf("consumed same-turn results were rewritten: first=%+v second=%+v", first, second)
+	}
+	if agentcontext.HistoryBytes(history) != agentcontext.HistoryBytes(before) {
+		t.Fatalf("consumed results changed size: before=%d after=%d",
+			agentcontext.HistoryBytes(before), agentcontext.HistoryBytes(history))
 	}
 }
 
-func TestCompactGatePrunesConsumedHandleResultUsingDynamicSurfaceBudget(t *testing.T) {
+func TestCompactGateKeepsOlderTurnToolResultWhenViewClipsIt(t *testing.T) {
 	results := tool.NewResultStore(32 << 10)
 	engine := newEngine(
 		t,
@@ -246,8 +261,8 @@ func TestCompactGatePrunesConsumedHandleResultUsingDynamicSurfaceBudget(t *testi
 	); err != nil {
 		t.Fatal(err)
 	}
-	if projected.Handle == "" || len(projected.Content) >= len(large) {
-		t.Fatalf("projected result = %+v", projected)
+	if projected.Handle != "" || projected.Content != large {
+		t.Fatalf("older admitted result was rewritten: %+v", projected)
 	}
 }
 

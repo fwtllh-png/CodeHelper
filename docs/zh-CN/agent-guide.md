@@ -15,8 +15,6 @@
 3. 修改实现前先读最近的 Package Test。
 4. 从 `Makefile` 查找标准验证命令。
 5. 检查 `git status`，不能覆盖无关用户改动。
-6. 执行 `make agent-preflight`，记录任务开始时的 Architecture 与 Web
-   Bundle 事实。
 
 ## 所有权地图
 
@@ -54,6 +52,7 @@
 - 没有明确需求时，不为未发布开发状态增加兼容 Migration。
 - 禁止在业务逻辑中私自引入没有契约来源的固定阈值、模型档位或经验常量来决定
   Context、Capacity、Latency 或资源策略。
+- 不恢复架构行数、Fanout 或函数长度棘轮，也不为这类预算压缩代码。
 
 ### 阈值与容量规范
 
@@ -72,6 +71,8 @@
   用户语义，也不得用隐藏百分比替代公开的 `context.view.recent_tail_turns` 与
   剩余硬输入 residual 契约。`context.view.history_token_ceiling=0` 表示
   Mandatory 分区之后的剩余容量，不是窗口百分比。
+  Tool Result 首次准入后不再改写；不得用隐藏 N 代替 ResultStore 合同或
+  `result_get`。
 - 模型窗口、经济预算和 Provider Throughput 是三个独立容量平面。Operator 通过
   `execution.tokens_per_minute` 声明 TPM；`0` 表示未知，不发明按模型名称的默认值。
   合法工作集超过已知 Burst 或等待将超过预算时，先做一次 Visible Tail Fold 再
@@ -105,26 +106,19 @@
 - 只为不明显约束添加注释；
 - 中文文档与代码事实同步更新；
 - 使用仓库命令重新生成 Artifact。
-- 每完成一个可独立验证的实现切片后执行 `make ratchet-fast`，再运行更昂贵的
-  Race、Playwright 或全仓测试。
+- 不要为行数、Fanout 或函数长度预算牺牲可读性；这类棘轮已删除，不要恢复。
 
 ### 验证
 
 先运行最窄测试，再按影响面扩大：
 
 ```bash
-make ratchet-fast
 go test ./path/to/package
 make docs-check
 cd web && npm run check && npm test -- relevant-area
 ```
 
-结束前运行 `git diff --check`。
-
-`agent-preflight` 是本地开发事实快照，不替代最终严格门禁。若任务开始时已有指标
-超限，`ratchet-fast` 会将其标记为 `pre-existing` 并允许当前任务继续；该指标继续
-恶化会立即失败。任务开始时未超限的指标仍按正式上限判断。最终仍必须执行适合影响面
-的严格 `make verify` 或发布门禁。
+结束前运行 `git diff --check`。按影响面扩大到 Race、Playwright 或 `make verify`。
 
 ## 契约变更
 

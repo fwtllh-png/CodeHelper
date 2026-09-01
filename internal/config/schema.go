@@ -53,7 +53,10 @@ type Context struct {
 // remaining hard input, explicit operator values, or this protocol. There is
 // no hidden window percent.
 type View struct {
-	RecentTailTurns       int    `json:"recent_tail_turns" toml:"recent_tail_turns"`
+	RecentTailTurns int `json:"recent_tail_turns" toml:"recent_tail_turns"`
+	// KeepRecentToolResults is retained on the public view contract and
+	// snapshots. Model-visible tool results are finalized at first Admit
+	// and are not rewritten on later samples.
 	KeepRecentToolResults int    `json:"keep_recent_tool_results" toml:"keep_recent_tool_results"`
 	HistoryTokenCeiling   int    `json:"history_token_ceiling" toml:"history_token_ceiling"`
 	Digest                string `json:"digest" toml:"digest"`

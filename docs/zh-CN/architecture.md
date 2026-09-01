@@ -368,9 +368,10 @@ Trace 与 Receipt 保留逻辑公共前缀指标和最终 Transport Payload Dige
 
 Verification Runner 将节点结果绑定到声明输入的内容摘要、Workspace Revision 与
 Mutation Revision。只复用输入摘要未变的通过节点；失败或 unavailable 节点必须重跑，
-完成门禁仍要求当前 Mutation 的完整覆盖。Tool Result 只有在已离开最新调用批次、完整
-内容已保存为可重取 Handle，且动态 Tool Surface 预算要求缩减时才提前裁剪。
-增量 Route 保持严格追加投影，不执行这些会破坏 Response Chain 前缀的转换。
+完成门禁仍要求当前 Mutation 的完整覆盖。Tool Result 在首次准入时定稿，后续 Sample 不改写已发送内容，以便 Provider
+前缀缓存保持 append-only。超限结果第一次就带 Handle，全文留在 ResultStore，
+需要时用 `result_get` 取回。增量 Route 保持严格追加投影，不执行这些会破坏
+Response Chain 前缀的转换。
 
 `TurnCoordinator` 是生产环境唯一 `Reducer.Apply` 入口。Engine Event 只用于投影，
 不会反向生成 Command 写回状态机。Durable Runtime 构造必须显式提供 Event、Content、

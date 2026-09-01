@@ -152,7 +152,6 @@ func (e *Engine) foldWorkingSetForThroughput(
 	if err != nil || !e.foldOldestVisibleTail(*history, true) {
 		return 0, false
 	}
-	e.applyWorkingSetGC(history)
 	after := e.projectGateHistory(*history, projectHistory)
 	afterWindow, err := e.measureTokenWindow(
 		input.WithHistory(after), outputReserve, 0,

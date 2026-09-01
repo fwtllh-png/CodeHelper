@@ -117,8 +117,8 @@ Authority。
 模型可见历史由 ContextView 投影，而不是等窗口快满再一次性压缩。公开合同是
 `[context.view]`：默认保留最近 `recent_tail_turns`（2）个 Turn 的原文，但不超过
 Mandatory 分区之后的剩余硬输入（或显式 `history_token_ceiling`）。
-`keep_recent_tool_results=0` 只保留 Tail 内原文结果。被 residual 裁掉的更早
-Turn 上的已消费 Tool Result 每轮收成 Handle。`prepare` / `compact` /
+Tool Result 在首次准入时定稿，后续 Sample 不把已发送结果收成 Handle；被
+residual 裁掉的更早 Turn 只离开投影，Durable 字节不变。`prepare` / `compact` /
 `emergency` 的百分比档位已删除：阈值为 0 时等于硬输入容量，且默认不出现在
 Context Budget 快照。`narrative_mode` 默认 `post_turn`，不得阻塞下一轮 Sample。
 

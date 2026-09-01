@@ -2,7 +2,6 @@ package engine
 
 import (
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
 )
@@ -38,19 +37,6 @@ func (e *Engine) contextViewProject(
 			next,
 		)
 	}
-}
-
-func (e *Engine) applyWorkingSetGC(history *[]provider.Message) int {
-	if history == nil || e.options.Tools == nil {
-		return 0
-	}
-	start := e.visibleTailStart(*history)
-	if keep := e.options.Context.KeepRecentToolResults; keep > 0 {
-		if toolStart := agentcontext.RecentToolResultStart(*history, keep); toolStart < start {
-			start = toolStart
-		}
-	}
-	return toolresult.CollapseSurfacesBefore(history, e.options.Tools, start).Results
 }
 
 func (e *Engine) foldOldestVisibleTail(

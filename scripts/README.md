@@ -41,6 +41,7 @@ make docs-check
 make book-check
 make book-navigation
 make test
+make hotspot-baseline
 make architecture-freeze
 make host-journey-contract
 make web-experience-check

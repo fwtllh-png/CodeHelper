@@ -16,7 +16,6 @@ Web and shared by the main agent and subagents.
 3. the nearest package tests
 4. `Makefile`
 5. `git status --short`
-6. `make agent-preflight`
 
 ## Hard Rules
 
@@ -45,6 +44,8 @@ Web and shared by the main agent and subagents.
 - Book chapters move to `draft` or `verified` only with a Chinese file and
   valid Front Matter; regenerate navigation through the repository command.
 - Use repository commands for generated protocol and compatibility files.
+- Do not reintroduce architecture line-count, fanout, or function-length
+  ratchets. Do not compress or split code just to satisfy a size budget.
 
 ## Ownership
 
@@ -62,7 +63,6 @@ Web client                 web
 ## Standard Validation
 
 ```bash
-make ratchet-fast
 go test ./path/to/package
 make docs-check
 make book-check

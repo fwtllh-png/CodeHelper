@@ -1,6 +1,6 @@
 ---
 id: practice-architecture-ratchet
-title: 架构度量与回归棘轮
+title: 架构行数棘轮已删除
 audience:
   - contributor
   - operator
@@ -8,142 +8,106 @@ prerequisites:
   - practice-test-layers
   - practice-benchmark
 code_paths:
-  - scripts/architecturemetrics
-  - internal/runtime/agent/turnkernel
   - Makefile
+  - internal/runtime/agent/turnkernel
 test_paths:
-  - scripts/architecturemetrics/main_test.go
   - internal/runtime/agent/turnkernel/convergence_baseline_test.go
   - internal/runtime/app/turn_kernel_convergence_test.go
 source_of_truth:
-  - testdata/contracts/architecture-metrics-baseline.json
   - testdata/contracts/hotspot-baseline.json
   - Makefile
 status: verified
-last_verified: 2026-08-12
+last_verified: 2026-09-01
 ---
 
-# 架构度量与回归棘轮
+# 架构行数棘轮已删除
 
 ## 学习目标
 
 本章之后，读者可以：
 
-- 解释为什么结构预算需要单调 Ratchet；
-- 说出 Ratchet 测量的每个 Metric 与 Target 类型；
-- 在本地运行测量与 Ratchet；
-- 只通过 Relaxation 与 Retirement 契约修改阈值。
+- 解释为什么行数、Fanout 和函数长度棘轮被删除；
+- 区分“结构门禁”与“行为门禁”；
+- 使用仍然有效的 Ownership 与测试命令，而不是行数预算。
 
 ## 问题背景
 
-受治理的 Agent Runtime 由许多小改动累积而成。测试能发现行为回归，但发现不了缓慢的
-结构退化：包吸收更多内部依赖、热点文件持续膨胀、协议 Event 的 Switch 站点越来越多。
-没有显式的结构预算，架构会悄悄漂移，直到一次重构成为整个团队的负担。
+仓库曾经用 `scripts/architecturemetrics`、
+`testdata/contracts/architecture-metrics-baseline.json`、`make architecture-ratchet`
+和 `make ratchet-fast` 对生产行数、内部 Fanout、Options 字段和热点函数长度做单调
+棘轮。测量值超过 Baseline，或 Baseline 相对 `origin/main` 放宽却没有书面
+Relaxation，验证就会失败。
+
+这个门禁没有抓住行为回归。它惩罚把分类、预算和序号写清楚的改动，奖励把
+`else` 塞进同一行、把两个赋值挤进一行的伪压缩。Agent 和人工 Review 开始为
+Ratchet 改代码，而不是为正确性改代码。
+
+行数棘轮因此删除。不要恢复它，也不要用新的隐藏行数上限替代它。
 
 ## 核心概念
 
-- **Target**：Ratchet 测量的范围，可以是 Package、File 或 Repository。
-- **Metric**：Target 的可计数属性，例如行数或依赖数。
-- **Limit**：Baseline 中允许的当前最大值。
-- **Baseline**：`testdata/contracts/architecture-metrics-baseline.json`，Schema Version 1、
-  Requirement ID `ARCH-RATCHET-001` 的已提交契约。
-- **Relaxation**：允许提高某指标阈值的书面理由。
-- **Retirement**：删除某个 Target 或 Metric 的书面理由。
-- **Headroom**：测量值低于阈值多少以内才不算阈值过期。
+- **行为门禁**：测试、协议契约、安全副作用 Allowlist、文档与 Book 检查。它们
+  验证 Runtime 实际做什么。
+- **职责门禁**：`testdata/contracts/hotspot-baseline.json` 把符号绑定到 Owner
+  Package/File。它检查职责错位和未审阅内部依赖，不检查“这个文件是不是多了
+  八行”。
+- **行数棘轮**：按 AST 计数否决提交。已删除。
 
 ## CodeHelper 设计
 
-两个互补契约约束架构。`testdata/contracts/hotspot-baseline.json` 把职责绑定到 Package Symbol 与
-Owner File，职责丢失或错位、未审阅内部依赖、热点增长和测试资产删除都会使其失败。
-`testdata/contracts/architecture-metrics-baseline.json` 约束可测量的形态：直接内部 Package Fanout、
-生产代码行数、Options/Mutex 字段、热点文件/函数体积，以及重复的 Protocol Event
-Switch 站点。
+结构正确性靠 Ownership 和测试，不靠行数预算：
 
-`scripts/architecturemetrics` 测量每个 Target，漂移即失败，并可用 `-report` 输出测量
-报告。Makefile 暴露 `make architecture-metrics`（仅测量）与 `make
-architecture-ratchet`（测量并执行）；Ratchet 已加入 `make verify` 和
-`architecture-freeze`。
+- `make hotspot-baseline` 校验热点职责归属。
+- `make security-side-effect-check` 校验生产副作用入口及其 Owner Allowlist。
+- `make capacity-policy-check` 阻止把已退役的容量档位写回代码。
+- Turn State Ownership 仍由 `turn-kernel-convergence-baseline` 与
+  `turn-kernel-convergence-exit-gate` 断言：只有 Coordinator 调用
+  `Reducer.Apply`，External Work 使用 Durable Effect，Terminal Commit 保持原子，
+  Restart 使用 Domain Facts。
+- `make architecture-freeze` 跑热点职责、引擎/配置/协议表征测试和聚焦 Race，
+  不再比较行数 Baseline。
+- `make verify` 不再调用架构行数棘轮。
 
-Turn State Ownership 还有语义门禁。`turn-kernel-convergence-baseline` 检查 C0-C6 与
-Phase 4R Ownership：只有 Coordinator 调用 `Reducer.Apply`，External Work 使用
-Durable Effect，Terminal Commit 保持原子，Restart 使用 Domain Facts，旧 Reverse-drive
-路径持续不存在。`turn-kernel-convergence-exit-gate` 通过
-`CODEHELPER_TURN_KERNEL_CONVERGENCE_EXIT_GATE=1` 开启最终生产 Ownership 断言。
-
-## 指标
-
-| Metric | Target 类型 | 含义 | Headroom |
-| --- | --- | --- | --- |
-| `internal_fanout` | package | 直接导入的内部包数量 | 0 |
-| `production_lines` | package | 非测试 Go 文件行数 | 100 |
-| `options_fields` | package | `*Options` 结构体字段数 | 0 |
-| `mutex_fields` | package | `sync.Mutex`/`sync.RWMutex` 字段数 | 0 |
-| `lines` | file | 文件总行数 | 20 |
-| `max_function_lines` | file | 最长函数行数 | 5 |
-| `event_switch_sites` | repository | 分发协议事件的 Switch 语句数 | 0 |
-
-离散计数不留 Headroom：阈值等于测量值才是稳态。行数类指标保留 Headroom，避免正常
-编辑频繁改动 Baseline，同时仍能发现阈值悄悄过期。
-
-## Ratchet 规则
-
-阈值只能单调收紧。提高阈值必须为对应指标填写非空 `relaxations` 理由；删除 Target
-或 Metric 必须填写显式 `retirements` 理由。过期条目会使 Ratchet 失败，避免临时额度
-静默变成永久例外。设置 `ARCHITECTURE_BASE_REF`（默认 `origin/main`）时，命令会读取
-该 Ref 的旧 Baseline，并在两个版本之间校验单调性与退休记账。
-
-## 执行流程
-
-```mermaid
-flowchart LR
-    B[Baseline JSON] --> M[测量 Targets]
-    M --> C{在阈值内?}
-    C -- 否 --> F[失败并列出漂移]
-    C -- 是 --> H{Headroom 满足?}
-    H -- 否 --> F
-    H -- 是 --> R[写入 .tmp/architecture/metrics.json]
-```
-
-命令先校验 Baseline 本身：Schema 版本、Requirement ID、Target ID 唯一性、Kind
-合法性、路径安全、非负阈值以及 Relaxation/Retirement 一致性。测量错误与过期
-Headroom 汇总为排序后的漂移列表，命令以非零退出码结束。
+拆分过大文件仍然值得做，但理由是所有权、测试边界和可读性，不是为了让计数器
+安静。
 
 ## 代码地图
 
 | 关注点 | 来源 | 重要性 |
 | --- | --- | --- |
-| 测量与执行 | `scripts/architecturemetrics/main.go` | 基于 AST 的 Package/File/Repository 计数 |
-| 阈值契约 | `testdata/contracts/architecture-metrics-baseline.json` | 阈值的唯一事实来源 |
-| Make 目标 | `Makefile` | `architecture-metrics`、`architecture-ratchet`、`architecture-freeze` |
-| 测试 | `scripts/architecturemetrics/main_test.go` | Baseline 校验、漂移、Headroom 与 Ratchet 用例 |
+| 行为冻结 | `Makefile` 的 `architecture-freeze` | 热点职责 + 表征测试，无行数比较 |
+| 热点职责 | `testdata/contracts/hotspot-baseline.json` | 符号与 Owner File 绑定 |
 | Turn Kernel Ownership | `turnkernel/convergence_baseline_test.go` | C0-C6 与 Phase 4R 语义 Ownership |
 
 ## 失败模式与安全边界
 
-- Target 路径消失时测量失败，而不是静默通过。
-- 未写 Retirement 就从 Limit 中删除 Metric，Ratchet 失败。
-- 即使所有阈值都满足，过期的 Relaxation/Retirement 也会失败。
-- Baseline 路径被限制在仓库内；绝对路径与 `..` 路径会被拒绝。
+- 不要把行数、Fanout 或函数长度重新做成 `make verify` 或 Agent 预检失败条件。
+- 不要为了少几行而合并本应分开的预算计数器、控制流或测试断言。
+- 删除行数棘轮并不放松 Policy、Approval、Journal、Sandbox 或 Protocol 契约。
 
 ## 测试与验证
 
 ```bash
-go test ./scripts/architecturemetrics
-make architecture-ratchet
+make hotspot-baseline
 make turn-kernel-convergence-baseline
 make turn-kernel-convergence-exit-gate
+make architecture-freeze
 make book-check
 ```
 
-Ratchet 不需要网络，也不需要真实 Provider，属于 Hermetic。测量报告写入
-`.tmp/architecture/metrics.json`，不纳入版本管理。
+这些命令不需要网络或真实 Provider。
+
+## 动手实验
+
+打开一次真实的结构改动（例如把两个预算计数器分开），先按可读性写完，再运行上面的
+命令。确认没有行数棘轮要求你把 `else` 或赋值挤回同一行。若拆分文件，在
+`hotspot-baseline` 里更新 Owner，而不是发明一个新的行数上限。
 
 ## 复习问题
 
-1. 为什么阈值只能单调收紧，而不是自动更新？
-2. Relaxation 与 Retirement 有什么区别？
-3. Headroom 检查在什么时候失败，它阻止了什么？
-4. `ARCHITECTURE_BASE_REF` 比较如何约束版本之间的契约？
+1. 行数棘轮为什么会把实现推向更差的形状？
+2. 热点职责检查和行数上限有什么不同？
+3. 拆分大文件时应该依据什么，而不是依据 Baseline 数字？
 
 ## 事实来源与验证
 
@@ -151,4 +115,4 @@ Ratchet 不需要网络，也不需要真实 Provider，属于 Hermetic。测量
 | --- | --- |
 | Catalog ID | `practice-architecture-ratchet` |
 | 状态 | `verified` |
-| 最后验证 | 2026-08-12 |
+| 最后验证 | 2026-09-01 |

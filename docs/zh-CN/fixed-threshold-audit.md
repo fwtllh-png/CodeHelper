@@ -62,7 +62,7 @@ required_capacity =
 处理顺序：
 
 1. `required_capacity <= hard_input_capacity` 时不做正确性 Compaction。
-2. 超限时先将可重新获取的已消费 Tool Result 替换为 Handle。
+2. 超限时对可见 Tail 做一次因果组折叠，不改写已发送 Tool Result。
 3. 重新测量后仍超限，才选择满足 Tool Pair 闭合的最小历史裁剪范围。
 4. Compaction 后必须验证 Goal、Pending Input、未验证 Change 和当前用户请求仍可恢复。
 5. 无候选能满足硬容量时返回结构化 `resource_exhausted`，不得继续猜测。
@@ -181,7 +181,7 @@ Prompt 各 Partition 不应各自持有模型无关的 Token 档位。应先预�
 1. 完成 Goal 跨重复 Compaction 保留。
 2. 删除 Transport 专属固定 Compaction 档位。
 3. 将 Recent Tail 默认容量改为 Route 动态容量。
-4. 仅在动态容量压力出现后裁剪已消费 Tool Result。
+4. Tool Result 首次准入定稿，采样路径不再事后改写。
 5. 将默认输出容量改为模型、当前输入和剩余预算共同推导。
 
 ### P1：统一 Context Allocator
@@ -216,7 +216,7 @@ Prompt 各 Partition 不应各自持有模型无关的 Token 档位。应先预�
 - 首个 Delta 不受批量刷新窗口延迟。
 - Web 不把 Pruning、Replacement 和 Lifecycle 统计为同一种 Compaction。
 - 所有绝对安全上限都能追溯到 Protocol/Config Contract 和边界测试。
-- `make ratchet-fast`、Runtime Test、Web Test、Docs Check 与 `git diff --check`
+- Runtime Test、Web Test、Docs Check 与 `git diff --check`
   全部通过。
 
 ## 真实会话验证

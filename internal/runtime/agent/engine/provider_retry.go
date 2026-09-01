@@ -121,7 +121,6 @@ func (e *Engine) recoverContextOverflow(
 	if measureErr != nil || !e.foldOldestVisibleTail(*history, true) {
 		return false, nil
 	}
-	e.applyWorkingSetGC(history)
 	after := e.projectGateHistory(*history, e.contextViewProject(nil))
 	afterWindow, measureErr := e.measureTokenWindow(
 		input.WithHistory(after), outputReserve, 0,

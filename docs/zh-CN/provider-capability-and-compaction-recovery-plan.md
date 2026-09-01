@@ -6,7 +6,7 @@
 - 当前工作树包含多组未提交变更，不要整体回退，也不要覆盖无关修改。
 - 阶段一 Provider Metadata Contract 已在当前工作树实现并通过独立审查。
 - 阶段二 Compaction 事务与 continuation 生命周期已在当前工作树实现，最终独立审查、
-  race、ratchet 和全仓回归已经完成；真实长 Turn 验证尚未执行。
+  race 和全仓回归已经完成；真实长 Turn 验证尚未执行。
 - 本文把问题拆成两个独立阶段：
   1. 自定义 Provider 能力来源。
   2. Hybrid Compaction 与 Provider continuation 生命周期。
@@ -287,9 +287,8 @@ reasoning 时，非 reasoning Route 仍可能收到 reasoning-only assistant mes
 
 两路最终独立审查发现的 RequiredKinds、post-turn commit/adopt 竞态、版本化 replay、
 完整 tool assembly Catalog 绑定、硬配额 429 分类、Assembly 防篡改和深拷贝问题也已
-修复。聚焦测试、完整相关包 race、`make ratchet-fast`、协议、文档、Book、安全与 Web
-检查均已通过。全仓 Go 测试仅剩仓库既有 architecture metrics 超限；真实长 Turn 验证
-仍按下文执行，验证前不恢复旧 Runtime。
+修复。聚焦测试、完整相关包 race、协议、文档、Book、安全与 Web
+检查均已通过。真实长 Turn 验证仍按下文执行，验证前不恢复旧 Runtime。
 
 ## Compaction 目标架构
 
@@ -473,7 +472,6 @@ go test ./internal/runtime/agent/context \
 go test -race ./internal/runtime/agent/context \
   ./internal/runtime/agent/engine \
   ./internal/runtime/agent/turnkernel
-make ratchet-fast
 git diff --check
 ```
 

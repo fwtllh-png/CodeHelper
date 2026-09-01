@@ -55,6 +55,11 @@ Web Settings 会显示 Provider、Model、Credential 状态与校验结果。确
 - 429 等待受 `execution.rate_limit_wait`（默认继承 `execution.timeout`）和
   `execution.rate_limit_retry_limit` 约束。超出预算时 Turn 进入可恢复 Blocked，
   消息为 `provider rate limit retry budget exhausted`，不会无限透明重试。
+- `provider request failed during response_headers` 是等待响应头超时
+  （默认继承 `execution.timeout`，通常 `2m`），不是上下文溢出。429 恢复不消耗
+  `execution.provider_retry_limit`；随后的 Timeout 仍按该预算重试。Provider
+  持续排队时可提高 `execution.response_header_timeout` 或
+  `execution.rate_limit_wait`。
 - 合法工作集超过已知 TPM（`execution.tokens_per_minute` 或 Token 专用 Header）时，
   Runtime 先对可见 Tail 做一次因果组折叠再重新准入；仍超则拒绝或等待，公开原因为
   `resource_exhausted` / `provider_throughput`，不会把同一 Digest 再探一次

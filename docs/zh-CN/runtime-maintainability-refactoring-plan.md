@@ -130,8 +130,7 @@ Module 必须：
 ## 架构门禁
 
 ```bash
-make architecture-metrics
-make architecture-ratchet
+make hotspot-baseline
 make turn-kernel-convergence-exit-gate
 go test ./internal/runtime/agent/turnkernel
 go test ./internal/runtime/agent/engine

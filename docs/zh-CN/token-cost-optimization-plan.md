@@ -637,7 +637,6 @@ Budget、Prefix Manifest 和 Usage 单调性。
 ### 13.4 仓库验证
 
 ```bash
-make ratchet-fast
 go test ./internal/runtime/agent/context
 go test ./internal/runtime/agent/engine
 go test ./internal/runtime/agent/turnkernel
@@ -776,4 +775,4 @@ Transport。先建立可信观测，再开启强制策略；先减少无效 Samp
 6. Token、Cached、Reasoning 和 Uncached 口径不重叠；
 7. 真实会话达到第 15 节目标，同时正确性、恢复、安全和验证不回归；
 8. 所有新增阈值均有 Config、Provenance、文档和边界测试；
-9. `make ratchet-fast`、相关 Go/Web 测试、文档检查和 Diff 检查全部通过。
+9. 相关 Go/Web 测试、文档检查和 Diff 检查全部通过。

@@ -118,7 +118,9 @@ Pre-meaningful Failure。
 - Non-retryable 4xx 立即返回。
 - 429 使用公开 Rate Limit Recovery Budget（`execution.rate_limit_wait` 默认继承
   `execution.timeout`，`execution.rate_limit_retry_limit` 默认不限次数）；耗尽后
-  转为可恢复 Blocked，不无限透明等待。
+  转为可恢复 Blocked，不无限透明等待。429 恢复不消耗
+  `execution.provider_retry_limit`，因此随后的 `response_headers` Timeout 仍可按
+  该瞬时故障预算重试。
 - Provider Throughput 是独立于模型窗口和经济预算的第三条容量平面。
   `execution.tokens_per_minute` 默认 `0` 表示未知，不按模型名称发明 TPM；已知
   Burst 时按 `投影输入 + 输出保留` 在发送前准入。超过 Burst 或等待将超过预算时，

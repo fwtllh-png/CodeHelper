@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -48,6 +49,28 @@ func TestRetryPolicyRateLimitWaitIncludesRouteCooldown(t *testing.T) {
 	policy.RateLimitMaxWait = 3 * time.Second
 	if _, ok := policy.Decide(rateLimitError(1000), false, 0, false); ok {
 		t.Fatal("cooldown beyond wait budget should exhaust")
+	}
+}
+
+func TestRetryPolicyTimeoutBudgetSurvivesRateLimitRetries(t *testing.T) {
+	policy := RetryPolicy{MaxRetries: 1}
+	timeout := protocol.NewFault(
+		protocol.CodeDeadlineExceeded,
+		"provider request failed during response_headers",
+		true,
+		protocol.FaultMetadata{
+			Origin: protocol.FaultOriginProvider,
+			Stage:  protocol.FaultStageResponseHeaders,
+		},
+		context.DeadlineExceeded,
+	)
+	policy.RateLimitRetries = 3
+	retry, ok := policy.Decide(timeout, false, 0, false)
+	if !ok || retry.Retry != 4 {
+		t.Fatalf("timeout after rate limits should keep transient budget: %+v allowed=%t", retry, ok)
+	}
+	if _, ok := policy.Decide(timeout, false, 1, false); ok {
+		t.Fatal("transient timeout budget should still exhaust")
 	}
 }
 

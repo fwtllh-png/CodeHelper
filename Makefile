@@ -17,15 +17,14 @@ WEB_BUILD_TAG := webbundle
 
 .PHONY: start install uninstall fmt verify test test-hermetic test-platform-capability reliability-gate test-integration \
 	test-release release-baseline-check integration-gate release-gate race build cross-build smoke \
-	agent-preflight agent-ratchet-test ratchet-fast \
 	capacity-policy-check \
 	security-side-effect-check \
 	docs-check book-check web-experience-check \
 	host-journey-contract \
-	benchmark-v2-check benchmark-v2 hotspot-baseline architecture-metrics \
+	benchmark-v2-check benchmark-v2 hotspot-baseline \
 	web-protocol web-protocol-check \
 	provider-deepseek-live-control provider-deepseek-live-ce7 \
-	architecture-ratchet architecture-freeze \
+	architecture-freeze \
 	book-navigation \
 	turn-kernel-convergence-baseline turn-kernel-convergence-exit-gate \
 	doc-governance-check doc-governance-test doc-impact \
@@ -91,25 +90,10 @@ WEB_HOST_ROUTES_GO := internal/host/runtimeapi/web/unary_routes.generated.go
 WEB_STREAMING_SOAK_DURATION ?= 1h
 WEB_STREAMING_SOAK_TIMEOUT ?= 70m
 WEB_STREAMING_SOAK_ALLOW_SHORT ?= 0
-ARCHITECTURE_METRICS_BASELINE := testdata/contracts/architecture-metrics-baseline.json
 RELIABILITY_MATRIX := testdata/contracts/reliability-matrix.json
-ARCHITECTURE_METRICS_REPORT ?= .tmp/architecture/metrics.json
-AGENT_PREFLIGHT_DIR ?= .tmp/agent-preflight
-AGENT_PREFLIGHT_SNAPSHOT ?= $(AGENT_PREFLIGHT_DIR)/baseline.json
-AGENT_PREFLIGHT_ARCHITECTURE ?= $(AGENT_PREFLIGHT_DIR)/architecture.json
-AGENT_PREFLIGHT_WEB ?= $(AGENT_PREFLIGHT_DIR)/web.json
-AGENT_CURRENT_ARCHITECTURE ?= $(AGENT_PREFLIGHT_DIR)/current-architecture.json
-AGENT_CURRENT_WEB ?= $(AGENT_PREFLIGHT_DIR)/current-web.json
 WEB_MEASUREMENT_REPORT ?= .tmp/web-supply-chain-report.json
 WEB_INSTALL_STAMP := web/node_modules/.package-lock.json
-ARCHITECTURE_BASE_REF ?= origin/main
-ARCHITECTURE_BASELINE_BASE_PATH ?= $(shell \
-	if git cat-file -e '$(ARCHITECTURE_BASE_REF):$(ARCHITECTURE_METRICS_BASELINE)' 2>/dev/null; then \
-		printf '%s' '$(ARCHITECTURE_METRICS_BASELINE)'; \
-	else \
-		printf '%s' 'docs/architecture-metrics-baseline.json'; \
-	fi)
-BASE_REF ?= $(ARCHITECTURE_BASE_REF)
+BASE_REF ?= origin/main
 
 RELEASE_STAGE ?= experimental
 PREVIOUS_RELEASE_REF ?=
@@ -133,56 +117,10 @@ endif
 fmt:
 	$(GO) fmt ./...
 
-agent-ratchet-test:
-	node --test scripts/agent-ratchet.test.mjs
-
-agent-preflight:
-	@mkdir -p '$(AGENT_PREFLIGHT_DIR)'
-	@rm -f '$(AGENT_PREFLIGHT_ARCHITECTURE)' '$(AGENT_PREFLIGHT_WEB)'
-	@$(GO) run ./scripts/architecturemetrics -root . \
-		-baseline '$(ARCHITECTURE_METRICS_BASELINE)' \
-		-report '$(AGENT_PREFLIGHT_ARCHITECTURE)' \
-		>'$(AGENT_PREFLIGHT_DIR)/architecture.log' 2>&1 || \
-		test -s '$(AGENT_PREFLIGHT_ARCHITECTURE)'
-	@$(MAKE) --no-print-directory web-measure \
-		WEB_MEASUREMENT_REPORT='$(AGENT_PREFLIGHT_WEB)' \
-		>'$(AGENT_PREFLIGHT_DIR)/web.log' 2>&1 || { \
-			cat '$(AGENT_PREFLIGHT_DIR)/web.log'; exit 1; \
-		}
-	@node scripts/agent-ratchet.mjs snapshot \
-		--architecture-report '$(AGENT_PREFLIGHT_ARCHITECTURE)' \
-		--web-report '$(AGENT_PREFLIGHT_WEB)' \
-		--architecture-policy '$(ARCHITECTURE_METRICS_BASELINE)' \
-		--web-policy testdata/contracts/web-supply-chain-policy.json \
-		--output '$(AGENT_PREFLIGHT_SNAPSHOT)'
-
 capacity-policy-check:
 	$(GO) test ./scripts -run '^TestCapacityPathsDoNotReintroduceLegacyTiers$$'
 
-ratchet-fast: capacity-policy-check security-side-effect-check
-	@test -s '$(AGENT_PREFLIGHT_SNAPSHOT)' || { \
-		printf '%s\n' 'agent preflight is missing; run make agent-preflight first'; \
-		exit 1; \
-	}
-	@rm -f '$(AGENT_CURRENT_ARCHITECTURE)' '$(AGENT_CURRENT_WEB)'
-	@$(GO) run ./scripts/architecturemetrics -root . \
-		-baseline '$(ARCHITECTURE_METRICS_BASELINE)' \
-		-report '$(AGENT_CURRENT_ARCHITECTURE)' \
-		>'$(AGENT_PREFLIGHT_DIR)/current-architecture.log' 2>&1 || \
-		test -s '$(AGENT_CURRENT_ARCHITECTURE)'
-	@$(MAKE) --no-print-directory web-measure \
-		WEB_MEASUREMENT_REPORT='$(AGENT_CURRENT_WEB)' \
-		>'$(AGENT_PREFLIGHT_DIR)/current-web.log' 2>&1 || { \
-			cat '$(AGENT_PREFLIGHT_DIR)/current-web.log'; exit 1; \
-		}
-	@node scripts/agent-ratchet.mjs check \
-		--snapshot '$(AGENT_PREFLIGHT_SNAPSHOT)' \
-		--architecture-report '$(AGENT_CURRENT_ARCHITECTURE)' \
-		--web-report '$(AGENT_CURRENT_WEB)' \
-		--architecture-policy '$(ARCHITECTURE_METRICS_BASELINE)' \
-		--web-policy testdata/contracts/web-supply-chain-policy.json
-
-verify: architecture-ratchet docs-check book-check brand-check web-protocol-check web-parity-check \
+verify: docs-check book-check brand-check web-protocol-check web-parity-check \
 	web-check web-test web-assets-check web-supply-chain-check \
 	reliability-gate
 	@unformatted="$$(git ls-files --cached --others --exclude-standard '*.go' | \
@@ -202,23 +140,6 @@ hotspot-baseline:
 	$(GO) test -count=1 ./scripts -run 'Test(RepositoryHotspotBaseline|CheckHotspot)'
 	$(GO) run ./scripts/check-hotspot-baseline.go -root .
 
-architecture-metrics:
-	$(GO) test -count=1 ./scripts/architecturemetrics
-	$(GO) run ./scripts/architecturemetrics -root . \
-		-baseline '$(ARCHITECTURE_METRICS_BASELINE)' \
-		-report '$(ARCHITECTURE_METRICS_REPORT)'
-
-architecture-ratchet: architecture-metrics
-	@if test -n '$(ARCHITECTURE_BASE_REF)' && \
-		git cat-file -e '$(ARCHITECTURE_BASE_REF):$(ARCHITECTURE_BASELINE_BASE_PATH)' 2>/dev/null; then \
-		$(GO) run ./scripts/architecturemetrics -root . \
-			-baseline '$(ARCHITECTURE_METRICS_BASELINE)' \
-			-base-ref '$(ARCHITECTURE_BASE_REF)' \
-			-base-baseline '$(ARCHITECTURE_BASELINE_BASE_PATH)'; \
-	else \
-		printf '%s\n' 'architecture ratchet comparison skipped: base baseline is unavailable'; \
-	fi
-
 provider-deepseek-live-control:
 	CODEHELPER_DEEPSEEK_LIVE_CONTROL=1 \
 		$(GO) test -count=1 -v ./internal/adapter/provider/httpclient \
@@ -232,7 +153,7 @@ provider-deepseek-live-ce7:
 # Architecture behavior freeze. Package tests carry characterization, config
 # provenance drift, state transitions, and schema drift. Race is focused on the
 # concurrent turn engine.
-architecture-freeze: hotspot-baseline architecture-ratchet
+architecture-freeze: hotspot-baseline
 	@mkdir -p '$(TEST_HOME)'
 	$(TEST_HOME_ENV) $(GO) test -count=1 \
 		./internal/runtime/agent/engine \

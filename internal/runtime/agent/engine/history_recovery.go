@@ -45,7 +45,6 @@ func (e *Engine) runCompactGate(
 	economicInput uint64,
 	projectHistory agentcontext.HistoryProjector,
 ) (tokenWindow, error) {
-	e.applyWorkingSetGC(history)
 	baseInput := input
 	projected := e.projectGateHistory(*history, projectHistory)
 	input = baseInput.WithHistory(projected)
@@ -107,7 +106,6 @@ func (e *Engine) runCompactGate(
 		return window, err
 	}
 	if (overHard || operatorCeiling) && e.foldOldestVisibleTail(*history, allowCurrentTurn) {
-		e.applyWorkingSetGC(history)
 		before := projected
 		beforeWindow := window
 		projected = e.projectGateHistory(*history, projectHistory)
@@ -327,7 +325,6 @@ func (e *Engine) compactHistoryWithPolicy(
 	projectHistory agentcontext.HistoryProjector,
 	identities ...TurnIdentity,
 ) *CompactionReceipt {
-	e.applyWorkingSetGC(history)
 	if len(*history) <= 1 {
 		return nil
 	}

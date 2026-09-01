@@ -128,7 +128,7 @@ enabled = true
 
 [context.view]
 recent_tail_turns = 2
-keep_recent_tool_results = 0 # 0 表示只保留 Tail 内的原文 Tool Result
+keep_recent_tool_results = 0 # 快照字段；已发送 Tool Result 不再按此改写
 history_token_ceiling = 0 # 0 表示 Mandatory 分区之后的剩余硬输入容量
 digest = "ledger" # 或 "ledger+narrative"；session_state 始终 mandatory
 narrative_mode = "post_turn" # 不阻塞 Sample；仅允许 off 或 post_turn
@@ -157,9 +157,11 @@ semantic_narrative_retry_limit = 1
 owner_delta_max_segments = 16
 owner_delta_max_bytes = 65536
 
-每次 Sample 先把不在最近 `context.view.recent_tail_turns` 内的已消费 Tool Result
-收成 Handle，再只把最近这些 Turn 投影给模型。完整 transcript 留在 Durable
-Journal。超窗时对可见 Tail 做一次因果组折叠，仍放不下则 `resource_exhausted`。
+Tool Result 在首次 `Admit` 时定稿：不超过 ResultStore 合同则保留原文，超限则
+写成有界说明 + Handle。之后 Sample 不再改写已发送结果，以便保持 append-only
+前缀。再只把最近 `context.view.recent_tail_turns` 个 Turn 投影给模型。完整
+transcript 留在 Durable Journal。超窗时对可见 Tail 做一次因果组折叠，仍放不下
+则 `resource_exhausted`。
 `context.compact.prepare_tokens` / `auto_compact_tokens` / `emergency_tokens`
 为 `0` 时不设提前压缩档位，也不会出现在默认 Context Budget 快照里。History
 Replacement 留给显式 `thread.compact` 与 Turn 终态维护。显式非零值属于
@@ -173,12 +175,13 @@ Adapter 组成的 Connection Identity 隔离。旧版缺少元数据来源的自
 不会迁移为猜测值，而会重新进入 Setup Required。
 
 `context.view.recent_tail_turns` 是模型可见原文的主边界，默认 2。更早 Turn 的
-Tool Result 会被 Handle 化。`keep_recent_tool_results=0` 表示只保留仍落在该
-Tail 内的原文结果，不再发明第二个 N；正值是额外保留最近 N 条 Tool Result
-原文。Goal、未完成 Todo 和未验证 Change 是每轮必带的 `session_state` 分区，
-从 Plan / Evidence Ledger 确定性生成，不依赖 compact 事件。Working Set 与
-Evidence 仍按各自分区预算投影。`truth_max_bytes` 约束该 Mandatory 分区；
-放不下时在 Sample 前拒绝，而不是丢掉 Goal。
+消息会被投影裁掉，但不改写 Durable History 里已发送的 Tool Result。
+`keep_recent_tool_results` 仍出现在快照里，不再在后续 Sample 把已消费结果收成
+Handle。体积由首次准入决定，需要更多内容时用 `result_get`。Goal、未完成
+Todo 和未验证 Change 是每轮必带的 `session_state` 分区，从 Plan / Evidence
+Ledger 确定性生成，不依赖 compact 事件。Working Set 与 Evidence 仍按各自分区
+预算投影。`truth_max_bytes` 约束该 Mandatory 分区；放不下时在 Sample 前拒绝，
+而不是丢掉 Goal。
 
 `context.view.history_token_ceiling` 为 `0` 时，原文 Tail 的 token 上限等于当前
 Turn 冻结的硬输入容量减去 Stable / `session_state` 等 Mandatory 分区，而不是

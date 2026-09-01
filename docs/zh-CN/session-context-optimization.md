@@ -68,7 +68,8 @@ Interaction、未验证 Change 和开放 Diagnostic 等 Mandatory Fact 不能由
 `context.view.history_token_ceiling` 是原始 Tail 的 token residual。未显式配置时，
 该 residual 等于当前 Turn 冻结的硬输入容量减去 Mandatory 分区（Stable、
 `session_state` 等）；显式正值是更紧的 Operator Ceiling。
-`keep_recent_tool_results=0` 只保留仍在 Tail 内的原文 Tool Result。投影从最新
+Tool Result 在首次准入时定稿：能放下则原文，超限则有界说明 + Handle，之后
+不再改写已发送结果。投影从最新
 闭合因果组向前填充，两者先到达者为准，并只在安全 Tool Pair 边界切分。
 采样路径超窗、超过已知 TPM Burst、或等待将超过 `execution.rate_limit_wait` 时，
 对可见 Tail 做一次因果组折叠（`mode=view`），不改写 Durable History；仍超则
@@ -79,9 +80,8 @@ Interaction、未验证 Change 和开放 Diagnostic 等 Mandatory Fact 不能由
 
 每次投影后都重新测量 Active、Total、Compact Limit 与 Hard Limit：
 
-1. 当 `输入 + Output Reserve` 超过硬窗口，先把可重新获取的 Tool Result 缩减为带
-   Handle/Digest 的模型投影；
-2. 若 Surface Pruning 已恢复容量，跳过 Summary Replacement；
+1. 超硬窗口时对可见 Tail 做一次因果组折叠，不改写已发送 Tool Result；
+2. 首次准入已超 ResultStore 合同的结果本来就是 Handle 投影，不再事后改写；
 3. 计算保持 Tool Pair 闭合的可切分位置；
 4. 从当前 Owner Snapshot 生成 Truth Capsule，而不是永久合并旧 Capsule；
 5. 在容量允许时保留 Recent Raw Tail；

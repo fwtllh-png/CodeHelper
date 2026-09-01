@@ -209,7 +209,7 @@ Turn 年龄改写已发送消息。只有显式 compaction/rebase 才允许折�
   `PrefixMonotonic=true` 且 `PrefixFirstDivergence` 落在尾部。
 - **命中率提升**：在 1M 上下文模型上跑真实会话，观测 `prompt_cache_hit_tokens` 占比上升、TTFT 下降；
   记录优化前后对比。
-- **不回归正确性**：`PRUNE`/`COMPACT` 发生率不上升，Tool/Result 因果链完整，使用 `make ratchet-fast`、
+- **不回归正确性**：`PRUNE`/`COMPACT` 发生率不上升，Tool/Result 因果链完整，使用
   受影响包 `go test`、`git diff --check` 验证；跨 Package 改动按风险放宽验证面。
 - **无魔法常量**：新增阈值/预算均有 Config + Provenance；`docs-check` / `book-check` 通过。
 

@@ -173,6 +173,48 @@ func TestRateLimitRetryContinuesBeyondTransientFailureBudget(t *testing.T) {
 	}
 }
 
+func TestEngineRetriesHeaderTimeoutAfterRateLimitRetries(t *testing.T) {
+	rateLimited := func() provider.Stream {
+		return &errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"rate limited",
+			true,
+			&provider.Failure{
+				Code: provider.FailureRateLimit, Message: "rate limited",
+				RetryAfterMS: 1,
+			},
+		)}
+	}
+	headerTimeout := protocol.NewFault(
+		protocol.CodeDeadlineExceeded,
+		"provider request failed during response_headers",
+		true,
+		protocol.FaultMetadata{
+			Origin: protocol.FaultOriginProvider,
+			Stage:  protocol.FaultStageResponseHeaders,
+		},
+		context.DeadlineExceeded,
+	)
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		rateLimited(),
+		rateLimited(),
+		rateLimited(),
+		&errorStream{err: headerTimeout},
+		textStream("recovered"),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.MaxRetries = 1
+	engine.options.MaxRetryDelay = time.Second
+
+	result, err := engine.Run(t.Context(), "retry after headers timeout", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "recovered" || len(runtime.requests) != 5 {
+		t.Fatalf("result = %+v, requests = %d", result, len(runtime.requests))
+	}
+}
+
 func TestEngineRetriesRateLimitUntilProviderRecovers(t *testing.T) {
 	rateLimited := func() provider.Stream {
 		return &errorStream{err: protocol.NewProblem(
