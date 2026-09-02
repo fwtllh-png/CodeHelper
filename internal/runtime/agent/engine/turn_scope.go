@@ -5,17 +5,17 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/QCode/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/QCode/internal/observability/diagnostics"
+	"github.com/fwtllh-png/QCode/internal/observability/trace"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // Scope owns one frozen TurnSpec and its execution lifetime. Session state

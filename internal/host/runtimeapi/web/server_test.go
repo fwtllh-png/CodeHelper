@@ -20,18 +20,18 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
-	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
-	"github.com/fwtllh-png/CodeHelper/internal/security/vcsbroker"
+	"github.com/fwtllh-png/QCode/internal/adapter/mcp"
+	threadstate "github.com/fwtllh-png/QCode/internal/host/runtimeapi/thread"
+	webhost "github.com/fwtllh-png/QCode/internal/host/runtimeapi/web"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/platform/workspacequery"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/vcsbroker"
 )
 
 func TestBootstrapIsLoopbackFencedAndDoesNotCacheToken(t *testing.T) {
@@ -87,7 +87,7 @@ func TestSetupIsCapabilityFencedBeforeRuntimeActivation(t *testing.T) {
 	var applied webhost.SetupRequest
 	server, err := webhost.New(webhost.Options{
 		Assets: fstest.MapFS{
-			"index.html": {Data: []byte("<main>CodeHelper</main>")},
+			"index.html": {Data: []byte("<main>QCode</main>")},
 		},
 		ExpectedHost: "127.0.0.1:43210",
 		Origin:       "http://127.0.0.1:43210",
@@ -189,7 +189,7 @@ func TestUnaryRequiresTokenAndRuntimeReadiness(t *testing.T) {
 
 func TestBootFailureAndBootstrapScriptAreNotCached(t *testing.T) {
 	server := newTestServerWithAssets(t, "127.0.0.1:43210", fstest.MapFS{
-		"index.html":         &fstest.MapFile{Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444)},
+		"index.html":         &fstest.MapFile{Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444)},
 		"theme-bootstrap.js": &fstest.MapFile{Data: []byte("void 0"), Mode: fs.FileMode(0o444)},
 	})
 	server.FailBoot(errors.New("configuration is invalid"))
@@ -220,7 +220,7 @@ func TestStaticAssetsRejectTraversalAndSupportETag(t *testing.T) {
 	const host = "127.0.0.1:43210"
 	server := newTestServerWithAssets(t, host, fstest.MapFS{
 		"index.html": &fstest.MapFile{
-			Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+			Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444),
 		},
 		"assets/app.js": &fstest.MapFile{
 			Data: []byte("void 0"), Mode: fs.FileMode(0o444),
@@ -327,7 +327,7 @@ func TestCapacityAppliesExactBodyIdentityAndConnectionLimits(t *testing.T) {
 	server := newTestServerWithOptions(t, webhost.Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+				Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444),
 			},
 		},
 		ExpectedHost: host,
@@ -371,7 +371,7 @@ func TestCapacityAppliesExactBodyIdentityAndConnectionLimits(t *testing.T) {
 	longID.Host = host
 	longID.Header.Set("Content-Type", "application/json")
 	longID.Header.Set("Authorization", "Bearer "+token)
-	longID.Header.Set("X-CodeHelper-Request-ID", "12345")
+	longID.Header.Set("X-QCode-Request-ID", "12345")
 	longIDResponse := httptest.NewRecorder()
 	server.Handler().ServeHTTP(longIDResponse, longID)
 	if longIDResponse.Code != http.StatusBadRequest {
@@ -424,7 +424,7 @@ func TestTraceQueryRejectsRequestsAboveCapacityBeforeRepositoryAccess(t *testing
 	server := newTestServerWithOptions(t, webhost.Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"),
+				Data: []byte("<main>QCode</main>"),
 				Mode: fs.FileMode(0o444),
 			},
 		},
@@ -757,7 +757,7 @@ func TestRoutesSessionsAndEventsByWorkspace(t *testing.T) {
 	ownContentRequest.Host = host
 	ownContentRequest.Header.Set("Authorization", "Bearer "+token)
 	ownContentRequest.Header.Set(
-		"X-CodeHelper-Workspace-ID",
+		"X-QCode-Workspace-ID",
 		identityA.RootID,
 	)
 	ownContentResponse := httptest.NewRecorder()
@@ -778,7 +778,7 @@ func TestRoutesSessionsAndEventsByWorkspace(t *testing.T) {
 	contentRequest.Host = host
 	contentRequest.Header.Set("Authorization", "Bearer "+token)
 	contentRequest.Header.Set(
-		"X-CodeHelper-Workspace-ID",
+		"X-QCode-Workspace-ID",
 		identityB.RootID,
 	)
 	contentResponse := httptest.NewRecorder()
@@ -937,7 +937,7 @@ func TestArtifactRouteUsesTypedValidation(t *testing.T) {
 	request.Host = host
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+bootstrapToken(t, server, host))
-	request.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
+	request.Header.Set("X-QCode-Workspace-ID", identity.RootID)
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusBadRequest ||
@@ -991,7 +991,7 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	server, err := webhost.New(webhost.Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"),
+				Data: []byte("<main>QCode</main>"),
 				Mode: fs.FileMode(0o444),
 			},
 		},
@@ -1019,7 +1019,7 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	branchRequest.Host = host
 	branchRequest.Header.Set("Content-Type", "application/json")
 	branchRequest.Header.Set("Authorization", "Bearer "+token)
-	branchRequest.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
+	branchRequest.Header.Set("X-QCode-Workspace-ID", identity.RootID)
 	branchRequest.Header.Set("Idempotency-Key", "switch-feature")
 	branchResponse := httptest.NewRecorder()
 	server.Handler().ServeHTTP(branchResponse, branchRequest)
@@ -1106,7 +1106,7 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	)
 	contentRequest.Host = host
 	contentRequest.Header.Set("Authorization", "Bearer "+token)
-	contentRequest.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
+	contentRequest.Header.Set("X-QCode-Workspace-ID", identity.RootID)
 	contentResponse := httptest.NewRecorder()
 	server.Handler().ServeHTTP(contentResponse, contentRequest)
 	if contentResponse.Code != http.StatusOK ||
@@ -1162,7 +1162,7 @@ func TestWorkspaceRoutesUseBoundedWorkspaceQuery(t *testing.T) {
 	)
 	imageRequest.Host = host
 	imageRequest.Header.Set("Authorization", "Bearer "+token)
-	imageRequest.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
+	imageRequest.Header.Set("X-QCode-Workspace-ID", identity.RootID)
 	imageContent := httptest.NewRecorder()
 	server.Handler().ServeHTTP(imageContent, imageRequest)
 	if imageContent.Code != http.StatusOK ||
@@ -1228,7 +1228,7 @@ func TestUnaryRejectsDeclaredOversizedBody(t *testing.T) {
 	server := newTestServerWithOptions(t, webhost.Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+				Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444),
 			},
 		},
 		ExpectedHost: host,
@@ -1266,7 +1266,7 @@ func TestUnaryRejectsDeclaredOversizedBody(t *testing.T) {
 func newTestServer(t *testing.T, host string) *webhost.Server {
 	t.Helper()
 	assets := fstest.MapFS{
-		"index.html": &fstest.MapFile{Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444)},
+		"index.html": &fstest.MapFile{Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444)},
 	}
 	return newTestServerWithAssets(t, host, assets)
 }
@@ -1315,8 +1315,8 @@ func runWorkspaceGit(t *testing.T, root string, arguments ...string) {
 	command.Dir = root
 	command.Env = append(
 		os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+root,
-		"GIT_AUTHOR_NAME=CodeHelper", "GIT_AUTHOR_EMAIL=fixture@invalid",
-		"GIT_COMMITTER_NAME=CodeHelper", "GIT_COMMITTER_EMAIL=fixture@invalid",
+		"GIT_AUTHOR_NAME=QCode", "GIT_AUTHOR_EMAIL=fixture@invalid",
+		"GIT_COMMITTER_NAME=QCode", "GIT_COMMITTER_EMAIL=fixture@invalid",
 	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", arguments, err, output)
@@ -1394,7 +1394,7 @@ func postWebWorkspace(
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+token)
 	if workspaceID != "" {
-		request.Header.Set("X-CodeHelper-Workspace-ID", workspaceID)
+		request.Header.Set("X-QCode-Workspace-ID", workspaceID)
 	}
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)

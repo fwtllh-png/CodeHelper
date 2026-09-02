@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state/eventlog"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/state/eventlog"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestFaultInjectionKillMidWriteRepairsTornTail(t *testing.T) {

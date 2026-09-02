@@ -15,15 +15,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/textdiff"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlplane"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/observability/diagnostics"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/platform/textdiff"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/controlplane"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 type ApprovalRequest struct {

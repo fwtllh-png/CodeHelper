@@ -7,7 +7,7 @@ audience:
 prerequisites:
   - overview-system-architecture
 code_paths:
-  - cmd/codehelper
+  - cmd/qcode
   - internal
   - web/src
 test_paths:
@@ -37,7 +37,7 @@ State，或让 Restart Behavior 依赖 UI Process。
 
 | Concern | Owner | 不得变成 |
 | --- | --- | --- |
-| Process Entry | `cmd/codehelper` | Business Logic Container |
+| Process Entry | `cmd/qcode` | Business Logic Container |
 | Web Host/API | `internal/host` | Provider/Tool Executor |
 | Protocol/Lifecycle | `internal/runtime` | Vendor Transport |
 | Integration | `internal/adapter` | Policy Authority |

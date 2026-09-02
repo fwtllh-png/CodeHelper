@@ -28,7 +28,7 @@ last_verified: null
 
 ## 学习目标
 
-准确使用 CodeHelper Protocol 词汇，理解 Identity/Durability Rule，不再混淆 Command、
+准确使用 QCode Protocol 词汇，理解 Identity/Durability Rule，不再混淆 Command、
 Fact、Evidence 与 Query State。
 
 ## 1. 四种角色
@@ -146,7 +146,7 @@ Projection 与 Durable Event 冲突时应 Repair/Rebuild Projection，不能用�
 
 ## 8. Persistence 与 Replay
 
-CodeHelper 组合 Ordered Event Log 与 SQLite Projection。Commit Boundary 防止 Projection
+QCode 组合 Ordered Event Log 与 SQLite Projection。Commit Boundary 防止 Projection
 声称未 Durable Record 的 Event。Replay 从 Cursor 分页，Gap 必须显式。
 
 Restart 时 Reconstruction 判定 Completed、Failed、Reverted、Interrupted；它不是

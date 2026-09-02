@@ -158,8 +158,8 @@ func Contract() HostContract {
 		return routes[i].Path < routes[j].Path
 	})
 	return HostContract{
-		ID:              "https://codehelper.dev/contracts/web-host-v1.json",
-		Title:           "CodeHelper Web Host transport contract manifest",
+		ID:              "https://qcode.dev/contracts/web-host-v1.json",
+		Title:           "QCode Web Host transport contract manifest",
 		ProtocolVersion: webProtocol,
 		LoopbackOnly:    true,
 		SameOriginOnly:  true,

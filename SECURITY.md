@@ -2,7 +2,7 @@
 
 ## 支持版本
 
-CodeHelper 目前处于初始开发阶段。安全修复应用于最新标签版本和 `main` 分支。
+QCode 目前处于初始开发阶段。安全修复应用于最新标签版本和 `main` 分支。
 除非 Release Notes 另有说明，不维护更早的预发布版本。
 
 | 版本 | 是否支持 |
@@ -14,7 +14,7 @@ CodeHelper 目前处于初始开发阶段。安全修复应用于最新标签版
 ## 报告安全漏洞
 
 请通过
-[GitHub Security Advisories](https://github.com/fwtllh-png/CodeHelper/security/advisories/new)
+[GitHub Security Advisories](https://github.com/fwtllh-png/QCode/security/advisories/new)
 私下报告安全漏洞。不要为疑似漏洞创建公开 Issue。
 
 报告只应包含复现和评估问题所需的信息：

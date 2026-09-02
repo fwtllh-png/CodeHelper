@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"maps"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 type Failure struct {

@@ -87,7 +87,7 @@ Tool Call 静默调用已替换 Executor。
 | Volatile Context Tail | 单次 Sample | Tool Result、Evidence、Risk 必须演化 |
 
 冻结全部内容会隐藏新 Observation；每次重建全部内容会破坏 Authority Consistency 和
-Prompt Cache。CodeHelper 在最小正确 Scope 冻结 Identity/Authority，并在预期变化处
+Prompt Cache。QCode 在最小正确 Scope 冻结 Identity/Authority，并在预期变化处
 重建 Observational Context。
 
 ## Model 与 Provider
@@ -174,7 +174,7 @@ Result Store 保存并可按需重取。
 ## 设计取舍与替代方案
 
 发送完整仓库会超出 Context、增加成本并降低相关性；只发送用户选中文件又会遗漏结构。
-CodeHelper 组合有界 Repository Structure、Observed Working State、Evidence 和
+QCode 组合有界 Repository Structure、Observed Working State、Evidence 和
 On-demand Tool。
 
 Turn 开始时冻结全部 Prompt 会忽略后续 Tool Result；每次重建所有内容会破坏 Prompt

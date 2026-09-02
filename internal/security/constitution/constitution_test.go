@@ -7,15 +7,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/constitution"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 func TestConstitutionHoldSurvivesBypass(t *testing.T) {
 	workspace := t.TempDir()
 	home := t.TempDir()
-	repoPath := filepath.Join(workspace, ".codehelper", "constitution.json")
+	repoPath := filepath.Join(workspace, ".qcode", "constitution.json")
 	if err := os.MkdirAll(filepath.Dir(repoPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -52,10 +52,10 @@ func TestConstitutionHoldSurvivesBypass(t *testing.T) {
 func TestRepoOverridesUserPrompt(t *testing.T) {
 	workspace := t.TempDir()
 	home := t.TempDir()
-	writeDoc(t, filepath.Join(home, ".codehelper", "constitution.json"), constitution.Document{
+	writeDoc(t, filepath.Join(home, ".qcode", "constitution.json"), constitution.Document{
 		Version: 1, Prompt: "user prompt", HoldTools: []string{"exec_command"},
 	})
-	writeDoc(t, filepath.Join(workspace, ".codehelper", "constitution.json"), constitution.Document{
+	writeDoc(t, filepath.Join(workspace, ".qcode", "constitution.json"), constitution.Document{
 		Version: 1, Prompt: "repo prompt",
 	})
 	bundle, err := constitution.Load(workspace, home)

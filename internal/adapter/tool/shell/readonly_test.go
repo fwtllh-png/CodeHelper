@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
-	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/QCode/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/testutil/tooltest"
 )
 
 func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
@@ -96,7 +96,7 @@ func TestShellReadUsesEnforcedReadOnlyWorkspace(t *testing.T) {
 	}
 
 	if runtime.GOOS == "darwin" {
-		hostTemp, err := os.CreateTemp("/private/var/tmp", "codehelper-shell-read-secret-")
+		hostTemp, err := os.CreateTemp("/private/var/tmp", "qcode-shell-read-secret-")
 		if err != nil {
 			t.Fatal(err)
 		}

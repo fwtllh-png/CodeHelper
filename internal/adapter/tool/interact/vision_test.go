@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/QCode/internal/adapter/provider/fixture"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
 )
 
 // recordingProvider stands in for the shared client so the test can read the

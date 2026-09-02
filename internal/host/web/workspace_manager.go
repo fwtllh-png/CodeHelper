@@ -15,12 +15,12 @@ import (
 	"strings"
 	"sync"
 
-	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/atomicfile"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/credential"
+	webhost "github.com/fwtllh-png/QCode/internal/host/runtimeapi/web"
+	"github.com/fwtllh-png/QCode/internal/persist/atomicfile"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/credential"
 )
 
 const workspaceRegistryVersion = 1
@@ -294,7 +294,7 @@ func (m *workspaceRuntimeManager) Reconfigure(
 		if commitErr := runtime.commitCredential(); commitErr != nil {
 			_, _ = fmt.Fprintf(
 				stderr,
-				"codehelper: finalize credential rotation: %v\n",
+				"qcode: finalize credential rotation: %v\n",
 				commitErr,
 			)
 		}

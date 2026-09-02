@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 func TestGuardRunsDisjointClaimsConcurrentlyAndSerializesConflicts(t *testing.T) {

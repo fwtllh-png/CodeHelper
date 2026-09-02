@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 var ErrEffectResultIdentity = errors.New("effect result identity mismatch")

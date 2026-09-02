@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/anthropic"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
-	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/anthropic"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/openai"
+	providerwire "github.com/fwtllh-png/QCode/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func (c *Client) Stream(

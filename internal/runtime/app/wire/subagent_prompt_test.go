@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type promptTestGate struct{}

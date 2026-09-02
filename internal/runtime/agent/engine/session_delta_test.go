@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	adaptercontent "github.com/fwtllh-png/QCode/internal/adapter/content"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestSessionDeltaApplyIsRevisionedAndIdempotent(t *testing.T) {

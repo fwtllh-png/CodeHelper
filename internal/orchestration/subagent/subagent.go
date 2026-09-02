@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 type Role string

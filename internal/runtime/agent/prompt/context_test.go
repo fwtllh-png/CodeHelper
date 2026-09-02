@@ -8,18 +8,18 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
+	"github.com/fwtllh-png/QCode/internal/adapter/memory"
 )
 
 func TestAssembleStableOrderAndWorkspaceBoundaries(t *testing.T) {
 	workspace := t.TempDir()
-	if err := os.Mkdir(filepath.Join(workspace, ".codehelper"), 0o755); err != nil {
+	if err := os.Mkdir(filepath.Join(workspace, ".qcode"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(workspace, "AGENTS.md"), []byte("root rules"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, ".codehelper", "instructions.md"), []byte("local rules"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, ".qcode", "instructions.md"), []byte("local rules"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	outside := filepath.Join(filepath.Dir(workspace), "AGENTS.md")

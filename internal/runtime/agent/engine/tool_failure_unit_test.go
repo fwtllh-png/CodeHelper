@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	toolresult "github.com/fwtllh-png/QCode/internal/adapter/tool/result"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestBudgetExhaustionRequiresReportingWithoutRetry(t *testing.T) {

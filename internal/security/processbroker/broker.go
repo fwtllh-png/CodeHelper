@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/artifactbroker"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/artifactbroker"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
 )
 
 type Broker struct {

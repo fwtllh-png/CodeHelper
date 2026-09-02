@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 func TestExecutionLeaseLifecycleIsSingleUse(t *testing.T) {

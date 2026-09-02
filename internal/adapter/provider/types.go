@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	adaptercontent "github.com/fwtllh-png/QCode/internal/adapter/content"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
 )
 
 type Role string

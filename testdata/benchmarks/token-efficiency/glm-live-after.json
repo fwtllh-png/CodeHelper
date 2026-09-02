@@ -1,7 +1,7 @@
 {
   "version": 1,
   "captured_at": "2026-08-28T11:52:00Z",
-  "source": "live CodeHelper turn",
+  "source": "live QCode turn",
   "provider": "openai-compatible",
   "model": "glm-5.3-flash",
   "endpoint": "https://open.bigmodel.cn/api/paas/v4/chat/completions",

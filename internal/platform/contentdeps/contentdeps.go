@@ -9,13 +9,13 @@ import (
 )
 
 // Probe reports whether optional content binaries are resolvable via LookPath
-// (honoring CODEHELPER_*_BINARY overrides). Keys: ocr, speech, pandoc, ffmpeg.
+// (honoring QCODE_*_BINARY overrides). Keys: ocr, speech, pandoc, ffmpeg.
 func Probe() map[string]bool {
 	dependencies := map[string]string{
-		"ocr":    dependencyName("CODEHELPER_TESSERACT_BINARY", "tesseract"),
-		"speech": dependencyName("CODEHELPER_SPEECH_BINARY", "whisper"),
-		"pandoc": dependencyName("CODEHELPER_PANDOC_BINARY", "pandoc"),
-		"ffmpeg": dependencyName("CODEHELPER_FFMPEG_BINARY", "ffmpeg"),
+		"ocr":    dependencyName("QCODE_TESSERACT_BINARY", "tesseract"),
+		"speech": dependencyName("QCODE_SPEECH_BINARY", "whisper"),
+		"pandoc": dependencyName("QCODE_PANDOC_BINARY", "pandoc"),
+		"ffmpeg": dependencyName("QCODE_FFMPEG_BINARY", "ffmpeg"),
 	}
 	available := make(map[string]bool, len(dependencies))
 	for name, binary := range dependencies {

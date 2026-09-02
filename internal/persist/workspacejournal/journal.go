@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 var (

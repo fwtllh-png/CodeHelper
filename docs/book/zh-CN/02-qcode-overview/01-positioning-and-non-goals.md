@@ -8,7 +8,7 @@ audience:
 prerequisites:
   - agent-why-governed-runtime
 code_paths:
-  - cmd/codehelper
+  - cmd/qcode
   - internal/host
   - internal/runtime
 test_paths:
@@ -26,12 +26,12 @@ last_verified: null
 
 ## 学习目标
 
-准确说明 CodeHelper 是什么、服务谁、拥有哪些工程问题，以及它有意不作出哪些诱人但
+准确说明 QCode 是什么、服务谁、拥有哪些工程问题，以及它有意不作出哪些诱人但
 不严谨的承诺。
 
 ## 1. 一个项目，两项交付
 
-CodeHelper 同时是：
+QCode 同时是：
 
 1. 被 Web、主 Agent 与 Subagent 共享的**本地受治理 Coding Agent Runtime**；
 2. 所有结论都连接同一套 Source、Test、Fixture、Failure Mode 的**可执行 Agent 工程
@@ -42,7 +42,7 @@ Runtime 是书籍研究的产品；书籍是 Runtime 的持续维护学习界面
 
 ## 2. 项目解决什么
 
-CodeHelper 从 Raw Model Call 结束的位置开始：
+QCode 从 Raw Model Call 结束的位置开始：
 
 ```text
 engineering objective
@@ -108,7 +108,7 @@ flowchart TB
 
 ## 6. 明确的非目标
 
-CodeHelper 不是：
+QCode 不是：
 
 - Hosted Source-code SaaS 或远端 Repository Owner；
 - 带 Chat UI 的 Unrestricted Shell；
@@ -124,7 +124,7 @@ CodeHelper 不是：
 
 ## 7. Trust 与责任
 
-| CodeHelper 提供 | 用户/Operator 仍负责 |
+| QCode 提供 | 用户/Operator 仍负责 |
 | --- | --- |
 | Bounded Context/Provenance | 判断 Evidence 是否充分 |
 | Tool Validation/Authorization | 授予合适 Workspace/Credential |
@@ -159,8 +159,8 @@ Ownership 模糊时不应开始实现。
 
 ```bash
 make build
-./bin/codehelper --version
-./bin/codehelper \
+./bin/qcode --version
+./bin/qcode \
   --provider-fixture ./testdata/providers/openai \
   --provider openai --model gpt-fixture \
   --workspace . --data-dir "$(mktemp -d)/state" \
@@ -172,7 +172,7 @@ Terminal Result。这些都不能证明任意生成程序正确。
 
 ## 11. 复习问题
 
-1. CodeHelper 为什么是 Runtime 而非 Chat Application？
+1. QCode 为什么是 Runtime 而非 Chat Application？
 2. 多 Host 共享 Authority Path 的收益是什么？
 3. 哪些责任仍属于用户？
 4. 非目标为什么是架构的一部分？
@@ -180,7 +180,7 @@ Terminal Result。这些都不能证明任意生成程序正确。
 
 ## 下一章
 
-[CodeHelper 全局架构](./02-system-architecture.md)将定位映射到 Layer/Dependency。
+[QCode 全局架构](./02-system-architecture.md)将定位映射到 Layer/Dependency。
 
 ## 事实来源与验证
 

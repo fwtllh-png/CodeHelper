@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 func TestNormalizeEffectAndRisk(t *testing.T) {

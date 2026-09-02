@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/repository"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/persist/repoindex"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/repository"
 )
 
 func receiptFor(t *testing.T, receipts []Receipt, kind string) Receipt {

@@ -1,6 +1,6 @@
 package agentcontext
 
-import "github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+import "github.com/fwtllh-png/QCode/internal/adapter/provider"
 
 // DefaultRecentTailTurns is the public working-set bound for raw history.
 // Older turns stay in the durable journal; the model sees only this tail.

@@ -178,7 +178,7 @@ Turn 把不完整 Tool Exchange 当成事实。
 ## 设计取舍与替代方案
 
 Provider-side Agent Loop 会减少本地代码，却把 Tool Authority 与 Observability 移出
-Runtime。所有 Tool 串行最确定，但浪费安全并发。CodeHelper 保持本地 Loop，并使用
+Runtime。所有 Tool 串行最确定，但浪费安全并发。QCode 保持本地 Loop，并使用
 Descriptor/Resource Scheduling。
 
 ## 失败模式与安全边界

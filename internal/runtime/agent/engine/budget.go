@@ -3,9 +3,9 @@ package engine
 import (
 	"fmt"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	contextview "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	contextview "github.com/fwtllh-png/QCode/internal/runtime/agent/contextview"
 )
 
 func (e *Engine) checkBudget(

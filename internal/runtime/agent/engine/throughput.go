@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerratelimit "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/ratelimit"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerratelimit "github.com/fwtllh-png/QCode/internal/adapter/provider/ratelimit"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type throughputGovernor interface {

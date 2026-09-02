@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestCompileProducesDeterministicEffectiveProfile(t *testing.T) {
@@ -69,7 +69,9 @@ func TestCompileProducesDeterministicEffectiveProfile(t *testing.T) {
 		!slices.Contains(first.Filesystem.WritePaths, filepath.Join(root, "report.txt")) {
 		t.Fatalf("profile = %+v", first)
 	}
-	for _, rootName := range []string{".codehelper", ".git", ".agents"} {
+	for _, rootName := range []string{
+		".qcode", ".qcode-worktree", ".codehelper", ".codehelper-worktree", ".git", ".agents",
+	} {
 		if !slices.Contains(
 			first.Filesystem.DeniedWriteRoots,
 			filepath.Join(root, rootName),

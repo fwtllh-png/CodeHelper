@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	turnstate "github.com/fwtllh-png/QCode/internal/persist/state/turnstate"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type ContextRebaseRepository struct {

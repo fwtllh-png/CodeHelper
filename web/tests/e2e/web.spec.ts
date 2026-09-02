@@ -24,8 +24,8 @@ let baseURL: string;
 test.describe.configure({mode: "serial"});
 
 test.beforeEach(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "codehelper-web-e2e-"));
-  workspaceDir = await mkdtemp(path.join(tmpdir(), "codehelper-web-workspace-"));
+  dataDir = await mkdtemp(path.join(tmpdir(), "qcode-web-e2e-"));
+  workspaceDir = await mkdtemp(path.join(tmpdir(), "qcode-web-workspace-"));
   await writeFile(
     path.join(workspaceDir, "README.md"),
     "# Fixture workspace\n\nhello from the browser test\n"
@@ -43,7 +43,7 @@ test.beforeEach(async () => {
   );
   execFileSync("git", ["init", "-q"], {cwd: workspaceDir});
   server = spawn(
-    path.join(repositoryRoot, "bin/codehelper"),
+    path.join(repositoryRoot, "bin/qcode"),
     [
       "--workspace", workspaceDir,
       "--data-dir", dataDir,
@@ -88,7 +88,7 @@ test("boots the real Runtime with an accessible empty state", async ({page}) => 
   await expect(page.getByRole("textbox", {name: "Search sessions"})).toBeFocused();
   await expect(page.getByRole("heading", {name: "Start a new session"})).toBeVisible();
   await expect(page.getByRole("button", {name: "Create session"})).toBeVisible();
-  await expect(page.getByPlaceholder("Ask CodeHelper")).toHaveCount(0);
+  await expect(page.getByPlaceholder("Ask QCode")).toHaveCount(0);
   await expect(page.getByLabel("Session details")).toHaveCount(0);
   await expect(page.getByRole("button", {name: /detail panel/i})).toHaveCount(0);
 
@@ -179,16 +179,16 @@ test("requires explicit provider and model selection during setup", async ({page
   });
   await page.goto(baseURL);
 
-  await expect(page.getByRole("heading", {name: "Set up CodeHelper"})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Set up QCode"})).toBeVisible();
   await expect(page.getByLabel("Provider")).toHaveValue("");
-  await expect(page.getByRole("button", {name: "Start CodeHelper"})).toBeDisabled();
+  await expect(page.getByRole("button", {name: "Start QCode"})).toBeDisabled();
 
   await page.getByLabel("Provider").selectOption("deepseek");
   await expect(page.getByLabel("Model ID")).toHaveValue("");
   await page.getByLabel("Model ID").fill("deepseek-reasoner");
   await page.getByLabel("API key").fill("sk-test");
   await expect(page.getByText(/operating system Keyring/)).toBeVisible();
-  await expect(page.getByRole("button", {name: "Start CodeHelper"})).toBeEnabled();
+  await expect(page.getByRole("button", {name: "Start QCode"})).toBeEnabled();
 
   const accessibility = await new AxeBuilder({page})
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -203,7 +203,7 @@ test("requires explicit provider and model selection during setup", async ({page
   await expect.poll(() => page.evaluate(
     () => document.documentElement.scrollWidth - window.innerWidth
   )).toBeLessThanOrEqual(0);
-  await expect(page.getByRole("button", {name: "Start CodeHelper"})).toBeVisible();
+  await expect(page.getByRole("button", {name: "Start QCode"})).toBeVisible();
 });
 
 test("passes the WCAG A and AA accessibility scan", async ({page}) => {
@@ -251,8 +251,8 @@ test("groups Sessions by Workspace and reveals row actions on demand", async ({p
 test("shows and switches the Workspace Git branch", async ({page}) => {
   execFileSync("git", ["add", "."], {cwd: workspaceDir});
   execFileSync("git", [
-    "-c", "user.name=CodeHelper",
-    "-c", "user.email=fixture@codehelper.invalid",
+    "-c", "user.name=QCode",
+    "-c", "user.email=fixture@qcode.invalid",
     "commit", "-qm", "branch fixture"
   ], {cwd: workspaceDir});
   execFileSync("git", ["branch", "feature"], {cwd: workspaceDir});
@@ -269,7 +269,7 @@ test("shows and switches the Workspace Git branch", async ({page}) => {
 
 test("adds a second Workspace and keeps its Sessions isolated", async ({page}) => {
   const secondary = await mkdtemp(
-    path.join(tmpdir(), "codehelper-web-workspace-secondary-")
+    path.join(tmpdir(), "qcode-web-workspace-secondary-")
   );
   try {
     await writeFile(
@@ -278,7 +278,7 @@ test("adds a second Workspace and keeps its Sessions isolated", async ({page}) =
     );
     execFileSync("git", ["init", "-q"], {cwd: secondary});
     execFileSync("git", ["add", "README.md"], {cwd: secondary});
-    execFileSync(path.join(repositoryRoot, "bin/codehelper"), [
+    execFileSync(path.join(repositoryRoot, "bin/qcode"), [
       "--workspace", secondary,
       "--data-dir", dataDir,
       "--provider-fixture", path.join(repositoryRoot, "testdata/providers/openai"),
@@ -334,7 +334,7 @@ test("creates a Session and completes a fixture-backed Turn", async ({page}) => 
   await page.goto(baseURL);
   await page.getByRole("button", {name: "Create session"}).click();
 
-  const composer = page.getByPlaceholder("Ask CodeHelper");
+  const composer = page.getByPlaceholder("Ask QCode");
   await expect(composer).toBeEnabled();
   await expect(page.getByLabel("Session details")).toHaveCount(0);
   await composer.fill("say hello");
@@ -384,7 +384,7 @@ test("submits local attachments as verified Runtime context", async ({page}) => 
     request.url().endsWith("/api/v1/operation/submit") &&
     request.postDataJSON()?.kind === "turn.start"
   );
-  await page.getByPlaceholder("Ask CodeHelper").fill("review the attachment");
+  await page.getByPlaceholder("Ask QCode").fill("review the attachment");
   await page.getByRole("button", {name: "Send"}).click();
   const payload = await operation;
   expect(payload.postDataJSON()).toMatchObject({
@@ -415,7 +415,7 @@ test("searches and invokes slash commands entirely from the keyboard", async ({p
   await page.goto(baseURL);
   await page.getByRole("button", {name: "Create session"}).click();
 
-  const composer = page.getByPlaceholder("Ask CodeHelper");
+  const composer = page.getByPlaceholder("Ask QCode");
   await composer.fill("/cont");
   const search = page.getByRole("searchbox", {name: "Search commands"});
   await expect(search).toBeFocused();
@@ -441,7 +441,7 @@ test("keeps a long mobile draft scrollable above a resized visual viewport", asy
   await page.goto(baseURL);
   await page.getByRole("button", {name: "Create session"}).click();
 
-  const composer = page.getByPlaceholder("Ask CodeHelper");
+  const composer = page.getByPlaceholder("Ask QCode");
   await composer.fill(Array.from({length: 120}, (_, index) => `line ${index}`).join("\n"));
   await composer.focus();
   await page.setViewportSize({width: 390, height: 420});
@@ -465,7 +465,7 @@ test("keeps a long mobile draft scrollable above a resized visual viewport", asy
 test("opens the execution trajectory and inspects its event ledger", async ({page}) => {
   await page.goto(baseURL);
   await page.getByRole("button", {name: "Create session"}).click();
-  await page.getByPlaceholder("Ask CodeHelper").fill("say hello");
+  await page.getByPlaceholder("Ask QCode").fill("say hello");
   await page.getByRole("button", {name: "Send"}).click();
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
   await expect(page.locator(".reasoningDisclosure")).toContainText(
@@ -498,7 +498,7 @@ test("deletes the final Session after explicit confirmation", async ({page}) => 
   await expect(page.locator(".sessionRow")).toHaveCount(0);
   await expect(page.getByRole("heading", {name: "Start a new session"})).toBeVisible();
   await expect(page.getByRole("button", {name: "Create session"})).toBeVisible();
-  await expect(page.getByPlaceholder("Ask CodeHelper")).toHaveCount(0);
+  await expect(page.getByPlaceholder("Ask QCode")).toHaveCount(0);
   await expect(page.getByLabel("Session details")).toHaveCount(0);
 });
 
@@ -509,7 +509,7 @@ test("restores the selected Session and transcript after a browser reload", asyn
   await page.locator('button[aria-label="New chat"]').click();
   await expect(sessionRows).toHaveCount(sessionCount + 1);
 
-  const composer = page.getByPlaceholder("Ask CodeHelper");
+  const composer = page.getByPlaceholder("Ask QCode");
   await composer.fill("say hello");
   await page.getByRole("button", {name: "Send"}).click();
   await expect(page.getByText("hello", {exact: true}).last()).toBeVisible();
@@ -526,7 +526,7 @@ test("restores the selected Session and transcript after a browser reload", asyn
     "I should answer briefly."
   );
   await expect(page.locator(".sessionRow[data-active]")).toContainText("say hello");
-  await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+  await expect(page.getByPlaceholder("Ask QCode")).toBeEnabled();
 });
 
 test("shows model routing and capabilities in Settings", async ({page}) => {
@@ -575,7 +575,7 @@ test("shows model routing and capabilities in Settings", async ({page}) => {
 test("persists and applies a workspace Agent preset", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
-  await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+  await expect(page.getByPlaceholder("Ask QCode")).toBeEnabled();
   await page.getByRole("button", {name: "Settings"}).click();
   await page.getByRole("button", {name: "Agent preset"}).click();
 
@@ -622,7 +622,7 @@ test("persists and applies a workspace Agent preset", async ({page}) => {
 test("browses workspace resources and restores an archived Session", async ({page}) => {
   await page.goto(baseURL);
   await page.locator('button[aria-label="New chat"]').click();
-  await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+  await expect(page.getByPlaceholder("Ask QCode")).toBeEnabled();
   await openContextDetails(page);
 
   const fileEntry = page.locator(".contextResults button").filter({
@@ -692,7 +692,7 @@ test("browses workspace resources and restores an archived Session", async ({pag
   await archived.hover();
   await archived.getByRole("button", {name: /Session actions for/}).click();
   await archived.getByRole("menuitem", {name: "Restore"}).click();
-  await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+  await expect(page.getByPlaceholder("Ask QCode")).toBeEnabled();
 });
 
 test("keeps primary UI inside supported viewports with reduced motion", async ({page}) => {
@@ -789,7 +789,7 @@ function runtimeURL(
     };
     const onStdout = (chunk: Buffer) => {
       stdout += chunk.toString();
-      const match = stdout.match(/CodeHelper Runtime Ready: (http:\/\/[^\s]+)/);
+      const match = stdout.match(/QCode Runtime Ready: (http:\/\/[^\s]+)/);
       if (match) void workspaceURL(match[1]).then(
         (url) => finish(undefined, url),
         (error: Error) => finish(error)

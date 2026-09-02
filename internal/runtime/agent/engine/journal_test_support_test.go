@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
 )
 
 func newTestWorkspaceJournal(

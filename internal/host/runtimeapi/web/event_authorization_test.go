@@ -12,14 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/persist/repoindex"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/QCode/internal/platform/repowalk"
+	"github.com/fwtllh-png/QCode/internal/platform/workspacequery"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestAuthorizedEventSessionRejectsForeignWorkspace(t *testing.T) {

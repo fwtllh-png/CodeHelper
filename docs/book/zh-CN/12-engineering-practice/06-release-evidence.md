@@ -25,7 +25,7 @@ last_verified: null
 
 ## 学习目标
 
-理解独立 CodeHelper Binary 如何携带 Web 资源，并通过可重放命令形成发布证据。
+理解独立 QCode Binary 如何携带 Web 资源，并通过可重放命令形成发布证据。
 
 ## 产物链
 

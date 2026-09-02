@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/config"
 )
 
 func TestResolveSkillPathsUsesWorkspaceAndDataDefaults(t *testing.T) {

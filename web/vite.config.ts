@@ -26,7 +26,7 @@ export default defineConfig({
 function precompress(): Plugin {
   let outputRoot = "";
   return {
-    name: "codehelper-precompress",
+    name: "qcode-precompress",
     apply: "build",
     configResolved(config) {
       outputRoot = resolve(config.root, config.build.outDir);

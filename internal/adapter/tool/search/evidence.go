@@ -1,8 +1,8 @@
 package search
 
 import (
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/persist/repoindex"
 )
 
 // classifyPath labels a hit that carries no better information than its path.

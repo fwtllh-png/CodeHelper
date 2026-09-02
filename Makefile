@@ -1,11 +1,11 @@
 GO ?= go
 NPM ?= npm
-BINARY := bin/codehelper
-MODULE := github.com/fwtllh-png/CodeHelper
+BINARY := bin/qcode
+MODULE := github.com/fwtllh-png/QCode
 START_WORKSPACE ?= $(CURDIR)
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
-INSTALL_BINARY := $(BINDIR)/codehelper
+INSTALL_BINARY := $(BINDIR)/qcode
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || printf unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -141,12 +141,12 @@ hotspot-baseline:
 	$(GO) run ./scripts/check-hotspot-baseline.go -root .
 
 provider-deepseek-live-control:
-	CODEHELPER_DEEPSEEK_LIVE_CONTROL=1 \
+	QCODE_DEEPSEEK_LIVE_CONTROL=1 \
 		$(GO) test -count=1 -v ./internal/adapter/provider/httpclient \
 		-run '^TestDeepSeekP0LiveControl$$'
 
 provider-deepseek-live-ce7:
-	CODEHELPER_DEEPSEEK_LIVE_CONTROL=1 \
+	QCODE_DEEPSEEK_LIVE_CONTROL=1 \
 		$(GO) test -count=1 -v ./internal/adapter/provider/httpclient \
 		-run '^TestDeepSeek(P0LiveControl|CE7LiveCacheShare)$$'
 
@@ -174,7 +174,7 @@ test-hermetic:
 # Capability tests are compiled only in this lane. Missing host prerequisites
 # produce an explicit unavailable report; CI sets CAPABILITY_REQUIRED.
 test-platform-capability:
-	CODEHELPER_SANDBOX_STAGE=1 python3 scripts/run-test-lane.py platform-capability \
+	QCODE_SANDBOX_STAGE=1 python3 scripts/run-test-lane.py platform-capability \
 		--report '$(TEST_LANE_REPORT_DIR)/platform-capability.json' \
 		--unavailable-pattern sandbox_unavailable \
 		$(PLATFORM_CAPABILITY_ARGS) $(CAPABILITY_REQUIRED) \
@@ -228,7 +228,7 @@ race:
 build: web-build
 	@mkdir -p bin
 	$(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath \
-		-ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/codehelper
+		-ldflags '$(LDFLAGS)' -o $(BINARY) ./cmd/qcode
 
 start:
 	$(MAKE) web-install
@@ -239,21 +239,21 @@ install:
 	$(MAKE) web-install
 	$(MAKE) build
 	@mkdir -p '$(BINDIR)'
-	@tmp="$$(mktemp '$(BINDIR)/.codehelper.XXXXXX')"; \
+	@tmp="$$(mktemp '$(BINDIR)/.qcode.XXXXXX')"; \
 		trap 'rm -f "$$tmp"' EXIT HUP INT TERM; \
 		cp '$(BINARY)' "$$tmp"; \
 		chmod 0755 "$$tmp"; \
 		mv -f "$$tmp" '$(INSTALL_BINARY)'
-	@printf 'Installed CodeHelper: %s\n' '$(INSTALL_BINARY)'
-	@if command -v codehelper >/dev/null 2>&1; then \
-		printf 'Run from any workspace: codehelper\n'; \
+	@printf 'Installed QCode: %s\n' '$(INSTALL_BINARY)'
+	@if command -v qcode >/dev/null 2>&1; then \
+		printf 'Run from any workspace: qcode\n'; \
 	else \
 		printf 'Add this directory to PATH: export PATH="%s:$$PATH"\n' '$(BINDIR)'; \
 	fi
 
 uninstall:
 	@rm -f '$(INSTALL_BINARY)'
-	@printf 'Removed CodeHelper: %s\n' '$(INSTALL_BINARY)'
+	@printf 'Removed QCode: %s\n' '$(INSTALL_BINARY)'
 
 web-install: $(WEB_INSTALL_STAMP)
 
@@ -326,8 +326,8 @@ web-release-drill: build
 		git archive '$(PREVIOUS_RELEASE_REF)' | tar -x -C "$$tmp"; \
 		(cd "$$tmp" && \
 			$(NPM) --prefix web ci >/dev/null && \
-			$(MAKE) build BINARY="$$tmp/codehelper-previous"); \
-		previous="$$tmp/codehelper-previous"; \
+			$(MAKE) build BINARY="$$tmp/qcode-previous"); \
+		previous="$$tmp/qcode-previous"; \
 	fi; \
 	python3 scripts/web-release-drill.py \
 		--current-binary '$(CURDIR)/$(BINARY)' \
@@ -337,8 +337,8 @@ web-release-drill: build
 		--report '$(CURDIR)/.tmp/release/web-downgrade-drill.json'
 
 web-streaming-soak:
-	CODEHELPER_WEB_STREAMING_SOAK_DURATION=$(WEB_STREAMING_SOAK_DURATION) \
-		CODEHELPER_WEB_STREAMING_SOAK_ALLOW_SHORT=$(WEB_STREAMING_SOAK_ALLOW_SHORT) \
+	QCODE_WEB_STREAMING_SOAK_DURATION=$(WEB_STREAMING_SOAK_DURATION) \
+		QCODE_WEB_STREAMING_SOAK_ALLOW_SHORT=$(WEB_STREAMING_SOAK_ALLOW_SHORT) \
 		$(GO) test -count=1 -timeout $(WEB_STREAMING_SOAK_TIMEOUT) \
 		-run '^TestWebSocketSustainedStreamingSoak$$' \
 		./internal/host/runtimeapi/web
@@ -346,9 +346,9 @@ web-streaming-soak:
 cross-build: web-build
 	@tmp=$$(mktemp -d); \
 	trap 'rm -rf "$$tmp"' EXIT; \
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath -o "$$tmp/codehelper-linux-amd64" ./cmd/codehelper; \
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath -o "$$tmp/codehelper-linux-arm64" ./cmd/codehelper; \
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath -o "$$tmp/codehelper-windows-amd64.exe" ./cmd/codehelper
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath -o "$$tmp/qcode-linux-amd64" ./cmd/qcode; \
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath -o "$$tmp/qcode-linux-arm64" ./cmd/qcode; \
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GO) build -tags '$(WEB_BUILD_TAG)' -trimpath -o "$$tmp/qcode-windows-amd64.exe" ./cmd/qcode
 
 smoke: build
 	./$(BINARY) --help >/dev/null
@@ -377,7 +377,7 @@ turn-kernel-convergence-baseline:
 
 # Final production ownership gate.
 turn-kernel-convergence-exit-gate:
-	CODEHELPER_TURN_KERNEL_CONVERGENCE_EXIT_GATE=1 $(GO) test -count=1 \
+	QCODE_TURN_KERNEL_CONVERGENCE_EXIT_GATE=1 $(GO) test -count=1 \
 		./internal/runtime/agent/turnkernel \
 		./internal/runtime/app \
 		-run '^TestC0.*ExitGate$$'
@@ -423,9 +423,9 @@ security-test:
 	$(GO) test -race ./internal/platform/process/... -run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunSanitizesRegularAndPTYEnvironments|RunPinsWorkingDirectoryToDescriptor|SanitizedEnvironment)'
 
 sandbox-attack-test:
-	CODEHELPER_SANDBOX_STAGE=1 $(GO) test -tags=capability -race \
+	QCODE_SANDBOX_STAGE=1 $(GO) test -tags=capability -race \
 		./internal/security/sandbox/... ./internal/adapter/tool/file/... ./internal/adapter/tool/shell/...
-	CODEHELPER_SANDBOX_STAGE=1 $(GO) test -tags=capability -race \
+	QCODE_SANDBOX_STAGE=1 $(GO) test -tags=capability -race \
 		./internal/platform/process/... \
 		-run 'Test(RunUsesInjectedStrongSandboxBackend|RunFailsClosedWithoutStrongSandbox|RunPinsWorkingDirectoryToDescriptor|SessionCancellationKillsProcessGroup|RealSandboxAttackCorpus|RealManagedProxyBlocksDirectEgress)'
 
@@ -469,7 +469,7 @@ deepseek-web:
 # bench runs the hermetic coding benchmark (fixture provider, no network/model).
 # Set BENCH_REPORT to write the JSON report for tracking across runs.
 bench:
-	CODEHELPER_BENCH_REPORT='$(BENCH_REPORT)' $(GO) test -tags=capability \
+	QCODE_BENCH_REPORT='$(BENCH_REPORT)' $(GO) test -tags=capability \
 		-count=1 -v ./internal/host/bench/...
 
 benchmark-v2-check:

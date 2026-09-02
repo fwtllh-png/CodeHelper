@@ -1,13 +1,13 @@
 package wire
 
 import (
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/anthropic"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
-	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/modelcatalog"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
-	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/anthropic"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/httpclient"
+	providerrouter "github.com/fwtllh-png/QCode/internal/adapter/provider/modelcatalog"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/openai"
+	providerwire "github.com/fwtllh-png/QCode/internal/adapter/provider/wire"
 )
 
 func newProviderRouter(

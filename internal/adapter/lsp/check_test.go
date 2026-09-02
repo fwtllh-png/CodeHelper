@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/platform/symbols"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 var lspFixtureLog = flag.String("lsp-fixture-log", "", "internal LSP fixture log")

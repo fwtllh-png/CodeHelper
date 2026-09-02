@@ -3,8 +3,8 @@ package wire
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	providermodels "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/modelcatalog"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	providermodels "github.com/fwtllh-png/QCode/internal/adapter/provider/modelcatalog"
 )
 
 func ListLiveModels(

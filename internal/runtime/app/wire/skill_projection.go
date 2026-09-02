@@ -3,8 +3,8 @@ package wire
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/adapter/skill"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
 )
 
 func selectTurnSkills(

@@ -6,13 +6,13 @@ import (
 	"maps"
 	"strings"
 
-	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	mcpruntime "github.com/fwtllh-png/QCode/internal/adapter/mcp"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	skillruntime "github.com/fwtllh-png/QCode/internal/adapter/skill"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 func RecoverResult(

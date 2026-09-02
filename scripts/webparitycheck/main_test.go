@@ -12,11 +12,11 @@ func TestCaptureProducesClosedInventoryAndLedger(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "extensions/vscode/package.json", `{
   "contributes": {
-    "commands": [{"command": "codehelper.newChat"}],
-    "views": {"codehelper": [{"id": "codehelper.chat"}]},
-    "menus": {"editor/context": [{"command": "codehelper.newChat"}]},
-    "configuration": {"properties": {"codehelper.runtime.autoStart": {"type": "boolean"}}},
-    "viewsContainers": {"activitybar": [{"id": "codehelper"}]}
+    "commands": [{"command": "qcode.newChat"}],
+    "views": {"qcode": [{"id": "qcode.chat"}]},
+    "menus": {"editor/context": [{"command": "qcode.newChat"}]},
+    "configuration": {"properties": {"qcode.runtime.autoStart": {"type": "boolean"}}},
+    "viewsContainers": {"activitybar": [{"id": "qcode"}]}
   },
   "scripts": {
     "release:binary": "node release.mjs",

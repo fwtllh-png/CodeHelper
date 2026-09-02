@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/persist/repoindex"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/QCode/internal/platform/repowalk"
+	"github.com/fwtllh-png/QCode/internal/platform/symbols"
 )
 
 type fakeSemanticProvider struct {

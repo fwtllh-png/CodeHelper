@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
 )
 
 type LeaseState string

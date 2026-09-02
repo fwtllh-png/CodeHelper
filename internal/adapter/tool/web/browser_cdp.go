@@ -44,7 +44,7 @@ func newChromeBrowser(binary string) BrowserRuntime {
 }
 
 func findChromeBinary() string {
-	if configured := strings.TrimSpace(os.Getenv("CODEHELPER_BROWSER_BINARY")); configured != "" {
+	if configured := strings.TrimSpace(os.Getenv("QCODE_BROWSER_BINARY")); configured != "" {
 		if filepath.IsAbs(configured) {
 			if info, err := os.Stat(configured); err == nil && !info.IsDir() {
 				return configured
@@ -79,7 +79,7 @@ func (b *chromeBrowser) ensureStarted(ctx context.Context) error {
 	if b.connection != nil {
 		return nil
 	}
-	profile, err := os.MkdirTemp("", "codehelper-browser-")
+	profile, err := os.MkdirTemp("", "qcode-browser-")
 	if err != nil {
 		return err
 	}

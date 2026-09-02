@@ -9,16 +9,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/QCode/internal/adapter/provider/fixture"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	filetool "github.com/fwtllh-png/QCode/internal/adapter/tool/file"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 // scriptedVerifier replays one receipt per pass, holding the last one once the

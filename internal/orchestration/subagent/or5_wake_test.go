@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
 )
 
 func TestParentCompletionWakeP95(t *testing.T) {

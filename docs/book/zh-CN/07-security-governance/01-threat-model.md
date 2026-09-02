@@ -82,7 +82,7 @@ Prompt Role 不产生 Authority。即使 Repository Instruction 被渲染为 Sys
 
 ## Non-goal 与 Residual Risk
 
-CodeHelper 不会让任意 Approved Code 在语义上安全，不证明 Provider Confidentiality，
+QCode 不会让任意 Approved Code 在语义上安全，不证明 Provider Confidentiality，
 不能阻止 Authorized User 授予危险权限，也不保证所有 Platform 都有 Strong Isolation。
 Passing Test 也不证明没有漏洞。
 

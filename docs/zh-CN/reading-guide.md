@@ -1,7 +1,7 @@
-# CodeHelper 代码阅读指南
+# QCode 代码阅读指南
 
 本文给出一条基于当前实现的源码阅读路径。目标不是按目录遍历文件，而是理解
-CodeHelper 的权威状态、调用链、持久化边界和故障恢复语义，并能够独立定位一次真实
+QCode 的权威状态、调用链、持久化边界和故障恢复语义，并能够独立定位一次真实
 Turn 中的问题。
 
 开始前先读：
@@ -26,7 +26,7 @@ Host 提交 Operation
   -> Event Hub 将事实投影给 Web
 ```
 
-CodeHelper 不是“页面调模型再运行命令”的脚本。它是一个本地、持久、受治理的 Agent
+QCode 不是“页面调模型再运行命令”的脚本。它是一个本地、持久、受治理的 Agent
 Runtime；Web、主 Agent 和 Subagent 共享同一组执行与安全语义。
 
 ### 1.2 五条权威链
@@ -72,7 +72,7 @@ Child 的实际执行仍是普通 Runtime Turn，不建立后台 WorkGraph 镜�
 
 | 层 | 路径 | 阅读重点 |
 | --- | --- | --- |
-| 进程入口 | `cmd/codehelper` | Signal、退出码、Web Host 委托 |
+| 进程入口 | `cmd/qcode` | Signal、退出码、Web Host 委托 |
 | Host | `internal/host` | 输入校验、Operation 提交、Event 呈现 |
 | Protocol | `internal/runtime/protocol` | 跨 Host 的 Operation/Event/Receipt Contract |
 | Application | `internal/runtime/app` | Operation、Session、Turn Lease、Terminal、Recovery |
@@ -137,7 +137,7 @@ make web-protocol-check
 **目标：** 理解一个命令如何构造出完整 Runtime，以及为什么构造失败不会泄漏资源。
 
 ```text
-cmd/codehelper/main.go
+cmd/qcode/main.go
   -> host/web.RunContext
   -> Web 启动参数
   -> wire.NewExec
@@ -147,7 +147,7 @@ cmd/codehelper/main.go
 
 ### 4.1 Host 入口
 
-- `cmd/codehelper/main.go`：只建立 Process Context 并委托 Web Host。
+- `cmd/qcode/main.go`：只建立 Process Context 并委托 Web Host。
 - `internal/host/web/launcher.go`：解析启动参数并执行两阶段 Web Boot；先开放 Boot
   Surface，再构造并激活
   Runtime。
@@ -855,7 +855,7 @@ rg -n 'func \\(.*\\) Execute|type .*State' internal
 
 # 阅读公开 API 和依赖
 go doc ./internal/runtime/agent/turnkernel
-go list -deps ./cmd/codehelper
+go list -deps ./cmd/qcode
 
 # 跑最窄契约
 go test -run TestName -v ./internal/path/to/package

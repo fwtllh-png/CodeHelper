@@ -15,8 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	platformprocess "github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
+	platformprocess "github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/processbroker"
 )
 
 const defaultStderrTailBytes = 32 << 10

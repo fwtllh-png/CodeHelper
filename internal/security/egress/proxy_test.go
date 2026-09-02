@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 )
 
 func TestManagedProxyForwardsOnlyGrantedHTTPMethod(t *testing.T) {

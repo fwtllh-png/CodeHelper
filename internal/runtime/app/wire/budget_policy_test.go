@@ -3,7 +3,7 @@ package wire
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/QCode/internal/config"
 )
 
 func TestEffectiveSubagentLimitsDeriveTreeFromParallelTurnCapacity(t *testing.T) {

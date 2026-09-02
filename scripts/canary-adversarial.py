@@ -129,7 +129,7 @@ def run_single_benchmark(task_dir: Path, env: dict, timeout: int) -> dict:
         "./internal/host/bench/...",
     ]
 
-    env["CODEHELPER_BENCH_TASK"] = str(task_dir)
+    env["QCODE_BENCH_TASK"] = str(task_dir)
 
     try:
         result = subprocess.run(
@@ -326,7 +326,7 @@ def cmd_fault_inject(timeout: int):
 
                 total_runs += 1
                 env = os.environ.copy()
-                env["CODEHELPER_BENCH_TASK"] = str(task_dir)
+                env["QCODE_BENCH_TASK"] = str(task_dir)
 
                 result = run_single_benchmark(task_dir, env, timeout)
                 findings = analyze_result(result, "fault-inject",
@@ -428,8 +428,8 @@ def cmd_diff_config(timeout: int):
         for mode, posture in configs:
             total_runs += 1
             env = os.environ.copy()
-            env["CODEHELPER_BENCH_MODE"] = mode
-            env["CODEHELPER_BENCH_POSTURE"] = posture
+            env["QCODE_BENCH_MODE"] = mode
+            env["QCODE_BENCH_POSTURE"] = posture
 
             result = run_single_benchmark(task_dir, env, timeout)
             findings = analyze_result(result, "diff-config",

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
+	"github.com/fwtllh-png/QCode/internal/orchestration/budget"
 )
 
 func TestHierarchicalReservationChargeAndRefund(t *testing.T) {

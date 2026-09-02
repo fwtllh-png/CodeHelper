@@ -13,13 +13,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestRealManagedProxyBlocksDirectEgress(t *testing.T) {
-	if os.Getenv("CODEHELPER_SANDBOX_STAGE") != "1" {
+	if os.Getenv("QCODE_SANDBOX_STAGE") != "1" {
 		t.Skip("managed proxy attack test requires the staged macOS sandbox")
 	}
 	curl, err := exec.LookPath("curl")

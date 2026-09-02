@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
 )
 
 type staticEngineResolver struct {

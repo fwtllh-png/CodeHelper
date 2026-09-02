@@ -1,4 +1,4 @@
-// Package web owns the single user-facing CodeHelper host process.
+// Package web owns the single user-facing QCode host process.
 package web
 
 import (
@@ -22,17 +22,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/buildinfo"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/ownerlease"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/credential"
-	webassets "github.com/fwtllh-png/CodeHelper/web"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/buildinfo"
+	"github.com/fwtllh-png/QCode/internal/config"
+	webhost "github.com/fwtllh-png/QCode/internal/host/runtimeapi/web"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/platform/ownerlease"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/wire"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/credential"
+	webassets "github.com/fwtllh-png/QCode/web"
 )
 
 type webCommandOptions struct {
@@ -62,7 +62,7 @@ func RunContext(
 	stdout, stderr io.Writer,
 ) int {
 	options := webCommandOptions{}
-	flags := flag.NewFlagSet("codehelper", flag.ContinueOnError)
+	flags := flag.NewFlagSet("qcode", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	for _, arg := range args {
 		if arg == "-h" || arg == "--help" {
@@ -71,9 +71,9 @@ func RunContext(
 		}
 	}
 	flags.Usage = func() {
-		_, _ = fmt.Fprintln(flags.Output(), "Usage: codehelper [flags]")
+		_, _ = fmt.Fprintln(flags.Output(), "Usage: qcode [flags]")
 		_, _ = fmt.Fprintln(flags.Output())
-		_, _ = fmt.Fprintln(flags.Output(), "Run the local CodeHelper Web workspace.")
+		_, _ = fmt.Fprintln(flags.Output(), "Run the local QCode Web workspace.")
 		flags.PrintDefaults()
 	}
 	flags.StringVar(&options.workspace, "workspace", "", "workspace root (default from config)")
@@ -109,7 +109,7 @@ func RunContext(
 		return 2
 	}
 	if flags.NArg() != 0 {
-		_, _ = fmt.Fprintf(stderr, "codehelper: unexpected arguments: %v\n", flags.Args())
+		_, _ = fmt.Fprintf(stderr, "qcode: unexpected arguments: %v\n", flags.Args())
 		return 2
 	}
 	if options.configPath == "" && !webFlagProvided(args, "enable-tools") {
@@ -142,25 +142,25 @@ func runWeb(
 	stdout, stderr io.Writer,
 ) int {
 	if options.host != "127.0.0.1" {
-		_, _ = fmt.Fprintln(stderr, "codehelper: --host must be 127.0.0.1")
+		_, _ = fmt.Fprintln(stderr, "qcode: --host must be 127.0.0.1")
 		return 2
 	}
 	if options.port < 0 || options.port > 65535 {
-		_, _ = fmt.Fprintln(stderr, "codehelper: --port must be between 0 and 65535")
+		_, _ = fmt.Fprintln(stderr, "qcode: --port must be between 0 and 65535")
 		return 2
 	}
 	if !oneOf(options.posture, "suggest", "auto", "never") {
-		_, _ = fmt.Fprintln(stderr, "codehelper: --posture must be suggest, auto, or never")
+		_, _ = fmt.Fprintln(stderr, "qcode: --posture must be suggest, auto, or never")
 		return 2
 	}
 	if options.open && options.noOpen {
-		_, _ = fmt.Fprintln(stderr, "codehelper: --open and --no-open are mutually exclusive")
+		_, _ = fmt.Fprintln(stderr, "qcode: --open and --no-open are mutually exclusive")
 		return 2
 	}
 
 	bundle, err := loadWebAssets()
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "codehelper: assets: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "qcode: assets: %v\n", err)
 		return 1
 	}
 	loaded, configErr := loadWebConfig(options)
@@ -279,7 +279,7 @@ func runWeb(
 						held.Metadata.Build != ownerMetadata.Build {
 						_, _ = fmt.Fprintf(
 							stdout,
-							"CodeHelper Dev Restart: stopping build %s (pid %d)\n",
+							"QCode Dev Restart: stopping build %s (pid %d)\n",
 							held.Metadata.Build,
 							held.Metadata.PID,
 						)
@@ -293,7 +293,7 @@ func runWeb(
 						if err != nil {
 							_, _ = fmt.Fprintf(
 								stderr,
-								"codehelper: replace Web owner: %v\n",
+								"qcode: replace Web owner: %v\n",
 								err,
 							)
 							return 1
@@ -310,7 +310,7 @@ func runWeb(
 							if registerErr != nil {
 								_, _ = fmt.Fprintf(
 									stderr,
-									"codehelper: register Workspace: %v\n",
+									"qcode: register Workspace: %v\n",
 									registerErr,
 								)
 								return 1
@@ -325,13 +325,13 @@ func runWeb(
 						}
 						_, _ = fmt.Fprintf(
 							stdout,
-							"CodeHelper %s: %s\n",
+							"QCode %s: %s\n",
 							readyLabel,
 							targetURL,
 						)
 						if options.open && !options.noOpen {
 							if openErr := openWebBrowser(targetURL); openErr != nil {
-								_, _ = fmt.Fprintf(stderr, "codehelper: open browser: %v\n", openErr)
+								_, _ = fmt.Fprintf(stderr, "qcode: open browser: %v\n", openErr)
 							}
 						}
 						return 0
@@ -339,12 +339,12 @@ func runWeb(
 				} else {
 					_, _ = fmt.Fprintf(
 						stderr,
-						"codehelper: owner lease URL failed readiness probe: %v\n",
+						"qcode: owner lease URL failed readiness probe: %v\n",
 						probeErr,
 					)
 				}
 			} else {
-				_, _ = fmt.Fprintf(stderr, "codehelper: owner lease: %v\n", err)
+				_, _ = fmt.Fprintf(stderr, "qcode: owner lease: %v\n", err)
 			}
 			if lease == nil {
 				return 1
@@ -358,7 +358,7 @@ func runWeb(
 		net.JoinHostPort(options.host, strconv.Itoa(options.port)),
 	)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "codehelper: listen: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "qcode: listen: %v\n", err)
 		return 1
 	}
 	defer listener.Close()
@@ -476,7 +476,7 @@ func runWeb(
 		Workspaces: workspaceManager,
 	})
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "codehelper: server: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "qcode: server: %v\n", err)
 		return 1
 	}
 	httpServer := &http.Server{
@@ -495,7 +495,7 @@ func runWeb(
 		}
 		serveErr <- err
 	}()
-	_, _ = fmt.Fprintf(stdout, "CodeHelper Web Listening: %s\n", publicURL)
+	_, _ = fmt.Fprintf(stdout, "QCode Web Listening: %s\n", publicURL)
 	if lease != nil {
 		metadata := ownerlease.Metadata{
 			OwnerKind:       webOwnerKind(options.replaceOwner),
@@ -505,19 +505,19 @@ func runWeb(
 		}
 		if err := lease.Update(metadata); err != nil {
 			server.FailBoot(err)
-			_, _ = fmt.Fprintf(stderr, "codehelper: owner lease metadata: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "qcode: owner lease metadata: %v\n", err)
 			return shutdownBootServer(httpServer, serveErr, nil, nil, stderr, 1)
 		}
 	}
 
 	if options.open && !options.noOpen {
 		if err := openWebBrowser(workspaceURL); err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: open browser: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "qcode: open browser: %v\n", err)
 		}
 	}
 	if configErr != nil {
 		server.FailBoot(configErr)
-		_, _ = fmt.Fprintf(stderr, "codehelper: config: %v\n", configErr)
+		_, _ = fmt.Fprintf(stderr, "qcode: config: %v\n", configErr)
 		return waitForWebShutdown(ctx, httpServer, serveErr, server, nil, nil, stderr, 1)
 	}
 
@@ -526,13 +526,13 @@ func runWeb(
 	})
 	if err != nil {
 		server.FailBoot(err)
-		_, _ = fmt.Fprintf(stderr, "codehelper: state: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "qcode: state: %v\n", err)
 		return waitForWebShutdown(ctx, httpServer, serveErr, server, nil, nil, stderr, 1)
 	}
 	repositories, err := apppersistence.NewPersistentRepositories(store)
 	if err != nil {
 		server.FailBoot(err)
-		_, _ = fmt.Fprintf(stderr, "codehelper: repositories: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "qcode: repositories: %v\n", err)
 		return waitForWebShutdown(ctx, httpServer, serveErr, server, nil, store, stderr, 1)
 	}
 	workspaceManager.Bind(server, options, store, repositories, stderr)
@@ -600,7 +600,7 @@ func runWeb(
 		if commitErr := prepared.commitCredential(); commitErr != nil {
 			_, _ = fmt.Fprintf(
 				stderr,
-				"codehelper: finalize credential rotation: %v\n",
+				"qcode: finalize credential rotation: %v\n",
 				commitErr,
 			)
 		}
@@ -613,7 +613,7 @@ func runWeb(
 	}
 
 	if setupRequired {
-		_, _ = fmt.Fprintf(stdout, "CodeHelper Setup Ready: %s\n", publicURL)
+		_, _ = fmt.Fprintf(stdout, "QCode Setup Ready: %s\n", publicURL)
 		for active == nil {
 			select {
 			case attempt := <-setupRequests:
@@ -633,7 +633,7 @@ func runWeb(
 				attempt.result <- setupErr
 			case serveFailure := <-serveErr:
 				if serveFailure != nil {
-					_, _ = fmt.Fprintf(stderr, "codehelper: serve: %v\n", serveFailure)
+					_, _ = fmt.Fprintf(stderr, "qcode: serve: %v\n", serveFailure)
 				}
 				return shutdownBootServer(
 					httpServer, serveErr, nil, store, stderr, 1,
@@ -648,13 +648,13 @@ func runWeb(
 		loaded, selection, routeReference, "", false,
 	); err != nil {
 		server.FailBoot(err)
-		_, _ = fmt.Fprintf(stderr, "codehelper: Runtime: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "qcode: Runtime: %v\n", err)
 		return waitForWebShutdown(
 			ctx, httpServer, serveErr, server, nil, store, stderr, 1,
 		)
 	}
 	workspaceManager.ActivateRegistered(ctx)
-	_, _ = fmt.Fprintf(stdout, "CodeHelper Runtime Ready: %s\n", publicURL)
+	_, _ = fmt.Fprintf(stdout, "QCode Runtime Ready: %s\n", publicURL)
 	return waitForWebShutdown(
 		ctx,
 		httpServer,
@@ -765,7 +765,7 @@ func registerWorkspaceWithOwner(
 	}
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-CodeHelper-Request-ID", "workspace-register")
+	request.Header.Set("X-QCode-Request-ID", "workspace-register")
 	digest := sha256.Sum256([]byte(workspaceRoot))
 	request.Header.Set(
 		"Idempotency-Key",
@@ -1102,7 +1102,7 @@ func waitForWebShutdown(
 	select {
 	case err := <-serveErr:
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: serve: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "qcode: serve: %v\n", err)
 			code = 1
 		}
 	case <-ctx.Done():
@@ -1123,14 +1123,14 @@ func shutdownBootServer(
 ) int {
 	httpContext, cancelHTTP := context.WithTimeout(context.Background(), 10*time.Second)
 	if err := httpServer.Shutdown(httpContext); err != nil {
-		_, _ = fmt.Fprintf(stderr, "codehelper: shutdown: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "qcode: shutdown: %v\n", err)
 		code = 1
 	}
 	cancelHTTP()
 	select {
 	case err := <-serveErr:
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: serve: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "qcode: serve: %v\n", err)
 			code = 1
 		}
 	default:
@@ -1141,7 +1141,7 @@ func shutdownBootServer(
 			10*time.Second,
 		)
 		if err := runtimeResource.Close(runtimeContext); err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: Runtime close: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "qcode: Runtime close: %v\n", err)
 			code = 1
 		}
 		cancelRuntime()
@@ -1152,7 +1152,7 @@ func shutdownBootServer(
 			10*time.Second,
 		)
 		if err := store.CloseAll(storeContext); err != nil {
-			_, _ = fmt.Fprintf(stderr, "codehelper: state close: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "qcode: state close: %v\n", err)
 			code = 1
 		}
 		cancelStore()

@@ -7,8 +7,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 const RetryPolicyRevision = "provider-retry/v3"

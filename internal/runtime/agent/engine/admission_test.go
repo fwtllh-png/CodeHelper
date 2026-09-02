@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/QCode/internal/adapter/provider/fixture"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 func TestLegacyToolResultIsAdmittedBeforeContextProjection(t *testing.T) {

@@ -12,6 +12,8 @@ var ErrProtected = errors.New("security control-plane path is protected")
 
 var protectedNames = map[string]struct{}{
 	".agents":              {},
+	".qcode":               {},
+	".qcode-worktree":      {},
 	".codehelper":          {},
 	".codehelper-worktree": {},
 	".codex":               {},

@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/eventhub"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func (r *Runtime) TerminalContent() eventhub.TerminalContentStore {

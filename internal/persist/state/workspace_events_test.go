@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
-	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	threadstate "github.com/fwtllh-png/QCode/internal/host/runtimeapi/thread"
+	sessionstate "github.com/fwtllh-png/QCode/internal/persist/session"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestWorkspaceEventStoreIsolatesReplayAndDoesNotOwnSharedStore(

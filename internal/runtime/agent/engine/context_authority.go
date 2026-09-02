@@ -1,7 +1,7 @@
 package engine
 
 import (
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
 )
 
 func (e *Engine) contextAuthority() *agentcontext.Authority {

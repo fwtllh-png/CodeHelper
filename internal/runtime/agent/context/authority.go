@@ -3,7 +3,7 @@ package agentcontext
 import (
 	"sort"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 // Authority owns the context state that must advance as one Session-level
@@ -150,16 +150,16 @@ func (a Authority) Snapshot(request SnapshotRequest) (ContextSnapshot, error) {
 	}
 	plan := request.Plan.Clone()
 	snapshot := ContextSnapshot{
-		Version:      ContextSnapshotVersion,
-		Epoch:        request.Epoch,
-		Revision:     request.Revision,
-		Turn:         request.Turn,
-		History:      CloneMessages(request.History),
-		HistoryTurns: CloneHistoryTurns(request.HistoryTurns),
-		WorkingSet:   working,
-		Evidence:     evidence,
-		Failures:     a.Failures().Delta(),
-		Compaction:   durableCompaction(a.Compaction()),
+		Version:         ContextSnapshotVersion,
+		Epoch:           request.Epoch,
+		Revision:        request.Revision,
+		Turn:            request.Turn,
+		History:         CloneMessages(request.History),
+		HistoryTurns:    CloneHistoryTurns(request.HistoryTurns),
+		WorkingSet:      working,
+		Evidence:        evidence,
+		Failures:        a.Failures().Delta(),
+		Compaction:      durableCompaction(a.Compaction()),
 		Plan:            &plan,
 		World:           a.World(),
 		Workspace:       workspace,

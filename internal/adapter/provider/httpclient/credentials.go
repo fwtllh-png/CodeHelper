@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/security/keyring"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/security/keyring"
 )
 
 const maxCredentialBytes = 64 << 10
@@ -26,10 +26,10 @@ type Credentials struct {
 }
 
 func DefaultCredentials() Credentials {
-	secretDir := os.Getenv("CODEHELPER_SECRET_DIR")
+	secretDir := os.Getenv("QCODE_SECRET_DIR")
 	if secretDir == "" {
 		if configDir, err := os.UserConfigDir(); err == nil {
-			secretDir = filepath.Join(configDir, "codehelper", "secrets")
+			secretDir = filepath.Join(configDir, "qcode", "secrets")
 		}
 	}
 	return Credentials{

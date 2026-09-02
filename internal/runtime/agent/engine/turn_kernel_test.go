@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/QCode/internal/adapter/provider/fixture"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/QCode/internal/observability/trace"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestEngineRecoveryProjectsAlreadyTerminalKernelWithoutProvider(t *testing.T) {

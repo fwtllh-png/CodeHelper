@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	mcptool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/mcp"
+	mcpruntime "github.com/fwtllh-png/QCode/internal/adapter/mcp"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	mcptool "github.com/fwtllh-png/QCode/internal/adapter/tool/mcp"
 )
 
 // MCPPrewarm coalesces dirty MCP refresh requests onto a single worker (N9).

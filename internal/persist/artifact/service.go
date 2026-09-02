@@ -11,10 +11,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
+	sessionhistory "github.com/fwtllh-png/QCode/internal/persist/history"
 
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type PlanExecutionPreparation struct {

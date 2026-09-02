@@ -10,17 +10,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/repository"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/observability/telemetry"
+	"github.com/fwtllh-png/QCode/internal/persist/repoindex"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/QCode/internal/platform/repowalk"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/repository"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func newPlatformBackend(options sandbox.Options) (sandbox.Backend, error) {
@@ -43,12 +43,12 @@ func openRuntimeStateStore(
 		if root == "" {
 			root = "."
 		}
-		dir = filepath.Join(root, ".codehelper")
+		dir = filepath.Join(root, ".qcode")
 		if err = os.MkdirAll(dir, 0o755); err != nil {
 			return nil, nil, "", err
 		}
 	} else {
-		dir, err = os.MkdirTemp("", "codehelper-state-")
+		dir, err = os.MkdirTemp("", "qcode-state-")
 		if err != nil {
 			return nil, nil, "", err
 		}

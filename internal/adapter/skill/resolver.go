@@ -205,9 +205,9 @@ func (c *Catalog) resolveEntries(
 			result = append(result, item)
 			return nil
 		}
-		if err := checkVersion(item.manifest.CodeHelper, c.runtimeVersion); err != nil {
+		if err := checkVersion(item.manifest.QCode, c.runtimeVersion); err != nil {
 			return fmt.Errorf(
-				"%w: skill %q with CodeHelper %s: %v",
+				"%w: skill %q with QCode %s: %v",
 				ErrCompatibilityMismatch, name, c.runtimeVersion, err,
 			)
 		}

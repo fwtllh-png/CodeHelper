@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 // ForegroundTimeoutHint steers agents from a bounded read toward the session protocol.
@@ -529,11 +529,11 @@ func sandboxPathHint(text string) string {
 	lower := strings.ToLower(text)
 	if strings.Contains(lower, "go: command not found") ||
 		strings.Contains(lower, "go: not found") {
-		return "Go toolchain not on sandbox PATH; restart codehelper from a shell where `which go` works (GOROOT/bin is injected automatically in current builds)"
+		return "Go toolchain not on sandbox PATH; restart qcode from a shell where `which go` works (GOROOT/bin is injected automatically in current builds)"
 	}
 	if strings.Contains(lower, "could not create module cache") ||
 		strings.Contains(lower, "mkdir /var: file exists") {
-		return "Go module cache path hit macOS /var symlink under sandbox; upgrade/restart codehelper so private temp uses /private/var realpath"
+		return "Go module cache path hit macOS /var symlink under sandbox; upgrade/restart qcode so private temp uses /private/var realpath"
 	}
 	if !strings.Contains(lower, "not a directory") &&
 		!strings.Contains(lower, "operation not permitted") &&

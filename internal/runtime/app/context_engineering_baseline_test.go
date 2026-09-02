@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
+	sessionhistory "github.com/fwtllh-png/QCode/internal/persist/history"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type contextLifecycleGolden struct {

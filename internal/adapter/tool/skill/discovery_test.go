@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
+	skillruntime "github.com/fwtllh-png/QCode/internal/adapter/skill"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/testutil/tooltest"
 )
 
 func TestSkillDiscoveryToolsPageAndReadAuthorityBoundContent(t *testing.T) {

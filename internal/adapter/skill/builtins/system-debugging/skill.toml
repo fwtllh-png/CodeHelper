@@ -1,4 +1,4 @@
 schema_version = 1
 name = "system-debugging"
 version = "1.0.0"
-codehelper = ">=0.0.0-0"
+qcode = ">=0.0.0-0"

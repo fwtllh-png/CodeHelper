@@ -53,15 +53,15 @@ func Lint(path, runtimeVersion string) (LintResult, error) {
 	if manifest.Name != document.metadata.Name {
 		return LintResult{}, errors.New("skill.toml and SKILL.md names do not match")
 	}
-	if err := checkVersion(manifest.CodeHelper, runtimeVersion); err != nil {
+	if err := checkVersion(manifest.QCode, runtimeVersion); err != nil {
 		return LintResult{}, fmt.Errorf(
-			"skill is incompatible with CodeHelper %s: %w",
+			"skill is incompatible with QCode %s: %w",
 			normalizeRuntimeVersion(runtimeVersion), err,
 		)
 	}
 	return LintResult{
 		Name: manifest.Name, Version: manifest.Version,
-		Compatibility: manifest.CodeHelper,
+		Compatibility: manifest.QCode,
 		Digest:        skillDigest(rawSkill, rawManifest),
 		Dependencies:  cloneDependencies(manifest.Dependencies),
 	}, nil

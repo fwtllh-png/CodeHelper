@@ -4,8 +4,8 @@ import (
 	"errors"
 	"math"
 
-	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	workbudget "github.com/fwtllh-png/QCode/internal/orchestration/budget"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func resumableChildBudgetError(err error) error {

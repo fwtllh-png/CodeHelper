@@ -20,17 +20,17 @@ describe("background activity", () => {
       session("running", "one"),
       session("awaiting_approval", "two"),
       session("failed", "three")
-    ])).toBe("(1) Action required · CodeHelper");
+    ])).toBe("(1) Action required · QCode");
     expect(activityDocumentTitle([
       session("running", "one"),
       session("running", "two")
-    ])).toBe("(2) Working · CodeHelper");
+    ])).toBe("(2) Working · QCode");
     expect(activityDocumentTitle([
       session("interrupted", "paused")
-    ])).toBe("(1) Paused · CodeHelper");
+    ])).toBe("(1) Paused · QCode");
     expect(activityDocumentTitle([
       session("blocked", "blocked")
-    ])).toBe("(1) Blocked · CodeHelper");
+    ])).toBe("(1) Blocked · QCode");
     expect(sessionStatusPresentation("completed")).toEqual({
       label: "Completed",
       tone: "complete"
@@ -59,7 +59,7 @@ describe("background activity", () => {
     );
 
     expect(notice).toMatchObject({
-      title: "CodeHelper needs approval",
+      title: "QCode needs approval",
       body: "A background Session is waiting for approval.",
       target: {
         sessionID: "review",

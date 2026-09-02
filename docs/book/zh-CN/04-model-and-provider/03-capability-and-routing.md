@@ -100,7 +100,7 @@ Match，不选择“最聪明”或最便宜 Model。Unwired Locked Purpose 会�
 
 ## 设计取舍与替代方案
 
-“发送后看错误”会推迟 Failure；纯静态 Flag 又可能过时。CodeHelper 组合 Catalog Fact
+“发送后看错误”会推迟 Failure；纯静态 Flag 又可能过时。QCode 组合 Catalog Fact
 与显式 Observation，未知能力默认不升级。
 
 ## 失败模式与安全边界

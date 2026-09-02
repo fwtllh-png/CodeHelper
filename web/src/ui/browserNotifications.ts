@@ -7,7 +7,7 @@ import type {
 
 export const notificationPreferenceKey = "ch.notifications.enabled";
 export const notificationSettingsChangedEvent =
-  "codehelper:notification-settings-changed";
+  "qcode:notification-settings-changed";
 
 export function initialBrowserNotificationSettings(): BrowserNotificationSettings {
   const permission = browserNotificationPermission();

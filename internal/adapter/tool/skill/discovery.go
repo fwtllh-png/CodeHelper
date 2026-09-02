@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
+	skillruntime "github.com/fwtllh-png/QCode/internal/adapter/skill"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
 )
 
 const (

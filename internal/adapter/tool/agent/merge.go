@@ -14,17 +14,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/filebroker"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	filetool "github.com/fwtllh-png/QCode/internal/adapter/tool/file"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/filebroker"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 const (

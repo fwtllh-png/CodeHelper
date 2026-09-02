@@ -1,6 +1,6 @@
 package provider
 
-import "github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+import "github.com/fwtllh-png/QCode/internal/adapter/model"
 
 func EstimateCost(pricing model.Pricing, usage Usage) float64 {
 	uncached := usage.InputTokens - min(

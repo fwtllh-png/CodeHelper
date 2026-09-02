@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 const DefaultMaxOutputStreamBytes = 128 << 10

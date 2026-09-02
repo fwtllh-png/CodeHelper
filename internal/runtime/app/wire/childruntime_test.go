@@ -10,16 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/permissions"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/config"
+	workbudget "github.com/fwtllh-png/QCode/internal/orchestration/budget"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/permissions"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 type authorityTestTool struct{ descriptor tool.Descriptor }
@@ -392,7 +392,7 @@ func TestPersistentSessionPublishesAgentSpawnLive(t *testing.T) {
 	}
 	if !strings.HasPrefix(
 		child.Worktree,
-		filepath.Join(resolvedWorkspace, ".codehelper")+string(filepath.Separator),
+		filepath.Join(resolvedWorkspace, ".qcode")+string(filepath.Separator),
 	) || strings.HasPrefix(child.Worktree, store.Root()+string(filepath.Separator)) {
 		t.Fatalf(
 			"persistent child worktree = %q, workspace = %q, state root = %q",

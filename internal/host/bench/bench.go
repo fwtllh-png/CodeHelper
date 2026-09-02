@@ -22,13 +22,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/eventview"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/wire"
+	"github.com/fwtllh-png/QCode/internal/runtime/eventview"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // TaskFile is the declarative task definition read from a task directory.
@@ -422,8 +422,8 @@ func RunSuite(ctx context.Context, root string) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	// CODEHELPER_BENCH_TASK filters to a single task for adversarial testing.
-	if name := os.Getenv("CODEHELPER_BENCH_TASK"); name != "" {
+	// QCODE_BENCH_TASK filters to a single task for adversarial testing.
+	if name := os.Getenv("QCODE_BENCH_TASK"); name != "" {
 		filtered := make([]Task, 0, 1)
 		for _, t := range tasks {
 			if t.Name == name || filepath.Base(t.Dir) == name {
@@ -590,7 +590,7 @@ func executeTask(ctx context.Context, task Task) (observation, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	temporary, err := os.MkdirTemp("", "codehelper-bench-")
+	temporary, err := os.MkdirTemp("", "qcode-bench-")
 	if err != nil {
 		return observation{}, err
 	}
@@ -622,12 +622,12 @@ func executeTask(ctx context.Context, task Task) (observation, error) {
 	if posture == "" {
 		posture = DefaultPosture
 	}
-	// CODEHELPER_BENCH_POSTURE and CODEHELPER_BENCH_MODE override task
+	// QCODE_BENCH_POSTURE and QCODE_BENCH_MODE override task
 	// settings for adversarial differential testing.
-	if p := os.Getenv("CODEHELPER_BENCH_POSTURE"); p != "" {
+	if p := os.Getenv("QCODE_BENCH_POSTURE"); p != "" {
 		posture = p
 	}
-	if m := os.Getenv("CODEHELPER_BENCH_MODE"); m != "" {
+	if m := os.Getenv("QCODE_BENCH_MODE"); m != "" {
 		overrides.Mode = &m
 	}
 	applyVerifyOverrides(task.Verify, &overrides)

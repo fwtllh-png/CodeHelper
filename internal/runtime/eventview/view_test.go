@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestProjectUsesProtocolTraitsAndTerminalSemantics(t *testing.T) {

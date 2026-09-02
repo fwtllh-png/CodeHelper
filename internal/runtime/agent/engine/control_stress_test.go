@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
 )
 
 // TestStressConcurrentScopeCloseAndRun verifies that Scope does not deadlock

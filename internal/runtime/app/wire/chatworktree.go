@@ -10,13 +10,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/chatmerge"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/orchestration/chatmerge"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 type chatWorkspace struct {

@@ -1,4 +1,4 @@
-// Package state composes CodeHelper's v1 relational projection, durable event
+// Package state composes QCode's v1 relational projection, durable event
 // log, and content-addressed object store.
 //
 // Write boundaries (W4.1):
@@ -25,10 +25,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state/eventlog"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/state/cas"
+	"github.com/fwtllh-png/QCode/internal/persist/state/eventlog"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 var (

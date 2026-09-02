@@ -5,12 +5,12 @@ import (
 	"math"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func costMicrounits(costUSD float64) uint64 {
@@ -216,16 +216,16 @@ func (r *Recorder) Observe(event agentengine.Event) {
 	}
 	if event.ContextBudget != nil {
 		r.budget = &protocol.ReceiptContextBudget{
-			WindowID:             event.ContextBudget.WindowID,
-			WindowNumber:         event.ContextBudget.WindowNumber,
-			Observed:             event.ContextBudget.Observed,
-			ActiveTokens:         event.ContextBudget.ActiveTokens,
-			FullActiveTokens:     event.ContextBudget.FullActiveTokens,
-			PrefillTokens:        event.ContextBudget.PrefillTokens,
-			BodyTokens:           event.ContextBudget.BodyTokens,
-			ToolDefinitionTokens: event.ContextBudget.ToolDefinitionTokens,
-			PendingTokens:        event.ContextBudget.PendingTokens,
-			OutputReserve:        event.ContextBudget.OutputReserve,
+			WindowID:              event.ContextBudget.WindowID,
+			WindowNumber:          event.ContextBudget.WindowNumber,
+			Observed:              event.ContextBudget.Observed,
+			ActiveTokens:          event.ContextBudget.ActiveTokens,
+			FullActiveTokens:      event.ContextBudget.FullActiveTokens,
+			PrefillTokens:         event.ContextBudget.PrefillTokens,
+			BodyTokens:            event.ContextBudget.BodyTokens,
+			ToolDefinitionTokens:  event.ContextBudget.ToolDefinitionTokens,
+			PendingTokens:         event.ContextBudget.PendingTokens,
+			OutputReserve:         event.ContextBudget.OutputReserve,
 			AutoCompactTokens:     event.ContextBudget.AutoCompactTokens,
 			PrepareTokens:         event.ContextBudget.PrepareTokens,
 			EmergencyTokens:       event.ContextBudget.EmergencyTokens,
@@ -235,8 +235,8 @@ func (r *Recorder) Observe(event agentengine.Event) {
 			Digest:                event.ContextBudget.Digest,
 			NarrativeMode:         event.ContextBudget.NarrativeMode,
 			EstimatedTokens:       event.ContextBudget.EstimatedTokens,
-			MaxContextTokens:     event.ContextBudget.MaxContextTokens,
-			Compactions:          event.ContextBudget.Compactions,
+			MaxContextTokens:      event.ContextBudget.MaxContextTokens,
+			Compactions:           event.ContextBudget.Compactions,
 		}
 	}
 	// Any event that names a purpose contributes to the route summary, not just

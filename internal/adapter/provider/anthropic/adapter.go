@@ -7,9 +7,9 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerwire "github.com/fwtllh-png/QCode/internal/adapter/provider/wire"
 )
 
 type Adapter struct{}

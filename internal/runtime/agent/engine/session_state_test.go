@@ -4,12 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	turnhistory "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/turnhistory"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
+	turnhistory "github.com/fwtllh-png/QCode/internal/adapter/tool/turnhistory"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
 )
 
 func TestSessionStatePartitionSurvivesProjectedTailWithoutCompact(t *testing.T) {

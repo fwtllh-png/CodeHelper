@@ -1,6 +1,6 @@
 package wire
 
-import "github.com/fwtllh-png/CodeHelper/internal/config"
+import "github.com/fwtllh-png/QCode/internal/config"
 
 func effectiveSubagentLimits(
 	limits config.Subagent,

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
-	"github.com/fwtllh-png/CodeHelper/internal/security/credential"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	webhost "github.com/fwtllh-png/QCode/internal/host/runtimeapi/web"
+	"github.com/fwtllh-png/QCode/internal/security/credential"
 )
 
 func TestWebSetupCatalogRequiresExplicitProviderAndModel(t *testing.T) {

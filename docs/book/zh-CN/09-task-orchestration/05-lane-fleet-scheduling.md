@@ -27,7 +27,7 @@ last_verified: 2026-08-28
 
 ## 学习目标
 
-理解删除 Lane、Fleet 和后台 Scheduler 后，CodeHelper 如何约束前台并发与写入隔离。
+理解删除 Lane、Fleet 和后台 Scheduler 后，QCode 如何约束前台并发与写入隔离。
 
 ## 并发来源
 

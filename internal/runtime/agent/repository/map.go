@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
+	"github.com/fwtllh-png/QCode/internal/persist/repoindex"
 )
 
 // Index is what a map needs from the repository index. *repoindex.Index

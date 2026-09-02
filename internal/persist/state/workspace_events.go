@@ -6,8 +6,8 @@ import (
 	"errors"
 	"path/filepath"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/state/cas"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 const workspaceReplayPageSize = 512

@@ -17,7 +17,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(): void {
-    console.error("CodeHelper Web projection failed");
+    console.error("QCode Web projection failed");
   }
 
   render(): ReactNode {

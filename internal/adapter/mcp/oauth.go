@@ -61,7 +61,7 @@ func NewFileTokenStore(directory string) (*FileTokenStore, error) {
 		if err != nil {
 			return nil, errors.New("resolve MCP OAuth token directory")
 		}
-		directory = filepath.Join(configDirectory, "codehelper", "mcp-oauth")
+		directory = filepath.Join(configDirectory, "qcode", "mcp-oauth")
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, errors.New("create MCP OAuth token directory")

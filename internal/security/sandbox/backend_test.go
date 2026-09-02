@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
 )
 
 func TestProbeReportsExplicitPlatformBackendAndControls(t *testing.T) {
@@ -148,7 +148,7 @@ func TestMaterializeMissingExactWritePathsCreatesOnlyDeclaredFiles(t *testing.T)
 
 func TestExactWorkspaceWritesRejectControlPlaneAndWritableBase(t *testing.T) {
 	root := t.TempDir()
-	protected := filepath.Join(root, ".codehelper", "state.json")
+	protected := filepath.Join(root, ".qcode", "state.json")
 	if err := os.MkdirAll(filepath.Dir(protected), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestExactWorkspaceWritesRejectControlPlaneAndWritableBase(t *testing.T) {
 	if _, err := validateExactWorkspaceWritePaths(
 		workspace,
 		true,
-		[]string{".codehelper/state.json"},
+		[]string{".qcode/state.json"},
 	); err == nil || !strings.Contains(err.Error(), "control-plane") {
 		t.Fatalf("protected exact write error = %v", err)
 	}

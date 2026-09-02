@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/durablecodec"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/runtime/durablecodec"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type Compaction struct {
@@ -220,15 +220,15 @@ func cloneNarrativeArtifact(value *NarrativeArtifact) *NarrativeArtifact {
 }
 
 type SessionState struct {
-	Epoch        uint64            `json:"epoch,omitempty"`
-	Turn         uint64            `json:"turn,omitempty"`
-	HistoryTurns map[string]uint64 `json:"history_turns,omitempty"`
-	WorkingSet   WorkingSetDelta   `json:"working_set"`
-	Evidence     EvidenceDelta     `json:"evidence"`
-	Failures     FailureDelta      `json:"failures"`
-	Compaction   Compaction        `json:"compaction"`
-	Plan         *Plan             `json:"plan,omitempty"`
-	World        WorldBaseline     `json:"world,omitempty"`
+	Epoch           uint64            `json:"epoch,omitempty"`
+	Turn            uint64            `json:"turn,omitempty"`
+	HistoryTurns    map[string]uint64 `json:"history_turns,omitempty"`
+	WorkingSet      WorkingSetDelta   `json:"working_set"`
+	Evidence        EvidenceDelta     `json:"evidence"`
+	Failures        FailureDelta      `json:"failures"`
+	Compaction      Compaction        `json:"compaction"`
+	Plan            *Plan             `json:"plan,omitempty"`
+	World           WorldBaseline     `json:"world,omitempty"`
 	Workspace       WorkspaceBinding  `json:"workspace,omitempty"`
 	Window          WindowLedger      `json:"window"`
 	TurnCheckpoints []TurnCheckpoint  `json:"turn_checkpoints,omitempty"`
@@ -236,23 +236,23 @@ type SessionState struct {
 }
 
 type SessionDelta struct {
-	Version        int                `json:"version,omitempty"`
-	Epoch          uint64             `json:"epoch,omitempty"`
-	TurnID         string             `json:"turn_id"`
-	Turn           uint64             `json:"turn,omitempty"`
-	BaseRevision   uint64             `json:"base_revision"`
-	History        []provider.Message `json:"history"`
-	MessageTurns   []uint64           `json:"message_turns,omitempty"`
-	HistoryTurns   map[string]uint64  `json:"history_turns,omitempty"`
-	Usage          provider.Usage     `json:"usage"`
-	CostMicrounits uint64             `json:"cost_microunits"`
-	WorkingSet     WorkingSetDelta    `json:"working_set"`
-	Evidence       EvidenceDelta      `json:"evidence"`
-	Failures       FailureDelta       `json:"failures"`
-	Compaction     Compaction         `json:"compaction"`
-	Plan           *Plan              `json:"plan,omitempty"`
-	World          WorldBaseline      `json:"world,omitempty"`
-	Workspace      WorkspaceBinding   `json:"workspace,omitempty"`
+	Version         int                `json:"version,omitempty"`
+	Epoch           uint64             `json:"epoch,omitempty"`
+	TurnID          string             `json:"turn_id"`
+	Turn            uint64             `json:"turn,omitempty"`
+	BaseRevision    uint64             `json:"base_revision"`
+	History         []provider.Message `json:"history"`
+	MessageTurns    []uint64           `json:"message_turns,omitempty"`
+	HistoryTurns    map[string]uint64  `json:"history_turns,omitempty"`
+	Usage           provider.Usage     `json:"usage"`
+	CostMicrounits  uint64             `json:"cost_microunits"`
+	WorkingSet      WorkingSetDelta    `json:"working_set"`
+	Evidence        EvidenceDelta      `json:"evidence"`
+	Failures        FailureDelta       `json:"failures"`
+	Compaction      Compaction         `json:"compaction"`
+	Plan            *Plan              `json:"plan,omitempty"`
+	World           WorldBaseline      `json:"world,omitempty"`
+	Workspace       WorkspaceBinding   `json:"workspace,omitempty"`
 	Window          WindowLedger       `json:"window"`
 	TurnCheckpoints []TurnCheckpoint   `json:"turn_checkpoints,omitempty"`
 	ManifestLimits  ManifestLimits     `json:"manifest_limits,omitempty"`
@@ -476,7 +476,7 @@ func NewSessionDelta(
 		WorkingSet: snapshot.WorkingSet, Evidence: snapshot.Evidence,
 		Failures: snapshot.Failures, Compaction: snapshot.Compaction,
 		Plan: snapshot.Plan, World: CloneWorldBaseline(snapshot.World),
-		Workspace: snapshot.Workspace,
+		Workspace:       snapshot.Workspace,
 		Window:          CloneWindowLedger(snapshot.Window),
 		TurnCheckpoints: CloneTurnCheckpoints(snapshot.TurnCheckpoints),
 	}

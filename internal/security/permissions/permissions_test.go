@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 func TestAuthorityPathIsStableAndOutsideWorkspace(t *testing.T) {
@@ -43,7 +43,7 @@ func TestAuthorityPathIsStableAndOutsideWorkspace(t *testing.T) {
 
 func TestAuthorityPathRejectsDataDirectoryInsideWorkspace(t *testing.T) {
 	workspace := t.TempDir()
-	dataDir := filepath.Join(workspace, ".codehelper", "state")
+	dataDir := filepath.Join(workspace, ".qcode", "state")
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		t.Fatal(err)
 	}

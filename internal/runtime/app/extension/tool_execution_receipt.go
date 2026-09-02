@@ -1,8 +1,8 @@
 package extension
 
 import (
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func ProjectToolExecutionReceipt(

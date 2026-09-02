@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 )
 
 func boundTool(t testing.TB, executor *Tool) *Tool {

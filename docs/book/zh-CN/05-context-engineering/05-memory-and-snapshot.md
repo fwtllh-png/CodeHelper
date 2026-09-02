@@ -203,7 +203,7 @@ Hash Integrity 证明 Byte Equality，不证明 Freshness/Truth。
 
 ## 设计取舍
 
-自动提取 Memory 方便，却可能持久化 Prompt Injection 或 Secret。CodeHelper 使用显式
+自动提取 Memory 方便，却可能持久化 Prompt Injection 或 Secret。QCode 使用显式
 Governed CRUD、Scoped Retrieval 和 Bounded Injection。语义向量检索可能提高 Recall，
 但在索引、版本和可重放契约未完成前，确定性词法排序更容易审计。
 

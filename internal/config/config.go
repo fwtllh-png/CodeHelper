@@ -1,2 +1,2 @@
-// Package config loads and validates CodeHelper configuration.
+// Package config loads and validates QCode configuration.
 package config

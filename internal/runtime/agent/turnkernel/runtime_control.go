@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type RecoveredInteraction[T any] struct {

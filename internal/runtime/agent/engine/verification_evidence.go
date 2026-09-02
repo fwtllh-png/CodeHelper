@@ -4,10 +4,10 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
 )
 
 func (e *Engine) bindVerificationEvidence(

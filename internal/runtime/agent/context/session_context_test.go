@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestWorkspaceReconciliationRewritesStaleTruthInHistory(t *testing.T) {

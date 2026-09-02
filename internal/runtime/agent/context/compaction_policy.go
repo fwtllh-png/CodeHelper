@@ -1,6 +1,6 @@
 package agentcontext
 
-import "github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+import "github.com/fwtllh-png/QCode/internal/adapter/provider"
 
 type WindowMeasurement struct {
 	Estimated    uint64
@@ -36,8 +36,8 @@ type CompactionSelectionRequest struct {
 	OutputReserve       uint64
 	RecentTailTurns     int
 	RecentTailMaxTokens uint64
-	WindowScope     string
-	AuthorityDigest string
+	WindowScope         string
+	AuthorityDigest     string
 	EstimateMessages    func([]provider.Message) uint64
 	// ProjectHistory builds the exact Provider-visible history for measurement.
 	// Durable History remains the authority used to build compaction candidates.

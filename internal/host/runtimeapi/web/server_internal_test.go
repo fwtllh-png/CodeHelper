@@ -3,7 +3,7 @@ package web
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestWebStartRejectsReservedExecutionContexts(t *testing.T) {

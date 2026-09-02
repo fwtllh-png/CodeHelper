@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 func evidenceHits(t *testing.T, result tool.Result) []tool.EvidenceHit {

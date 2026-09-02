@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 var ErrMandatoryCapacity = errors.New("mandatory truth exceeds context capacity")

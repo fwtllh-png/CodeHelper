@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/platform/symbols"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func (c Checker) Definition(

@@ -92,9 +92,9 @@ func Defaults() Config {
 func defaultDataDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil || strings.TrimSpace(home) == "" {
-		return filepath.Join(".codehelper", "v1")
+		return filepath.Join(".qcode", "v1")
 	}
-	return filepath.Join(home, ".codehelper", "v1")
+	return filepath.Join(home, ".qcode", "v1")
 }
 
 func defaultMemoryPath() string {

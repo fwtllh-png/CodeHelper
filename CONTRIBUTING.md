@@ -1,4 +1,4 @@
-# 参与 CodeHelper 开发
+# 参与 QCode 开发
 
 ## 原则
 

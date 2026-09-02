@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	turnstate "github.com/fwtllh-png/QCode/internal/persist/state/turnstate"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
 )
 
 const defaultTurnCoordinatorLease = 30 * time.Second

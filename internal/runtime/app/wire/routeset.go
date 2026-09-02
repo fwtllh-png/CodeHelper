@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/config"
 )
 
 type routeSetOptions struct {

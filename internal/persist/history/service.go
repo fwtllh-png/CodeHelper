@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // A validated image input can occupy 5 MiB before base64 encoding. Keep one

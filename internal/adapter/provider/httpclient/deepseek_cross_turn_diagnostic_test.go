@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 func TestDeepSeekCrossTurnCacheDiagnostic(t *testing.T) {
@@ -22,12 +22,12 @@ func TestDeepSeekCrossTurnCacheDiagnostic(t *testing.T) {
 		t.Run(string(protocol), func(t *testing.T) {
 			runtime, route, _ := deepSeekLiveRuntimeForProtocol(t, protocol)
 			nonce := fmt.Sprintf(
-				"codehelper-cross-turn-%s-%d ",
+				"qcode-cross-turn-%s-%d ",
 				protocol,
 				time.Now().UnixNano(),
 			)
 			common := nonce + strings.Repeat(
-				"Stable CodeHelper repository context preserved across user turns. ",
+				"Stable QCode repository context preserved across user turns. ",
 				23_000,
 			)
 			tails := []string{
@@ -75,7 +75,7 @@ func TestDeepSeekChatAppendOnlyCache(t *testing.T) {
 	if route.Protocol() != model.ProtocolOpenAIChat {
 		t.Fatalf("default DeepSeek protocol = %q", route.Protocol())
 	}
-	nonce := fmt.Sprintf("codehelper-append-only-%d ", time.Now().UnixNano())
+	nonce := fmt.Sprintf("qcode-append-only-%d ", time.Now().UnixNano())
 	messages := []provider.Message{
 		provider.TextMessage(
 			provider.RoleSystem,

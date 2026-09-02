@@ -1,4 +1,4 @@
-// Package sqlite owns CodeHelper's durable relational state.
+// Package sqlite owns QCode's durable relational state.
 package sqlite
 
 import (
@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
+	"github.com/fwtllh-png/QCode/internal/persist/sqlkit"
 	modernsqlite "modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -100,7 +100,7 @@ type Options struct {
 	BusyTimeout time.Duration
 }
 
-// Store is a concurrency-safe handle to the CodeHelper state database.
+// Store is a concurrency-safe handle to the QCode state database.
 type Store struct {
 	path      string
 	db        *sql.DB

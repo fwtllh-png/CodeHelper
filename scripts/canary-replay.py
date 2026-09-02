@@ -42,7 +42,7 @@ def run_benchmarks(report_path: Path) -> Path:
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
     env = os.environ.copy()
-    env["CODEHELPER_BENCH_REPORT"] = str(report_path)
+    env["QCODE_BENCH_REPORT"] = str(report_path)
 
     result = subprocess.run(
         [

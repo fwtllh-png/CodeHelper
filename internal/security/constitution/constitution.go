@@ -1,4 +1,4 @@
-// Package constitution loads and compiles CodeHelper constitution.json into policy rules.
+// Package constitution loads and compiles QCode constitution.json into policy rules.
 package constitution
 
 import (
@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 const (
@@ -49,7 +49,7 @@ type Bundle struct {
 	Sources []string
 }
 
-// Load merges ~/.codehelper/constitution.json and <workspace>/.codehelper/constitution.json.
+// Load merges ~/.qcode/constitution.json and <workspace>/.qcode/constitution.json.
 // Repository rules are prepended so they win on equal action priority.
 func Load(workspace, userHome string) (Bundle, error) {
 	if strings.TrimSpace(userHome) == "" {
@@ -57,9 +57,9 @@ func Load(workspace, userHome string) (Bundle, error) {
 	}
 	userPath := ""
 	if userHome != "" {
-		userPath = filepath.Join(userHome, ".codehelper", FileName)
+		userPath = filepath.Join(userHome, ".qcode", FileName)
 	}
-	repoPath := filepath.Join(workspace, ".codehelper", FileName)
+	repoPath := filepath.Join(workspace, ".qcode", FileName)
 
 	var userDoc, repoDoc Document
 	userPresent, err := readOptional(userPath, &userDoc)

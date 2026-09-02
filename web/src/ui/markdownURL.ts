@@ -54,7 +54,7 @@ export function isCrossOrigin(source: string): boolean {
 export function imageOrigin(source: string): string {
   try {
     const url = new URL(source);
-    return url.origin === window.location.origin ? "CodeHelper" : url.host;
+    return url.origin === window.location.origin ? "QCode" : url.host;
   } catch {
     return "Image";
   }

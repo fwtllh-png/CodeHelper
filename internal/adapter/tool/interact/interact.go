@@ -14,12 +14,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
+	"github.com/fwtllh-png/QCode/internal/platform/repowalk"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 type Options struct {

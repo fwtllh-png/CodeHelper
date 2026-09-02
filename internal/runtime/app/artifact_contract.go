@@ -1,6 +1,6 @@
 package app
 
-import "github.com/fwtllh-png/CodeHelper/internal/persist/artifact"
+import "github.com/fwtllh-png/QCode/internal/persist/artifact"
 
 type SessionArtifactStore = artifact.SessionArtifactStore
 type ContextSessionArtifactStore = artifact.ContextSessionArtifactStore

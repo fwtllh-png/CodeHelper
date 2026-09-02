@@ -24,7 +24,7 @@ last_verified: null
 
 ## 学习目标
 
-区分 CodeHelper Normalized Provider Contract 与 Vendor Wire Protocol，追踪 Chat、
+区分 QCode Normalized Provider Contract 与 Vendor Wire Protocol，追踪 Chat、
 Responses、Anthropic Stream 如何变为统一 Event。
 
 ## 前置知识
@@ -103,7 +103,7 @@ HTTP Client 在编码前校验 Route 与 ModelRequest：按 Route Protocol 选�
 ## 设计取舍与替代方案
 
 Lowest-common-denominator API 会丢失 Reasoning、Native Search 与 Cache Control；
-暴露 Raw Payload 又会耦合 Engine。CodeHelper 使用 Rich Normalized Model，并通过
+暴露 Raw Payload 又会耦合 Engine。QCode 使用 Rich Normalized Model，并通过
 Capability Check 控制 Optional Feature。
 
 ## 失败模式与安全边界

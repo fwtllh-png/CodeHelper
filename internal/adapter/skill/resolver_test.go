@@ -14,7 +14,7 @@ func TestManifestStrictSchemaAndCompatibility(t *testing.T) {
 schema_version = 1
 name = "review"
 version = "1.2"
-codehelper = ">=1.0.0"
+qcode = ">=1.0.0"
 unknown = true
 `))
 	if err == nil {
@@ -24,7 +24,7 @@ unknown = true
 schema_version = 1
 name = "review"
 version = "1.2.0"
-codehelper = ">=1.0.0 <2.0.0"
+qcode = ">=1.0.0 <2.0.0"
 
 [dependencies]
 repository-context = "^2.1.0"
@@ -32,10 +32,10 @@ repository-context = "^2.1.0"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := checkVersion(manifest.CodeHelper, "1.5.0"); err != nil {
+	if err := checkVersion(manifest.QCode, "1.5.0"); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkVersion(manifest.CodeHelper, "2.0.0"); err == nil {
+	if err := checkVersion(manifest.QCode, "2.0.0"); err == nil {
 		t.Fatal("incompatible runtime was accepted")
 	}
 }

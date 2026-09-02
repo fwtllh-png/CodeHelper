@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerwire "github.com/fwtllh-png/QCode/internal/adapter/provider/wire"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestTurnImageAttachmentsPreserveValidatedModelInput(t *testing.T) {

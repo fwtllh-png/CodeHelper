@@ -3,7 +3,7 @@ package agentcontext
 import (
 	"sort"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 const DefaultMaxDigestEntries = 120

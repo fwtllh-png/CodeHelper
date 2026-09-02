@@ -1,9 +1,9 @@
 package engine
 
 import (
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
 )
 
 func (e *Engine) recentTailTurns() int {

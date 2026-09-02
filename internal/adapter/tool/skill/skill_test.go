@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
+	skillruntime "github.com/fwtllh-png/QCode/internal/adapter/skill"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/testutil/tooltest"
 )
 
 func TestSkillsReadExecutesThroughTestRegistry(t *testing.T) {
@@ -77,7 +77,7 @@ description: `+name+`
 		manifest := `schema_version = 1
 name = "` + name + `"
 version = "` + version + `"
-codehelper = ">=1.0.0 <2.0.0"
+qcode = ">=1.0.0 <2.0.0"
 ` + dependencies
 		if err := os.WriteFile(
 			filepath.Join(directory, "skill.toml"), []byte(manifest), 0o600,

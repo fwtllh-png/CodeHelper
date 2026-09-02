@@ -3,7 +3,7 @@ package model_test
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
 )
 
 func TestApplyProbeTightensWithoutTrustAndWidensOnlyWithTrust(t *testing.T) {

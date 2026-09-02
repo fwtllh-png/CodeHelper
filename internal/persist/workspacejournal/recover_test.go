@@ -432,7 +432,7 @@ func TestOpenResolvesRelativeExternalJournalDirectory(t *testing.T) {
 
 func TestOpenRejectsJournalInsideWorkspace(t *testing.T) {
 	root := t.TempDir()
-	directory := filepath.Join(root, ".codehelper", "journal")
+	directory := filepath.Join(root, ".qcode", "journal")
 	_, err := Open(
 		root,
 		directory,

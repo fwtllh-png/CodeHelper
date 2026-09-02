@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
+	"github.com/fwtllh-png/QCode/internal/observability/diagnostics"
 )
 
 func TestDiagnosticCommandReadRootsIncludeScriptAndInterpreterTrees(t *testing.T) {

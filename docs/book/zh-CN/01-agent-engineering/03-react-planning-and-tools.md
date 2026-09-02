@@ -27,7 +27,7 @@ last_verified: null
 
 ## 学习目标
 
-理解 Agent 的主要控制模式、典型失败，并理解 CodeHelper 如何把 Model Proposal 转化为
+理解 Agent 的主要控制模式、典型失败，并理解 QCode 如何把 Model Proposal 转化为
 受治理的 Observation。
 
 ## 1. ReAct 是 Observation Loop
@@ -93,7 +93,7 @@ stateDiagram-v2
 - Availability/Limit；
 - Result/Truncation/Error。
 
-因此 Prompt-visible Tool Description 不能成为 Authority。CodeHelper 的
+因此 Prompt-visible Tool Description 不能成为 Authority。QCode 的
 `tool.Descriptor` 同时承载两类字段，`Guard.ExecuteBound` 在 Policy/Execution 前完成
 Resolve/Validate。
 

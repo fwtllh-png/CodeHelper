@@ -958,7 +958,7 @@ textarea:disabled {
   height: 42px;
 }
 
-.codeHelperWordmark {
+.qCodeWordmark {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -968,14 +968,14 @@ textarea:disabled {
   line-height: 24px;
 }
 
-.emptyConversation .codeHelperWordmark {
+.emptyConversation .qCodeWordmark {
   gap: 12px;
   font-size: 20px;
   line-height: 28px;
 }
 
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .codeHelperWordmark[data-hero]:hover svg {
+  .qCodeWordmark[data-hero]:hover svg {
     animation: capybara-peek 300ms var(--ch-ease-in-out);
   }
 }

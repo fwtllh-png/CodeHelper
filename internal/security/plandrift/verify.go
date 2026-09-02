@@ -9,8 +9,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func Verify(root string, document json.RawMessage) error {

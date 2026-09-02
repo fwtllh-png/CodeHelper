@@ -9,13 +9,13 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/platform/workspacequery"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 const WorkspaceCatalogVersion = 1
 
-const workspaceHeader = "X-CodeHelper-Workspace-ID"
+const workspaceHeader = "X-QCode-Workspace-ID"
 
 type WorkspaceDescriptor struct {
 	ID           string                   `json:"id"`

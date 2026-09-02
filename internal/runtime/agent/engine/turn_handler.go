@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/QCode/internal/adapter/provider/assembly"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 // Execute is the only production entry point for a Turn. It snapshots every

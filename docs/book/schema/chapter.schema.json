@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/fwtllh-png/CodeHelper/docs/book/schema/chapter.schema.json",
-  "title": "CodeHelper Knowledge Book Chapter Metadata",
+  "$id": "https://github.com/fwtllh-png/QCode/docs/book/schema/chapter.schema.json",
+  "title": "QCode Knowledge Book Chapter Metadata",
   "type": "object",
   "additionalProperties": false,
   "required": [

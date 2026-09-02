@@ -125,7 +125,7 @@ func checkHotspot(root string, item hotspot) []string {
 		allowed[path] = true
 	}
 	for _, path := range imports {
-		const prefix = "github.com/fwtllh-png/CodeHelper/"
+		const prefix = "github.com/fwtllh-png/QCode/"
 		if !strings.HasPrefix(path, prefix+"internal/") {
 			continue
 		}

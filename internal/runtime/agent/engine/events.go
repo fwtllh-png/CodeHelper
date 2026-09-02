@@ -3,17 +3,17 @@ package engine
 import (
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/mcp"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerwire "github.com/fwtllh-png/QCode/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/QCode/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/QCode/internal/observability/diagnostics"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type State string

@@ -15,16 +15,16 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	contract "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/runtimecontract"
-	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
-	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
-	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/config"
+	contract "github.com/fwtllh-png/QCode/internal/host/runtimeapi/runtimecontract"
+	threadstate "github.com/fwtllh-png/QCode/internal/host/runtimeapi/thread"
+	runtimeview "github.com/fwtllh-png/QCode/internal/host/runtimeapi/view"
+	webhost "github.com/fwtllh-png/QCode/internal/host/runtimeapi/web"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/wire"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestWebHostMeetsTheRuntimeContract(t *testing.T) {
@@ -500,8 +500,8 @@ func (h *webContractHost) call(
 	}
 	httpRequest.Header.Set("Authorization", "Bearer "+h.token)
 	httpRequest.Header.Set("Content-Type", "application/json")
-	httpRequest.Header.Set("X-CodeHelper-Request-ID", "contract")
-	httpRequest.Header.Set("X-CodeHelper-Workspace-ID", h.workspaceID)
+	httpRequest.Header.Set("X-QCode-Request-ID", "contract")
+	httpRequest.Header.Set("X-QCode-Workspace-ID", h.workspaceID)
 	if idempotencyKey != "" {
 		httpRequest.Header.Set("Idempotency-Key", idempotencyKey)
 	}

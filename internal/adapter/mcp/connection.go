@@ -87,7 +87,7 @@ func (c *Connection) Initialize(ctx context.Context) error {
 	if err := c.transport.Request(ctx, "initialize", InitializeParams{
 		ProtocolVersion: ProtocolVersion,
 		Capabilities:    map[string]any{},
-		ClientInfo:      ClientInfo{Name: "codehelper", Version: "1"},
+		ClientInfo:      ClientInfo{Name: "qcode", Version: "1"},
 	}, &result); err != nil {
 		return fmt.Errorf("initialize MCP server %q: %w", c.name, err)
 	}

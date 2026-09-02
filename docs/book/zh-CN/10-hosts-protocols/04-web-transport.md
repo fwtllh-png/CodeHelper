@@ -23,7 +23,7 @@ last_verified: 2026-08-22
 
 ## 学习目标
 
-理解 CodeHelper 如何以单进程 localhost Web 作为主交互入口，同时保持 Runtime 对
+理解 QCode 如何以单进程 localhost Web 作为主交互入口，同时保持 Runtime 对
 Session、Operation、Event、审批、工具和持久化状态的唯一权威。
 
 ## Transport

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
 )
 
 type EffectKind string

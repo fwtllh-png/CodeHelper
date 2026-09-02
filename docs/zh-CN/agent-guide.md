@@ -5,7 +5,7 @@
 
 ## 任务目标
 
-保持 CodeHelper 是“一套受治理的本地 Coding Agent Runtime + 单一 Web Host”。优先保证
+保持 QCode 是“一套受治理的本地 Coding Agent Runtime + 单一 Web Host”。优先保证
 正确性、证据、安全边界和可维护性，而不是能力数量。
 
 ## 开始工作

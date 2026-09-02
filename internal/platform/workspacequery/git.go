@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
 )
 
 type GitState struct {

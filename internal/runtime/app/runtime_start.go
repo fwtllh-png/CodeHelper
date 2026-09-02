@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
+	"github.com/fwtllh-png/QCode/internal/observability/telemetry"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/eventhub"
 )
 
 func NewRuntime(options Options) *Runtime {

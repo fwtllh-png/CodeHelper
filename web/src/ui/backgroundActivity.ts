@@ -49,12 +49,12 @@ export function activityDocumentTitle(
     (session) => session.status === "running"
   ).length;
   const attention = approvals + inputs;
-  if (attention > 0) return `(${attention}) Action required · CodeHelper`;
-  if (blocked > 0) return `(${blocked}) Blocked · CodeHelper`;
-  if (failed > 0) return `(${failed}) Failed · CodeHelper`;
-  if (running > 0) return `(${running}) Working · CodeHelper`;
-  if (paused > 0) return `(${paused}) Paused · CodeHelper`;
-  return "CodeHelper";
+  if (attention > 0) return `(${attention}) Action required · QCode`;
+  if (blocked > 0) return `(${blocked}) Blocked · QCode`;
+  if (failed > 0) return `(${failed}) Failed · QCode`;
+  if (running > 0) return `(${running}) Working · QCode`;
+  if (paused > 0) return `(${paused}) Paused · QCode`;
+  return "QCode";
 }
 
 export function sessionStatusPresentation(
@@ -99,7 +99,7 @@ export function backgroundNoticeForTransition(
   return {
     ...message,
     tag: [
-      "codehelper",
+      "qcode",
       session.session_id,
       session.latest_turn_id,
       session.status
@@ -118,32 +118,32 @@ function notificationMessage(
   switch (status) {
   case "awaiting_approval":
     return {
-      title: "CodeHelper needs approval",
+      title: "QCode needs approval",
       body: "A background Session is waiting for approval."
     };
   case "awaiting_input":
     return {
-      title: "CodeHelper needs input",
+      title: "QCode needs input",
       body: "A background Session is waiting for input."
     };
   case "failed":
     return {
-      title: "CodeHelper task failed",
-      body: "A background Session failed. Open CodeHelper to review it."
+      title: "QCode task failed",
+      body: "A background Session failed. Open QCode to review it."
     };
   case "blocked":
     return {
-      title: "CodeHelper task blocked",
+      title: "QCode task blocked",
       body: "A background Session has resumable pending work."
     };
   case "interrupted":
     return {
-      title: "CodeHelper task interrupted",
-      body: "A background Session was interrupted. Open CodeHelper to review it."
+      title: "QCode task interrupted",
+      body: "A background Session was interrupted. Open QCode to review it."
     };
   case "completed":
     return {
-      title: "CodeHelper task completed",
+      title: "QCode task completed",
       body: "A background Session completed."
     };
   default:

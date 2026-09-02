@@ -69,7 +69,7 @@
       "lane": "release",
       "capabilities": [],
       "evidence": ["internal/host/runtimeapi/web/streaming_soak_test.go"],
-      "command": "CODEHELPER_WEB_STREAMING_SOAK_DURATION=1h go test -count=1 -timeout 70m -run '^TestWebSocketSustainedStreamingSoak$' ./internal/host/runtimeapi/web"
+      "command": "QCODE_WEB_STREAMING_SOAK_DURATION=1h go test -count=1 -timeout 70m -run '^TestWebSocketSustainedStreamingSoak$' ./internal/host/runtimeapi/web"
     }
   ]
 }

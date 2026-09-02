@@ -13,12 +13,12 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/observability/telemetry"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/eventhub"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 var (
@@ -987,7 +987,7 @@ func projectToolSource(name, source string) (string, string) {
 	case "skill":
 		return "skill", "Skills"
 	default:
-		return "builtin", "CodeHelper"
+		return "builtin", "QCode"
 	}
 }
 

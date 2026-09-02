@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 const (
@@ -41,15 +41,15 @@ type Options struct {
 
 func OptionsFromEnv() Options {
 	return Options{
-		SearchBackend: strings.ToLower(strings.TrimSpace(os.Getenv("CODEHELPER_WEB_SEARCH_BACKEND"))),
-		SearchURL:     os.Getenv("CODEHELPER_WEB_SEARCH_URL"),
-		PrimaryURL:    envOrDefault("CODEHELPER_WEB_SEARCH_PRIMARY_URL", defaultDDGURL),
-		FallbackURL:   envOrDefault("CODEHELPER_WEB_SEARCH_FALLBACK_URL", defaultBingURL),
-		TavilyURL:     envOrDefault("CODEHELPER_TAVILY_URL", defaultTavilyURL),
-		TavilyAPIKey:  os.Getenv("CODEHELPER_TAVILY_API_KEY"),
-		SearXNGURL:    strings.TrimRight(envOrDefault("CODEHELPER_SEARXNG_URL", defaultSearXNGURL), "/"),
-		BochaURL:      envOrDefault("CODEHELPER_BOCHA_URL", defaultBochaURL),
-		BochaAPIKey:   os.Getenv("CODEHELPER_BOCHA_API_KEY"),
+		SearchBackend: strings.ToLower(strings.TrimSpace(os.Getenv("QCODE_WEB_SEARCH_BACKEND"))),
+		SearchURL:     os.Getenv("QCODE_WEB_SEARCH_URL"),
+		PrimaryURL:    envOrDefault("QCODE_WEB_SEARCH_PRIMARY_URL", defaultDDGURL),
+		FallbackURL:   envOrDefault("QCODE_WEB_SEARCH_FALLBACK_URL", defaultBingURL),
+		TavilyURL:     envOrDefault("QCODE_TAVILY_URL", defaultTavilyURL),
+		TavilyAPIKey:  os.Getenv("QCODE_TAVILY_API_KEY"),
+		SearXNGURL:    strings.TrimRight(envOrDefault("QCODE_SEARXNG_URL", defaultSearXNGURL), "/"),
+		BochaURL:      envOrDefault("QCODE_BOCHA_URL", defaultBochaURL),
+		BochaAPIKey:   os.Getenv("QCODE_BOCHA_API_KEY"),
 		Browser:       browserRuntimeFromEnv(),
 	}
 }
@@ -59,7 +59,7 @@ func (t *Tool) resolveBackends() ([]searchBackend, error) {
 	if t.searchURL != "" || backend == "custom" {
 		endpoint := t.searchURL
 		if endpoint == "" {
-			return nil, fmt.Errorf("custom web search requires CODEHELPER_WEB_SEARCH_URL")
+			return nil, fmt.Errorf("custom web search requires QCODE_WEB_SEARCH_URL")
 		}
 		return []searchBackend{{
 			name: "custom", endpoint: endpoint, format: "json", supportsRecency: true,
@@ -68,7 +68,7 @@ func (t *Tool) resolveBackends() ([]searchBackend, error) {
 	switch backend {
 	case "tavily":
 		if t.tavilyAPIKey == "" {
-			return nil, fmt.Errorf("tavily backend requires CODEHELPER_TAVILY_API_KEY")
+			return nil, fmt.Errorf("tavily backend requires QCODE_TAVILY_API_KEY")
 		}
 		return []searchBackend{{
 			name: "tavily", endpoint: t.tavilyURL, format: "tavily",
@@ -81,7 +81,7 @@ func (t *Tool) resolveBackends() ([]searchBackend, error) {
 		}}, nil
 	case "bocha":
 		if t.bochaAPIKey == "" {
-			return nil, fmt.Errorf("bocha backend requires CODEHELPER_BOCHA_API_KEY")
+			return nil, fmt.Errorf("bocha backend requires QCODE_BOCHA_API_KEY")
 		}
 		return []searchBackend{{
 			name: "bocha", endpoint: t.bochaURL, format: "bocha",

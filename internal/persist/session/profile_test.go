@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/session"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/session"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestProfilePersistsWithRevisionCASAndPreservesMetadata(t *testing.T) {

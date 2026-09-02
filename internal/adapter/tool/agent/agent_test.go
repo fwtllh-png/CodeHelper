@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	agenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/agent"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	agenttool "github.com/fwtllh-png/QCode/internal/adapter/tool/agent"
+	toolguard "github.com/fwtllh-png/QCode/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/handle"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/testutil/tooltest"
 )
 
 type recordingGate struct {
@@ -538,7 +538,7 @@ func TestAgentWorktreeCleanupLeavesSibling(t *testing.T) {
 	if err := manager.Close(idA); err != nil {
 		t.Fatal(err)
 	}
-	marker := filepath.Join(pathB, ".codehelper-worktree")
+	marker := filepath.Join(pathB, ".qcode-worktree")
 	data, err := os.ReadFile(marker)
 	if err != nil {
 		t.Fatal(err)
@@ -682,7 +682,7 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 	if closeBody["closed"] != true || closeBody["status"] != "closed" {
 		t.Fatalf("close = %+v", closeBody)
 	}
-	if _, err := os.Stat(filepath.Join(worktree, ".codehelper-worktree")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(worktree, ".qcode-worktree")); !os.IsNotExist(err) {
 		t.Fatalf("worktree should be removed after close: %v", err)
 	}
 	after := execute(t, registry, "list_agents", map[string]any{})

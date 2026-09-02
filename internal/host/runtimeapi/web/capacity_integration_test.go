@@ -19,8 +19,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestWebSocketReplaysTenThousandEvents(t *testing.T) {
@@ -383,7 +383,7 @@ func createWebSession(
 	if err != nil {
 		return app.SessionBinding{}, nil, 0, err
 	}
-	request.Header.Set("X-CodeHelper-Workspace-ID", identity.RootID)
+	request.Header.Set("X-QCode-Workspace-ID", identity.RootID)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		return app.SessionBinding{}, nil, 0, err
@@ -413,7 +413,7 @@ func runningWebServer(
 	server, err := New(Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+				Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444),
 			},
 		},
 		ExpectedHost: host, Origin: "http://" + host, Capacity: capacity,

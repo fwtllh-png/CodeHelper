@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestSandboxCompilerUsesPrivateTempAndHostTmpRemainsDenied(t *testing.T) {
@@ -58,7 +58,7 @@ func TestSandboxCompilerUsesPrivateTempAndHostTmpRemainsDenied(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = directory.Close() })
 
-	hostTmpTarget := fmt.Sprintf("/tmp/codehelper-private-temp-%d", os.Getpid())
+	hostTmpTarget := fmt.Sprintf("/tmp/qcode-private-temp-%d", os.Getpid())
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	result, err := Run(ctx, Options{

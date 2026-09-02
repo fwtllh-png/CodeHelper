@@ -9,9 +9,9 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/QCode/internal/adapter/tool/result"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
 )
 
 const (

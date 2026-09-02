@@ -3,8 +3,8 @@ package history
 import (
 	"fmt"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // ThreadReconstruction is the pure result of replaying durable events (N11).

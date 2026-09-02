@@ -11,17 +11,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
-	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/QCode/internal/observability/telemetry"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/testutil/tooltest"
 )
 
 func TestRequestUserInputRejectsBlankAndDuplicateOptions(t *testing.T) {
@@ -380,11 +380,11 @@ func TestProjectMapBounded(t *testing.T) {
 func TestProjectMapSharesTheSearchEnumeration(t *testing.T) {
 	root := t.TempDir()
 	for name, content := range map[string]string{
-		"main.go":                      "package main\n",
-		"pkg/a/x.go":                   "package a\n",
-		"pkg/a/deep/deeper/y.go":       "package deeper\n",
-		"node_modules/dep/index.js":    "module.exports = 1\n",
-		".codehelper/runtime-state.db": "state\n",
+		"main.go":                   "package main\n",
+		"pkg/a/x.go":                "package a\n",
+		"pkg/a/deep/deeper/y.go":    "package deeper\n",
+		"node_modules/dep/index.js": "module.exports = 1\n",
+		".qcode/runtime-state.db":   "state\n",
 	} {
 		path := filepath.Join(root, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

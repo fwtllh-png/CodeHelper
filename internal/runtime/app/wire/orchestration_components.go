@@ -6,16 +6,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	agenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/agent"
-	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
-	interacttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
-	persiststate "github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	agenttool "github.com/fwtllh-png/QCode/internal/adapter/tool/agent"
+	filetool "github.com/fwtllh-png/QCode/internal/adapter/tool/file"
+	interacttool "github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/QCode/internal/config"
+	workbudget "github.com/fwtllh-png/QCode/internal/orchestration/budget"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	sessionstate "github.com/fwtllh-png/QCode/internal/persist/session"
+	persiststate "github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func buildChildOrchestration(

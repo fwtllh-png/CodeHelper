@@ -3,7 +3,7 @@ package authority
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 func TestManagedProcessProfileDropsProxyForDeniedNetwork(t *testing.T) {

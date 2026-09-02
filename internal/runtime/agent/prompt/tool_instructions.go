@@ -12,7 +12,7 @@ func StickyCacheKey(sessionID, workspace string) string {
 	if workspace != "" {
 		return "workspace:" + filepath.Base(workspace)
 	}
-	return "codehelper-default"
+	return "qcode-default"
 }
 
 // ToolInstructions builds the stable developer instruction for governed tools

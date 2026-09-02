@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/host/bench"
+	"github.com/fwtllh-png/QCode/internal/host/bench"
 )
 
 func suiteRoot() string {
@@ -29,7 +29,7 @@ func TestCodingBenchmarkSuite(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("benchmark report:\n%s", encoded.String())
-	if path := os.Getenv("CODEHELPER_BENCH_REPORT"); path != "" {
+	if path := os.Getenv("QCODE_BENCH_REPORT"); path != "" {
 		if err := os.WriteFile(path, encoded.Bytes(), 0o600); err != nil {
 			t.Fatal(err)
 		}

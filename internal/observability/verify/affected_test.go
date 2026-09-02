@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
 )
 
 type topologyFixture struct {

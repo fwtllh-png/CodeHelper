@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/agentpreset"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/agentpreset"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestAgentPresetLifecycleValidatesPersistsAndAppliesProfile(t *testing.T) {

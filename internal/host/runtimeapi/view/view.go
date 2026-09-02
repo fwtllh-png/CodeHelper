@@ -4,10 +4,10 @@ package view
 import (
 	"time"
 
-	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
-	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	threadstate "github.com/fwtllh-png/QCode/internal/host/runtimeapi/thread"
+	usagestate "github.com/fwtllh-png/QCode/internal/observability/usage"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type Thread struct {

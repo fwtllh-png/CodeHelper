@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestExternalWorkspaceStateRootUsesRegistryIdentity(t *testing.T) {
@@ -45,7 +45,7 @@ func TestExternalWorkspaceStateRootUsesRegistryIdentity(t *testing.T) {
 
 func TestExternalWorkspaceStateRootRejectsOverlap(t *testing.T) {
 	workspace := t.TempDir()
-	dataDir := filepath.Join(workspace, ".codehelper", "state")
+	dataDir := filepath.Join(workspace, ".qcode", "state")
 	if _, _, err := externalWorkspaceStateRoot(
 		dataDir,
 		workspace,

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
+	"github.com/fwtllh-png/QCode/internal/platform/symbols"
 )
 
 // AffectedCommands turns changed paths into the commands that verify them, plus

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"strings"
 
-	diagnostics "github.com/fwtllh-png/CodeHelper/internal/adapter/lsp"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	diagnostics "github.com/fwtllh-png/QCode/internal/adapter/lsp"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 type Tool struct {

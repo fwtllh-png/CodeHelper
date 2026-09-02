@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
 )
 
 // A command that prints for a while used to be invisible until it exited. The

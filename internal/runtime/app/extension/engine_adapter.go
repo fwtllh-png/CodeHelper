@@ -11,18 +11,18 @@ import (
 	"math"
 	"time"
 
-	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
+	sessionhistory "github.com/fwtllh-png/QCode/internal/persist/history"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	executionreceipt "github.com/fwtllh-png/CodeHelper/internal/observability/receipt"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	toolguard "github.com/fwtllh-png/QCode/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
+	executionreceipt "github.com/fwtllh-png/QCode/internal/observability/receipt"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 var ErrOperationUnsupported = protocol.NewProblem(

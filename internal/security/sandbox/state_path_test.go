@@ -8,7 +8,7 @@ import (
 
 func TestExternalStateDirectoryRejectsOverlapBeforeCreation(t *testing.T) {
 	workspace := t.TempDir()
-	state := filepath.Join(workspace, ".codehelper", "state")
+	state := filepath.Join(workspace, ".qcode", "state")
 	if _, err := ExternalStateDirectory(workspace, state); err == nil {
 		t.Fatal("overlapping Runtime state directory was accepted")
 	}

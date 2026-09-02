@@ -10,13 +10,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/memory"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 var repositoryInstructionNames = []string{
 	"AGENTS.md",
-	filepath.Join(".codehelper", "instructions.md"),
+	filepath.Join(".qcode", "instructions.md"),
 }
 
 type Options struct {

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	landlockHelperArgument = "__codehelper_internal_landlock_exec_v1"
+	landlockHelperArgument = "__qcode_internal_landlock_exec_v1"
 	landlockSchemaVersion  = 1
 	maxLandlockRequestSize = 1 << 20
 )

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
 )
 
 // DelegationMode controls whether and why a model may create child agents.

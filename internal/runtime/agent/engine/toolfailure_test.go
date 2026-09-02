@@ -9,16 +9,16 @@ import (
 	"strings"
 	"testing"
 
-	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	mcpruntime "github.com/fwtllh-png/QCode/internal/adapter/mcp"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerfixture "github.com/fwtllh-png/QCode/internal/adapter/provider/fixture"
+	skillruntime "github.com/fwtllh-png/QCode/internal/adapter/skill"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/QCode/internal/adapter/tool/result"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/toolsearch"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 type unreadTool struct{}

@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/providerdump"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/observability/providerdump"
 )
 
 func TestDumpProviderFailureWritesFile(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("CODEHELPER_DEBUG_DIR", dir)
-	t.Setenv("CODEHELPER_PROVIDER_DUMP", "reasoning")
+	t.Setenv("QCODE_DEBUG_DIR", dir)
+	t.Setenv("QCODE_PROVIDER_DUMP", "reasoning")
 
 	request := testRequest(t, "https://provider.test", "openai_responses")
 	request.Messages = []provider.Message{
@@ -55,15 +55,15 @@ func TestDumpProviderFailureWritesFile(t *testing.T) {
 }
 
 func TestShouldDumpProviderModes(t *testing.T) {
-	t.Setenv("CODEHELPER_PROVIDER_DUMP", "off")
+	t.Setenv("QCODE_PROVIDER_DUMP", "off")
 	if providerdump.Enabled(400) {
 		t.Fatal("off should not dump")
 	}
-	t.Setenv("CODEHELPER_PROVIDER_DUMP", "error")
+	t.Setenv("QCODE_PROVIDER_DUMP", "error")
 	if !providerdump.Enabled(500) {
 		t.Fatal("error mode should dump any 4xx/5xx")
 	}
-	t.Setenv("CODEHELPER_PROVIDER_DUMP", "reasoning")
+	t.Setenv("QCODE_PROVIDER_DUMP", "reasoning")
 	if providerdump.Enabled(400) {
 		t.Fatal("legacy reasoning mode must not classify errors by text")
 	}

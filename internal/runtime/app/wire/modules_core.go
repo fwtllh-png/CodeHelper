@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/builtin"
-	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/builtin"
+	webtool "github.com/fwtllh-png/QCode/internal/adapter/tool/web"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 )
 
 type configModule struct{}

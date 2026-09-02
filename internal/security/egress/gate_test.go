@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 )
 
 func TestGateDeniesUntilGranted(t *testing.T) {

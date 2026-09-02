@@ -11,7 +11,7 @@ prerequisites:
   - overview-model-context-tool
   - security-approval-sandbox
 code_paths:
-  - cmd/codehelper
+  - cmd/qcode
   - internal/host/web
   - internal/host/runtimeapi/web
   - internal/runtime
@@ -30,13 +30,13 @@ last_verified: null
 
 ## 学习目标
 
-编译 CodeHelper，通过真实 Web Host 运行无网络 Turn，在 Chat 与 Trajectory 中观察
+编译 QCode，通过真实 Web Host 运行无网络 Turn，在 Chat 与 Trajectory 中观察
 Event，并区分 Fixture Evidence 与 Live Provider Test。
 
 ## 前置知识
 
 - Go 1.26+、Git、Make；
-- CodeHelper 本地仓库；
+- QCode 本地仓库；
 - 不需要 API Key 或网络。
 
 ## 为什么先使用 Fixture
@@ -67,14 +67,14 @@ sequenceDiagram
 git status --short
 make web-build
 make build
-./bin/codehelper --version
+./bin/qcode --version
 ```
 
 ## 2. 启动 Fixture-backed Web
 
 ```bash
 tmp="$(mktemp -d)"
-./bin/codehelper \
+./bin/qcode \
   --provider-fixture ./testdata/providers/openai \
   --provider openai \
   --model gpt-fixture \
@@ -146,8 +146,8 @@ Call 验证 Network/Provider Compatibility，不能替代确定性 Runtime Test�
 
 ## 延伸阅读
 
-- [Turn 生命周期](../02-codehelper-overview/05-turn-lifecycle.md)
-- [Model、Context 与 Tool](../02-codehelper-overview/06-model-context-and-tool.md)
+- [Turn 生命周期](../02-qcode-overview/05-turn-lifecycle.md)
+- [Model、Context 与 Tool](../02-qcode-overview/06-model-context-and-tool.md)
 - [快速开始](../../../zh-CN/getting-started.md)
 
 ## 事实来源与验证

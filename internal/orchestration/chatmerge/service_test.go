@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	filetool "github.com/fwtllh-png/QCode/internal/adapter/tool/file"
 )
 
 func TestMergeBatchAndPlanCompaction(t *testing.T) {

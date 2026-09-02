@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestSpaceDelimitedOutputParsesAsStructuredDiagnostics(t *testing.T) {

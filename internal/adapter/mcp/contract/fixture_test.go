@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
+	mcpruntime "github.com/fwtllh-png/QCode/internal/adapter/mcp"
 )
 
 type rpcResponse struct {
@@ -265,7 +265,7 @@ func TestHTTPSSEFixtureContract(t *testing.T) {
 }
 
 func TestMCPHTTPImplementationContract(t *testing.T) {
-	if os.Getenv("CODEHELPER_REQUIRE_P6_IMPLEMENTATION") != "1" {
+	if os.Getenv("QCODE_REQUIRE_P6_IMPLEMENTATION") != "1" {
 		t.Skip("implementation gate is enabled only by P6 Make targets")
 	}
 	binary := buildFixture(t)

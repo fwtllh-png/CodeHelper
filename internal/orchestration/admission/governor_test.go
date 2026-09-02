@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/admission"
+	"github.com/fwtllh-png/QCode/internal/orchestration/admission"
 )
 
 func TestGovernorEnforcesDepthConcurrencyAndTokenSpend(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/QCode/internal/adapter/provider/assembly"
 )
 
 // errorThenBlockStream returns an error on the first Recv call, then blocks

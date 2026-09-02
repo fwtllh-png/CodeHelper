@@ -3,13 +3,13 @@ package wire
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	handletool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/skill"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	handletool "github.com/fwtllh-png/QCode/internal/adapter/tool/handle"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/observability/diagnostics"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // buildState exists only while NewExec assembles a Session. Runtime components

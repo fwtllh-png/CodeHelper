@@ -48,7 +48,7 @@ last_verified: null
 
 ## 前置知识
 
-阅读[全局架构](../02-codehelper-overview/02-system-architecture.md)和
+阅读[全局架构](../02-qcode-overview/02-system-architecture.md)和
 [Agent Loop](./03-agent-loop.md)。
 
 ## 问题背景
@@ -206,7 +206,7 @@ MCP 初次 Refresh、启动 Terminal Outbox/Pending Turn Recovery 与 MCP Prewar
 
 ## 设计取舍与替代方案
 
-DI Framework 可以自动化 Graph，却可能隐藏 Ordering 与 Security Decision。CodeHelper
+DI Framework 可以自动化 Graph，却可能隐藏 Ordering 与 Security Decision。QCode
 使用显式 Go Construction，使 Reviewer 能追踪进入 Guard 的 Backend 和 Policy。
 Composition Root 较大时的对策是封闭 Module 序列（`modules_*.go` 按 Module 归属）、
 仅构造期存在的 `buildState` 和显式 `ResourceStack`，而不是把 Business Loop 移入

@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"testing"
 
-	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	adaptercontent "github.com/fwtllh-png/QCode/internal/adapter/content"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestLedgerProjectsOneOrderedImmutableSnapshot(t *testing.T) {

@@ -1,4 +1,4 @@
-# CodeHelper Agent 工程知识书籍
+# QCode Agent 工程知识书籍
 
 本书通过一套真实、受治理的 Runtime 教授 Agent 工程。内容从基础知识和可观察行为开始，
 逐步进入协议、源码、安全、持久执行、任务编排、Web Host、扩展机制和动手实验。
@@ -35,7 +35,7 @@
 
 ```text
 技术背景
-  -> CodeHelper 设计
+  -> QCode 设计
   -> Package 与契约地图
   -> 实现导读
   -> 失败与安全分析

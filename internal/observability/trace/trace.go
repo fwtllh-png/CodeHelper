@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
 )
 
 // Status is how a span ended. An open span has no status yet.

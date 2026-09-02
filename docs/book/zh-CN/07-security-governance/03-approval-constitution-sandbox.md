@@ -37,7 +37,7 @@ Fact 而不是 UI Option。
 
 ## 前置知识
 
-阅读 [CodeHelper 全局架构](../02-codehelper-overview/02-system-architecture.md)。
+阅读 [QCode 全局架构](../02-qcode-overview/02-system-architecture.md)。
 
 ## 问题背景
 
@@ -217,8 +217,8 @@ go test ./internal/platform/process \
 
 ```bash
 make build
-./bin/codehelper sandbox status
-./bin/codehelper sandbox probe
+./bin/qcode sandbox status
+./bin/qcode sandbox probe
 ```
 
 比较 Approval Denial 与 Sandbox-unavailable：它们都会停止执行，但属于不同 Control Layer，

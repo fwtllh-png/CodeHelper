@@ -12,8 +12,8 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	runtimecontext "github.com/fwtllh-png/CodeHelper/internal/runtime/contextfork"
+	"github.com/fwtllh-png/QCode/internal/observability/telemetry"
+	runtimecontext "github.com/fwtllh-png/QCode/internal/runtime/contextfork"
 )
 
 const (

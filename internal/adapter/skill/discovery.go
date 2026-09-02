@@ -16,13 +16,13 @@ var workspaceSkillDirectories = []string{
 	filepath.Join(".opencode", "skills"),
 	filepath.Join(".claude", "skills"),
 	filepath.Join(".cursor", "skills"),
-	filepath.Join(".codehelper", "skills"),
+	filepath.Join(".qcode", "skills"),
 }
 
 var userSkillDirectories = []string{
 	filepath.Join(".agents", "skills"),
 	filepath.Join(".claude", "skills"),
-	filepath.Join(".codehelper", "skills"),
+	filepath.Join(".qcode", "skills"),
 }
 
 type DiscoveryOptions struct {

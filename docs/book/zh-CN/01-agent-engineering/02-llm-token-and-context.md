@@ -45,7 +45,7 @@ P(x(n+1) | x(1), ..., x(n))
 ModelRequest(messages, tools, limits) -> Stream(text, reasoning, tool calls, usage)
 ```
 
-CodeHelper 使用 `provider.ModelRequest` 和 `provider.Stream` 归一化；Adapter 再翻译成
+QCode 使用 `provider.ModelRequest` 和 `provider.Stream` 归一化；Adapter 再翻译成
 OpenAI Chat/Responses、Anthropic 或 Fixture Wire Format。
 
 ## 2. Token 是预算单位
@@ -138,7 +138,7 @@ Model Selection 不能只看名称或 Context Size，还需考虑：
 - Structured Output；
 - Latency、Rate Limit、Price、Data Policy。
 
-CodeHelper 依据 Requested Capability 和 Catalog Evidence 解析 Route；未知能力不会从
+QCode 依据 Requested Capability 和 Catalog Evidence 解析 Route；未知能力不会从
 Model Name 猜测。
 
 ## 7. 故障模式
@@ -172,9 +172,9 @@ Adapter 证明 Provider 发出了什么；Budget 决定请求可包含什么；�
 5. 预留 Output/Tool Result 容量；
 6. Usage、Truncation、Compaction 必须可观察。
 
-## 10. CodeHelper Token 效率案例
+## 10. QCode Token 效率案例
 
-CodeHelper T0-T6 的 Canonical DeepSeek 实测给出一个重要的计量结论。在保持相同
+QCode T0-T6 的 Canonical DeepSeek 实测给出一个重要的计量结论。在保持相同
 Prompt 与 Model Family 时，累计 Input P50 从 394,163 降至 157,507，Reasoning
 P50 从 7,838 降至 4,709，Sample Count 从 12 降至 9，第三个 Sample 后 Cache
 Share 达到 93.86%。

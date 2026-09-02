@@ -3,7 +3,7 @@ package wire
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
 )
 
 func TestSelectedDeepSeekCapabilitiesAdvertiseNativeReasoningLevels(t *testing.T) {

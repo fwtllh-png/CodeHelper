@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const convergenceExitGateEnv = "CODEHELPER_TURN_KERNEL_CONVERGENCE_EXIT_GATE"
+const convergenceExitGateEnv = "QCODE_TURN_KERNEL_CONVERGENCE_EXIT_GATE"
 
 type convergenceDeviation struct {
 	id             string

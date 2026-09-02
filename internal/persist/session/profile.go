@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/sqlkit"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 var ErrProfileRevisionConflict = errors.New("session profile revision conflict")

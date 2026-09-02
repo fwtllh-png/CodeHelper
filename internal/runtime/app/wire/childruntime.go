@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/admission"
-	workbudget "github.com/fwtllh-png/CodeHelper/internal/orchestration/budget"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/orchestration/admission"
+	workbudget "github.com/fwtllh-png/QCode/internal/orchestration/budget"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // childRuntime runs spawned agents as first-class runtime turns on their own
@@ -113,7 +113,7 @@ func childStateRoot(state *buildState) string {
 	if resolved, err := filepath.EvalSymlinks(root); err == nil {
 		root = resolved
 	}
-	return filepath.Join(root, ".codehelper")
+	return filepath.Join(root, ".qcode")
 }
 
 // bind attaches the pieces that only exist once the Runtime is constructed.

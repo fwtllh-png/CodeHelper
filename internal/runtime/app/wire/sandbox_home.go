@@ -3,8 +3,8 @@ package wire
 import (
 	"path/filepath"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func newWorkspaceSandbox(

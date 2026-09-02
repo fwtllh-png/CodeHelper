@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
-	"github.com/fwtllh-png/CodeHelper/internal/security/keyring"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/httpclient"
+	"github.com/fwtllh-png/QCode/internal/security/keyring"
 	oskeyring "github.com/zalando/go-keyring"
 )
 

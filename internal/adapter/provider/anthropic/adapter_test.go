@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerwire "github.com/fwtllh-png/QCode/internal/adapter/provider/wire"
 )
 
 func TestClassifyHTTPDistinguishesRateLimitAndQuota(t *testing.T) {

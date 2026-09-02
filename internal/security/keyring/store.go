@@ -7,7 +7,7 @@ import (
 	oskeyring "github.com/zalando/go-keyring"
 )
 
-const defaultService = "codehelper"
+const defaultService = "qcode"
 
 var ErrNotFound = oskeyring.ErrNotFound
 

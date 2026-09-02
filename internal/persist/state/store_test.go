@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestStoreRecoversProjectionAndPreservesSequenceGaps(t *testing.T) {
@@ -108,7 +108,7 @@ func TestStoreRejectsCommittedProjectionWithoutDurableEvent(t *testing.T) {
 	}
 }
 
-func TestStoreUsesOnlyCodeHelperV1Paths(t *testing.T) {
+func TestStoreUsesOnlyQCodeV1Paths(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	store, err := Open(ctx, Options{DataDir: root})

@@ -34,7 +34,7 @@ last_verified: null
 
 ## 前置知识
 
-先完成前四章；无需预先阅读 CodeHelper 源码。本章将前述概念统一映射到 Runtime。
+先完成前四章；无需预先阅读 QCode 源码。本章将前述概念统一映射到 Runtime。
 
 ## 综合：从概率输出到受控工作
 
@@ -93,9 +93,9 @@ Runtime 的职责是把缺失的身份、权限、状态和证据问题确定性
 
 模型输出、仓库内容和远端 Tool Output 都是不可信输入。
 
-## CodeHelper 设计
+## QCode 设计
 
-CodeHelper 在 Web Host 与有副作用实现之间放置一套共享 Runtime：
+QCode 在 Web Host 与有副作用实现之间放置一套共享 Runtime：
 
 ```mermaid
 flowchart TD
@@ -155,7 +155,7 @@ Cancel、Steer、Approval、Input、Compact、Fork 和 Revert，而不依赖具�
 
 直接函数调用的单进程 Demo 更小，但会让 UI 与实现耦合，使 Restart 语义偶然化，并让
 新功能形成额外权限路径。远端控制面可以统一策略，却把本地源码和执行权移过网络边界。
-CodeHelper 选择本地单 Runtime，并通过协议服务 Web 与后台执行。
+QCode 选择本地单 Runtime，并通过协议服务 Web 与后台执行。
 
 治理会增加 Validation、Approval、Journal 和 Verification 成本。收益是失败可观察、
 权限可限制、运行可恢复。
@@ -209,7 +209,7 @@ Event，而不是把原始 Provider Response 当作完成事实。
 
 - [架构手册](../../../zh-CN/architecture.md)
 - [安全手册](../../../zh-CN/security.md)
-- [系统架构](../02-codehelper-overview/02-system-architecture.md)
+- [系统架构](../02-qcode-overview/02-system-architecture.md)
 - [构建并追踪第一个 Agent Turn](../13-hands-on-labs/01-first-agent-turn.md)
 
 ## 事实来源与验证

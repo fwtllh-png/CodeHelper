@@ -3,7 +3,7 @@ package agentcontext
 import (
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 // OmittedHistory returns durable messages the projector no longer sends as

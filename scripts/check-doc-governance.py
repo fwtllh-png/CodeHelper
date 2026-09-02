@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and execute CodeHelper documentation governance contracts."""
+"""Validate and execute QCode documentation governance contracts."""
 
 from __future__ import annotations
 
@@ -486,7 +486,7 @@ def external_links() -> int:
     errors: list[str] = []
     for link in sorted(links - excluded):
         request = urllib.request.Request(
-            link, headers={"User-Agent": "CodeHelper-doc-governance/1"}
+            link, headers={"User-Agent": "QCode-doc-governance/1"}
         )
         try:
             with urllib.request.urlopen(request, timeout=15) as response:

@@ -18,14 +18,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerratelimit "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/ratelimit"
-	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerratelimit "github.com/fwtllh-png/QCode/internal/adapter/provider/ratelimit"
+	providerwire "github.com/fwtllh-png/QCode/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/QCode/internal/observability/telemetry"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 )
 
 const maxErrorBodyBytes = 16 << 10
@@ -278,7 +278,7 @@ func retryableTransportError(err error) bool {
 }
 func requestKey(body []byte) string {
 	digest := sha256.Sum256(body)
-	return fmt.Sprintf("codehelper-%x-%d", digest[:8], requestSequence.Add(1))
+	return fmt.Sprintf("qcode-%x-%d", digest[:8], requestSequence.Add(1))
 }
 func wait(ctx context.Context, duration time.Duration) error {
 	timer := time.NewTimer(duration)

@@ -20,7 +20,7 @@ make deepseek-web
 
 | Target | 结果 |
 | --- | --- |
-| `deepseek-init` | 编译 `bin/codehelper` 并安装 Web 配置 |
+| `deepseek-init` | 编译 `bin/qcode` 并安装 Web 配置 |
 | `deepseek-web` | 完成初始化并在 `127.0.0.1` 启动 Web 工作区 |
 
 ## 密钥来源
@@ -29,8 +29,8 @@ make deepseek-web
 
 1. `DEEPSEEK_API_KEY`；
 2. Git 忽略的本机 Runbook `docs/DEEPSEEK-LIVE.zh-CN.md`；
-3. macOS Keychain Service `codehelper`、Account `deepseek/default`；
-4. CodeHelper 品牌切换前的历史 Keychain Service、Account `deepseek/default`；
+3. macOS Keychain Service `qcode`、Account `deepseek/default`；
+4. QCode 品牌切换前的历史 Keychain Service、Account `deepseek/default`；
 5. 不回显的终端输入。
 
 Keychain 仅作为已有凭证的兼容读取来源。安装后的 TOML 只包含环境变量引用：
@@ -60,10 +60,10 @@ name = "DEEPSEEK_API_KEY"
 
 ## Web 控制
 
-初始 Workspace 是 CodeHelper 仓库。操作其他仓库时：
+初始 Workspace 是 QCode 仓库。操作其他仓库时：
 
 ```bash
-CODEHELPER_LOCAL_WORKSPACE=/path/to/project make deepseek-web
+QCODE_LOCAL_WORKSPACE=/path/to/project make deepseek-web
 ```
 
 ## Agent 执行说明
@@ -86,7 +86,7 @@ make deepseek-web
 
 ```bash
 ./scripts/deepseek-local.sh check
-./bin/codehelper --version
+./bin/qcode --version
 ```
 
 检查会验证 Binary 与 TOML 已安装，不发送产生费用的模型请求。
@@ -94,8 +94,8 @@ make deepseek-web
 真实 Provider 请求通过 Web 发起：
 
 ```bash
-DEEPSEEK_API_KEY='...' ./bin/codehelper \
-  --config ~/.config/codehelper/config.toml \
+DEEPSEEK_API_KEY='...' ./bin/qcode \
+  --config ~/.config/qcode/config.toml \
   --workspace . \
   --posture suggest \
   --open

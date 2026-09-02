@@ -3,8 +3,8 @@ package shell
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 // processSandbox selects backend strength from Guard's SandboxAttempt.

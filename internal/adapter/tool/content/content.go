@@ -13,13 +13,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/contentdeps"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/filebroker"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
-	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
+	"github.com/fwtllh-png/QCode/internal/platform/contentdeps"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/filebroker"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/workspacebroker"
 )
 
 const contentOutputLimit = 4 << 20
@@ -168,11 +168,11 @@ func (t *Tool) Descriptor() tool.Descriptor {
 	dependencyEnvironment, dependencyFallback := "", ""
 	switch t.kind {
 	case "image_ocr":
-		dependencyEnvironment, dependencyFallback = "CODEHELPER_TESSERACT_BINARY", "tesseract"
+		dependencyEnvironment, dependencyFallback = "QCODE_TESSERACT_BINARY", "tesseract"
 	case "speech_transcribe":
-		dependencyEnvironment, dependencyFallback = "CODEHELPER_SPEECH_BINARY", "whisper"
+		dependencyEnvironment, dependencyFallback = "QCODE_SPEECH_BINARY", "whisper"
 	case "document_convert":
-		dependencyEnvironment, dependencyFallback = "CODEHELPER_PANDOC_BINARY", "pandoc"
+		dependencyEnvironment, dependencyFallback = "QCODE_PANDOC_BINARY", "pandoc"
 	}
 	if dependencyFallback != "" {
 		binary := dependencyName(dependencyEnvironment, dependencyFallback)
@@ -230,7 +230,7 @@ func (t *Tool) run(ctx context.Context, value input) (tool.Result, error) {
 }
 
 // Probe reports whether optional content binaries are resolvable via LookPath
-// (honoring CODEHELPER_*_BINARY overrides). Keys: ocr, speech, pandoc, ffmpeg.
+// (honoring QCODE_*_BINARY overrides). Keys: ocr, speech, pandoc, ffmpeg.
 func Probe() map[string]bool {
 	return contentdeps.Probe()
 }
@@ -250,7 +250,7 @@ func (t *Tool) ocr(ctx context.Context, value input) (tool.Result, error) {
 		return tool.Result{}, err
 	}
 	defer cleanup()
-	binary, failure := dependency("CODEHELPER_TESSERACT_BINARY", "tesseract", "ocr")
+	binary, failure := dependency("QCODE_TESSERACT_BINARY", "tesseract", "ocr")
 	if failure != nil {
 		return *failure, nil
 	}
@@ -271,11 +271,11 @@ func (t *Tool) transcribe(ctx context.Context, value input) (tool.Result, error)
 		return tool.Result{}, err
 	}
 	defer cleanup()
-	binary, failure := dependency("CODEHELPER_SPEECH_BINARY", "whisper", "speech")
+	binary, failure := dependency("QCODE_SPEECH_BINARY", "whisper", "speech")
 	if failure != nil {
 		return *failure, nil
 	}
-	outputDir, err := os.MkdirTemp("", "codehelper-speech-*")
+	outputDir, err := os.MkdirTemp("", "qcode-speech-*")
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -311,7 +311,7 @@ func (t *Tool) convert(ctx context.Context, value input) (tool.Result, error) {
 	if err := t.validateWorkspaceOutput(value.OutputPath); err != nil {
 		return tool.Result{}, err
 	}
-	outputFile, err := os.CreateTemp("", "codehelper-convert-*")
+	outputFile, err := os.CreateTemp("", "qcode-convert-*")
 	if err != nil {
 		return tool.Result{}, err
 	}
@@ -320,7 +320,7 @@ func (t *Tool) convert(ctx context.Context, value input) (tool.Result, error) {
 		return tool.Result{}, err
 	}
 	defer os.Remove(outputPath)
-	binary, failure := dependency("CODEHELPER_PANDOC_BINARY", "pandoc", "pandoc")
+	binary, failure := dependency("QCODE_PANDOC_BINARY", "pandoc", "pandoc")
 	if failure != nil {
 		return *failure, nil
 	}
@@ -443,7 +443,7 @@ func (t *Tool) snapshotWorkspaceFile(name string) (string, func(), error) {
 		return "", nil, err
 	}
 	defer source.Close()
-	snapshot, err := os.CreateTemp("", "codehelper-content-*"+filepath.Ext(name))
+	snapshot, err := os.CreateTemp("", "qcode-content-*"+filepath.Ext(name))
 	if err != nil {
 		return "", nil, err
 	}

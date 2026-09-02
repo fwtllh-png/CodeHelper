@@ -17,14 +17,14 @@ import (
 	"testing/fstest"
 	"time"
 
-	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
+	webhost "github.com/fwtllh-png/QCode/internal/host/runtimeapi/web"
 )
 
 func TestMain(m *testing.M) {
 	loadWebAssets = func() (fs.FS, error) {
 		return fstest.MapFS{
 			"index.html": {
-				Data: []byte("<main>CodeHelper</main>"),
+				Data: []byte("<main>QCode</main>"),
 				Mode: fs.FileMode(0o444),
 			},
 		}, nil
@@ -57,7 +57,7 @@ func TestRunContextExposesOnlyWebStartupFlags(t *testing.T) {
 	); code != 0 {
 		t.Fatalf("--version exit = %d, stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "codehelper") {
+	if !strings.Contains(stdout.String(), "qcode") {
 		t.Fatalf("--version output = %q", stdout.String())
 	}
 
@@ -71,7 +71,7 @@ func TestRunContextExposesOnlyWebStartupFlags(t *testing.T) {
 	); code != 0 {
 		t.Fatalf("--help exit = %d, stderr = %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "Run the local CodeHelper Web workspace") {
+	if !strings.Contains(stdout.String(), "Run the local QCode Web workspace") {
 		t.Fatalf("--help output = %q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), `-posture string`) ||
@@ -192,7 +192,7 @@ func TestRunContextStartsAndStopsWebHost(t *testing.T) {
 	}
 	reconfigureRequest.Header.Set("Authorization", "Bearer "+token)
 	reconfigureRequest.Header.Set("Content-Type", "application/json")
-	reconfigureRequest.Header.Set("X-CodeHelper-Request-ID", "provider-change")
+	reconfigureRequest.Header.Set("X-QCode-Request-ID", "provider-change")
 	reconfigureRequest.Header.Set("Idempotency-Key", "provider-change")
 	reconfigureResponse, err := http.DefaultClient.Do(reconfigureRequest)
 	if err != nil {
@@ -307,7 +307,7 @@ func TestRunContextStartsWithoutAConfigFile(t *testing.T) {
 		_ = outputWriter.Close()
 	}()
 
-	setupURL := waitForOutputURL(t, outputLines, "CodeHelper Setup Ready: ")
+	setupURL := waitForOutputURL(t, outputLines, "QCode Setup Ready: ")
 	bootstrapResponse, err := http.Get(strings.TrimSuffix(setupURL, "/") + "/api/v1/bootstrap")
 	if err != nil {
 		t.Fatal(err)
@@ -343,7 +343,7 @@ func TestRunContextStartsWithoutAConfigFile(t *testing.T) {
 	}
 	setupRequest.Header.Set("Authorization", "Bearer "+bootstrap.Token)
 	setupRequest.Header.Set("Content-Type", "application/json")
-	setupRequest.Header.Set("X-CodeHelper-Request-ID", "setup-request")
+	setupRequest.Header.Set("X-QCode-Request-ID", "setup-request")
 	setupRequest.Header.Set("Idempotency-Key", "setup-idempotency")
 	setupResponse, err := http.DefaultClient.Do(setupRequest)
 	if err != nil {
@@ -353,7 +353,7 @@ func TestRunContextStartsWithoutAConfigFile(t *testing.T) {
 	if setupResponse.StatusCode != http.StatusOK {
 		t.Fatalf("setup status = %d", setupResponse.StatusCode)
 	}
-	readyURL := waitForOutputURL(t, outputLines, "CodeHelper Runtime Ready: ")
+	readyURL := waitForOutputURL(t, outputLines, "QCode Runtime Ready: ")
 	if readyURL != setupURL {
 		t.Fatalf("ready URL = %q, want %q", readyURL, setupURL)
 	}
@@ -372,7 +372,7 @@ func TestRunContextStartsWithoutAConfigFile(t *testing.T) {
 	}
 	if !strings.Contains(
 		repeatedOutput.String(),
-		"CodeHelper Runtime Ready: "+readyURL,
+		"QCode Runtime Ready: "+readyURL,
 	) {
 		t.Fatalf("repeated start output = %q", repeatedOutput.String())
 	}
@@ -502,7 +502,7 @@ func waitForReadyURL(t *testing.T, reader io.Reader) string {
 	go func() {
 		scanner := bufio.NewScanner(reader)
 		for scanner.Scan() {
-			const prefix = "CodeHelper Runtime Ready: "
+			const prefix = "QCode Runtime Ready: "
 			if url, ok := strings.CutPrefix(scanner.Text(), prefix); ok {
 				result <- struct {
 					url string

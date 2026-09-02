@@ -310,7 +310,7 @@ describe("RuntimeClient", () => {
       }
       if (route.endsWith("/session/list")) {
         const workspaceID = new Headers(init?.headers)
-          .get("X-CodeHelper-Workspace-ID");
+          .get("X-QCode-Workspace-ID");
         const secondary = workspaceID === "workspace-b-id";
         if (!secondary && emptyPrimaryWorkspace && !createdSession) {
           return envelope({version: 1, sessions: []});
@@ -1064,7 +1064,7 @@ describe("RuntimeClient", () => {
     expect(await client.loadDraft()).toBe("workspace B");
     const listedWorkspaceIDs = requests
       .filter((request) => request.route.endsWith("/session/list"))
-      .map((request) => request.headers.get("X-CodeHelper-Workspace-ID"));
+      .map((request) => request.headers.get("X-QCode-Workspace-ID"));
     expect(listedWorkspaceIDs).toContain("workspace-id");
     expect(listedWorkspaceIDs).toContain("workspace-b-id");
     client.stop();
@@ -1084,7 +1084,7 @@ describe("RuntimeClient", () => {
     );
     expect(mutations).toHaveLength(2);
     expect(mutations.map((request) =>
-      request.headers.get("X-CodeHelper-Workspace-ID")
+      request.headers.get("X-QCode-Workspace-ID")
     )).toEqual(["workspace-b-id", "workspace-b-id"]);
     expect(client.getSnapshot().selectedWorkspaceID).toBe("workspace-id");
     client.stop();
@@ -1100,7 +1100,7 @@ describe("RuntimeClient", () => {
       (value) => value.route.endsWith("/workspace/git-switch")
     );
     expect(request?.body).toEqual({branch: "feature"});
-    expect(request?.headers.get("X-CodeHelper-Workspace-ID"))
+    expect(request?.headers.get("X-QCode-Workspace-ID"))
       .toBe("workspace-b-id");
     expect(request?.headers.get("Idempotency-Key")).toBe("request-id");
     client.stop();
@@ -1134,7 +1134,7 @@ describe("RuntimeClient", () => {
     );
     expect(hydration.length).toBeGreaterThan(5);
     expect(hydration.every((request) =>
-      request.headers.get("X-CodeHelper-Workspace-ID") === "workspace-b-id"
+      request.headers.get("X-QCode-Workspace-ID") === "workspace-b-id"
     )).toBe(true);
     expect(client.getSnapshot()).toMatchObject({
       selectedWorkspaceID: "workspace-b-id",

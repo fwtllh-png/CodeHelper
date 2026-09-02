@@ -17,11 +17,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
-	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
+	sessionhistory "github.com/fwtllh-png/QCode/internal/persist/history"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestClientOpenAIRequestAndStream(t *testing.T) {

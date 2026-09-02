@@ -6,7 +6,7 @@
 >
 > 冻结参考提交：`11bba5f4f11328745f250674d99252c0d23e8398`
 >
-> 基线：CodeHelper 已完成 Conversation、Tool、Approval、Context、Settings、
+> 基线：QCode 已完成 Conversation、Tool、Approval、Context、Settings、
 > Trajectory、Stats 与滚动体验的首轮 Harness 对齐。
 
 ## 目标
@@ -335,7 +335,7 @@ Settings 从只读 Catalog 深化为受控管理面：
 1. Projection 或纯状态转换单元测试；
 2. Runtime/Host Contract Test；
 3. Fixture Playwright 路径；
-4. 至少一次冻结 Harness 与 CodeHelper 的同 Prompt 双实例对比；
+4. 至少一次冻结 Harness 与 QCode 的同 Prompt 双实例对比；
 5. `web-check`、`web-test`、`web-e2e`、`docs-check` 和 `git diff --check`；
 6. 涉及 Runtime 并发或持久化时执行对应 Go Test 与 `go test -race`。
 

@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 const ContextSnapshotVersion = 1
@@ -282,23 +282,23 @@ func packedReference(git, ref string) string {
 }
 
 type ContextSnapshot struct {
-	Version      int                `json:"version"`
-	Epoch        uint64             `json:"epoch"`
-	Revision     uint64             `json:"revision"`
-	Turn         uint64             `json:"turn,omitempty"`
-	History      []provider.Message `json:"history"`
-	MessageTurns []uint64           `json:"message_turns,omitempty"`
-	HistoryTurns map[string]uint64  `json:"history_turns,omitempty"`
-	WorkingSet   WorkingSetDelta    `json:"working_set"`
-	Evidence     EvidenceDelta      `json:"evidence"`
-	Failures     FailureDelta       `json:"failures"`
-	Plan         *Plan              `json:"plan,omitempty"`
-	World        WorldBaseline      `json:"world,omitempty"`
-	Compaction      Compaction       `json:"compaction"`
-	TurnCheckpoints []TurnCheckpoint `json:"turn_checkpoints,omitempty"`
-	Workspace       WorkspaceBinding `json:"workspace"`
-	Window          WindowLedger     `json:"window"`
-	Digest          string           `json:"digest"`
+	Version         int                `json:"version"`
+	Epoch           uint64             `json:"epoch"`
+	Revision        uint64             `json:"revision"`
+	Turn            uint64             `json:"turn,omitempty"`
+	History         []provider.Message `json:"history"`
+	MessageTurns    []uint64           `json:"message_turns,omitempty"`
+	HistoryTurns    map[string]uint64  `json:"history_turns,omitempty"`
+	WorkingSet      WorkingSetDelta    `json:"working_set"`
+	Evidence        EvidenceDelta      `json:"evidence"`
+	Failures        FailureDelta       `json:"failures"`
+	Plan            *Plan              `json:"plan,omitempty"`
+	World           WorldBaseline      `json:"world,omitempty"`
+	Compaction      Compaction         `json:"compaction"`
+	TurnCheckpoints []TurnCheckpoint   `json:"turn_checkpoints,omitempty"`
+	Workspace       WorkspaceBinding   `json:"workspace"`
+	Window          WindowLedger       `json:"window"`
+	Digest          string             `json:"digest"`
 }
 
 func CloneContextSnapshot(snapshot ContextSnapshot) ContextSnapshot {

@@ -1,6 +1,6 @@
 package prompt
 
-import "github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+import "github.com/fwtllh-png/QCode/internal/adapter/provider"
 
 // PartitionTexts returns retained prompt sections by receipt identity. Receipts
 // with no retained bytes have no matching message and do not advance the

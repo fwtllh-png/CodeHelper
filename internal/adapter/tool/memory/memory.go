@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	memorystore "github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
+	memorystore "github.com/fwtllh-png/QCode/internal/adapter/memory"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/QCode/internal/adapter/tool/result"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
 )
 
 type Tool struct {
@@ -84,8 +84,8 @@ func trustedRegistration(executor tool.Executor) tool.Registration {
 
 func (t *Tool) Descriptor() tool.Descriptor {
 	resourceID := t.store.Path()
-	if os.Getenv("CODEHELPER_HERMETIC_MANIFEST") == "1" {
-		resourceID = filepath.ToSlash(filepath.Join(".codehelper", memorystore.RecordsFileName))
+	if os.Getenv("QCODE_HERMETIC_MANIFEST") == "1" {
+		resourceID = filepath.ToSlash(filepath.Join(".qcode", memorystore.RecordsFileName))
 	}
 	return tool.Descriptor{
 		Name: "remember",
@@ -320,8 +320,8 @@ func memoryDescriptor(
 		capability = tool.CapabilityWrite
 	}
 	resourceID := store.Path()
-	if os.Getenv("CODEHELPER_HERMETIC_MANIFEST") == "1" {
-		resourceID = filepath.ToSlash(filepath.Join(".codehelper", memorystore.RecordsFileName))
+	if os.Getenv("QCODE_HERMETIC_MANIFEST") == "1" {
+		resourceID = filepath.ToSlash(filepath.Join(".qcode", memorystore.RecordsFileName))
 	}
 	return tool.Descriptor{
 		Name: name, Description: description,

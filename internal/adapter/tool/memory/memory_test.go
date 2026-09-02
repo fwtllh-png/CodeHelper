@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	memorystore "github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	memorytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
+	memorystore "github.com/fwtllh-png/QCode/internal/adapter/memory"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	memorytool "github.com/fwtllh-png/QCode/internal/adapter/tool/memory"
+	"github.com/fwtllh-png/QCode/internal/testutil/tooltest"
 )
 
 func TestRememberRegistersOnlyWithStoreAndWritesCanonicalResource(t *testing.T) {

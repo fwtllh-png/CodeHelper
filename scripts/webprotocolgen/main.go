@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	webhost "github.com/fwtllh-png/QCode/internal/host/runtimeapi/web"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type generated struct {

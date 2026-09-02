@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
 )
 
 const policyVersion = 2
@@ -42,7 +42,7 @@ type Options struct {
 	PrivateTemp   string
 	HelperPath    string
 	// AllowNetwork permits outbound/inbound sockets inside the OS sandbox.
-	// codehelper enables it for the interactive tool session so host processes like
+	// qcode enables it for the interactive tool session so host processes like
 	// ubomcli can reach their APIs.
 	AllowNetwork     bool
 	ManagedProxyPort uint16
@@ -83,7 +83,7 @@ func BuildPolicy(options Options) (Policy, error) {
 	privateTemp := options.PrivateTemp
 	ownsPrivateTemp := false
 	if privateTemp == "" {
-		created, createErr := os.MkdirTemp("", "codehelper-sandbox-")
+		created, createErr := os.MkdirTemp("", "qcode-sandbox-")
 		if createErr != nil {
 			return Policy{}, fmt.Errorf("create private sandbox temp: %w", createErr)
 		}

@@ -5,16 +5,16 @@ import (
 	"errors"
 	"fmt"
 
-	memorystore "github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	memorystore "github.com/fwtllh-png/QCode/internal/adapter/memory"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	turnstate "github.com/fwtllh-png/QCode/internal/persist/state/turnstate"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 type contextRuntimeBinding struct {

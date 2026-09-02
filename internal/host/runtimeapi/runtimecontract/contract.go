@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	runtimeview "github.com/fwtllh-png/QCode/internal/host/runtimeapi/view"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // Receipt is what a host answers when it accepts an operation. Every transport

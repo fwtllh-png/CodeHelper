@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
 )
 
 func (e *Engine) pendingInputTruthEntities() []agentcontext.TruthEntity {

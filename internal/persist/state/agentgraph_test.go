@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestAppendAgentEventAllocatesSequencesAtomically(t *testing.T) {
@@ -914,7 +914,7 @@ func TestOrphanedWorktreeRecoversOwningSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(worktree, ".codehelper-worktree"),
+		filepath.Join(worktree, ".qcode-worktree"),
 		[]byte("agent-7\n"), 0o600,
 	); err != nil {
 		t.Fatal(err)
@@ -998,7 +998,7 @@ func TestOrphanedWorktreeWithoutAllocationIsQuarantined(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
-		filepath.Join(worktree, ".codehelper-worktree"),
+		filepath.Join(worktree, ".qcode-worktree"),
 		[]byte("agent-8\n"), 0o600,
 	); err != nil {
 		t.Fatal(err)

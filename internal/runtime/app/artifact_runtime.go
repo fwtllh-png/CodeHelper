@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/artifact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/artifact"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func (r *Runtime) ReplayArtifactEvents(

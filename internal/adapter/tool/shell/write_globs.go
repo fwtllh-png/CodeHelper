@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 const maxExpandedWritePaths = sandbox.MaxExactWorkspaceWritePaths

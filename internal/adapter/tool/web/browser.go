@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
 )
 
 const BrowserUnavailableReason = "browser runtime is unavailable"
@@ -24,7 +24,7 @@ const (
 
 // BrowserDriverStatus reports which driver web_run would use and its fidelity.
 func BrowserDriverStatus() string {
-	if os.Getenv("CODEHELPER_BROWSER_FIXTURE") == "1" {
+	if os.Getenv("QCODE_BROWSER_FIXTURE") == "1" {
 		return BrowserDriverFakeFixture
 	}
 	if findChromeBinary() != "" {
@@ -82,7 +82,7 @@ func registerBrowser(registry *tool.Registry, runtime BrowserRuntime) error {
 }
 
 func browserRuntimeFromEnv() BrowserRuntime {
-	if os.Getenv("CODEHELPER_BROWSER_FIXTURE") == "1" {
+	if os.Getenv("QCODE_BROWSER_FIXTURE") == "1" {
 		return NewFakeBrowser()
 	}
 	if binary := findChromeBinary(); binary != "" {
@@ -101,7 +101,7 @@ func (b *browserTool) Descriptor() tool.Descriptor {
 	return tool.Descriptor{
 		Name: "web_run",
 		Description: "Drive an isolated headless Chromium session through CDP: navigate, " +
-			"snapshot the live DOM, click, or fill. Set CODEHELPER_BROWSER_BINARY to override detection.",
+			"snapshot the live DOM, click, or fill. Set QCODE_BROWSER_BINARY to override detection.",
 		DiscoveryTerms: []string{
 			"browser", "navigate", "click", "fill", "浏览器", "打开网页", "点击", "填写",
 		},
@@ -204,7 +204,7 @@ func (b *browserTool) run(ctx context.Context, input browserInput) (tool.Result,
 	}
 }
 
-// FakeBrowser is an in-process hermetic browser for tests and CODEHELPER_BROWSER_FIXTURE.
+// FakeBrowser is an in-process hermetic browser for tests and QCODE_BROWSER_FIXTURE.
 type FakeBrowser struct {
 	mu       sync.Mutex
 	url      string

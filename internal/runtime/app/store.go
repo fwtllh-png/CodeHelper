@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type EventStore interface {

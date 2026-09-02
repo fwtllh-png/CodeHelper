@@ -12,8 +12,8 @@ import (
 	"io"
 	"maps"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	toolresult "github.com/fwtllh-png/QCode/internal/adapter/tool/result"
 )
 
 type Decoder[I any] func(json.RawMessage) (I, error)

@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestAmendAddsOnePathWithoutRemovingDenies(t *testing.T) {
@@ -48,7 +48,7 @@ func TestAmendRejectsControlPlaneAndCrossProfileRequest(t *testing.T) {
 			Kind: AdditionalPathWrite,
 			Resource: filepath.Join(
 				input.SandboxPolicy.WorkspaceRoot,
-				".codehelper",
+				".qcode",
 				"permissions.toml",
 			),
 		},

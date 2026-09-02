@@ -42,7 +42,7 @@ Receipt，直到唯一 Terminal Event。
 
 ## 前置知识
 
-阅读 [CodeHelper 全局架构](./02-system-architecture.md)。
+阅读 [QCode 全局架构](./02-system-architecture.md)。
 
 ## 问题背景
 
@@ -206,7 +206,7 @@ Overflow、Late、Duplicate、Kind Mismatch 都返回结构化错误。
 ## 设计取舍与替代方案
 
 只输出文本无法表达 Approval、Tool、Usage 和 Recovery；把可变状态放在 UI 会让
-Runtime 失去权威事实。CodeHelper 选择更丰富的 Event Model，以支持可靠重连与 Replay。
+Runtime 失去权威事实。QCode 选择更丰富的 Event Model，以支持可靠重连与 Replay。
 
 ## 失败模式与安全边界
 

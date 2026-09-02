@@ -20,7 +20,7 @@ func TestRepositoryHotspotBaseline(t *testing.T) {
 func TestCheckHotspotAcceptsMovedResponsibilitiesWithinPackage(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "internal/example/orchestrator.go", `package example
-import "github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+import "github.com/fwtllh-png/QCode/internal/runtime/protocol"
 type Model struct{}
 func Run() {}
 `)
@@ -53,7 +53,7 @@ func Update() {}
 func TestCheckHotspotRejectsBoundaryDrift(t *testing.T) {
 	root := t.TempDir()
 	writeTestFile(t, root, "internal/example/hotspot.go", `package example
-import "github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+import "github.com/fwtllh-png/QCode/internal/adapter/provider"
 func Run() {}
 `)
 

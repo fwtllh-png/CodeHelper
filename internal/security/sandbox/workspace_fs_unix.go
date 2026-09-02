@@ -95,7 +95,7 @@ func (w *Workspace) AtomicWrite(name string, data []byte, mode fs.FileMode) erro
 		if _, err := rand.Read(suffix); err != nil {
 			return err
 		}
-		temporary = ".codehelper-write-" + hex.EncodeToString(suffix)
+		temporary = ".qcode-write-" + hex.EncodeToString(suffix)
 		fd, openErr := unix.Openat(
 			int(parent.Fd()), temporary,
 			unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW,

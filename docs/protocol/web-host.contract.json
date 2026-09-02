@@ -1,6 +1,6 @@
 {
-  "contract_id": "https://codehelper.dev/contracts/web-host-v1.json",
-  "title": "CodeHelper Web Host transport contract manifest",
+  "contract_id": "https://qcode.dev/contracts/web-host-v1.json",
+  "title": "QCode Web Host transport contract manifest",
   "protocol_version": 1,
   "loopback_only": true,
   "same_origin_only": true,

@@ -6,17 +6,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	contract "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/runtimecontract"
-	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
-	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
-	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/config"
+	contract "github.com/fwtllh-png/QCode/internal/host/runtimeapi/runtimecontract"
+	threadstate "github.com/fwtllh-png/QCode/internal/host/runtimeapi/thread"
+	runtimeview "github.com/fwtllh-png/QCode/internal/host/runtimeapi/view"
+	usagestate "github.com/fwtllh-png/QCode/internal/observability/usage"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/wire"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestRuntimeApplicationMeetsTheHostContract(t *testing.T) {

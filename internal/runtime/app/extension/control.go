@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/extensioncontrol"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	skillruntime "github.com/fwtllh-png/QCode/internal/adapter/skill"
+	"github.com/fwtllh-png/QCode/internal/persist/extensioncontrol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type SkillService struct {

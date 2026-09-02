@@ -13,20 +13,20 @@
 ## 2. 安装并启动
 
 ```bash
-git clone https://github.com/fwtllh-png/CodeHelper.git
-cd CodeHelper
+git clone https://github.com/fwtllh-png/QCode.git
+cd QCode
 make install
 cd /path/to/your/project
-codehelper
+qcode
 ```
 
 `make install` 会依次安装 Web 依赖、构建静态资源和 Go 二进制，再原子安装到
-`~/.local/bin/codehelper`。二进制包含 Web 静态资源，运行期间不依赖源码目录或独立
-前端服务。安装后在任意项目目录执行 `codehelper`，当前目录即为 Workspace；无配置
+`~/.local/bin/qcode`。二进制包含 Web 静态资源，运行期间不依赖源码目录或独立
+前端服务。安装后在任意项目目录执行 `qcode`，当前目录即为 Workspace；无配置
 启动默认启用受 Guard 管理的内置工具，并使用 `auto` 审批姿态。
 
 同一用户只运行一个本机 Web Supervisor。之后在另一个项目目录再次执行
-`codehelper`，命令会把该目录注册为新的 Workspace、打开带 Workspace 定位参数的已有
+`qcode`，命令会把该目录注册为新的 Workspace、打开带 Workspace 定位参数的已有
 页面并正常退出。每个 Workspace 拥有独立 Runtime、Sandbox、Tool Registry、索引、
 后台调度器和事件投影；页面侧栏会同时展示所有已注册 Workspace 及其 Session。
 
@@ -66,19 +66,19 @@ Connection 页面重新提交显式元数据并重启 Runtime。Web 只监听 `1
 
 ```bash
 cd /path/to/project
-codehelper
+qcode
 ```
 
 不传 `--workspace` 时使用当前目录；不传 `--config`、`--provider` 或 `--model` 时，
 Web 进入首次引导，不会选择默认路由。支持的启动参数见[Web 使用指南](./usage.md)；
-`codehelper --help` 是当前 Binary 的参数事实。
+`qcode --help` 是当前 Binary 的参数事实。
 
 ## 5. 使用 Fixture
 
 无需凭证和网络即可启动真实 Runtime 与 Web Transport：
 
 ```bash
-./bin/codehelper \
+./bin/qcode \
   --provider-fixture ./testdata/providers/openai \
   --provider openai \
   --model gpt-fixture \

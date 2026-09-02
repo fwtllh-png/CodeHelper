@@ -4,11 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
-	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
+	appextension "github.com/fwtllh-png/QCode/internal/runtime/app/extension"
 	"strconv"
 
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func postTurnNarrativeAllowed(terminal protocol.EventData) bool {

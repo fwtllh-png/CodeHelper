@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // GraphEdge is the durable Agent Node snapshot used to rebuild a tree.

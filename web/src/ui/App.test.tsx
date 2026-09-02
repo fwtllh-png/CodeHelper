@@ -36,7 +36,7 @@ Object.defineProperty(URL, "revokeObjectURL", {
 afterEach(() => {
   cleanup();
   clipboardWrite.mockClear();
-  document.title = "CodeHelper";
+  document.title = "QCode";
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -202,7 +202,7 @@ describe("projectTranscript", () => {
     const client = mockClient(value);
     render(<App client={client} />);
 
-    fireEvent.change(screen.getByPlaceholderText("Ask CodeHelper"), {
+    fireEvent.change(screen.getByPlaceholderText("Ask QCode"), {
       target: {value: "Run the remaining checks"}
     });
     const buttons = screen.getAllByRole("button", {name: "Continue"});
@@ -229,7 +229,7 @@ describe("projectTranscript", () => {
     const client = mockClient(value);
     render(<App client={client} />);
 
-    fireEvent.change(screen.getByPlaceholderText("Ask CodeHelper"), {
+    fireEvent.change(screen.getByPlaceholderText("Ask QCode"), {
       target: {value: "Continue with the remaining implementation"}
     });
     const buttons = screen.getAllByRole("button", {name: "Continue"});
@@ -697,7 +697,7 @@ describe("projectTranscript", () => {
     });
     render(<App client={client} />);
 
-    expect(document.title).toBe("(1) Working · CodeHelper");
+    expect(document.title).toBe("(1) Working · QCode");
     const backgroundRow = screen.getByText("Private prompt title")
       .closest(".sessionRow");
     expect(backgroundRow?.querySelector('[title="Running"]')).toBeTruthy();
@@ -734,9 +734,9 @@ describe("projectTranscript", () => {
     });
 
     await waitFor(() => expect(TestNotification.instances).toHaveLength(1));
-    expect(document.title).toBe("(1) Action required · CodeHelper");
+    expect(document.title).toBe("(1) Action required · QCode");
     expect(TestNotification.instances[0]).toMatchObject({
-      title: "CodeHelper needs approval",
+      title: "QCode needs approval",
       options: {
         body: "A background Session is waiting for approval."
       }
@@ -858,7 +858,7 @@ describe("projectTranscript", () => {
     render(<App client={client} />);
 
     expect(screen.queryByPlaceholderText("Create a chat to begin")).toBeNull();
-    expect(screen.queryByPlaceholderText("Ask CodeHelper")).toBeNull();
+    expect(screen.queryByPlaceholderText("Ask QCode")).toBeNull();
     expect(screen.getByRole("heading", {name: "Start a new session"})).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Create session"}));
 
@@ -908,7 +908,7 @@ describe("projectTranscript", () => {
     const client = mockClient(value);
     render(<App client={client} />);
 
-    expect(screen.getByRole("button", {name: "Start CodeHelper"}))
+    expect(screen.getByRole("button", {name: "Start QCode"}))
       .toHaveProperty("disabled", true);
     fireEvent.change(screen.getByLabelText("Provider"), {
       target: {value: "deepseek"}
@@ -923,11 +923,11 @@ describe("projectTranscript", () => {
     expect(screen.getByText(
       "Enter the API key value, not an environment assignment."
     )).toBeTruthy();
-    expect(screen.getByRole("button", {name: "Start CodeHelper"}))
+    expect(screen.getByRole("button", {name: "Start QCode"}))
       .toHaveProperty("disabled", true);
 
     fireEvent.change(key, {target: {value: "sk-live"}});
-    fireEvent.click(screen.getByRole("button", {name: "Start CodeHelper"}));
+    fireEvent.click(screen.getByRole("button", {name: "Start QCode"}));
 
     await waitFor(() => {
       expect(client.completeSetup).toHaveBeenCalledWith({
@@ -970,7 +970,7 @@ describe("projectTranscript", () => {
     fireEvent.click(screen.getByRole("button", {name: "Detect model"}));
     expect(await screen.findByLabelText("Reasoning efforts")).toBeTruthy();
     expect(screen.getByLabelText("Default reasoning effort")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", {name: "Start CodeHelper"}));
+    fireEvent.click(screen.getByRole("button", {name: "Start QCode"}));
 
     await waitFor(() => {
       expect(client.completeSetup).toHaveBeenCalledWith({
@@ -1491,7 +1491,7 @@ describe("projectTranscript", () => {
 
   it("keeps credential values in the keyring control flow", async () => {
     const status = {
-      reference: {kind: "keyring", name: "codehelper"},
+      reference: {kind: "keyring", name: "qcode"},
       configured: true,
       validation: "valid" as const,
       validated_at: "2026-01-01T00:00:00Z",
@@ -1512,7 +1512,7 @@ describe("projectTranscript", () => {
     fireEvent.click(screen.getByRole("button", {name: "Connection"}));
     await screen.findByText("valid");
     expect(screen.getByText("Runtime restart required")).toBeTruthy();
-    expect(screen.getByText("Reference: codehelper")).toBeTruthy();
+    expect(screen.getByText("Reference: qcode")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Provider credential"), {
       target: {value: "fixture-credential"}
     });
@@ -1773,13 +1773,13 @@ describe("projectTranscript", () => {
     const value = snapshot();
     const client = mockClient(value);
     const view = render(<App client={client} />);
-    const textarea = screen.getByPlaceholderText("Ask CodeHelper");
+    const textarea = screen.getByPlaceholderText("Ask QCode");
 
     value.events = [event(1, "turn.started", {display_prompt: "Hello"})];
     value.conversation = projectConversation(value.events);
     view.rerender(<App client={client} />);
 
-    expect(screen.getByPlaceholderText("Ask CodeHelper")).toBe(textarea);
+    expect(screen.getByPlaceholderText("Ask QCode")).toBe(textarea);
     expect(screen.getByRole("button", {name: "Chat"})).toBeTruthy();
   });
 
@@ -1808,7 +1808,7 @@ describe("projectTranscript", () => {
     const client = mockClient(value);
     render(<App client={client} />);
 
-    const composer = await screen.findByPlaceholderText("Ask CodeHelper");
+    const composer = await screen.findByPlaceholderText("Ask QCode");
     fireEvent.change(composer, {target: {value: "Focus on the parser"}});
 
     expect(screen.getByRole("button", {name: "Stop turn"})).toBeTruthy();
@@ -1879,7 +1879,7 @@ describe("projectTranscript", () => {
     render(<App client={mockClient(value)} />);
 
     expect(screen.getByRole("status").textContent).toContain("Paused");
-    expect(document.title).toBe("(1) Paused · CodeHelper");
+    expect(document.title).toBe("(1) Paused · QCode");
     expect(screen.queryByRole("button", {name: "Stop turn"})).toBeNull();
   });
 
@@ -1902,7 +1902,7 @@ describe("projectTranscript", () => {
     expect(screen.queryByText("Deep diving...")).toBeNull();
     expect(screen.queryByText("Working")).toBeNull();
     expect(screen.queryByRole("button", {name: "Stop turn"})).toBeNull();
-    expect(screen.queryByPlaceholderText("Ask CodeHelper")).toBeNull();
+    expect(screen.queryByPlaceholderText("Ask QCode")).toBeNull();
   });
 
   it("queues Enter during an active turn and exposes queue item actions", async () => {
@@ -1921,7 +1921,7 @@ describe("projectTranscript", () => {
     const client = mockClient(value);
     render(<App client={client} />);
 
-    const composer = await screen.findByPlaceholderText("Ask CodeHelper");
+    const composer = await screen.findByPlaceholderText("Ask QCode");
     fireEvent.change(composer, {target: {value: "Check the parser"}});
     fireEvent.keyDown(composer, {key: "Enter"});
     await waitFor(() => {
@@ -2136,7 +2136,7 @@ describe("projectTranscript", () => {
     render(<App client={mockClient(value)} />);
 
     expect(screen.getByText("Loading")).toBeTruthy();
-    expect(screen.getByPlaceholderText("Ask CodeHelper"))
+    expect(screen.getByPlaceholderText("Ask QCode"))
       .toHaveProperty("disabled", true);
     expect(screen.getByRole("button", {name: "Attach files"}))
       .toHaveProperty("disabled", true);
@@ -2219,7 +2219,7 @@ describe("projectTranscript", () => {
     const inputClick = vi.spyOn(HTMLInputElement.prototype, "click");
     render(<App client={client} />);
 
-    const composer = screen.getByPlaceholderText("Ask CodeHelper");
+    const composer = screen.getByPlaceholderText("Ask QCode");
     fireEvent.change(composer, {target: {value: "/att"}});
 
     let search = await screen.findByRole("searchbox", {name: "Search commands"});
@@ -2258,7 +2258,7 @@ describe("projectTranscript", () => {
     const picker = container.querySelector<HTMLInputElement>(
       'input[type="file"][aria-label="Attach files"]'
     );
-    const composer = screen.getByPlaceholderText("Ask CodeHelper");
+    const composer = screen.getByPlaceholderText("Ask QCode");
     const surface = container.querySelector<HTMLElement>(".composer");
     expect(picker).toBeTruthy();
     expect(surface).toBeTruthy();
@@ -2310,7 +2310,7 @@ describe("projectTranscript", () => {
 
     expect(await screen.findByText(/not a supported text or image attachment/))
       .toBeTruthy();
-    const composer = screen.getByPlaceholderText("Ask CodeHelper");
+    const composer = screen.getByPlaceholderText("Ask QCode");
     fireEvent.change(composer, {target: {value: "Inspect this archive"}});
     expect(screen.getByRole("button", {name: "Send"}))
       .toHaveProperty("disabled", true);
@@ -2359,7 +2359,7 @@ describe("projectTranscript", () => {
   it("does not submit while an IME composition is active", async () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);
-    const composer = screen.getByPlaceholderText("Ask CodeHelper");
+    const composer = screen.getByPlaceholderText("Ask QCode");
     fireEvent.change(composer, {target: {value: "检查解析器"}});
     fireEvent.compositionStart(composer);
     fireEvent.keyDown(composer, {key: "Enter"});
@@ -2399,7 +2399,7 @@ describe("projectTranscript", () => {
     try {
       render(<App client={mockClient(snapshot())} />);
       const composer = screen.getByPlaceholderText(
-        "Ask CodeHelper"
+        "Ask QCode"
       ) as HTMLTextAreaElement;
       Object.defineProperty(composer, "scrollHeight", {
         configurable: true,
@@ -2717,7 +2717,7 @@ function snapshot(events: RuntimeEvent[] = []): RuntimeSnapshot {
       name: "read_file",
       description: "Read a file",
       source_kind: "builtin",
-      source_label: "CodeHelper",
+      source_label: "QCode",
       capability: "read",
       access_mode: "read",
       risk_level: "read",

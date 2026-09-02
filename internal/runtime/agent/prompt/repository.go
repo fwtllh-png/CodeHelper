@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/repository"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/repository"
 )
 
 // RepositoryOptions configures the volatile repository context appended to a

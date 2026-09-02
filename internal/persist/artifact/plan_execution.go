@@ -3,8 +3,8 @@ package artifact
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/plandrift"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/plandrift"
 )
 
 func (r *Service) PrepareStartPayload(

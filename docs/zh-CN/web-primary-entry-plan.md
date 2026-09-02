@@ -5,7 +5,7 @@
 
 ## 产品边界
 
-`codehelper` 直接启动唯一的交互入口。它在一个 Go 进程内构造持久化 Runtime，提供：
+`qcode` 直接启动唯一的交互入口。它在一个 Go 进程内构造持久化 Runtime，提供：
 
 - 编译进 Binary 的 React 静态资源；
 - 严格类型化的同源 HTTP RPC；

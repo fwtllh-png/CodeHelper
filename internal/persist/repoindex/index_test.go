@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
+	"github.com/fwtllh-png/QCode/internal/platform/repowalk"
+	"github.com/fwtllh-png/QCode/internal/platform/symbols"
 )
 
 func TestEnsureBuildsThenRefreshesOnlyWhatChanged(t *testing.T) {

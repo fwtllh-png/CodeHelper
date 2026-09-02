@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
-	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/testutil/tooltest"
 )
 
 type passthroughBackend struct{}

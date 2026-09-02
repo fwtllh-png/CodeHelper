@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
 )
 
 func BenchmarkOR0ResidentAgents(b *testing.B) {

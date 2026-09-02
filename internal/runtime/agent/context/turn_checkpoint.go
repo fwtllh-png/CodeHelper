@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 const (
-	CheckpointMarkerStart = "<codehelper_turn_checkpoint>"
-	CheckpointMarkerEnd   = "</codehelper_turn_checkpoint>"
+	CheckpointMarkerStart = "<qcode_turn_checkpoint>"
+	CheckpointMarkerEnd   = "</qcode_turn_checkpoint>"
 
 	CheckpointCompleted = "completed"
 	CheckpointFailed    = "failed"

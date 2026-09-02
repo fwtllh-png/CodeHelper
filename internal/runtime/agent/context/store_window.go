@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // WindowLedger is the durable token baseline for one compaction window.
@@ -67,32 +67,31 @@ func WindowThresholds(policy WindowPolicy, hardInputCapacity uint64) (uint64, ui
 }
 
 type BudgetSnapshot struct {
-	WindowID             string `json:"window_id,omitempty"`
-	WindowNumber         uint64 `json:"window_number,omitempty"`
-	Observed             bool   `json:"observed,omitempty"`
-	ActiveTokens         uint64 `json:"active_tokens"`
-	FullActiveTokens     uint64 `json:"full_active_tokens,omitempty"`
-	PrefillTokens        uint64 `json:"prefill_tokens,omitempty"`
-	BodyTokens           uint64 `json:"body_tokens,omitempty"`
-	ToolDefinitionTokens uint64 `json:"tool_definition_tokens,omitempty"`
-	PendingTokens        uint64 `json:"pending_tokens,omitempty"`
-	OutputReserve        uint64 `json:"output_reserve,omitempty"`
-	HardInputTokens      uint64 `json:"hard_input_tokens,omitempty"`
-	LimitSource          string `json:"limit_source,omitempty"`
-	OutputSource         string `json:"output_source,omitempty"`
-	AutoCompactTokens       uint64 `json:"auto_compact_tokens"`
-	PrepareTokens           uint64 `json:"prepare_tokens,omitempty"`
-	EmergencyTokens         uint64 `json:"emergency_tokens,omitempty"`
-	RecentTailTurns         int    `json:"recent_tail_turns,omitempty"`
-	KeepRecentToolResults   int    `json:"keep_recent_tool_results,omitempty"`
-	HistoryTokenCeiling     uint64 `json:"history_token_ceiling,omitempty"`
-	Digest                  string `json:"digest,omitempty"`
-	NarrativeMode           string `json:"narrative_mode,omitempty"`
-	EstimatedTokens         uint64 `json:"estimated_tokens,omitempty"`
-	MaxContextTokens     uint64 `json:"max_context_tokens,omitempty"`
-	Compactions          int    `json:"compactions"`
+	WindowID              string `json:"window_id,omitempty"`
+	WindowNumber          uint64 `json:"window_number,omitempty"`
+	Observed              bool   `json:"observed,omitempty"`
+	ActiveTokens          uint64 `json:"active_tokens"`
+	FullActiveTokens      uint64 `json:"full_active_tokens,omitempty"`
+	PrefillTokens         uint64 `json:"prefill_tokens,omitempty"`
+	BodyTokens            uint64 `json:"body_tokens,omitempty"`
+	ToolDefinitionTokens  uint64 `json:"tool_definition_tokens,omitempty"`
+	PendingTokens         uint64 `json:"pending_tokens,omitempty"`
+	OutputReserve         uint64 `json:"output_reserve,omitempty"`
+	HardInputTokens       uint64 `json:"hard_input_tokens,omitempty"`
+	LimitSource           string `json:"limit_source,omitempty"`
+	OutputSource          string `json:"output_source,omitempty"`
+	AutoCompactTokens     uint64 `json:"auto_compact_tokens"`
+	PrepareTokens         uint64 `json:"prepare_tokens,omitempty"`
+	EmergencyTokens       uint64 `json:"emergency_tokens,omitempty"`
+	RecentTailTurns       int    `json:"recent_tail_turns,omitempty"`
+	KeepRecentToolResults int    `json:"keep_recent_tool_results,omitempty"`
+	HistoryTokenCeiling   uint64 `json:"history_token_ceiling,omitempty"`
+	Digest                string `json:"digest,omitempty"`
+	NarrativeMode         string `json:"narrative_mode,omitempty"`
+	EstimatedTokens       uint64 `json:"estimated_tokens,omitempty"`
+	MaxContextTokens      uint64 `json:"max_context_tokens,omitempty"`
+	Compactions           int    `json:"compactions"`
 }
-
 
 func NewWindowLedger(id string, number uint64) (WindowLedger, error) {
 	if id == "" || number == 0 {

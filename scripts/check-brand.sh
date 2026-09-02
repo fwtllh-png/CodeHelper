@@ -77,8 +77,8 @@ if [ -n "${BRAND_CHECK_BINARY:-}" ]; then
 	binary=$BRAND_CHECK_BINARY
 else
 	tmp=$(mktemp -d)
-	binary="$tmp/codehelper"
-	go build -trimpath -o "$binary" ./cmd/codehelper
+	binary="$tmp/qcode"
+	go build -trimpath -o "$binary" ./cmd/qcode
 fi
 
 scan_binary "$binary"

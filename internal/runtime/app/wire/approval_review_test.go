@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/config"
+	"github.com/fwtllh-png/QCode/internal/config"
 )
 
 func TestApprovalAutoReviewKillSwitchWiring(t *testing.T) {
-	t.Setenv("CODEHELPER_DISABLE_APPROVAL_AUTO_REVIEW", "1")
+	t.Setenv("QCODE_DISABLE_APPROVAL_AUTO_REVIEW", "1")
 	workspace := t.TempDir()
 	tools := true
 	session, err := NewExec(t.Context(), withNonDurableTestJournal(t, ExecOptions{

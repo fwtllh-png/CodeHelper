@@ -10,12 +10,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/processbroker"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 type RuntimeAuthority struct {
@@ -262,7 +262,7 @@ func mcpNetworkTargets(profile *PermissionProfile) []string {
 func mcpHiddenPaths(workspace string) []string {
 	var paths []string
 	for _, name := range []string{
-		".agents", ".codehelper", ".codehelper-worktree", ".codex", ".git",
+		".agents", ".qcode", ".qcode-worktree", ".codehelper", ".codehelper-worktree", ".codex", ".git",
 	} {
 		path := filepath.Join(workspace, name)
 		if _, err := os.Lstat(path); err == nil {

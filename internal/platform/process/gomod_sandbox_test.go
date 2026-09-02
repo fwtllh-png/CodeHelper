@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestGoModuleCacheWritableInSandbox(t *testing.T) {

@@ -5,13 +5,13 @@
 配置从低到高按以下顺序解析：
 
 ```text
-内置默认值 < TOML 文件 < CODEHELPER_* 环境变量 < Web 启动参数
+内置默认值 < TOML 文件 < QCODE_* 环境变量 < Web 启动参数
 ```
 
 启动时通过 `--config` 指定文件；解析或校验失败会显示在 Web Boot Failure Surface：
 
 ```bash
-codehelper --config ./codehelper.toml --workspace . --open
+qcode --config ./qcode.toml --workspace . --open
 ```
 
 MCP Server 定义使用独立、严格且带版本的 JSON 文件，不属于 Runtime TOML 控制面。
@@ -28,13 +28,13 @@ event_history = 256
 subscriber_buffer = 64
 
 [state]
-data_dir = "/absolute/path/outside/workspace/codehelper-state"
+data_dir = "/absolute/path/outside/workspace/qcode-state"
 busy_timeout = "5s"
 event_retention = 1000000
 
 [memory]
 enabled = false
-path = ".codehelper/memory"
+path = ".qcode/memory"
 max_candidates = 32
 max_prompt_bytes = 16384
 semantic_rerank = false
@@ -284,7 +284,7 @@ Contract 的交集，Read-only Role 固定使用 `never`。在 `suggest` 下，C
 Runtime 将决定路由到权威 Child Thread，并在重启后保留 Pending Approval。Deny 会向
 Child 返回结构化 Problem 与 `approval_denied` Tool Result。
 
-CodeHelper 在二进制中内置版本化的 `system-code-review`、`system-debugging`、
+QCode 在二进制中内置版本化的 `system-code-review`、`system-debugging`、
 `system-refactor` 和 `system-test-expansion` Skill。它们提供领域工作流及 Subagent
 拆分建议，不承载安全或委派授权。Skill 同名覆盖顺序为 Workspace、显式配置目录、
 User、Builtin；因此项目可以替换默认工作流。Builtin Skill 可通过现有 Skill Control
@@ -356,7 +356,7 @@ Token。它与模型 Context Window、`budget_tokens` / `turn_budget_tokens` 经
 不会静默重探同一 Digest，也不会改写 Durable History。滚动窗口不足时等待，累计
 等待将超过 `execution.rate_limit_wait` 时同样先折叠一次，仍不足则拒绝
 （`wait_exceeds_budget`）。通用 `RateLimit-Remaining` 不当作 Token 合同。Host
-不实现 Governor。该字段可由 `CODEHELPER_TOKENS_PER_MINUTE` 覆盖。
+不实现 Governor。该字段可由 `QCODE_TOKENS_PER_MINUTE` 覆盖。
 
 `context.view.narrative_mode=post_turn` 仅在 `turn.completed` 之后通过 `route.summary` 生成独立的
 结构化 Continuation Checkpoint，不阻塞下一轮 Sample。Checkpoint 保留文件与
@@ -385,19 +385,19 @@ Rate Limit Recovery Budget 约束：
   不会被瞬时故障的单次 Delay Cap 截短后立即重探同一请求。等待可取消，且不占用
   Provider 并发槽。
 
-上述字段可通过 `CODEHELPER_PROVIDER_RETRY_LIMIT`、
-`CODEHELPER_RATE_LIMIT_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_WAIT` 和
-`CODEHELPER_TOKENS_PER_MINUTE` 覆盖。账户硬配额
+上述字段可通过 `QCODE_PROVIDER_RETRY_LIMIT`、
+`QCODE_RATE_LIMIT_RETRY_LIMIT`、`QCODE_RATE_LIMIT_WAIT` 和
+`QCODE_TOKENS_PER_MINUTE` 覆盖。账户硬配额
 错误仍立即停止。等待由 Runtime 调度，不要求模型或用户轮询。
 
 `execution.lease_timeout` 是 Guard 完成授权到 Executor 消费 Execution Lease 之间的
-公开上限，可由 `CODEHELPER_LEASE_TIMEOUT` 或受信配置覆盖。调用 Context 的 Deadline
+公开上限，可由 `QCODE_LEASE_TIMEOUT` 或受信配置覆盖。调用 Context 的 Deadline
 更早时使用更早值。Lease 被消费后，运行中进程的 Timeout、Cancel、Wait 和 Reap 由
 Executor/Broker 生命周期负责，不能因为 Lease 到期而放弃回收。
 
 `execution.approval_timeout` 是等待人工审批的可选墙钟上限。默认 `0`，审批请求随
 Turn 或 Session 的取消而结束，不会因用户暂时离开页面而自动阻断 Turn。受监管环境
-可设置非零时长，或通过 `CODEHELPER_APPROVAL_TIMEOUT` 覆盖；到期请求仍按
+可设置非零时长，或通过 `QCODE_APPROVAL_TIMEOUT` 覆盖；到期请求仍按
 `approval_expired` Fail Closed，不能在过期后执行。
 
 这些 Convergence Budget 不等于物理边界或用户配置的硬上限。Runtime 不会越过
@@ -511,7 +511,7 @@ Suite。每个 `turn.verification` Check 都包含命令推导原因。无法识
 
 ## 状态与持久化
 
-默认用户数据目录为 `~/.codehelper/v1`。工作区可通过 `--data-dir` 或
+默认用户数据目录为 `~/.qcode/v1`。工作区可通过 `--data-dir` 或
 `[state].data_dir` 使用独立目录。State Directory 不能位于 Workspace 内部，也不能
 包含 Workspace；启用 Durable Journal 时缺少外部 State Store 会导致 Runtime
 Fail Closed。
@@ -581,20 +581,20 @@ Lexical Repository Index。结果始终标注 `resolution`、`source`、`version
 
 | 变量族 | 字段 |
 | --- | --- |
-| `CODEHELPER_PROVIDER`、`CODEHELPER_MODEL`、`CODEHELPER_PROTOCOL` | 主模型路由 |
-| `CODEHELPER_MODE`、`CODEHELPER_WORKSPACE`、`CODEHELPER_TOOLS` | 执行行为 |
-| `CODEHELPER_MAX_*`、`CODEHELPER_TIMEOUT`、`CODEHELPER_LEASE_TIMEOUT`、`CODEHELPER_CONNECTION_TIMEOUT`、`CODEHELPER_TLS_HANDSHAKE_TIMEOUT`、`CODEHELPER_RESPONSE_HEADER_TIMEOUT`、`CODEHELPER_IDLE_TIMEOUT`、`CODEHELPER_PROVIDER_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_RETRY_LIMIT`、`CODEHELPER_RATE_LIMIT_WAIT`、`CODEHELPER_TOKENS_PER_MINUTE` | 限制 |
-| `CODEHELPER_BUDGET_TOKENS`、`CODEHELPER_BUDGET_USD` | 会话预算 |
-| `CODEHELPER_SUBAGENT_*` | 委派模式、Tree 限制、Child 预算、Wall Time 与 Workspace 策略 |
-| `CODEHELPER_VERIFY_*` | 验证行为 |
-| `CODEHELPER_STATE_*` | 持久化 |
-| `CODEHELPER_LOG_LEVEL` | 结构化 Runtime Log |
-| `CODEHELPER_CREDENTIAL_KIND`、`CODEHELPER_CREDENTIAL_NAME` | Secret 引用 |
-| `CODEHELPER_INDEX_*`、`CODEHELPER_REPO_MAP_*` | 仓库上下文 |
-| `CODEHELPER_WORKING_SET_*`、`CODEHELPER_EVIDENCE_*` | 会话上下文 |
-| `CODEHELPER_VIEW_*` | 模型可见工作集（tail / residual / digest / narrative） |
-| `CODEHELPER_COMPACT_*` | 显式 Replacement 与 Digest 生成上限 |
-| `CODEHELPER_VISION_*`、`CODEHELPER_WEB_SEARCH_BACKEND` | 专用 Adapter |
+| `QCODE_PROVIDER`、`QCODE_MODEL`、`QCODE_PROTOCOL` | 主模型路由 |
+| `QCODE_MODE`、`QCODE_WORKSPACE`、`QCODE_TOOLS` | 执行行为 |
+| `QCODE_MAX_*`、`QCODE_TIMEOUT`、`QCODE_LEASE_TIMEOUT`、`QCODE_CONNECTION_TIMEOUT`、`QCODE_TLS_HANDSHAKE_TIMEOUT`、`QCODE_RESPONSE_HEADER_TIMEOUT`、`QCODE_IDLE_TIMEOUT`、`QCODE_PROVIDER_RETRY_LIMIT`、`QCODE_RATE_LIMIT_RETRY_LIMIT`、`QCODE_RATE_LIMIT_WAIT`、`QCODE_TOKENS_PER_MINUTE` | 限制 |
+| `QCODE_BUDGET_TOKENS`、`QCODE_BUDGET_USD` | 会话预算 |
+| `QCODE_SUBAGENT_*` | 委派模式、Tree 限制、Child 预算、Wall Time 与 Workspace 策略 |
+| `QCODE_VERIFY_*` | 验证行为 |
+| `QCODE_STATE_*` | 持久化 |
+| `QCODE_LOG_LEVEL` | 结构化 Runtime Log |
+| `QCODE_CREDENTIAL_KIND`、`QCODE_CREDENTIAL_NAME` | Secret 引用 |
+| `QCODE_INDEX_*`、`QCODE_REPO_MAP_*` | 仓库上下文 |
+| `QCODE_WORKING_SET_*`、`QCODE_EVIDENCE_*` | 会话上下文 |
+| `QCODE_VIEW_*` | 模型可见工作集（tail / residual / digest / narrative） |
+| `QCODE_COMPACT_*` | 显式 Replacement 与 Digest 生成上限 |
+| `QCODE_VISION_*`、`QCODE_WEB_SEARCH_BACKEND` | 专用 Adapter |
 
 权威列表位于 `internal/config/environment.go` 的环境变量应用逻辑。
 

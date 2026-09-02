@@ -5,13 +5,13 @@
 | 术语 | 推荐解释 | 使用约束 |
 | --- | --- | --- |
 | Agent | 使用模型、上下文、工具和状态，经过一个或多个步骤追求目标的系统。 | 不能只用它指代模型。 |
-| Agent loop | 模型推理、Tool Request、Tool Result 和继续执行组成的受控循环。 | 在 CodeHelper 中属于 `internal/runtime/agent`。 |
+| Agent loop | 模型推理、Tool Request、Tool Result 和继续执行组成的受控循环。 | 在 QCode 中属于 `internal/runtime/agent`。 |
 | Approval（审批） | 人类对有后果操作作出的授权或拒绝决定。 | Approval 不能替代安全硬约束。 |
-| Automation（自动化） | 由外部调度系统按时间或事件触发的工作。 | 当前 CodeHelper Runtime 不内置自动化调度器。 |
+| Automation（自动化） | 由外部调度系统按时间或事件触发的工作。 | 当前 QCode Runtime 不内置自动化调度器。 |
 | Capability（能力） | Model、Provider、Runtime 或 Host 声明支持的功能。 | 例如 Streaming 与 Tool Call。 |
 | Catalog（目录） | 用于发现 Model、Tool 或书籍章节的结构化注册表。 | 必须说明具体是哪一种 Catalog。 |
 | Checkpoint（检查点） | 用于 State-only Restore/Fork 的不可变 Session History/Profile Artifact。 | 不表示后台工作流进度。 |
-| Constitution（宪法约束） | 不可绕过的 Runtime Tool 执行规则。 | 保留 CodeHelper 类型的英文名称。 |
+| Constitution（宪法约束） | 不可绕过的 Runtime Tool 执行规则。 | 保留 QCode 类型的英文名称。 |
 | Context（上下文） | 当前推理时提供给模型的信息。 | 与持久状态、模型训练数据区分。 |
 | Context compaction（上下文压缩） | 在保留后续工作所需信息的同时缩小 Context。 | 必须说明信息损失取舍。 |
 | Credential reference（凭证引用） | 指向环境变量、受保护文件或 OS Keyring 的非 Secret 引用。 | TOML 保存引用，不保存 Secret。 |
@@ -40,17 +40,17 @@
 | Skill（技能） | 通过扩展系统加载的指令或过程能力。 | Skill 不能绕过 Runtime 治理。 |
 | Snapshot（快照） | 用于加速恢复或检查的物化状态镜像。 | 必须解释与 Event Source 的一致性。 |
 | Span（跨度） | Trace 内部有时间范围的嵌套工作单元。 | 用于可观测性，不是产品状态。 |
-| Task（任务） | 用户希望 Agent 完成的目标。 | 当前 CodeHelper 不把它实现为后台队列记录。 |
+| Task（任务） | 用户希望 Agent 完成的目标。 | 当前 QCode 不把它实现为后台队列记录。 |
 | Terminal Measurement Snapshot | Terminal Convergence 时只冻结一次的 Digested Usage/Latency Fact。 | Receipt、Trace 与 Terminal Envelope 共享它。 |
 | Tool（工具） | 模型可以请求、用于检查或影响环境的类型化能力。 | 有后果的 Tool 必须经过 Guard。 |
 | Trace（追踪） | 关联 Span 与 Runtime Identity 的端到端可观测记录。 | 不嵌入 Secret 或原始敏感数据。 |
 | Turn（轮次） | 一次 User 到 Agent 的交互，可以包含多个模型和 Tool Step。 | 与单次 Inference Request 区分。 |
 | Verification（验证） | 检查工作是否满足验收条件并产生证据的过程。 | Tool Call 成功本身不等于验证。 |
 | Wire ID | 通过传输协议发送给 Provider 的 Model Identifier。 | 可能与 Catalog Model ID 不同。 |
-| Worker（工作进程） | 在外部调度系统中领取并执行后台工作的进程。 | 当前 CodeHelper Runtime 不内置 Worker。 |
-| WorkGraph | 用 Run/Node/Attempt 表示持久后台工作的图模型。 | 已从当前 CodeHelper Runtime 移除。 |
+| Worker（工作进程） | 在外部调度系统中领取并执行后台工作的进程。 | 当前 QCode Runtime 不内置 Worker。 |
+| WorkGraph | 用 Run/Node/Attempt 表示持久后台工作的图模型。 | 已从当前 QCode Runtime 移除。 |
 | Workflow（工作流） | 外部系统编排的多步骤过程。 | 当前 Runtime 使用 Plan 与 Subagent，不内置 Workflow 引擎。 |
-| Workspace（工作区） | CodeHelper 操作的 Repository 或 Directory 边界。 | Identity 与 Trust 都按它划分。 |
+| Workspace（工作区） | QCode 操作的 Repository 或 Directory 边界。 | Identity 与 Trust 都按它划分。 |
 
 ## 翻译与风格
 

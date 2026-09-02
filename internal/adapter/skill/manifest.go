@@ -24,7 +24,7 @@ type Manifest struct {
 	SchemaVersion int               `toml:"schema_version" json:"schema_version"`
 	Name          string            `toml:"name" json:"name"`
 	Version       string            `toml:"version" json:"version"`
-	CodeHelper    string            `toml:"codehelper" json:"codehelper"`
+	QCode         string            `toml:"qcode" json:"qcode"`
 	Dependencies  map[string]string `toml:"dependencies,omitempty" json:"dependencies,omitempty"`
 }
 
@@ -55,11 +55,11 @@ func validateManifest(manifest Manifest) error {
 	if err != nil || version.Original() != manifest.Version {
 		return fmt.Errorf("skill.toml version %q is not strict SemVer", manifest.Version)
 	}
-	if strings.TrimSpace(manifest.CodeHelper) == "" {
-		return errors.New("skill.toml codehelper compatibility is required")
+	if strings.TrimSpace(manifest.QCode) == "" {
+		return errors.New("skill.toml qcode compatibility is required")
 	}
-	if _, err := semver.NewConstraint(manifest.CodeHelper); err != nil {
-		return fmt.Errorf("skill.toml codehelper compatibility: %w", err)
+	if _, err := semver.NewConstraint(manifest.QCode); err != nil {
+		return fmt.Errorf("skill.toml qcode compatibility: %w", err)
 	}
 	for name, constraint := range manifest.Dependencies {
 		if !namePattern.MatchString(name) || name == manifest.Name {
@@ -100,7 +100,7 @@ func normalizeRuntimeVersion(version string) string {
 
 func skillDigest(rawSkill, rawManifest []byte) string {
 	hash := sha256.New()
-	_, _ = hash.Write([]byte("codehelper-skill-v1\x00"))
+	_, _ = hash.Write([]byte("qcode-skill-v1\x00"))
 	_, _ = hash.Write(rawManifest)
 	_, _ = hash.Write([]byte{0})
 	_, _ = hash.Write(rawSkill)

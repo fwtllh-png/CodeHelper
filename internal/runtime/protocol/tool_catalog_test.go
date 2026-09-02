@@ -8,7 +8,7 @@ func TestSessionToolCatalogValidatesFiniteUnifiedSources(t *testing.T) {
 		Generation: 2, Digest: "digest-2",
 		Tools: []SessionToolCatalogEntry{{
 			ID: "builtin:file_read", Name: "file_read", Description: "Read a file",
-			SourceKind: "builtin", SourceLabel: "CodeHelper",
+			SourceKind: "builtin", SourceLabel: "QCode",
 			Capability: "read", AccessMode: "read",
 			RiskLevel: "low", SandboxRequirement: "none",
 			PolicyState: "deferred", PolicyReason: "requires validated resources",

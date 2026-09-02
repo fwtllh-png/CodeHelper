@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
 )
 
 type EngineResolver interface {

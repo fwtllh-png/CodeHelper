@@ -109,7 +109,7 @@ Close Parser，避免 Decoder State Race。
 ## 设计取舍与替代方案
 
 Aggressive Retry 提高瞬时成功率，却增加 Latency、Cost 和 Duplicate Risk；完全不 Retry
-又会放大 Pre-effect Transient Failure。CodeHelper 只重试 Bounded、Classified、
+又会放大 Pre-effect Transient Failure。QCode 只重试 Bounded、Classified、
 Pre-meaningful Failure。
 
 ## 失败模式与安全边界

@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state/cas"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/sqlkit"
+	"github.com/fwtllh-png/QCode/internal/persist/state/cas"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 const SchemaVersion = 1

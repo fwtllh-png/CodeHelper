@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	providerassembly "github.com/fwtllh-png/QCode/internal/adapter/provider/assembly"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func Validate(state State) error {

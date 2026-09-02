@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 func Enabled(status int) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("CODEHELPER_PROVIDER_DUMP"))) {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("QCODE_PROVIDER_DUMP"))) {
 	case "always", "all", "1", "true":
 		return true
 	case "error", "errors":
@@ -29,13 +29,13 @@ func Write(
 	status int,
 	errorText string,
 ) (string, error) {
-	dir := strings.TrimSpace(os.Getenv("CODEHELPER_DEBUG_DIR"))
+	dir := strings.TrimSpace(os.Getenv("QCODE_DEBUG_DIR"))
 	if dir == "" {
 		home, err := os.UserHomeDir()
 		if err == nil && home != "" {
-			dir = filepath.Join(home, ".codehelper", "debug")
+			dir = filepath.Join(home, ".qcode", "debug")
 		} else {
-			dir = filepath.Join(os.TempDir(), "codehelper-debug")
+			dir = filepath.Join(os.TempDir(), "qcode-debug")
 		}
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -64,7 +64,7 @@ func Write(
 		Messages:     summarizeMessages(request.Messages),
 		EncodedInput: summarizeEncodedBody(body, request.Route.Protocol()),
 		HowToShare:   "Review this diagnostic before attaching it to a provider error report.",
-		DumpHint:     "CODEHELPER_PROVIDER_DUMP=error|always  CODEHELPER_DEBUG_DIR=/path",
+		DumpHint:     "QCODE_PROVIDER_DUMP=error|always  QCODE_DEBUG_DIR=/path",
 	}
 	data, err := json.MarshalIndent(dump, "", "  ")
 	if err != nil {

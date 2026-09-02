@@ -13,12 +13,13 @@ func TestClassifierProtectsRuntimeAndAgentMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{
-		".codehelper/permissions.toml",
+		".qcode/permissions.toml",
 		".CoDeHeLpEr/journal/ledger.jsonl",
+		".codehelper-worktree",
 		"nested/.git/config",
 		".agents/policy.json",
 		".codex/config.toml",
-		".codehelper-worktree",
+		".qcode-worktree",
 	} {
 		t.Run(path, func(t *testing.T) {
 			if err := classifier.CheckWrite(path, false); !errors.Is(err, ErrProtected) {

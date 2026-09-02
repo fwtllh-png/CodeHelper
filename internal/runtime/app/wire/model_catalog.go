@@ -3,8 +3,8 @@ package wire
 import (
 	"sort"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func runtimeModelCatalog(

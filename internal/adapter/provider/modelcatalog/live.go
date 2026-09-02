@@ -14,12 +14,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
-	provideropenai "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/httpclient"
+	provideropenai "github.com/fwtllh-png/QCode/internal/adapter/provider/openai"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/router"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 )
 
 var NewRegistry, New = router.NewRegistry, router.New
@@ -166,7 +166,7 @@ func List(
 		}
 		catalogProvider = model.Provider{ID: providerID, Endpoint: baseURL}
 	}
-	if fixture := strings.TrimSpace(os.Getenv("CODEHELPER_MODEL_LIST_FIXTURE")); fixture != "" {
+	if fixture := strings.TrimSpace(os.Getenv("QCODE_MODEL_LIST_FIXTURE")); fixture != "" {
 		data, err := os.ReadFile(fixture)
 		if err != nil {
 			return nil, err
@@ -218,7 +218,7 @@ func discover(
 		base = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	}
 	target := base + "/models"
-	if override := strings.TrimSpace(os.Getenv("CODEHELPER_MODEL_LIST_URL")); override != "" {
+	if override := strings.TrimSpace(os.Getenv("QCODE_MODEL_LIST_URL")); override != "" {
 		target = override
 	}
 	gate := &egress.Gate{Enforce: true}

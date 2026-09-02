@@ -34,7 +34,7 @@
 
 ## 1. 结论
 
-CodeHelper 的主要问题不是单个 Prompt 片段过大，而是以下因素相乘：
+QCode 的主要问题不是单个 Prompt 片段过大，而是以下因素相乘：
 
 ```text
 完整模型可见历史 × 单 Turn 多次 Provider Sample × 过晚的成本型压缩
@@ -63,7 +63,7 @@ Sample 数”的近似线性增长。基于第 2 节真实样本，预期异常�
 
 | 指标 | 观测值 | 结论 |
 | --- | ---: | --- |
-| CodeHelper 本地累计 | 5,383,182 tokens | 与 Provider 基本一致 |
+| QCode 本地累计 | 5,383,182 tokens | 与 Provider 基本一致 |
 | Provider 侧累计 | 5,363,702 tokens | 实际消耗量级成立 |
 | 差值 | 19,480 tokens / 约 0.36% | 需核对是否等于被 Web 重复相加的 Reasoning Tokens |
 | 最近 5 个大 Turn | 4,100,593 tokens | 占 Provider 总量约 76.5% |

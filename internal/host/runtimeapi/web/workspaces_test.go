@@ -9,8 +9,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type workspaceControllerFixture struct {
@@ -45,7 +45,7 @@ func TestWorkspaceRemoveAllowsSelectedWorkspaceAndDelegates(t *testing.T) {
 	server, err := New(Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+				Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444),
 			},
 		},
 		ExpectedHost: host,
@@ -101,7 +101,7 @@ func TestServerAllowsRemovingEveryWorkspace(t *testing.T) {
 	server, err := New(Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+				Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444),
 			},
 		},
 		ExpectedHost: "127.0.0.1:43210",
@@ -171,7 +171,7 @@ func TestWorkspaceSelectDirectoryUsesNativePicker(t *testing.T) {
 	server, err := New(Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+				Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444),
 			},
 		},
 		ExpectedHost: host,
@@ -220,7 +220,7 @@ func TestWorkspaceSelectDirectoryReportsCancellation(t *testing.T) {
 	server, err := New(Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+				Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444),
 			},
 		},
 		ExpectedHost: host,
@@ -257,7 +257,7 @@ func TestWorkspaceSelectDirectoryRejectsConcurrentPicker(t *testing.T) {
 	server, err := New(Options{
 		Assets: fstest.MapFS{
 			"index.html": &fstest.MapFile{
-				Data: []byte("<main>CodeHelper</main>"), Mode: fs.FileMode(0o444),
+				Data: []byte("<main>QCode</main>"), Mode: fs.FileMode(0o444),
 			},
 		},
 		ExpectedHost: host,

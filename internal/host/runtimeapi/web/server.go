@@ -24,16 +24,16 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	runtimeview "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/view"
-	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/credential"
+	"github.com/fwtllh-png/QCode/internal/adapter/mcp"
+	runtimeview "github.com/fwtllh-png/QCode/internal/host/runtimeapi/view"
+	tracestate "github.com/fwtllh-png/QCode/internal/observability/trace"
+	usagestate "github.com/fwtllh-png/QCode/internal/observability/usage"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/persist/repoindex"
+	"github.com/fwtllh-png/QCode/internal/platform/workspacequery"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/credential"
 )
 
 const (
@@ -378,7 +378,7 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodPost)
 		return
 	}
-	if len(r.Header.Get("X-CodeHelper-Request-ID")) > s.capacity.MaxIdentityBytes ||
+	if len(r.Header.Get("X-QCode-Request-ID")) > s.capacity.MaxIdentityBytes ||
 		len(r.Header.Get("Idempotency-Key")) > s.capacity.MaxIdentityBytes {
 		writeProblem(w, r, http.StatusBadRequest, protocol.NewProblem(
 			protocol.CodeInvalidArgument,
@@ -478,7 +478,7 @@ func (s *Server) unary(w http.ResponseWriter, r *http.Request) {
 		if dependencies.Diagnostics != nil {
 			_, _ = fmt.Fprintf(
 				dependencies.Diagnostics,
-				"codehelper: web API %s: %v\n",
+				"qcode: web API %s: %v\n",
 				route,
 				err,
 			)
@@ -2585,7 +2585,7 @@ func (s *Server) recoverPanics(next http.Handler) http.Handler {
 				if dependencies.Diagnostics != nil {
 					_, _ = fmt.Fprintf(
 						dependencies.Diagnostics,
-						"codehelper: web request panic route=%q\n",
+						"qcode: web request panic route=%q\n",
 						r.URL.Path,
 					)
 				}
@@ -2786,7 +2786,7 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 }
 
 func requestID(r *http.Request) string {
-	value := r.Header.Get("X-CodeHelper-Request-ID")
+	value := r.Header.Get("X-QCode-Request-ID")
 	if len(value) > 256 {
 		return ""
 	}

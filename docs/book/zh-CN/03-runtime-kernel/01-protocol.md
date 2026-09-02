@@ -33,7 +33,7 @@ last_verified: null
 
 ## 前置知识
 
-阅读[一次 Agent Turn 的完整生命周期](../02-codehelper-overview/05-turn-lifecycle.md)。
+阅读[一次 Agent Turn 的完整生命周期](../02-qcode-overview/05-turn-lifecycle.md)。
 
 ## 问题背景
 
@@ -56,7 +56,7 @@ Web、Persistence 和 Test 都要描述同一份工作。消息跨 Process
 - Session/Profile、Provider/Model、Tool Catalog、Lifecycle/Search、Checkpoint、Plan
   与 Turn Recovery 是共享 Host Contract，不是 Web Local State。
 
-## CodeHelper 设计
+## QCode 设计
 
 ```mermaid
 flowchart LR
@@ -171,7 +171,7 @@ Idempotency Identity，不携带从 UI 展示文本重建的请求或历史 Effe
 ## 设计取舍与替代方案
 
 Generic Map 灵活，但错误会推迟到执行深处。Protobuf 提供强契约，却增加 Toolchain 与
-Migration。CodeHelper 使用 Closed Go Tagged Union + JSON Schema，在现有 JSON Host
+Migration。QCode 使用 Closed Go Tagged Union + JSON Schema，在现有 JSON Host
 中保持严格 Shape。
 
 ## 失败模式与安全边界

@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
 )
 
 // openWorkspaceJournal builds the edit-transaction journal and, when it is
@@ -33,7 +33,7 @@ func openWorkspaceJournal(
 			"durable workspace journal requires an external Runtime state store",
 		)
 	}
-	legacyPath := filepath.Join(workspace, ".codehelper", "journal")
+	legacyPath := filepath.Join(workspace, ".qcode", "journal")
 	if _, err := os.Lstat(legacyPath); err == nil {
 		if session.logger != nil {
 			session.logger.Warn(

@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/durablecodec"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/runtime/durablecodec"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 const (
@@ -48,20 +48,20 @@ type OwnerManifest struct {
 }
 
 type ContextManifest struct {
-	Version       int               `json:"version"`
-	ThreadID      protocol.ThreadID `json:"thread_id"`
-	TurnID        protocol.TurnID   `json:"turn_id"`
-	Epoch         uint64            `json:"epoch"`
-	BaseRevision  uint64            `json:"base_revision"`
-	Revision      uint64            `json:"revision"`
-	Turn          uint64            `json:"turn,omitempty"`
-	History       HistoryManifest   `json:"history"`
-	Working       OwnerManifest     `json:"working"`
-	Evidence      OwnerManifest     `json:"evidence"`
-	Failures      OwnerManifest     `json:"failures"`
-	Plan          OwnerManifest     `json:"plan"`
-	Workspace     WorkspaceBinding  `json:"workspace"`
-	World         WorldBaseline     `json:"world,omitempty"`
+	Version         int               `json:"version"`
+	ThreadID        protocol.ThreadID `json:"thread_id"`
+	TurnID          protocol.TurnID   `json:"turn_id"`
+	Epoch           uint64            `json:"epoch"`
+	BaseRevision    uint64            `json:"base_revision"`
+	Revision        uint64            `json:"revision"`
+	Turn            uint64            `json:"turn,omitempty"`
+	History         HistoryManifest   `json:"history"`
+	Working         OwnerManifest     `json:"working"`
+	Evidence        OwnerManifest     `json:"evidence"`
+	Failures        OwnerManifest     `json:"failures"`
+	Plan            OwnerManifest     `json:"plan"`
+	Workspace       WorkspaceBinding  `json:"workspace"`
+	World           WorldBaseline     `json:"world,omitempty"`
 	Window          WindowLedger      `json:"window"`
 	Compaction      Compaction        `json:"compaction"`
 	TurnCheckpoints []TurnCheckpoint  `json:"turn_checkpoints,omitempty"`
@@ -306,9 +306,9 @@ func LoadContextManifest(
 		Version: ContextSnapshotVersion,
 		Epoch:   manifest.Epoch, Revision: manifest.Revision, Turn: manifest.Turn,
 		History: history.History, MessageTurns: history.MessageTurns,
-		HistoryTurns: history.HistoryTurns,
-		Workspace:    manifest.Workspace,
-		World:        CloneWorldBaseline(manifest.World),
+		HistoryTurns:    history.HistoryTurns,
+		Workspace:       manifest.Workspace,
+		World:           CloneWorldBaseline(manifest.World),
 		Window:          CloneWindowLedger(manifest.Window),
 		Compaction:      manifest.Compaction,
 		TurnCheckpoints: CloneTurnCheckpoints(manifest.TurnCheckpoints),

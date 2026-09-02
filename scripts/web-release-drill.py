@@ -45,7 +45,7 @@ def wait_for_url(process: subprocess.Popen[str]) -> str:
             line = lines.get(timeout=0.1)
         except queue.Empty:
             continue
-        prefix = "CodeHelper Runtime Ready: "
+        prefix = "QCode Runtime Ready: "
         if line.startswith(prefix):
             return line[len(prefix) :].strip()
     raise RuntimeError("current Web binary did not become ready")
@@ -175,7 +175,7 @@ def run_previous(
 def main() -> None:
     args = parse_args()
     workspace = str(Path(args.workspace).resolve())
-    with tempfile.TemporaryDirectory(prefix="codehelper-release-drill-") as temp:
+    with tempfile.TemporaryDirectory(prefix="qcode-release-drill-") as temp:
         root = Path(temp)
         data = root / "data"
         current = subprocess.Popen(

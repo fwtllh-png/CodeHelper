@@ -90,13 +90,13 @@ native_search = true
 	snapshot, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_RUNTIME_OPERATION_BUFFER": "15",
-			"CODEHELPER_RUNTIME_EVENT_HISTORY":    "25",
-			"CODEHELPER_STATE_BUSY_TIMEOUT":       "9s",
-			"CODEHELPER_LOG_LEVEL":                "debug",
-			"CODEHELPER_CREDENTIAL_NAME":          "ENV_API_KEY",
-			"CODEHELPER_PROVIDER":                 "env-provider",
-			"CODEHELPER_MAX_STEPS":                "6",
+			"QCODE_RUNTIME_OPERATION_BUFFER": "15",
+			"QCODE_RUNTIME_EVENT_HISTORY":    "25",
+			"QCODE_STATE_BUSY_TIMEOUT":       "9s",
+			"QCODE_LOG_LEVEL":                "debug",
+			"QCODE_CREDENTIAL_NAME":          "ENV_API_KEY",
+			"QCODE_PROVIDER":                 "env-provider",
+			"QCODE_MAX_STEPS":                "6",
 		}),
 		Overrides: Overrides{
 			OperationBuffer: &cliBuffer,
@@ -212,16 +212,16 @@ delegation = "proactive"
 
 func TestLoadSubagentConfigurationFromEnvironment(t *testing.T) {
 	snapshot, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_SUBAGENT_DELEGATION":   "disabled",
-		"CODEHELPER_SUBAGENT_MAX_DEPTH":    "7",
-		"CODEHELPER_SUBAGENT_MAX_PARALLEL": "3",
-		"CODEHELPER_SUBAGENT_MAX_RESIDENT": "5",
-		"CODEHELPER_SUBAGENT_MAX_TOTAL":    "9",
-		"CODEHELPER_SUBAGENT_MAX_STEPS":    "31",
-		"CODEHELPER_SUBAGENT_MAX_TOKENS":   "12000",
-		"CODEHELPER_SUBAGENT_MAX_COST_USD": "2.5",
-		"CODEHELPER_SUBAGENT_WALL_TIME":    "90s",
-		"CODEHELPER_SUBAGENT_WORKSPACE":    "read_only",
+		"QCODE_SUBAGENT_DELEGATION":   "disabled",
+		"QCODE_SUBAGENT_MAX_DEPTH":    "7",
+		"QCODE_SUBAGENT_MAX_PARALLEL": "3",
+		"QCODE_SUBAGENT_MAX_RESIDENT": "5",
+		"QCODE_SUBAGENT_MAX_TOTAL":    "9",
+		"QCODE_SUBAGENT_MAX_STEPS":    "31",
+		"QCODE_SUBAGENT_MAX_TOKENS":   "12000",
+		"QCODE_SUBAGENT_MAX_COST_USD": "2.5",
+		"QCODE_SUBAGENT_WALL_TIME":    "90s",
+		"QCODE_SUBAGENT_WORKSPACE":    "read_only",
 	})})
 	if err != nil {
 		t.Fatal(err)
@@ -294,10 +294,10 @@ budget_usd = 3.5
 	overridden, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_TOOLS":         "true",
-			"CODEHELPER_NATIVE_SEARCH": "true",
-			"CODEHELPER_BUDGET_TOKENS": "900",
-			"CODEHELPER_BUDGET_USD":    "4.5",
+			"QCODE_TOOLS":         "true",
+			"QCODE_NATIVE_SEARCH": "true",
+			"QCODE_BUDGET_TOKENS": "900",
+			"QCODE_BUDGET_USD":    "4.5",
 		}),
 		Overrides: Overrides{
 			Tools: &disabled, NativeSearch: &disabled,
@@ -322,7 +322,7 @@ budget_usd = 3.5
 
 func TestLoadInvalidValueReportsSource(t *testing.T) {
 	_, err := Load(LoadOptions{
-		LookupEnv: envLookup(map[string]string{"CODEHELPER_LOG_LEVEL": "verbose"}),
+		LookupEnv: envLookup(map[string]string{"QCODE_LOG_LEVEL": "verbose"}),
 	})
 	var fieldErr *FieldError
 	if !errors.As(err, &fieldErr) {
@@ -344,9 +344,9 @@ func TestSecretReferenceDoesNotResolveOrLeakValue(t *testing.T) {
 	const secret = "credential-value-that-must-not-leak"
 	snapshot, err := Load(LoadOptions{
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_CREDENTIAL_KIND": "env",
-			"CODEHELPER_CREDENTIAL_NAME": "PROVIDER_API_KEY",
-			"PROVIDER_API_KEY":           secret,
+			"QCODE_CREDENTIAL_KIND": "env",
+			"QCODE_CREDENTIAL_NAME": "PROVIDER_API_KEY",
+			"PROVIDER_API_KEY":      secret,
 		}),
 	})
 	if err != nil {
@@ -368,8 +368,8 @@ func TestLoadAcceptsReferenceKindsAndRejectsUnknownKind(t *testing.T) {
 	for _, kind := range []string{"env", "file", "keyring"} {
 		snapshot, err := Load(LoadOptions{
 			LookupEnv: envLookup(map[string]string{
-				"CODEHELPER_CREDENTIAL_KIND": kind,
-				"CODEHELPER_CREDENTIAL_NAME": "provider/default",
+				"QCODE_CREDENTIAL_KIND": kind,
+				"QCODE_CREDENTIAL_NAME": "provider/default",
 			}),
 		})
 		if err != nil {
@@ -380,8 +380,8 @@ func TestLoadAcceptsReferenceKindsAndRejectsUnknownKind(t *testing.T) {
 		}
 	}
 	_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_CREDENTIAL_KIND": "inline",
-		"CODEHELPER_CREDENTIAL_NAME": "provider/default",
+		"QCODE_CREDENTIAL_KIND": "inline",
+		"QCODE_CREDENTIAL_NAME": "provider/default",
 	})})
 	var fieldErr *FieldError
 	if !errors.As(err, &fieldErr) || fieldErr.Field != fieldCredentialKind {
@@ -439,7 +439,7 @@ func TestDefaultExecutionTokenBudgetsAreDerivedAtRuntime(t *testing.T) {
 
 func TestProviderPhaseDeadlinesOverrideCompatibleTimeout(t *testing.T) {
 	root := t.TempDir()
-	path := filepath.Join(root, "codehelper.toml")
+	path := filepath.Join(root, "qcode.toml")
 	err := os.WriteFile(path, []byte(`
 [execution]
 timeout = "2m"
@@ -490,7 +490,7 @@ lease_timeout = "45s"
 	fromEnv, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_LEASE_TIMEOUT": "30s",
+			"QCODE_LEASE_TIMEOUT": "30s",
 		}),
 	})
 	if err != nil {
@@ -533,7 +533,7 @@ approval_timeout = "45m"
 	fromEnv, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_APPROVAL_TIMEOUT": "2h",
+			"QCODE_APPROVAL_TIMEOUT": "2h",
 		}),
 	})
 	if err != nil {
@@ -576,7 +576,7 @@ provider_retry_limit = 5
 	fromEnv, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_PROVIDER_RETRY_LIMIT": "7",
+			"QCODE_PROVIDER_RETRY_LIMIT": "7",
 		}),
 	})
 	if err != nil {
@@ -616,7 +616,7 @@ tokens_per_minute = 500000
 	fromEnv, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_TOKENS_PER_MINUTE": "250000",
+			"QCODE_TOKENS_PER_MINUTE": "250000",
 		}),
 	})
 	if err != nil {
@@ -652,7 +652,7 @@ implement_no_progress_samples = 4
 	fromEnv, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_IMPLEMENT_NO_PROGRESS_SAMPLES": "8",
+			"QCODE_IMPLEMENT_NO_PROGRESS_SAMPLES": "8",
 		}),
 	})
 	if err != nil {
@@ -703,8 +703,8 @@ rate_limit_wait = "90s"
 	fromEnv, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_RATE_LIMIT_RETRY_LIMIT": "4",
-			"CODEHELPER_RATE_LIMIT_WAIT":        "30s",
+			"QCODE_RATE_LIMIT_RETRY_LIMIT": "4",
+			"QCODE_RATE_LIMIT_WAIT":        "30s",
 		}),
 	})
 	if err != nil {
@@ -749,7 +749,7 @@ model = "gpt-4.1"
 		t.Fatalf("vision = %+v", snapshot.Config.Vision)
 	}
 	_, err = Load(LoadOptions{
-		LookupEnv: envLookup(map[string]string{"CODEHELPER_VISION_ENABLED": "true"}),
+		LookupEnv: envLookup(map[string]string{"QCODE_VISION_ENABLED": "true"}),
 	})
 	if err == nil {
 		t.Fatal("expected validation error when vision enabled without provider/model")
@@ -799,7 +799,7 @@ command = "make verify"
 	timeout := 90 * time.Second
 	fromStartup, err := Load(LoadOptions{
 		Path:      path,
-		LookupEnv: envLookup(map[string]string{"CODEHELPER_VERIFY_SCOPE": "diagnostics"}),
+		LookupEnv: envLookup(map[string]string{"QCODE_VERIFY_SCOPE": "diagnostics"}),
 		Overrides: Overrides{
 			VerifyMode: &mode, VerifyRepair: &repair, VerifyTimeout: &timeout,
 			VerifyCommand: &command,
@@ -899,7 +899,7 @@ max_files = 100
 	files := 250
 	loaded, err := Load(LoadOptions{
 		Path:      path,
-		LookupEnv: envLookup(map[string]string{"CODEHELPER_INDEX_MAX_FILE_BYTES": "8192"}),
+		LookupEnv: envLookup(map[string]string{"QCODE_INDEX_MAX_FILE_BYTES": "8192"}),
 		Overrides: Overrides{IndexMaxFiles: &files},
 	})
 	if err != nil {
@@ -917,8 +917,8 @@ max_files = 100
 	// A ceiling of zero would index nothing while still reporting itself ready,
 	// so it has to be refused rather than clamped.
 	for env, field := range map[string]string{
-		"CODEHELPER_INDEX_MAX_FILE_BYTES": fieldIndexMaxBytes,
-		"CODEHELPER_INDEX_MAX_FILES":      fieldIndexMaxFiles,
+		"QCODE_INDEX_MAX_FILE_BYTES": fieldIndexMaxBytes,
+		"QCODE_INDEX_MAX_FILES":      fieldIndexMaxFiles,
 	} {
 		_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{env: "0"})})
 		var fieldErr *FieldError
@@ -928,8 +928,8 @@ max_files = 100
 	}
 	// With the index off the ceilings are moot and must not block a load.
 	off, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_INDEX_ENABLED":   "false",
-		"CODEHELPER_INDEX_MAX_FILES": "0",
+		"QCODE_INDEX_ENABLED":   "false",
+		"QCODE_INDEX_MAX_FILES": "0",
 	})})
 	if err != nil {
 		t.Fatal(err)
@@ -967,7 +967,7 @@ max_bytes = 2048
 	entries := 9
 	loaded, err := Load(LoadOptions{
 		Path:      path,
-		LookupEnv: envLookup(map[string]string{"CODEHELPER_REPO_MAP_MAX_BYTES": "1024"}),
+		LookupEnv: envLookup(map[string]string{"QCODE_REPO_MAP_MAX_BYTES": "1024"}),
 		Overrides: Overrides{WorkingSetMaxEntries: &entries},
 	})
 	if err != nil {
@@ -988,10 +988,10 @@ max_bytes = 2048
 	// A ceiling too small to hold a section would leave a request paying for a
 	// header that only reports its own truncation.
 	for env, field := range map[string]string{
-		"CODEHELPER_REPO_MAP_MAX_BYTES":       fieldRepoMapMaxBytes,
-		"CODEHELPER_REPO_MAP_MAX_DIRECTORIES": fieldRepoMapMaxDirectories,
-		"CODEHELPER_WORKING_SET_MAX_ENTRIES":  fieldWorkingSetMaxEntries,
-		"CODEHELPER_WORKING_SET_MAX_BYTES":    fieldWorkingSetMaxBytes,
+		"QCODE_REPO_MAP_MAX_BYTES":       fieldRepoMapMaxBytes,
+		"QCODE_REPO_MAP_MAX_DIRECTORIES": fieldRepoMapMaxDirectories,
+		"QCODE_WORKING_SET_MAX_ENTRIES":  fieldWorkingSetMaxEntries,
+		"QCODE_WORKING_SET_MAX_BYTES":    fieldWorkingSetMaxBytes,
 	} {
 		_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{env: "0"})})
 		var fieldErr *FieldError
@@ -1002,10 +1002,10 @@ max_bytes = 2048
 
 	// With a section off its ceilings are moot and must not block a load.
 	off, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_REPO_MAP_ENABLED":        "false",
-		"CODEHELPER_REPO_MAP_MAX_BYTES":      "0",
-		"CODEHELPER_WORKING_SET_ENABLED":     "false",
-		"CODEHELPER_WORKING_SET_MAX_ENTRIES": "0",
+		"QCODE_REPO_MAP_ENABLED":        "false",
+		"QCODE_REPO_MAP_MAX_BYTES":      "0",
+		"QCODE_WORKING_SET_ENABLED":     "false",
+		"QCODE_WORKING_SET_MAX_ENTRIES": "0",
 	})})
 	if err != nil {
 		t.Fatal(err)
@@ -1040,7 +1040,7 @@ enabled = false
 	entries := 12
 	loaded, err := Load(LoadOptions{
 		Path:      path,
-		LookupEnv: envLookup(map[string]string{"CODEHELPER_EVIDENCE_MAX_BYTES": "1024"}),
+		LookupEnv: envLookup(map[string]string{"QCODE_EVIDENCE_MAX_BYTES": "1024"}),
 		Overrides: Overrides{EvidenceMaxEntries: &entries},
 	})
 	if err != nil {
@@ -1059,8 +1059,8 @@ enabled = false
 	}
 
 	for env, field := range map[string]string{
-		"CODEHELPER_EVIDENCE_MAX_ENTRIES": fieldEvidenceMaxEntries,
-		"CODEHELPER_EVIDENCE_MAX_BYTES":   fieldEvidenceMaxBytes,
+		"QCODE_EVIDENCE_MAX_ENTRIES": fieldEvidenceMaxEntries,
+		"QCODE_EVIDENCE_MAX_BYTES":   fieldEvidenceMaxBytes,
 	} {
 		_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{env: "0"})})
 		var fieldErr *FieldError
@@ -1070,9 +1070,9 @@ enabled = false
 	}
 
 	off, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_EVIDENCE_ENABLED":      "false",
-		"CODEHELPER_EVIDENCE_MAX_ENTRIES":  "0",
-		"CODEHELPER_CODING_POLICY_ENABLED": "false",
+		"QCODE_EVIDENCE_ENABLED":      "false",
+		"QCODE_EVIDENCE_MAX_ENTRIES":  "0",
+		"QCODE_CODING_POLICY_ENABLED": "false",
 	})})
 	if err != nil {
 		t.Fatal(err)
@@ -1092,7 +1092,7 @@ scope = "body_after_prefix"
 	snapshot, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_COMPACT_AUTO_TOKENS": "400",
+			"QCODE_COMPACT_AUTO_TOKENS": "400",
 		}),
 		Overrides: Overrides{CompactScope: &scope},
 	})
@@ -1111,7 +1111,7 @@ scope = "body_after_prefix"
 
 func TestViewRejectsInlineNarrativeMode(t *testing.T) {
 	_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_VIEW_NARRATIVE_MODE": "inline",
+		"QCODE_VIEW_NARRATIVE_MODE": "inline",
 	})})
 	var fieldErr *FieldError
 	if !errors.As(err, &fieldErr) ||
@@ -1126,7 +1126,7 @@ func TestViewRejectsInlineNarrativeMode(t *testing.T) {
 
 func TestViewRejectsDigestOff(t *testing.T) {
 	_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_VIEW_DIGEST": "off",
+		"QCODE_VIEW_DIGEST": "off",
 	})})
 	var fieldErr *FieldError
 	if !errors.As(err, &fieldErr) || fieldErr.Field != fieldViewDigest {
@@ -1136,7 +1136,7 @@ func TestViewRejectsDigestOff(t *testing.T) {
 
 func TestViewRejectsCheckpointMaxBytesBelowMinimum(t *testing.T) {
 	_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_VIEW_CHECKPOINT_MAX_BYTES": "128",
+		"QCODE_VIEW_CHECKPOINT_MAX_BYTES": "128",
 	})})
 	var fieldErr *FieldError
 	if !errors.As(err, &fieldErr) || fieldErr.Field != fieldViewCheckpointMaxBytes {
@@ -1168,7 +1168,7 @@ checkpoint_max_bytes = 1024
 	snapshot, err := Load(LoadOptions{
 		Path: path,
 		LookupEnv: envLookup(map[string]string{
-			"CODEHELPER_VIEW_NARRATIVE_MODE": "post_turn",
+			"QCODE_VIEW_NARRATIVE_MODE": "post_turn",
 		}),
 	})
 	if err != nil {
@@ -1192,8 +1192,8 @@ checkpoint_max_bytes = 1024
 // an operator can point it at their own suite.
 func TestVerifyGateConfigAcceptsTheAffectedScope(t *testing.T) {
 	loaded, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
-		"CODEHELPER_VERIFY_SCOPE":   "affected",
-		"CODEHELPER_VERIFY_COMMAND": "go test {packages}",
+		"QCODE_VERIFY_SCOPE":   "affected",
+		"QCODE_VERIFY_COMMAND": "go test {packages}",
 	})})
 	if err != nil {
 		t.Fatal(err)
@@ -1212,28 +1212,28 @@ func TestVerifyGateConfigRejectsUnimplementedValues(t *testing.T) {
 		wantField string
 	}{
 		"unknown scope": {
-			env:       map[string]string{"CODEHELPER_VERIFY_SCOPE": "packages"},
+			env:       map[string]string{"QCODE_VERIFY_SCOPE": "packages"},
 			wantField: fieldVerifyScope,
 		},
 		"ask on failure": {
-			env:       map[string]string{"CODEHELPER_VERIFY_ON_FAILURE": "ask"},
+			env:       map[string]string{"QCODE_VERIFY_ON_FAILURE": "ask"},
 			wantField: fieldVerifyOnFailure,
 		},
 		"unknown mode": {
-			env:       map[string]string{"CODEHELPER_VERIFY_MODE": "always"},
+			env:       map[string]string{"QCODE_VERIFY_MODE": "always"},
 			wantField: fieldVerifyMode,
 		},
 		"negative repair budget": {
-			env:       map[string]string{"CODEHELPER_VERIFY_MAX_REPAIR_STEPS": "-1"},
+			env:       map[string]string{"QCODE_VERIFY_MAX_REPAIR_STEPS": "-1"},
 			wantField: fieldVerifyRepair,
 		},
 		"zero timeout": {
-			env:       map[string]string{"CODEHELPER_VERIFY_TIMEOUT": "0s"},
+			env:       map[string]string{"QCODE_VERIFY_TIMEOUT": "0s"},
 			wantField: fieldVerifyTimeout,
 		},
 		// A command under the diagnostics scope would silently never run.
 		"command without a command scope": {
-			env:       map[string]string{"CODEHELPER_VERIFY_COMMAND": "make verify"},
+			env:       map[string]string{"QCODE_VERIFY_COMMAND": "make verify"},
 			wantField: fieldVerifyCommand,
 		},
 	}

@@ -101,7 +101,7 @@ func (w *Workspace) AtomicWrite(name string, data []byte, mode fs.FileMode) erro
 		if _, err := rand.Read(suffix); err != nil {
 			return err
 		}
-		temporary = ".codehelper-write-" + hex.EncodeToString(suffix)
+		temporary = ".qcode-write-" + hex.EncodeToString(suffix)
 		handle, err = openRelativeHandle(
 			parent, temporary,
 			windows.FILE_GENERIC_READ|windows.FILE_GENERIC_WRITE|windows.DELETE,

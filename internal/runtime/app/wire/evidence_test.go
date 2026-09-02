@@ -3,8 +3,8 @@ package wire
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/config"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
 )
 
 func TestRepoContextCarriesEvidenceAndItsBudget(t *testing.T) {

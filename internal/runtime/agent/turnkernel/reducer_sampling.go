@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
+	providerassembly "github.com/fwtllh-png/QCode/internal/adapter/provider/assembly"
 )
 
 func applyModelSampleRequested(

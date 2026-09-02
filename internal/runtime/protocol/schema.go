@@ -44,7 +44,7 @@ type TypeSchema struct {
 // GenerateSchema deterministically builds the committed protocol document.
 func GenerateSchema() *Schema {
 	schema := &Schema{
-		Dialect: SchemaDialect, Title: "codehelper runtime protocol", Version: Version,
+		Dialect: SchemaDialect, Title: "qcode runtime protocol", Version: Version,
 		Envelope:    map[string]*TypeSchema{},
 		Operations:  map[string]*TypeSchema{},
 		Events:      map[string]*TypeSchema{},

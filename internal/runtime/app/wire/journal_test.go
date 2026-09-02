@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
 )
 
 func TestDurableJournalRequiresExternalStateRoot(t *testing.T) {
@@ -29,7 +29,7 @@ func TestDurableJournalRequiresExternalStateRoot(t *testing.T) {
 func TestDurableJournalIgnoresLegacyWorkspaceLedger(t *testing.T) {
 	workspace := t.TempDir()
 	workspaceID := "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-	legacy := filepath.Join(workspace, ".codehelper", "journal")
+	legacy := filepath.Join(workspace, ".qcode", "journal")
 	if err := os.MkdirAll(legacy, 0o700); err != nil {
 		t.Fatal(err)
 	}

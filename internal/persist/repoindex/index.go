@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/repowalk"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
+	"github.com/fwtllh-png/QCode/internal/platform/repowalk"
+	"github.com/fwtllh-png/QCode/internal/platform/symbols"
 )
 
 // IndexerVersion identifies the extraction rules that produced the stored rows.

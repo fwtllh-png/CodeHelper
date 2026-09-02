@@ -12,8 +12,8 @@ import (
 
 const (
 	TruthSchemaVersion        = 2
-	TruthMarkerStart          = "<codehelper_truth_capsule>"
-	TruthMarkerEnd            = "</codehelper_truth_capsule>"
+	TruthMarkerStart          = "<qcode_truth_capsule>"
+	TruthMarkerEnd            = "</qcode_truth_capsule>"
 	DownshiftRuntimeTruthOnly = "runtime_truth_only"
 
 	EntityGoal          = "goal"

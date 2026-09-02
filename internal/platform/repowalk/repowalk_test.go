@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestListDefersEveryIgnoreRuleToGit(t *testing.T) {
@@ -90,6 +90,7 @@ func TestListSkipsVendorDirectoriesEvenWhenTracked(t *testing.T) {
 	git(t, root, "init", "-q")
 	for _, name := range []string{
 		"main.go", "vendor/dep/dep.go", "node_modules/pkg/index.js", "bin/tool",
+		".qcode/state.db", ".codehelper/legacy-state.db",
 	} {
 		write(t, filepath.Join(root, name), "body\n")
 	}
@@ -99,7 +100,7 @@ func TestListSkipsVendorDirectoriesEvenWhenTracked(t *testing.T) {
 	if got := paths(listing); !equal(got, []string{"main.go"}) {
 		t.Fatalf("paths = %#v", got)
 	}
-	if listing.Skips.Ignored != 3 {
+	if listing.Skips.Ignored != 5 {
 		t.Fatalf("skipped ignored = %d", listing.Skips.Ignored)
 	}
 	if !Skippable("vendor/dep/dep.go") || Skippable("main.go") {

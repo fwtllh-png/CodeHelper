@@ -2,7 +2,7 @@
 
 ## 安全目标
 
-CodeHelper 会根据模型选择在源码上执行工具。目标不是让任意代码变得安全，而是让权限
+QCode 会根据模型选择在源码上执行工具。目标不是让任意代码变得安全，而是让权限
 显式、影响有界、凭证不进入模型可见状态，并让所有关键动作可检查。
 
 ## 威胁模型
@@ -58,7 +58,7 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - 拒绝 Traversal、不安全 Symlink 和 Archive Escape。
 - Durable Workspace Journal、Process Job Journal 和 Job Log 位于
   `<data-dir>/workspaces/<workspace-id>/control`，不再从 Workspace 内的旧
-  `.codehelper/journal` 恢复。旧目录只产生诊断提示。
+  `.qcode/journal` 恢复。旧目录只产生诊断提示。
 - Workspace State 分为互不重叠的 `control`、`sandbox-home` 和 `artifacts`；
   在这三个状态域中，Sandbox 只获得 `sandbox-home` 写权限。
 - Tool Contract 要求时先读后写。
@@ -90,7 +90,7 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   提交绑定当前内容摘要的 Exact Edit Proof，等价满足该路径的 Read-before-write。
   全量覆盖、删除、移动或先覆盖后编辑仍要求显式 `file_read`。
 - File Broker 拒绝 Symlink、Hardlink、Device Boundary、Root/Parent Replacement，
-  并在自身边界拒绝 `.git`、`.codehelper`、`.codehelper-worktree`、`.agents` 和
+  并在自身边界拒绝 `.git`、`.qcode`、`.qcode-worktree`、`.agents` 和
   `.codex`。Unified Diff 先解析为 File Plan，不调用 `git apply` 修改 Workspace。
 - `exec_command` 的写权限只授予显式 `write_paths`。目标可以是现有普通文件，或位于
   已存在父目录下的待创建文件；Guard 在执行前完成 Preflight，Strong Sandbox 只为
@@ -266,7 +266,7 @@ Job Log 与 Workspace Journal 必须采用各自既有的访问控制和 Retenti
 
 Trace Attribute 与 Metric Label 只能使用固定低基数集合，绝不能包含 Prompt、Path、
 Argument、Resource ID、Credential 或 Raw Error。Provider Debug Dump 默认关闭；启用
-时必须继续经过专用脱敏与本地文件权限边界。CodeHelper 不持久化独立 Observation
+时必须继续经过专用脱敏与本地文件权限边界。QCode 不持久化独立 Observation
 Payload，也不提供 OTLP 或 Observation Journal 导出。
 
 ## 安全测试

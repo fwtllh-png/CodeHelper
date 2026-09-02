@@ -3,8 +3,8 @@ package app
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/eventhub"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestEventKindIncludesEveryAgentEvent(t *testing.T) {

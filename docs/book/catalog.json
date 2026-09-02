@@ -60,10 +60,10 @@
       ]
     },
     {
-      "id": "02-codehelper-overview",
+      "id": "02-qcode-overview",
       "order": 2,
       "titles": {
-        "zh-CN": "认识 CodeHelper"
+        "zh-CN": "认识 QCode"
       },
       "chapters": [
         {
@@ -80,7 +80,7 @@
           "status": "draft",
           "core_reading": true,
           "titles": {
-            "zh-CN": "CodeHelper 全局架构"
+            "zh-CN": "QCode 全局架构"
           }
         },
         {

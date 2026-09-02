@@ -3,8 +3,8 @@ package engine
 import (
 	"fmt"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
 )
 
 type TurnDiffEntry = turnkernel.TurnDiffEntry

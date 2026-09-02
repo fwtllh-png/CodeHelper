@@ -2,18 +2,18 @@
 
 ## 1. 文档状态
 
-本文定义 CodeHelper 知识书籍的目标、信息架构、写作契约、建设顺序和验收标准。它是
+本文定义 QCode 知识书籍的目标、信息架构、写作契约、建设顺序和验收标准。它是
 文档建设方案，不代表其中列出的章节已经完成。单章交付状态以 `docs/book/catalog.json`
 为准；当本文各阶段的说明与 catalog 不一致时，以 catalog 为准。已经交付的能力仍以
 当前代码、测试和 `docs/zh-CN` 产品手册为事实来源。
 
 ## 2. 建设目标
 
-CodeHelper 的文档不应只回答“命令怎么运行”，还应系统回答：
+QCode 的文档不应只回答“命令怎么运行”，还应系统回答：
 
 - Agent 要解决什么问题，为什么需要 Runtime；
 - 模型、上下文、工具、状态、编排和安全如何协作；
-- CodeHelper 为什么采用当前架构，而不是其他实现；
+- QCode 为什么采用当前架构，而不是其他实现；
 - 每个模块在代码中的边界、数据结构和执行流程是什么；
 - 如何通过测试、Trace、故障和实验验证这些设计；
 - 学习者如何从使用者逐步成长为 Agent Runtime Contributor。
@@ -29,7 +29,7 @@ CodeHelper 的文档不应只回答“命令怎么运行”，还应系统回答
 | 应用开发者 | 如何可靠接入模型与工具 | Provider、Context、Tool、安全 |
 | Runtime 开发者 | 如何实现状态机、协议与恢复 | Runtime、持久化、编排、可观测性 |
 | 平台与安全工程师 | 如何治理有副作用的执行 | Guard、Policy、Sandbox、Journal |
-| CodeHelper Contributor | 应修改哪个 Package，如何验证 | 模块实现、测试地图、扩展教程 |
+| QCode Contributor | 应修改哪个 Package，如何验证 | 模块实现、测试地图、扩展教程 |
 | Coding Agent | 哪些契约和代码是事实来源 | 元数据、代码路径、测试路径、不变量 |
 
 ## 4. 文档分层
@@ -58,7 +58,7 @@ docs/book/
 └── zh-CN/
 ```
 
-负责从基础原理进入 CodeHelper 设计和源码实现，形成连续阅读路径。章节可以引用产品
+负责从基础原理进入 QCode 设计和源码实现，形成连续阅读路径。章节可以引用产品
 手册，但不能复制配置字段和命令参考。
 
 ### 4.3 机器可读参考
@@ -84,10 +84,10 @@ docs/book/
 4. Agent、Workflow 和 Automation 的边界
 5. 为什么 Agent 需要 Runtime 与治理
 
-### 第二部分：认识 CodeHelper
+### 第二部分：认识 QCode
 
 1. 项目定位、价值和非目标
-2. CodeHelper 系统架构
+2. QCode 系统架构
 3. Package Ownership 与依赖方向
 4. Operation、Event、Receipt、Projection
 5. 一次 Agent Turn 的完整生命周期
@@ -221,7 +221,7 @@ docs/book/
 2. 前置知识；
 3. 问题背景；
 4. 核心概念；
-5. CodeHelper 的设计；
+5. QCode 的设计；
 6. 执行流程与架构图；
 7. 关键代码地图；
 8. 实现细节；
@@ -338,7 +338,7 @@ last_verified: null
 优先完成：
 
 1. 为什么需要受治理的 Coding Agent Runtime；
-2. CodeHelper 全局架构；
+2. QCode 全局架构；
 3. 一次 Agent Turn 如何运行；
 4. Model、Context 与 Tool 如何协作；
 5. Guard、Approval 与 Sandbox；
@@ -354,7 +354,7 @@ Context 限制、ReAct/Planning/Tool/Reflection 控制、Agent 与 Workflow/Auto
 选择，再到受治理 Runtime 综合的完整路径。每章都包含源码锚点、失败分析、复习问题与
 可执行验证。
 
-2026-08-06 已完成第二部分质量提升：“认识 CodeHelper”现在形成定位与非目标、架构
+2026-08-06 已完成第二部分质量提升：“认识 QCode”现在形成定位与非目标、架构
 视图、Package Ownership、Runtime 词汇、Turn Lifecycle、Model/Context/Tool 协作的
 连续路径。缺失章节已交付，已有章节补充了 Control/Data/Construction、Waiting State
 与 Snapshot Scope 等明确不变量。

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 var ErrAuthorityInsideWorkspace = errors.New("security authority data directory must be outside the workspace")

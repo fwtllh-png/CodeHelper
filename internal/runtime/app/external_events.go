@@ -3,7 +3,7 @@ package app
 import (
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // PublishExternal appends and broadcasts orchestration events that originate

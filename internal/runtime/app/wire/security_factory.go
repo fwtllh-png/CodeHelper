@@ -3,9 +3,9 @@ package wire
 import (
 	"context"
 
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	toolguard "github.com/fwtllh-png/QCode/internal/adapter/tool/guard"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 func (f guardFactory) Build(context.Context) (*toolguard.Guard, error) {

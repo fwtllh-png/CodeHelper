@@ -7,8 +7,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Explain the problem before proposing an implementation. Broader design discussions should start in [Discussions](https://github.com/fwtllh-png/CodeHelper/discussions).
-        请先说明问题，再提出实现方案。范围较大的设计讨论应先进入 [Discussions](https://github.com/fwtllh-png/CodeHelper/discussions)。
+        Explain the problem before proposing an implementation. Broader design discussions should start in [Discussions](https://github.com/fwtllh-png/QCode/discussions).
+        请先说明问题，再提出实现方案。范围较大的设计讨论应先进入 [Discussions](https://github.com/fwtllh-png/QCode/discussions)。
 
   - type: textarea
     id: problem

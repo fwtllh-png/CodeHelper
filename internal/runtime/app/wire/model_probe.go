@@ -3,8 +3,8 @@ package wire
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/modelcatalog"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/modelcatalog"
 )
 
 type DiscoveredModel = modelcatalog.DiscoveredModel

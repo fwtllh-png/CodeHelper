@@ -11,7 +11,7 @@
 
 ## 目标
 
-CodeHelper Web 的视觉风格、信息层级、交互流程、流式反馈、动画节奏、响应式行为和
+QCode Web 的视觉风格、信息层级、交互流程、流式反馈、动画节奏、响应式行为和
 最终展示效果，应与上述 DeepSeek Harness Web 参考实现达到 95% 以上的体验复刻度。
 
 这里的“95%”不是主观评价，也不表示复制 Harness 的 Runtime。它是由本文定义的
@@ -22,7 +22,7 @@ CodeHelper Web 的视觉风格、信息层级、交互流程、流式反馈、�
 - 流式执行的首个反馈、持续反馈和最终落点具有相同体验；
 - Chat、Tool、Reasoning、Approval、Input、Stats 和 Trajectory 使用相同的信息层级；
 - 动画类型、持续时间、缓动、触发条件和 Reduced Motion 行为一致；
-- CodeHelper 的 Runtime、安全、持久化和可恢复性语义保持不变。
+- QCode 的 Runtime、安全、持久化和可恢复性语义保持不变。
 
 完成标准是全部阻断条件通过，且加权复刻分数不低于 95 分。任何单张截图“看起来接近”
 都不能替代交互、性能、状态和可访问性证据。
@@ -50,12 +50,12 @@ CodeHelper Web 的视觉风格、信息层级、交互流程、流式反馈、�
 
 只有下列差异不计入复刻损失：
 
-- 产品名称继续使用 CodeHelper，鲸鱼图形替换为原创卡皮巴拉标记；
-- CodeHelper 独有的 Checkpoint、Edit Plan、Task、Agent、Extension、Credential、
+- 产品名称继续使用 QCode，鲸鱼图形替换为原创卡皮巴拉标记；
+- QCode 独有的 Checkpoint、Edit Plan、Task、Agent、Extension、Credential、
   Workspace Diagnostic 和 Recovery 能力继续存在；
-- Harness 中 CodeHelper 不具备的多 Workspace、Queue 或其他能力不得制作无效入口；
-- 面向用户的状态必须使用 CodeHelper 体验契约中的 Canonical Label；
-- CodeHelper 的安全确认必须继续展示真实 Request、Scope、Effect 和 Runtime Identity；
+- Harness 中 QCode 不具备的多 Workspace、Queue 或其他能力不得制作无效入口；
+- 面向用户的状态必须使用 QCode 体验契约中的 Canonical Label；
+- QCode 的安全确认必须继续展示真实 Request、Scope、Effect 和 Runtime Identity；
 - 为避免许可证和维护耦合，允许独立实现相同行为，不要求复制组件源码。
 
 以上差异只允许改变内容，不允许破坏参考界面的布局密度、操作位置和反馈节奏。
@@ -74,7 +74,7 @@ CodeHelper Web 的视觉风格、信息层级、交互流程、流式反馈、�
 
 ## 已验证基线
 
-2026-08-24 使用同一个只读任务分别体验了 Harness 和 CodeHelper：
+2026-08-24 使用同一个只读任务分别体验了 Harness 和 QCode：
 
 ```text
 请只读分析当前工作区：概括项目用途、核心模块和主要技术栈，并引用关键文件；
@@ -92,7 +92,7 @@ CodeHelper Web 的视觉风格、信息层级、交互流程、流式反馈、�
 - Trajectory 以时间轴和表格呈现同一运行记录；
 - Console 无错误。
 
-### CodeHelper
+### QCode
 
 - 首屏 `DOMContentLoaded` 约 17ms，`load` 约 18ms；
 - 当前构建加载约 17 个资源、91KB；
@@ -103,7 +103,7 @@ CodeHelper Web 的视觉风格、信息层级、交互流程、流式反馈、�
 - 页面只显示笼统的 `Working`，未利用已有 Receipt Latency 和 Usage 事实；
 - Console 无错误。
 
-结论：CodeHelper 已拥有更轻的首屏和足够快的 Runtime。主要差距位于浏览器 Projection、
+结论：QCode 已拥有更轻的首屏和足够快的 Runtime。主要差距位于浏览器 Projection、
 React 更新粒度、渐进披露、滚动控制、布局稳定性和事实可视化。
 
 ## 参考实现中的关键做法
@@ -114,7 +114,7 @@ Harness 不在每个流事件上重建整个消息数组。每个 Conversation N
 Identity，内容变化只更新对应节点，结构变化才更新顺序。Assistant Delta 最多每动画帧
 发布一次，终态和控制事件立即发布。
 
-CodeHelper 应采用同一原则，但继续以 Runtime Event 和 Cursor 为事实来源。Browser
+QCode 应采用同一原则，但继续以 Runtime Event 和 Cursor 为事实来源。Browser
 Projection 是可丢弃缓存，不成为新的权威状态。
 
 ### 默认折叠的工具流
@@ -210,7 +210,7 @@ AppFrame
 
 ### 空状态
 
-- 无可用 Provider 或 Credential 时，显示 CodeHelper Setup Surface；
+- 无可用 Provider 或 Credential 时，显示 QCode Setup Surface；
 - Runtime 已可用但没有 Session 时，中心区域显示创建 Chat 的明确动作；
 - 已有空 Session 时，隐藏普通 Header，把同一个 Composer 移到中心；
 - 首次提交后复用同一个 Textarea DOM，将 Composer 移到底部；
@@ -261,7 +261,7 @@ recovery
 
 Tool Variant 至少覆盖：
 
-| Variant | CodeHelper Tool | 默认摘要 |
+| Variant | QCode Tool | 默认摘要 |
 | --- | --- | --- |
 | Read | `file_read`、`result_get` | Workspace 相对路径或结果 Handle |
 | Search | `text_search`、`file_search`、`symbol_search` | Query 或 Pattern |
@@ -471,9 +471,9 @@ TraceSpan
 
 ## 视觉规范
 
-### CodeHelper 卡皮巴拉 Logo
+### QCode 卡皮巴拉 Logo
 
-CodeHelper 使用原创卡皮巴拉作为统一品牌标记。它在 Harness 鲸鱼出现的位置承担相同
+QCode 使用原创卡皮巴拉作为统一品牌标记。它在 Harness 鲸鱼出现的位置承担相同
 角色，但不能修改、描摹或变形复用鲸鱼路径。
 
 #### 造型
@@ -508,7 +508,7 @@ Logo 使用一个规范化 ViewBox 和同源路径生成全部尺寸：
 | Small Mark | 状态和 About | 16x12 |
 | Favicon | Browser | 32x32 |
 | App Icon | PWA 或安装入口 | 192x192、512x512 |
-| Wordmark | 展开 Sidebar | Mark + `CodeHelper` |
+| Wordmark | 展开 Sidebar | Mark + `QCode` |
 
 约束：
 
@@ -524,9 +524,9 @@ Logo 使用一个规范化 ViewBox 和同源路径生成全部尺寸：
 
 #### 使用位置
 
-- 展开 Sidebar：`CapybaraMark + CodeHelper + optional revision`；
+- 展开 Sidebar：`CapybaraMark + QCode + optional revision`；
 - 折叠 Rail：静止时显示 Capybara Mark，Hover 时切换为展开侧栏图标；
-- Empty Hero：`CapybaraMark + CodeHelper` 居中显示，输入区位于其下；
+- Empty Hero：`CapybaraMark + QCode` 居中显示，输入区位于其下；
 - Boot：加载时保留 Capybara Mark，加载状态另用状态指示器表达；
 - Error Boot：Logo 不变，错误语义由 Red 状态图标和文案表达；
 - Favicon、Manifest 和应用图标统一使用同一资产源；
@@ -564,7 +564,7 @@ Hero Mark 只在支持 Hover 且未启用 Reduced Motion 时执行一次轻微�
 
 ```text
 web/src/ui/brand/CapybaraMark.tsx
-web/src/ui/brand/CodeHelperWordmark.tsx
+web/src/ui/brand/QCodeWordmark.tsx
 web/public/favicon.svg
 web/public/icon-192.png
 web/public/icon-512.png
@@ -603,7 +603,7 @@ Logo Snapshot、SVG Geometry 和 Asset Generation Test。
 ### 色彩
 
 - 基础背景使用白色和冷中性灰；
-- 品牌标记可以保留 CodeHelper Emerald；
+- 品牌标记可以保留 QCode Emerald；
 - 交互选择和运行中信息使用 Blue；
 - 成功使用 Green；
 - 等待或风险提示使用 Amber；
@@ -829,7 +829,7 @@ score >= 95
 - 缺少 Trajectory Tab、三泳道 Timeline、Event Ledger、Search、Turn/Call 折叠、
   Record Inspector 或 Chat Tool 定位中的任一核心能力；
 - Trajectory 使用解析 Assistant 文案得到的伪事实，或把不可用 Timing 显示为零；
-- 被验收模块没有 CodeHelper/Harness 双实例真实 Prompt 对比 Evidence；
+- 被验收模块没有 QCode/Harness 双实例真实 Prompt 对比 Evidence；
 - 390px、200% Zoom 或键盘路径出现不可达主操作；
 - Light、Dark 或 Forced Colors 出现 WCAG A/AA 违规；
 - Reduced Motion 下仍存在无限动画；
@@ -839,7 +839,7 @@ score >= 95
 ## 双实例真实验收
 
 每个可独立验收的 Web 模块完成后，必须同时启动冻结参考提交的 DeepSeek Harness Web
-和当前 CodeHelper Web，并对该模块执行真实对比。只运行 CodeHelper、只查看静态截图或
+和当前 QCode Web，并对该模块执行真实对比。只运行 QCode、只查看静态截图或
 只使用 Fixture，均不能完成模块验收。
 
 ### 启动约束
@@ -853,19 +853,19 @@ pnpm run build
 pnpm dsh --profile web --port 3080
 ```
 
-CodeHelper 实例：
+QCode 实例：
 
 ```bash
-cd /Users/bytedance/flow/CodeHelper
-CODEHELPER_LOCAL_WORKSPACE="$PARITY_WORKSPACE" \
-CODEHELPER_LOCAL_POSTURE=suggest \
+cd /Users/bytedance/flow/QCode
+QCODE_LOCAL_WORKSPACE="$PARITY_WORKSPACE" \
+QCODE_LOCAL_POSTURE=suggest \
 make deepseek-web
 ```
 
 执行要求：
 
 - 两个 Web 必须在同一台机器、同一浏览器版本和同一显示设置下保持运行；
-- Harness 固定使用 `127.0.0.1:3080`，CodeHelper 使用启动输出中的实际 Loopback URL；
+- Harness 固定使用 `127.0.0.1:3080`，QCode 使用启动输出中的实际 Loopback URL；
 - 两边均选择 `DeepSeek-V4-Flash` 和 `High` Reasoning；
 - 两边使用语义相同的 `Workspace Write` 和需要审批的安全姿态；
 - Browser Automation 必须先列出 Tab、读取 Snapshot，再执行交互；
@@ -880,7 +880,7 @@ Prompt 必须使用两个从同一 Git Commit 创建的独立临时工作区：
 
 ```text
 .tmp/web-parity/<run-id>/workspace-harness
-.tmp/web-parity/<run-id>/workspace-codehelper
+.tmp/web-parity/<run-id>/workspace-qcode
 ```
 
 要求：
@@ -888,7 +888,7 @@ Prompt 必须使用两个从同一 Git Commit 创建的独立临时工作区：
 - 两个工作区的初始 Tree Digest 必须一致；
 - Prompt 中不使用绝对路径，只描述相同任务；
 - 每次写入场景结束后比较文件树、Diff、测试结果和终态 Receipt；
-- 不在当前存在未提交工作的 CodeHelper 主工作区执行破坏性 Prompt；
+- 不在当前存在未提交工作的 QCode 主工作区执行破坏性 Prompt；
 - 临时工作区、真实 Session Log、Network Trace 和模型输出不得提交到 Git。
 
 ### 真实 Prompt 套件
@@ -918,7 +918,7 @@ Prompt 文本允许真实发送。Prompt 本身必须：
 
 每个模块验收按固定顺序执行：
 
-1. 记录 Harness Commit、CodeHelper Commit、两边工作区 Digest、模型和浏览器版本；
+1. 记录 Harness Commit、QCode Commit、两边工作区 Digest、模型和浏览器版本；
 2. 启动两个 Web，确认 Console 无启动错误；
 3. 设置相同 Viewport、Theme、Locale、Reasoning 和访问模式；
 4. 分别执行一次不计分的 Warm-up；
@@ -950,7 +950,7 @@ Real Prompt 至少执行五组交错样本，报告 P50 和 P95，不使用单�
 - `trajectory_open`：点击 Trajectory 到 Toolbar、Timeline 和首屏 Ledger 可交互；
 - `trajectory_select`：点击 Span 到 Ledger 定位和 Inspector 可见。
 
-CodeHelper 的 UI 路径必须达到本文性能评分，Provider 总耗时只作为背景数据，不得用于
+QCode 的 UI 路径必须达到本文性能评分，Provider 总耗时只作为背景数据，不得用于
 掩盖 Browser Regression。
 
 ### 模块级验收
@@ -983,7 +983,7 @@ CodeHelper 的 UI 路径必须达到本文性能评分，Provider 总耗时只�
 │   ├── screenshots/
 │   ├── metrics.json
 │   └── browser-trace.zip
-├── codehelper/
+├── qcode/
 │   ├── screenshots/
 │   ├── metrics.json
 │   └── browser-trace.zip
@@ -998,7 +998,7 @@ CodeHelper 的 UI 路径必须达到本文性能评分，Provider 总耗时只�
 
 ### 参考场景
 
-视觉验收使用冻结 Harness 提交与 CodeHelper 的确定性 Fixture 构造语义相同的场景；
+视觉验收使用冻结 Harness 提交与 QCode 的确定性 Fixture 构造语义相同的场景；
 真实 Prompt 双实例运行负责验证同一场景在真实流式执行中的行为。两套证据都必须通过：
 
 1. 首次可用的 Empty；
@@ -1032,7 +1032,7 @@ CodeHelper 的 UI 路径必须达到本文性能评分，Provider 总耗时只�
 - Header、Composer、Sidebar、Tool Row 和主内容轴的关键边界误差不得超过 3px；
 - 文本换行、遮挡、溢出、滚动条跳动或主操作位移视为场景失败；
 - 参考截图只作为 `.tmp` 或 CI Artifact，不提交未经治理的外部截图；
-- CodeHelper 自身批准后的 Golden 继续提交到现有 Playwright Snapshot 目录。
+- QCode 自身批准后的 Golden 继续提交到现有 Playwright Snapshot 目录。
 
 ### 交互评分
 
@@ -1052,7 +1052,7 @@ CodeHelper 的 UI 路径必须达到本文性能评分，Provider 总耗时只�
 
 ### 性能评分
 
-性能使用同机、同浏览器、同 Fixture Event Stream 的 Harness 与 CodeHelper 对照：
+性能使用同机、同浏览器、同 Fixture Event Stream 的 Harness 与 QCode 对照：
 
 - 首个可见反馈的 P50 不慢于 Harness 的 1.10 倍；
 - 首个可见反馈的 P95 不慢于 Harness 的 1.20 倍；
@@ -1060,7 +1060,7 @@ CodeHelper 的 UI 路径必须达到本文性能评分，Provider 总耗时只�
 - 已稳定节点不得因其他节点 Delta 重渲染；
 - 10,000 Delta 场景不得产生 10,000 次 Browser Storage 写；
 - 20 个连续 Tool 的默认 DOM 高度不得超过 Harness 的 1.10 倍；
-- 首屏 gzip/brotli 体积不得相对改造前 CodeHelper 基线退化超过 20%；
+- 首屏 gzip/brotli 体积不得相对改造前 QCode 基线退化超过 20%；
 - 长历史和 Trajectory 滚动不得出现超过 50ms 的重复 Long Task。
 - Timeline Pointer Move、拖拽选区和面板 Resize 每动画帧最多提交一次视觉更新；
 - Trajectory 的 Event-only 首屏不得等待 Trace Query 才可操作。
@@ -1144,7 +1144,7 @@ make verify
 ```
 
 真实模型验收必须执行“双实例真实验收”章节规定的完整流程。`make deepseek-web`
-是 CodeHelper 的唯一受支持启动入口；Harness 使用冻结提交的 `web` Profile。不得把
+是 QCode 的唯一受支持启动入口；Harness 使用冻结提交的 `web` Profile。不得把
 凭证、Session Log、Network Authorization Header 或原始模型输出提交到仓库。
 
 ## 实施约束
@@ -1157,7 +1157,7 @@ make verify
    保留必要 Attribution，并记录在第三方声明中。
 6. CSS Token、布局常量、动画时长和性能预算必须集中管理。
 7. 所有新 UI 状态必须能由 Runtime Event、Receipt 或 Read Model 重建。
-8. Details 保留 CodeHelper 的差异化能力，但默认不得挤压主流程。
+8. Details 保留 QCode 的差异化能力，但默认不得挤压主流程。
 9. 不以增加依赖替代简单实现。Trajectory 虚拟化允许使用
    `@tanstack/react-virtual`，其他依赖需单独证明收益。
 10. 合入前删除临时双轨实现和开发 Feature Flag。
@@ -1173,7 +1173,7 @@ make verify
 - 卡皮巴拉 Mark、Wordmark、Favicon 和 App Icon 使用同一个矢量母版；
 - 20 个参考场景均有可重放 Fixture；
 - 视觉矩阵、交互矩阵和性能矩阵全部通过；
-- 每个模块均完成对应的 CodeHelper/Harness 双实例真实 Prompt 对比；
+- 每个模块均完成对应的 QCode/Harness 双实例真实 Prompt 对比；
 - 真实 DeepSeek 会话完成 Read Analysis、长 Tool Chain、Write Change、Multi-turn、
   Mid-stream Control、Failure/Recovery 和 Long Trajectory 验收；
 - `.tmp/web-parity/<run-id>/comparison.json` 保留完整原始测量和评分；
@@ -1206,7 +1206,7 @@ make verify
 - `make verify`，包括 99 项架构 Ratchet、Hermetic 全仓测试和 `go test -race`。
 
 真实双实例证据保存在 `.tmp/web-parity/20260824-read-analysis/`。冻结 Harness
-提交、CodeHelper、浏览器、Viewport、Theme、Reasoning 和工作区保持一致；该样本覆盖
+提交、QCode、浏览器、Viewport、Theme、Reasoning 和工作区保持一致；该样本覆盖
 Read Analysis、20 次只读 Tool 调用和 Long Trajectory。Write Change、Multi-turn、
 Mid-stream Control 与 Failure/Recovery 尚未执行双实例真实 Prompt，因此在这些证据
 补齐前不宣称满足本节的完整完成定义。

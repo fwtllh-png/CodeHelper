@@ -58,7 +58,7 @@ func TestLandlockReadOnlyRequestSeparatesWorkspaceFromWritableTemp(t *testing.T)
 }
 
 func TestLandlockHelperAppliesStrictPolicy(t *testing.T) {
-	if os.Getenv("CODEHELPER_SANDBOX_STAGE") != "1" {
+	if os.Getenv("QCODE_SANDBOX_STAGE") != "1" {
 		t.Skip("strict Landlock execution runs in the required sandbox stage")
 	}
 	workspace := t.TempDir()
@@ -87,9 +87,9 @@ func TestLandlockHelperAppliesStrictPolicy(t *testing.T) {
 	}
 	defer os.RemoveAll(requestRoot)
 	script := "set -eu; " +
-		`test "$CODEHELPER_LANDLOCK_ACTIVE" = 1; ` +
-		`test "$CODEHELPER_NO_NEW_PRIVS_ACTIVE" = 1; ` +
-		`test "$CODEHELPER_SECCOMP_ACTIVE" = restricted; ` +
+		`test "$QCODE_LANDLOCK_ACTIVE" = 1; ` +
+		`test "$QCODE_NO_NEW_PRIVS_ACTIVE" = 1; ` +
+		`test "$QCODE_SECCOMP_ACTIVE" = restricted; ` +
 		`test "$(cat input)" = workspace; ` +
 		"printf ok > output; " +
 		"! cat '" + strings.ReplaceAll(secret, "'", "'\\''") + "' >/dev/null 2>&1"
@@ -118,7 +118,7 @@ func TestLandlockHelperAppliesStrictPolicy(t *testing.T) {
 }
 
 func TestLandlockHelperAppliesSyscallPolicy(t *testing.T) {
-	if os.Getenv("CODEHELPER_SANDBOX_STAGE") != "1" {
+	if os.Getenv("QCODE_SANDBOX_STAGE") != "1" {
 		t.Skip("seccomp execution runs in the required sandbox stage")
 	}
 	workspace := t.TempDir()
@@ -151,7 +151,7 @@ func TestLandlockHelperAppliesSyscallPolicy(t *testing.T) {
 	command.Dir = workspace
 	command.Env = []string{
 		"PATH=/usr/bin:/bin:/usr/sbin:/sbin",
-		"CODEHELPER_SECCOMP_PROBE=1",
+		"QCODE_SECCOMP_PROBE=1",
 	}
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("seccomp helper failed: %v: %s", err, output)
@@ -159,7 +159,7 @@ func TestLandlockHelperAppliesSyscallPolicy(t *testing.T) {
 }
 
 func TestSeccompProbeProcess(t *testing.T) {
-	if os.Getenv("CODEHELPER_SECCOMP_PROBE") != "1" {
+	if os.Getenv("QCODE_SECCOMP_PROBE") != "1" {
 		t.Skip("seccomp probe child only")
 	}
 	value, err := unix.PrctlRetInt(unix.PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0)
@@ -207,7 +207,7 @@ func TestSeccompProbeProcess(t *testing.T) {
 }
 
 func TestLandlockBubblewrapPreparationMountsHelperLiteral(t *testing.T) {
-	if os.Getenv("CODEHELPER_SANDBOX_STAGE") != "1" {
+	if os.Getenv("QCODE_SANDBOX_STAGE") != "1" {
 		t.Skip("bubblewrap preparation runs in the required sandbox stage")
 	}
 	workspace, err := NewWorkspace(t.TempDir())

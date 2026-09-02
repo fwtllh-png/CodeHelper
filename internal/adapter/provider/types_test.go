@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
 )
 
 func TestModelRequestValidation(t *testing.T) {

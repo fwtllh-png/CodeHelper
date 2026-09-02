@@ -1,6 +1,6 @@
 package policy
 
-import "github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+import "github.com/fwtllh-png/QCode/internal/adapter/tool"
 
 type EffectKind string
 

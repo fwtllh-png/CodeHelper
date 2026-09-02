@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
 )
 
 func TestProbeReportsWhetherConnectionListsExactModel(t *testing.T) {

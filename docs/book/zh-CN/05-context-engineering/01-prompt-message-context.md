@@ -29,7 +29,7 @@ last_verified: null
 
 ## 前置知识
 
-阅读 [Model、Context 与 Tool 如何协作](../02-codehelper-overview/06-model-context-and-tool.md)。
+阅读 [Model、Context 与 Tool 如何协作](../02-qcode-overview/06-model-context-and-tool.md)。
 
 ## 问题背景
 
@@ -113,7 +113,7 @@ Engine 在每次 Sample 时将当前 Tool Catalog、Repo Map、Working Set、Evi
 ## 设计取舍
 
 单一 System String 易打印却无法归因或单独预算；每个文件一个 Message 又增加协议开销。
-CodeHelper 按语义所有者分区，并通过 Receipt 保留来源与裁剪事实。
+QCode 按语义所有者分区，并通过 Receipt 保留来源与裁剪事实。
 
 ## 失败模式与安全边界
 

@@ -3,8 +3,8 @@ package httpclient
 import (
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	providerratelimit "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/ratelimit"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	providerratelimit "github.com/fwtllh-png/QCode/internal/adapter/provider/ratelimit"
 )
 
 func (c *Client) DecideThroughput(

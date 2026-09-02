@@ -3,7 +3,7 @@ package prompt
 import (
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 // FragmentKind identifies a marked contextual injection that can be filtered
@@ -15,8 +15,8 @@ const (
 )
 
 const (
-	markerConstitutionStart = "<codehelper_fragment kind=\"constitution\">"
-	markerConstitutionEnd   = "</codehelper_fragment>"
+	markerConstitutionStart = "<qcode_fragment kind=\"constitution\">"
+	markerConstitutionEnd   = "</qcode_fragment>"
 )
 
 // FragmentMarkers returns start/end markers for a contextual fragment kind.

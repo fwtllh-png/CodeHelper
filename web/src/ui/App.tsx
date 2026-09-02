@@ -64,7 +64,7 @@ import {
 } from "../projection/conversation";
 import {RuntimeClient, type RuntimeSnapshot} from "../runtime/client";
 import {CapybaraMark} from "./brand/CapybaraMark";
-import {CodeHelperWordmark} from "./brand/CodeHelperWordmark";
+import {QCodeWordmark} from "./brand/QCodeWordmark";
 import {
   compactSelectWidth,
   ContextMeter,
@@ -1012,7 +1012,7 @@ export function App({client}: Props) {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${safeFilename(value.session.title)}.codehelper.json`;
+      anchor.download = `${safeFilename(value.session.title)}.qcode.json`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -1147,7 +1147,7 @@ export function App({client}: Props) {
     );
   }
   if (snapshot.phase === "booting") {
-    return <BootState title="Starting CodeHelper" detail={snapshot.workspaceRoot} />;
+    return <BootState title="Starting QCode" detail={snapshot.workspaceRoot} />;
   }
   if (snapshot.phase === "failed") {
     return (
@@ -1189,7 +1189,7 @@ export function App({client}: Props) {
                 : <PanelLeftClose size={17} />}
             </span>
           </button>
-          <span className="brandName">CodeHelper</span>
+          <span className="brandName">QCode</span>
         </div>
         <div className="newSessionRow">
           <button
@@ -1642,7 +1642,7 @@ export function App({client}: Props) {
               />
             ) : entries.length === 0 ? (
               <div className="emptyConversation">
-                <CodeHelperWordmark hero />
+                <QCodeWordmark hero />
                 <p>{snapshot.workspaceRoot}</p>
               </div>
             ) : (
@@ -1825,7 +1825,7 @@ export function App({client}: Props) {
                     ref={textareaRef}
                     value={draft}
                     rows={1}
-                    placeholder="Ask CodeHelper"
+                    placeholder="Ask QCode"
                     enterKeyHint="send"
                     disabled={Boolean(snapshot.hydratingSessionID) || submitting}
                     onChange={(event) => {
@@ -3020,7 +3020,7 @@ function WorkspaceRemovalDialog({
           </div>
         </header>
         <p id="workspace-removal-description" className="workspaceRemovalMessage">
-          <strong>{label}</strong> will be removed from CodeHelper. Files and
+          <strong>{label}</strong> will be removed from QCode. Files and
           session data remain on disk.
         </p>
         <div className="workspaceRemovalActions">
@@ -3166,7 +3166,7 @@ function FirstRunSetup({
         <div className="startupHeading">
           <div className="emptyMark"><CapybaraMark size="hero" /></div>
           <div>
-            <h1 id="startup-title">Set up CodeHelper</h1>
+            <h1 id="startup-title">Set up QCode</h1>
             <p>Connect a model provider for this workspace.</p>
           </div>
         </div>
@@ -3330,7 +3330,7 @@ function FirstRunSetup({
             {submitting
               ? <LoaderCircle className="spin" size={17} />
               : <Plus size={17} />}
-            <span>{submitting ? "Starting..." : "Start CodeHelper"}</span>
+            <span>{submitting ? "Starting..." : "Start QCode"}</span>
           </button>
         </div>
         {error && <p className="startupError" role="alert">{error}</p>}
@@ -3874,5 +3874,5 @@ function applyThemeMode(theme: ThemeMode, systemDark: boolean) {
 
 function safeFilename(value: string): string {
   const safe = value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return safe || "codehelper-session";
+  return safe || "qcode-session";
 }

@@ -2,13 +2,13 @@
 
 > 状态：设计文档，已按当前分支（codex/token-cost-p0-p1）实现情况修订。P0（工具定义确定性排序）、
 > P1-1～P1-4 与 §5.2/§5.3/§5.4 已实施（见对应小节）；P2（配置化）仍待实施。
-> 本文结合 DeepSeek 上下文缓存机制与 CodeHelper 现有实现，给出「提升预填充缓存命中率、从而降低
+> 本文结合 DeepSeek 上下文缓存机制与 QCode 现有实现，给出「提升预填充缓存命中率、从而降低
 > TTFT」的落地思路。涉及改动的部分均标注文件与行为约束，不引入未登记的固定阈值或启发式常量
 > （遵循仓库硬规则）。
 
 ## 1. 背景与目标
 
-CodeHelper 是一个 Coder 型 agent 运行时：每次调用模型前都会把较大的上下文（系统指令、工具定义、
+QCode 是一个 Coder 型 agent 运行时：每次调用模型前都会把较大的上下文（系统指令、工具定义、
 历史、工作集、世界状态、证据、计划等）投影为单一请求。对于一个 1M 上下文模型，真实会话的硬输入容量
 可达 ~640K token（见 `docs/zh-CN/fixed-threshold-audit.md` 的「真实会话验证」）。
 
@@ -29,7 +29,7 @@ DeepSeek 提供**自动上下文缓存（Context Caching）**，其要点如下�
 - **命中判定**：**精确前缀匹配**（token 级）。从第一个 token 开始连续匹配；一旦遇到首个不一致处，
   匹配即停止，命中部分复用已有 KV cache，未命中尾巴重新 prefill。
 - **计费与观测**：usage 中返回 `prompt_cache_hit_tokens` 与 `prompt_cache_miss_tokens`，命中 token
-  计价更低。CodeHelper 已在 `internal/adapter/provider/openai/stream.go:331` 解析这两个字段，并在
+  计价更低。QCode 已在 `internal/adapter/provider/openai/stream.go:331` 解析这两个字段，并在
   `:389` 处按 `nativeCache` 聚合。
 - **效果**：命中的前缀越长，跳过的 prefill 越多，**TTFT 越低**；decode 速度不受缓存影响。
 - **关键推论**：命中率由「**前缀 token 序列的稳定性**」决定，而非某个语义匹配。任何导致前缀 token
@@ -42,7 +42,7 @@ DeepSeek 提供**自动上下文缓存（Context Caching）**，其要点如下�
 > `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens`。DeepSeek 不再拥有独立的协议
 > Adapter；命中率只由真实 Wire 请求的精确前缀稳定性驱动。
 
-## 3. CodeHelper 当前实现与缓存相关路径
+## 3. QCode 当前实现与缓存相关路径
 
 ### 3.1 Prompt 组装与分区
 

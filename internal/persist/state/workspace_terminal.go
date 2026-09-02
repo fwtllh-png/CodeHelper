@@ -5,9 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
-	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
+	turnstate "github.com/fwtllh-png/QCode/internal/persist/state/turnstate"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
 )
 
 // WorkspaceTerminalStore scopes terminal outbox recovery while delegating

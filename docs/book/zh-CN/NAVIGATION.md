@@ -1,4 +1,4 @@
-# CodeHelper Agent 工程知识书籍：导航
+# QCode Agent 工程知识书籍：导航
 
 本导航由 `docs/book/catalog.json` 生成。规划章节可以清晰可见，但不会通过空占位文件伪装成已完成内容。
 
@@ -13,9 +13,9 @@
 建议先阅读以下六章：
 
 - [为什么 Agent 需要受治理的 Runtime](./01-agent-engineering/05-why-governed-runtime.md) — `agent-why-governed-runtime` — `draft` — 规划路径: `01-agent-engineering/05-why-governed-runtime.md`
-- [CodeHelper 全局架构](./02-codehelper-overview/02-system-architecture.md) — `overview-system-architecture` — `draft` — 规划路径: `02-codehelper-overview/02-system-architecture.md`
-- [一次 Agent Turn 的完整生命周期](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `verified` — 规划路径: `02-codehelper-overview/05-turn-lifecycle.md`
-- [Model、Context 与 Tool 如何协作](./02-codehelper-overview/06-model-context-and-tool.md) — `overview-model-context-tool` — `draft` — 规划路径: `02-codehelper-overview/06-model-context-and-tool.md`
+- [QCode 全局架构](./02-qcode-overview/02-system-architecture.md) — `overview-system-architecture` — `draft` — 规划路径: `02-qcode-overview/02-system-architecture.md`
+- [一次 Agent Turn 的完整生命周期](./02-qcode-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `verified` — 规划路径: `02-qcode-overview/05-turn-lifecycle.md`
+- [Model、Context 与 Tool 如何协作](./02-qcode-overview/06-model-context-and-tool.md) — `overview-model-context-tool` — `draft` — 规划路径: `02-qcode-overview/06-model-context-and-tool.md`
 - [Guard、Approval、Constitution 与 Sandbox](./07-security-governance/03-approval-constitution-sandbox.md) — `security-approval-sandbox` — `draft` — 规划路径: `07-security-governance/03-approval-constitution-sandbox.md`
 - [构建并追踪第一个 Agent Turn](./13-hands-on-labs/01-first-agent-turn.md) — `lab-first-turn` — `draft` — 规划路径: `13-hands-on-labs/01-first-agent-turn.md`
 
@@ -29,14 +29,14 @@
 - [Agent、Plan 与外部自动化的边界](./01-agent-engineering/04-agent-workflow-boundaries.md) — `agent-workflow-boundaries` — `draft` — 规划路径: `01-agent-engineering/04-agent-workflow-boundaries.md`
 - [为什么 Agent 需要受治理的 Runtime](./01-agent-engineering/05-why-governed-runtime.md) — `agent-why-governed-runtime` — `draft` — 规划路径: `01-agent-engineering/05-why-governed-runtime.md`
 
-### 部分 2: 认识 CodeHelper
+### 部分 2: 认识 QCode
 
-- [项目定位、价值与非目标](./02-codehelper-overview/01-positioning-and-non-goals.md) — `overview-positioning` — `draft` — 规划路径: `02-codehelper-overview/01-positioning-and-non-goals.md`
-- [CodeHelper 全局架构](./02-codehelper-overview/02-system-architecture.md) — `overview-system-architecture` — `draft` — 规划路径: `02-codehelper-overview/02-system-architecture.md`
-- [Package 所有权与依赖方向](./02-codehelper-overview/03-package-ownership.md) — `overview-package-ownership` — `draft` — 规划路径: `02-codehelper-overview/03-package-ownership.md`
-- [Operation、Event、Receipt 与 Projection](./02-codehelper-overview/04-runtime-vocabulary.md) — `overview-runtime-vocabulary` — `draft` — 规划路径: `02-codehelper-overview/04-runtime-vocabulary.md`
-- [一次 Agent Turn 的完整生命周期](./02-codehelper-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `verified` — 规划路径: `02-codehelper-overview/05-turn-lifecycle.md`
-- [Model、Context 与 Tool 如何协作](./02-codehelper-overview/06-model-context-and-tool.md) — `overview-model-context-tool` — `draft` — 规划路径: `02-codehelper-overview/06-model-context-and-tool.md`
+- [项目定位、价值与非目标](./02-qcode-overview/01-positioning-and-non-goals.md) — `overview-positioning` — `draft` — 规划路径: `02-qcode-overview/01-positioning-and-non-goals.md`
+- [QCode 全局架构](./02-qcode-overview/02-system-architecture.md) — `overview-system-architecture` — `draft` — 规划路径: `02-qcode-overview/02-system-architecture.md`
+- [Package 所有权与依赖方向](./02-qcode-overview/03-package-ownership.md) — `overview-package-ownership` — `draft` — 规划路径: `02-qcode-overview/03-package-ownership.md`
+- [Operation、Event、Receipt 与 Projection](./02-qcode-overview/04-runtime-vocabulary.md) — `overview-runtime-vocabulary` — `draft` — 规划路径: `02-qcode-overview/04-runtime-vocabulary.md`
+- [一次 Agent Turn 的完整生命周期](./02-qcode-overview/05-turn-lifecycle.md) — `overview-turn-lifecycle` — `verified` — 规划路径: `02-qcode-overview/05-turn-lifecycle.md`
+- [Model、Context 与 Tool 如何协作](./02-qcode-overview/06-model-context-and-tool.md) — `overview-model-context-tool` — `draft` — 规划路径: `02-qcode-overview/06-model-context-and-tool.md`
 
 ### 部分 3: Runtime 内核
 

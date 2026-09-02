@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	webhost "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/web"
+	webhost "github.com/fwtllh-png/QCode/internal/host/runtimeapi/web"
 )
 
 const inventoryVersion = 1
@@ -345,7 +345,7 @@ func classify(item inventoryItem) (string, string) {
 	case "host_journey":
 		return "journey-" + stableID(item.Name), "required"
 	case "vscode_view":
-		return "view-" + stableID(strings.TrimPrefix(item.Name, "codehelper.")), "required"
+		return "view-" + stableID(strings.TrimPrefix(item.Name, "qcode.")), "required"
 	case "vscode_command":
 		return classifyVSCodeCommand(item.Name), "required"
 	case "vscode_menu":

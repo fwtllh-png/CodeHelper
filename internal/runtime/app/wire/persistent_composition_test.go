@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
 
-	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
-	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	threadstate "github.com/fwtllh-png/QCode/internal/host/runtimeapi/thread"
+	sessionstate "github.com/fwtllh-png/QCode/internal/persist/session"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
 )
 
 func TestRepositoriesOwnDurableStores(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	adaptercontent "github.com/fwtllh-png/QCode/internal/adapter/content"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 func ProjectModelResults(

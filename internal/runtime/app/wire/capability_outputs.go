@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	memorystore "github.com/fwtllh-png/CodeHelper/internal/adapter/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	memorytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/memory"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
+	memorystore "github.com/fwtllh-png/QCode/internal/adapter/memory"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	memorytool "github.com/fwtllh-png/QCode/internal/adapter/tool/memory"
+	"github.com/fwtllh-png/QCode/internal/config"
 )
 
 func contributeMemory(

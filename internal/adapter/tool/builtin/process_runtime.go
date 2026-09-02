@@ -4,13 +4,13 @@ import (
 	"path/filepath"
 	"time"
 
-	qualitytool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/quality"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/workspacequery"
-	"github.com/fwtllh-png/CodeHelper/internal/security/artifactbroker"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
-	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
+	qualitytool "github.com/fwtllh-png/QCode/internal/adapter/tool/quality"
+	"github.com/fwtllh-png/QCode/internal/platform/workspacequery"
+	"github.com/fwtllh-png/QCode/internal/security/artifactbroker"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/processbroker"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/workspacebroker"
 )
 
 type ProcessRuntime struct {

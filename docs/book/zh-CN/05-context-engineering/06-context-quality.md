@@ -137,7 +137,7 @@ Task/Route 不稳定时，Token/Success 差异无法归因于 Context。
 
 ## 设计取舍
 
-人工 Prompt Review 能发现措辞问题但主观；端到端成功率重要但诊断能力弱。CodeHelper
+人工 Prompt Review 能发现措辞问题但主观；端到端成功率重要但诊断能力弱。QCode
 组合 Deterministic Structure Check、Provenance Receipt、Evidence Signal 与 Task Outcome。
 
 ## 失败模式与安全边界

@@ -117,7 +117,7 @@ Import Adapter Executor。
 
 ## 延伸阅读
 
-- [CodeHelper 全局架构](../02-codehelper-overview/02-system-architecture.md)
+- [QCode 全局架构](../02-qcode-overview/02-system-architecture.md)
 
 ## 事实来源与验证
 

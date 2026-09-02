@@ -3,7 +3,7 @@ package engine
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 func TestCurrentTurnSpecReturnsFrozenActiveSpec(t *testing.T) {

@@ -46,7 +46,7 @@ export function BackgroundActivityMonitor({
   }, []);
 
   useEffect(() => () => {
-    document.title = initialTitleRef.current || "CodeHelper";
+    document.title = initialTitleRef.current || "QCode";
     for (const notification of notificationsRef.current) {
       notification.close();
     }

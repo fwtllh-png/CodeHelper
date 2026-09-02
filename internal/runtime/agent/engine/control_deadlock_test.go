@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	toolguard "github.com/fwtllh-png/QCode/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
 )
 
 // TestConcurrentCloseAndRunDoesNotDeadlock verifies that concurrent Close

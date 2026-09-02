@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/keyring"
+	"github.com/fwtllh-png/QCode/internal/security/keyring"
 )
 
 const controlVersion = 1

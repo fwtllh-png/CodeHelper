@@ -104,7 +104,7 @@ Started”“Started 但无 Accepted Result”“Result 已保留但 State Appen
 
 ## 设计取舍
 
-Event-only Replay 权威但可能慢；Snapshot-only 快却缺少审计。CodeHelper 组合 Ordered
+Event-only Replay 权威但可能慢；Snapshot-only 快却缺少审计。QCode 组合 Ordered
 Event、Typed Projection、Integrity-checked Snapshot 与 Side-effect Journal。
 
 ## 失败与安全边界

@@ -1,4 +1,4 @@
-module github.com/fwtllh-png/CodeHelper
+module github.com/fwtllh-png/QCode
 
 go 1.26.0
 

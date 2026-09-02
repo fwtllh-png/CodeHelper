@@ -1286,7 +1286,7 @@ export class RuntimeClient {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${this.token}`,
-        "X-CodeHelper-Workspace-ID": this.state.selectedWorkspaceID
+        "X-QCode-Workspace-ID": this.state.selectedWorkspaceID
       },
       credentials: "same-origin"
     });
@@ -1519,11 +1519,11 @@ export class RuntimeClient {
     const headers: Record<string, string> = {
       "Authorization": `Bearer ${this.token}`,
       "Content-Type": "application/json",
-      "X-CodeHelper-Request-ID": crypto.randomUUID()
+      "X-QCode-Request-ID": crypto.randomUUID()
     };
     const workspaceID = options.workspaceID ?? this.state.selectedWorkspaceID;
     if (workspaceID) {
-      headers["X-CodeHelper-Workspace-ID"] = workspaceID;
+      headers["X-QCode-Workspace-ID"] = workspaceID;
     }
     if (options.idempotencyKey) {
       headers["Idempotency-Key"] = options.idempotencyKey;

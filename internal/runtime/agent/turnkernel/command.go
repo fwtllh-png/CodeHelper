@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/QCode/internal/adapter/provider/assembly"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type Command interface {
@@ -400,11 +400,11 @@ type Event struct {
 type EffectKind string
 
 const (
-	EffectSampleProvider      EffectKind = "sample_provider"
-	EffectExecuteTool         EffectKind = "execute_tool"
-	EffectAwaitApproval       EffectKind = "await_approval"
-	EffectAwaitInput          EffectKind = "await_input"
-	EffectRunVerification     EffectKind = "run_verification"
+	EffectSampleProvider  EffectKind = "sample_provider"
+	EffectExecuteTool     EffectKind = "execute_tool"
+	EffectAwaitApproval   EffectKind = "await_approval"
+	EffectAwaitInput      EffectKind = "await_input"
+	EffectRunVerification EffectKind = "run_verification"
 	EffectCommitJournal   EffectKind = "commit_journal"
 	EffectSuspendJournal  EffectKind = "suspend_journal"
 	EffectRollbackJournal EffectKind = "rollback_journal"

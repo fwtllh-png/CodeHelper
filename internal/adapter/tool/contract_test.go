@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
 )
 
 func TestTrustedBindingRejectsCrossFieldAuthorityConflicts(t *testing.T) {

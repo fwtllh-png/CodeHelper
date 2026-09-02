@@ -50,7 +50,7 @@ class RunTestLaneTest(unittest.TestCase):
     def test_records_an_optional_missing_capability(self):
         completed, report = self.run_lane(
             "--requires-command",
-            "codehelper-command-that-does-not-exist",
+            "qcode-command-that-does-not-exist",
             "--",
             sys.executable,
             "-c",
@@ -65,7 +65,7 @@ class RunTestLaneTest(unittest.TestCase):
     def test_can_require_a_capability(self):
         completed, report = self.run_lane(
             "--requires-command",
-            "codehelper-command-that-does-not-exist",
+            "qcode-command-that-does-not-exist",
             "--require-available",
             "--",
             sys.executable,

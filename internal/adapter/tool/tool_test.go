@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
+	adaptercontent "github.com/fwtllh-png/QCode/internal/adapter/content"
 )
 
 func executeRegistry(

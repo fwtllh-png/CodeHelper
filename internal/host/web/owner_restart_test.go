@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/buildinfo"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/ownerlease"
+	"github.com/fwtllh-png/QCode/internal/buildinfo"
+	"github.com/fwtllh-png/QCode/internal/platform/ownerlease"
 )
 
 func TestWebOwnerBuildIncludesBuildDate(t *testing.T) {

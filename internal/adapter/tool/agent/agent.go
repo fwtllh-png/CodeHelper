@@ -11,12 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	filetool "github.com/fwtllh-png/QCode/internal/adapter/tool/file"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/handle"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 type Options struct {

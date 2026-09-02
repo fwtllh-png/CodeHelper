@@ -212,7 +212,7 @@ Idempotency 只在局部边界成立；一个 Key 不能使任意 Shell Command 
 
 ## 设计取舍与替代方案
 
-Restart 后 Replay 所有 Accepted Operation 会重复 Provider Cost 与 Effect。CodeHelper
+Restart 后 Replay 所有 Accepted Operation 会重复 Provider Cost 与 Effect。QCode
 只继续具备合法 Domain Facts、可 Claim Lease 与受支持 Durable Effect Route 的 Turn。
 Coordinator 恢复 State；Retained Result Protocol 与每个 Effect 的 Idempotency
 Identity 防止一次 State Append 失败变成第二次 External Execution。

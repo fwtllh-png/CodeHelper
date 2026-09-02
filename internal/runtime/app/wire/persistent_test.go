@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
-	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	turnstate "github.com/fwtllh-png/CodeHelper/internal/persist/state/turnstate"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	threadstate "github.com/fwtllh-png/QCode/internal/host/runtimeapi/thread"
+	usagestate "github.com/fwtllh-png/QCode/internal/observability/usage"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	turnstate "github.com/fwtllh-png/QCode/internal/persist/state/turnstate"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func newPersistentRuntime(

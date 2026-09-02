@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
 )
 
 type Options struct {

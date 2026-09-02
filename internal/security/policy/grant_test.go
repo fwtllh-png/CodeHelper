@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 func TestShellGrantBindsCommandCWDAndWriteSet(t *testing.T) {

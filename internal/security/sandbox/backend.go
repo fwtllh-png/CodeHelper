@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlplane"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/controlplane"
 )
 
 const ErrUnavailableCode = "sandbox_unavailable"
@@ -1064,19 +1064,19 @@ func runAttackProbe(helperPath string) Capability {
 	if runtime.GOOS == "linux" {
 		base.Available = true
 	}
-	workspace, err := os.MkdirTemp("", "codehelper-probe-workspace-")
+	workspace, err := os.MkdirTemp("", "qcode-probe-workspace-")
 	if err != nil {
 		base.Reason = err.Error()
 		return base
 	}
 	defer os.RemoveAll(workspace)
-	privateTemp, err := os.MkdirTemp("", "codehelper-probe-private-")
+	privateTemp, err := os.MkdirTemp("", "qcode-probe-private-")
 	if err != nil {
 		base.Reason = err.Error()
 		return base
 	}
 	defer os.RemoveAll(privateTemp)
-	external, err := os.MkdirTemp("", "codehelper-probe-external-")
+	external, err := os.MkdirTemp("", "qcode-probe-external-")
 	if err != nil {
 		base.Reason = err.Error()
 		return base
@@ -1141,13 +1141,13 @@ func runAttackProbe(helperPath string) Capability {
 		`set -eu; test "$(cat input)" = workspace; test "$(cat <<'EOF'
 heredoc
 EOF
-)" = heredoc; printf ok > output; sh -c 'test "$(cat input)" = workspace'; ! cat %q >/dev/null 2>&1; ! printf bad > %q; ! printf bad > /private/tmp/codehelper-sandbox-probe; ! printf bad > /var/tmp/codehelper-sandbox-probe; ! printf bad > /private/var/tmp/codehelper-sandbox-probe; %s`,
+)" = heredoc; printf ok > output; sh -c 'test "$(cat input)" = workspace'; ! cat %q >/dev/null 2>&1; ! printf bad > %q; ! printf bad > /private/tmp/qcode-sandbox-probe; ! printf bad > /var/tmp/qcode-sandbox-probe; ! printf bad > /private/var/tmp/qcode-sandbox-probe; %s`,
 		secret, outsideWrite, networkTest,
 	)
 	if runtime.GOOS == "linux" {
-		script = `test "$CODEHELPER_LANDLOCK_ACTIVE" = 1; ` +
-			`test "$CODEHELPER_NO_NEW_PRIVS_ACTIVE" = 1; ` +
-			`test "$CODEHELPER_SECCOMP_ACTIVE" = restricted; ` + script
+		script = `test "$QCODE_LANDLOCK_ACTIVE" = 1; ` +
+			`test "$QCODE_NO_NEW_PRIVS_ACTIVE" = 1; ` +
+			`test "$QCODE_SECCOMP_ACTIVE" = restricted; ` + script
 	}
 	prepared, err := backend.Prepare(context.Background(), Command{
 		Path: "/bin/sh", Args: []string{"/bin/sh", "-c", script},

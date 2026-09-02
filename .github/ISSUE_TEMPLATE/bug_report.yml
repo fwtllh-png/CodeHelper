@@ -1,5 +1,5 @@
 name: Bug report / 缺陷报告
-description: Report a reproducible CodeHelper defect / 报告可复现的 CodeHelper 缺陷
+description: Report a reproducible QCode defect / 报告可复现的 QCode 缺陷
 title: "bug: "
 labels:
   - bug
@@ -10,8 +10,8 @@ body:
         Thanks for reporting a defect. Do not include credentials, private source, or production data.
         感谢提交缺陷。请勿包含凭证、私有源码或生产数据。
 
-        Security vulnerabilities must be reported through [GitHub Security Advisories](https://github.com/fwtllh-png/CodeHelper/security/advisories/new).
-        安全漏洞必须通过 [GitHub Security Advisories](https://github.com/fwtllh-png/CodeHelper/security/advisories/new) 私下报告。
+        Security vulnerabilities must be reported through [GitHub Security Advisories](https://github.com/fwtllh-png/QCode/security/advisories/new).
+        安全漏洞必须通过 [GitHub Security Advisories](https://github.com/fwtllh-png/QCode/security/advisories/new) 私下报告。
 
   - type: input
     id: version

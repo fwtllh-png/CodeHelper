@@ -10,7 +10,7 @@ export interface BrowserStorage {
   save(scope: string, state: BrowserProjectionState): Promise<void>;
 }
 
-const databaseName = "codehelper-web";
+const databaseName = "qcode-web";
 const storeName = "projection";
 
 export class IndexedDBBrowserStorage implements BrowserStorage {

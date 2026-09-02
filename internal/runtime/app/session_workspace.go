@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/chatmerge"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/orchestration/chatmerge"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 const SessionIsolationWorktree = "worktree"

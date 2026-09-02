@@ -5,14 +5,14 @@
 先确认 Binary 与启动参数：
 
 ```bash
-./bin/codehelper --version
-./bin/codehelper --help
+./bin/qcode --version
+./bin/qcode --help
 ```
 
 随后启动 Web，并保留终端中的 Boot、Runtime 和 Shutdown 日志：
 
 ```bash
-./bin/codehelper --config ./codehelper.toml --workspace . --no-open
+./bin/qcode --config ./qcode.toml --workspace . --no-open
 ```
 
 Web Settings 中的 Runtime Diagnostics 是当前能力、配置和恢复状态的权威展示。
@@ -24,7 +24,7 @@ Web Settings 中的 Runtime Diagnostics 是当前能力、配置和恢复状态�
 1. TOML 是否可解析，字段是否属于当前 Schema；
 2. Workspace 与 Data Directory 是否可访问；
 3. Provider、Model 和 Credential Reference 是否匹配；
-4. 是否已有同一 Workspace 的 CodeHelper 进程持有 Owner Lease；
+4. 是否已有同一 Workspace 的 QCode 进程持有 Owner Lease；
 5. 平台是否具备当前 Posture 所需的 Sandbox 能力。
 
 修正配置后重启进程。不要通过禁用 Guard、Constitution 或 Sandbox 绕过错误。
@@ -104,7 +104,7 @@ Generation、Capability、Health 和 Control Receipt。单个扩展失败应保�
 
 ## Web 连接失败
 
-CodeHelper 只监听 `127.0.0.1`。确认浏览器访问终端输出的完整 URL，并检查：
+QCode 只监听 `127.0.0.1`。确认浏览器访问终端输出的完整 URL，并检查：
 
 - Host 与 Origin 没有被代理或重写；
 - Capability Token 来自当前进程的 Bootstrap；

@@ -5,8 +5,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/QCode/internal/adapter/provider/assembly"
 )
 
 func (s *RuntimeKernel) BeginModelSample(

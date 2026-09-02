@@ -3,7 +3,7 @@ package wire
 import (
 	"encoding/json"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 // CompleteStatelessProjection records content-safe evidence for an adapter

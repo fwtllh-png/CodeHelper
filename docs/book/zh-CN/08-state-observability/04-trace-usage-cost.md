@@ -76,7 +76,7 @@ Missing Usage、Unknown Price 与 Absent Latency 保持 Unknown。Tool-side Mode
 W3C `traceparent`/`tracestate` 跨 Provider HTTP、MCP HTTP/stdio、Process 与
 Subagent 传播。Malformed 或 All-zero Context 在解析边界 Fail Closed。
 
-CodeHelper 不提供 OTLP Exporter。W3C Context 仅用于跨组件关联本地 Trace，不能授权
+QCode 不提供 OTLP Exporter。W3C Context 仅用于跨组件关联本地 Trace，不能授权
 执行或恢复。
 
 ## Signal Type 与 Cardinality

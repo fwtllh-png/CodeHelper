@@ -4,16 +4,16 @@ import (
 	"context"
 	"fmt"
 
-	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
+	sessionhistory "github.com/fwtllh-png/QCode/internal/persist/history"
 
-	reverttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/revert"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	reverttool "github.com/fwtllh-png/QCode/internal/adapter/tool/revert"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 type agentModule struct{}

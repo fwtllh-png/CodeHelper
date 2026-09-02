@@ -8,7 +8,7 @@ import (
 )
 
 // builtinSkillFiles are immutable, versioned workflow defaults shipped with
-// the CodeHelper binary. Filesystem-discovered skills may override them by name.
+// the QCode binary. Filesystem-discovered skills may override them by name.
 //
 //go:embed builtins/*/SKILL.md builtins/*/skill.toml
 var builtinSkillFiles embed.FS

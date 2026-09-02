@@ -19,28 +19,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/anthropic"
-	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
-	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
-	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	completiontool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/completion"
-	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/interact"
-	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	promptcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/anthropic"
+	providerfixture "github.com/fwtllh-png/QCode/internal/adapter/provider/fixture"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/httpclient"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/openai"
+	providerrouter "github.com/fwtllh-png/QCode/internal/adapter/provider/router"
+	providerwire "github.com/fwtllh-png/QCode/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	completiontool "github.com/fwtllh-png/QCode/internal/adapter/tool/completion"
+	filetool "github.com/fwtllh-png/QCode/internal/adapter/tool/file"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
+	webtool "github.com/fwtllh-png/QCode/internal/adapter/tool/web"
+	"github.com/fwtllh-png/QCode/internal/observability/diagnostics"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 type engineSandboxBackend struct{ root string }
@@ -1524,7 +1524,7 @@ func TestEngineUsesWebSearchCitationToCompleteTurn(t *testing.T) {
 		_, _ = io.WriteString(writer, `{"results":[{"title":"Fixture Source","url":"https://example.test/source","snippet":"verified answer"}]}`)
 	}))
 	defer searchServer.Close()
-	t.Setenv("CODEHELPER_WEB_SEARCH_URL", searchServer.URL)
+	t.Setenv("QCODE_WEB_SEARCH_URL", searchServer.URL)
 
 	runtime := &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{

@@ -9,14 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	skillruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/skill"
-	"github.com/fwtllh-png/CodeHelper/internal/buildinfo"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/extensioncontrol"
-	extensionapp "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
+	skillruntime "github.com/fwtllh-png/QCode/internal/adapter/skill"
+	"github.com/fwtllh-png/QCode/internal/buildinfo"
+	"github.com/fwtllh-png/QCode/internal/persist/extensioncontrol"
+	extensionapp "github.com/fwtllh-png/QCode/internal/runtime/app/extension"
 )
 
 // SkillOptions is the explicit production configuration surface for
-// skills. Empty fields are resolved to safe CodeHelper-owned locations by
+// skills. Empty fields are resolved to safe QCode-owned locations by
 // ResolveSkillPaths.
 type SkillOptions struct {
 	DataDir             string
@@ -94,7 +94,7 @@ func ResolveSkillPaths(options SkillOptions, workspace string) (SkillPaths, erro
 	}
 	dataDir := strings.TrimSpace(options.DataDir)
 	if dataDir == "" {
-		dataDir = filepath.Join(workspace, ".codehelper", "data")
+		dataDir = filepath.Join(workspace, ".qcode", "data")
 	}
 	dataDir, err = absoluteClean(dataDir)
 	if err != nil {

@@ -3,11 +3,11 @@ package engine
 import (
 	"unicode/utf8"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	toolresult "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/result"
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
-	contextview "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/contextview"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	toolresult "github.com/fwtllh-png/QCode/internal/adapter/tool/result"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
+	contextview "github.com/fwtllh-png/QCode/internal/runtime/agent/contextview"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func (e *Engine) recordToolSurfaceBudget(

@@ -10,14 +10,14 @@ make install
 
 ```bash
 cd /path/to/project
-codehelper
+qcode
 ```
 
 当前目录自动成为 Workspace，并自动打开浏览器。服务只监听 `127.0.0.1`，默认选择
-可用端口。若 Web Supervisor 已运行，再次从其他目录执行 `codehelper` 会把当前目录
+可用端口。若 Web Supervisor 已运行，再次从其他目录执行 `qcode` 会把当前目录
 注册到已有进程，并直接打开对应 Workspace。`make start` 仅作为源码开发入口保留。
 它会使用 `--replace-owner` 比较构建身份并重启旧的开发 Supervisor；直接执行已安装的
-`codehelper` 仍复用现有 Supervisor。
+`qcode` 仍复用现有 Supervisor。
 
 ## 启动参数
 
@@ -63,13 +63,13 @@ Session 侧栏按 Workspace 分组，并将搜索、归档与行级操作渐进�
 侧栏的文件夹加号打开 Workspace 管理界面。点击 `Choose folder` 后由本地 Host 打开
 操作系统目录选择器；用户选中的目录由 Supervisor 规范化物理路径、持久化 Registry，
 并为该目录构造独立 Runtime，不需要在浏览器中手工输入路径。HTTP RPC 和内容下载通过
-`X-CodeHelper-Workspace-ID` 路由，WebSocket 在鉴权帧中携带 `workspace_id`；未知
+`X-QCode-Workspace-ID` 路由，WebSocket 在鉴权帧中携带 `workspace_id`；未知
 Workspace、跨 Workspace Session 和内容句柄均拒绝访问。浏览器为每个 Workspace
 分别保存事件 Cursor、选中 Session、草稿和反馈。当前 Workspace 使用实时事件流；
 Workspace Catalog 和 Session 摘要在页面重新可见时刷新，不持续轮询 Git 状态。
 Trajectory 也由新 Runtime Event 驱动增量 Trace 查询。裸 Supervisor URL 不隐式选择
 默认 Workspace；用户必须先选择一个 Ready Workspace，页面和 Host 才允许创建 Session。
-从项目目录执行 `codehelper` 时，启动器会把该目录作为显式 Workspace 参数打开。
+从项目目录执行 `qcode` 时，启动器会把该目录作为显式 Workspace 参数打开。
 Workspace 管理界面可以移除任意 Workspace。移除只会注销并关闭对应 Runtime，不会
 删除本机目录、Git 内容或持久化 Session。移除当前 Workspace 后，Web 自动切换到另一
 个 Ready Workspace；移除最后一个后进入 Workspace 选择空态。所有 Runtime HTTP RPC、
@@ -111,7 +111,7 @@ Workspace 写入生成文件。`format_code` 只格式化显式路径且进入 b
 以禁用脚本、Workspace 只读的方式解析依赖，并要求显式声明网络目标。
 
 安装 Chromium/Chrome 后，`web_run` 使用隔离临时 Profile 和 CDP 提供真实
-navigate、DOM snapshot、click 与 fill；`CODEHELPER_BROWSER_BINARY` 可覆盖自动探测。
+navigate、DOM snapshot、click 与 fill；`QCODE_BROWSER_BINARY` 可覆盖自动探测。
 本地开发地址必须显式传入 `allow_loopback`。`http_request` 支持结构化
 GET/POST/PUT/PATCH/DELETE/HEAD、响应状态断言和有界 Body；它拒绝
 Authorization、Cookie、API Key 等会被持久化进 Tool Call 的敏感 Header。

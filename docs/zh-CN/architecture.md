@@ -2,7 +2,7 @@
 
 ## 架构目标
 
-CodeHelper 保持一个本机 Web Supervisor，并为每个已注册 Workspace 构造一个权威执行
+QCode 保持一个本机 Web Supervisor，并为每个已注册 Workspace 构造一个权威执行
 Runtime。Host 按 Workspace 路由 Operation 并观察 Event，不复制 Agent 循环，也不
 直接执行特权工具。
 
@@ -31,7 +31,7 @@ Web
 
 | 层 | 路径 | 职责 |
 | --- | --- | --- |
-| 入口 | `cmd/codehelper` | 进程上下文和 Web 启动入口 |
+| 入口 | `cmd/qcode` | 进程上下文和 Web 启动入口 |
 | Host | `internal/host` | 用户/客户端 I/O 与呈现 |
 | Runtime | `internal/runtime` | 协议、应用状态、Agent 循环、装配 |
 | Adapter | `internal/adapter` | 模型、Provider、Tool、MCP、Skill |
@@ -117,7 +117,7 @@ API Key 写入操作系统 Keyring，Provider、Model、Endpoint 与协议写入
 `Activate` 完整 Web Runtime。
 
 Web 进程持有一个全局 Owner Lease 和持久化 Workspace Registry。首次启动创建
-Supervisor；其他目录再次执行 `codehelper` 时，通过 Lease 中仅对当前用户可读的
+Supervisor；其他目录再次执行 `qcode` 时，通过 Lease 中仅对当前用户可读的
 Capability Token 调用已有 Host 的 `workspace/add`，不会启动第二套控制面。每个
 Workspace 单独拥有 `wire.Session`、Sandbox、Tool Registry、Repository Index 和
 MCP 生命周期。共享 SQLite 中的 Session、Event Recovery 与 Terminal Outbox
@@ -476,7 +476,7 @@ Runtime Event 是 Host Protocol，也是生命周期回放的权威记录。Term
 - **Telemetry**：本地结构化日志与低基数指标；
 - **Diagnostics/Verification**：提供环境诊断和完成门禁证据。
 
-CodeHelper 不维护第二份 Durable Observation Journal、CAS Payload、Retention Policy
+QCode 不维护第二份 Durable Observation Journal、CAS Payload、Retention Policy
 或 OTLP Exporter。W3C Trace Context 仍跨 Provider HTTP、MCP HTTP/stdio、Process 与
 Subagent 传播，用于关联调用；它不获得执行权威。故障分析以 Runtime Event、Terminal
 Envelope、Trace、Usage、Receipt、Job Log 与 Workspace Journal 交叉核对。
@@ -599,7 +599,7 @@ Query/Candidate 截断。
 
 ## Subagent 协作架构
 
-CodeHelper 不维护通用后台 Task Queue、Worker Lease、Workflow DAG、Automation、
+QCode 不维护通用后台 Task Queue、Worker Lease、Workflow DAG、Automation、
 Lane 或 Fleet。前台工作由 Runtime Turn 承载；多 Agent 协作通过 Subagent
 Control Plane 扩展，但不建立第二套执行生命周期：
 

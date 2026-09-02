@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestResolveEditorContextReadsExplicitFileAndSelection(t *testing.T) {

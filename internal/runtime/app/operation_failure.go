@@ -1,6 +1,6 @@
 package app
 
-import "github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+import "github.com/fwtllh-png/QCode/internal/runtime/protocol"
 
 func (r *Runtime) rejectResumableOperation(
 	operation protocol.Operation,

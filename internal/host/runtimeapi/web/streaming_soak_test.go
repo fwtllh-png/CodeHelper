@@ -9,21 +9,21 @@ import (
 	"time"
 
 	"github.com/coder/websocket/wsjson"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestWebSocketSustainedStreamingSoak(t *testing.T) {
-	durationValue := os.Getenv("CODEHELPER_WEB_STREAMING_SOAK_DURATION")
+	durationValue := os.Getenv("QCODE_WEB_STREAMING_SOAK_DURATION")
 	if durationValue == "" {
-		t.Skip("set CODEHELPER_WEB_STREAMING_SOAK_DURATION=1h to run the release soak")
+		t.Skip("set QCODE_WEB_STREAMING_SOAK_DURATION=1h to run the release soak")
 	}
 	duration, err := time.ParseDuration(durationValue)
 	if err != nil {
 		t.Fatalf("parse soak duration: %v", err)
 	}
 	if duration < time.Hour &&
-		os.Getenv("CODEHELPER_WEB_STREAMING_SOAK_ALLOW_SHORT") != "1" {
+		os.Getenv("QCODE_WEB_STREAMING_SOAK_ALLOW_SHORT") != "1" {
 		t.Fatalf("release soak duration = %s, want at least 1h", duration)
 	}
 

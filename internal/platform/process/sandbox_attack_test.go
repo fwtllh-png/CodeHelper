@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestRealSandboxAttackCorpus(t *testing.T) {
-	if os.Getenv("CODEHELPER_SANDBOX_STAGE") != "1" {
+	if os.Getenv("QCODE_SANDBOX_STAGE") != "1" {
 		t.Skip("real sandbox attack corpus runs in the required sandbox stage")
 	}
 	root := t.TempDir()
@@ -67,7 +67,7 @@ func TestRealSandboxAttackCorpus(t *testing.T) {
 	}
 	activationCheck := "true"
 	if runtime.GOOS == "linux" {
-		activationCheck = `test "$CODEHELPER_LANDLOCK_ACTIVE" = 1`
+		activationCheck = `test "$QCODE_LANDLOCK_ACTIVE" = 1`
 	}
 	if result := run(t, activationCheck+`; cat workspace; test "$(cat <<'EOF'
 heredoc
@@ -81,16 +81,16 @@ EOF
 	}{
 		{"external-read", "cat " + shellQuote(secret)},
 		{"external-write", "printf escaped > " + shellQuote(filepath.Join(external, "escaped"))},
-		{"host-temp-write", `printf escaped > "/private/tmp/codehelper-sandbox-attack-$$"`},
-		{"host-var-temp-lexical-write", `printf escaped > "/var/tmp/codehelper-sandbox-attack-$$"`},
-		{"host-var-temp-write", `printf escaped > "/private/var/tmp/codehelper-sandbox-attack-$$"`},
+		{"host-temp-write", `printf escaped > "/private/tmp/qcode-sandbox-attack-$$"`},
+		{"host-var-temp-lexical-write", `printf escaped > "/var/tmp/qcode-sandbox-attack-$$"`},
+		{"host-var-temp-write", `printf escaped > "/private/var/tmp/qcode-sandbox-attack-$$"`},
 		{"symlink-read", "ln -s " + shellQuote(external) + " link && cat link/secret"},
 		{"network", "/usr/bin/nc -w 1 127.0.0.1 9"},
-		{"environment", `test -z "$CODEHELPER_ATTACK_SECRET"`},
+		{"environment", `test -z "$QCODE_ATTACK_SECRET"`},
 	}
 	for _, attack := range attacks {
 		t.Run(attack.name, func(t *testing.T) {
-			t.Setenv("CODEHELPER_ATTACK_SECRET", secretValue)
+			t.Setenv("QCODE_ATTACK_SECRET", secretValue)
 			result := run(t, attack.command)
 			if attack.name == "symlink-read" {
 				_ = os.Remove(filepath.Join(root, "link"))

@@ -1,6 +1,6 @@
 ---
 id: overview-system-architecture
-title: CodeHelper 全局架构
+title: QCode 全局架构
 audience:
   - learner
   - contributor
@@ -9,7 +9,7 @@ prerequisites:
   - agent-why-governed-runtime
   - overview-positioning
 code_paths:
-  - cmd/codehelper
+  - cmd/qcode
   - internal/host
   - internal/runtime
   - internal/adapter
@@ -30,11 +30,11 @@ status: draft
 last_verified: null
 ---
 
-# CodeHelper 全局架构
+# QCode 全局架构
 
 ## 学习目标
 
-理解主要分层、依赖方向、Runtime Protocol，以及 CodeHelper 如何让主 Agent 与
+理解主要分层、依赖方向、Runtime Protocol，以及 QCode 如何让主 Agent 与
 Subagent 共享同一个执行核心。
 
 ## 前置知识
@@ -49,7 +49,7 @@ Provider、执行 Tool 或保存 State，安全、取消、恢复和证据语义
 
 ## 同一系统的三个视图
 
-不要只靠一张 Package Diagram 理解 CodeHelper：
+不要只靠一张 Package Diagram 理解 QCode：
 
 | 视图 | 问题 | 路径 |
 | --- | --- | --- |
@@ -70,7 +70,7 @@ Control Path，以及通过 Event/Receipt 的 Evidence Path；只实现 Executor
 - **Orchestration** 管理 Subagent 协作、预算与隔离工作区。
 - **Platform** 实现 OS Process 与 Sandbox 能力。
 
-## CodeHelper 设计
+## QCode 设计
 
 ```mermaid
 flowchart TB
@@ -98,7 +98,7 @@ flowchart TB
 图中的箭头不是“上层可任意调用所有下层”。Host 可以使用 Protocol 和 Application
 Facade，但不能直接依赖 Tool、Provider、Agent Engine 或 Sandbox 实现。
 
-受支持的产品 Host 只有 Web。Web Host 在单一 `codehelper` 进程中通过
+受支持的产品 Host 只有 Web。Web Host 在单一 `qcode` 进程中通过
 loopback HTTP/WebSocket 连接 Embedded UI 与共享 Runtime；Provider HTTP、MCP HTTP/SSE
 与本地 Fixture Listener 是集成 Transport，不是产品 Host。远程绑定、Pairing/QR 和
 公网 REST/SSE 不属于受支持的产品面。
@@ -107,7 +107,7 @@ loopback HTTP/WebSocket 连接 Embedded UI 与共享 Runtime；Provider HTTP、M
 
 | 层 | 路径 | 职责 |
 | --- | --- | --- |
-| Entry | `cmd/codehelper` | Process Startup 与 Web Host |
+| Entry | `cmd/qcode` | Process Startup 与 Web Host |
 | Host | `internal/host` | Presentation 与 Transport Adapter |
 | Runtime | `internal/runtime` | Protocol、Lifecycle、Agent Loop、Wiring |
 | Adapter | `internal/adapter` | Provider、Tool、MCP、Skill |
@@ -213,14 +213,14 @@ Lifecycle Evidence；CAS 保存不可变 Payload；Snapshot 加速恢复；Works
 记录 Edit Before-image。Trace 与 Usage 作为辅助投影保存耗时和成本，但不获得执行
 权威。
 
-CodeHelper 不维护通用后台 Task Queue、Worker Lease、Workflow DAG 或 Automation。
+QCode 不维护通用后台 Task Queue、Worker Lease、Workflow DAG 或 Automation。
 前台工作由 Runtime Turn 承载；Subagent 通过 Agent Graph、Admission/Budget 和
 Worktree 隔离扩展同一执行路径。所有执行最终回到 Runtime、Guard 与 Sandbox。
 
 ## 设计取舍与替代方案
 
 Monolith 初期更简单，但会隐藏 Owner 并产生循环。每个 Host 一套 Runtime 会降低 UI
-局部复杂度，却造成语义分叉。CodeHelper 接受更多 Interface 与 Adapter，以换取统一
+局部复杂度，却造成语义分叉。QCode 接受更多 Interface 与 Adapter，以换取统一
 权限路径和可测试边界。
 
 Protocol 会增加版本管理成本；显式契约仍优于终端、插件和 Engine 之间的隐式耦合。
@@ -254,7 +254,7 @@ go test ./internal/runtime/app -run TestRuntimeUnsupportedOperationIsExplicitlyR
 ## 复习问题
 
 1. 为什么 `wire` 可以依赖具体实现而 Host 不可以？
-2. 为什么 Provider/MCP HTTP Transport 不是 CodeHelper 产品 Host？
+2. 为什么 Provider/MCP HTTP Transport 不是 QCode 产品 Host？
 3. 半完成 Edit 的恢复应由哪个持久化组件负责？
 4. 新 Capability 的 Control、Data、Construction Path 分别是什么？
 

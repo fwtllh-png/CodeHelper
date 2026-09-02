@@ -26,7 +26,7 @@ OUT="${PACKAGE_OUT:-dist/release}"
 rm -rf "$OUT"
 mkdir -p "$OUT/bin" "$OUT/sbom" "$OUT/notes"
 
-MODULE="github.com/fwtllh-png/CodeHelper"
+MODULE="github.com/fwtllh-png/QCode"
 LDFLAGS="-s -w -X ${MODULE}/internal/buildinfo.Version=${VERSION} -X ${MODULE}/internal/buildinfo.Commit=${COMMIT} -X ${MODULE}/internal/buildinfo.Date=${BUILD_DATE}"
 
 targets=(
@@ -41,21 +41,21 @@ for pair in "${targets[@]}"; do
   set -- $pair
   goos="$1"
   goarch="$2"
-  name="codehelper-${VERSION}-${goos}-${goarch}"
+  name="qcode-${VERSION}-${goos}-${goarch}"
   if [[ "$goos" == "windows" ]]; then
     name="${name}.exe"
   fi
   echo "building ${name}"
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -tags webbundle -trimpath -ldflags "$LDFLAGS" -o "$OUT/bin/$name" ./cmd/codehelper
+  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -tags webbundle -trimpath -ldflags "$LDFLAGS" -o "$OUT/bin/$name" ./cmd/qcode
 done
 
 # Host binary for install/upgrade/rollback smoke.
-host_name="codehelper"
-CGO_ENABLED=0 go build -tags webbundle -trimpath -ldflags "$LDFLAGS" -o "$OUT/bin/${host_name}" ./cmd/codehelper
+host_name="qcode"
+CGO_ENABLED=0 go build -tags webbundle -trimpath -ldflags "$LDFLAGS" -o "$OUT/bin/${host_name}" ./cmd/qcode
 
 (
   cd "$OUT"
-  tar -czf "codehelper-${VERSION}.tar.gz" bin
+  tar -czf "qcode-${VERSION}.tar.gz" bin
 )
 
 (
@@ -70,18 +70,18 @@ CGO_ENABLED=0 go build -tags webbundle -trimpath -ldflags "$LDFLAGS" -o "$OUT/bi
   done < <(find . -type f ! -name 'SHA256SUMS' -print0 | sort -z)
 )
 
-SBOM="$OUT/sbom/codehelper-${VERSION}.cdx.json"
-export CODEHELPER_PACKAGE_ROOT="$ROOT"
-export CODEHELPER_PACKAGE_VERSION="$VERSION"
-export CODEHELPER_PACKAGE_SBOM="$SBOM"
+SBOM="$OUT/sbom/qcode-${VERSION}.cdx.json"
+export QCODE_PACKAGE_ROOT="$ROOT"
+export QCODE_PACKAGE_VERSION="$VERSION"
+export QCODE_PACKAGE_SBOM="$SBOM"
 if command -v syft >/dev/null 2>&1; then
   syft "dir:${ROOT}" -o cyclonedx-json > "$SBOM"
 else
   python3 - <<'PY'
 import json, datetime, pathlib, os
-root = pathlib.Path(os.environ["CODEHELPER_PACKAGE_ROOT"])
-version = os.environ["CODEHELPER_PACKAGE_VERSION"]
-sbom_path = pathlib.Path(os.environ["CODEHELPER_PACKAGE_SBOM"])
+root = pathlib.Path(os.environ["QCODE_PACKAGE_ROOT"])
+version = os.environ["QCODE_PACKAGE_VERSION"]
+sbom_path = pathlib.Path(os.environ["QCODE_PACKAGE_SBOM"])
 components = []
 seen = set()
 gomod = (root / "go.mod").read_text(encoding="utf-8")
@@ -129,7 +129,7 @@ doc = {
     "version": 1,
     "metadata": {
         "timestamp": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
-        "component": {"type": "application", "name": "codehelper", "version": version},
+        "component": {"type": "application", "name": "qcode", "version": version},
         "tools": [{"name": "go.mod/go.sum fallback", "version": "1"}],
     },
     "components": components,
@@ -140,7 +140,7 @@ PY
 fi
 
 cat > "$OUT/notes/RELEASE_NOTES.md" <<EOF
-# CodeHelper ${VERSION}
+# QCode ${VERSION}
 
 - Commit: ${COMMIT}
 - Built: ${BUILD_DATE}
@@ -150,7 +150,7 @@ cat > "$OUT/notes/RELEASE_NOTES.md" <<EOF
 ## Install smoke
 
 1. Extract tarball
-2. Run \`./bin/codehelper --version\`
+2. Run \`./bin/qcode --version\`
 3. Replace binary for upgrade and verify checksums
 4. Restore previous checksum-verified binary for rollback
 EOF
@@ -162,14 +162,14 @@ sums = (out / "SHA256SUMS").read_text(encoding="utf-8")
 digest = hashlib.sha256(sums.encode()).hexdigest()
 manifest = {
   "schema_version": 1,
-  "product": "codehelper",
+  "product": "qcode",
   "version": "${VERSION}",
   "commit": "${COMMIT}",
   "built_at": "${BUILD_DATE}",
   "stage": "${STAGE}",
   "stage_sequence": ["experimental", "preview", "candidate", "default"],
-  "tarball": f"codehelper-${VERSION}.tar.gz",
-  "sbom": f"sbom/codehelper-${VERSION}.cdx.json",
+  "tarball": f"qcode-${VERSION}.tar.gz",
+  "sbom": f"sbom/qcode-${VERSION}.cdx.json",
   "checksums": "SHA256SUMS",
   "sha256sums_digest": digest,
   "generated_at": datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
@@ -184,18 +184,18 @@ cleanup_smoke() { rm -rf "$smoke_dir"; }
 trap cleanup_smoke EXIT
 install_dir="$smoke_dir/install"
 mkdir -p "$install_dir"
-cp "$OUT/bin/${host_name}" "$install_dir/codehelper"
-"$install_dir/codehelper" --version >/dev/null
-"$install_dir/codehelper" --help >/dev/null
-cp "$install_dir/codehelper" "$smoke_dir/codehelper.prev"
+cp "$OUT/bin/${host_name}" "$install_dir/qcode"
+"$install_dir/qcode" --version >/dev/null
+"$install_dir/qcode" --help >/dev/null
+cp "$install_dir/qcode" "$smoke_dir/qcode.prev"
 # Upgrade overwrite via new inode to avoid macOS text-busy / codesign cache kills.
-cp "$OUT/bin/${host_name}" "$install_dir/codehelper.upgrade"
-mv -f "$install_dir/codehelper.upgrade" "$install_dir/codehelper"
-"$install_dir/codehelper" --version >/dev/null
+cp "$OUT/bin/${host_name}" "$install_dir/qcode.upgrade"
+mv -f "$install_dir/qcode.upgrade" "$install_dir/qcode"
+"$install_dir/qcode" --version >/dev/null
 # Rollback restore previous binary and verify size match.
-cp "$smoke_dir/codehelper.prev" "$install_dir/codehelper.rollback"
-mv -f "$install_dir/codehelper.rollback" "$install_dir/codehelper"
-test "$(wc -c < "$install_dir/codehelper")" -eq "$(wc -c < "$smoke_dir/codehelper.prev")"
+cp "$smoke_dir/qcode.prev" "$install_dir/qcode.rollback"
+mv -f "$install_dir/qcode.rollback" "$install_dir/qcode"
+test "$(wc -c < "$install_dir/qcode")" -eq "$(wc -c < "$smoke_dir/qcode.prev")"
 ./scripts/check-brand.sh
 
 echo "package-release completed stage=${STAGE} out=${OUT}"

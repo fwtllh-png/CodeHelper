@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
 )
 
 type recordingRuntime struct {
@@ -103,7 +103,7 @@ func TestListFollowUpInterruptWaitContract(t *testing.T) {
 	if !ok || snap.Status != subagent.StatusInterrupted {
 		t.Fatalf("interrupted = %+v", snap)
 	}
-	if _, err := os.Stat(filepath.Join(snap.Worktree, ".codehelper-worktree")); err != nil {
+	if _, err := os.Stat(filepath.Join(snap.Worktree, ".qcode-worktree")); err != nil {
 		t.Fatalf("interrupt cleaned worktree: %v", err)
 	}
 	if len(manager.List(subagent.ListFilter{})) != 2 {

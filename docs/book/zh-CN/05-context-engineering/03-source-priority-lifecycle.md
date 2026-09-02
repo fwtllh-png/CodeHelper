@@ -115,7 +115,7 @@ Selection、Evidence Rendering、Compaction。Receipt 暴露每个 Local Policy 
 ## 设计取舍
 
 纯 Recency Ordering 会埋没强 Policy；纯 Authority Ordering 会隐藏当前 Task State。
-CodeHelper 使用 Stable Authority Prefix 加 Dynamic Task Tail，并独立记录各 Partition。
+QCode 使用 Stable Authority Prefix 加 Dynamic Task Tail，并独立记录各 Partition。
 
 ## 失败模式与安全边界
 

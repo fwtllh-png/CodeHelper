@@ -24,11 +24,11 @@ func TestDiscoveryFirstMatchPrecedenceAndLocale(t *testing.T) {
 		{filepath.Join(workspace, ".opencode", "skills"), "workspace opencode"},
 		{filepath.Join(workspace, ".claude", "skills"), "workspace claude"},
 		{filepath.Join(workspace, ".cursor", "skills"), "workspace cursor"},
-		{filepath.Join(workspace, ".codehelper", "skills"), "workspace codehelper"},
+		{filepath.Join(workspace, ".qcode", "skills"), "workspace qcode"},
 		{configured, "configured"},
 		{filepath.Join(home, ".agents", "skills"), "user agents"},
 		{filepath.Join(home, ".claude", "skills"), "user claude"},
-		{filepath.Join(home, ".codehelper", "skills"), "user codehelper"},
+		{filepath.Join(home, ".qcode", "skills"), "user qcode"},
 	}
 	for _, location := range locations {
 		if location.root == configured {
@@ -293,7 +293,7 @@ func writeGovernedSkill(
 		}
 	}
 	content := fmt.Sprintf(
-		"schema_version = 1\nname = %q\nversion = %q\ncodehelper = \">=1.0.0 <2.0.0\"\n%s",
+		"schema_version = 1\nname = %q\nversion = %q\nqcode = \">=1.0.0 <2.0.0\"\n%s",
 		name, version, dependencyLines.String(),
 	)
 	if err := os.WriteFile(

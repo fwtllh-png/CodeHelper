@@ -30,7 +30,7 @@ func TestBuildPolicyAutoPrivateTempIsRealPath(t *testing.T) {
 
 func TestBuildPolicyProvidedPrivateTempIsRealPath(t *testing.T) {
 	root := t.TempDir()
-	raw, err := os.MkdirTemp("", "codehelper-pt-")
+	raw, err := os.MkdirTemp("", "qcode-pt-")
 	if err != nil {
 		t.Fatal(err)
 	}

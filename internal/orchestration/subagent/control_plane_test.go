@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
 )
 
 func TestDelegationPolicyExplicitAndAdaptiveTriggers(t *testing.T) {

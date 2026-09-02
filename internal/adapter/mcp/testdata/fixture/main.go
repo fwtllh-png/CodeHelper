@@ -1,5 +1,5 @@
 // Command fixture is a hermetic MCP-shaped JSON-RPC peer used only by tests.
-// It deliberately implements transport behavior, not CodeHelper's MCP runtime.
+// It deliberately implements transport behavior, not QCode's MCP runtime.
 package main
 
 import (
@@ -111,7 +111,7 @@ func (f *fixture) dispatch(req request) (response, bool) {
 	case "initialize":
 		reply.Result = map[string]any{
 			"protocolVersion": protocolVersion,
-			"serverInfo":      map[string]any{"name": "codehelper-mcp-fixture", "version": "1"},
+			"serverInfo":      map[string]any{"name": "qcode-mcp-fixture", "version": "1"},
 			"capabilities": map[string]any{
 				"tools":     map[string]any{},
 				"resources": map[string]any{},

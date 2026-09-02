@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/persist/joblog"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
 )
 
 func configureProcessState(

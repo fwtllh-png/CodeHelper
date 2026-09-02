@@ -6,11 +6,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/filebroker"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
-	"github.com/fwtllh-png/CodeHelper/internal/security/vcsbroker"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/filebroker"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/vcsbroker"
 )
 
 type Runtime struct {
@@ -97,10 +97,10 @@ func (r *Runtime) CommitBaseline(
 	ctx context.Context, dir string,
 ) error {
 	return r.mutateVCS(ctx, vcsbroker.Commit, dir, []string{
-		"-c", "user.name=CodeHelper",
-		"-c", "user.email=codehelper@localhost",
+		"-c", "user.name=QCode",
+		"-c", "user.email=qcode@localhost",
 		"commit", "--allow-empty", "--no-gpg-sign",
-		"-m", "codehelper chat baseline",
+		"-m", "qcode chat baseline",
 	})
 }
 

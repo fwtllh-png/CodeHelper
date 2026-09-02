@@ -17,11 +17,11 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	adaptercontent "github.com/fwtllh-png/CodeHelper/internal/adapter/content"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	adaptercontent "github.com/fwtllh-png/QCode/internal/adapter/content"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/observability/diagnostics"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 

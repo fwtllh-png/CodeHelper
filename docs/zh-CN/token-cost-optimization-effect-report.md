@@ -1,7 +1,7 @@
 # 长会话 Token 与调用开销优化实测报告
 
 > 日期：2026-08-27
-> Workspace：CodeHelper
+> Workspace：QCode
 > Route：`deepseek-v4-flash`
 > Session：`session_web_a1be7997-2391-405b-9c6c-8046627c9042`
 
@@ -88,7 +88,7 @@ append-only 跨 Turn 样本首调用：
 
 下一阶段应继续：
 
-1. 在完整 CodeHelper 工具工作流中分离首调用、同 Turn 后续调用和跨 Turn 调用；
+1. 在完整 QCode 工具工作流中分离首调用、同 Turn 后续调用和跨 Turn 调用；
 2. 在多个独立 Session 重复严格追加实验，报告中位数与分位数；
 3. 统计 Declaration Repair 对 Calls/Turn、Token 与 TTFT 的贡献；
 4. 在 Session 级整体 Token 降幅达到目标前，不宣称实现 `45%～65%` 的整体降幅。

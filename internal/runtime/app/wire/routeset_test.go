@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func bundledAct() execRouteOptions {
@@ -177,7 +177,7 @@ func TestLockedSlotsResolveAndLockedGapsDoNot(t *testing.T) {
 // plan mode, and the turn reports the plan model rather than the act model.
 func TestAPlanTurnInAFixtureSessionSamplesOnThePlanSlot(t *testing.T) {
 	workspace := t.TempDir()
-	configPath := filepath.Join(workspace, "codehelper.toml")
+	configPath := filepath.Join(workspace, "qcode.toml")
 	if err := os.WriteFile(configPath, []byte(`
 [route.plan]
 provider = "fixture"

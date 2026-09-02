@@ -7,13 +7,13 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerassembly "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/assembly"
-	providerfixture "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/fixture"
-	provideropenai "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerassembly "github.com/fwtllh-png/QCode/internal/adapter/provider/assembly"
+	providerfixture "github.com/fwtllh-png/QCode/internal/adapter/provider/fixture"
+	provideropenai "github.com/fwtllh-png/QCode/internal/adapter/provider/openai"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
 )
 
 func TestR3DisconnectAfterConfirmedChunkContinuesWithoutLoss(t *testing.T) {

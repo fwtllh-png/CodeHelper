@@ -3,8 +3,8 @@ package wire
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/observability/trace"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
 )
 
 type observabilityModule struct{}

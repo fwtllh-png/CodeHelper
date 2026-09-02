@@ -33,7 +33,7 @@ last_verified: null
 make web-build
 make build
 tmp="$(mktemp -d)"
-./bin/codehelper \
+./bin/qcode \
   --provider-fixture ./testdata/providers/openai \
   --provider openai \
   --model gpt-fixture \

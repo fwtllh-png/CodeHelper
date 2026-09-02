@@ -60,7 +60,7 @@ reserve(thread, turn)
 
 ## 重试边界
 
-CodeHelper 不提供后台 Worker Retry。需要重试时：
+QCode 不提供后台 Worker Retry。需要重试时：
 
 - Provider 瞬时错误由 Provider 策略处理；
 - Tool 重试必须符合 Tool 的重复执行契约；

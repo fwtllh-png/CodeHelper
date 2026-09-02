@@ -25,8 +25,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 // DefaultMaxFileBytes bounds a single file read when the caller sets no limit.
@@ -46,7 +46,7 @@ var skippedDirectories = map[string]struct{}{
 	".git": {}, ".hg": {}, ".svn": {}, "node_modules": {}, "vendor": {}, "bin": {},
 	// The runtime's own state lives here. Reading it back as workspace content
 	// would feed a session its own transcript.
-	".codehelper": {},
+	".qcode": {}, ".codehelper": {},
 }
 
 // Entry is one candidate file. Path is workspace-relative and slash separated,

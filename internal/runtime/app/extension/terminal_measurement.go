@@ -1,8 +1,8 @@
 package extension
 
 import (
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/observability/trace"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func terminalTraceStatus(terminal protocol.EventData) trace.Status {

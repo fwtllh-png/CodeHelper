@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
 )
 
 func TestJobListingInfoCancelAndStale(t *testing.T) {

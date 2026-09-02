@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
 )
 
 func TestProbeOverlayUsesWireIDAndReportsMixedProvenance(t *testing.T) {

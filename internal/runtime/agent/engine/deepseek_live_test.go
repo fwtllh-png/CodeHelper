@@ -9,17 +9,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/httpclient"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
-	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/httpclient"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/openai"
+	providerrouter "github.com/fwtllh-png/QCode/internal/adapter/provider/router"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 )
 
-const deepSeekEngineLiveControlEnv = "CODEHELPER_DEEPSEEK_LIVE_CONTROL"
+const deepSeekEngineLiveControlEnv = "QCODE_DEEPSEEK_LIVE_CONTROL"
 
 func TestDeepSeekEngineCrossTurnAppendOnlyCache(t *testing.T) {
 	if os.Getenv(deepSeekEngineLiveControlEnv) != "1" {
@@ -30,7 +30,7 @@ func TestDeepSeekEngineCrossTurnAppendOnlyCache(t *testing.T) {
 	}
 	runtime, route := deepSeekEngineLiveRuntime(t)
 	stable := fmt.Sprintf(
-		"codehelper-engine-append-only-%d %s",
+		"qcode-engine-append-only-%d %s",
 		time.Now().UnixNano(),
 		strings.Repeat("Stable repository context preserved across turns. ", 12_000),
 	)

@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 const PlanVersion = 1
@@ -396,7 +396,7 @@ func validateEntry(entry Entry) error {
 	}
 	first := strings.SplitN(entry.Path, "/", 2)[0]
 	for _, protected := range []string{
-		".git", ".codehelper", ".codehelper-worktree", ".agents", ".codex",
+		".git", ".qcode", ".qcode-worktree", ".codehelper", ".codehelper-worktree", ".agents", ".codex",
 	} {
 		if strings.EqualFold(first, protected) {
 			return errors.New("file transaction cannot write Workspace control metadata")

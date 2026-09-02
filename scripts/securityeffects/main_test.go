@@ -48,7 +48,7 @@ func TestUnownedPlatformProcessEntryPointFails(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "internal/unsafe/run.go", `package unsafe
 
-import "github.com/fwtllh-png/CodeHelper/internal/platform/process"
+import "github.com/fwtllh-png/QCode/internal/platform/process"
 
 func run() {
 	_, _ = process.Run(nil, process.Options{})
@@ -74,7 +74,7 @@ func TestPlatformProcessFunctionReferenceIsInventoried(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, "internal/unsafe/run.go", `package unsafe
 
-import "github.com/fwtllh-png/CodeHelper/internal/platform/process"
+import "github.com/fwtllh-png/QCode/internal/platform/process"
 
 var run = process.Run
 `)

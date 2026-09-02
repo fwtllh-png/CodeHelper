@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
+	mcpruntime "github.com/fwtllh-png/QCode/internal/adapter/mcp"
 )
 
 type capabilityToolsModule struct{}

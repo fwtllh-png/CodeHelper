@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
-	"github.com/fwtllh-png/CodeHelper/internal/security/vcsbroker"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/vcsbroker"
 )
 
 func TestServiceBrowsesSearchesAndReadsWithinWorkspace(t *testing.T) {
@@ -268,8 +268,8 @@ func runGit(t *testing.T, root string, arguments ...string) {
 	command.Dir = root
 	command.Env = append(
 		os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "HOME="+root,
-		"GIT_AUTHOR_NAME=CodeHelper", "GIT_AUTHOR_EMAIL=fixture@invalid",
-		"GIT_COMMITTER_NAME=CodeHelper", "GIT_COMMITTER_EMAIL=fixture@invalid",
+		"GIT_AUTHOR_NAME=QCode", "GIT_AUTHOR_EMAIL=fixture@invalid",
+		"GIT_COMMITTER_NAME=QCode", "GIT_COMMITTER_EMAIL=fixture@invalid",
 	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v: %s", arguments, err, output)

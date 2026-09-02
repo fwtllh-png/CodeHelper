@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 // ErrDenied is returned (via errors.Is) when RoundTrip targets a host the Gate

@@ -23,7 +23,7 @@
       ]
     },
     {
-      "id": "codehelper-overview",
+      "id": "qcode-overview",
       "owner": "maintainers",
       "chapter_patterns": [
         "overview-*"
@@ -246,7 +246,7 @@
   ],
   "screenshots": [],
   "external_link_exclusions": [
-    "https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml/badge.svg",
-    "https://github.com/fwtllh-png/CodeHelper/security/advisories/new"
+    "https://github.com/fwtllh-png/QCode/actions/workflows/ci.yml/badge.svg",
+    "https://github.com/fwtllh-png/QCode/security/advisories/new"
   ]
 }

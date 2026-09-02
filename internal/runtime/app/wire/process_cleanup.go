@@ -1,8 +1,8 @@
 package wire
 
 import (
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
 )
 
 func (s *Session) releaseTurnProcesses(

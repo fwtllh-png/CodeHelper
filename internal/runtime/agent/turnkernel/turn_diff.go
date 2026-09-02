@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 // TurnDiffEntry is one path a tool observably changed in the active turn (N18).

@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/QCode/internal/persist/sqlkit"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
 )
 
 var (

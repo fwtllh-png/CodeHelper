@@ -171,9 +171,9 @@ func TestDistinctProcessesSerializeConcurrentWrites(t *testing.T) {
 		)
 		commands[process].Env = append(
 			os.Environ(),
-			"CODEHELPER_MEMORY_PROCESS_ROOT="+root,
-			"CODEHELPER_MEMORY_PROCESS_INDEX="+strconv.Itoa(process),
-			"CODEHELPER_MEMORY_PROCESS_COUNT="+strconv.Itoa(perProcess),
+			"QCODE_MEMORY_PROCESS_ROOT="+root,
+			"QCODE_MEMORY_PROCESS_INDEX="+strconv.Itoa(process),
+			"QCODE_MEMORY_PROCESS_COUNT="+strconv.Itoa(perProcess),
 		)
 		commands[process].Stdout = &outputs[process]
 		commands[process].Stderr = &outputs[process]
@@ -205,15 +205,15 @@ func TestDistinctProcessesSerializeConcurrentWrites(t *testing.T) {
 }
 
 func TestMemoryProcessWriter(t *testing.T) {
-	root := os.Getenv("CODEHELPER_MEMORY_PROCESS_ROOT")
+	root := os.Getenv("QCODE_MEMORY_PROCESS_ROOT")
 	if root == "" {
 		t.Skip("helper process")
 	}
-	process, err := strconv.Atoi(os.Getenv("CODEHELPER_MEMORY_PROCESS_INDEX"))
+	process, err := strconv.Atoi(os.Getenv("QCODE_MEMORY_PROCESS_INDEX"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	count, err := strconv.Atoi(os.Getenv("CODEHELPER_MEMORY_PROCESS_COUNT"))
+	count, err := strconv.Atoi(os.Getenv("QCODE_MEMORY_PROCESS_COUNT"))
 	if err != nil {
 		t.Fatal(err)
 	}

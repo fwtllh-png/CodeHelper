@@ -47,8 +47,8 @@ const (
 // ordinary message is flattened destroys in one line what the last compaction
 // spent its whole budget preserving.
 const (
-	MarkerStart = "<codehelper_summary>"
-	MarkerEnd   = "</codehelper_summary>"
+	MarkerStart = "<qcode_summary>"
+	MarkerEnd   = "</qcode_summary>"
 )
 
 // truncationNotice closes a summary a budget cut short. It mirrors the volatile

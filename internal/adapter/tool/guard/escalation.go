@@ -3,8 +3,8 @@ package guard
 import (
 	"context"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 // SandboxMode is the strength requested for a single execution attempt.

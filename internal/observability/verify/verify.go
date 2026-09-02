@@ -13,9 +13,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/observability/diagnostics"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 // Scope selects what a verification pass looks at.
@@ -159,9 +159,9 @@ func Detect(root string) []Command {
 	if exists(filepath.Join(root, "CMakeLists.txt")) {
 		commands = append(commands, Command{
 			Name: "cmake",
-			Command: `cmake -S . -B "$TMPDIR/codehelper-cmake-build" && ` +
-				`cmake --build "$TMPDIR/codehelper-cmake-build" && ` +
-				`ctest --test-dir "$TMPDIR/codehelper-cmake-build" --output-on-failure`,
+			Command: `cmake -S . -B "$TMPDIR/qcode-cmake-build" && ` +
+				`cmake --build "$TMPDIR/qcode-cmake-build" && ` +
+				`ctest --test-dir "$TMPDIR/qcode-cmake-build" --output-on-failure`,
 			Reason: "CMakeLists.txt declares a CMake project; configure, build, and run CTest in private temporary storage",
 		})
 	}

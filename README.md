@@ -1,15 +1,15 @@
-# CodeHelper
+# QCode
 
-[![CI](https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml/badge.svg)](https://github.com/fwtllh-png/CodeHelper/actions/workflows/ci.yml)
+[![CI](https://github.com/fwtllh-png/QCode/actions/workflows/ci.yml/badge.svg)](https://github.com/fwtllh-png/QCode/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
 [![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](./go.mod)
-[![Release](https://img.shields.io/github/v/release/fwtllh-png/CodeHelper?display_name=tag&sort=semver)](https://github.com/fwtllh-png/CodeHelper/releases)
-[![Discussions](https://img.shields.io/github/discussions/fwtllh-png/CodeHelper)](https://github.com/fwtllh-png/CodeHelper/discussions)
+[![Release](https://img.shields.io/github/v/release/fwtllh-png/QCode?display_name=tag&sort=semver)](https://github.com/fwtllh-png/QCode/releases)
+[![Discussions](https://img.shields.io/github/discussions/fwtllh-png/QCode)](https://github.com/fwtllh-png/QCode/discussions)
 
 **一个使用 Go 实现的、本地运行、受控执行的 AI Coding Agent Runtime，也是一套
 可执行的 Agent 工程知识书籍。**
 
-CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、持久化会话与 Subagent
+QCode 将仓库理解、模型调用、受治理工具、审批、验证、持久化会话与 Subagent
 协作统一放在一套 Runtime 协议之后，并通过本机 Web 这一产品入口服务交互式使用。
 
 > 项目状态：初始开发版本。首次公开稳定发布前，接口和持久化格式仍可能调整。
@@ -22,13 +22,13 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 | **可执行的 Agent 工程知识书籍** | 从基础原理进入真实源码、测试、架构图、失败模式和可复现实验的中文路径 |
 
 `docs/zh-CN` 下的中文产品手册描述已交付行为。
-[Agent 工程知识书籍](./docs/book/zh-CN/README.md)把设计推理与 CodeHelper 实现和
+[Agent 工程知识书籍](./docs/book/zh-CN/README.md)把设计推理与 QCode 实现和
 动手实验关联起来。建设边界、全书目录、章节规范和阶段计划见
 [知识文档体系建设方案](./docs/zh-CN/knowledge-base-plan.md)。
 
-## 为什么建设 CodeHelper
+## 为什么建设 QCode
 
-多数 Coding Agent 原型优先追求演示效果，CodeHelper 更关注产品长期运行后必须具备
+多数 Coding Agent 原型优先追求演示效果，QCode 更关注产品长期运行后必须具备
 的工程属性：
 
 - **本地控制权**：源码和执行仍在用户工作区中。
@@ -58,15 +58,15 @@ CodeHelper 将仓库理解、模型调用、受治理工具、审批、验证、
 | Windows | 支持，但存在平台特定限制 | Partial；需要 Strong Sandbox 的操作会拒绝执行 |
 
 ```bash
-git clone https://github.com/fwtllh-png/CodeHelper.git
-cd CodeHelper
+git clone https://github.com/fwtllh-png/QCode.git
+cd QCode
 make install
 cd /path/to/your/project
-codehelper
+qcode
 ```
 
-`make install` 默认把完整的自包含二进制安装到 `~/.local/bin/codehelper`。安装后可在
-任意目录运行 `codehelper`，当前目录自动成为 Workspace 并打开本机页面。已有 Web
+`make install` 默认把完整的自包含二进制安装到 `~/.local/bin/qcode`。安装后可在
+任意目录运行 `qcode`，当前目录自动成为 Workspace 并打开本机页面。已有 Web
 Supervisor 运行时，新目录会注册为另一个独立 Workspace Runtime，并在同一侧栏中展示，
 无需再启动一个 Web 服务。首次进入时不会预选 Provider 或 Model，用户必须在页面中选择
 OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible 服务，并填写 Model ID。
@@ -77,7 +77,7 @@ OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible 服务，并填写 
 
 源码开发时仍可使用 `make start`。自定义安装位置使用
 `make install PREFIX=/usr/local`，卸载使用 `make uninstall`。
-无配置运行 `codehelper` 时默认启用受 Guard 管理的内置工具，并使用 `auto`
+无配置运行 `qcode` 时默认启用受 Guard 管理的内置工具，并使用 `auto`
 审批姿态。
 
 Web 只监听 `127.0.0.1`，默认选择可用端口。终端会分别输出页面开始监听和
@@ -90,7 +90,7 @@ Runtime 完成恢复的 URL。
 
 | 入口 | 命令或路径 | 主要用途 |
 | --- | --- | --- |
-| 本机 Web | `codehelper` | 唯一产品入口，覆盖会话、审批、变更、Subagent 与运行状态 |
+| 本机 Web | `qcode` | 唯一产品入口，覆盖会话、审批、变更、Subagent 与运行状态 |
 
 ## 一分钟理解安全模型
 
@@ -112,7 +112,7 @@ Runtime 完成恢复的 URL。
 ## 仓库结构
 
 ```text
-cmd/codehelper/          进程入口
+cmd/qcode/          进程入口
 internal/host/           Web Host 与 Runtime Transport
 internal/runtime/        Operation/Event Runtime 与 Agent Engine
 internal/adapter/        Provider、Model、Tool、MCP、Skill
@@ -166,4 +166,4 @@ make verify
 疑似安全漏洞必须按照 [SECURITY.md](./SECURITY.md) 私下报告，不应创建
 公开 Issue。
 
-CodeHelper 使用 [Apache License 2.0](./LICENSE)。
+QCode 使用 [Apache License 2.0](./LICENSE)。

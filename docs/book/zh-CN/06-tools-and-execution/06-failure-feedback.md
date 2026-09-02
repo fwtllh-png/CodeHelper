@@ -111,7 +111,7 @@ Failure Feedback 会进入 Model-visible History 与 Evidence/Compaction。它�
 ## 设计取舍
 
 所有 Tool Error 都终止会浪费模型修正 Call Shape 的能力；全部反馈又会造成 Loop、Boundary
-Probing 与 Duplicate Effect。CodeHelper 使用“无副作用或可安全修正”的保守 Allowlist。
+Probing 与 Duplicate Effect。QCode 使用“无副作用或可安全修正”的保守 Allowlist。
 
 ## 失败模式与安全边界
 

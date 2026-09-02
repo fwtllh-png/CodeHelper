@@ -3,7 +3,7 @@ package turnkernel
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestMailboxIsBoundedAndFIFO(t *testing.T) {

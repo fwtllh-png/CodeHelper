@@ -25,8 +25,8 @@ test.describe.configure({mode: "serial"});
 test.setTimeout(90_000);
 
 test.beforeEach(async () => {
-  dataDir = await mkdtemp(path.join(tmpdir(), "codehelper-web-visual-"));
-  workspaceDir = await mkdtemp(path.join(tmpdir(), "codehelper-web-visual-workspace-"));
+  dataDir = await mkdtemp(path.join(tmpdir(), "qcode-web-visual-"));
+  workspaceDir = await mkdtemp(path.join(tmpdir(), "qcode-web-visual-workspace-"));
   await writeFile(
     path.join(workspaceDir, "README.md"),
     "# Visual fixture\n\nA stable baseline for browser goldens.\n"
@@ -41,14 +41,14 @@ test.beforeEach(async () => {
     "git",
     [
       "-c", "core.hooksPath=/dev/null",
-      "-c", "user.name=CodeHelper",
-      "-c", "user.email=fixture@codehelper.invalid",
+      "-c", "user.name=QCode",
+      "-c", "user.email=fixture@qcode.invalid",
       "commit", "-qm", "visual baseline"
     ],
     {cwd: workspaceDir}
   );
   server = spawn(
-    path.join(repositoryRoot, "bin/codehelper"),
+    path.join(repositoryRoot, "bin/qcode"),
     [
       "--workspace", workspaceDir,
       "--data-dir", dataDir,
@@ -156,8 +156,8 @@ test("captures a concise branch conflict", async ({page}) => {
   await writeFile(path.join(workspaceDir, "README.md"), "# Feature\n");
   execFileSync("git", ["add", "README.md"], {cwd: workspaceDir});
   execFileSync("git", [
-    "-c", "user.name=CodeHelper",
-    "-c", "user.email=fixture@codehelper.invalid",
+    "-c", "user.name=QCode",
+    "-c", "user.email=fixture@qcode.invalid",
     "commit", "-qm", "feature change"
   ], {cwd: workspaceDir});
   execFileSync("git", ["switch", "-"], {cwd: workspaceDir});
@@ -314,7 +314,7 @@ test("steers the active turn without hiding the stop action", async ({page}) => 
   await submitPrompt(page, "visual long streaming");
   await expect(page.getByRole("button", {name: "Stop turn"})).toBeVisible();
 
-  const composer = page.getByPlaceholder("Ask CodeHelper");
+  const composer = page.getByPlaceholder("Ask QCode");
   await composer.fill("Focus on the final verification");
   await page.getByRole("button", {name: "Steer current turn"}).click();
 
@@ -330,7 +330,7 @@ test("queues a follow-up and advances it after the active turn", async ({page}) 
   await submitPrompt(page, "visual queue");
   await expect(page.getByRole("button", {name: "Stop turn"})).toBeVisible();
 
-  const composer = page.getByPlaceholder("Ask CodeHelper");
+  const composer = page.getByPlaceholder("Ask QCode");
   await composer.fill("Verify the queued follow-up");
   await page.getByRole("button", {name: "Queue next"}).click();
 
@@ -405,13 +405,13 @@ test("renders rich Markdown without stretching the conversation", async ({page})
     name: "Open file README.md"
   })).toBeVisible();
 
-  const image = message.getByRole("img", {name: "CodeHelper mark"});
+  const image = message.getByRole("img", {name: "QCode mark"});
   await image.scrollIntoViewIfNeeded();
   await expect.poll(() => image.evaluate(
     (element: HTMLImageElement) => element.naturalWidth
   )).toBeGreaterThan(0);
   await expect(message.getByRole("link", {
-    name: "Download image CodeHelper mark"
+    name: "Download image QCode mark"
   })).toBeVisible();
   await expect(message.getByRole("alert")).toContainText("Image unavailable");
   await expect(message.getByRole("button", {
@@ -645,7 +645,7 @@ test("keeps background work visible and opens its completion notification", asyn
       onclick: ((event: Event) => unknown) | null;
     };
     const captured: CapturedNotification[] = [];
-    Object.assign(window, {__codehelperNotifications: captured});
+    Object.assign(window, {__qcodeNotifications: captured});
     class TestNotification {
       static permission: NotificationPermission = "granted";
       static requestPermission = async () => "granted" as NotificationPermission;
@@ -685,7 +685,7 @@ test("keeps background work visible and opens its completion notification", asyn
   await createSession(page);
   await submitPrompt(page, "visual long streaming");
   await expect(page.getByText("Working", {exact: true})).toBeVisible();
-  await expect(page).toHaveTitle("(1) Working · CodeHelper");
+  await expect(page).toHaveTitle("(1) Working · QCode");
   await createSession(page);
 
   const background = page.locator(".sessionRow").filter({
@@ -694,21 +694,21 @@ test("keeps background work visible and opens its completion notification", asyn
   await expect(background.locator('[title="Completed"]')).toBeVisible();
   const captured = await page.evaluate(() => (
     (window as unknown as {
-      __codehelperNotifications: Array<{title: string; body: string}>;
-    }).__codehelperNotifications
+      __qcodeNotifications: Array<{title: string; body: string}>;
+    }).__qcodeNotifications
   ));
   expect(captured).toEqual([{
-    title: "CodeHelper task completed",
+    title: "QCode task completed",
     body: "A background Session completed."
   }]);
   expect(JSON.stringify(captured)).not.toContain("visual long streaming");
 
   await page.evaluate(() => {
     const notification = (window as unknown as {
-      __codehelperNotifications: Array<{
+      __qcodeNotifications: Array<{
         onclick: ((event: Event) => unknown) | null;
       }>;
-    }).__codehelperNotifications.at(-1);
+    }).__qcodeNotifications.at(-1);
     notification?.onclick?.(new Event("click"));
   });
   await expect(background).toHaveAttribute("data-active", "true");
@@ -726,29 +726,29 @@ test("keeps background work visible and opens its completion notification", asyn
   await expect(
     approvalBackground.locator('[title="Approval required"]')
   ).toBeVisible();
-  await expect(page).toHaveTitle("(1) Action required · CodeHelper");
+  await expect(page).toHaveTitle("(1) Action required · QCode");
   await expect.poll(() => page.evaluate(() => (
     (window as unknown as {
-      __codehelperNotifications: Array<{title: string}>;
-    }).__codehelperNotifications.length
+      __qcodeNotifications: Array<{title: string}>;
+    }).__qcodeNotifications.length
   ))).toBe(2);
   const approvalNotice = await page.evaluate(() => (
     (window as unknown as {
-      __codehelperNotifications: Array<{title: string; body: string}>;
-    }).__codehelperNotifications.at(-1)
+      __qcodeNotifications: Array<{title: string; body: string}>;
+    }).__qcodeNotifications.at(-1)
   ));
   expect(approvalNotice).toEqual({
-    title: "CodeHelper needs approval",
+    title: "QCode needs approval",
     body: "A background Session is waiting for approval."
   });
   await expect(page).toHaveScreenshot("canonical-background-activity.png");
 
   await page.evaluate(() => {
     const notification = (window as unknown as {
-      __codehelperNotifications: Array<{
+      __qcodeNotifications: Array<{
         onclick: ((event: Event) => unknown) | null;
       }>;
-    }).__codehelperNotifications.at(-1);
+    }).__qcodeNotifications.at(-1);
     notification?.onclick?.(new Event("click"));
   });
   await expect(approvalBackground).toHaveAttribute("data-active", "true");
@@ -809,7 +809,7 @@ async function createSession(page: Page): Promise<void> {
   const count = await sessions.count();
   await page.locator('button[aria-label="New chat"]').click();
   await expect(sessions).toHaveCount(count + 1);
-  await expect(page.getByPlaceholder("Ask CodeHelper")).toBeEnabled();
+  await expect(page.getByPlaceholder("Ask QCode")).toBeEnabled();
 }
 
 async function enableAutomaticPlanApproval(page: Page): Promise<void> {
@@ -822,7 +822,7 @@ async function enableAutomaticPlanApproval(page: Page): Promise<void> {
 }
 
 async function submitPrompt(page: Page, prompt: string): Promise<void> {
-  const composer = page.getByPlaceholder("Ask CodeHelper");
+  const composer = page.getByPlaceholder("Ask QCode");
   await composer.fill(prompt);
   await page.getByRole("button", {name: "Send"}).click();
 }
@@ -892,7 +892,7 @@ function runtimeURL(
     };
     const onStdout = (chunk: Buffer) => {
       stdout += chunk.toString();
-      const match = stdout.match(/CodeHelper Runtime Ready: (http:\/\/[^\s]+)/);
+      const match = stdout.match(/QCode Runtime Ready: (http:\/\/[^\s]+)/);
       if (match) void workspaceURL(match[1]).then(
         (url) => finish(undefined, url),
         (error: Error) => finish(error)

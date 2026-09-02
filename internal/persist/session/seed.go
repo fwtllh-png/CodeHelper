@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/sqlkit"
+	"github.com/fwtllh-png/QCode/internal/persist/sqlkit"
 )
 
 // EnsureSeed creates the workspace and session rows required by background
@@ -37,7 +37,7 @@ func (r *Repository) EnsureSeed(
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO workspaces(
 				id, root_path, display_name, created_at, updated_at
-			) VALUES (?, ?, 'codehelper', ?, ?)
+			) VALUES (?, ?, 'qcode', ?, ?)
 			ON CONFLICT(root_path) DO NOTHING`,
 			workspaceID, root, now, now,
 		); err != nil {

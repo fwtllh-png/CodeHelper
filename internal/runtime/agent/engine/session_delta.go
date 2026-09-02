@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
 )
 
 type CompactionDelta = agentcontext.Compaction

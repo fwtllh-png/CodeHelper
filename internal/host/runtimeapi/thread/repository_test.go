@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	sessionstate "github.com/fwtllh-png/QCode/internal/persist/session"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestRejectedStartTurnReleasesThreadForRetry(t *testing.T) {

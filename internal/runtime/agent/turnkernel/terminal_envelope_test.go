@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestPhase4R2TerminalEnvelopeCommitsAtomicallyAndIdempotently(t *testing.T) {

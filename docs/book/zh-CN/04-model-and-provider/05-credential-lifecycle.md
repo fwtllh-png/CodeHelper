@@ -55,7 +55,7 @@ Reference Kind：
 
 - `env`：读取显式命名 Environment Variable；
 - `keyring`：按 Account 查询 OS Credential Service。
-- `file`：Resolver 对 `CODEHELPER_SECRET_DIR` 下 Trusted/Injected Reference 提供的
+- `file`：Resolver 对 `QCODE_SECRET_DIR` 下 Trusted/Injected Reference 提供的
   Lower-level Capability，并检查 Ownership、Permission、Traversal、Symlink 和 Open-time
   Identity。
 

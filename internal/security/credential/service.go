@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/keyring"
+	"github.com/fwtllh-png/QCode/internal/security/keyring"
 )
 
 const maxSecretBytes = 32 << 10

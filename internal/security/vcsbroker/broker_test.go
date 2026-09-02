@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
 )
 
 func TestBrokerAddsAndRemovesDetachedWorktree(t *testing.T) {

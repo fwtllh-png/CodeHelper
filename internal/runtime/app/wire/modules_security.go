@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/diagnostics"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
-	"github.com/fwtllh-png/CodeHelper/internal/security/constitution"
-	"github.com/fwtllh-png/CodeHelper/internal/security/permissions"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/observability/diagnostics"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	"github.com/fwtllh-png/QCode/internal/persist/repoindex"
+	"github.com/fwtllh-png/QCode/internal/security/constitution"
+	"github.com/fwtllh-png/QCode/internal/security/permissions"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
 type securityModule struct{}
@@ -27,7 +27,7 @@ func (securityModule) Build(
 	session := state.session
 	execution := state.config.execution
 	securityRuntime := policy.DefaultRuntime(policy.Mode(execution.Mode), policy.Permission(state.options.Permission))
-	securityRuntime.SetDisableAutoReview(os.Getenv("CODEHELPER_DISABLE_APPROVAL_AUTO_REVIEW") == "1")
+	securityRuntime.SetDisableAutoReview(os.Getenv("QCODE_DISABLE_APPROVAL_AUTO_REVIEW") == "1")
 	session.security = securityRuntime
 	journal, err := openWorkspaceJournal(
 		ctx,

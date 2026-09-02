@@ -16,9 +16,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/typed"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/typed"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 	"golang.org/x/net/html"
 )
 
@@ -708,7 +708,7 @@ func request(
 		return nil, nil, nil, err
 	}
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,text/plain;q=0.8,*/*;q=0.7")
-	req.Header.Set("User-Agent", "codehelper/web-fetch (+https://github.com/fwtllh-png/CodeHelper)")
+	req.Header.Set("User-Agent", "qcode/web-fetch (+https://github.com/fwtllh-png/QCode)")
 	client := httpClient
 	if client == nil {
 		client = &http.Client{

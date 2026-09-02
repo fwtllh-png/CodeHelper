@@ -3,7 +3,7 @@ package eventlog
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestShouldPersistTable(t *testing.T) {

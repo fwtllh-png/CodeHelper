@@ -6,8 +6,8 @@
 `web/package-lock.json` 兼容的 Node.js 与 npm。
 
 ```bash
-git clone https://github.com/fwtllh-png/CodeHelper.git
-cd CodeHelper
+git clone https://github.com/fwtllh-png/QCode.git
+cd QCode
 go mod download
 make web-install
 make build
@@ -44,7 +44,7 @@ git diff --check
 
 | Target | 作用 |
 | --- | --- |
-| `make build` | 构建包含嵌入式 Web 资源的 `bin/codehelper` |
+| `make build` | 构建包含嵌入式 Web 资源的 `bin/qcode` |
 | `make test` | 执行串行 Hermetic Go Test Lane |
 | `make test-platform-capability` | 验证真实宿主机 Sandbox |
 | `make test-integration` | 验证真实 Binary 与 Web Transport |
@@ -85,7 +85,7 @@ Web 入口发布还会运行 `make web-release-drill`。该门禁用当前 Binar
 Session 和已完成 Turn，在进程停止后复制 Data Dir 并逐文件校验 SHA-256，再让
 `PREVIOUS_RELEASE_REF` 构建出的上一正式发布 Binary 完成 Session List、Load、History
 和 Turn Recovery。该参数没有分支或上一提交回退值：CI 必须通过仓库变量
-`CODEHELPER_PREVIOUS_RELEASE_REF` 配置不可变的上一正式发布 Tag 或 Commit，手工发布
+`QCODE_PREVIOUS_RELEASE_REF` 配置不可变的上一正式发布 Tag 或 Commit，手工发布
 必须显式传入；也可通过 `PREVIOUS_BINARY` 指向保留的上一发布产物。报告写入
 `.tmp/release/web-downgrade-drill.json`。
 
@@ -128,5 +128,5 @@ VERSION=0.1.0 RELEASE_STAGE=experimental make package
 make test-release
 ```
 
-发布产物是独立 CodeHelper Binary，其中包含 `web/dist`。Web 不单独发布，也不在运行中
+发布产物是独立 QCode Binary，其中包含 `web/dist`。Web 不单独发布，也不在运行中
 替换当前进程。发布前必须通过 Web Parity、Cross-build、Secret Leak 和文档治理门禁。

@@ -3,7 +3,7 @@ package buildinfo
 import (
 	"runtime"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 var (
@@ -26,7 +26,7 @@ type Info struct {
 
 func Current() Info {
 	return Info{
-		Name:                   "codehelper",
+		Name:                   "qcode",
 		Version:                Version,
 		Commit:                 Commit,
 		BuildDate:              Date,

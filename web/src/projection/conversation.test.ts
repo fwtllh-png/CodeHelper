@@ -338,7 +338,7 @@ describe("ConversationProjection", () => {
       event(6, "tool.output", {call_id: "call-1", chunk: "# Code"}),
       event(7, "tool.result", {
         call_id: "call-1",
-        output: "# CodeHelper",
+        output: "# QCode",
         is_error: false
       }),
       event(8, "output.delta", {text: "Done"}),

@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
+	"github.com/fwtllh-png/QCode/internal/observability/telemetry"
+	"github.com/fwtllh-png/QCode/internal/observability/trace"
 )
 
 type RuntimeObservability struct {

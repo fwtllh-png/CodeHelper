@@ -1,10 +1,10 @@
-# CodeHelper 文档
+# QCode 文档
 
 这里是面向当前代码树持续维护的文档集合。历史实现 RFC 不再作为产品文档保留；仍然
 有效的架构决策会以“当前约束”的形式写入对应指南，而不是要求读者重放开发过程。
 产品手册只维护中文版本，`docs/en` 和 `docs/book/en` 不属于允许的仓库结构。
 
-CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景概念、系统设计、
+QCode 同时维护一本可执行的 Agent 工程知识书籍：把背景概念、系统设计、
 源码导读、测试、故障和动手实验组织为一条渐进式学习路径。信息架构与建设阶段见
 [知识文档体系建设方案](./knowledge-base-plan.md)。
 
@@ -21,7 +21,7 @@ CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景�
 7. [源码阅读路线指南](./reading-guide.md)
 8. [本地开发与脚本](./development.md)
 
-### 我要使用 CodeHelper
+### 我要使用 QCode
 
 1. [项目介绍与定位](./overview.md)
 2. [快速开始](./getting-started.md)
@@ -63,7 +63,7 @@ CodeHelper 同时维护一本可执行的 Agent 工程知识书籍：把背景�
 
 | 文档内容 | 代码事实来源 |
 | --- | --- |
-| Web 启动参数 | `internal/host/web` 与 `codehelper --help` |
+| Web 启动参数 | `internal/host/web` 与 `qcode --help` |
 | TOML、环境变量与默认值 | `internal/config/schema.go`、`defaults.go`、`environment.go` |
 | Runtime 协议 | `docs/protocol/runtime-protocol.schema.json` |
 | 架构边界 | Import 图和 Architecture Test |

@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
-	"github.com/fwtllh-png/CodeHelper/internal/security/workspacebroker"
-	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/workspacebroker"
+	"github.com/fwtllh-png/QCode/internal/testutil/tooltest"
 )
 
 func TestContentToolsWithRealFilesAndFixtureDependencies(t *testing.T) {
@@ -57,10 +57,10 @@ done
 printf '<h1>Converted</h1>\n' > "$output"
 test -f "$input"
 `)
-	t.Setenv("CODEHELPER_TESSERACT_BINARY", ocr)
-	t.Setenv("CODEHELPER_SPEECH_BINARY", speech)
-	t.Setenv("CODEHELPER_PANDOC_BINARY", pandoc)
-	t.Setenv("CODEHELPER_FFMPEG_BINARY", ocr)
+	t.Setenv("QCODE_TESSERACT_BINARY", ocr)
+	t.Setenv("QCODE_SPEECH_BINARY", speech)
+	t.Setenv("QCODE_PANDOC_BINARY", pandoc)
+	t.Setenv("QCODE_FFMPEG_BINARY", ocr)
 
 	registry := tool.NewRegistry(nil, nil)
 	broker, err := workspacebroker.New(
@@ -148,7 +148,7 @@ func (contentTestBackend) Prepare(_ context.Context, command sandbox.Command) (s
 func TestContentDependencyUnavailableIsStable(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "image.pgm", "P2\n1 1\n255\n0\n")
-	t.Setenv("CODEHELPER_TESSERACT_BINARY", filepath.Join(root, "missing"))
+	t.Setenv("QCODE_TESSERACT_BINARY", filepath.Join(root, "missing"))
 	registry := tool.NewRegistry(nil, nil)
 	if err := RegisterWithBackend(registry, root, contentTestBackend{}); err != nil {
 		t.Fatal(err)

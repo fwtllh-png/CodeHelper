@@ -1,9 +1,9 @@
 package wire
 
 import (
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	webtool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/web"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	webtool "github.com/fwtllh-png/QCode/internal/adapter/tool/web"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 )
 
 func grantRouteHosts(gate *egress.Gate, routes model.RouteSet) {

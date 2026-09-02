@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	providerwire "github.com/fwtllh-png/QCode/internal/adapter/provider/wire"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type sessionAttempt struct {

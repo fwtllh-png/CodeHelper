@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
+	"github.com/fwtllh-png/QCode/internal/persist/joblog"
 )
 
 const archiveTestThread = "thread-archive-test"

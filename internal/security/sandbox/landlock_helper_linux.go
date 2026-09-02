@@ -117,7 +117,7 @@ func prepareLandlockInvocation(
 }
 
 func createLandlockRequestRoot() (string, error) {
-	root, err := os.MkdirTemp("", "codehelper-landlock-requests-")
+	root, err := os.MkdirTemp("", "qcode-landlock-requests-")
 	if err != nil {
 		return "", err
 	}
@@ -207,13 +207,13 @@ func runLandlockHelper(arguments []string) error {
 	if err := applyLinuxSyscallPolicy(request.SyscallPolicy); err != nil {
 		return err
 	}
-	if err := os.Setenv("CODEHELPER_LANDLOCK_ACTIVE", "1"); err != nil {
+	if err := os.Setenv("QCODE_LANDLOCK_ACTIVE", "1"); err != nil {
 		return errors.New("set Landlock activation marker")
 	}
-	if err := os.Setenv("CODEHELPER_NO_NEW_PRIVS_ACTIVE", "1"); err != nil {
+	if err := os.Setenv("QCODE_NO_NEW_PRIVS_ACTIVE", "1"); err != nil {
 		return errors.New("set no-new-privs activation marker")
 	}
-	if err := os.Setenv("CODEHELPER_SECCOMP_ACTIVE", request.SyscallPolicy); err != nil {
+	if err := os.Setenv("QCODE_SECCOMP_ACTIVE", request.SyscallPolicy); err != nil {
 		return errors.New("set seccomp activation marker")
 	}
 	if err := syscall.Exec(request.Executable, request.Arguments, os.Environ()); err != nil {

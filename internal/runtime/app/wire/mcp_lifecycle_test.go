@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	mcpruntime "github.com/fwtllh-png/CodeHelper/internal/adapter/mcp"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	mcpruntime "github.com/fwtllh-png/QCode/internal/adapter/mcp"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 func TestMCPContributorDefersAdapterUntilBackgroundRefresh(t *testing.T) {

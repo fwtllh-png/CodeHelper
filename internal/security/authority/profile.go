@@ -13,10 +13,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 const SchemaVersion = 3
@@ -244,7 +244,7 @@ func compileSandboxCeiling(profile *EffectivePermissionProfile, input CompileInp
 		policyValue.HostReadFiles...,
 	)
 	for _, name := range []string{
-		".agents", ".codehelper", ".codehelper-worktree", ".codex", ".git",
+		".agents", ".qcode", ".qcode-worktree", ".codehelper", ".codehelper-worktree", ".codex", ".git",
 	} {
 		profile.Filesystem.DeniedWriteRoots = append(
 			profile.Filesystem.DeniedWriteRoots,

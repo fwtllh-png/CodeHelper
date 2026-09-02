@@ -1,6 +1,6 @@
 package eventlog
 
-import "github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+import "github.com/fwtllh-png/QCode/internal/runtime/protocol"
 
 // ShouldPersist reports whether a protocol event kind belongs on the durable
 // eventlog. Live Runtime subscribers still receive every event; only

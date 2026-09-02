@@ -15,7 +15,7 @@ CATALOG = BOOK / "catalog.json"
 
 LANGUAGE = {
     "zh-CN": {
-        "title": "CodeHelper Agent 工程知识书籍：导航",
+        "title": "QCode Agent 工程知识书籍：导航",
         "intro": (
             "本导航由 `docs/book/catalog.json` 生成。规划章节可以清晰可见，"
             "但不会通过空占位文件伪装成已完成内容。"

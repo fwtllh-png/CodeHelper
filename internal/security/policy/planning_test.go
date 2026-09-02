@@ -3,7 +3,7 @@ package policy
 import (
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 )
 
 func TestRequiredPlanningGatesConsequentialEffects(t *testing.T) {

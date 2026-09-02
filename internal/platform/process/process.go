@@ -16,9 +16,9 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 type Options struct {
@@ -37,7 +37,7 @@ type Options struct {
 	WorkspaceWritePaths  []string
 	WorkspaceHiddenPaths []string
 	DenyNetwork          bool
-	// TrustedRuntimeHelper is reserved for CodeHelper-owned helper processes.
+	// TrustedRuntimeHelper is reserved for QCode-owned helper processes.
 	// Arbitrary user commands never receive internal W3C trace context.
 	TrustedRuntimeHelper bool
 	NetworkHost          string
@@ -229,8 +229,8 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 		// values positionally keeps the caller's command out of this wrapper.
 		commandSpec.Args = []string{
 			"sh", "-lc",
-			`codehelper_path=$1; codehelper_command=$2; shift 2; ` +
-				`PATH=$codehelper_path; export PATH; eval "$codehelper_command"`,
+			`qcode_path=$1; qcode_command=$2; shift 2; ` +
+				`PATH=$qcode_path; export PATH; eval "$qcode_command"`,
 			"sh", environmentValue(environment, "PATH"), options.Command,
 		}
 	}

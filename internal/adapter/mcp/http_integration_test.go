@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
 )
 
 func TestStaleResponseRequiresStructuredCode(t *testing.T) {

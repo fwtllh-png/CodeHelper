@@ -1,6 +1,6 @@
 package app
 
-import "github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
+import "github.com/fwtllh-png/QCode/internal/runtime/app/eventhub"
 
 type TerminalMaterial = eventhub.TerminalMaterial
 type TerminalRequest = eventhub.TerminalRequest

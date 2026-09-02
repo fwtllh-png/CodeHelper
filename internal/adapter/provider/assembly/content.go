@@ -3,7 +3,7 @@ package assembly
 import (
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 func AppendBlocks(

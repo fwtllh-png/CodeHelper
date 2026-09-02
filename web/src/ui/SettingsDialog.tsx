@@ -585,7 +585,7 @@ function ModelSettings({
   return (
     <SettingsSectionView
       title="Models"
-      description="Choose the model CodeHelper uses for this session."
+      description="Choose the model QCode uses for this session."
     >
       <div className="settingsBlock">
         <div className="settingsBlockTitle">Session model</div>

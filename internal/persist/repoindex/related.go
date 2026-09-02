@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/symbols"
+	"github.com/fwtllh-png/QCode/internal/platform/symbols"
 )
 
 // RelatedTests maps each source path to the test files that cover it, keeping

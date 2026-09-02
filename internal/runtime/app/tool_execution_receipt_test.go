@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
+	appextension "github.com/fwtllh-png/QCode/internal/runtime/app/extension"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestToolExecutionReceiptProjectsIntoDurableToolResult(t *testing.T) {

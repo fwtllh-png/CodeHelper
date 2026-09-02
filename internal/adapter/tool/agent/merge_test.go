@@ -10,19 +10,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	agenttool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/agent"
-	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
-	toolguard "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/guard"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/handle"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/verify"
-	"github.com/fwtllh-png/CodeHelper/internal/orchestration/subagent"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/contentstore"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	agenttool "github.com/fwtllh-png/QCode/internal/adapter/tool/agent"
+	filetool "github.com/fwtllh-png/QCode/internal/adapter/tool/file"
+	toolguard "github.com/fwtllh-png/QCode/internal/adapter/tool/guard"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/handle"
+	"github.com/fwtllh-png/QCode/internal/observability/verify"
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
+	"github.com/fwtllh-png/QCode/internal/persist/contentstore"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 type fixedWorktrees struct {
@@ -59,7 +59,7 @@ func newMergeFixture(t *testing.T) (workspace, worktree, baseRev string) {
 	runGit(t, workspace, "add", "README.md")
 	runGit(t, workspace, "commit", "--quiet", "-m", "seed")
 	baseRev = strings.TrimSpace(runGitOutput(t, workspace, "rev-parse", "HEAD"))
-	worktree = filepath.Join(workspace, ".codehelper", "child")
+	worktree = filepath.Join(workspace, ".qcode", "child")
 	runGit(t, workspace, "worktree", "add", "--detach", worktree, "HEAD")
 	if err := os.WriteFile(filepath.Join(worktree, "child-note.txt"), []byte("from-child\n"), 0o600); err != nil {
 		t.Fatal(err)

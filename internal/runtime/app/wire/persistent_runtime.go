@@ -5,13 +5,13 @@ import (
 	"context"
 	"fmt"
 
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	tracestate "github.com/fwtllh-png/QCode/internal/observability/trace"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type PersistentRuntimeOptions struct {

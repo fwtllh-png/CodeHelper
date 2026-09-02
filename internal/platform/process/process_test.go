@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/observability/tracecontext"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/observability/tracecontext"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestRunCapturesStreamsAndExitCode(t *testing.T) {
@@ -176,11 +176,11 @@ func TestRunPTYAndCancellation(t *testing.T) {
 }
 
 func TestRunSanitizesRegularAndPTYEnvironments(t *testing.T) {
-	t.Setenv("CODEHELPER_API_KEY", "must-not-reach-child")
+	t.Setenv("QCODE_API_KEY", "must-not-reach-child")
 	t.Setenv("UNRELATED_SECRET_TOKEN", "must-not-reach-child")
 	for _, pty := range []bool{false, true} {
 		result, err := Run(t.Context(), Options{
-			Command: `printf 'path=%s api=%s token=%s' "$PATH" "$CODEHELPER_API_KEY" "$UNRELATED_SECRET_TOKEN"`,
+			Command: `printf 'path=%s api=%s token=%s' "$PATH" "$QCODE_API_KEY" "$UNRELATED_SECRET_TOKEN"`,
 			Dir:     t.TempDir(), PTY: pty,
 		})
 		if err != nil {
@@ -311,7 +311,7 @@ func TestRunUsesInjectedStrongSandboxBackend(t *testing.T) {
 }
 
 func TestStructuredCommandUsesSanitizedEnvironmentAndSandbox(t *testing.T) {
-	t.Setenv("CODEHELPER_API_KEY", "must-not-reach-child")
+	t.Setenv("QCODE_API_KEY", "must-not-reach-child")
 	root := t.TempDir()
 	directory, err := os.Open(root)
 	if err != nil {
@@ -321,7 +321,7 @@ func TestStructuredCommandUsesSanitizedEnvironmentAndSandbox(t *testing.T) {
 	backend := &recordingBackend{root: root}
 	result, err := Run(t.Context(), Options{
 		Path: "sh",
-		Args: []string{"-c", `printf '%s' "$CODEHELPER_API_KEY"`},
+		Args: []string{"-c", `printf '%s' "$QCODE_API_KEY"`},
 		Dir:  root, DirFile: directory, Sandbox: backend, RequireSandbox: true,
 	})
 	if err != nil {
@@ -334,12 +334,12 @@ func TestStructuredCommandUsesSanitizedEnvironmentAndSandbox(t *testing.T) {
 		backend.command.Args[0] != backend.command.Path ||
 		!slices.Equal(
 			backend.command.Args[1:],
-			[]string{"-c", `printf '%s' "$CODEHELPER_API_KEY"`},
+			[]string{"-c", `printf '%s' "$QCODE_API_KEY"`},
 		) {
 		t.Fatalf("prepared structured command = %+v", backend.command)
 	}
 	for _, entry := range backend.command.Env {
-		if strings.Contains(entry, "CODEHELPER_API_KEY") {
+		if strings.Contains(entry, "QCODE_API_KEY") {
 			t.Fatalf("secret environment reached backend: %q", entry)
 		}
 	}

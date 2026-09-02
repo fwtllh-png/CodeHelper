@@ -32,7 +32,7 @@ last_verified: null
 - 将 Agent 理解为反馈控制循环，而不是一段更长的 Prompt；
 - 识别 Environment、Action、Observation、State、Objective 与 Stop Rule；
 - 理解自主性如何同时扩大价值和故障面；
-- 将这些概念映射到 CodeHelper Runtime。
+- 将这些概念映射到 QCode Runtime。
 
 ## 1. 能力阶梯
 
@@ -110,13 +110,13 @@ Chatbot 可能错一次；Agent 会基于错误 Observation 选择下一步、�
 
 模型说“已重命名且测试通过”不等于 4-7 真正发生。工程化 Agent 必须分离 Claim 与 Receipt。
 
-## 5. CodeHelper 映射
+## 5. QCode 映射
 
-CodeHelper 把外部请求称为 `Operation`，可观察事实称为 `Event`。Turn 具有稳定的
+QCode 把外部请求称为 `Operation`，可观察事实称为 `Event`。Turn 具有稳定的
 Thread/Turn/Item Identity。Application Runtime 接收并排序 Operation；Agent Engine
 执行 Model/Action Loop；Provider/Tool 是 Environment Adapter。
 
-| Agent 概念 | CodeHelper Owner |
+| Agent 概念 | QCode Owner |
 | --- | --- |
 | Objective | `StartTurnPayload` |
 | Stable Identity | `internal/runtime/protocol` |

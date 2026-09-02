@@ -2,7 +2,7 @@
 
 ## 项目定义
 
-CodeHelper 是本地 Coding Agent Runtime，而不仅是一个聊天界面。用户表达工程目标后，
+QCode 是本地 Coding Agent Runtime，而不仅是一个聊天界面。用户表达工程目标后，
 Runtime 会收集仓库证据、调用模型、执行受治理工具、在需要时请求审批、验证结果，并
 记录可审计事件流。
 
@@ -20,7 +20,7 @@ Web Transport 都是同一 Runtime 之上的 Host。
 - 未运行测试或诊断就声称任务成功；
 - 成本、审批与副作用不可追踪。
 
-CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证据层解决这些问题。
+QCode 通过协议中心的 Runtime，以及显式安全、持久化和证据层解决这些问题。
 
 ## 核心价值
 
@@ -62,7 +62,7 @@ CodeHelper 通过协议中心的 Runtime，以及显式安全、持久化和证�
 
 ## 产品边界
 
-CodeHelper 不是：
+QCode 不是：
 
 - 托管用户源码的 SaaS；
 - 无限制 Shell 包装器；

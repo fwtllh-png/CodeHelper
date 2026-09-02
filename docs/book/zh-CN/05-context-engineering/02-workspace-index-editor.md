@@ -120,7 +120,7 @@ Receipt 保留 Digest、Range、Diagnostic Count 和 Retained Bytes。
 
 ## 设计取舍
 
-发送完整索引成本过高；仅发送 Editor Selection 又缺少全局结构。CodeHelper 组合 Bounded
+发送完整索引成本过高；仅发送 Editor Selection 又缺少全局结构。QCode 组合 Bounded
 Map、Focused Content 和 On-demand Tool Read。新读取文件立即进入 Working Set，但 Outline
 可能下一 Turn 才更新，这是避免每 Sample 扫描 Repository 的代价。
 

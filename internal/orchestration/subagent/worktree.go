@@ -40,7 +40,7 @@ type WorktreeProvider interface {
 }
 
 const (
-	worktreeMarker            = ".codehelper-worktree"
+	worktreeMarker            = ".qcode-worktree"
 	worktreeAllocations       = "worktree-allocations"
 	worktreeAllocationVersion = 1
 	worktreeQuarantine        = "worktree-quarantine"

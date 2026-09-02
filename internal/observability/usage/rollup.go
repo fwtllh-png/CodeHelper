@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // Scope names what a Rollup covers. An empty field means "not narrowed to one",

@@ -14,10 +14,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/processbroker"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/processbroker"
 )
 
 type MutationKind string
@@ -639,10 +639,10 @@ func validPaths(paths []string) bool {
 
 func validCommitArguments(arguments []string) bool {
 	baseline := []string{
-		"-c", "user.name=CodeHelper",
-		"-c", "user.email=codehelper@localhost",
+		"-c", "user.name=QCode",
+		"-c", "user.email=qcode@localhost",
 		"commit", "--allow-empty", "--no-gpg-sign", "-m",
-		"codehelper chat baseline",
+		"qcode chat baseline",
 	}
 	if strings.Join(arguments, "\x00") == strings.Join(baseline, "\x00") {
 		return true

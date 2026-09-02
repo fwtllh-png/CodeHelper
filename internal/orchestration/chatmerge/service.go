@@ -12,13 +12,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	filetool "github.com/fwtllh-png/CodeHelper/internal/adapter/tool/file"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/workspacejournal"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process"
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	"github.com/fwtllh-png/CodeHelper/internal/security/filebroker"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	filetool "github.com/fwtllh-png/QCode/internal/adapter/tool/file"
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
+	"github.com/fwtllh-png/QCode/internal/platform/process"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	"github.com/fwtllh-png/QCode/internal/security/filebroker"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 const (
@@ -274,7 +274,7 @@ func compactChatMergePlanFile(file tool.EditPlanFile) tool.EditPlanFile {
 func (c *Service) Snapshot(ctx context.Context, worktree string) error {
 	diff, err := c.git(
 		ctx, c.repository, "diff", "--binary", "--no-ext-diff", "HEAD",
-		"--", ".", ":(exclude).codehelper",
+		"--", ".", ":(exclude).qcode", ":(exclude).codehelper",
 	)
 	if err != nil {
 		return err
@@ -301,7 +301,7 @@ func (c *Service) Snapshot(ctx context.Context, worktree string) error {
 	}
 	untracked, err := c.git(
 		ctx, c.repository, "ls-files", "--others", "--exclude-standard", "-z",
-		"--", ".", ":(exclude).codehelper",
+		"--", ".", ":(exclude).qcode", ":(exclude).codehelper",
 	)
 	if err != nil {
 		return err
@@ -326,14 +326,14 @@ func (c *Service) changedPaths(
 ) ([]string, error) {
 	tracked, err := c.git(
 		ctx, worktree, "diff", "--name-only", "-z", "HEAD",
-		"--", ".", ":(exclude).codehelper",
+		"--", ".", ":(exclude).qcode", ":(exclude).codehelper",
 	)
 	if err != nil {
 		return nil, err
 	}
 	untracked, err := c.git(
 		ctx, worktree, "ls-files", "--others", "--exclude-standard", "-z",
-		"--", ".", ":(exclude).codehelper",
+		"--", ".", ":(exclude).qcode", ":(exclude).codehelper",
 	)
 	if err != nil {
 		return nil, err
@@ -341,7 +341,9 @@ func (c *Service) changedPaths(
 	unique := make(map[string]struct{})
 	for _, path := range append(splitNUL(tracked), splitNUL(untracked)...) {
 		path = filepath.ToSlash(filepath.Clean(path))
-		if path == "." || path == ".codehelper" || strings.HasPrefix(path, ".codehelper/") {
+		if path == "." ||
+			path == ".qcode" || strings.HasPrefix(path, ".qcode/") ||
+			path == ".codehelper" || strings.HasPrefix(path, ".codehelper/") {
 			continue
 		}
 		unique[path] = struct{}{}
@@ -531,7 +533,7 @@ func (c *Service) commitBaseline(
 ) error {
 	var pathsToAdd []string
 	if len(paths) == 0 {
-		pathsToAdd = []string{".", ":(exclude).codehelper"}
+		pathsToAdd = []string{".", ":(exclude).qcode", ":(exclude).codehelper"}
 	} else {
 		pathsToAdd = append(pathsToAdd, paths...)
 	}

@@ -1,4 +1,4 @@
-// Package eventlog provides CodeHelper's durable, append-only protocol event log.
+// Package eventlog provides QCode's durable, append-only protocol event log.
 package eventlog
 
 import (
@@ -15,7 +15,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 var (

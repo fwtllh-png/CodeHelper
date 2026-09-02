@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/agent/turnkernel"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
 )
 
 var ErrTurnCoordinatorNotActive = errors.New("turn coordinator is not active")

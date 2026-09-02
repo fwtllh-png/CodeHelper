@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/atomicfile"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/atomicfile"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 const (

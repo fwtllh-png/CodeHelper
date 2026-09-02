@@ -10,14 +10,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	threadstate "github.com/fwtllh-png/CodeHelper/internal/host/runtimeapi/thread"
-	tracestate "github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	usagestate "github.com/fwtllh-png/CodeHelper/internal/observability/usage"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/agentpreset"
-	sessionstate "github.com/fwtllh-png/CodeHelper/internal/persist/session"
-	snapshotstate "github.com/fwtllh-png/CodeHelper/internal/persist/snapshot"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	threadstate "github.com/fwtllh-png/QCode/internal/host/runtimeapi/thread"
+	tracestate "github.com/fwtllh-png/QCode/internal/observability/trace"
+	usagestate "github.com/fwtllh-png/QCode/internal/observability/usage"
+	"github.com/fwtllh-png/QCode/internal/persist/agentpreset"
+	sessionstate "github.com/fwtllh-png/QCode/internal/persist/session"
+	snapshotstate "github.com/fwtllh-png/QCode/internal/persist/snapshot"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type PersistentRepositories struct {

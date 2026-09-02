@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool/toolsearch"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
-	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool/toolsearch"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/runtime/app"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/testutil/tooltest"
 )
 
 func TestChatWorkspacesProvisionMergeAndRestore(t *testing.T) {
@@ -175,7 +175,7 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 		Name: "git_show", Arguments: json.RawMessage(`{"revision":"HEAD"}`),
 	})
 	if err != nil || shown.IsError ||
-		!strings.Contains(shown.Content, "codehelper chat baseline") {
+		!strings.Contains(shown.Content, "qcode chat baseline") {
 		t.Fatalf("git_show result=%+v err=%v", shown, err)
 	}
 	shell, err := tooltest.Execute(toolContext, toolset.registry, tool.Call{
@@ -186,7 +186,7 @@ func TestIsolatedChatSandboxCanReadWorktreeGitMetadata(t *testing.T) {
 	})
 	if err != nil || shell.IsError ||
 		!strings.Contains(shell.Content, "true") ||
-		!strings.Contains(shell.Content, "codehelper chat baseline") ||
+		!strings.Contains(shell.Content, "qcode chat baseline") ||
 		strings.Contains(shell.Content, "xcrun_db") {
 		t.Fatalf("shell Git result=%+v err=%v", shell, err)
 	}

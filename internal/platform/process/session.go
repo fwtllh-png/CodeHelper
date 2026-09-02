@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 const defaultSessionOutputLimit = 1 << 20

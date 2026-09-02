@@ -3,7 +3,7 @@ package fixture
 import (
 	"io"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 )
 
 // SliceStream is a deterministic provider stream for tests.

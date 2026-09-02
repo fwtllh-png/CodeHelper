@@ -225,7 +225,7 @@ Critical Path 和 Prompt Context Receipt。
 ## 设计取舍
 
 Model-generated Narrative 流畅但不是可信 Evidence；纯结构化事实可靠，却不能完整保留
-设计动机。CodeHelper 将两者分层，并保留近期原始因果历史，而不是让任一层替代其他层。
+设计动机。QCode 将两者分层，并保留近期原始因果历史，而不是让任一层替代其他层。
 
 ## 失败模式与安全边界
 

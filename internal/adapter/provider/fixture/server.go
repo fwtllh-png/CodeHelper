@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
 )
 
 type Config struct {
@@ -158,9 +158,9 @@ func Start(directory string) (*Server, error) {
 			return
 		}
 
-		// Adversarial fault injection: when CODEHELPER_FAULT_INJECT is set,
+		// Adversarial fault injection: when QCODE_FAULT_INJECT is set,
 		// mutate a percentage of SSE events to test system resilience.
-		if faultSpec := os.Getenv("CODEHELPER_FAULT_INJECT"); faultSpec != "" {
+		if faultSpec := os.Getenv("QCODE_FAULT_INJECT"); faultSpec != "" {
 			stream = applyFaultInjection(stream, faultSpec, index)
 		}
 		writer.Header().Set("Content-Type", "text/event-stream")

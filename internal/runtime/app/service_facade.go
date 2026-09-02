@@ -4,10 +4,10 @@ import (
 	"context"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/artifact"
-	sessionhistory "github.com/fwtllh-png/CodeHelper/internal/persist/history"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/app/eventhub"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/persist/artifact"
+	sessionhistory "github.com/fwtllh-png/QCode/internal/persist/history"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/eventhub"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type SessionService struct {

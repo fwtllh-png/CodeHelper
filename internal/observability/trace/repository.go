@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	sqlitestate "github.com/fwtllh-png/CodeHelper/internal/persist/state/sqlite"
+	sqlitestate "github.com/fwtllh-png/QCode/internal/persist/state/sqlite"
 )
 
 // ErrNotFound reports that the turn a caller named does not exist under the

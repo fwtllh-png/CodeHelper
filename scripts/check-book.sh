@@ -349,7 +349,7 @@ for path in sorted(book.rglob("*")):
 template_requirements = (
     "## 学习目标",
     "## 问题背景",
-    "## CodeHelper 设计",
+    "## QCode 设计",
     "## 代码地图",
     "## 失败模式与安全边界",
     "## 测试与验证",

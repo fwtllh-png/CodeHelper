@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/joblog"
+	"github.com/fwtllh-png/QCode/internal/persist/joblog"
 )
 
 func TestRangeReadsFromAnyOffsetAndReportsWhatIsLeft(t *testing.T) {

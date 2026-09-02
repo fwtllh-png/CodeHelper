@@ -2,13 +2,13 @@
 
 > 状态：阶段 0-6 已交付。
 >
-> 本文描述 CodeHelper 对副作用执行边界的目标设计和渐进迁移方案，不代表当前实现已经
+> 本文描述 QCode 对副作用执行边界的目标设计和渐进迁移方案，不代表当前实现已经
 > 完成这些约束。当前已交付行为以[安全模型](./security.md)、源码和测试为准。
 > Repository Hook 已于后续精简中整体移除；下文 Hook 内容仅保留迁移历史。
 
 ## 一、目标
 
-CodeHelper 已具备 Tool Guard、Policy、Approval、Workspace Journal、Effective
+QCode 已具备 Tool Guard、Policy、Approval、Workspace Journal、Effective
 Permission Profile、OS Sandbox、Egress Gate 和执行 Receipt。下一阶段不应推倒这些
 能力重写，而应把仍然分散在 Hook、MCP、宿主工具和平台包中的副作用入口逐条收口。
 
@@ -574,7 +574,7 @@ Workspace Generation 和授权动作；普通新 Turn 不能接管 retained draf
 Durable Journal 但外部 State Root 不可用时必须 Fail Closed，不能静默降级为内存
 Journal。
 
-项目仍处于 pre-release，切换后不读取旧 `.codehelper/journal`。如果发现旧目录，只返回
+项目仍处于 pre-release，切换后不读取旧 `.qcode/journal`。如果发现旧目录，只返回
 不包含内容的诊断提示，不自动迁移或删除。
 
 ## 十一、旁路迁移
@@ -591,7 +591,7 @@ Repository Hook:
 ```
 
 在 Operator 确认 Workspace Trust 前不运行 SessionStart Hook。Hook 不能读取或修改
-`.git`、`.codehelper`、`.agents`、Credential Store、Journal 或其他控制面路径。
+`.git`、`.qcode`、`.agents`、Credential Store、Journal 或其他控制面路径。
 
 目标链路：
 
@@ -751,7 +751,7 @@ Golden Test 固定：
 | Process Handle Capability | `internal/security/authority/process_handle.go` |
 | Tool Guard 兼容 Facade | `internal/adapter/tool/guard/authority.go` 与 `pipeline_attempt.go` |
 | Durable Receipt Projection | `internal/adapter/tool/execution.go`、`internal/runtime/protocol/tool_execution_receipt.go` |
-| 公开 Lease TTL | `execution.lease_timeout` / `CODEHELPER_LEASE_TIMEOUT` |
+| 公开 Lease TTL | `execution.lease_timeout` / `QCODE_LEASE_TIMEOUT` |
 
 阶段 1 保持原有 Policy Decision、Approval Scope、Typed Denial 和 Amendment 语义。
 未迁移 Tool 继续由 Guard 兼容消费 Lease；Broker-aware Process Tool 由 Process Broker
@@ -846,7 +846,7 @@ Config Digest、Workspace Generation、executable、argv、cwd 和 Sanitized Env
 - File Broker 在 Journal Before Image 后再次校验内容、身份和父目录，使用
   descriptor-relative API 先写后删；写入、最终快照或 Journal Settlement 失败时
   逆序恢复，恢复失败显式报告 Partial Change；
-- File Broker 自身拒绝 `.git`、`.codehelper`、`.codehelper-worktree`、`.agents`
+- File Broker 自身拒绝 `.git`、`.qcode`、`.qcode-worktree`、`.agents`
   和 `.codex`，普通 File Lease 不能升级为 Repository Metadata 权限；
 - VCS Broker 只开放 Worktree Add/Remove/Prune、Chat Baseline `add`/`commit` 和
   Snapshot Patch 白名单；授权绑定 Repository Identity、目标 Worktree HEAD/Ref、

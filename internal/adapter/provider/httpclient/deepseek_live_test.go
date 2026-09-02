@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider/openai"
-	providerrouter "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/router"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/telemetry"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/adapter/provider/openai"
+	providerrouter "github.com/fwtllh-png/QCode/internal/adapter/provider/router"
+	"github.com/fwtllh-png/QCode/internal/observability/telemetry"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
 )
 
-const deepSeekLiveControlEnv = "CODEHELPER_DEEPSEEK_LIVE_CONTROL"
+const deepSeekLiveControlEnv = "QCODE_DEEPSEEK_LIVE_CONTROL"
 
 func TestDeepSeekP0LiveControl(t *testing.T) {
 	if os.Getenv(deepSeekLiveControlEnv) != "1" {
@@ -28,7 +28,7 @@ func TestDeepSeekP0LiveControl(t *testing.T) {
 		Messages: []provider.Message{
 			provider.TextMessage(
 				provider.RoleUser,
-				"Reply with exactly codehelper-provider-p0-live-ok.",
+				"Reply with exactly qcode-provider-p0-live-ok.",
 			),
 		},
 		MaxOutputTokens: 4096,
@@ -72,7 +72,7 @@ func TestDeepSeekCE7LiveCacheShare(t *testing.T) {
 	}
 	runtime, route, _ := deepSeekLiveRuntime(t)
 	prefix := strings.Repeat(
-		"CodeHelper cache continuity fixture with stable deterministic text. ",
+		"QCode cache continuity fixture with stable deterministic text. ",
 		800,
 	)
 	var last provider.Usage

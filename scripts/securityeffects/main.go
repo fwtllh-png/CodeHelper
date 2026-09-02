@@ -41,7 +41,7 @@ type finding struct {
 }
 
 var sensitiveCalls = map[string]map[string]string{
-	"github.com/fwtllh-png/CodeHelper/internal/platform/process": {
+	"github.com/fwtllh-png/QCode/internal/platform/process": {
 		"NewCommand":         "process",
 		"NewSessionManager":  "process",
 		"Run":                "process",

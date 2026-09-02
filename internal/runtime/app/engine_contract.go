@@ -1,9 +1,9 @@
 package app
 
 import (
-	agentengine "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/engine"
-	appextension "github.com/fwtllh-png/CodeHelper/internal/runtime/app/extension"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	agentengine "github.com/fwtllh-png/QCode/internal/runtime/agent/engine"
+	appextension "github.com/fwtllh-png/QCode/internal/runtime/app/extension"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 type EngineSink = appextension.EngineSink

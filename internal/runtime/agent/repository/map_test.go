@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/fwtllh-png/CodeHelper/internal/persist/repoindex"
+	"github.com/fwtllh-png/QCode/internal/persist/repoindex"
 )
 
 type stubIndex struct {

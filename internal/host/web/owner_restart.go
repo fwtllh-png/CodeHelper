@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/buildinfo"
-	"github.com/fwtllh-png/CodeHelper/internal/platform/ownerlease"
+	"github.com/fwtllh-png/QCode/internal/buildinfo"
+	"github.com/fwtllh-png/QCode/internal/platform/ownerlease"
 )
 
 const ownerReplacementPollInterval = 25 * time.Millisecond

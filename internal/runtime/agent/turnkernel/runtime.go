@@ -5,7 +5,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 var ErrCoordinatorAlreadyActive = errors.New("turn coordinator is already active")

@@ -4,6 +4,7 @@
 /web/node_modules/
 /.tmp/
 /testdata/canary/
+/.qcode/
 /.codehelper/
 # Machine-local provider runbooks may contain real credentials.
 /docs/ARK-LIVE.zh-CN.md

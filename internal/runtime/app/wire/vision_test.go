@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
-	"github.com/fwtllh-png/CodeHelper/internal/config"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/trace"
-	"github.com/fwtllh-png/CodeHelper/internal/observability/usage"
-	"github.com/fwtllh-png/CodeHelper/internal/persist/state"
-	apppersistence "github.com/fwtllh-png/CodeHelper/internal/runtime/app/persistence"
-	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
+	"github.com/fwtllh-png/QCode/internal/config"
+	"github.com/fwtllh-png/QCode/internal/observability/trace"
+	"github.com/fwtllh-png/QCode/internal/observability/usage"
+	"github.com/fwtllh-png/QCode/internal/persist/state"
+	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 // TestAVisionCallIsOnTheBooksEndToEnd is the T2 acceptance, whole-session: the
@@ -25,7 +25,7 @@ func TestAVisionCallIsOnTheBooksEndToEnd(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(workspace, "shot.png"), []byte("PNGBYTES"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configPath := filepath.Join(workspace, "codehelper.toml")
+	configPath := filepath.Join(workspace, "qcode.toml")
 	// The fixture answers for one model name only, so the vision slot names the
 	// same model. What distinguishes the call is its purpose, which is the thing
 	// under test: the account has to know a vision sample from an act sample even

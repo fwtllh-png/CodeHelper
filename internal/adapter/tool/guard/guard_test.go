@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fwtllh-png/CodeHelper/internal/adapter/tool"
-	"github.com/fwtllh-png/CodeHelper/internal/security/authority"
-	"github.com/fwtllh-png/CodeHelper/internal/security/controlmatrix"
-	"github.com/fwtllh-png/CodeHelper/internal/security/egress"
-	"github.com/fwtllh-png/CodeHelper/internal/security/policy"
-	"github.com/fwtllh-png/CodeHelper/internal/security/sandbox"
+	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/security/authority"
+	"github.com/fwtllh-png/QCode/internal/security/controlmatrix"
+	"github.com/fwtllh-png/QCode/internal/security/egress"
+	"github.com/fwtllh-png/QCode/internal/security/policy"
+	"github.com/fwtllh-png/QCode/internal/security/sandbox"
 )
 
 func TestMalformedArgumentsFailBeforePolicy(t *testing.T) {
@@ -1369,7 +1369,7 @@ func TestControlPlaneWriteCannotBeApprovedOrBypassed(t *testing.T) {
 		t.Context(),
 		"control-plane-write",
 		"write",
-		json.RawMessage(`{"path":".codehelper/permissions.toml","value":"allow"}`),
+		json.RawMessage(`{"path":".qcode/permissions.toml","value":"allow"}`),
 	)
 	var denied *policy.DecisionError
 	if !errors.As(err, &denied) ||

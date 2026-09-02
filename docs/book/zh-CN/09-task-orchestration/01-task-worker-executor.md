@@ -26,12 +26,12 @@ last_verified: null
 
 ## 学习目标
 
-理解 CodeHelper 为什么只保留前台 Turn、Plan 和 Subagent，而不在本地 Runtime 中维护
+理解 QCode 为什么只保留前台 Turn、Plan 和 Subagent，而不在本地 Runtime 中维护
 通用后台 Task Queue、Worker 或 Workflow Scheduler。
 
 ## 当前边界
 
-CodeHelper 的产品主线是用户发起的 Coding Turn。每次工作都必须能够追溯到 Session、
+QCode 的产品主线是用户发起的 Coding Turn。每次工作都必须能够追溯到 Session、
 Thread、Turn 和 Operation，执行结果通过 Runtime Event 与 Receipt 呈现。
 
 ```text

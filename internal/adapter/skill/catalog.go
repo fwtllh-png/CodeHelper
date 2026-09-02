@@ -123,7 +123,7 @@ func (c *Catalog) summary(item candidate, locked bool) Summary {
 	compatibility := ""
 	if item.manifest != nil {
 		version = item.manifest.Version
-		compatibility = item.manifest.CodeHelper
+		compatibility = item.manifest.QCode
 	}
 	return Summary{
 		Name: item.metadata.Name, Description: item.metadata.DescriptionFor(c.locale),
