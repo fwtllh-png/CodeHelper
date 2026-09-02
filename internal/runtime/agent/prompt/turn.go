@@ -175,7 +175,12 @@ func renderWorkingSet(options TurnOptions) string {
 	fmt.Fprintf(&b, "[working_set turn=%d]\n", options.Turn)
 	b.WriteString(
 		"Paths this session has touched, most relevant first. " +
-			"Contents are not included; read what you need.\n",
+			"Contents are not included. Do not file_read a listed path unless " +
+			"you are about to edit a specific window. A dirty git status or " +
+			"git_diff is not a reason to file_read. Absence from the visible " +
+			"tail is not a reason to file_read; use turn_history or " +
+			"result_get for prior read text. After search_text returns line " +
+			"hits, do not page a listed file.\n",
 	)
 	for _, entry := range options.WorkingSet {
 		b.WriteString(renderWorkingSetEntry(entry))

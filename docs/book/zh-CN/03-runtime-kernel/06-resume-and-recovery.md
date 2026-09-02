@@ -132,9 +132,10 @@ Effect 选择行为。
 
 Turn-level Retry/Continue 是显式 Recovery Operation，不是自动 Provider Retry。Runtime
 从 Durable History 重建 Source Turn 的 Model-visible Request，并创建新 Turn。Retry
-保持原 Request；Continue 可追加有界 Guidance。两者都要求 Source 已 Terminal、
-Target Session Idle、Active-thread Ownership 与新 Idempotency Key；不会复制或重放
-历史 Tool、Command、Network 或 File Effect。
+保持原 Request；Continue 把用户本次提交的有界 Prompt 作为新 Turn 的真实 User Input，
+并明确覆盖冲突的旧恢复请求。两者都要求 Source 已 Terminal、Target Session Idle、
+Active-thread Ownership 与新 Idempotency Key；不会复制或重放历史 Tool、Command、
+Network 或 File Effect。
 
 ## Session Checkpoint 与 State-only Restore
 

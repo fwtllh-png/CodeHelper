@@ -182,6 +182,11 @@ func (s Snapshot) Validate() error {
 		return fieldError(fieldViewHistoryTokenCeiling, s.Provenance,
 			"must be zero or between 256 and 67108864")
 	}
+	if view.CheckpointMaxBytes != 0 &&
+		(view.CheckpointMaxBytes < 256 || view.CheckpointMaxBytes > 1<<20) {
+		return fieldError(fieldViewCheckpointMaxBytes, s.Provenance,
+			"must be zero or between 256 and 1048576")
+	}
 	switch view.Digest {
 	case "ledger", "ledger+narrative":
 	default:
@@ -245,6 +250,13 @@ func (s Snapshot) Validate() error {
 	}
 	if execution.MaxSteps < 0 {
 		return fieldError(fieldMaxSteps, s.Provenance, "must be non-negative")
+	}
+	if execution.ImplementNoProgressSamples < 0 {
+		return fieldError(
+			fieldImplementNoProgressSamples,
+			s.Provenance,
+			"must be non-negative",
+		)
 	}
 	if execution.Timeout <= 0 {
 		return fieldError(fieldTimeout, s.Provenance, "must be positive")

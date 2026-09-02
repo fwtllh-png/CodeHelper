@@ -78,6 +78,8 @@ type Engine struct {
 	planText        string
 	plan            interact.Plan
 	planReceipt     *promptcontext.Receipt
+	checkpointMu    sync.Mutex
+	turnCheckpoints []agentcontext.TurnCheckpoint
 
 	context         agentcontext.Authority
 	prefixMu        sync.Mutex
@@ -256,6 +258,9 @@ func New(options Options) (*Engine, error) {
 		engine.guard = guard
 	}
 	engine.configureApprovalHandlers()
+	if err := engine.registerTurnHistoryTool(); err != nil {
+		return nil, err
+	}
 	return engine, nil
 }
 

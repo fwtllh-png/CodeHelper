@@ -18,6 +18,12 @@ func TestDefaultsUseExtendedTurnBudget(t *testing.T) {
 	if defaults.Execution.MaxSteps != 64 {
 		t.Fatalf("default max steps = %d, want 64", defaults.Execution.MaxSteps)
 	}
+	if defaults.Execution.ImplementNoProgressSamples != 6 {
+		t.Fatalf(
+			"default implement no-progress samples = %d, want 6",
+			defaults.Execution.ImplementNoProgressSamples,
+		)
+	}
 	if defaults.Execution.Subagent.Delegation != SubagentDelegationAdaptive {
 		t.Fatalf(
 			"default subagent delegation = %q, want %q",
@@ -33,7 +39,8 @@ func TestDefaultsUseExtendedTurnBudget(t *testing.T) {
 		defaults.Context.View.Digest != "ledger" ||
 		defaults.Context.View.RecentTailTurns != 2 ||
 		defaults.Context.View.KeepRecentToolResults != 0 ||
-		defaults.Context.View.HistoryTokenCeiling != 0 {
+		defaults.Context.View.HistoryTokenCeiling != 0 ||
+		defaults.Context.View.CheckpointMaxBytes != 0 {
 		t.Fatalf("default view = %+v", defaults.Context.View)
 	}
 }
@@ -621,6 +628,49 @@ tokens_per_minute = 500000
 	}
 }
 
+func TestImplementNoProgressSamplesHasProvenanceAndValidation(t *testing.T) {
+	if Defaults().Execution.ImplementNoProgressSamples != 6 {
+		t.Fatalf(
+			"default implement no-progress samples = %d, want 6",
+			Defaults().Execution.ImplementNoProgressSamples,
+		)
+	}
+	path := writeConfig(t, `
+[execution]
+implement_no_progress_samples = 4
+`)
+	fromFile, err := Load(LoadOptions{
+		Path: path, LookupEnv: envLookup(nil),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromFile.Config.Execution.ImplementNoProgressSamples != 4 ||
+		fromFile.Provenance[fieldImplementNoProgressSamples] != SourceFile {
+		t.Fatalf("file implement no-progress samples = %+v", fromFile)
+	}
+	fromEnv, err := Load(LoadOptions{
+		Path: path,
+		LookupEnv: envLookup(map[string]string{
+			"CODEHELPER_IMPLEMENT_NO_PROGRESS_SAMPLES": "8",
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fromEnv.Config.Execution.ImplementNoProgressSamples != 8 ||
+		fromEnv.Provenance[fieldImplementNoProgressSamples] != SourceEnv {
+		t.Fatalf("environment implement no-progress samples = %+v", fromEnv)
+	}
+	invalid := -1
+	_, err = Load(LoadOptions{
+		Overrides: Overrides{ImplementNoProgressSamples: &invalid},
+	})
+	if err == nil || !strings.Contains(err.Error(), fieldImplementNoProgressSamples) {
+		t.Fatalf("negative implement no-progress samples error = %v", err)
+	}
+}
+
 func TestRateLimitRecoveryBudgetHasProvenanceAndValidation(t *testing.T) {
 	if Defaults().Execution.RateLimitRetryLimit != 0 ||
 		Defaults().Execution.RateLimitWait != 0 ||
@@ -1084,6 +1134,16 @@ func TestViewRejectsDigestOff(t *testing.T) {
 	}
 }
 
+func TestViewRejectsCheckpointMaxBytesBelowMinimum(t *testing.T) {
+	_, err := Load(LoadOptions{LookupEnv: envLookup(map[string]string{
+		"CODEHELPER_VIEW_CHECKPOINT_MAX_BYTES": "128",
+	})})
+	var fieldErr *FieldError
+	if !errors.As(err, &fieldErr) || fieldErr.Field != fieldViewCheckpointMaxBytes {
+		t.Fatalf("Load(checkpoint_max_bytes=128) error = %v", err)
+	}
+}
+
 func TestViewRejectsLegacyCompactTailField(t *testing.T) {
 	path := writeConfig(t, `
 [context.compact]
@@ -1103,6 +1163,7 @@ keep_recent_tool_results = 0
 history_token_ceiling = 4096
 digest = "ledger"
 narrative_mode = "off"
+checkpoint_max_bytes = 1024
 `)
 	snapshot, err := Load(LoadOptions{
 		Path: path,
@@ -1117,7 +1178,8 @@ narrative_mode = "off"
 	if view.RecentTailTurns != 3 ||
 		view.HistoryTokenCeiling != 4096 ||
 		view.Digest != "ledger" ||
-		view.NarrativeMode != "post_turn" {
+		view.NarrativeMode != "post_turn" ||
+		view.CheckpointMaxBytes != 1024 {
 		t.Fatalf("view = %+v", view)
 	}
 	if snapshot.Provenance[fieldViewRecentTailTurns] != SourceFile ||

@@ -23,6 +23,20 @@ func TestContextCompactionUsageSampleIsStablePerAttempt(t *testing.T) {
 	}
 }
 
+func TestPostTurnNarrativeRunsOnlyAfterCompletedTurn(t *testing.T) {
+	if !postTurnNarrativeAllowed(&protocol.TurnCompletedData{Text: "done"}) {
+		t.Fatal("completed turn skipped post-turn narrative")
+	}
+	if postTurnNarrativeAllowed(&protocol.TurnCanceledData{
+		Reason: protocol.CancelReasonUserInterrupted,
+	}) {
+		t.Fatal("user pause still scheduled post-turn narrative")
+	}
+	if postTurnNarrativeAllowed(&protocol.TurnFailedData{Message: "provider timeout"}) {
+		t.Fatal("failed turn still scheduled post-turn narrative")
+	}
+}
+
 func TestPostTurnCompactionReceiptProducesValidProtocolEvent(t *testing.T) {
 	metadata := &protocol.ModelMetadataProvenance{
 		CanonicalID: "bundled", WireID: "bundled", Limits: "bundled",

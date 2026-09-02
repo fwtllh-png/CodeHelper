@@ -294,10 +294,11 @@ type ContextSnapshot struct {
 	Failures     FailureDelta       `json:"failures"`
 	Plan         *Plan              `json:"plan,omitempty"`
 	World        WorldBaseline      `json:"world,omitempty"`
-	Compaction   Compaction         `json:"compaction"`
-	Workspace    WorkspaceBinding   `json:"workspace"`
-	Window       WindowLedger       `json:"window"`
-	Digest       string             `json:"digest"`
+	Compaction      Compaction       `json:"compaction"`
+	TurnCheckpoints []TurnCheckpoint `json:"turn_checkpoints,omitempty"`
+	Workspace       WorkspaceBinding `json:"workspace"`
+	Window          WindowLedger     `json:"window"`
+	Digest          string           `json:"digest"`
 }
 
 func CloneContextSnapshot(snapshot ContextSnapshot) ContextSnapshot {
@@ -334,6 +335,7 @@ func CloneContextSnapshot(snapshot ContextSnapshot) ContextSnapshot {
 	}
 	snapshot.World = CloneWorldBaseline(snapshot.World)
 	snapshot.Compaction = CloneCompaction(snapshot.Compaction)
+	snapshot.TurnCheckpoints = CloneTurnCheckpoints(snapshot.TurnCheckpoints)
 	snapshot.Workspace.BoundPaths = append(
 		[]BoundPath(nil),
 		snapshot.Workspace.BoundPaths...,
@@ -378,6 +380,9 @@ func (s ContextSnapshot) Validate() error {
 		return errors.New("context snapshot token window is invalid")
 	}
 	if err := s.Compaction.Validate(); err != nil {
+		return err
+	}
+	if err := ValidateTurnCheckpoints(s.TurnCheckpoints); err != nil {
 		return err
 	}
 	return nil

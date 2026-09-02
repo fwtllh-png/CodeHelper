@@ -1,9 +1,13 @@
 package engine
 
-import agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+import (
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+)
 
 func (e *Engine) buildTruthCapsule(
 	summary agentcontext.Summary,
+	history []provider.Message,
 ) agentcontext.TruthCapsule {
 	route := e.activeRoute()
 	model := route.Model()
@@ -41,6 +45,12 @@ func (e *Engine) buildTruthCapsule(
 		Summary:       summary, Plan: plan, Turn: e.turn,
 		Evidence: evidenceDelta, WorkspaceDigests: workspaceDigests,
 		CriticalPaths: summary.CriticalPaths,
-		ExtraEntities: e.pendingInputTruthEntities(),
+		ExtraEntities: append(
+			append(
+				e.pendingInputTruthEntities(),
+				e.resumeTruthEntities()...,
+			),
+			e.omittedTurnTruthEntities(history)...,
+		),
 	})
 }

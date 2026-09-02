@@ -55,6 +55,7 @@ workspace = "."
 tools = true
 max_output_tokens = 0           # 0 = 使用当前模型声明的 MaxOutputTokens
 max_steps = 64                  # 连续无结构化进展的 Step Lease；0 = 不设置
+implement_no_progress_samples = 6  # Plan 已有完成步骤且仍有 outstanding 时的无进展 finish-only 租约；0 = 继承 max_steps 派生值
 timeout = "2m"                  # 连接、TLS 和响应头阶段
 lease_timeout = "2m"            # Guard 授权到 Executor 接管前的 Lease 有效期
 approval_timeout = "0s"         # 0 = 审批随 Turn/Session 生命周期，不独立过期
@@ -77,7 +78,10 @@ native_search = false
 
 `turn_budget_tokens` 统计一个 Turn 内所有模型调用的累计输入与输出。它不是模型的
 Context Window：后者只约束单次请求。默认值 `0` 不设置累计上限，单次请求仍受模型
-能力约束；连续无结构化进展时仍受 `max_steps` 约束。需要控制成本时应显式设置
+能力约束；连续无结构化进展时仍受 `max_steps` 约束。Plan 已有完成步骤且仍有
+outstanding 工作时，读取新文件不再算进展，并改用
+`implement_no_progress_samples`（默认 6）进入 finish-only；`0` 表示继承
+`max_steps` 派生的 2/3 租约。需要控制成本时应显式设置
 `turn_budget_tokens`、`budget_tokens` 或 `budget_usd`。
 [execution.verify]
 mode = "soft"                # off | soft | hard
@@ -132,6 +136,7 @@ keep_recent_tool_results = 0 # 快照字段；已发送 Tool Result 不再按此
 history_token_ceiling = 0 # 0 表示 Mandatory 分区之后的剩余硬输入容量
 digest = "ledger" # 或 "ledger+narrative"；session_state 始终 mandatory
 narrative_mode = "post_turn" # 不阻塞 Sample；仅允许 off 或 post_turn
+checkpoint_max_bytes = 0 # 0 继承 summary_max_bytes，再继承 semantic_narrative_item_max_bytes
 
 [context.compact]
 prepare_tokens = 0 # 0 表示不设提前压缩档；非 0 为 Operator Ceiling
@@ -195,6 +200,29 @@ State；`narrative_mode=post_turn` 另加非阻塞 Narrative 分区。`digest=of
 因为 Session State 不能关掉。`digest=ledger+narrative` 时 `narrative_mode` 必须
 是 `post_turn`。Context Budget 快照报告这些 view 字段；只有 Operator 显式设置
 时才报告 `prepare_tokens` / `emergency_tokens`。
+
+闭合 Turn 后，带 `source_message_ids` 的 `unresolved` / `pending_job` /
+`next_step` 会提升为未完成 Plan Todo，进入每轮 `session_state`，不自动完成已有
+条目。同时在 History 之后的 Dynamic 区追加一块 write-once Turn Checkpoint，不写
+Stable、不插到 last-2 前面、不改写旧块。`checkpoint_max_bytes=0` 继承
+`summary_max_bytes`，再继承 `semantic_narrative_item_max_bytes`（默认 512）。
+超限只保留标题与检索指针。完整旧 Turn 原文用 `turn_history`（按 turn id）；
+首次投影是该 Turn 尾部结论，全文进 Handle。继续分页用 `result_get` 的
+`mode=tail` 或 `mode=query`，不要用默认 `summary`。首次写入后不再改写。被裁掉的旧 Turn 在 `session_state`
+给出确定性 `turn_history` 指针；升级前缺失的 Checkpoint 只回封 turn id，不
+猜测会话清单。继续原 Session 即可，不必开新会话。当 Plan 已有完成步骤或
+Working Set 已有已读路径时，`session_state` 还给出 Resume Fact：不要重复已
+完成步骤，下一项未完成工作取第一项 outstanding Plan 标题，并列出已读路径
+（上限继承 `context.working_set.max_entries`）。有行号命中时 Resume Fact 还列出
+`Located sites`。`working_set` 只列路径；不要再次 `file_read`，除非即将编辑
+具体窗口。`search_text` / `search_definition` 命中某路径后，对该路径的
+`file_read` 必须带 `start_line`，否则工具返回
+`located_site_window_required`。脏的 `git_status` / `git_diff` 不是重读理由。
+可见 Tail 没有那次读取不是重读理由，应走 `turn_history` / `result_get`；
+截断后先 `result_get`。取消 Checkpoint 保留下一项 Plan 与已读路径指针，失败
+仍不带半开 Tool 链。Paused Continue 不得先用 `git_status`、`git_diff` 或
+`file_read` 巡视工作区，并写明 `recovery_evidence.read_paths` 不在 tail 里也
+不重读。
 
 [route]
 lock = false
@@ -284,16 +312,21 @@ Finalization Sample；它只能请求必需输入，或声明 Complete/Incomplet
 
 Agent 还会跟踪连续没有结构化进展的 Sample；对于正在执行 Workspace 工作的 Turn，
 No-progress 阶段由显式 `execution.max_steps` 派生：约三分之一时要求收敛，约三分之二
-时限制继续扩散式探索，但仍允许精确文件读取、工作区修改、有界 Process 收尾
-（`exec_command` / `write_stdin`）、必需用户输入、质量检查、Plan 更新和 Completion；
-直到完整 Lease 耗尽才进入结构化 Finalization。Provider 投影与 Tool Executor
-共享同一 Allowlist，因此当前批次已广告的 Tool 不会再被误判为 Terminal-only 而拒绝。
-Complete 声明照常提交；Incomplete 声明记录可恢复的摘要与具体 Pending Actions。任何
-Mutation、任意 Plan 状态变化、Verification 或 Completion 推进都会立即清零计数。Answer
-和 Plan Turn 还会把首次读取的新路径与新 Evidence 计为进展；Operation Turn 会把成功
-的业务 Tool 结果计为进展。Progress 与 Convergence 状态都会持久化并在 Runtime 恢复后
-延续。`execution.max_steps=0` 时不启用基于 Sample 数量的 No-progress 上限，持续工作
-仍受模型 Context Window 和显式 Token/Cost Budget 约束。
+时限制继续扩散式探索，但仍允许带 `start_line` 的精确文件读取、工作区修改、有界
+Process 收尾（`exec_command` / `write_stdin`）、必需用户输入、质量检查、Plan 更新和
+Completion；`git_status` / `git_diff` 与整文件 `file_read` 不在 Finish-only
+Allowlist。直到完整 Lease 耗尽才进入结构化 Finalization。Provider 投影与 Tool
+Executor 共享同一 Allowlist，因此当前批次已广告的 Tool 不会再被误判为
+Terminal-only 而拒绝。Complete 声明照常提交；Incomplete 声明记录可恢复的摘要与
+具体 Pending Actions。任何 Mutation、任意 Plan 状态变化、Verification 或
+Completion 推进都会立即清零计数。Answer 和 Plan Turn 还会把首次读取的新路径与新
+Evidence 计为进展，但 Plan 已有完成步骤且仍有 outstanding 工作时，新的
+`file_read` / Evidence 不再续期，并改用 `execution.implement_no_progress_samples`
+（默认 6，公开合同字段）进入 Finish-only；该值为 `0` 时继承 `max_steps` 派生的
+2/3 租约。Operation Turn 会把成功的业务 Tool 结果计为进展。Progress 与
+Convergence 状态都会持久化并在 Runtime 恢复后延续。`execution.max_steps=0` 且
+`implement_no_progress_samples=0` 时不启用基于 Sample 数量的 No-progress 上限，
+持续工作仍受模型 Context Window 和显式 Token/Cost Budget 约束。
 
 `execution.subagent.max_steps` 同样使用 `0 = 未设置` 语义。可选的
 `execution.subagent.wall_time` 是可续期执行 Lease：可观测的子 Runtime 进展会续期；
@@ -325,10 +358,17 @@ Token。它与模型 Context Window、`budget_tokens` / `turn_budget_tokens` 经
 （`wait_exceeds_budget`）。通用 `RateLimit-Remaining` 不当作 Token 合同。Host
 不实现 Governor。该字段可由 `CODEHELPER_TOKENS_PER_MINUTE` 覆盖。
 
-`context.view.narrative_mode=post_turn` 在业务终态提交后通过 `route.summary` 生成独立的
+`context.view.narrative_mode=post_turn` 仅在 `turn.completed` 之后通过 `route.summary` 生成独立的
 结构化 Continuation Checkpoint，不阻塞下一轮 Sample。Checkpoint 保留文件与
 代码接口、当前工作和下一步，并要求每项引用输入消息。`off` 只保留 Truth Capsule
 与原始 Tail。`inline` 不再合法。
+语义压缩与主采样共用同一套失败分类：兼容提供商上的 HTTP 429（含
+`insufficient_quota` 这类瞬时配额文案）走 Rate Limit Recovery Budget；5xx /
+Timeout 走 `semantic_narrative_retry_limit`（默认 1）和
+`execution.provider_retry_limit` 的较小值。账户硬配额（`FailureQuota`）立即
+`fallback=ledger`，不重试。全部 Attempt 与等待仍受
+`semantic_narrative_timeout`（默认 30s）约束，超时或预算耗尽后保留 Ledger
+Session State 与 write-once Checkpoint，不改写业务 Turn。
 
 `execution.provider_retry_limit` 是单次 Model Sample 对 5xx、网络中断、Timeout
 等普通瞬时故障的重试预算。明确分类为 `rate_limit` 的 429 不消耗该次数预算，改由
@@ -382,9 +422,10 @@ follow-up 的生命周期上限；每次 follow-up 只预留该 Agent 的剩余�
 `context.compact` 先为 Mandatory Truth 和未闭合因果组分配空间，再保留
 Protected/Refreshable Truth、Raw Tail 和可选 Narrative。新增计划、Pending Input
 或写工具预留如果会超过 Mandatory 上界，会在状态或副作用提交前返回
-`resource_exhausted`。`post_turn` Narrative 在业务终态提交后生成滚动 Digest
-分区，不得持锁或挡住下一轮 Sample；Timeout 或 Provider 失败只记录
-`fallback=ledger`，Session State 继续从 Ledger 投影。`thread.compact` 可带可选
+`resource_exhausted`。`post_turn` Narrative 仅在 `turn.completed` 之后生成滚动
+Digest 分区，不得持锁或挡住下一轮 Sample；用户暂停 / 取消 / 失败不调用
+summary 模型。Timeout 或 Provider 失败只记录 `fallback=ledger`，Session State
+继续从 Ledger 投影。`thread.compact` 可带可选
 `focus`（最长 4096 字节）引导这次 Digest，但立即应用确定性 History Replacement，
 不把窗口留给 Narrative。默认 `truth_max_bytes=0`，Runtime 按当前 Route 扣除 Output
 Reserve 后的硬输入 Token 容量动态派生字节上限，并受公开的 1 MiB 安全上限及
@@ -520,7 +561,8 @@ stdio MCP 配置示例：
 
 - `index`：有界符号提取；
 - `repo_map`：有界仓库结构与入口概览；
-- `working_set`：会话触达或 Pin 的路径；
+- `working_set`：会话触达或 Pin 的路径；只列路径，不放正文。已读路径由
+  `session_state` Resume Fact 复述，不要默认再 `file_read`；
 - `evidence`：已证明事实、风险和未验证变更；
 - `coding_policy`：稳定工作方法；
 - `compact`：长历史何时以及如何压缩。

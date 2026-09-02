@@ -119,7 +119,7 @@ func (e *Engine) takeRecoveredInput(
 }
 
 func (e *Engine) ApplyPlan(plan interact.Plan) error {
-	current := e.buildTruthCapsule(e.buildCompactSummary(nil))
+	current := e.buildTruthCapsule(e.buildCompactSummary(nil), nil)
 	var resolved []string
 	for _, entity := range current.Entities {
 		if entity.Kind == agentcontext.EntityGoal || entity.Kind == agentcontext.EntityTodo {

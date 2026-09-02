@@ -219,13 +219,13 @@ func (h *webContractHost) RecoverTurn(
 	ctx context.Context,
 	sourceTurnID protocol.TurnID,
 	action protocol.TurnRecoveryAction,
-	guidance string,
+	prompt string,
 ) (contract.Receipt, error) {
 	var result app.OperationReceipt
 	key := "recover-" + string(sourceTurnID)
 	err := h.call(ctx, "turn/recover", protocol.TurnRecoveryRequest{
 		Version: protocol.WorkflowIntentVersion, SessionID: h.sessionID,
-		SourceTurnID: sourceTurnID, Action: action, Guidance: guidance,
+		SourceTurnID: sourceTurnID, Action: action, Prompt: prompt,
 		IdempotencyKey: key,
 	}, &result, key)
 	return contract.Receipt{

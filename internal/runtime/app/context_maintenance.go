@@ -11,12 +11,20 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
+func postTurnNarrativeAllowed(terminal protocol.EventData) bool {
+	_, ok := terminal.(*protocol.TurnCompletedData)
+	return ok
+}
+
 func (s *runtimeSink) publishPostTurnContextMaintenance(
 	operationID protocol.OperationID,
 	threadID protocol.ThreadID,
 	turnID protocol.TurnID,
 	itemID protocol.ItemID,
 ) {
+	if !postTurnNarrativeAllowed(s.terminal) {
+		return
+	}
 	maintenance, ok := s.runtime.engine.(ContextMaintenanceEngine)
 	if !ok {
 		return

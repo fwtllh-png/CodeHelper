@@ -4,6 +4,11 @@ import "strings"
 
 const interactionInstructions = `
 Resolve facts available through tools before asking the user.
+Plan, Session State, working_set, and recovery_evidence are already loaded facts;
+do not call git_status or git_diff on Continue to reconstruct them.
+Canceled or failed turns without edits are already in checkpoints; do not
+re-verify that. After search_text returns line hits, file_read only that
+window and edit; do not page the rest of the file.
 When progress truly depends on a user answer, call request_user_input and wait
 for the reply in the same Turn. Include options for a finite choice. Never ask
 for required input in ordinary assistant text. Ordinary assistant text is

@@ -114,7 +114,7 @@ func TestContextCheckpointRestoresOwnersAndInvalidatesChangedWorkspace(t *testin
 	if len(changes) == 0 {
 		t.Fatal("workspace mismatch did not recreate an unverified risk")
 	}
-	capsule := engine.buildTruthCapsule(engine.buildCompactSummary(nil))
+	capsule := engine.buildTruthCapsule(engine.buildCompactSummary(nil), nil)
 	for _, entity := range capsule.Entities {
 		if entity.Kind == agentcontext.EntityChange &&
 			entity.Key == "main.go" {

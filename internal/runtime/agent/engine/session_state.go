@@ -1,10 +1,13 @@
 package engine
 
-import agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+import (
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
+)
 
-func (e *Engine) sessionStatePartition() (string, error) {
+func (e *Engine) sessionStatePartition(history []provider.Message) (string, error) {
 	capsule := agentcontext.MandatorySessionState(
-		e.buildTruthCapsule(e.buildCompactSummary(nil)),
+		e.buildTruthCapsule(e.buildCompactSummary(nil), history),
 	)
 	if len(capsule.Entities) == 0 {
 		return "", nil

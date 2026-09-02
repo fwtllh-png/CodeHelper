@@ -153,6 +153,25 @@ func TestResultStoreAppliesCallerTokenBudgetAndKeepsTypedHandle(t *testing.T) {
 	}
 }
 
+func TestTurnHistoryAdmissionProjectsTailConclusions(t *testing.T) {
+	store := NewResultStore(512)
+	payload := "HEAD-AUDIT-START\n" + strings.Repeat("explore the lexer\n", 200) +
+		"[turn 1 assistant] five P2s: missing overflow test\n"
+	admitted, receipt := store.Admit("turn_history", Result{Content: payload})
+	if !admitted.Truncated || admitted.Handle == "" ||
+		receipt.Kind != "turn_history" ||
+		!strings.Contains(admitted.Content, "five P2s: missing overflow test") ||
+		strings.Contains(admitted.Content, "HEAD-AUDIT-START") ||
+		!strings.Contains(admitted.Content, `mode="tail"`) ||
+		!strings.Contains(admitted.Content, `mode="query"`) {
+		t.Fatalf("admitted=%+v receipt=%+v", admitted, receipt)
+	}
+	full, ok := store.Get(admitted.Handle)
+	if !ok || full != payload {
+		t.Fatalf("stored = %q found=%t", full, ok)
+	}
+}
+
 func TestResultAdmissionShrinksHundredKiBAndRetainsOriginalByHandle(t *testing.T) {
 	store := NewResultStore(32 << 10)
 	payload := strings.Repeat("0123456789abcdef", 6400)

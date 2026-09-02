@@ -1026,14 +1026,14 @@ export class RuntimeClient {
   async recoverTurn(
     sourceTurnID: string,
     action: "retry" | "continue",
-    guidance = ""
+    prompt = ""
   ): Promise<OperationReceipt> {
     return this.call<OperationReceipt>("turn/recover", {
       version: 1,
       action,
       session_id: this.requireSession(),
       source_turn_id: sourceTurnID,
-      guidance,
+      prompt,
       idempotency_key: crypto.randomUUID()
     });
   }

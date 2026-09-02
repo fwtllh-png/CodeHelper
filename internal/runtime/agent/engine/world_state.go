@@ -21,10 +21,12 @@ func (e *Engine) projectWorldState(
 	if scope == nil {
 		return nil, nil, nil, agentcontext.WorldProjection{}, errors.New("turn scope is not active")
 	}
+	e.ensureClosedTurnCheckpoints()
 	scope.mu.Lock()
 	baseline := scope.state.context.World()
 	if scope.state.contextLedger != nil &&
-		agentcontext.WorldBaselineValid(history, baseline) {
+		agentcontext.WorldBaselineValid(history, baseline) &&
+		!e.sessionStateHintMissing(history) {
 		receipts := append([]promptcontext.Receipt(nil), scope.state.contextSeen...)
 		scope.mu.Unlock()
 		return promptcontext.FrozenWorld(e.promptMessages(), receipts, baseline)
@@ -45,7 +47,7 @@ func (e *Engine) projectWorldState(
 		planReceipt = &copy
 	}
 	e.planMu.Unlock()
-	sessionState, err := e.sessionStatePartition()
+	sessionState, err := e.sessionStatePartition(history)
 	if err != nil {
 		return nil, nil, nil, agentcontext.WorldProjection{}, err
 	}

@@ -51,6 +51,9 @@ func normalizeEngineOptions(options *Options) error {
 	if options.Context.RecentTailTurns <= 0 {
 		options.Context.RecentTailTurns = agentcontext.DefaultRecentTailTurns
 	}
+	if options.Context.CheckpointMaxBytes < 0 {
+		return errors.New("checkpoint max bytes cannot be negative")
+	}
 	options.Context.NarrativeLimits =
 		options.Context.NarrativeLimits.Normalized()
 	if options.Context.NarrativeTimeout < 0 {

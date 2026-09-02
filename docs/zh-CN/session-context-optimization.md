@@ -76,6 +76,44 @@ Tool Result 在首次准入时定稿：能放下则原文，超限则有界说�
 `resource_exhausted`。短于等待预算的滚动窗口等待不折叠。History Replacement
 只发生在显式 `thread.compact` 与 Turn 终态维护。
 
+长会话分成四层，不恢复被投影裁掉的整段旧原文，也不恢复 75/80/90 改写：
+
+1. 最近 `recent_tail_turns`（默认 2）个 Turn 保留原文；
+2. 闭合后把带 `source_message_ids` 的 `unresolved` / `pending_job` /
+   `next_step` 提升为未完成 Plan Todo，由 `session_state` 每轮必带；不自动完成
+   已有 Todo；
+3. 每个闭合 Turn 在 History 之后的 Dynamic 追加一块结构化 Checkpoint，
+   write-once，不合并、不改写。失败只记有界失败事实，不带半开 Tool 链。
+   取消 Checkpoint 保留下一项未完成 Plan 标题和已读路径指针，仍不带文件正文、
+   不带半开 Tool 链。长度由 `context.view.checkpoint_max_bytes` 约束，`0` 继承
+   `summary_max_bytes` 再继承 `semantic_narrative_item_max_bytes`；
+4. 需要完整旧审计文本时用 `turn_history`（turn id）。首次投影是该 Turn 的
+   **尾部（结论）**；全文进 Handle。继续分页用 `result_get` 的 `mode=tail`
+   或 `mode=query`（例如 `query=P2`），不要用默认 `mode=summary`。
+   首次写入后不再改写。被 last-2 裁掉的旧 Turn 会在 `session_state` 给出确定
+   性检索指针（最小–最大 turn 范围），升级前缺失的 Checkpoint 只回封 turn id
+   与 `turn_history` 指针，不把会话清单猜回 Plan。应继续原 Session，不要开新
+   Session 去找回旧审计。
+5. 当 Plan 已有完成步骤或 Working Set 已有已读路径时，`session_state` 必须带
+   Resume Fact（`runtime.resume`）：不要重复已完成步骤，下一项未完成工作取
+   第一项 outstanding Plan 标题，并列出已读路径。路径上限继承公开的
+   `context.working_set.max_entries`。   `working_set` 只列路径，不放文件正文；
+   有行号命中时 Resume Fact 还列出 `Located sites`。不要再次 `file_read`，
+   除非即将编辑该路径的具体窗口。`search_text` / `search_definition` 命中某
+   路径后，对该路径的 `file_read` 必须带 `start_line`，否则工具返回
+   `located_site_window_required`。脏的 `git_status` / `git_diff` 不是重读理由。
+   可见 Tail 没有那次读取也不是重读理由，应走 `turn_history` / `result_get`；
+   若输出被截断，先 `result_get`，不要整文件翻页。已知缺陷用 `search_text` /
+   `search_definition` 定位窗口。`search_text` 的 `path` 指向单个文件时，即使
+   该文件超过结果 Token 预算派生的扫描上限，仍按公开的 walk 字节上限搜索；
+   空命中若带 `skipped.large` 不表示符号不存在。已有行号命中后只读将编辑的
+   窗口并立刻改，不要把该文件再翻一遍。取消或失败且未改文件的 Turn 已记在
+   Checkpoint 里，不要用 `git_diff` 再确认一遍。Paused Continue 不得先用
+   `git_status`、`git_diff` 或 `file_read` 巡视工作区。Plan 已有完成步骤且仍
+   有 outstanding 工作时，读取新文件不再续期 No-progress Lease，并改用公开
+   字段 `execution.implement_no_progress_samples`（默认 6）进入 Finish-only；
+   该阶段不允许 `git_status` / `git_diff` 或无 `start_line` 的 `file_read`。
+
 ## Compaction 流程
 
 每次投影后都重新测量 Active、Total、Compact Limit 与 Hard Limit：
@@ -101,14 +139,19 @@ Turn 能解释失败，又不会把半闭合 Tool Exchange 当成已提交历史
 `context.view.narrative_mode` 支持：
 
 - `off`：只使用 Truth + Tail；
-- `post_turn`：业务终态提交后维护下一 Turn 的独立 Digest 分区。
+- `post_turn`：仅在 `turn.completed` 之后维护下一 Turn 的独立 Digest 分区。
+  用户暂停 / `turn.canceled` / `turn.failed` 不调用 summary 模型，也不发
+  fallback Compaction 卡片。
 
 `digest` 只允许 `ledger` 或 `ledger+narrative`。Session State 始终 mandatory，
 因此没有 `digest=off`。
 
 Narrative 请求通过 `route.summary`，禁用 Tool 与 Native Search。输入 Artifact、Source
 Message ID 和 Digest 都持久化；输出必须引用已知 Source。Provider、解析、超时或
-Staleness 失败不能改写业务 Turn 结果，也不会替换 Durable History。没有必须保留的
+Staleness 失败不能改写业务 Turn 结果，也不会替换 Durable History。
+`route.summary` 的瞬时 429 / 5xx / Timeout 按主采样同一套 RetryPolicy 自适应重试，
+但仍受 `semantic_narrative_timeout` 约束，且不得挡住下一轮 Sample。账户硬配额
+立即 fallback。没有必须保留的
 未完成工作时可降级到 Ledger 投影的 Session State；存在权威未完成 Todo 时必须生成
 对应 Continuation Checkpoint，否则不能以缺少工作记忆的 fallback 继续执行。
 

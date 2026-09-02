@@ -31,8 +31,6 @@ func FinishOnlyAllowed(name string, descriptor Descriptor) bool {
 		"file_read",
 		"exec_command",
 		"write_stdin",
-		"git_diff",
-		"git_status",
 		"quality_test",
 		"quality_diagnostics",
 		"quality_review",

@@ -16,6 +16,48 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/testutil/tooltest"
 )
 
+func TestSearchTextScopedFileOverResultBudgetStillMatches(t *testing.T) {
+	root := repositoryRoot(t)
+	run(t, root, "git", "init", "-q")
+	needle := "HandlePromise_unique_token"
+	// Result budget 10_000 tokens allows 40_000 scan bytes. A scoped file just
+	// over that cap must still be searched; empty matches previously looked like
+	// a missing symbol and pushed the model into whole-file paging.
+	write(t, filepath.Join(root, "core.cpp"), strings.Repeat("x", 45_000)+"\n"+needle+"\n")
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithBackend(registry, root, searchTestBackend{}); err != nil {
+		t.Fatal(err)
+	}
+	result := execute(t, registry, "search_text", map[string]any{
+		"pattern": needle, "path": "core.cpp", "limit": 20,
+	})
+	matches := decodeMatches(t, result.Content)
+	if len(matches) != 1 || matches[0]["file"] != "core.cpp" {
+		t.Fatalf("scoped search = %s", result.Content)
+	}
+	if strings.Contains(result.Content, `"skipped"`) ||
+		!strings.Contains(result.Content, "do not page the rest of this file") {
+		t.Fatalf("scoped search = %s", result.Content)
+	}
+}
+
+func TestSearchTextReportsSkippedLargeInBodyWhenEmpty(t *testing.T) {
+	root := repositoryRoot(t)
+	run(t, root, "git", "init", "-q")
+	write(t, filepath.Join(root, "core.cpp"), strings.Repeat("HandlePromise\n", 80))
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithBackend(registry, root, searchTestBackend{}); err != nil {
+		t.Fatal(err)
+	}
+	result := execute(t, registry, "search_text", map[string]any{
+		"query": "HandlePromise", "max_file_bytes": 40, "max_results": 10,
+	})
+	if !strings.Contains(result.Content, `"matches":[]`) ||
+		!strings.Contains(result.Content, `"large":1`) {
+		t.Fatalf("empty search hid skipped file: %s", result.Content)
+	}
+}
+
 func TestSearchHonorsGitIgnoreFiltersAndFilePolicies(t *testing.T) {
 	root := repositoryRoot(t)
 	run(t, root, "git", "init", "-q")

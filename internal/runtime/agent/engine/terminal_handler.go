@@ -204,12 +204,18 @@ func (e *Engine) finalizeTerminalContext(
 	case canceled:
 		candidate = retainCanceledHistory(transaction)
 		original = cloneMessages(candidate)
+		e.sealClosedTurnMemory(agentcontext.CheckpointCanceled, nil, "canceled")
 	case failure != nil && !errors.Is(failure, context.Canceled):
 		candidate = append(candidate, e.failedTurnContextMessage(transaction, failure))
 		original = cloneMessages(candidate)
 		compaction := e.context.Compaction()
 		compaction.State = nil
 		e.contextAuthority().SetCompaction(compaction)
+		e.sealClosedTurnMemory(
+			agentcontext.CheckpointFailed,
+			nil,
+			protocol.ProblemOf(failure).Message,
+		)
 	}
 	maintenanceErr := e.runTerminalCompactGate(&candidate, true, send)
 	if maintenanceErr != nil {

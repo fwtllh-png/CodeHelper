@@ -125,6 +125,7 @@ type SnapshotRequest struct {
 	WorkspaceRoot       string
 	WorkspaceIdentity   string
 	WorkspaceRevision   uint64
+	TurnCheckpoints     []TurnCheckpoint
 }
 
 func (a Authority) Snapshot(request SnapshotRequest) (ContextSnapshot, error) {
@@ -159,10 +160,11 @@ func (a Authority) Snapshot(request SnapshotRequest) (ContextSnapshot, error) {
 		Evidence:     evidence,
 		Failures:     a.Failures().Delta(),
 		Compaction:   durableCompaction(a.Compaction()),
-		Plan:         &plan,
-		World:        a.World(),
-		Workspace:    workspace,
-		Window:       a.Window(),
+		Plan:            &plan,
+		World:           a.World(),
+		Workspace:       workspace,
+		Window:          a.Window(),
+		TurnCheckpoints: CloneTurnCheckpoints(request.TurnCheckpoints),
 	}
 	if err := snapshot.Seal(); err != nil {
 		return ContextSnapshot{}, err

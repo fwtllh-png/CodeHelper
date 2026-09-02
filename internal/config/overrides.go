@@ -68,6 +68,10 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 		overrides.ViewNarrativeMode, &view.NarrativeMode,
 		fieldViewNarrativeMode, SourceStartup, provenance,
 	)
+	applyInt(
+		overrides.ViewCheckpointMaxBytes, &view.CheckpointMaxBytes,
+		fieldViewCheckpointMaxBytes, SourceStartup, provenance,
+	)
 	compaction := &config.Context.Compact
 	applyInt(
 		overrides.CompactPrepareTokens, &compaction.PrepareTokens,
@@ -135,6 +139,13 @@ func applyOverrides(overrides Overrides, config *Config, provenance map[string]S
 	applyBool(overrides.Tools, &execution.Tools, fieldTools, SourceStartup, provenance)
 	applyUint64(overrides.MaxOutputTokens, &execution.MaxOutputTokens, fieldMaxOutputTokens, SourceStartup, provenance)
 	applyInt(overrides.MaxSteps, &execution.MaxSteps, fieldMaxSteps, SourceStartup, provenance)
+	applyInt(
+		overrides.ImplementNoProgressSamples,
+		&execution.ImplementNoProgressSamples,
+		fieldImplementNoProgressSamples,
+		SourceStartup,
+		provenance,
+	)
 	applyDuration(overrides.Timeout, &execution.Timeout, fieldTimeout, SourceStartup, provenance)
 	applyDuration(overrides.LeaseTimeout, &execution.LeaseTimeout, fieldLeaseTimeout, SourceStartup, provenance)
 	applyDuration(overrides.ApprovalTimeout, &execution.ApprovalTimeout, fieldApprovalTimeout, SourceStartup, provenance)

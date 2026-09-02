@@ -138,6 +138,7 @@ func engineContextPolicy(
 		RecentTailTurns:       view.RecentTailTurns,
 		RecentTailMaxTokens:   uint64(view.HistoryTokenCeiling),
 		KeepRecentToolResults: view.KeepRecentToolResults,
+		CheckpointMaxBytes:    view.CheckpointMaxBytes,
 	}
 }
 

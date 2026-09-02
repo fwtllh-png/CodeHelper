@@ -165,7 +165,7 @@ Protocol 文件按 Contract Role 拆分，同时保持 Wire Schema 不变。提�
 
 Session Contract 有意区分 Durable Summary 与 Transient Search Match、Immutable
 Checkpoint/Plan Artifact 与 Mutable Lifecycle State、Accepted Turn Identity 与
-Terminal Receipt。Recovery Request 显式携带 Source Turn、Action、Guidance 与
+Terminal Receipt。Recovery Request 显式携带 Source Turn、Action、新 User Prompt 与
 Idempotency Identity，不携带从 UI 展示文本重建的请求或历史 Effect。
 
 ## 设计取舍与替代方案

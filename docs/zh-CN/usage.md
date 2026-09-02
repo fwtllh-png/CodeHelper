@@ -197,9 +197,9 @@ Session 会拒绝删除，必须先停止执行。
 Agent 明确声明任务尚未完成并提供后续动作时，Session 显示为黄色 `Blocked`，保留
 Workspace 变更并允许 `Continue`。该状态不同于红色 `Failed`，也不同于用户主动暂停
 产生的 `Paused`。Blocked Session 没有活动 Turn 时，Composer 的发送动作显示为
-`Continue`，输入内容作为恢复 Guidance 绑定到最新可恢复 Turn，不会在 retained draft
-之上错误创建无关 Turn。恢复请求提交后按钮保持 Pending，直到 Runtime 发布新 Turn
-或明确拒绝请求。
+`Continue`，输入内容作为新 Turn 的真实 User Prompt，并通过 Source Turn 关系绑定到
+最新可恢复 Turn；它不会递归拼接旧输入，也不会在 retained draft 之上错误创建无关
+Turn。恢复请求提交后按钮保持 Pending，直到 Runtime 发布新 Turn 或明确拒绝请求。
 
 ## 配置与凭证
 

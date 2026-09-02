@@ -39,6 +39,7 @@ func Defaults() Config {
 				HistoryTokenCeiling:   0,
 				Digest:                "ledger",
 				NarrativeMode:         "post_turn",
+				CheckpointMaxBytes:    0,
 			},
 
 			Compact: Compact{
@@ -62,10 +63,11 @@ func Defaults() Config {
 		Telemetry: Telemetry{LogLevel: "info"},
 		Execution: Execution{
 			Protocol: "openai_chat", Mode: "act", Workspace: ".",
-			MaxSteps:     64,
-			Timeout:      2 * time.Minute,
-			LeaseTimeout: 2 * time.Minute,
-			IdleTimeout:  60 * time.Second, MaxConcurrent: 8,
+			MaxSteps:                   64,
+			ImplementNoProgressSamples: 6,
+			Timeout:                    2 * time.Minute,
+			LeaseTimeout:               2 * time.Minute,
+			IdleTimeout:                60 * time.Second, MaxConcurrent: 8,
 			ProviderRetryLimit:  3,
 			RateLimitRetryLimit: 0,
 			RateLimitWait:       0,

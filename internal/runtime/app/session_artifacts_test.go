@@ -894,9 +894,11 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	profile.ApprovalPosture = "bypass"
 	profiles := &memoryProfileStore{profile: profile}
 	engine := &profileTestEngine{}
+	lifecycle := artifactLifecycle()
+	lifecycle.summary.LatestTurnID = "turn-source"
 	runtime := NewRuntime(Options{
 		EventStore:          events,
-		SessionLifecycle:    artifactLifecycle(),
+		SessionLifecycle:    lifecycle,
 		Engine:              engine,
 		SessionProfiles:     profiles,
 		DefaultProfile:      profile,
@@ -934,13 +936,21 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 			Version:   protocol.WorkflowIntentVersion,
 			Action:    protocol.TurnRecoveryContinue,
 			SessionID: "session-profile", SourceTurnID: "turn-source",
-			Guidance: "Run focused tests", IdempotencyKey: "continue-source",
+			Prompt: "Run focused tests", IdempotencyKey: "continue-source",
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(continued.Prompt, "do not repeat completed Tool") ||
+	if !strings.Contains(continued.Prompt, "Do not repeat completed Tool") ||
+		strings.Contains(continued.Prompt, "Inspect current workspace state before every") ||
+		!strings.Contains(continued.Prompt, "Do not call git_status or git_diff on Continue") ||
+		!strings.Contains(continued.Prompt, "file_read only a window you are about to edit") ||
+		!strings.Contains(continued.Prompt, "After search_text returns line hits, edit") ||
+		!strings.Contains(continued.Prompt, "A dirty git status is not a reason to file_read") ||
+		!strings.Contains(continued.Prompt, "absent from the visible tail") ||
+		!strings.Contains(continued.Prompt, "turn_history or result_get") ||
+		strings.Contains(continued.Prompt, "or a visible prior") ||
 		continued.Intent != protocol.TurnIntentWorkspaceChange ||
 		continued.Recovery.Action != protocol.TurnRecoveryContinue ||
 		continued.Recovery.SourceTurnID != "turn-source" ||
@@ -956,13 +966,161 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		!strings.Contains(continued.Prompt, `"tool":"file_read"`) ||
 		!strings.Contains(continued.Prompt, `"read_paths":["parser.go"]`) ||
 		strings.Contains(continued.Prompt, `"outcome":"changed"`) ||
+		strings.Contains(continued.Prompt, "Additional guidance:") ||
+		!strings.Contains(continued.Prompt, "active instruction") ||
 		!strings.Contains(continued.Prompt, "Run focused tests") {
 		t.Fatalf("Continue preparation = %+v", continued)
 	}
-	if continued.DisplayPrompt !=
-		"Continue: Fix the parser\n\nGuidance: Run focused tests" {
+	if continued.DisplayPrompt != "Run focused tests" {
 		t.Fatalf("Continue display prompt = %q", continued.DisplayPrompt)
 	}
+	recoveredMeta := protocol.EventMeta{
+		Sequence:    7,
+		OperationID: "operation-continued",
+		ThreadID:    "thread-profile",
+		TurnID:      "turn-continued",
+		ItemID:      "item-continued",
+	}
+	recoveredStart, err := protocol.NewEvent(
+		recoveredMeta,
+		&protocol.TurnStartedData{
+			Provider: "fixture", Model: "fixture-model",
+			Prompt: continued.Prompt, DisplayPrompt: continued.DisplayPrompt,
+			Intent: protocol.TurnIntentWorkspaceChange,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), recoveredStart); err != nil {
+		t.Fatal(err)
+	}
+	recoveredMeta.Sequence = 8
+	recoveredTerminal, err := protocol.NewEvent(
+		recoveredMeta,
+		&protocol.TurnCanceledData{Reason: protocol.CancelReasonUserInterrupted},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), recoveredTerminal); err != nil {
+		t.Fatal(err)
+	}
+	lifecycle.summary.LatestTurnID = "turn-continued"
+	_, err = runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version:   protocol.WorkflowIntentVersion,
+			Action:    protocol.TurnRecoveryRetry,
+			SessionID: "session-profile", SourceTurnID: "turn-source",
+			IdempotencyKey: "retry-stale-source",
+		},
+	)
+	if protocol.CodeOf(err) != protocol.CodeConflict {
+		t.Fatalf("stale recovery source error = %v, want conflict", err)
+	}
+	problem := protocol.ProblemOf(err)
+	if problem.Details == nil ||
+		problem.Details.Reason != protocol.ProblemReasonStaleRecoverySource {
+		t.Fatalf("stale recovery source problem = %+v", problem)
+	}
+	retriedContinue, err := runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version:   protocol.WorkflowIntentVersion,
+			Action:    protocol.TurnRecoveryRetry,
+			SessionID: "session-profile", SourceTurnID: "turn-continued",
+			IdempotencyKey: "retry-continued",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retriedContinue.Prompt != continued.Prompt ||
+		retriedContinue.DisplayPrompt != continued.DisplayPrompt {
+		t.Fatalf(
+			"Retry unwrapped latest recovery Turn: prompt=%q display=%q",
+			retriedContinue.Prompt,
+			retriedContinue.DisplayPrompt,
+		)
+	}
+	continuedAgain, err := runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version:   protocol.WorkflowIntentVersion,
+			Action:    protocol.TurnRecoveryContinue,
+			SessionID: "session-profile", SourceTurnID: "turn-continued",
+			IdempotencyKey: "continue-continued",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if continuedAgain.DisplayPrompt != "Continue: Run focused tests" ||
+		!strings.Contains(
+			continuedAgain.Prompt,
+			"<source_request>\nRun focused tests\n</source_request>",
+		) {
+		t.Fatalf("Continue unwrapped to stale request: %+v", continuedAgain)
+	}
+	pollutedMeta := protocol.EventMeta{
+		Sequence:    9,
+		OperationID: "operation-polluted",
+		ThreadID:    "thread-profile",
+		TurnID:      "turn-polluted",
+		ItemID:      "item-polluted",
+	}
+	pollutedStart, err := protocol.NewEvent(
+		pollutedMeta,
+		&protocol.TurnStartedData{
+			Provider: "fixture", Model: "fixture-model",
+			Prompt: artifact.TurnRecoveryPromptPrefix +
+				" Do not infer the task from an older conversation Turn.\n\n" +
+				"Source Turn ID: turn-continued\n" +
+				"Terminal state: canceled: user_interrupted\n\n" +
+				"Original model-visible request:\n" +
+				"<source_request>\nFix the parser\n</source_request>",
+			DisplayPrompt: "Continue: Fix the parser",
+			Intent:        protocol.TurnIntentWorkspaceChange,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), pollutedStart); err != nil {
+		t.Fatal(err)
+	}
+	pollutedMeta.Sequence = 10
+	pollutedTerminal, err := protocol.NewEvent(
+		pollutedMeta,
+		&protocol.TurnCanceledData{Reason: protocol.CancelReasonUserInterrupted},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), pollutedTerminal); err != nil {
+		t.Fatal(err)
+	}
+	lifecycle.summary.LatestTurnID = "turn-polluted"
+	recoveredPolluted, err := runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version:   protocol.WorkflowIntentVersion,
+			Action:    protocol.TurnRecoveryContinue,
+			SessionID: "session-profile", SourceTurnID: "turn-polluted",
+			IdempotencyKey: "continue-polluted",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recoveredPolluted.DisplayPrompt != "Continue: Run focused tests" {
+		t.Fatalf(
+			"Continue retained polluted request: %+v",
+			recoveredPolluted,
+		)
+	}
+	lifecycle.summary.LatestTurnID = "turn-source"
 	recoveryPayload := &protocol.StartTurnPayload{
 		ThreadID: "thread-profile",
 		Recovery: &continued.Recovery,
@@ -1036,7 +1194,7 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(replayed) != 6 {
+	if len(replayed) != 10 {
 		t.Fatalf("Recovery preparation emitted historical operations: %+v", replayed)
 	}
 }
@@ -1205,6 +1363,12 @@ Explain the literal </source_request> tag.
 		"Continue: Continue: Fix the parser",
 	); got != "Fix the parser" {
 		t.Fatalf("nested recovery display prompt = %q", got)
+	}
+	if got := artifact.RecoveryDisplayPrompt(
+		legacy,
+		"Continue: Fix the parser\n\nGuidance: obsolete direction",
+	); got != "Fix the parser" {
+		t.Fatalf("recovered display prompt retained old guidance = %q", got)
 	}
 }
 

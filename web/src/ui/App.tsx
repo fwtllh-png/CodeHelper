@@ -1667,6 +1667,7 @@ export function App({client}: Props) {
                       snapshot.checkpoints,
                       entry.turnID
                     )}
+                    recoveryTurnID={resumableTurnID}
                     chrome={turnChrome.get(entry.turnID)}
                     feedback={snapshot.messageFeedback[
                       `${snapshot.selectedSessionID}:${entry.id}`
@@ -2404,6 +2405,7 @@ const TranscriptItem = memo(function TranscriptItem({
   onInspect,
   canOpenPath,
   checkpoint,
+  recoveryTurnID,
   chrome,
   feedback,
   onFeedback
@@ -2414,6 +2416,7 @@ const TranscriptItem = memo(function TranscriptItem({
   onInspect: (callID: string) => void;
   canOpenPath: boolean;
   checkpoint?: SessionCheckpoint;
+  recoveryTurnID?: string;
   chrome?: MessageChrome;
   feedback?: MessageFeedbackRating;
   onFeedback: (rating: MessageFeedbackRating) => void;
@@ -2486,7 +2489,9 @@ const TranscriptItem = memo(function TranscriptItem({
               ? <LoaderCircle size={16} />
               : <Check size={16} />}
         <div><strong>{entry.title}</strong><span>{entry.text}</span></div>
-        {entry.recoverable && entry.turnID && entry.recovery && (
+        {entry.recoverable &&
+          (!recoveryTurnID || entry.turnID === recoveryTurnID) &&
+          entry.recovery && (
           <div className="turnRecovery">
             <span className="turnRecoveryStatus">
               {recoverySummary(entry.recovery.sideEffects)}

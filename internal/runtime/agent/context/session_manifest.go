@@ -62,10 +62,11 @@ type ContextManifest struct {
 	Plan          OwnerManifest     `json:"plan"`
 	Workspace     WorkspaceBinding  `json:"workspace"`
 	World         WorldBaseline     `json:"world,omitempty"`
-	Window        WindowLedger      `json:"window"`
-	Compaction    Compaction        `json:"compaction"`
-	ContextDigest string            `json:"context_digest"`
-	Digest        string            `json:"digest"`
+	Window          WindowLedger      `json:"window"`
+	Compaction      Compaction        `json:"compaction"`
+	TurnCheckpoints []TurnCheckpoint  `json:"turn_checkpoints,omitempty"`
+	ContextDigest   string            `json:"context_digest"`
+	Digest          string            `json:"digest"`
 }
 
 type ManifestLimits struct {
@@ -135,10 +136,11 @@ func BuildContextManifest(
 		Epoch: snapshot.Epoch, Revision: snapshot.Revision,
 		BaseRevision: snapshot.Revision - min(snapshot.Revision, 1),
 		Turn:         snapshot.Turn, Workspace: snapshot.Workspace,
-		World:         CloneWorldBaseline(snapshot.World),
-		Window:        CloneWindowLedger(snapshot.Window),
-		Compaction:    snapshot.Compaction,
-		ContextDigest: snapshot.Digest,
+		World:           CloneWorldBaseline(snapshot.World),
+		Window:          CloneWindowLedger(snapshot.Window),
+		Compaction:      snapshot.Compaction,
+		TurnCheckpoints: CloneTurnCheckpoints(snapshot.TurnCheckpoints),
+		ContextDigest:   snapshot.Digest,
 	}
 
 	history := historyState{
@@ -307,8 +309,9 @@ func LoadContextManifest(
 		HistoryTurns: history.HistoryTurns,
 		Workspace:    manifest.Workspace,
 		World:        CloneWorldBaseline(manifest.World),
-		Window:       CloneWindowLedger(manifest.Window),
-		Compaction:   manifest.Compaction,
+		Window:          CloneWindowLedger(manifest.Window),
+		Compaction:      manifest.Compaction,
+		TurnCheckpoints: CloneTurnCheckpoints(manifest.TurnCheckpoints),
 	}
 	for _, owner := range []struct {
 		name     string

@@ -32,6 +32,9 @@ func (e *Engine) buildContextSnapshot(
 	e.planMu.Lock()
 	plan := e.plan.Clone()
 	e.planMu.Unlock()
+	e.checkpointMu.Lock()
+	checkpoints := agentcontext.CloneTurnCheckpoints(e.turnCheckpoints)
+	e.checkpointMu.Unlock()
 	scope := e.runningScope()
 	authority := e.context.Clone()
 	if scope != nil {
@@ -56,6 +59,7 @@ func (e *Engine) buildContextSnapshot(
 		WorkspaceRoot:       e.options.Workspace,
 		WorkspaceIdentity:   e.options.WorkspaceIdentity,
 		WorkspaceRevision:   e.sessionRevision,
+		TurnCheckpoints:     checkpoints,
 	})
 }
 
@@ -175,6 +179,9 @@ func (e *Engine) applyContextSnapshot(snapshot agentcontext.ContextSnapshot) {
 	} else {
 		e.setPlan(interact.Plan{})
 	}
+	e.checkpointMu.Lock()
+	e.turnCheckpoints = agentcontext.CloneTurnCheckpoints(snapshot.TurnCheckpoints)
+	e.checkpointMu.Unlock()
 	e.stateEpoch = snapshot.Epoch
 	e.sessionRevision = snapshot.Revision
 	e.appliedDeltas = make(map[string]string)

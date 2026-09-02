@@ -15,7 +15,7 @@ func (e *Engine) ContextAdmission(
 	additions []agentcontext.TruthEntity,
 	resolvedIDs []string,
 ) agentcontext.AdmissionDecision {
-	current := e.buildTruthCapsule(e.buildCompactSummary(nil))
+	current := e.buildTruthCapsule(e.buildCompactSummary(nil), nil)
 	return (agentcontext.ContextAdmissionController{
 		Policy: e.options.Context.TruthRetention,
 	}).Decide(current, agentcontext.AdmissionRequest{

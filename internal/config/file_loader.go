@@ -9,33 +9,34 @@ import (
 )
 
 type executionFileConfig struct {
-	Provider              *string  `toml:"provider"`
-	Model                 *string  `toml:"model"`
-	Protocol              *string  `toml:"protocol"`
-	Mode                  *string  `toml:"mode"`
-	Workspace             *string  `toml:"workspace"`
-	Tools                 *bool    `toml:"tools"`
-	MaxOutputTokens       *uint64  `toml:"max_output_tokens"`
-	MaxSteps              *int     `toml:"max_steps"`
-	Timeout               *string  `toml:"timeout"`
-	LeaseTimeout          *string  `toml:"lease_timeout"`
-	ApprovalTimeout       *string  `toml:"approval_timeout"`
-	ConnectionTimeout     *string  `toml:"connection_timeout"`
-	TLSHandshakeTimeout   *string  `toml:"tls_handshake_timeout"`
-	ResponseHeaderTimeout *string  `toml:"response_header_timeout"`
-	IdleTimeout           *string  `toml:"idle_timeout"`
-	MaxConcurrent         *int     `toml:"max_concurrent"`
-	RateLimit             *float64 `toml:"rate_limit"`
-	ProviderRetryLimit    *int     `toml:"provider_retry_limit"`
-	RateLimitRetryLimit   *int     `toml:"rate_limit_retry_limit"`
-	RateLimitWait         *string  `toml:"rate_limit_wait"`
-	TokensPerMinute       *uint64  `toml:"tokens_per_minute"`
-	BudgetTokens          *uint64  `toml:"budget_tokens"`
-	TurnBudgetTokens      *uint64  `toml:"turn_budget_tokens"`
-	BudgetUSD             *float64 `toml:"budget_usd"`
-	ReasoningEffort       *string  `toml:"reasoning_effort"`
-	NativeSearch          *bool    `toml:"native_search"`
-	Verify                struct {
+	Provider                   *string  `toml:"provider"`
+	Model                      *string  `toml:"model"`
+	Protocol                   *string  `toml:"protocol"`
+	Mode                       *string  `toml:"mode"`
+	Workspace                  *string  `toml:"workspace"`
+	Tools                      *bool    `toml:"tools"`
+	MaxOutputTokens            *uint64  `toml:"max_output_tokens"`
+	MaxSteps                   *int     `toml:"max_steps"`
+	ImplementNoProgressSamples *int     `toml:"implement_no_progress_samples"`
+	Timeout                    *string  `toml:"timeout"`
+	LeaseTimeout               *string  `toml:"lease_timeout"`
+	ApprovalTimeout            *string  `toml:"approval_timeout"`
+	ConnectionTimeout          *string  `toml:"connection_timeout"`
+	TLSHandshakeTimeout        *string  `toml:"tls_handshake_timeout"`
+	ResponseHeaderTimeout      *string  `toml:"response_header_timeout"`
+	IdleTimeout                *string  `toml:"idle_timeout"`
+	MaxConcurrent              *int     `toml:"max_concurrent"`
+	RateLimit                  *float64 `toml:"rate_limit"`
+	ProviderRetryLimit         *int     `toml:"provider_retry_limit"`
+	RateLimitRetryLimit        *int     `toml:"rate_limit_retry_limit"`
+	RateLimitWait              *string  `toml:"rate_limit_wait"`
+	TokensPerMinute            *uint64  `toml:"tokens_per_minute"`
+	BudgetTokens               *uint64  `toml:"budget_tokens"`
+	TurnBudgetTokens           *uint64  `toml:"turn_budget_tokens"`
+	BudgetUSD                  *float64 `toml:"budget_usd"`
+	ReasoningEffort            *string  `toml:"reasoning_effort"`
+	NativeSearch               *bool    `toml:"native_search"`
+	Verify                     struct {
 		Mode           *string `toml:"mode"`
 		Scope          *string `toml:"scope"`
 		OnFailure      *string `toml:"on_failure"`
@@ -129,6 +130,7 @@ type fileConfig struct {
 			HistoryTokenCeiling   *int    `toml:"history_token_ceiling"`
 			Digest                *string `toml:"digest"`
 			NarrativeMode         *string `toml:"narrative_mode"`
+			CheckpointMaxBytes    *int    `toml:"checkpoint_max_bytes"`
 		} `toml:"view"`
 		Compact struct {
 			PrepareTokens                    *int    `toml:"prepare_tokens"`
@@ -263,6 +265,10 @@ func applyFile(
 		input.Context.View.NarrativeMode, &view.NarrativeMode,
 		fieldViewNarrativeMode, source, provenance,
 	)
+	applyInt(
+		input.Context.View.CheckpointMaxBytes, &view.CheckpointMaxBytes,
+		fieldViewCheckpointMaxBytes, source, provenance,
+	)
 	compaction := &config.Context.Compact
 	applyInt(
 		input.Context.Compact.PrepareTokens, &compaction.PrepareTokens,
@@ -378,6 +384,13 @@ func applyExecutionFile(
 	applyBool(input.Tools, &execution.Tools, fieldTools, source, provenance)
 	applyUint64(input.MaxOutputTokens, &execution.MaxOutputTokens, fieldMaxOutputTokens, source, provenance)
 	applyInt(input.MaxSteps, &execution.MaxSteps, fieldMaxSteps, source, provenance)
+	applyInt(
+		input.ImplementNoProgressSamples,
+		&execution.ImplementNoProgressSamples,
+		fieldImplementNoProgressSamples,
+		source,
+		provenance,
+	)
 	applyDurationString(input.Timeout, &execution.Timeout, fieldTimeout, source, provenance)
 	applyDurationString(input.LeaseTimeout, &execution.LeaseTimeout, fieldLeaseTimeout, source, provenance)
 	applyDurationString(input.ApprovalTimeout, &execution.ApprovalTimeout, fieldApprovalTimeout, source, provenance)

@@ -40,6 +40,7 @@ const (
 	fieldViewHistoryTokenCeiling   = "context.view.history_token_ceiling"
 	fieldViewDigest                = "context.view.digest"
 	fieldViewNarrativeMode         = "context.view.narrative_mode"
+	fieldViewCheckpointMaxBytes    = "context.view.checkpoint_max_bytes"
 
 	fieldCompactAutoTokens                       = "context.compact.auto_compact_tokens"
 	fieldCompactPrepareTokens                    = "context.compact.prepare_tokens"
@@ -64,41 +65,42 @@ const (
 	fieldCompactOwnerDeltaMaxSegments            = "context.compact.owner_delta_max_segments"
 	fieldCompactOwnerDeltaMaxBytes               = "context.compact.owner_delta_max_bytes"
 
-	fieldLogLevel              = "telemetry.log_level"
-	fieldCredentialKind        = "credential.kind"
-	fieldCredentialName        = "credential.name"
-	fieldProvider              = "execution.provider"
-	fieldModel                 = "execution.model"
-	fieldProtocol              = "execution.protocol"
-	fieldMode                  = "execution.mode"
-	fieldWorkspace             = "execution.workspace"
-	fieldTools                 = "execution.tools"
-	fieldMaxOutputTokens       = "execution.max_output_tokens"
-	fieldMaxSteps              = "execution.max_steps"
-	fieldTimeout               = "execution.timeout"
-	fieldLeaseTimeout          = "execution.lease_timeout"
-	fieldApprovalTimeout       = "execution.approval_timeout"
-	fieldConnectionTimeout     = "execution.connection_timeout"
-	fieldTLSHandshakeTimeout   = "execution.tls_handshake_timeout"
-	fieldResponseHeaderTimeout = "execution.response_header_timeout"
-	fieldIdleTimeout           = "execution.idle_timeout"
-	fieldMaxConcurrent         = "execution.max_concurrent"
-	fieldRateLimit             = "execution.rate_limit"
-	fieldProviderRetryLimit    = "execution.provider_retry_limit"
-	fieldRateLimitRetryLimit   = "execution.rate_limit_retry_limit"
-	fieldRateLimitWait         = "execution.rate_limit_wait"
-	fieldTokensPerMinute       = "execution.tokens_per_minute"
-	fieldBudgetTokens          = "execution.budget_tokens"
-	fieldTurnBudgetTokens      = "execution.turn_budget_tokens"
-	fieldBudgetUSD             = "execution.budget_usd"
-	fieldReasoning             = "execution.reasoning_effort"
-	fieldNativeSearch          = "execution.native_search"
-	fieldVerifyMode            = "execution.verify.mode"
-	fieldVerifyScope           = "execution.verify.scope"
-	fieldVerifyOnFailure       = "execution.verify.on_failure"
-	fieldVerifyCommand         = "execution.verify.command"
-	fieldVerifyRepair          = "execution.verify.max_repair_steps"
-	fieldVerifyTimeout         = "execution.verify.timeout"
+	fieldLogLevel                   = "telemetry.log_level"
+	fieldCredentialKind             = "credential.kind"
+	fieldCredentialName             = "credential.name"
+	fieldProvider                   = "execution.provider"
+	fieldModel                      = "execution.model"
+	fieldProtocol                   = "execution.protocol"
+	fieldMode                       = "execution.mode"
+	fieldWorkspace                  = "execution.workspace"
+	fieldTools                      = "execution.tools"
+	fieldMaxOutputTokens            = "execution.max_output_tokens"
+	fieldMaxSteps                   = "execution.max_steps"
+	fieldImplementNoProgressSamples = "execution.implement_no_progress_samples"
+	fieldTimeout                    = "execution.timeout"
+	fieldLeaseTimeout               = "execution.lease_timeout"
+	fieldApprovalTimeout            = "execution.approval_timeout"
+	fieldConnectionTimeout          = "execution.connection_timeout"
+	fieldTLSHandshakeTimeout        = "execution.tls_handshake_timeout"
+	fieldResponseHeaderTimeout      = "execution.response_header_timeout"
+	fieldIdleTimeout                = "execution.idle_timeout"
+	fieldMaxConcurrent              = "execution.max_concurrent"
+	fieldRateLimit                  = "execution.rate_limit"
+	fieldProviderRetryLimit         = "execution.provider_retry_limit"
+	fieldRateLimitRetryLimit        = "execution.rate_limit_retry_limit"
+	fieldRateLimitWait              = "execution.rate_limit_wait"
+	fieldTokensPerMinute            = "execution.tokens_per_minute"
+	fieldBudgetTokens               = "execution.budget_tokens"
+	fieldTurnBudgetTokens           = "execution.turn_budget_tokens"
+	fieldBudgetUSD                  = "execution.budget_usd"
+	fieldReasoning                  = "execution.reasoning_effort"
+	fieldNativeSearch               = "execution.native_search"
+	fieldVerifyMode                 = "execution.verify.mode"
+	fieldVerifyScope                = "execution.verify.scope"
+	fieldVerifyOnFailure            = "execution.verify.on_failure"
+	fieldVerifyCommand              = "execution.verify.command"
+	fieldVerifyRepair               = "execution.verify.max_repair_steps"
+	fieldVerifyTimeout              = "execution.verify.timeout"
 
 	fieldSubagentDelegation  = "execution.subagent.delegation"
 	fieldSubagentMaxDepth    = "execution.subagent.max_depth"
@@ -176,6 +178,7 @@ func defaultProvenance() map[string]Source {
 		fieldViewHistoryTokenCeiling:                 SourceDefault,
 		fieldViewDigest:                              SourceDefault,
 		fieldViewNarrativeMode:                       SourceDefault,
+		fieldViewCheckpointMaxBytes:                  SourceDefault,
 		fieldCompactAutoTokens:                       SourceDefault,
 		fieldCompactPrepareTokens:                    SourceDefault,
 		fieldCompactEmergencyTokens:                  SourceDefault,
@@ -199,41 +202,42 @@ func defaultProvenance() map[string]Source {
 		fieldCompactOwnerDeltaMaxSegments:            SourceDefault,
 		fieldCompactOwnerDeltaMaxBytes:               SourceDefault,
 
-		fieldLogLevel:              SourceDefault,
-		fieldCredentialKind:        SourceDefault,
-		fieldCredentialName:        SourceDefault,
-		fieldProvider:              SourceDefault,
-		fieldModel:                 SourceDefault,
-		fieldProtocol:              SourceDefault,
-		fieldMode:                  SourceDefault,
-		fieldWorkspace:             SourceDefault,
-		fieldTools:                 SourceDefault,
-		fieldMaxOutputTokens:       SourceDefault,
-		fieldMaxSteps:              SourceDefault,
-		fieldTimeout:               SourceDefault,
-		fieldLeaseTimeout:          SourceDefault,
-		fieldApprovalTimeout:       SourceDefault,
-		fieldConnectionTimeout:     SourceDefault,
-		fieldTLSHandshakeTimeout:   SourceDefault,
-		fieldResponseHeaderTimeout: SourceDefault,
-		fieldIdleTimeout:           SourceDefault,
-		fieldMaxConcurrent:         SourceDefault,
-		fieldRateLimit:             SourceDefault,
-		fieldProviderRetryLimit:    SourceDefault,
-		fieldRateLimitRetryLimit:   SourceDefault,
-		fieldRateLimitWait:         SourceDefault,
-		fieldTokensPerMinute:       SourceDefault,
-		fieldBudgetTokens:          SourceDefault,
-		fieldTurnBudgetTokens:      SourceDefault,
-		fieldBudgetUSD:             SourceDefault,
-		fieldReasoning:             SourceDefault,
-		fieldNativeSearch:          SourceDefault,
-		fieldVerifyMode:            SourceDefault,
-		fieldVerifyScope:           SourceDefault,
-		fieldVerifyOnFailure:       SourceDefault,
-		fieldVerifyCommand:         SourceDefault,
-		fieldVerifyRepair:          SourceDefault,
-		fieldVerifyTimeout:         SourceDefault,
+		fieldLogLevel:                   SourceDefault,
+		fieldCredentialKind:             SourceDefault,
+		fieldCredentialName:             SourceDefault,
+		fieldProvider:                   SourceDefault,
+		fieldModel:                      SourceDefault,
+		fieldProtocol:                   SourceDefault,
+		fieldMode:                       SourceDefault,
+		fieldWorkspace:                  SourceDefault,
+		fieldTools:                      SourceDefault,
+		fieldMaxOutputTokens:            SourceDefault,
+		fieldMaxSteps:                   SourceDefault,
+		fieldImplementNoProgressSamples: SourceDefault,
+		fieldTimeout:                    SourceDefault,
+		fieldLeaseTimeout:               SourceDefault,
+		fieldApprovalTimeout:            SourceDefault,
+		fieldConnectionTimeout:          SourceDefault,
+		fieldTLSHandshakeTimeout:        SourceDefault,
+		fieldResponseHeaderTimeout:      SourceDefault,
+		fieldIdleTimeout:                SourceDefault,
+		fieldMaxConcurrent:              SourceDefault,
+		fieldRateLimit:                  SourceDefault,
+		fieldProviderRetryLimit:         SourceDefault,
+		fieldRateLimitRetryLimit:        SourceDefault,
+		fieldRateLimitWait:              SourceDefault,
+		fieldTokensPerMinute:            SourceDefault,
+		fieldBudgetTokens:               SourceDefault,
+		fieldTurnBudgetTokens:           SourceDefault,
+		fieldBudgetUSD:                  SourceDefault,
+		fieldReasoning:                  SourceDefault,
+		fieldNativeSearch:               SourceDefault,
+		fieldVerifyMode:                 SourceDefault,
+		fieldVerifyScope:                SourceDefault,
+		fieldVerifyOnFailure:            SourceDefault,
+		fieldVerifyCommand:              SourceDefault,
+		fieldVerifyRepair:               SourceDefault,
+		fieldVerifyTimeout:              SourceDefault,
 
 		fieldSubagentDelegation:  SourceDefault,
 		fieldSubagentMaxDepth:    SourceDefault,

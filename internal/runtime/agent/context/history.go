@@ -277,6 +277,17 @@ func TruncateUTF8(value string, limit int) string {
 	return value
 }
 
+func TruncateUTF8Tail(value string, limit int) string {
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	start := len(value) - limit
+	for start < len(value) && !utf8.ValidString(value[start:]) {
+		start++
+	}
+	return value[start:]
+}
+
 func SummaryOriginalBytes(messages []provider.Message, lineBytes int) int {
 	total := 0
 	for _, message := range messages {

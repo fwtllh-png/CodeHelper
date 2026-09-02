@@ -239,7 +239,14 @@ func (o *operation) Descriptor() tool.Descriptor {
 		description = "Read a bounded UTF-8 line range or extract selected PDF pages. " +
 			"path is workspace-relative (absolute paths inside workspace are rewritten). " +
 			"Use an exact path returned by file_list or another tool; never infer a " +
-			"filename from a title or topic."
+			"filename from a title or topic. Do not re-read a path already read in " +
+			"this session unless you are about to edit a specific window. A dirty " +
+			"git status or git_diff is not a reason to file_read. Absence from the " +
+			"visible tail is not a reason to file_read; use turn_history or " +
+			"result_get for prior read text. If turn_history is truncated, call " +
+			"result_get before file_read. Locate a known defect with search_text " +
+			"or search_definition. After search_text returns line hits for a path, " +
+			"file_read only that window and edit; do not page the rest of the file."
 		properties["path"] = map[string]any{
 			"type":        "string",
 			"minLength":   float64(1),

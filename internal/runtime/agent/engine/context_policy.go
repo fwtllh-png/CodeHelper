@@ -19,6 +19,7 @@ type ContextPolicy struct {
 	RecentTailTurns       int
 	RecentTailMaxTokens   uint64
 	KeepRecentToolResults int
+	CheckpointMaxBytes    int
 	Digest                string
 }
 
@@ -72,6 +73,7 @@ func (e *Engine) estimateNonTailTokens(history []provider.Message) uint64 {
 			mandatory = append(mandatory, message)
 		}
 	}
+	mandatory = append(mandatory, e.closedTurnCheckpointMessages()...)
 	return e.estimateTokens(mandatory)
 }
 

@@ -22,8 +22,9 @@ func (e *Engine) progressSignature(kernel *turnkernel.RuntimeKernel) string {
 	}
 	e.planMu.Unlock()
 	evidenceDigest := ""
-	if kernel.Intent() == protocol.TurnIntentAnswer ||
-		kernel.Intent() == protocol.TurnIntentPlan {
+	if !e.hasOpenImplementWork() &&
+		(kernel.Intent() == protocol.TurnIntentAnswer ||
+			kernel.Intent() == protocol.TurnIntentPlan) {
 		snapshot := e.EvidenceSnapshot()
 		keys := make([]string, 0, len(snapshot.Facts))
 		for _, fact := range snapshot.Facts {
@@ -46,4 +47,38 @@ func (e *Engine) progressSignature(kernel *turnkernel.RuntimeKernel) string {
 		evidenceDigest = hex.EncodeToString(sum[:])
 	}
 	return kernel.ProgressSignature(done, evidenceDigest)
+}
+
+func (e *Engine) hasOpenImplementWork() bool {
+	open, done := e.currentPlan().OutstandingSteps()
+	return done > 0 && len(open) > 0
+}
+
+func tightenImplementConvergence(
+	policy turnkernel.ConvergencePolicy,
+	lease uint32,
+) turnkernel.ConvergencePolicy {
+	if lease == 0 {
+		return policy
+	}
+	converge := max(uint32(1), lease/2)
+	limit := max(lease+1, policy.ProgressLimit)
+	policy.ProgressConverge = converge
+	policy.ProgressFinishOnly = lease
+	policy.ProgressLimit = max(limit, policy.ProgressLimit)
+	policy.ResearchConverge = converge
+	policy.ResearchFinishOnly = lease
+	policy.ResearchLimit = max(limit, policy.ResearchLimit)
+	return policy
+}
+
+func (e *Engine) applyImplementProgressLease(spec *TurnSpec) {
+	if spec == nil || e.options.ImplementNoProgressSamples <= 0 ||
+		!e.hasOpenImplementWork() {
+		return
+	}
+	spec.Kernel.Convergence = tightenImplementConvergence(
+		spec.Kernel.Convergence,
+		uint32(e.options.ImplementNoProgressSamples),
+	)
 }

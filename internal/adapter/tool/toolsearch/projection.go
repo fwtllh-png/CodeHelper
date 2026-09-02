@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	commonToolSet = ",tool_search,result_get,handle_read,request_user_input," +
-		"update_plan,submit_plan,turn_complete,"
+	commonToolSet = ",tool_search,result_get,handle_read,turn_history," +
+		"request_user_input,update_plan,submit_plan,turn_complete,"
 	readToolSet = ",search_text,search_files,search_definition," +
 		"search_references,file_read,file_list,file_write,file_edit," +
 		"file_apply,shell_read,exec_command,write_stdin,quality_test," +
@@ -141,6 +141,9 @@ func requiredProjectionTool(
 	request ProjectionRequest,
 	entry tool.CatalogEntrySnapshot,
 ) bool {
+	if entry.Name == "turn_history" {
+		return false
+	}
 	return coreTool(request.Intent, entry.Name) ||
 		entry.State == tool.CatalogEntryMaterialized ||
 		requiredAgentTool(request.Prompt, entry.Name)
@@ -188,7 +191,7 @@ func onlyRetrievalHelpers(descriptors []tool.Descriptor) bool {
 	}
 	for _, descriptor := range descriptors {
 		switch descriptor.Name {
-		case "result_get", "handle_read":
+		case "result_get", "handle_read", "turn_history":
 		default:
 			return false
 		}

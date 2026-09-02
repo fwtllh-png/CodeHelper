@@ -229,9 +229,10 @@ type SessionState struct {
 	Compaction   Compaction        `json:"compaction"`
 	Plan         *Plan             `json:"plan,omitempty"`
 	World        WorldBaseline     `json:"world,omitempty"`
-	Workspace    WorkspaceBinding  `json:"workspace,omitempty"`
-	Window       WindowLedger      `json:"window"`
-	Manifest     ManifestLimits    `json:"manifest_limits,omitempty"`
+	Workspace       WorkspaceBinding  `json:"workspace,omitempty"`
+	Window          WindowLedger      `json:"window"`
+	TurnCheckpoints []TurnCheckpoint  `json:"turn_checkpoints,omitempty"`
+	Manifest        ManifestLimits    `json:"manifest_limits,omitempty"`
 }
 
 type SessionDelta struct {
@@ -252,9 +253,10 @@ type SessionDelta struct {
 	Plan           *Plan              `json:"plan,omitempty"`
 	World          WorldBaseline      `json:"world,omitempty"`
 	Workspace      WorkspaceBinding   `json:"workspace,omitempty"`
-	Window         WindowLedger       `json:"window"`
-	ManifestLimits ManifestLimits     `json:"manifest_limits,omitempty"`
-	Digest         string             `json:"digest"`
+	Window          WindowLedger       `json:"window"`
+	TurnCheckpoints []TurnCheckpoint   `json:"turn_checkpoints,omitempty"`
+	ManifestLimits  ManifestLimits     `json:"manifest_limits,omitempty"`
+	Digest          string             `json:"digest"`
 }
 
 type deltaJSON SessionDelta
@@ -374,7 +376,8 @@ func PrepareSessionRestore(
 			Failures: delta.Failures, Compaction: CloneCompaction(delta.Compaction),
 			Plan: plan, World: CloneWorldBaseline(delta.World),
 			Workspace: delta.Workspace, Window: window,
-			Manifest: delta.ManifestLimits,
+			TurnCheckpoints: CloneTurnCheckpoints(delta.TurnCheckpoints),
+			Manifest:        delta.ManifestLimits,
 		},
 		Accounting: accounting,
 	}, nil
@@ -431,7 +434,7 @@ func (d SessionDelta) ContextSnapshot() (ContextSnapshot, error) {
 		WorkingSet:   d.WorkingSet, Evidence: d.Evidence,
 		Failures: d.Failures, Compaction: d.Compaction,
 		Plan: d.Plan, World: d.World, Workspace: d.Workspace,
-		Window: d.Window,
+		Window: d.Window, TurnCheckpoints: CloneTurnCheckpoints(d.TurnCheckpoints),
 	}
 	if err := snapshot.Seal(); err != nil {
 		return ContextSnapshot{}, err
@@ -474,7 +477,8 @@ func NewSessionDelta(
 		Failures: snapshot.Failures, Compaction: snapshot.Compaction,
 		Plan: snapshot.Plan, World: CloneWorldBaseline(snapshot.World),
 		Workspace: snapshot.Workspace,
-		Window:    CloneWindowLedger(snapshot.Window),
+		Window:          CloneWindowLedger(snapshot.Window),
+		TurnCheckpoints: CloneTurnCheckpoints(snapshot.TurnCheckpoints),
 	}
 	if len(limits) != 0 {
 		delta.ManifestLimits = limits[0]

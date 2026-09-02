@@ -20,7 +20,14 @@ test_paths:
   - internal/runtime/agent/engine/engine_test.go
   - internal/runtime/agent/engine/narrative_test.go
   - internal/runtime/agent/engine/session_state_test.go
+  - internal/runtime/agent/engine/turn_checkpoint_test.go
+  - internal/runtime/agent/context/plan_promotion_test.go
+  - internal/runtime/agent/context/turn_checkpoint_test.go
+  - internal/runtime/agent/context/resume_test.go
+  - internal/adapter/tool/turnhistory/turnhistory_test.go
+  - internal/adapter/tool/tool_test.go
   - internal/runtime/app/compact_window_test.go
+  - internal/runtime/app/context_maintenance_test.go
 source_of_truth:
   - internal/runtime/agent/context/session_state.go
   - internal/runtime/agent/context/narrative_digest.go
@@ -28,6 +35,11 @@ source_of_truth:
   - internal/runtime/agent/engine/session_state.go
   - internal/runtime/agent/engine/narrative.go
   - internal/runtime/agent/engine/compaction.go
+  - internal/runtime/agent/context/plan_promotion.go
+  - internal/runtime/agent/context/turn_checkpoint.go
+  - internal/runtime/agent/context/resume.go
+  - internal/runtime/agent/engine/turn_checkpoint.go
+  - internal/runtime/app/context_maintenance.go
 status: draft
 last_verified: null
 ---
@@ -122,6 +134,27 @@ residual 裁掉的更早 Turn 只离开投影，Durable 字节不变。`prepare`
 `emergency` 的百分比档位已删除：阈值为 0 时等于硬输入容量，且默认不出现在
 Context Budget 快照。`narrative_mode` 默认 `post_turn`，不得阻塞下一轮 Sample。
 
+闭合 Turn 后，带 `source_message_ids` 的未完成 Narrative 项提升为 Plan Todo，
+进入 Mandatory `session_state`。每个闭合 Turn 再在 History 之后的 Dynamic 追加
+一块 write-once Checkpoint；`checkpoint_max_bytes=0` 继承 summary / narrative
+item 预算。失败或取消只保留有界失败事实。旧 Turn 原文通过 `turn_history` 有界回读，首次投影是该 Turn 尾部结论；全文进
+Handle，再用 `result_get` 的 `mode=tail` 或 `mode=query` 分页，不要用默认
+`summary`。被 last-2 裁掉的 Turn 在 `session_state` 给出确定性检索指针；升级前
+缺失的 Checkpoint 只回封 turn id，不猜测会话清单。应继续原 Session。
+当 Plan 已有完成步骤或 Working Set 已有已读路径时，`session_state` 必须带
+Resume Fact：不要重复已完成步骤，下一项未完成工作取第一项 outstanding Plan
+标题，并列出已读路径（上限继承 `context.working_set.max_entries`）。有行号
+命中时还列出 `Located sites`。`working_set` 只列路径；不要再次 `file_read`，
+除非即将编辑具体窗口。搜索命中后对该路径的 `file_read` 必须带
+`start_line`，否则工具返回 `located_site_window_required`。脏的
+`git_status` / `git_diff` 不是重读理由。可见 Tail 没有那次读取不是重读理由，
+应走 `turn_history` / `result_get`；截断后先 `result_get`。取消 Checkpoint
+保留下一项 Plan 与已读路径指针，失败仍不带半开 Tool 链。Paused Continue
+不得先用 `git_status`、`git_diff` 或 `file_read` 巡视工作区，也不得把
+`read_paths` 不在 tail 里当成重读许可。Plan 已有完成步骤且仍有 outstanding
+工作时，读取新文件不再续期，并改用公开字段
+`execution.implement_no_progress_samples`（默认 6）进入 Finish-only。
+
 ## Truth Retention 与 Admission
 
 确定性 Session State 从 Observed Goal、Open Todo、Failure、Change、Critical Path、
@@ -146,13 +179,16 @@ Narrative 只表达方案选择原因、偏好、约束关系和未决方向。�
 Artifact，每个 Excerpt 有稳定 Message ID 和 Digest；输出必须是严格 JSON，并为每项
 引用已知 Source ID。它不能声明测试、修改、审批或权限事实。
 
-`post_turn` 在业务 Terminal 提交后生成非权威 Digest 分区，不得阻塞下一轮
-Sample，也不得把 200K 窗口留到 Timeout。只允许 `off` 或 `post_turn`。
+`post_turn` 只在 `turn.completed` 之后生成非权威 Digest 分区，不得阻塞下一轮
+Sample，也不得把 200K 窗口留到 Timeout。用户暂停、取消或失败的 Turn 不调用
+summary 模型，也不把 Narrative fallback 显示成压缩失败。只允许 `off` 或
+`post_turn`。
 成功时 Narrative 进入 World 分区 `narrative`，不是 History Replacement。失败时
 保留 Ledger 投影的 Session State。`thread.compact` 立即做确定性替换，可选
 `focus`（公开上限 4096 字节）只影响随后的 Digest。Narrative 通过 `summary`
-Route，禁用 Tool 与 Native Search。Provider、解析、Timeout 或 Staleness 失败只
-产生 `fallback=ledger`。
+Route，禁用 Tool 与 Native Search。瞬时 429 / 5xx / Timeout 与主采样共用
+RetryPolicy，等待计入 `semantic_narrative_timeout`；硬配额、解析失败或
+Staleness 立即 `fallback=ledger`。
 
 ## Turn Integrity
 
@@ -174,6 +210,9 @@ Critical Path 和 Prompt Context Receipt。
 | --- | --- |
 | Partition Retain | `prompt/context.go` |
 | Session State | `agent/context/session_state.go`、`agent/engine/session_state.go` |
+| Open Work Promotion | `agent/context/plan_promotion.go` |
+| Turn Checkpoint | `agent/context/turn_checkpoint.go`、`agent/engine/turn_checkpoint.go` |
+| Turn History Retrieval | `adapter/tool/turnhistory` |
 | Narrative Digest | `agent/context/narrative_digest.go`、`agent/engine/narrative.go` |
 | Truth/Retention | `agent/context/compact_truth.go`、`compact_retention.go` |
 | Narrative Artifact | `agent/context/compact_narrative.go`、`narrative_service.go` |

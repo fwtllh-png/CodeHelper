@@ -175,6 +175,7 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 		{"CODEHELPER_VIEW_RECENT_TAIL_TURNS", fieldViewRecentTailTurns, &config.Context.View.RecentTailTurns},
 		{"CODEHELPER_VIEW_KEEP_RECENT_TOOL_RESULTS", fieldViewKeepRecentToolResults, &config.Context.View.KeepRecentToolResults},
 		{"CODEHELPER_VIEW_HISTORY_TOKEN_CEILING", fieldViewHistoryTokenCeiling, &config.Context.View.HistoryTokenCeiling},
+		{"CODEHELPER_VIEW_CHECKPOINT_MAX_BYTES", fieldViewCheckpointMaxBytes, &config.Context.View.CheckpointMaxBytes},
 		{"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE_MAX_INPUT_TOKENS", fieldCompactSemanticNarrativeMaxInputTokens, &compaction.SemanticNarrativeMaxInputTokens},
 		{"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE_MAX_OUTPUT_TOKENS", fieldCompactSemanticNarrativeMaxOutputTokens, &compaction.SemanticNarrativeMaxOutputTokens},
 		{"CODEHELPER_COMPACT_SEMANTIC_NARRATIVE_MAX_ITEMS", fieldCompactSemanticNarrativeMaxItems, &compaction.SemanticNarrativeMaxItems},
@@ -223,6 +224,15 @@ func applyEnvironment(lookup func(string) (string, bool), config *Config, proven
 		return err
 	}
 	if err := applyEnvInt(lookup, "CODEHELPER_MAX_STEPS", fieldMaxSteps, &execution.MaxSteps, provenance); err != nil {
+		return err
+	}
+	if err := applyEnvInt(
+		lookup,
+		"CODEHELPER_IMPLEMENT_NO_PROGRESS_SAMPLES",
+		fieldImplementNoProgressSamples,
+		&execution.ImplementNoProgressSamples,
+		provenance,
+	); err != nil {
 		return err
 	}
 	if err := applyEnvDuration(lookup, "CODEHELPER_TIMEOUT", fieldTimeout, &execution.Timeout, provenance); err != nil {

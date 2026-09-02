@@ -185,6 +185,7 @@ func (e *Engine) modelStep(
 		e.recordTurnContextReceipts(turnReceipts)
 		route := e.activeRoute()
 		maxOutputTokens := e.maxOutputFor(route)
+		turnContext = append(turnContext, e.closedTurnCheckpointMessages()...)
 		budgetMessage, budgetFinishOnly := e.budgetConvergence(
 			turnUsage.Total() + totalUsage.Total(),
 		)

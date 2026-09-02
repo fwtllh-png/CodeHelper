@@ -180,11 +180,11 @@ func (h *runtimeContractHost) RecoverTurn(
 	ctx context.Context,
 	sourceTurnID protocol.TurnID,
 	action protocol.TurnRecoveryAction,
-	guidance string,
+	prompt string,
 ) (contract.Receipt, error) {
 	request := protocol.TurnRecoveryRequest{
 		Version: protocol.WorkflowIntentVersion, SessionID: h.sessionID,
-		SourceTurnID: sourceTurnID, Action: action, Guidance: guidance,
+		SourceTurnID: sourceTurnID, Action: action, Prompt: prompt,
 		IdempotencyKey: "recover-" + string(sourceTurnID),
 	}
 	prepared, err := h.runtime.PrepareTurnRecovery(ctx, request)

@@ -82,6 +82,15 @@ func TestAssembleTurnRendersBothSectionsAsSystemMessages(t *testing.T) {
 			t.Fatalf("working set missing %q:\n%s", want, setText)
 		}
 	}
+	if strings.Contains(setText, "read what you need") ||
+		strings.Contains(setText, "does not contain that read") ||
+		strings.Contains(setText, "file may have changed") {
+		t.Fatalf("working set still authorizes tail-missing re-read:\n%s", setText)
+	}
+	if !strings.Contains(setText, "Absence from the visible tail is not a reason to file_read") ||
+		!strings.Contains(setText, "A dirty git status or git_diff is not a reason to file_read") {
+		t.Fatalf("working set missing resume constraint:\n%s", setText)
+	}
 	if strings.Contains(setText, "critical\n  internal/store") {
 		t.Fatalf("working set order changed:\n%s", setText)
 	}

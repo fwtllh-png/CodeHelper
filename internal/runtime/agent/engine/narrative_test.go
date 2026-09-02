@@ -55,7 +55,7 @@ func TestNarrativeGenerationUsesSummaryRouteWithoutTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	truth := engine.buildTruthCapsule(agentcontext.Summary{Goal: "continue"})
+	truth := engine.buildTruthCapsule(agentcontext.Summary{Goal: "continue"}, nil)
 	authority, err := truth.AuthorityDigest()
 	if err != nil {
 		t.Fatal(err)
@@ -109,6 +109,105 @@ func TestNarrativeGenerationUsesSummaryRouteWithoutTools(t *testing.T) {
 		) {
 		t.Fatalf("result=%+v request=%+v", result, runtime.requests)
 	}
+}
+
+func TestNarrativeRetriesCompatibleQuota429ThenSucceeds(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			`provider returned HTTP 429: {"error":{"message":"Allocated quota exceeded, please increase your quota limit.","type":"invalid_request_error","code":"insufficient_quota"}}`,
+			true,
+			&provider.Failure{
+				Code: provider.FailureRateLimit, HTTPStatus: 429,
+				Message:      "Allocated quota exceeded, please increase your quota limit.",
+				RetryAfterMS: 1,
+			},
+		)},
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta},
+			{Type: provider.EventUsage, Usage: &provider.Usage{
+				InputTokens: 8, OutputTokens: 3,
+			}},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+		}},
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.Context.SemanticNarrative = "post_turn"
+	engine.options.Context.NarrativeTimeout = time.Second
+	truth, input := mustNarrativeRequest(t, engine)
+	runtime.streams[1].(*providerfixture.SliceStream).Events[0].Text =
+		narrativePreferenceJSON(input.Excerpts[0].MessageID)
+	result, err := engine.GenerateNarrative(t.Context(), truth, input, 2, "")
+	if err != nil || result.Fallback || result.Attempt != 2 {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	if len(runtime.requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(runtime.requests))
+	}
+}
+
+func TestNarrativeDoesNotRetryHardQuota(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&errorStream{err: protocol.NewProblem(
+			protocol.CodeInvalidArgument,
+			"billing hard limit",
+			false,
+			&provider.Failure{
+				Code: provider.FailureQuota, Message: "billing hard limit",
+			},
+		)},
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: `{}`},
+			{Type: provider.EventMessageStop, StopReason: provider.StopReasonEndTurn},
+		}},
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.Context.SemanticNarrative = "post_turn"
+	truth, input := mustNarrativeRequest(t, engine)
+	_, err := engine.GenerateNarrative(t.Context(), truth, input, 2, "")
+	if err == nil || !strings.Contains(err.Error(), "billing hard limit") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(runtime.requests) != 1 {
+		t.Fatalf("requests = %d, want 1", len(runtime.requests))
+	}
+}
+
+func mustNarrativeRequest(
+	t *testing.T,
+	engine *Engine,
+) (agentcontext.TruthCapsule, agentcontext.NarrativeInputArtifact) {
+	t.Helper()
+	routeDigest, err := engine.SummaryRouteDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	truth := engine.buildTruthCapsule(agentcontext.Summary{Goal: "continue"}, nil)
+	authority, err := truth.AuthorityDigest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	input, err := agentcontext.BuildNarrativeInput(
+		"thread-1",
+		"window-1",
+		authority,
+		routeDigest,
+		[]provider.Message{
+			messageWithText(provider.RoleUser, "prefer deterministic state", 1),
+		},
+		engine.options.Context.NarrativeLimits,
+		time.Now().UTC(),
+		time.Hour,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return truth, input
+}
+
+func narrativePreferenceJSON(source string) string {
+	return `{"technical_concepts":[],"files_and_code":[],"errors_and_fixes":[],"pending_jobs":[],"current_work":[],"next_steps":[],"critical_context":[],"decisions":[],"rationale":[],"preferences":[{"text":"Prefer deterministic state.","source_message_ids":["` +
+		source + `"]}],"unresolved":[]}`
 }
 
 func TestNarrativeOffDoesNotReplaceHistoryOnSamplePath(t *testing.T) {
@@ -264,6 +363,30 @@ func TestPostTurnNarrativeTimeoutDoesNotBlockNextSample(t *testing.T) {
 	joined := joinMessageText(runtime.requests[len(runtime.requests)-1].Messages)
 	if !strings.Contains(joined, "teach the parser about trailing commas") {
 		t.Fatalf("ledger digest missing after timeout: %s", joined)
+	}
+}
+
+func TestPostTurnNarrativeSkipsCanceledTurnWithoutProviderCall(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		textStream("should not run"),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.Context.SemanticNarrative = "post_turn"
+	engine.options.Workspace = t.TempDir()
+	seedOmittedHistory(engine)
+	engine.sealClosedTurnMemory(
+		agentcontext.CheckpointCanceled, nil, "canceled",
+	)
+	result, err := engine.RunPostTurnNarrative(
+		t.Context(), "thread-1", "turn-3",
+	)
+	if err != nil || result.Receipt != nil || result.Usage.Total() != 0 {
+		t.Fatalf("canceled post-turn = %+v err=%v", result, err)
+	}
+	for _, request := range runtime.requests {
+		if request.Purpose == "summary" {
+			t.Fatalf("canceled turn called narrative provider: %+v", request)
+		}
 	}
 }
 

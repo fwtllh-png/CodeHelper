@@ -90,6 +90,7 @@ func (e *Engine) prepareTurnSpec(
 	}
 	spec.World = e.context.World()
 	spec.Window = e.context.Window()
+	e.applyImplementProgressLease(&spec)
 	return spec, persistedTurnID, nil
 }
 

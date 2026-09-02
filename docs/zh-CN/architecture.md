@@ -449,6 +449,20 @@ Manifest。CAS 先按 Digest 幂等 Stage，SQLite 再提交 Manifest 可达性�
 `context.view.history_token_ceiling`）投影原文，超窗时再用一次 Visible Tail
 Fold；History Replacement 只发生在显式 `thread.compact` 或 Turn 终态维护。
 `context.view.narrative_mode=post_turn` 写独立 Digest 分区，不阻塞下一轮 Sample。
+带出处的未完成工作提升为 Plan Todo 后进入 `session_state`；每个闭合 Turn 在
+Dynamic（History 之后）追加一块 write-once Checkpoint。旧 Turn 原文通过
+`turn_history` / `result_get` 有界回读，不恢复整段旧 History。被裁掉的旧 Turn
+在 `session_state` 给出检索指针；升级前缺失的 Checkpoint 只回封 turn id。
+Plan 已有完成步骤或已读路径时，`session_state` 另带 Resume Fact，避免
+Continue / Retry / 新 prompt 把已读文件再读一遍；有行号命中时列出
+`Located sites`。搜索命中后对该路径的 `file_read` 必须带 `start_line`。
+Plan 已有完成步骤且仍有 outstanding 工作时，读取新文件不再续期
+No-progress Lease，并改用 `execution.implement_no_progress_samples` 进入
+Finish-only；该阶段不允许 `git_status` / `git_diff` 或整文件读取。脏的
+`git_status` / `git_diff` 或可见 Tail 没有那次读取都不是重读理由，应走
+`turn_history` / `result_get`。取消 Checkpoint 保留下一项 Plan 与已读路径
+指针，失败仍不带半开 Tool 链。Continue 不得先用 git 或 `file_read` 巡视
+工作区。
 
 ## 可观测性架构
 

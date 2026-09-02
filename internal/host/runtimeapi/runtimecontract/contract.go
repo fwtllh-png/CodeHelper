@@ -114,7 +114,7 @@ type Host interface {
 		ctx context.Context,
 		sourceTurnID protocol.TurnID,
 		action protocol.TurnRecoveryAction,
-		guidance string,
+		prompt string,
 	) (Receipt, error)
 	// Live delivers events as a client watching this host sees them, starting
 	// after since. The channel closes when the host stops.

@@ -245,6 +245,47 @@ describe("projectTranscript", () => {
     expect(client.submitPrompt).not.toHaveBeenCalled();
   });
 
+  it("offers recovery actions only for the latest interrupted turn", async () => {
+    const oldStarted = {
+      ...event(1, "turn.started", {display_prompt: "Old request"}),
+      turn_id: "turn-old"
+    };
+    const oldCanceled = {
+      ...event(2, "turn.canceled", {reason: "user_interrupted"}),
+      turn_id: "turn-old"
+    };
+    const latestStarted = {
+      ...event(3, "turn.started", {display_prompt: "Latest request"}),
+      turn_id: "turn-latest"
+    };
+    const latestCanceled = {
+      ...event(4, "turn.canceled", {reason: "user_interrupted"}),
+      turn_id: "turn-latest"
+    };
+    const value = snapshot([
+      oldStarted,
+      oldCanceled,
+      latestStarted,
+      latestCanceled
+    ]);
+    value.sessions = value.sessions.map((session, index) => index === 0
+      ? {
+          ...session,
+          status: "interrupted",
+          latest_turn_id: "turn-latest"
+        }
+      : session);
+    const client = mockClient(value);
+    render(<App client={client} />);
+
+    const retry = screen.getByRole("button", {name: "Retry"});
+    expect(screen.getAllByRole("button", {name: "Retry"})).toHaveLength(1);
+    fireEvent.click(retry);
+    await waitFor(() => {
+      expect(client.recoverTurn).toHaveBeenCalledWith("turn-latest", "retry");
+    });
+  });
+
   it("renders lifecycle, workspace, profile, and governed tool controls", async () => {
     const client = mockClient(snapshot());
     render(<App client={client} />);

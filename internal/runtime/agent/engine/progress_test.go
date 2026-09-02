@@ -15,6 +15,67 @@ import (
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
 
+func TestProgressSignatureDoesNotCountReadsWhenImplementWorkIsOpen(
+	t *testing.T,
+) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.turn = 7
+	engine.setPlan(interact.Plan{Steps: []interact.PlanStep{
+		{Title: "audit", Status: interact.StepDone},
+		{Title: "fix overflow", Status: interact.StepPending},
+	}})
+	answer := newEngineTurnKernel(
+		protocol.TurnIntentAnswer,
+		"act",
+		nil,
+		0,
+		nil,
+		nil,
+	)
+	before := engine.progressSignature(answer)
+	engine.context.WorkingSet().Observe(agentcontext.SourceRead, engine.turn, "a.go")
+	if after := engine.progressSignature(answer); after != before {
+		t.Fatal("new file_read path renewed implement-work progress")
+	}
+}
+
+func TestApplyImplementProgressLeaseTightensFinishOnly(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	engine.options.ImplementNoProgressSamples = 6
+	engine.setPlan(interact.Plan{Steps: []interact.PlanStep{
+		{Title: "audit", Status: interact.StepDone},
+		{Title: "fix overflow", Status: interact.StepPending},
+	}})
+	spec := TurnSpec{
+		Kernel: turnkernel.Policy{
+			Convergence: turnkernel.ConvergencePolicyForStepLimit(64),
+		},
+	}
+	engine.applyImplementProgressLease(&spec)
+	if spec.Kernel.Convergence.ProgressFinishOnly != 6 ||
+		spec.Kernel.Convergence.ResearchFinishOnly != 6 ||
+		spec.Kernel.Convergence.ProgressConverge != 3 ||
+		spec.Kernel.Convergence.ProgressLimit < 7 {
+		t.Fatalf("implement lease = %+v", spec.Kernel.Convergence)
+	}
+	idle := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	idle.options.ImplementNoProgressSamples = 6
+	unchanged := TurnSpec{
+		Kernel: turnkernel.Policy{
+			Convergence: turnkernel.ConvergencePolicyForStepLimit(64),
+		},
+	}
+	want := unchanged.Kernel.Convergence
+	idle.applyImplementProgressLease(&unchanged)
+	if unchanged.Kernel.Convergence != want {
+		t.Fatalf(
+			"idle implement lease changed %+v, want %+v",
+			unchanged.Kernel.Convergence,
+			want,
+		)
+	}
+}
+
 func TestProgressSignatureCountsResearchReadsOnlyForResearchTurns(
 	t *testing.T,
 ) {
@@ -163,6 +224,8 @@ func TestFinishOnlyAllowsMutationAndQualityTools(t *testing.T) {
 		{name: "list_agents", capability: tool.CapabilityRead, want: true},
 		{name: "shell_read", capability: tool.CapabilityRead, want: false},
 		{name: "search_text", capability: tool.CapabilityRead, want: false},
+		{name: "git_diff", capability: tool.CapabilityRead, want: false},
+		{name: "git_status", capability: tool.CapabilityRead, want: false},
 	} {
 		if got := tool.FinishOnlyAllowed(test.name, tool.Descriptor{
 			Name: test.name, Capability: test.capability,

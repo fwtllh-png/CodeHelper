@@ -42,7 +42,8 @@ func TestWorldStatePersistsAcrossTurnsAndEmitsOnlyChanges(t *testing.T) {
 	}
 	third := runtime.requests[2].Messages
 	if countWorldSection(third, "working_set_ledger") != 2 ||
-		countWorldMode(third, "patch") != 1 ||
+		countWorldSection(third, promptcontext.PartitionSessionState) != 1 ||
+		countWorldMode(third, "patch") != 2 ||
 		engine.context.World().Revision != 2 {
 		t.Fatalf("patched request=%+v baseline=%+v", third, engine.context.World())
 	}
@@ -86,7 +87,8 @@ func TestWorldStateFreezesWithinTurnAndRefreshesAtNextTurn(t *testing.T) {
 		t.Fatalf("World State builds = %d, want one for each Turn", len(repository.evidence))
 	}
 	if countWorldSection(runtime.requests[2].Messages, "working_set_ledger") != 2 ||
-		countWorldMode(runtime.requests[2].Messages, "patch") != 1 {
+		countWorldSection(runtime.requests[2].Messages, promptcontext.PartitionSessionState) != 1 ||
+		countWorldMode(runtime.requests[2].Messages, "patch") != 2 {
 		t.Fatalf("next Turn did not publish deferred World changes: %+v",
 			runtime.requests[2].Messages)
 	}
@@ -214,7 +216,8 @@ func TestPolicyAndSkillsChangesProduceTypedPatches(t *testing.T) {
 	}
 	third := runtime.requests[2].Messages
 	if countWorldSection(third, "skills") != 2 ||
-		countWorldMode(third, "patch") != 2 {
+		countWorldSection(third, promptcontext.PartitionSessionState) != 1 ||
+		countWorldMode(third, "patch") != 3 {
 		t.Fatalf("skills patch request=%+v", third)
 	}
 }

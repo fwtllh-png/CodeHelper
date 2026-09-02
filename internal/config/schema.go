@@ -61,6 +61,9 @@ type View struct {
 	HistoryTokenCeiling   int    `json:"history_token_ceiling" toml:"history_token_ceiling"`
 	Digest                string `json:"digest" toml:"digest"`
 	NarrativeMode         string `json:"narrative_mode" toml:"narrative_mode"`
+	// CheckpointMaxBytes bounds one write-once closed-turn Dynamic block.
+	// Zero inherits summary_max_bytes, then semantic_narrative_item_max_bytes.
+	CheckpointMaxBytes int `json:"checkpoint_max_bytes" toml:"checkpoint_max_bytes"`
 }
 
 // Compact configures overflow replacement and digest generation limits.
@@ -149,6 +152,10 @@ type Execution struct {
 	Tools           bool   `json:"tools" toml:"tools"`
 	MaxOutputTokens uint64 `json:"max_output_tokens" toml:"max_output_tokens"`
 	MaxSteps        int    `json:"max_steps" toml:"max_steps"`
+	// ImplementNoProgressSamples is the no-progress finish-only lease used
+	// when a Plan already has completed steps and outstanding work remains.
+	// Zero inherits the MaxSteps-derived finish-only lease.
+	ImplementNoProgressSamples int `json:"implement_no_progress_samples" toml:"implement_no_progress_samples"`
 	// Timeout covers connection establishment, TLS negotiation, and response
 	// headers. Streaming body lifetime is governed by the caller Context and
 	// IdleTimeout, so active streams do not inherit a fixed wall-clock limit.
@@ -370,6 +377,7 @@ type Overrides struct {
 	ViewHistoryTokenCeiling                 *int
 	ViewDigest                              *string
 	ViewNarrativeMode                       *string
+	ViewCheckpointMaxBytes                  *int
 	CompactSemanticNarrativeMaxInputTokens  *int
 	CompactSemanticNarrativeMaxOutputTokens *int
 	CompactSemanticNarrativeMaxItems        *int
@@ -379,43 +387,44 @@ type Overrides struct {
 	CompactOwnerDeltaMaxSegments            *int
 	CompactOwnerDeltaMaxBytes               *int
 
-	LogLevel              *string
-	CredentialKind        *string
-	CredentialName        *string
-	Provider              *string
-	Model                 *string
-	Protocol              *string
-	Mode                  *string
-	Workspace             *string
-	Tools                 *bool
-	MaxOutputTokens       *uint64
-	MaxSteps              *int
-	Timeout               *time.Duration
-	LeaseTimeout          *time.Duration
-	ApprovalTimeout       *time.Duration
-	ConnectionTimeout     *time.Duration
-	TLSHandshakeTimeout   *time.Duration
-	ResponseHeaderTimeout *time.Duration
-	IdleTimeout           *time.Duration
-	MaxConcurrent         *int
-	RateLimit             *float64
-	ProviderRetryLimit    *int
-	RateLimitRetryLimit   *int
-	RateLimitWait         *time.Duration
-	TokensPerMinute       *uint64
-	BudgetTokens          *uint64
-	TurnBudgetTokens      *uint64
-	BudgetUSD             *float64
-	ReasoningEffort       *string
-	NativeSearch          *bool
-	VerifyMode            *string
-	VerifyScope           *string
-	VerifyOnFailure       *string
-	VerifyCommand         *string
-	VerifyRepair          *int
-	VerifyTimeout         *time.Duration
-	JournalDurable        *bool
-	JournalRecoverOnStart *bool
+	LogLevel                   *string
+	CredentialKind             *string
+	CredentialName             *string
+	Provider                   *string
+	Model                      *string
+	Protocol                   *string
+	Mode                       *string
+	Workspace                  *string
+	Tools                      *bool
+	MaxOutputTokens            *uint64
+	MaxSteps                   *int
+	ImplementNoProgressSamples *int
+	Timeout                    *time.Duration
+	LeaseTimeout               *time.Duration
+	ApprovalTimeout            *time.Duration
+	ConnectionTimeout          *time.Duration
+	TLSHandshakeTimeout        *time.Duration
+	ResponseHeaderTimeout      *time.Duration
+	IdleTimeout                *time.Duration
+	MaxConcurrent              *int
+	RateLimit                  *float64
+	ProviderRetryLimit         *int
+	RateLimitRetryLimit        *int
+	RateLimitWait              *time.Duration
+	TokensPerMinute            *uint64
+	BudgetTokens               *uint64
+	TurnBudgetTokens           *uint64
+	BudgetUSD                  *float64
+	ReasoningEffort            *string
+	NativeSearch               *bool
+	VerifyMode                 *string
+	VerifyScope                *string
+	VerifyOnFailure            *string
+	VerifyCommand              *string
+	VerifyRepair               *int
+	VerifyTimeout              *time.Duration
+	JournalDurable             *bool
+	JournalRecoverOnStart      *bool
 
 	SubagentMaxDepth    *int
 	SubagentDelegation  *string

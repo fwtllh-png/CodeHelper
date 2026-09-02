@@ -46,14 +46,14 @@ func (c TurnRecoveryContext) Validate() error {
 }
 
 // TurnRecoveryRequest always creates a new Turn. Retry reuses the source Turn's
-// user request and safe model-visible context; Continue uses the terminal
-// history plus Guidance. Neither action replays historical Tool operations.
+// user request and safe model-visible context; Continue adds a new user prompt
+// to that context. Neither action replays historical Tool operations.
 type TurnRecoveryRequest struct {
 	Version        int                `json:"version"`
 	Action         TurnRecoveryAction `json:"action"`
 	SessionID      string             `json:"session_id"`
 	SourceTurnID   TurnID             `json:"source_turn_id"`
-	Guidance       string             `json:"guidance,omitempty"`
+	Prompt         string             `json:"prompt,omitempty"`
 	IdempotencyKey string             `json:"idempotency_key"`
 }
 
@@ -62,14 +62,14 @@ func (r TurnRecoveryRequest) Validate() error {
 		!validProfileIdentifier(r.SessionID) ||
 		!validProfileIdentifier(string(r.SourceTurnID)) ||
 		!validProfileIdentifier(r.IdempotencyKey) ||
-		len(r.Guidance) > 64<<10 ||
-		strings.ContainsRune(r.Guidance, '\x00') {
+		len(r.Prompt) > 64<<10 ||
+		strings.ContainsRune(r.Prompt, '\x00') {
 		return errors.New("turn recovery request is invalid")
 	}
 	switch r.Action {
 	case TurnRecoveryRetry:
-		if strings.TrimSpace(r.Guidance) != "" {
-			return errors.New("retry cannot replace the source user request")
+		if strings.TrimSpace(r.Prompt) != "" {
+			return errors.New("retry cannot add a new user prompt")
 		}
 	case TurnRecoveryContinue:
 	default:

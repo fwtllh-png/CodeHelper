@@ -2684,10 +2684,10 @@
         "action": {
           "type": "string"
         },
-        "guidance": {
+        "idempotency_key": {
           "type": "string"
         },
-        "idempotency_key": {
+        "prompt": {
           "type": "string"
         },
         "session_id": {

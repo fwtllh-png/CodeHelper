@@ -32,7 +32,10 @@ func TestModeInstructionPackDiffersByMode(t *testing.T) {
 			!strings.Contains(pack, "ordinary assistant text") ||
 			!strings.Contains(pack, "cannot replace") ||
 			!strings.Contains(pack, "turn_complete") ||
-			!strings.Contains(pack, "Resolve facts available through tools") {
+			!strings.Contains(pack, "Resolve facts available through tools") ||
+			!strings.Contains(pack, "already loaded facts") ||
+			!strings.Contains(pack, "git_status or git_diff on Continue") ||
+			!strings.Contains(pack, "After search_text returns line hits") {
 			t.Fatalf("%s interaction contract incomplete: %q", mode, pack)
 		}
 	}

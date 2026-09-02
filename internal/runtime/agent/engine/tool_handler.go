@@ -109,7 +109,8 @@ func (e *Engine) runToolsWithCache(
 		},
 		Execute: func(callCtx context.Context, call provider.ToolCall) (tool.Result, error) {
 			binding := tool.BindingForCall(call)
-			if tool.FinishOnlyEnabled(toolCtx) {
+			finishOnly := tool.FinishOnlyEnabled(toolCtx)
+			if finishOnly {
 				canonical, descriptor, _, resolveErr :=
 					e.options.Tools.ResolveBound(call.Name, binding)
 				if resolveErr == nil &&
@@ -127,6 +128,9 @@ func (e *Engine) runToolsWithCache(
 						},
 					}, nil
 				}
+			}
+			if blocked := e.observationGate(call, finishOnly); blocked != nil {
+				return *blocked, nil
 			}
 			if !e.toolCallEnabled(call.Name, binding) {
 				return tool.Result{

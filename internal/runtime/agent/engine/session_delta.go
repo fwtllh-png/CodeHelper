@@ -65,6 +65,11 @@ func (e *Engine) applyDurableSessionDelta(
 	if restore.State.Plan != nil {
 		e.setPlan(restore.State.Plan.Clone())
 	}
+	e.checkpointMu.Lock()
+	e.turnCheckpoints = agentcontext.CloneTurnCheckpoints(
+		restore.State.TurnCheckpoints,
+	)
+	e.checkpointMu.Unlock()
 	e.stateEpoch = restore.State.Epoch
 	e.sessionRevision = restore.Revision
 	e.appliedDeltas[restore.Key] = restore.Digest
@@ -88,6 +93,7 @@ func (e *Engine) PreparedSessionDelta() (SessionDelta, bool) {
 	delta.World = agentcontext.CloneWorldBaseline(delta.World)
 	delta.Window = agentcontext.CloneWindowLedger(delta.Window)
 	delta.Compaction = agentcontext.CloneCompaction(delta.Compaction)
+	delta.TurnCheckpoints = agentcontext.CloneTurnCheckpoints(delta.TurnCheckpoints)
 	return delta, true
 }
 

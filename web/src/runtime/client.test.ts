@@ -694,6 +694,16 @@ describe("RuntimeClient", () => {
           accepted: true
         });
       }
+      if (route.endsWith("/turn/recover")) {
+        return envelope({
+          operation_id: "recovery-operation",
+          kind: "turn.start",
+          thread_id: "thread",
+          turn_id: "recovered-turn",
+          item_id: "recovered-item",
+          accepted: true
+        });
+      }
       throw new Error(`unexpected route ${route}`);
     }));
   });
@@ -814,6 +824,24 @@ describe("RuntimeClient", () => {
         reason: "user_interrupted"
       }
     });
+    client.stop();
+  });
+
+  it("submits recovery input as a new user prompt", async () => {
+    const client = new RuntimeClient();
+    await startClient(client);
+
+    await client.recoverTurn("turn-paused", "continue", "Fix all five P2 issues");
+
+    const recovery = requests.find((request) =>
+      request.route.endsWith("/turn/recover")
+    );
+    expect(recovery?.body).toMatchObject({
+      action: "continue",
+      source_turn_id: "turn-paused",
+      prompt: "Fix all five P2 issues"
+    });
+    expect(recovery?.body).not.toHaveProperty("guidance");
     client.stop();
   });
 

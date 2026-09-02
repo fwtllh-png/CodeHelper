@@ -527,6 +527,7 @@ ActiveContextView，并依赖自动 Prefix Cache。
 - `context.view.keep_recent_tool_results`
 - `context.view.digest`
 - `context.view.narrative_mode`
+- `context.view.checkpoint_max_bytes`
 - `context.compact.summary_max_bytes`
 
 若现有字段无法表达 Tool/Image/Finalization 生命周期，再增加公开配置或协议字段。每个新增字段必须包含：

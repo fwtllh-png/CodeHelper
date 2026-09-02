@@ -64,7 +64,7 @@ func TestTruthCapsuleDowngradesVerifiedChangeWhenWorkspaceCannotBind(t *testing.
 	engine.context.Evidence().MarkChanged(path, 1, true)
 	engine.context.Evidence().MarkVerified([]string{path})
 
-	capsule := engine.buildTruthCapsule(engine.buildCompactSummary(nil))
+	capsule := engine.buildTruthCapsule(engine.buildCompactSummary(nil), nil)
 	if err := capsule.Validate(); err != nil {
 		t.Fatal(err)
 	}

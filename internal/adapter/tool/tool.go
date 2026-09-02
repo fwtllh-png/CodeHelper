@@ -1123,7 +1123,11 @@ func (s *ResultStore) AdmitWithin(
 		result.Admission = &receipt
 		return result, receipt
 	}
-	result.Content = fitTruncationNotice(original, handle, limit, tokens)
+	if name == "turn_history" {
+		result.Content = fitTailTruncationNotice(original, handle, limit, tokens)
+	} else {
+		result.Content = fitTruncationNotice(original, handle, limit, tokens)
+	}
 	result.Truncated = true
 	result.Handle = handle
 	EnsureOutcomeFacts(&result).ResultHandle = handle
@@ -1235,6 +1239,8 @@ func (s *ResultStore) projectionLimit(
 	case name == "file_read" || name == "file_list" || name == "shell_read" ||
 		strings.HasPrefix(name, "search_") || strings.HasPrefix(name, "git_"):
 		kind = "read"
+	case name == "turn_history":
+		kind = "turn_history"
 	case name == "skills.read" || name == "skills.list" ||
 		name == "skills_read" || name == "skills_list":
 		kind = "skill"
@@ -1299,6 +1305,32 @@ func fitTruncationNotice(
 		middle := low + (high-low)/2
 		body, _ := boundedSlice(original, 0, middle)
 		candidate := TruncationNotice(len(original), handle, body)
+		if estimateResultTokens(candidate) <= tokenLimit {
+			best = candidate
+			low = middle + 1
+		} else {
+			high = middle - 1
+		}
+	}
+	return best
+}
+
+func fitTailTruncationNotice(
+	original string,
+	handle string,
+	maxBodyBytes int,
+	tokenLimit uint64,
+) string {
+	low, high := 0, min(len(original), maxBodyBytes)
+	best := TurnHistoryTruncationNotice(len(original), handle, "")
+	for low <= high {
+		middle := low + (high-low)/2
+		start := max(0, len(original)-middle)
+		body := validSuffix(original, start)
+		if len(body) > middle {
+			body, _ = boundedSlice(original, start, middle)
+		}
+		candidate := TurnHistoryTruncationNotice(len(original), handle, body)
 		if estimateResultTokens(candidate) <= tokenLimit {
 			best = candidate
 			low = middle + 1
@@ -1393,6 +1425,25 @@ func TruncationNotice(originalBytes int, handle, body string) string {
 	fmt.Fprintf(&b, "Warning: truncated output (original bytes: %d)", originalBytes)
 	if handle != "" {
 		fmt.Fprintf(&b, ". Use result_get with handle %q to page the full result", handle)
+	}
+	b.WriteString(".\n\n")
+	b.WriteString(body)
+	return b.String()
+}
+
+func TurnHistoryTruncationNotice(originalBytes int, handle, body string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Warning: truncated output (original bytes: %d)", originalBytes)
+	if handle != "" {
+		fmt.Fprintf(
+			&b,
+			". This page is the turn tail (conclusions). Use result_get with handle %q and mode=%q or mode=%q (for example query=%q). Default mode=%q does not reconstruct audit lists",
+			handle,
+			"tail",
+			"query",
+			"P2",
+			"summary",
+		)
 	}
 	b.WriteString(".\n\n")
 	b.WriteString(body)

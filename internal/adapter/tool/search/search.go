@@ -170,7 +170,11 @@ func searchDescription(kind string) string {
 	default:
 		return "Search file contents in the workspace. Supports regex and context lines. " +
 			"Pattern is regex by default; query is literal unless regex=true. " +
-			"Aliases: glob/file_pattern→include, path/cwd/root→scope, limit→max_results, context→before/after."
+			"Aliases: glob/file_pattern→include, path/cwd/root→scope, limit→max_results, context→before/after. " +
+			"A path that names one file is scanned up to the public walk byte ceiling " +
+			"even when the result-token budget would otherwise skip it as large. " +
+			"Empty matches include skipped counts; skipped.large does not mean the symbol is absent. " +
+			"When a scoped file has line hits, file_read only a window you will edit; do not page the rest of the file."
 	}
 }
 
@@ -253,6 +257,26 @@ func pathInScope(relative, scope string) bool {
 		return true
 	}
 	return relative == scope || strings.HasPrefix(relative, scope+"/")
+}
+
+func readLimitForEntry(entry repowalk.Entry, scope string, maxFileBytes int64) int64 {
+	if scope != "" && entry.Path == scope &&
+		entry.Size > maxFileBytes &&
+		entry.Size <= repowalk.DefaultMaxFileBytes {
+		return entry.Size
+	}
+	return maxFileBytes
+}
+
+func visibleSkipCounts(skips repowalk.Skips) map[string]int {
+	if skips.Large == 0 && skips.Binary == 0 &&
+		skips.Encoding == 0 && skips.Missing == 0 {
+		return nil
+	}
+	return map[string]int{
+		"large": skips.Large, "binary": skips.Binary,
+		"encoding": skips.Encoding, "missing": skips.Missing,
+	}
 }
 
 func stringField(values map[string]any, key string) string {
@@ -385,6 +409,8 @@ func (t *Tool) run(ctx context.Context, input searchInput) (tool.Result, error) 
 		return tool.Result{}, err
 	}
 	skips := listing.Skips
+	var scopedSkip string
+	var scopedSize int64
 	for _, entry := range listing.Files {
 		if err := ctx.Err(); err != nil {
 			return tool.Result{}, err
@@ -409,12 +435,19 @@ func (t *Tool) run(ctx context.Context, input searchInput) (tool.Result, error) 
 			}
 			continue
 		}
-		content, reason, err := t.walker.Read(entry, input.MaxFileBytes)
+		content, reason, err := t.walker.Read(
+			entry,
+			readLimitForEntry(entry, input.Scope, input.MaxFileBytes),
+		)
 		if err != nil {
 			return tool.Result{}, err
 		}
 		if reason != repowalk.SkipNone {
 			skips.Add(reason)
+			if input.Scope != "" && entry.Path == input.Scope {
+				scopedSkip = string(reason)
+				scopedSize = entry.Size
+			}
 			continue
 		}
 		lines := strings.Split(string(content.Data), "\n")
@@ -427,7 +460,7 @@ func (t *Tool) run(ctx context.Context, input searchInput) (tool.Result, error) 
 			}
 		}
 	}
-	var payload any
+	var payload map[string]any
 	total := 0
 	if t.kind == "search_files" {
 		sort.Slice(fileMatches, func(i, j int) bool {
@@ -458,6 +491,20 @@ func (t *Tool) run(ctx context.Context, input searchInput) (tool.Result, error) 
 		payload = map[string]any{"matches": fileMatches, "total": total, "truncated": truncated}
 	} else {
 		payload = map[string]any{"matches": textMatches, "total": total, "truncated": truncated}
+	}
+	if skipped := visibleSkipCounts(skips); skipped != nil {
+		payload["skipped"] = skipped
+	}
+	if scopedSkip != "" {
+		payload["note"] = fmt.Sprintf(
+			"scoped path %q was skipped (%s): size=%d max_file_bytes=%d. "+
+				"Empty matches do not mean the symbol is absent; raise max_file_bytes "+
+				"or file_read a window.",
+			input.Scope, scopedSkip, scopedSize, input.MaxFileBytes,
+		)
+	} else if input.Scope != "" && t.kind != "search_files" && total > 0 {
+		payload["note"] = "These are line hits in the scoped file. " +
+			"file_read only a window you will edit; do not page the rest of this file."
 	}
 	content, err := json.Marshal(payload)
 	if err != nil {

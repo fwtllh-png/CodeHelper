@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/fwtllh-png/CodeHelper/internal/adapter/model"
 	"github.com/fwtllh-png/CodeHelper/internal/adapter/provider"
+	providerwire "github.com/fwtllh-png/CodeHelper/internal/adapter/provider/wire"
 	agentcontext "github.com/fwtllh-png/CodeHelper/internal/runtime/agent/context"
 	"github.com/fwtllh-png/CodeHelper/internal/runtime/protocol"
 )
@@ -41,26 +43,100 @@ func (e *Engine) GenerateNarrative(
 			Fallback: true, FailureReason: "disabled",
 		}, nil
 	}
-	result, err := agentcontext.GenerateNarrative(
-		ctx,
-		agentcontext.NarrativeGeneratorConfig{
-			Provider: e.options.Provider, Routes: e.options.Routes,
-			TokenEstimator: e.options.TokenEstimator,
-			Limits:         e.options.Context.NarrativeLimits,
-			Timeout:        e.options.Context.NarrativeTimeout,
-			Focus:          focus,
-		},
-		truth,
-		input,
-		createdTurn,
-	)
-	return NarrativeGenerationResult{
-		Artifact: result.Artifact, Usage: result.Usage,
-		Provider: result.Provider, Model: result.Model,
-		ModelMetadata: result.ModelMetadata,
-		CostUSD:       result.CostUSD, CostKnown: result.CostKnown,
-		RouteDigest: result.RouteDigest,
-	}, err
+	timeout := e.options.Context.NarrativeTimeout
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var rateLimitRetries uint32
+	var rateLimitWaited time.Duration
+	var retries uint32
+	var lastErr error
+	for {
+		remaining := timeout
+		if deadline, ok := callCtx.Deadline(); ok {
+			remaining = time.Until(deadline)
+		}
+		if remaining <= 0 {
+			if lastErr != nil {
+				return NarrativeGenerationResult{}, lastErr
+			}
+			return NarrativeGenerationResult{}, callCtx.Err()
+		}
+		result, err := agentcontext.GenerateNarrative(
+			callCtx,
+			agentcontext.NarrativeGeneratorConfig{
+				Provider: e.options.Provider, Routes: e.options.Routes,
+				TokenEstimator: e.options.TokenEstimator,
+				Limits:         e.options.Context.NarrativeLimits,
+				Timeout:        remaining,
+				Focus:          focus,
+			},
+			truth,
+			input,
+			createdTurn,
+		)
+		if err == nil {
+			return NarrativeGenerationResult{
+				Artifact: result.Artifact, Usage: result.Usage,
+				Provider: result.Provider, Model: result.Model,
+				ModelMetadata: result.ModelMetadata,
+				CostUSD:       result.CostUSD, CostKnown: result.CostKnown,
+				RouteDigest: result.RouteDigest,
+				Attempt:     rateLimitRetries + retries + 1,
+			}, nil
+		}
+		lastErr = err
+		if callCtx.Err() != nil {
+			return NarrativeGenerationResult{}, err
+		}
+		retry, retryable := providerwire.RetryPolicy{
+			MaxRetries:          e.narrativeTransientRetryLimit(),
+			MaxDelay:            e.options.MaxRetryDelay,
+			RateLimitMaxRetries: e.options.RateLimitMaxRetries,
+			RateLimitMaxWait:    e.narrativeRateLimitWait(timeout),
+			RateLimitRetries:    rateLimitRetries,
+			RateLimitWaited:     rateLimitWaited,
+			RouteCooldown:       e.summaryRouteCooldown(),
+			Now:                 e.options.Observability.Now,
+		}.Decide(err, false, retries, false)
+		if !retryable {
+			return NarrativeGenerationResult{}, err
+		}
+		if waitErr := waitRetryDelay(callCtx, retry.EffectiveDelay); waitErr != nil {
+			return NarrativeGenerationResult{}, err
+		}
+		if retry.Failure.Code == provider.FailureRateLimit {
+			rateLimitRetries++
+			rateLimitWaited += retry.EffectiveDelay
+			continue
+		}
+		retries++
+	}
+}
+
+func (e *Engine) narrativeTransientRetryLimit() int {
+	limit := e.options.MaxRetries
+	if narrative := e.options.Context.NarrativeRetryLimit; narrative > 0 {
+		if limit <= 0 || narrative < limit {
+			return narrative
+		}
+	}
+	return limit
+}
+
+func (e *Engine) narrativeRateLimitWait(timeout time.Duration) time.Duration {
+	wait := e.options.RateLimitMaxWait
+	if wait <= 0 || wait > timeout {
+		return timeout
+	}
+	return wait
+}
+
+func (e *Engine) summaryRouteCooldown() time.Duration {
+	route, err := e.options.Routes.For(model.PurposeSummary)
+	if err != nil {
+		return 0
+	}
+	return e.routeCooldown(route)
 }
 
 func (e *Engine) RunPostTurnNarrative(
@@ -72,6 +148,32 @@ func (e *Engine) RunPostTurnNarrative(
 }
 
 func (e *Engine) generatePostTurnDigest(
+	ctx context.Context,
+	threadID protocol.ThreadID,
+	turnID protocol.TurnID,
+	focus string,
+	source []provider.Message,
+) (NarrativeGenerationResult, error) {
+	if status, ok := e.closedTurnSealStatus(); ok &&
+		(status == agentcontext.CheckpointCanceled ||
+			status == agentcontext.CheckpointFailed) {
+		return NarrativeGenerationResult{}, nil
+	}
+	result, err := e.attemptPostTurnDigest(ctx, threadID, turnID, focus, source)
+	var artifact *agentcontext.NarrativeArtifact
+	if !result.Fallback && len(result.Artifact.Body.Items) > 0 {
+		copy := result.Artifact
+		artifact = &copy
+	}
+	e.sealClosedTurnMemory(
+		agentcontext.CheckpointCompleted,
+		artifact,
+		result.FailureReason,
+	)
+	return result, err
+}
+
+func (e *Engine) attemptPostTurnDigest(
 	ctx context.Context,
 	threadID protocol.ThreadID,
 	turnID protocol.TurnID,
@@ -91,7 +193,7 @@ func (e *Engine) generatePostTurnDigest(
 		source,
 		e.options.Context.RecentTailTurns,
 	)
-	truth := e.buildTruthCapsule(e.buildCompactSummary(nil))
+	truth := e.buildTruthCapsule(e.buildCompactSummary(nil), nil)
 	windowID := e.context.Window().ID
 	createdTurn := e.turn
 	e.mu.Unlock()

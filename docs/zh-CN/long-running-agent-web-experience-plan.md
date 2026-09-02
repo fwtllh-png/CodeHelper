@@ -112,7 +112,7 @@ updated_at
 失败、取消或不完整 Turn 的尾部直接展示可用动作，而不是要求用户进入 Settings：
 
 - Retry：以相同意图重新执行，使用新的 Turn Identity；
-- Continue：携带用户补充 Guidance；
+- Continue：携带用户本次提交的真实 Prompt；
 - Restore：恢复到可用 Checkpoint；
 - Fork：从 Checkpoint 创建新 Thread；
 - 对可能已经发生副作用的 Tool 明确显示 `unknown`、`committed` 或 `rolled_back`。
@@ -123,7 +123,7 @@ updated_at
 ### 已实现
 
 - Retry、Continue 由 `turn.failed.fault.disposition` 与 canceled 事实决定；
-- Continue 使用内联 Guidance，不再调用浏览器原生 Prompt；
+- Continue 使用 Composer 中的真实 User Prompt，不再调用浏览器原生 Prompt；
 - 匹配 Source Turn 的最新 Checkpoint 在失败卡片就地提供 Restore/Fork；
 - Restore/Fork 严格遵守 Runtime 返回的 `can_restore` / `can_fork`；
 - Fork 成功后自动切换到 Runtime 返回的新 Session；

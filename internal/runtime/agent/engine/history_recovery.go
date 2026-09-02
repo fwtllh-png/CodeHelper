@@ -214,7 +214,7 @@ func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudget
 		HistoryTokenCeiling:   e.recentTailMaxTokens(),
 		Digest:                e.options.Context.Digest,
 		NarrativeMode:         e.options.Context.SemanticNarrative,
-		EstimatedTokens: window.estimated, MaxContextTokens: window.hardLimit,
+		EstimatedTokens:       window.estimated, MaxContextTokens: window.hardLimit,
 		HardInputTokens: capacity.HardInputTokens,
 		LimitSource:     string(capacity.LimitSource),
 		OutputSource:    capacity.OutputSource,
@@ -336,7 +336,7 @@ func (e *Engine) compactHistoryWithPolicy(
 		)
 		return receipt
 	}
-	authority := e.buildTruthCapsule(e.buildCompactSummary(nil))
+	authority := e.buildTruthCapsule(e.buildCompactSummary(nil), nil)
 	authorityDigest, err := authority.AuthorityDigest()
 	if err != nil {
 		return nil
@@ -349,7 +349,7 @@ func (e *Engine) compactHistoryWithPolicy(
 			RecentTailTurns:     e.options.Context.RecentTailTurns,
 			RecentTailMaxTokens: e.recentTailMaxTokens(),
 			WindowScope:         e.options.Context.Window.Scope,
-			AuthorityDigest: authorityDigest,
+			AuthorityDigest:     authorityDigest,
 			EstimateMessages:    agentcontext.EstimateMessageTokens,
 			ProjectHistory:      projectHistory,
 			PruneBeforePressure: true,
@@ -447,7 +447,7 @@ func (e *Engine) buildCompactionCandidate(
 		}
 		summary.Goal = goal
 	}
-	current := e.buildTruthCapsule(summary)
+	current := e.buildTruthCapsule(summary, nil)
 	tail := agentcontext.StripWorldState(
 		promptcontext.StripContextualFragments(cloneMessages(history[cut:])),
 	)

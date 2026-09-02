@@ -11,9 +11,9 @@ func TestTurnRecoveryContractNeverEncodesHistoricalOperationReplay(t *testing.T)
 	if err := retry.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	retry.Guidance = "replace the original request"
+	retry.Prompt = "replace the original request"
 	if err := retry.Validate(); err == nil {
-		t.Fatal("retry accepted replacement guidance")
+		t.Fatal("retry accepted a new user prompt")
 	}
 	retry.Action = TurnRecoveryContinue
 	if err := retry.Validate(); err != nil {

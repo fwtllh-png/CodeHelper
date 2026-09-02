@@ -954,7 +954,7 @@ func TestCatalogReceiptUsesLastProviderToolDefinitions(t *testing.T) {
 		slices.Contains(receipt.Advertised, "shell_read") ||
 		slices.Contains(receipt.Advertised, "exec_command") ||
 		!slices.Contains(receipt.Advertised, "turn_complete") ||
-		receipt.OmittedCount != 3 {
+		receipt.OmittedCount != 4 {
 		t.Fatalf("catalog receipt = %+v", receipt)
 	}
 }

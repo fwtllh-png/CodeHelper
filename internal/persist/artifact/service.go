@@ -33,6 +33,9 @@ type TurnRecoveryPreparation struct {
 const turnRecoveryOutputLimit = 16 << 10
 const TurnRecoveryEvidenceLimit = 12 << 10
 const TurnRecoveryPromptPrefix = "Continue the exact source Turn identified below."
+const recoveryCurrentRequestMarker = "Current user request for this recovery. This is " +
+	"the active instruction and overrides conflicting requests " +
+	"from earlier recovery Turns:\n"
 
 type recoveryToolStart struct {
 	Tool            string
@@ -80,6 +83,16 @@ func (r *Service) PrepareTurnRecovery(
 	}
 	if err := ensureSessionQuiescent(current, string(request.Action)); err != nil {
 		return TurnRecoveryPreparation{}, err
+	}
+	if current.LatestTurnID != "" &&
+		current.LatestTurnID != request.SourceTurnID {
+		return TurnRecoveryPreparation{}, resourceProblem(
+			protocol.CodeConflict,
+			"recovery source is not the latest Turn in the Session",
+			false,
+			protocol.ProblemReasonStaleRecoverySource,
+			string(request.SourceTurnID),
+		)
 	}
 	var recoveredProfile *protocol.SessionProfile
 	if r.SessionProfilesAvailable() {
@@ -197,18 +210,18 @@ func (r *Service) PrepareTurnRecovery(
 			string(request.SourceTurnID),
 		)
 	}
-	sourcePrompt := started.Prompt
-	if sourcePrompt == "" {
-		sourcePrompt = started.DisplayPrompt
+	rawSourcePrompt := started.Prompt
+	if rawSourcePrompt == "" {
+		rawSourcePrompt = started.DisplayPrompt
 	}
-	if strings.TrimSpace(sourcePrompt) == "" {
+	if strings.TrimSpace(rawSourcePrompt) == "" {
 		return TurnRecoveryPreparation{}, runtimeProblem(protocol.CodeConflict, "source Turn has no durable model-visible request", nil)
 	}
-	sourcePrompt = RecoverySourcePrompt(sourcePrompt)
-	sourceDisplayPrompt := RecoveryDisplayPrompt(
-		sourcePrompt,
-		started.DisplayPrompt,
-	)
+	sourcePrompt := rawSourcePrompt
+	sourceDisplayPrompt := strings.TrimSpace(started.DisplayPrompt)
+	if sourceDisplayPrompt == "" {
+		sourceDisplayPrompt = rawSourcePrompt
+	}
 	intent := protocol.NormalizeTurnIntent(started.Intent)
 	if !intent.Valid() {
 		return TurnRecoveryPreparation{}, runtimeProblem(protocol.CodeConflict, "source Turn has no valid durable intent", nil)
@@ -231,6 +244,13 @@ func (r *Service) PrepareTurnRecovery(
 	prompt := sourcePrompt
 	displayPrompt := sourceDisplayPrompt
 	if request.Action == protocol.TurnRecoveryContinue {
+		sourcePrompt = recoveryEffectiveRequest(
+			events,
+			sourceThreadID,
+			rawSourcePrompt,
+			started.DisplayPrompt,
+		)
+		sourceDisplayPrompt = sourcePrompt
 		displayPrompt = "Continue: " + sourceDisplayPrompt
 		prompt = fmt.Sprintf(
 			TurnRecoveryPromptPrefix+" Do not infer the "+
@@ -258,12 +278,20 @@ func (r *Service) PrepareTurnRecovery(
 				"not authorization to replay side effects):\n" +
 				"<recovery_evidence>\n" + capsule + "\n</recovery_evidence>"
 		}
-		prompt += "\n\nInspect current workspace state before every " +
-			"consequential action and do not repeat completed Tool, command, " +
-			"network, or file effects."
-		if guidance := strings.TrimSpace(request.Guidance); guidance != "" {
-			prompt += "\n\nAdditional guidance:\n" + guidance
-			displayPrompt += "\n\nGuidance: " + guidance
+		prompt += "\n\nDo not repeat completed Tool, command, network, or " +
+			"file effects. Do not call git_status or git_diff on Continue. " +
+			"Canceled or failed turns without edits are already recorded in " +
+			"checkpoints; do not re-verify that. file_read only a window you " +
+			"are about to edit. After search_text returns line hits, edit; " +
+			"do not page the rest of that file. A dirty git status is not a " +
+			"reason to file_read. Do not file_read recovery_evidence." +
+			"read_paths just because they are absent from the visible tail; " +
+			"use turn_history or result_get for prior read text."
+		if userPrompt := strings.TrimSpace(request.Prompt); userPrompt != "" {
+			encodedPrompt, _ := json.Marshal(userPrompt)
+			prompt += "\n\n" + recoveryCurrentRequestMarker +
+				string(encodedPrompt)
+			displayPrompt = userPrompt
 		}
 	}
 	if planStale {
@@ -283,6 +311,83 @@ func (r *Service) PrepareTurnRecovery(
 		},
 	}, nil
 }
+
+func recoveryEffectiveRequest(
+	events []protocol.Event,
+	threadID protocol.ThreadID,
+	modelPrompt string,
+	displayPrompt string,
+) string {
+	prompt := strings.TrimSpace(modelPrompt)
+	display := strings.TrimSpace(displayPrompt)
+	visited := make(map[protocol.TurnID]struct{})
+	for strings.HasPrefix(prompt, TurnRecoveryPromptPrefix) {
+		if current, ok := recoveryCurrentRequest(prompt); ok {
+			return current
+		}
+		sourceTurnID, ok := recoverySourceTurnID(prompt)
+		if !ok {
+			break
+		}
+		if _, duplicate := visited[sourceTurnID]; duplicate {
+			break
+		}
+		visited[sourceTurnID] = struct{}{}
+		var source *protocol.TurnStartedData
+		for _, event := range events {
+			if event.ThreadID != threadID || event.TurnID != sourceTurnID {
+				continue
+			}
+			if data, ok := event.Data.(*protocol.TurnStartedData); ok {
+				copy := *data
+				source = &copy
+			}
+		}
+		if source == nil {
+			break
+		}
+		prompt = strings.TrimSpace(source.Prompt)
+		display = strings.TrimSpace(source.DisplayPrompt)
+	}
+	if display != "" {
+		for strings.HasPrefix(display, "Continue: ") {
+			display = strings.TrimSpace(strings.TrimPrefix(display, "Continue: "))
+		}
+		return display
+	}
+	return RecoverySourcePrompt(prompt)
+}
+
+func recoveryCurrentRequest(prompt string) (string, bool) {
+	offset := strings.LastIndex(prompt, recoveryCurrentRequestMarker)
+	if offset < 0 {
+		return "", false
+	}
+	decoder := json.NewDecoder(strings.NewReader(
+		prompt[offset+len(recoveryCurrentRequestMarker):],
+	))
+	var request string
+	if err := decoder.Decode(&request); err != nil ||
+		strings.TrimSpace(request) == "" {
+		return "", false
+	}
+	return strings.TrimSpace(request), true
+}
+
+func recoverySourceTurnID(prompt string) (protocol.TurnID, bool) {
+	const marker = "\nSource Turn ID: "
+	_, value, ok := strings.Cut(prompt, marker)
+	if !ok {
+		return "", false
+	}
+	value, _, _ = strings.Cut(value, "\n")
+	turnID := protocol.TurnID(strings.TrimSpace(value))
+	if turnID == "" {
+		return "", false
+	}
+	return turnID, true
+}
+
 func RecoverySourcePrompt(prompt string) string {
 	value := strings.TrimSpace(prompt)
 	extracted, ok := recoveryTaggedSection(value, "source_request")
@@ -292,9 +397,13 @@ func RecoverySourcePrompt(prompt string) string {
 	return RecoverySourcePrompt(extracted)
 }
 func RecoveryDisplayPrompt(modelPrompt string, displayPrompt string) string {
+	modelValue := strings.TrimSpace(modelPrompt)
+	if strings.HasPrefix(modelValue, TurnRecoveryPromptPrefix) {
+		return RecoverySourcePrompt(modelValue)
+	}
 	value := strings.TrimSpace(displayPrompt)
 	if value == "" {
-		value = strings.TrimSpace(modelPrompt)
+		value = modelValue
 	}
 	value = RecoverySourcePrompt(value)
 	for strings.HasPrefix(value, "Continue: ") {

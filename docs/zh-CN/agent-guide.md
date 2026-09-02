@@ -66,13 +66,39 @@
 - 性能优化的软预算与正确性保护的硬边界必须分离。模型可见上下文是有界工作集：
   Goal、约束、未验证变更、当前请求和最近因果链。这些 mandatory 事实由每轮
   `session_state` 分区从 Ledger 投影，不依赖 compact 事件。`post_turn` Narrative
-  只写可选 Digest 分区，Timeout 不得挡住下一轮 Sample。完整 transcript 保留在
+  只在 `turn.completed` 之后写可选 Digest 分区；用户暂停不得再调 summary 或
+  发出 fallback Compaction 卡片。Timeout 不得挡住下一轮 Sample；`route.summary` 的瞬时
+  429/5xx 走与主采样相同的 RetryPolicy，硬配额立即 fallback。完整 transcript 保留在
   Durable Journal，不作为模型上下文。TTFT、成本或缓存优化不得丢掉 mandatory
   用户语义，也不得用隐藏百分比替代公开的 `context.view.recent_tail_turns` 与
   剩余硬输入 residual 契约。`context.view.history_token_ceiling=0` 表示
   Mandatory 分区之后的剩余容量，不是窗口百分比。
   Tool Result 首次准入后不再改写；不得用隐藏 N 代替 ResultStore 合同或
-  `result_get`。
+  `result_get`。闭合 Turn 的 Checkpoint 同样 write-once，放在 Dynamic 而不是
+  Stable 或 History 前缀；`context.view.checkpoint_max_bytes=0` 继承公开的
+  summary / narrative item 预算。未完成工作只能从带 `source_message_ids` 的
+  Narrative 项提升为 Plan Todo，禁止从散文猜测清单。旧 Turn 回读走
+  `turn_history`（首次投影是 Turn 尾部结论），继续分页用 `result_get`
+  `mode=tail` 或 `mode=query`，不要用默认 `summary`。首次写入后保持
+  append-only。被投影裁掉的旧 Turn 必须在
+  `session_state` 给出检索指针；缺失 Checkpoint 只回封 turn id，不把旧审计
+  猜进 Plan。Plan 已有完成步骤或 Working Set 已有已读路径时，`session_state`
+  必须带 Resume Fact：不要重复已完成步骤，下一项未完成工作取第一项
+  outstanding Plan 标题，已读路径上限继承 `context.working_set.max_entries`。
+  有行号命中时 Resume Fact 还列出 `Located sites`。`working_set` 只列路径；
+  不要再次 `file_read`，除非即将编辑具体窗口。`search_text` /
+  `search_definition` 命中后，对该路径的 `file_read` 必须带 `start_line`。
+  已知缺陷用 `search_text` / `search_definition` 定位。单文件 `path` 仍按公开
+  walk 字节上限搜索；空命中带 `skipped.large` 不表示符号不存在。已有行号命中
+  后只读将编辑的窗口并立刻改，不要整文件翻页。取消或失败且未改文件的 Turn
+  已记在 Checkpoint 里，不要用 `git_diff` 再确认。
+  脏的 `git_status` / `git_diff` 不是重读理由。可见 Tail 没有那次读取
+  不是重读理由，应走 `turn_history` / `result_get`；截断后先 `result_get`。
+  取消 Checkpoint 保留下一项 Plan 与已读路径指针。Paused Continue 不得先用
+  `git_status`、`git_diff` 或 `file_read` 巡视工作区，也不得把 `read_paths`
+  不在 tail 里当成重读许可。Plan 已有完成步骤且仍有 outstanding 工作时，
+  新的 `file_read` 不再续期，并改用 `execution.implement_no_progress_samples`
+  （默认 6）进入 Finish-only。
 - 模型窗口、经济预算和 Provider Throughput 是三个独立容量平面。Operator 通过
   `execution.tokens_per_minute` 声明 TPM；`0` 表示未知，不发明按模型名称的默认值。
   合法工作集超过已知 Burst 或等待将超过预算时，先做一次 Visible Tail Fold 再
