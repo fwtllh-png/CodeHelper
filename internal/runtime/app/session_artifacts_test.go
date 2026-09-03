@@ -974,6 +974,14 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	if continued.DisplayPrompt != "Run focused tests" {
 		t.Fatalf("Continue display prompt = %q", continued.DisplayPrompt)
 	}
+	requestAt := strings.Index(continued.Prompt, "<source_request>")
+	failedAt := strings.Index(continued.Prompt, "failed (conflict): validation failed")
+	if requestAt < 0 || failedAt < 0 || requestAt > failedAt {
+		t.Fatal("Continue prompt must lead with the original request")
+	}
+	if !strings.Contains(continued.Prompt, "Do not repeat this Continue envelope") {
+		t.Fatal("Continue prompt must tell the model not to narrate recovery")
+	}
 	recoveredMeta := protocol.EventMeta{
 		Sequence:    7,
 		OperationID: "operation-continued",

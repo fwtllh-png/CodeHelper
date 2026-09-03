@@ -80,10 +80,12 @@ export function AgentDisclosure({
   entry: AgentNode;
   onInspect: (callID: string) => void;
 }) {
-  const [open, setOpen] = useState(entry.state === "running");
+  const [open, setOpen] = useState(
+    entry.state === "running" || entry.state === "failed"
+  );
 
   useEffect(() => {
-    if (entry.state === "running") setOpen(true);
+    if (entry.state === "running" || entry.state === "failed") setOpen(true);
   }, [entry.state]);
 
   return (
@@ -98,7 +100,13 @@ export function AgentDisclosure({
           {agentRoleLabel(entry.role)} · {entry.agentID}
         </span>
         <span className="disclosureSeparator" aria-hidden="true" />
-        <small>{entry.summary}</small>
+        <small>
+          {entry.summary}
+          {entry.reasonCode ? ` · ${entry.reasonCode.replaceAll("_", " ")}` : ""}
+          {entry.usage
+            ? ` · in ${entry.usage.inputTokens} / out ${entry.usage.outputTokens}`
+            : ""}
+        </small>
         <span className="agentState" data-state={entry.state}>
           {entry.status.replaceAll("_", " ")}
         </span>

@@ -58,6 +58,13 @@ func isTerminal(status Status) bool {
 // IsTerminal reports whether status is a settled child state.
 func IsTerminal(status Status) bool { return isTerminal(status) }
 
+func sameParent(filter, parent string) bool {
+	if filter == parent {
+		return true
+	}
+	return IsSessionParent(filter) && IsSessionParent(parent)
+}
+
 func CanTransition(from, to Status) bool {
 	switch from {
 	case "":
@@ -104,7 +111,8 @@ func (m *Manager) List(filter ListFilter) []Agent {
 		if !filter.IncludeClosed && (agent.Closed || agent.Status == StatusShutdown) {
 			continue
 		}
-		if filter.ParentID != "" && agent.Parent != filter.ParentID {
+		if filter.ParentID != "" &&
+			!sameParent(filter.ParentID, agent.Parent) {
 			continue
 		}
 		out = append(out, cloneAgent(agent))
@@ -122,7 +130,8 @@ func (m *Manager) List(filter ListFilter) []Agent {
 				if !filter.IncludeClosed && edge.Status == StatusShutdown {
 					continue
 				}
-				if filter.ParentID != "" && edge.ParentID != filter.ParentID {
+				if filter.ParentID != "" &&
+					!sameParent(filter.ParentID, edge.ParentID) {
 					continue
 				}
 				out = append(out, *agentFromEdge(edge))

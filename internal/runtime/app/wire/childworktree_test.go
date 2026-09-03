@@ -426,6 +426,17 @@ func TestChildEngineOptionsOnlySharesHostJournalUnderSerializedStrategy(t *testi
 	}
 }
 
+func TestChildEngineOptionsSharesProviderLimiter(t *testing.T) {
+	shared := &agentengine.SharedRateLimit{}
+	seed := agentengine.Options{ProviderConfig: agentengine.ProviderConfig{
+		SharedRateLimit: shared, RateLimitMaxRetries: 2,
+	}}
+	child := childEngineOptions(seed, app.ChildSpec{ReadOnly: true})
+	if child.SharedRateLimit != shared {
+		t.Fatal("child engine must share the session provider limiter")
+	}
+}
+
 func TestChildEngineOptionsUsesOwningSession(t *testing.T) {
 	seed := agentengine.Options{LifecycleConfig: agentengine.LifecycleConfig{
 		SessionID: "process-internal",

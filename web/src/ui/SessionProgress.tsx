@@ -32,7 +32,9 @@ export function SessionProgress({
   ).length : 0;
   const planPending = planSteps.length - planDone - planActive;
   const hasPlanContent = Boolean(plan?.document?.steps.length);
-  if (!hasPlanContent && agents.length === 0) return null;
+  const activeAgents = agents.filter(isActiveAgent);
+  const [agentsExpanded, setAgentsExpanded] = useState(true);
+  if (!hasPlanContent && activeAgents.length === 0) return null;
 
   return (
     <section className="sessionProgress" aria-label="Session progress">
@@ -80,27 +82,64 @@ export function SessionProgress({
             )}
           </div>
         )}
-        {agents.length > 0 && (
-          <div className="progressSection">
-            <div className="progressLabel">
-              <Bot size={13} /> Subagents
-              <button type="button" onClick={onOpenTrajectory}>
+        {activeAgents.length > 0 && (
+          <div
+            className="progressSection progressAgentsSection"
+            data-collapsed={agentsExpanded ? undefined : true}
+          >
+            <div className="progressAgentsHeader">
+              <button
+                type="button"
+                className="progressAgentDisclosure"
+                aria-label={agentsExpanded ? "Collapse subagents" : "Expand subagents"}
+                aria-expanded={agentsExpanded}
+                title={agentsExpanded ? "Collapse subagents" : "Expand subagents"}
+                onClick={() => setAgentsExpanded((value) => !value)}
+              >
+                <span className="agentSummary">
+                  <Bot size={14} />
+                  <strong>Subagents</strong>
+                  <small>{activeAgents.length} active</small>
+                </span>
+                <ChevronDown size={15} data-expanded={agentsExpanded || undefined} />
+              </button>
+              <button
+                type="button"
+                className="progressTrajectory"
+                onClick={onOpenTrajectory}
+              >
                 Open trajectory
               </button>
             </div>
-            <ul className="progressAgents">
-              {agents.map((agent) => (
-                <li key={agent.id}>
-                  <span data-status={agent.status} />
-                  <strong>{agent.role}</strong>
-                  <b>{agent.status.replaceAll("_", " ")}</b>
-                  {agent.last_message && <small>{agent.last_message}</small>}
-                </li>
-              ))}
-            </ul>
+            {agentsExpanded && (
+              <ul className="progressAgents">
+                {activeAgents.map((agent) => (
+                  <li key={agent.id}>
+                    <span data-status={agent.status} />
+                    <strong>{agent.role}</strong>
+                    <b>{agent.status.replaceAll("_", " ")}</b>
+                    {agent.last_message && <small>{agent.last_message}</small>}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
       </div>
     </section>
   );
+}
+
+function isActiveAgent(agent: AgentSummary): boolean {
+  switch (agent.status) {
+    case "completed":
+    case "failed":
+    case "interrupted":
+    case "integrated":
+    case "integration_failed":
+    case "closed":
+      return false;
+    default:
+      return true;
+  }
 }

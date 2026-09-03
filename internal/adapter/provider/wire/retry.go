@@ -20,8 +20,13 @@ type RetryPolicy struct {
 	RateLimitMaxWait    time.Duration
 	RateLimitRetries    uint32
 	RateLimitWaited     time.Duration
-	RouteCooldown       time.Duration
-	Now                 func() time.Time
+	// SharedRateLimitRetries / SharedRateLimitWaited are the session pot.
+	// They gate whether another wait is allowed. The sample Retry number still
+	// comes from RateLimitRetries so turn-kernel monotonicity stays per sample.
+	SharedRateLimitRetries uint32
+	SharedRateLimitWaited  time.Duration
+	RouteCooldown          time.Duration
+	Now                    func() time.Time
 }
 
 type RetryDecision struct {
@@ -54,7 +59,7 @@ func (p RetryPolicy) Decide(
 	switch failure.Code {
 	case provider.FailureRateLimit:
 		eligible = true
-		attempt = int(p.RateLimitRetries)
+		attempt = int(p.rateLimitBudgetRetries())
 		if p.RateLimitMaxRetries > 0 {
 			limit = p.RateLimitMaxRetries
 		} else {
@@ -93,7 +98,7 @@ func (p RetryPolicy) Decide(
 	}
 	backoffRetries := retries
 	if failure.Code == provider.FailureRateLimit {
-		backoffRetries = p.RateLimitRetries
+		backoffRetries = p.rateLimitBudgetRetries()
 	}
 	delayMS := failure.RetryAfterMS
 	if delayMS == 0 {
@@ -109,7 +114,7 @@ func (p RetryPolicy) Decide(
 	}
 	if failure.Code == provider.FailureRateLimit &&
 		p.RateLimitMaxWait > 0 &&
-		p.RateLimitWaited+needed > p.RateLimitMaxWait {
+		p.rateLimitBudgetWaited()+needed > p.RateLimitMaxWait {
 		return RetryDecision{}, false
 	}
 	if failure.Code != provider.FailureRateLimit &&
@@ -126,6 +131,20 @@ func (p RetryPolicy) Decide(
 		Failure: failure, EffectiveDelay: needed, RetryAt: now.Add(needed),
 		PolicyRevision: RetryPolicyRevision,
 	}, true
+}
+
+func (p RetryPolicy) rateLimitBudgetRetries() uint32 {
+	if p.SharedRateLimitRetries > p.RateLimitRetries {
+		return p.SharedRateLimitRetries
+	}
+	return p.RateLimitRetries
+}
+
+func (p RetryPolicy) rateLimitBudgetWaited() time.Duration {
+	if p.SharedRateLimitWaited > p.RateLimitWaited {
+		return p.SharedRateLimitWaited
+	}
+	return p.RateLimitWaited
 }
 
 func ClassifyFailure(err error, meaningful bool) provider.Failure {

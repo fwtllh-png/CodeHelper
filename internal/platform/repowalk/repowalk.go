@@ -46,7 +46,7 @@ var skippedDirectories = map[string]struct{}{
 	".git": {}, ".hg": {}, ".svn": {}, "node_modules": {}, "vendor": {}, "bin": {},
 	// The runtime's own state lives here. Reading it back as workspace content
 	// would feed a session its own transcript.
-	".qcode": {}, ".codehelper": {},
+	".qcode": {},
 }
 
 // Entry is one candidate file. Path is workspace-relative and slash separated,

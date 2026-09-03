@@ -768,30 +768,52 @@ describe("ConversationProjection", () => {
       {
         ...event(2, "agent.status", {
           agent_id: "agent-1",
+          status: "starting"
+        }),
+        thread_id: "thread_external",
+        turn_id: "turn_external"
+      },
+      {
+        ...event(3, "agent.status", {
+          agent_id: "agent-1",
           status: "running",
           message: "Reviewing persistence"
         }),
         thread_id: "thread_external",
         turn_id: "turn_external"
       },
-      child(3, "turn.started", {display_prompt: "Inspect the event store"}),
-      child(4, "reasoning.delta", {
+      {
+        ...event(4, "agent.message", {
+          body: {
+            from: "agent-1",
+            to: "parent",
+            kind: "context",
+            body: {task_name: "Review persistence"}
+          }
+        }),
+        thread_id: "thread_external",
+        turn_id: "turn_external"
+      },
+      child(5, "turn.started", {
+        display_prompt: '<task_capsule>{"task_name":"Review persistence"}</task_capsule>'
+      }),
+      child(6, "reasoning.delta", {
         sample_id: "sample-1",
         text: "Checking replay ownership"
       }),
-      child(5, "tool.start", {
+      child(7, "tool.start", {
         call_id: "child-call",
         tool: "file_read",
         arguments: {path: "internal/persist/history/service.go"}
       }),
-      child(6, "tool.result", {
+      child(8, "tool.result", {
         call_id: "child-call",
         tool: "file_read",
         output: "package history"
       }),
-      child(7, "turn.completed", {text: "The replay filter needs session ownership."}),
+      child(9, "turn.completed", {text: "The replay filter needs session ownership."}),
       {
-        ...event(8, "agent.status", {
+        ...event(10, "agent.status", {
           agent_id: "agent-1",
           status: "completed",
           message: "The replay filter needs session ownership."
@@ -800,7 +822,7 @@ describe("ConversationProjection", () => {
         turn_id: "turn_external"
       },
       {
-        ...event(9, "agent.message", {
+        ...event(11, "agent.message", {
           body: {
             from: "agent-1",
             to: "root",
@@ -825,15 +847,45 @@ describe("ConversationProjection", () => {
       summary: "The replay filter needs session ownership."
     });
     expect(agent.activities.map(({title, state}) => ({title, state}))).toEqual([
-      {title: "Queued", state: "running"},
-      {title: "Running", state: "running"},
-      {title: "Started", state: "running"},
+      {title: "Started", state: "completed"},
       {title: "Thinking", state: "running"},
       {title: "Read", state: "completed"},
       {title: "Result", state: "completed"},
       {title: "Completed", state: "completed"},
       {title: "Result", state: "completed"}
     ]);
+    expect(JSON.stringify(agent.activities)).not.toContain("task_capsule");
+  });
+
+  it("projects failed agent reason codes and usage", () => {
+    const snapshot = projectConversation([
+      event(1, "agent.spawned", {
+        agent_id: "agent-2",
+        role: "review",
+        detail: {task_name: "Audit paxos"}
+      }),
+      event(2, "agent.status", {
+        agent_id: "agent-2",
+        status: "failed",
+        message: "token budget exhausted: projected 17698, limit 15000",
+        reason_code: "budget_exhausted",
+        detail: {
+          result: {
+            usage: {input_tokens: 0, output_tokens: 0}
+          }
+        }
+      })
+    ]);
+    const agent = snapshot.nodes.get("agent-agent-2");
+    expect(agent?.kind).toBe("agent");
+    if (agent?.kind !== "agent") throw new Error("agent was not projected");
+    expect(agent).toMatchObject({
+      status: "failed",
+      state: "failed",
+      reasonCode: "budget_exhausted",
+      usage: {inputTokens: 0, outputTokens: 0},
+      summary: "token budget exhausted: projected 17698, limit 15000"
+    });
   });
 });
 

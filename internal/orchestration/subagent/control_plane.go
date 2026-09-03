@@ -115,9 +115,9 @@ func (p DelegationPolicy) Instructions() string {
 			"run independent children concurrently, use wait_agent for synchronization, and close agents when done." +
 			contextContract
 	case DelegationAdaptive:
-		return "Multi-agent delegation is adaptive. Use spawn_agent only for independent work whose parallel benefit " +
-			"exceeds spawn and coordination cost. Keep simple or linear work in the parent, avoid overlapping write " +
-			"ownership, prefer existing agents via followup_task, run independent children concurrently, use wait_agent " +
+		return "Multi-agent delegation is adaptive. Investigate in the parent first. Spawn a child only when the " +
+			"parallel benefit is explicit and the work is independently scoped. Do not open several review agents " +
+			"just because a task spans modules. Prefer followup_task on an existing resident agent, use wait_agent " +
 			"for synchronization, and close agents when done." + contextContract
 	default:
 		return ""
@@ -258,10 +258,11 @@ func (c RoleCatalog) Roles() []Role {
 // AgentControl is the single lifecycle entry used by tools, workers, and hosts.
 // Manager remains the synchronized state owner behind this boundary.
 type AgentControl struct {
-	manager *Manager
-	roles   RoleCatalog
-	policy  DelegationPolicy
-	forker  *ContextForker
+	manager     *Manager
+	roles       RoleCatalog
+	policy      DelegationPolicy
+	forker      *ContextForker
+	providerHot func() bool
 }
 
 func NewAgentControl(
@@ -303,6 +304,13 @@ func (c *AgentControl) BindContextSource(source ContextSource) {
 	if c != nil && c.forker != nil {
 		c.forker.BindSource(source)
 	}
+}
+
+func (c *AgentControl) BindProviderGate(hot func() bool) {
+	if c == nil {
+		return
+	}
+	c.providerHot = hot
 }
 
 func (c *AgentControl) ForkContext(

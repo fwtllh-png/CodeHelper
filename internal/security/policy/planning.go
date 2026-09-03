@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -110,7 +111,7 @@ func planningDecision(
 	}
 	required := r.PlanningPolicy == PlanningRequired ||
 		(r.PlanningPolicy == PlanningAdaptive &&
-			adaptivePlanningRequired(effect))
+			adaptivePlanningRequired(effect, invocation))
 	if !required && !r.PlanSubmitted {
 		return nil
 	}
@@ -151,10 +152,31 @@ func consequentialPlanningEffect(kind EffectKind) bool {
 	}
 }
 
-func adaptivePlanningRequired(effect Effect) bool {
+func adaptivePlanningRequired(effect Effect, invocation Invocation) bool {
+	if readOnlySpawn(invocation) {
+		return false
+	}
 	return effect.Risk == RiskHigh || effect.Risk == RiskCritical ||
 		effect.Kind == EffectNetworkMutating ||
 		effect.Kind == EffectExternalMutation ||
 		effect.Kind == EffectAgentLifecycle ||
 		effect.Reversibility == string(tool.Irreversible)
+}
+
+func readOnlySpawn(invocation Invocation) bool {
+	if invocation.Tool != "spawn_agent" {
+		return false
+	}
+	var payload struct {
+		Role string `json:"role"`
+	}
+	if json.Unmarshal(invocation.Arguments, &payload) != nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(payload.Role)) {
+	case "review", "explore", "awaiter":
+		return true
+	default:
+		return false
+	}
 }

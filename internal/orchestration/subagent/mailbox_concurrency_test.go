@@ -2,6 +2,7 @@ package subagent
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 )
@@ -96,5 +97,22 @@ func TestMailboxCloseWaitsForPersistenceCommit(t *testing.T) {
 		To: "agent", Body: json.RawMessage(`{}`),
 	}); err == nil {
 		t.Fatal("enqueue succeeded after Close")
+	}
+}
+
+func TestMailboxDrainReturnsMessagesWhenAckFails(t *testing.T) {
+	mailbox := NewMailbox()
+	mailbox.deliver = func(Message) error {
+		return errors.New("delivery persist failed")
+	}
+	if _, err := mailbox.Deliver("agent-1", SessionParentID, json.RawMessage(`{"ok":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	got := mailbox.Drain(SessionParentID)
+	if len(got) != 1 || got[0].Kind != MessageContext {
+		t.Fatalf("drain = %+v", got)
+	}
+	if pending := mailbox.Pending(SessionParentID); len(pending) != 1 {
+		t.Fatalf("pending after failed ack = %+v", pending)
 	}
 }

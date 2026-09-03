@@ -63,6 +63,10 @@ describe("SessionProgress", () => {
     expect(screen.getByText("1 completed · 1 active · 1 pending")).toBeTruthy();
     expect(screen.queryByText("Focused tests pass")).toBeNull();
     expect(screen.getByText("Checking the diff")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Collapse subagents"}));
+    expect(screen.queryByText("Checking the diff")).toBeNull();
+    fireEvent.click(screen.getByRole("button", {name: "Expand subagents"}));
+    expect(screen.getByText("Checking the diff")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Collapse plan"}));
     expect(screen.queryByText("Implement parser")).toBeNull();
     expect(screen.getByText("1 completed · 1 active · 1 pending")).toBeTruthy();
@@ -138,5 +142,31 @@ describe("SessionProgress", () => {
 
     expect(screen.getByText("1 completed · 0 active · 1 pending")).toBeTruthy();
     expect(document.querySelector(".spin")).toBeNull();
+  });
+
+  it("removes settled subagents from progress after a failed turn is retried", () => {
+    render(
+      <SessionProgress
+        agents={[
+          {
+            id: "agent-old-1",
+            role: "review",
+            status: "failed",
+            last_message: "provider rate limit retry budget exhausted"
+          },
+          {
+            id: "agent-old-2",
+            role: "review",
+            status: "completed",
+            last_message: "Completed before retry"
+          }
+        ]}
+        activeTurnID="retried-turn"
+        onOpenTrajectory={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("region", {name: "Session progress"})).toBeNull();
+    expect(screen.queryByText(/rate limit retry budget exhausted/)).toBeNull();
   });
 });

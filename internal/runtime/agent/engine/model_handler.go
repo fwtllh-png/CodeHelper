@@ -391,6 +391,10 @@ func (e *Engine) modelStep(
 			model: route.Model().ID, pricing: route.Model().Pricing, context: &attribution,
 			observe: e.observeTokenWindow,
 		}
+		sampleLease, holdErr := e.holdProviderSample(ctx)
+		if holdErr != nil {
+			return nil, nil, totalUsage, lastEstimate, holdErr
+		}
 		transport, err := providerassembly.RunTransportAttempt(
 			ctx,
 			e.options.Provider,
@@ -495,6 +499,7 @@ func (e *Engine) modelStep(
 		)
 		if err != nil && !transport.Opened {
 			if errors.Is(err, context.Canceled) && ctx.Err() == nil && e.appendSteering(history) {
+				sampleLease.Release()
 				attempt = -1
 				continue
 			}
@@ -507,6 +512,7 @@ func (e *Engine) modelStep(
 				send,
 			)
 			if recoveryErr != nil {
+				sampleLease.Release()
 				return nil, nil, totalUsage, lastEstimate, recoveryErr
 			}
 			retry, retryable := e.providerRetry(
@@ -528,7 +534,13 @@ func (e *Engine) modelStep(
 					retry,
 					shrinkThroughput,
 				); abort != nil {
+					sampleLease.Release()
 					return nil, nil, totalUsage, lastEstimate, abort
+				}
+				if retry.Failure.Code == provider.FailureRateLimit {
+					sampleLease.NoteRateLimit(retry.EffectiveDelay)
+				} else {
+					sampleLease.Release()
 				}
 				if sendErr := send(CallingModel, Event{
 					ProviderRetry: &retry,
@@ -538,6 +550,7 @@ func (e *Engine) modelStep(
 						rateLimitRetries, rateLimitWaited,
 					),
 				}); sendErr != nil {
+					sampleLease.Release()
 					return nil, nil, totalUsage, lastEstimate, sendErr
 				}
 				if waitErr := waitRetryDelay(
@@ -547,13 +560,15 @@ func (e *Engine) modelStep(
 					return nil, nil, totalUsage, lastEstimate, waitErr
 				}
 				if retry.Failure.Code == provider.FailureRateLimit {
-					rateLimitRetries++
-					rateLimitWaited += retry.EffectiveDelay
+					rateLimitRetries, rateLimitWaited = e.recordRateLimitWait(
+						rateLimitRetries, rateLimitWaited, retry.EffectiveDelay,
+					)
 				} else {
 					providerRetries++
 				}
 				continue
 			}
+			e.finishFailedSample(sampleLease, err, false)
 			return nil, nil, totalUsage, lastEstimate,
 				exhaustedSampleRetry(err, false)
 		}
@@ -591,6 +606,7 @@ func (e *Engine) modelStep(
 			attemptExecution.StopReason = provider.StopReasonEndTurn
 		}
 		if sendErr := send(CallingModel, Event{ModelExecution: attemptExecution}); sendErr != nil {
+			sampleLease.Release()
 			return nil, nil, totalUsage, lastEstimate, sendErr
 		}
 		pending := e.drainPending()
@@ -614,6 +630,7 @@ func (e *Engine) modelStep(
 			continuationMessages = nil
 			continuedBlocks = nil
 			continuations = 0
+			sampleLease.Succeeded()
 			if finishTransport != nil {
 				if err := finishTransport(); err != nil {
 					return nil, nil, totalUsage, lastEstimate, err
@@ -647,6 +664,7 @@ func (e *Engine) modelStep(
 					e.turn,
 				),
 			)
+			sampleLease.Succeeded()
 			if finishTransport != nil {
 				if err := finishTransport(); err != nil {
 					return nil, nil, totalUsage, lastEstimate, err
@@ -674,6 +692,7 @@ func (e *Engine) modelStep(
 				*capturedReplay = replay
 			}
 			bindToolCalls(calls, catalog, advertised)
+			sampleLease.Succeeded()
 			return completeBlocks, calls, totalUsage, lastEstimate, nil
 		}
 		contextChanged, recoveryErr := e.recoverContextOverflow(
@@ -685,6 +704,7 @@ func (e *Engine) modelStep(
 			send,
 		)
 		if recoveryErr != nil {
+			sampleLease.Release()
 			return nil, nil, totalUsage, lastEstimate, recoveryErr
 		}
 		retry, retryable := e.providerRetry(
@@ -700,8 +720,10 @@ func (e *Engine) modelStep(
 		)
 		if !retryable || ctx.Err() != nil {
 			if ctx.Err() != nil {
+				sampleLease.Release()
 				return blocks, nil, totalUsage, lastEstimate, ctx.Err()
 			}
+			e.finishFailedSample(sampleLease, err, meaningful)
 			return blocks, nil, totalUsage, lastEstimate,
 				exhaustedSampleRetry(err, meaningful)
 		}
@@ -712,7 +734,13 @@ func (e *Engine) modelStep(
 			retry,
 			shrinkThroughput,
 		); abort != nil {
+			sampleLease.Release()
 			return blocks, nil, totalUsage, lastEstimate, abort
+		}
+		if retry.Failure.Code == provider.FailureRateLimit {
+			sampleLease.NoteRateLimit(retry.EffectiveDelay)
+		} else {
+			sampleLease.Release()
 		}
 		if sendErr := send(CallingModel, Event{
 			ProviderRetry: &retry,
@@ -722,6 +750,7 @@ func (e *Engine) modelStep(
 				rateLimitRetries, rateLimitWaited,
 			),
 		}); sendErr != nil {
+			sampleLease.Release()
 			return nil, nil, totalUsage, lastEstimate, sendErr
 		}
 		if waitErr := waitRetryDelay(
@@ -731,12 +760,34 @@ func (e *Engine) modelStep(
 			return nil, nil, totalUsage, lastEstimate, waitErr
 		}
 		if retry.Failure.Code == provider.FailureRateLimit {
-			rateLimitRetries++
-			rateLimitWaited += retry.EffectiveDelay
+			rateLimitRetries, rateLimitWaited = e.recordRateLimitWait(
+				rateLimitRetries, rateLimitWaited, retry.EffectiveDelay,
+			)
 		} else {
 			providerRetries++
 		}
 	}
+}
+
+func (e *Engine) recordRateLimitWait(
+	retries uint32,
+	waited time.Duration,
+	delay time.Duration,
+) (uint32, time.Duration) {
+	return retries + 1, waited + delay
+}
+
+func (e *Engine) finishFailedSample(
+	lease *providerSampleLease,
+	err error,
+	meaningful bool,
+) {
+	failure := providerwire.ClassifyFailure(err, meaningful)
+	if failure.Code == provider.FailureRateLimit {
+		lease.NoteRateLimit(time.Duration(failure.RetryAfterMS) * time.Millisecond)
+		return
+	}
+	lease.Release()
 }
 
 func exhaustedSampleRetry(err error, meaningful bool) error {

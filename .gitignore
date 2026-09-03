@@ -4,7 +4,6 @@
 /web/node_modules/
 /.tmp/
 /.qcode/
-/.codehelper/
 # Machine-local provider runbooks may contain real credentials.
 /docs/ARK-LIVE.zh-CN.md
 /docs/DEEPSEEK-LIVE.zh-CN.md

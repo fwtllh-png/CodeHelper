@@ -39,4 +39,29 @@ describe("AgentDisclosure", () => {
     fireEvent.click(screen.getByRole("button", {name: "Inspect Read"}));
     expect(onInspect).toHaveBeenCalledWith("call-1");
   });
+
+  it("opens failed cards and shows reason plus usage", () => {
+    const entry: Extract<ConversationNode, {kind: "agent"}> = {
+      id: "agent-agent-2",
+      kind: "agent",
+      turnID: "turn_external",
+      sequence: 2,
+      agentID: "agent-2",
+      role: "review",
+      taskName: "Audit paxos",
+      status: "failed",
+      summary: "token budget exhausted: projected 17698, limit 15000",
+      reasonCode: "budget_exhausted",
+      usage: {inputTokens: 12817, outputTokens: 146},
+      state: "failed",
+      activities: []
+    };
+
+    render(<AgentDisclosure entry={entry} onInspect={() => undefined} />);
+
+    expect(screen.getByRole("button", {name: /Review · agent-2/})
+      .getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText(/budget exhausted/)).toBeTruthy();
+    expect(screen.getByText(/in 12817 \/ out 146/)).toBeTruthy();
+  });
 });

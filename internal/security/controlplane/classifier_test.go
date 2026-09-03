@@ -14,8 +14,6 @@ func TestClassifierProtectsRuntimeAndAgentMetadata(t *testing.T) {
 	}
 	for _, path := range []string{
 		".qcode/permissions.toml",
-		".CoDeHeLpEr/journal/ledger.jsonl",
-		".codehelper-worktree",
 		"nested/.git/config",
 		".agents/policy.json",
 		".codex/config.toml",

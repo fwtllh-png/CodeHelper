@@ -66,6 +66,10 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		return err
 	}
 	modelCapabilities := route.Model().Capabilities
+	sharedRateLimit := agentengine.NewSharedRateLimit()
+	if state.orchestration.subagents != nil {
+		state.orchestration.subagents.BindProviderGate(sharedRateLimit.Hot)
+	}
 	contextRuntime, err := buildContextRuntime(
 		state.options.PersistentStore,
 		state.config.runtimeSessionID,
@@ -91,6 +95,7 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		MaxRetryDelay:              execution.Timeout,
 		RateLimitMaxRetries:        execution.RateLimitRetryLimit,
 		RateLimitMaxWait:           execution.RateLimitWaitBudget(),
+		SharedRateLimit:            sharedRateLimit,
 		TokensPerMinute:            execution.TokensPerMinute,
 	}, ContextConfig: agentengine.ContextConfig{StaticContext: prompt.Messages,
 		ContextBudgets: budgets,

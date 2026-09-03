@@ -87,7 +87,14 @@ func (s scratchWorktrees) Provision(agentID string, _ Stance) (Worktree, error) 
 }
 
 func (s scratchWorktrees) Discard(worktree Worktree) error {
+	if strings.TrimSpace(worktree.Path) == "" ||
+		worktree.Path == s.root {
+		return nil
+	}
 	data, err := os.ReadFile(filepath.Join(worktree.Path, worktreeMarker))
+	if os.IsNotExist(err) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}

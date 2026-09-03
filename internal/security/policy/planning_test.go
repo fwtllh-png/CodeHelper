@@ -108,6 +108,45 @@ func TestPlanningDoesNotGateGitPush(t *testing.T) {
 	}
 }
 
+func TestAdaptivePlanningSkipsReadOnlySpawn(t *testing.T) {
+	runtime := DefaultRuntime(ModeAct, PermissionBypass)
+	runtime.ConfigurePlanning(PlanningAdaptive)
+	spawn := planningInvocation("spawn_agent", tool.CapabilityWrite, nil)
+	spawn.Access = tool.AccessWrite
+	spawn.Effect = tool.EffectContract{
+		Mode: tool.EffectFixed, Kind: tool.EffectAgentLifecycle,
+		Risk: tool.RiskMedium, Reversibility: tool.Bounded,
+		Approval: tool.ApprovalPolicyDefault,
+	}
+	spawn.Arguments = []byte(`{"role":"review","task_name":"audit"}`)
+	if decision := runtime.Evaluate(spawn); decision.Action != ActionAllow {
+		t.Fatalf("read-only spawn decision = %+v", decision)
+	}
+	spawn.Arguments = []byte(`{"role":"implementer","task_name":"patch"}`)
+	if decision := runtime.Evaluate(spawn); decision.Code != "plan_required" {
+		t.Fatalf("writing spawn decision = %+v", decision)
+	}
+}
+
+func TestReadOnlySpawnSkipsApproval(t *testing.T) {
+	runtime := DefaultRuntime(ModeAct, PermissionSuggest)
+	spawn := planningInvocation("spawn_agent", tool.CapabilityWrite, nil)
+	spawn.Access = tool.AccessWrite
+	spawn.Effect = tool.EffectContract{
+		Mode: tool.EffectFixed, Kind: tool.EffectAgentLifecycle,
+		Risk: tool.RiskMedium, Reversibility: tool.Bounded,
+		Approval: tool.ApprovalPolicyDefault,
+	}
+	spawn.Arguments = []byte(`{"role":"review","task_name":"audit"}`)
+	if decision := runtime.Evaluate(spawn); decision.Action != ActionAllow {
+		t.Fatalf("read-only spawn approval = %+v", decision)
+	}
+	spawn.Arguments = []byte(`{"role":"implementer","task_name":"patch"}`)
+	if decision := runtime.Evaluate(spawn); decision.Action != ActionAsk {
+		t.Fatalf("writing spawn approval = %+v", decision)
+	}
+}
+
 func TestUnknownPlanningPolicyFailsClosed(t *testing.T) {
 	runtime := DefaultRuntime(ModeAct, PermissionBypass)
 	runtime.ConfigurePlanning("unknown")

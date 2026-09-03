@@ -56,6 +56,9 @@ type Result struct {
 	Usage             ResultUsage                  `json:"usage"`
 	PermissionDigests []string                     `json:"permission_digests,omitempty"`
 	Context           ContextReceipt               `json:"context"`
+	ReasonCode        string                       `json:"reason_code,omitempty"`
+	Retryable         bool                         `json:"retryable,omitempty"`
+	SuggestedAction   string                       `json:"suggested_action,omitempty"`
 }
 
 // WritePaths lists the paths the child actually changed, which is what the
@@ -94,8 +97,10 @@ func (r Result) Digest() string {
 		verdict != protocol.ReceiptNotEvaluated {
 		parts = append(parts, "verify="+verdict)
 	}
-	if len(r.Unresolved) > 0 {
-		parts = append(parts, fmt.Sprintf("%d unresolved", len(r.Unresolved)))
+	if reason := strings.TrimSpace(r.ReasonCode); reason != "" {
+		parts = append(parts, reason)
+	} else if len(r.Unresolved) > 0 {
+		parts = append(parts, firstSettlementNote(r.Unresolved, "", "unresolved"))
 	}
 	if len(parts) == 0 {
 		return string(r.Status)

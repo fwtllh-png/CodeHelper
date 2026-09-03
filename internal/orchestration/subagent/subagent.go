@@ -240,6 +240,9 @@ func Open(options Options) (*Manager, error) {
 	if manager.sessionID == "" {
 		manager.sessionID = "session-local"
 	}
+	if manager.workspace == "" {
+		manager.workspace = options.Root
+	}
 	manager.mailbox.defaultSession = manager.sessionID
 	manager.wait = sync.NewCond(&manager.mu)
 	manager.mailbox.persist = manager.recordMessage
@@ -282,11 +285,12 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	if sessionID == "" {
 		return nil, errors.New("subagent session id is required")
 	}
+	intent.ParentID = BindSessionParent(intent.ParentID)
 	depth := 0
 	parentPath := "/root"
 	executionRoot := m.workspace
 	var parent *Agent
-	if intent.ParentID != "" {
+	if !IsSessionParent(intent.ParentID) {
 		var ok bool
 		parent, ok = m.agents[intent.ParentID]
 		if !ok || parent.Closed {
@@ -347,23 +351,32 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		OwnedPaths: append([]string(nil), intent.OwnedPaths...),
 		Budget:     requested,
 	}
-	if err := m.recordWorktreeAllocation(allocation); err != nil {
-		return nil, fmt.Errorf("record worktree allocation: %w", err)
-	}
-	// The stance decides what kind of directory the agent needs, so routing has
-	// to happen before provisioning: an explore child must not pay for a checkout.
-	wt, err := m.trees.Provision(id, spec.Stance)
-	if err != nil {
-		m.clearAllocationWithoutWorktree(id)
-		return nil, err
-	}
-	if wt.Serialized {
-		_ = m.clearWorktreeAllocation(id)
-	}
 	if spec.Stance == StanceReadOnly && parent != nil &&
 		strings.TrimSpace(parent.Worktree) != "" {
 		executionRoot = parent.Worktree
-	} else if spec.Stance != StanceReadOnly {
+	}
+	var wt Worktree
+	owned := false
+	if spec.Stance == StanceReadOnly {
+		// Read-only children share the host (or parent) workspace. A scratch or
+		// git worktree would be unused isolation cost and a leftover directory.
+		wt = Worktree{ID: id, Path: executionRoot}
+	} else {
+		if err := m.recordWorktreeAllocation(allocation); err != nil {
+			return nil, fmt.Errorf("record worktree allocation: %w", err)
+		}
+		// The stance decides what kind of directory the agent needs, so routing has
+		// to happen before provisioning: an explore child must not pay for a checkout.
+		provisioned, err := m.trees.Provision(id, spec.Stance)
+		if err != nil {
+			m.clearAllocationWithoutWorktree(id)
+			return nil, err
+		}
+		wt = provisioned
+		owned = true
+		if wt.Serialized {
+			_ = m.clearWorktreeAllocation(id)
+		}
 		executionRoot = wt.Path
 	}
 	agent := &Agent{
@@ -385,9 +398,12 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 		Budget:           requested,
 	}
 	if err := m.recordSpawnLocked(agent); err != nil {
-		discardErr := m.trees.Discard(wt)
-		if discardErr == nil {
-			_ = m.clearWorktreeAllocation(id)
+		var discardErr error
+		if owned {
+			discardErr = m.trees.Discard(wt)
+			if discardErr == nil {
+				_ = m.clearWorktreeAllocation(id)
+			}
 		}
 		return nil, errors.Join(
 			fmt.Errorf("record agent spawn: %w", err),
@@ -396,7 +412,9 @@ func (m *Manager) spawn(intent DelegationIntent, spec RoleSpec) (*Agent, error) 
 	}
 	_ = m.clearWorktreeAllocation(id)
 	m.agents[id] = agent
-	m.worktrees[id] = &wt
+	if owned {
+		m.worktrees[id] = &wt
+	}
 	ledger.TotalSpawned++
 	m.ledgers[sessionID] = ledger
 	m.wait.Broadcast()
@@ -620,8 +638,15 @@ func (m *Manager) IsDescendant(parentID, agentID string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	current := m.agents[agentID]
+	if current == nil {
+		return false
+	}
+	if IsSessionParent(parentID) && IsSessionParent(current.Parent) {
+		return true
+	}
 	for current != nil && current.Parent != "" {
-		if current.Parent == parentID {
+		if current.Parent == parentID ||
+			(IsSessionParent(parentID) && IsSessionParent(current.Parent)) {
 			return true
 		}
 		current = m.agents[current.Parent]
@@ -881,7 +906,9 @@ func (m *Mailbox) prepareLocked(message Message) Message {
 func (m *Mailbox) Drain(to string) []Message {
 	messages := m.Receive(to)
 	if err := m.Ack(messages); err != nil {
-		return nil
+		// Ack failure must not hide already received messages. Delivery can
+		// retry from pending state; callers still need the payload now.
+		return messages
 	}
 	return messages
 }

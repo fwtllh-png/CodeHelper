@@ -2473,7 +2473,24 @@ textarea:disabled {
   max-height: 32px;
 }
 
+.progressAgentsSection {
+  grid-column: 1 / -1;
+  margin: 6px 8px 8px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+  background: var(--ch-panel-subtle);
+}
+
+.progressAgentsSection[data-collapsed] {
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+}
+
 .planDisclosure,
+.progressAgentDisclosure,
 .turnQueueSummary {
   display: flex;
   width: 100%;
@@ -2487,12 +2504,14 @@ textarea:disabled {
 }
 
 .planDisclosure:hover,
+.progressAgentDisclosure:hover,
 .turnQueueSummary:hover {
   background: var(--ch-panel-subtle);
   color: var(--ch-text);
 }
 
 .planDisclosure > svg,
+.progressAgentDisclosure > svg,
 .turnQueueSummary > svg:last-child {
   flex: 0 0 auto;
   margin-left: auto;
@@ -2500,6 +2519,7 @@ textarea:disabled {
 }
 
 .planDisclosure > svg:not([data-expanded]),
+.progressAgentDisclosure > svg:not([data-expanded]),
 .turnQueueSummary > svg:last-child:not([data-expanded]) {
   transform: rotate(-90deg);
 }
@@ -2529,6 +2549,55 @@ textarea:disabled {
   white-space: nowrap;
 }
 
+.progressAgentsHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.progressAgentsHeader .progressAgentDisclosure {
+  min-width: 0;
+}
+
+.agentSummary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.agentSummary > svg {
+  flex: 0 0 auto;
+}
+
+.agentSummary strong {
+  color: var(--ch-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.agentSummary small {
+  overflow: hidden;
+  color: var(--ch-text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progressTrajectory {
+  flex: 0 0 auto;
+  padding: 0 10px 0 0;
+  color: var(--ch-accent-strong);
+  background: transparent;
+  font-size: 10px;
+  line-height: 32px;
+}
+
+.progressTrajectory:hover,
+.progressTrajectory:focus-visible {
+  color: var(--ch-text);
+}
+
 .progressSection + .progressSection {
   border-left: 1px solid var(--ch-border);
 }
@@ -2539,27 +2608,6 @@ textarea:disabled {
 
 .progressPlan + .progressSection {
   border-left: 0;
-}
-
-.progressLabel {
-  display: flex;
-  align-items: center;
-  color: var(--ch-text-muted);
-  font-size: 10px;
-}
-
-.progressLabel small,
-.progressLabel button {
-  margin-left: auto;
-}
-
-.progressLabel button {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ch-accent-strong);
-  font-size: 10px;
-  cursor: pointer;
 }
 
 .progressTasks,
@@ -2638,8 +2686,12 @@ textarea:disabled {
 
 .progressAgents li {
   grid-template-columns: 8px minmax(0, 1fr) auto;
-  gap: 5px;
-  font-size: 11px;
+  gap: 7px;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-top: 1px solid var(--ch-border);
+  font-size: 12px;
 }
 
 .progressAgents li > span {
@@ -2650,6 +2702,12 @@ textarea:disabled {
   background: var(--ch-text-muted);
 }
 
+.progressAgents li > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .progressAgents li > span[data-status="running"],
 .progressAgents li > span[data-status="active"] {
   background: var(--ch-accent);
@@ -2657,6 +2715,10 @@ textarea:disabled {
 
 .progressAgents small {
   grid-column: 2 / -1;
+  overflow: hidden;
+  padding-bottom: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {

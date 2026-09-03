@@ -49,7 +49,7 @@ func (m *Manager) reconcileOrphanWorktrees() error {
 			}
 			continue
 		}
-		if edge.ParentID != "" {
+		if edge.ParentID != "" && !IsSessionParent(edge.ParentID) {
 			parent, ok := m.agents[edge.ParentID]
 			if !ok || parent.SessionID != edge.SessionID {
 				allocationErr := errors.New(

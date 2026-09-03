@@ -374,23 +374,31 @@ func (t *Tool) visibility() tool.Visibility {
 }
 
 func agentSnapshot(agent subagent.Agent) map[string]any {
-	snapshot := map[string]any{
-		"agent_id": agent.ID, "agent_path": agent.Path, "revision": agent.Revision,
-		"role": string(agent.Role), "profile": agent.Profile,
-		"stance": string(agent.Stance), "depth": agent.Depth, "worktree": agent.Worktree,
-		"isolated": agent.Isolated, "serialized": agent.Serialized, "base_rev": agent.BaseRev,
-		"parent_id": agent.Parent, "parent_path": agent.ParentPath,
-		"status":  string(agent.Status),
-		"turn_id": agent.TurnID, "last_message": agent.LastMessage, "closed": agent.Closed,
-		"task_name": agent.TaskName, "expected_output": agent.ExpectedOutput,
-		"owned_paths": agent.OwnedPaths, "delegation_trigger": agent.DelegationTrigger,
+	return agentCard(agent)
+}
+
+func agentCard(agent subagent.Agent) map[string]any {
+	card := map[string]any{
+		"agent_id": agent.ID, "status": string(agent.Status),
+		"task_name": agent.TaskName, "parent_id": agent.Parent,
+		"summary": agent.LastMessage,
 	}
-	// The structured result is the point of waiting on a child: without it the
-	// parent would only learn that the child stopped, not what it established.
 	if agent.Result != nil {
-		snapshot["result"] = agent.Result
+		if agent.Result.ReasonCode != "" {
+			card["reason_code"] = agent.Result.ReasonCode
+		}
+		if agent.Result.Retryable {
+			card["retryable"] = true
+		}
+		if action := agent.Result.SuggestedAction; action != "" {
+			card["suggested_action"] = action
+		}
+		if summary := strings.TrimSpace(agent.Result.Summary); summary != "" {
+			card["summary"] = summary
+		}
+		card["usage"] = agent.Result.Usage
 	}
-	return snapshot
+	return card
 }
 
 func (t *Tool) wait(ctx context.Context, input operationInput) (tool.Result, error) {

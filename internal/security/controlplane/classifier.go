@@ -11,13 +11,11 @@ import (
 var ErrProtected = errors.New("security control-plane path is protected")
 
 var protectedNames = map[string]struct{}{
-	".agents":              {},
-	".qcode":               {},
-	".qcode-worktree":      {},
-	".codehelper":          {},
-	".codehelper-worktree": {},
-	".codex":               {},
-	".git":                 {},
+	".agents":         {},
+	".qcode":          {},
+	".qcode-worktree": {},
+	".codex":          {},
+	".git":            {},
 }
 
 type Classification struct {

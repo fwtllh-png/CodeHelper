@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fwtllh-png/QCode/internal/orchestration/subagent"
 	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
@@ -87,7 +88,7 @@ func (s *Store) ListAgentChildrenSession(
 	if s.closed {
 		return nil, ErrClosed
 	}
-	rows, err := s.sqlite.DB().QueryContext(ctx, `
+	query := `
 		SELECT workspace_root, session_id, parent_agent_id, parent_path,
 		       agent_id, path, execution_root, thread_id, turn_id, status, revision,
 		       role, profile, stance, depth, worktree, isolated, serialized, base_revision,
@@ -105,7 +106,32 @@ func (s *Store) ListAgentChildrenSession(
 		       source_sequence, updated_at
 		FROM agent_nodes
 		WHERE workspace_root = ? AND session_id = ? AND parent_agent_id = ?
-		ORDER BY agent_id`, workspaceRoot, sessionID, parentID)
+		ORDER BY agent_id`
+	args := []any{workspaceRoot, sessionID, parentID}
+	if subagent.IsSessionParent(parentID) {
+		query = `
+		SELECT workspace_root, session_id, parent_agent_id, parent_path,
+		       agent_id, path, execution_root, thread_id, turn_id, status, revision,
+		       role, profile, stance, depth, worktree, isolated, serialized, base_revision,
+		       task_name, owned_paths_json, last_message, max_steps, max_tokens,
+		       max_cost_microunits,
+		       COALESCE((SELECT spent_tokens FROM agent_budget_ledger
+		         WHERE workspace_root = agent_nodes.workspace_root
+		           AND session_id = agent_nodes.session_id
+		           AND agent_id = agent_nodes.agent_id), 0),
+		       COALESCE((SELECT spent_microunits FROM agent_budget_ledger
+		         WHERE workspace_root = agent_nodes.workspace_root
+		           AND session_id = agent_nodes.session_id
+		           AND agent_id = agent_nodes.agent_id), 0),
+		       reserved_tokens, reserved_microunits,
+		       source_sequence, updated_at
+		FROM agent_nodes
+		WHERE workspace_root = ? AND session_id = ?
+		  AND parent_agent_id IN ('', ?)
+		ORDER BY agent_id`
+		args = []any{workspaceRoot, sessionID, subagent.SessionParentID}
+	}
+	rows, err := s.sqlite.DB().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

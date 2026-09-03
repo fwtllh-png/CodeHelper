@@ -3773,6 +3773,9 @@
         "message": {
           "type": "string"
         },
+        "reason_code": {
+          "type": "string"
+        },
         "session_id": {
           "type": "string"
         },

@@ -30,6 +30,7 @@ type ProviderConfig struct {
 	MaxRetryDelay              time.Duration
 	RateLimitMaxRetries        int
 	RateLimitMaxWait           time.Duration
+	SharedRateLimit            *SharedRateLimit
 	TokensPerMinute            uint64
 	ReasoningEffort            string
 	NativeSearch               bool

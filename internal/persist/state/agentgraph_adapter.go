@@ -90,7 +90,8 @@ func NewAgentGraph(
 				AgentID:       transition.AgentID,
 				WorkspaceRoot: workspaceRoot, SessionID: transition.SessionID,
 				Status: string(transition.Status), Message: transition.Message,
-				Detail: detail,
+				ReasonCode: transition.ReasonCode,
+				Detail:     detail,
 			}); err != nil {
 				return err
 			}
@@ -203,7 +204,9 @@ func NewAgentGraph(
 					if err := appendEvent(context.Background(), &protocol.AgentStatusData{
 						AgentID: transition.AgentID, WorkspaceRoot: workspaceRoot,
 						SessionID: targetSessionID, Status: string(transition.Status),
-						Message: transition.Message, Detail: detail,
+						Message:    transition.Message,
+						ReasonCode: transition.ReasonCode,
+						Detail:     detail,
 					}); err != nil {
 						return err
 					}

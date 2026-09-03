@@ -958,6 +958,48 @@ func (c *childRuntime) retryChildSettlement(
 	}
 }
 
+func (c *childRuntime) EstimateTurn(
+	ctx context.Context,
+	agentID, prompt string,
+) (subagent.TurnEstimate, error) {
+	c.mu.Lock()
+	threads, manager, bound := c.threads, c.manager, c.bound
+	c.mu.Unlock()
+	if !bound || threads == nil || manager == nil {
+		return subagent.TurnEstimate{}, protocol.NewProblem(
+			protocol.CodeUnavailable, "child agent runtime is not bound to a session", false, nil,
+		)
+	}
+	agent, ok := manager.Agent(agentID)
+	if !ok {
+		return subagent.TurnEstimate{}, fmt.Errorf("agent %s is unavailable", agentID)
+	}
+	spec, err := c.specFor(agent)
+	if err != nil {
+		return subagent.TurnEstimate{}, err
+	}
+	threadID := protocol.ThreadID(subagent.ThreadIDFor(agentID))
+	_, registered := threads.ChildSpecFor(threadID)
+	if !registered {
+		if err := threads.RegisterChild(threadID, spec); err != nil {
+			return subagent.TurnEstimate{}, err
+		}
+	}
+	projected, limit, err := threads.EstimateFirstWindow(threadID, prompt)
+	if !registered {
+		c.releaseThread(threadID)
+	}
+	if err != nil {
+		return subagent.TurnEstimate{}, err
+	}
+	if agent.Budget.MaxTokens > 0 {
+		limit = agent.Budget.MaxTokens
+	}
+	return subagent.TurnEstimate{
+		ProjectedTokens: projected, LimitTokens: limit,
+	}, nil
+}
+
 func (t *childTurn) result(threadID protocol.ThreadID, status subagent.Status) subagent.Result {
 	result := subagent.Result{
 		AgentID: t.agentID, ThreadID: string(threadID), TurnID: string(t.turnID),
@@ -996,5 +1038,12 @@ func (t *childTurn) result(threadID protocol.ThreadID, status subagent.Status) s
 	if t.verify != nil && t.verify.Status != "" {
 		result.Verification.Verify = t.verify.Status
 	}
+	result.ReasonCode, result.Summary, result.Retryable = subagent.ClassifySettlement(
+		status, result.Unresolved, result.Summary,
+	)
+	if result.Summary == "" {
+		result.Summary = t.text
+	}
+	result.SuggestedAction = subagent.SuggestedAction(result.ReasonCode)
 	return result
 }

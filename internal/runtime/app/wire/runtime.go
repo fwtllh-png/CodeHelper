@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 	"github.com/fwtllh-png/QCode/internal/config"
@@ -334,8 +335,14 @@ func childRoleAllowsTool(spec app.ChildSpec, descriptor tool.Descriptor) bool {
 			if descriptor.Capability == tool.CapabilityRead {
 				return true
 			}
-		case "verify", "process.read_only":
-			if descriptor.Capability == tool.CapabilityProcess {
+		case "process.read_only":
+			if descriptor.Capability == tool.CapabilityProcess &&
+				descriptor.AccessMode == tool.AccessRead &&
+				!mutatingProcessTool(descriptor.Name) {
+				return true
+			}
+		case "verify":
+			if strings.HasPrefix(descriptor.Name, "quality_") {
 				return true
 			}
 		case descriptor.Name:
@@ -343,6 +350,15 @@ func childRoleAllowsTool(spec app.ChildSpec, descriptor tool.Descriptor) bool {
 		}
 	}
 	return descriptor.Name == "turn_complete" || descriptor.Name == "result_get"
+}
+
+func mutatingProcessTool(name string) bool {
+	switch name {
+	case "exec_command", "write_stdin":
+		return true
+	default:
+		return false
+	}
 }
 
 func isAgentLifecycleTool(name string) bool {

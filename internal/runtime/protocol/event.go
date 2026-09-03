@@ -1375,6 +1375,7 @@ type AgentStatusData struct {
 	SessionID     string          `json:"session_id"`
 	Status        string          `json:"status"`
 	Message       string          `json:"message,omitempty"`
+	ReasonCode    string          `json:"reason_code,omitempty"`
 	Detail        json.RawMessage `json:"detail,omitempty"`
 }
 

@@ -180,7 +180,9 @@ type Execution struct {
 	// Zero leaves the attempt count unbounded; the wait budget still applies.
 	RateLimitRetryLimit int `json:"rate_limit_retry_limit" toml:"rate_limit_retry_limit"`
 	// RateLimitWait is the maximum cumulative 429 wait per Model Sample.
-	// Zero inherits Timeout when the engine is constructed.
+	// Zero inherits Timeout when the engine is constructed. The default is a
+	// distinct public ceiling from connection Timeout because Retry-After
+	// recovery is a different plane.
 	RateLimitWait time.Duration `json:"rate_limit_wait" toml:"-"`
 	// TokensPerMinute is the Operator TPM contract for Provider Throughput
 	// Admission. Zero means unknown; Runtime does not invent a model default.
@@ -198,8 +200,8 @@ type Execution struct {
 }
 
 // RateLimitWaitBudget is the cumulative 429 wait bound used by the engine.
-// A zero RateLimitWait inherits Timeout so the default is a public contract
-// field rather than a hidden constant.
+// A zero RateLimitWait inherits Timeout; a non-zero value is the explicit
+// public ceiling used by Defaults.
 func (e Execution) RateLimitWaitBudget() time.Duration {
 	if e.RateLimitWait > 0 {
 		return e.RateLimitWait

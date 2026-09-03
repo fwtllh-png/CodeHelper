@@ -630,7 +630,7 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 	}
 	agentID, _ := body["agent_id"].(string)
 	worktree, _ := body["worktree"].(string)
-	if agentID == "" || worktree == "" {
+	if agentID == "" {
 		t.Fatalf("spawn = %+v", body)
 	}
 
@@ -672,8 +672,11 @@ func TestAgentSpawnWaitCloseHermetic(t *testing.T) {
 		t.Fatalf("wait agents = %+v", waitBody)
 	}
 	first, _ := agents[0].(map[string]any)
-	if first["status"] != "completed" {
+	if first["status"] != "completed" || first["summary"] == "" {
 		t.Fatalf("wait agent = %+v", first)
+	}
+	if _, leaked := first["agent_path"]; leaked {
+		t.Fatalf("wait card leaked full snapshot: %+v", first)
 	}
 
 	closed := execute(t, registry, "close_agent", map[string]any{"agent_id": agentID})
@@ -796,6 +799,57 @@ func TestAgentInterruptFollowUpViaTools(t *testing.T) {
 	}
 	if len(runtime.turns) != 2 {
 		t.Fatalf("turns = %#v", runtime.turns)
+	}
+}
+
+func TestWaitAgentReturnsCompactRetryableCard(t *testing.T) {
+	manager, err := subagent.Open(subagent.Options{
+		Root: t.TempDir(), Gate: &recordingGate{}, Runtime: &dualRuntime{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tool.NewRegistry(nil, nil)
+	if err := agenttool.Register(registry, agenttool.Options{
+		Manager: manager, Handles: handle.NewStore(), SessionID: "session-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	spawned := execute(
+		t, registry, "spawn_agent",
+		spawnInput("audit", "audit budget", "review"),
+	)
+	var body map[string]any
+	if err := json.Unmarshal([]byte(spawned.Content), &body); err != nil {
+		t.Fatal(err)
+	}
+	agentID, _ := body["agent_id"].(string)
+	if err := manager.Settle(subagent.Result{
+		AgentID: agentID, Status: subagent.StatusFailed,
+		Summary: "resource_exhausted: token budget exhausted: projected 17698, limit 15000",
+		ReasonCode:      subagent.ReasonBudgetExhausted,
+		Retryable:       true,
+		SuggestedAction: subagent.SuggestedAction(subagent.ReasonBudgetExhausted),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waited := execute(t, registry, "wait_agent", map[string]any{
+		"agent_ids": []string{agentID},
+	})
+	var waitBody map[string]any
+	if err := json.Unmarshal([]byte(waited.Content), &waitBody); err != nil {
+		t.Fatal(err)
+	}
+	agents, _ := waitBody["agents"].([]any)
+	if len(agents) != 1 {
+		t.Fatalf("wait = %+v", waitBody)
+	}
+	card, _ := agents[0].(map[string]any)
+	if card["reason_code"] != subagent.ReasonBudgetExhausted ||
+		card["retryable"] != true ||
+		card["suggested_action"] == "" ||
+		card["agent_path"] != nil {
+		t.Fatalf("compact wait card = %+v", card)
 	}
 }
 

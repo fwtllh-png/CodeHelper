@@ -70,7 +70,7 @@ func Defaults() Config {
 			IdleTimeout:                60 * time.Second, MaxConcurrent: 8,
 			ProviderRetryLimit:  3,
 			RateLimitRetryLimit: 0,
-			RateLimitWait:       0,
+			RateLimitWait:       10 * time.Minute,
 			TokensPerMinute:     0,
 
 			Verify: Verify{

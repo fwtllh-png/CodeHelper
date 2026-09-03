@@ -246,11 +246,11 @@ func TestCloseDrainsToolExecutionWhenWorktreeCleanupIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agent, err := manager.Spawn("", subagent.RoleExplore, "execute")
+	agent, err := manager.Spawn("", subagent.RoleGeneral, "execute")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Spawn("", subagent.RoleExplore, "overlap"); err != nil {
+	if _, err := manager.Spawn("", subagent.RoleGeneral, "overlap"); err != nil {
 		t.Fatal(err)
 	}
 	executed := make(chan error, 1)

@@ -52,9 +52,11 @@ Web Settings 会显示 Provider、Model、Credential 状态与校验结果。确
 - HTTP 429 `rate_limit` 是 Provider 请求失败与等待重试，不是输出截断；
 - 同一逻辑 Sample 的 Attempt 以 `provider.attempt` 事件公开，不要从 Usage Sample
   编号跳跃反推重试次数；
-- 429 等待受 `execution.rate_limit_wait`（默认继承 `execution.timeout`）和
-  `execution.rate_limit_retry_limit` 约束。超出预算时 Turn 进入可恢复 Blocked，
-  消息为 `provider rate limit retry budget exhausted`，不会无限透明重试。
+- 429 等待受 `execution.rate_limit_wait`（默认 `10m`）和
+  `execution.rate_limit_retry_limit`（默认不限次数）约束。同一 Session 的 Parent
+  与 Child 不会并行发送 Provider Sample；冷却未解除时也不再并行 spawn。超出预算时
+  Turn 进入可恢复 Blocked，消息为 `provider rate limit retry budget exhausted`，
+  不会无限透明重试。Continue 会刷新等待预算，但仍先等满剩余 `Retry-After`。
 - `provider request failed during response_headers` 是等待响应头超时
   （默认继承 `execution.timeout`，通常 `2m`），不是上下文溢出。429 恢复不消耗
   `execution.provider_retry_limit`；随后的 Timeout 仍按该预算重试。Provider

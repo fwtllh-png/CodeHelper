@@ -191,6 +191,22 @@ func (e *Engine) measureTokenWindow(
 	}, nil
 }
 
+// EstimateFirstWindow projects the first provider sample for prompt using the
+// same token window as a live child turn.
+func (e *Engine) EstimateFirstWindow(prompt string) (uint64, uint64) {
+	if e == nil {
+		return 0, 0
+	}
+	history := []provider.Message{provider.TextMessage(provider.RoleUser, prompt)}
+	snapshot := e.contextBudgetSnapshot(history)
+	projected := snapshot.FullActiveTokens + snapshot.OutputReserve
+	limit := e.options.Budget.MaxTurnTokens
+	if limit == 0 {
+		limit = e.options.Budget.MaxTokens
+	}
+	return projected, limit
+}
+
 func (e *Engine) contextBudgetSnapshot(history []provider.Message) ContextBudgetSnapshot {
 	value := agentcontext.LedgerInput{
 		Stable: e.promptMessages(), History: history,

@@ -21,6 +21,22 @@ func TestRetryPolicyRateLimitAttemptBudget(t *testing.T) {
 	}
 }
 
+func TestRetryPolicySharedBudgetDoesNotChangeSampleRetryNumber(t *testing.T) {
+	policy := RetryPolicy{
+		RateLimitMaxRetries:    5,
+		RateLimitRetries:       0,
+		SharedRateLimitRetries: 3,
+	}
+	retry, ok := policy.Decide(rateLimitError(1), false, 0, false)
+	if !ok || retry.Retry != 1 {
+		t.Fatalf("sample retry must stay per-sample, got %+v", retry)
+	}
+	policy.SharedRateLimitRetries = 5
+	if _, ok := policy.Decide(rateLimitError(1), false, 0, false); ok {
+		t.Fatal("shared pot should exhaust the sample")
+	}
+}
+
 func TestRetryPolicyRateLimitWaitBudgetUsesFullProviderDelay(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	policy := RetryPolicy{

@@ -286,6 +286,13 @@ func (m *ThreadManager) StartTurn(
 	if err != nil {
 		return err
 	}
+	if payload != nil && !payload.Idle {
+		if _, child := m.ChildSpecFor(payload.ThreadID); !child {
+			if engine := adapter.Underlying(); engine != nil {
+				engine.OptionsSeed().SharedRateLimit.BeginUserTurn()
+			}
+		}
+	}
 	m.bindTurn(string(payload.TurnID), payload.ThreadID)
 	m.enter(payload.ThreadID)
 	defer m.leave(payload.ThreadID)
@@ -685,6 +692,22 @@ func (m *ThreadManager) History(threadID protocol.ThreadID) ([]provider.Message,
 		return nil, err
 	}
 	return adapter.History(), nil
+}
+
+func (m *ThreadManager) EstimateFirstWindow(
+	threadID protocol.ThreadID,
+	prompt string,
+) (uint64, uint64, error) {
+	adapter, err := m.forThread(threadID)
+	if err != nil {
+		return 0, 0, err
+	}
+	engine := adapter.Underlying()
+	if engine == nil {
+		return 0, 0, errors.New("thread engine is unavailable")
+	}
+	projected, limit := engine.EstimateFirstWindow(prompt)
+	return projected, limit, nil
 }
 
 func (m *ThreadManager) ContextEngine(threadID string) (*agentengine.Engine, error) {

@@ -226,6 +226,25 @@ func TestPlanModeAllowsOnlyReadOnlyProcessEffects(t *testing.T) {
 	}
 }
 
+func TestNormalizeEffectReadOnlySpawnIsLowRisk(t *testing.T) {
+	review := effectInvocation(
+		"spawn_agent", CapabilityWrite, tool.AccessWrite, tool.SandboxNone,
+	)
+	review.Arguments = json.RawMessage(`{"role":"review"}`)
+	got := NormalizeEffect(review)
+	if got.Kind != EffectAgentLifecycle || got.Risk != RiskLow {
+		t.Fatalf("review spawn effect = %+v", got)
+	}
+	writer := effectInvocation(
+		"spawn_agent", CapabilityWrite, tool.AccessWrite, tool.SandboxNone,
+	)
+	writer.Arguments = json.RawMessage(`{"role":"implementer"}`)
+	got = NormalizeEffect(writer)
+	if got.Kind != EffectAgentLifecycle || got.Risk != RiskMedium {
+		t.Fatalf("implementer spawn effect = %+v", got)
+	}
+}
+
 func TestBoundedAutoReview(t *testing.T) {
 	network := effectInvocation(
 		"web_fetch", CapabilityNetwork, tool.AccessRead, tool.SandboxNone,

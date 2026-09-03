@@ -208,45 +208,35 @@ func (t *Tool) spawn(ctx context.Context, input operationInput) (tool.Result, er
 		parentID, trigger = caller.ID, subagent.TriggerSystem
 	}
 	objective := strings.TrimSpace(input.Objective)
-	child, err := t.control.SpawnIntentContext(ctx, subagent.DelegationIntent{
-		SessionID:      sessionID,
-		TaskName:       strings.TrimSpace(input.TaskName),
-		Role:           role,
-		Objective:      objective,
-		ExpectedOutput: strings.TrimSpace(input.ExpectedOutput),
-		OwnedPaths:     input.OwnedPaths,
-		ParentID:       parentID,
-		Trigger:        trigger,
-		Budget: subagent.AgentBudget{
-			MaxSteps: input.MaxSteps, MaxTokens: input.MaxTokens,
-			MaxCostUSD: input.MaxCostUSD,
+	identity := tool.InvocationIdentityFrom(ctx)
+	delegated, err := t.control.Delegate(ctx, subagent.DelegationRequest{
+		Intent: subagent.DelegationIntent{
+			SessionID:      sessionID,
+			TaskName:       strings.TrimSpace(input.TaskName),
+			Role:           role,
+			Objective:      objective,
+			ExpectedOutput: strings.TrimSpace(input.ExpectedOutput),
+			OwnedPaths:     input.OwnedPaths,
+			ParentID:       parentID,
+			Trigger:        trigger,
+			Budget: subagent.AgentBudget{
+				MaxSteps: input.MaxSteps, MaxTokens: input.MaxTokens,
+				MaxCostUSD: input.MaxCostUSD,
+			},
+		},
+		ContextMode: subagent.ContextMode(strings.TrimSpace(input.ContextMode)),
+		LastTurns:   input.ContextTurns,
+		Source: subagent.ContextSourceRef{
+			ThreadID: identity.ThreadID,
+			TurnID:   identity.TurnID,
 		},
 	})
 	if err != nil {
 		return tool.Result{}, err
 	}
-	roleSpec, err := t.control.RoleSpec(role)
-	if err != nil {
-		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
-	}
-	identity := tool.InvocationIdentityFrom(ctx)
-	fork, err := t.control.ForkContext(ctx, subagent.ContextRequest{
-		Mode:      subagent.ContextMode(strings.TrimSpace(input.ContextMode)),
-		LastTurns: input.ContextTurns,
-		Source: subagent.ContextSourceRef{
-			ThreadID: identity.ThreadID,
-			TurnID:   identity.TurnID,
-		},
-		Agent: *child, Role: roleSpec, Objective: objective,
-		Trigger: child.DelegationTrigger,
-	})
-	if err != nil {
-		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
-	}
-	turn, err := t.control.Takeover(ctx, child.ID, fork.Prompt)
-	if err != nil {
-		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
-	}
+	child := delegated.Agent
+	fork := delegated.Fork
+	turn := delegated.Turn
 	threadID := subagent.ThreadIDFor(child.ID)
 	transcript := fmt.Sprintf(
 		"agent_id=%s\nthread_id=%s\nrole=%s\nprofile=%s\nstance=%s\ndepth=%d\nworktree=%s\nparent=%s\ncontext_mode=%s\ncontext_digest=%s\nprompt=%s\nturn=%s\n",
@@ -280,10 +270,7 @@ func (t *Tool) spawn(ctx context.Context, input operationInput) (tool.Result, er
 	if err != nil {
 		return tool.Result{}, errors.Join(err, t.cleanupSpawnedChild(child.ID))
 	}
-	mailboxTo := parentID
-	if mailboxTo == "" {
-		mailboxTo = "parent"
-	}
+	mailboxTo := subagent.BindSessionParent(child.Parent)
 	message, err := t.control.Mailbox().Enqueue(subagent.Message{
 		SessionID: sessionID, From: child.ID, To: mailboxTo,
 		Kind: subagent.MessageContext, Body: receiptBody,

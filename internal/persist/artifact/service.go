@@ -255,12 +255,16 @@ func (r *Service) PrepareTurnRecovery(
 		prompt = fmt.Sprintf(
 			TurnRecoveryPromptPrefix+" Do not infer the "+
 				"task from an older conversation Turn.\n\n"+
-				"Source Turn ID: %s\nTerminal state: %s\n\n"+
-				"Original model-visible request:\n<source_request>\n%s\n"+
-				"</source_request>",
+				"Original user request:\n<source_request>\n%s\n"+
+				"</source_request>\n\n"+
+				"Source Turn ID: %s\n"+
+				"Previous attempt ended as %s. That outcome is already "+
+				"recorded. Do not restate it in thinking, do not re-verify "+
+				"it, and do not restart discovery that recovery_evidence "+
+				"already lists.",
+			sourcePrompt,
 			request.SourceTurnID,
 			terminalState,
-			sourcePrompt,
 		)
 		if output := strings.TrimSpace(partialOutput.String()); output != "" {
 			prompt += "\n\nUnfinished assistant output before the terminal " +
@@ -278,8 +282,9 @@ func (r *Service) PrepareTurnRecovery(
 				"not authorization to replay side effects):\n" +
 				"<recovery_evidence>\n" + capsule + "\n</recovery_evidence>"
 		}
-		prompt += "\n\nDo not repeat completed Tool, command, network, or " +
-			"file effects. Do not call git_status or git_diff on Continue. " +
+		prompt += "\n\nDo not repeat this Continue envelope or the previous " +
+			"terminal reason in thinking. Do not repeat completed Tool, command, " +
+			"network, or file effects. Do not call git_status or git_diff on Continue. " +
 			"Canceled or failed turns without edits are already recorded in " +
 			"checkpoints; do not re-verify that. file_read only a window you " +
 			"are about to edit. After search_text returns line hits, edit; " +

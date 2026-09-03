@@ -51,8 +51,7 @@ func TestOnlyWireConstructsPlatformBackend(t *testing.T) {
 		if entry.IsDir() {
 			if path != root &&
 				(entry.Name() == ".git" ||
-					entry.Name() == ".qcode" ||
-					entry.Name() == ".codehelper") {
+					entry.Name() == ".qcode") {
 				return filepath.SkipDir
 			}
 			return nil

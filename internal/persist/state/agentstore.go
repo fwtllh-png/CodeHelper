@@ -552,10 +552,7 @@ func recoveryCompletionMessageTx(
 	result subagent.Result,
 	createdAt time.Time,
 ) (subagent.Message, error) {
-	target := parentID
-	if target == "" {
-		target = "root"
-	}
+	target := subagent.BindSessionParent(parentID)
 	var sequence uint64
 	if err := tx.QueryRowContext(ctx, `
 		SELECT COALESCE(MAX(sequence), 0) + 1 FROM agent_messages

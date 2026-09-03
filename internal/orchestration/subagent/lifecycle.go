@@ -71,15 +71,16 @@ func (m *Manager) transitionLocked(
 	if result != nil {
 		stored := *result
 		transition.Result = &stored
+		transition.ReasonCode = stored.ReasonCode
+		if stored.ReasonCode != "" && strings.TrimSpace(message) == "" {
+			transition.Message = stored.ReasonCode
+		}
 		envelope := completionEnvelope(agent, stored)
 		body, err := json.Marshal(envelope)
 		if err != nil {
 			return err
 		}
-		target := agent.Parent
-		if target == "" {
-			target = "root"
-		}
+		target := BindSessionParent(agent.Parent)
 		completion, err := m.mailbox.Prepare(Message{
 			SessionID: agent.SessionID,
 			From:      agent.ID, To: target, Kind: MessageCompletion,

@@ -61,6 +61,7 @@ type GraphTransition struct {
 	OperationID       string              `json:"operation_id"`
 	Actor             string              `json:"actor"`
 	Reason            string              `json:"reason,omitempty"`
+	ReasonCode        string              `json:"reason_code,omitempty"`
 	Result            *Result             `json:"result,omitempty"`
 	Completion        *CompletionEnvelope `json:"completion,omitempty"`
 	CompletionMessage *Message            `json:"completion_message,omitempty"`
@@ -133,9 +134,10 @@ func (m *Manager) Hydrate() error {
 		return err
 	}
 	for _, sessionID := range sessions {
-		// Breadth-first from each Session root.
-		seen := map[string]struct{}{"": {}}
-		queue := []string{""}
+		// Breadth-first from the session parent actor. "" remains for
+		// historical edges written before ParentID was bound to "parent".
+		seen := map[string]struct{}{"": {}, SessionParentID: {}}
+		queue := []string{"", SessionParentID}
 		for len(queue) > 0 {
 			parent := queue[0]
 			queue = queue[1:]
@@ -157,7 +159,7 @@ func (m *Manager) Hydrate() error {
 				if _, ok := m.agents[edge.ChildID]; !ok {
 					m.agents[edge.ChildID] = agentFromEdge(edge)
 				}
-				if edge.Worktree != "" {
+				if edge.Worktree != "" && edge.Stance != StanceReadOnly {
 					m.worktrees[edge.ChildID] = &Worktree{
 						ID: edge.ChildID, Path: edge.Worktree, Isolated: edge.Isolated,
 						Serialized: edge.Serialized, BaseRev: edge.BaseRev,

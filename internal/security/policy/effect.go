@@ -33,6 +33,9 @@ type Effect struct {
 }
 
 func NormalizeEffect(invocation Invocation) Effect {
+	if readOnlySpawn(invocation) {
+		return effect(EffectAgentLifecycle, RiskLow, "reversible")
+	}
 	if invocation.Effect.Mode == tool.EffectFixed {
 		return effect(
 			EffectKind(invocation.Effect.Kind),

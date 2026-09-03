@@ -244,7 +244,7 @@ func compileSandboxCeiling(profile *EffectivePermissionProfile, input CompileInp
 		policyValue.HostReadFiles...,
 	)
 	for _, name := range []string{
-		".agents", ".qcode", ".qcode-worktree", ".codehelper", ".codehelper-worktree", ".codex", ".git",
+		".agents", ".qcode", ".qcode-worktree", ".git",
 	} {
 		profile.Filesystem.DeniedWriteRoots = append(
 			profile.Filesystem.DeniedWriteRoots,

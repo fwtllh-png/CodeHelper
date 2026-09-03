@@ -160,6 +160,8 @@ export type ConversationNode =
       readonly status: string;
       readonly summary: string;
       readonly state: "running" | "completed" | "failed";
+      readonly reasonCode?: string;
+      readonly usage?: {readonly inputTokens: number; readonly outputTokens: number};
       readonly activities: readonly ProjectedAgentActivity[];
     };
 
@@ -593,9 +595,9 @@ export class ConversationProjection {
       status: "requested",
       summary: taskName || "Waiting to start",
       state: "running",
-      activities: Object.freeze([agentActivity(
+      activities: Object.freeze([agentStartupActivity(
         event,
-        "status",
+        agentID,
         "Queued",
         taskName || "Agent accepted the delegated task.",
         "running"
@@ -609,19 +611,35 @@ export class ConversationProjection {
     if (!node) return;
     const status = stringValue(event.data.status) || node.status;
     const message = stringValue(event.data.message);
+    const reasonCode = stringValue(event.data.reason_code);
+    const detail = recordValue(event.data.detail);
+    const result = recordValue(detail?.result);
+    const usage = agentUsage(result);
     const state = agentState(status);
+    const activity = agentStartupStatus(status)
+      ? agentStartupActivity(
+          event,
+          agentID,
+          agentStatusLabel(status),
+          node.taskName || message || agentStatusLabel(status),
+          "running",
+          node.activities
+        )
+      : agentActivity(
+          event,
+          "status",
+          agentStatusLabel(status),
+          message || reasonCode,
+          state
+        );
     this.put({
       ...node,
       status,
       state,
-      summary: message || agentStatusLabel(status),
-      activities: appendAgentActivity(node.activities, agentActivity(
-        event,
-        "status",
-        agentStatusLabel(status),
-        message,
-        state
-      ))
+      reasonCode: reasonCode || node.reasonCode,
+      usage: usage ?? node.usage,
+      summary: message || reasonCode || agentStatusLabel(status),
+      activities: appendAgentActivity(node.activities, activity)
     });
   }
 
@@ -632,6 +650,7 @@ export class ConversationProjection {
     if (!node) return;
     const body = recordValue(message?.body);
     const kind = stringValue(message?.kind);
+    if (kind === "context") return;
     const resultSummary = stringValue(body?.summary);
     const activitySummary = resultSummary ||
       (kind === "completion" ? "Completion delivered" : "Message delivered");
@@ -643,7 +662,7 @@ export class ConversationProjection {
         "message",
         kind === "completion" ? "Result" : "Message",
         activitySummary,
-        node.state
+        kind === "completion" ? "completed" : node.state
       ))
     });
   }
@@ -673,12 +692,13 @@ export class ConversationProjection {
     const data = event.data;
     switch (event.kind) {
       case "turn.started":
-        this.updateAgent(node, agentActivity(
+        this.updateAgent(node, agentStartupActivity(
           event,
-          "status",
+          agentID,
           "Started",
-          stringValue(data.display_prompt ?? data.prompt),
-          "running"
+          node.taskName || "Agent turn started",
+          "completed",
+          node.activities
         ), "running");
         break;
       case "reasoning.delta":
@@ -1093,10 +1113,47 @@ function agentState(status: string): "running" | "completed" | "failed" {
   }
 }
 
+function agentUsage(
+  result: Record<string, unknown> | undefined
+): {readonly inputTokens: number; readonly outputTokens: number} | undefined {
+  const usage = recordValue(result?.usage);
+  if (!usage) return undefined;
+  const inputTokens = Number(usage.input_tokens ?? 0);
+  const outputTokens = Number(usage.output_tokens ?? 0);
+  if (!Number.isFinite(inputTokens) && !Number.isFinite(outputTokens)) {
+    return undefined;
+  }
+  return {inputTokens, outputTokens};
+}
+
 function agentStatusLabel(status: string): string {
   return status
     ? status.replaceAll("_", " ").replace(/\b\w/g, (value) => value.toUpperCase())
     : "Updated";
+}
+
+function agentStartupStatus(status: string): boolean {
+  return status === "requested" || status === "starting" || status === "running";
+}
+
+function agentStartupActivity(
+  event: RuntimeEvent,
+  agentID: string,
+  title: string,
+  summary: string,
+  state: ProjectedAgentActivity["state"],
+  activities: readonly ProjectedAgentActivity[] = []
+): ProjectedAgentActivity {
+  const id = `agent-startup-${agentID}`;
+  const previous = activities.find((activity) => activity.id === id);
+  return Object.freeze({
+    id,
+    sequence: previous?.sequence ?? event.sequence,
+    kind: "status",
+    title,
+    summary,
+    state
+  });
 }
 
 function agentActivity(

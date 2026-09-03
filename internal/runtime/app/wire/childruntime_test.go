@@ -227,10 +227,10 @@ func TestChildAuthorityIsParentAndRoleIntersection(t *testing.T) {
 func TestReviewChildAllowsOnlyReadOnlyProcessEffects(t *testing.T) {
 	parent := tool.NewRegistry(nil, nil)
 	child := tool.NewRegistry(nil, nil)
-	register := func(registry *tool.Registry) {
+	register := func(registry *tool.Registry, name string) {
 		t.Helper()
 		err := registry.Register(authorityTestTool{descriptor: tool.Descriptor{
-			Name: "exec_command", Description: "exec_command",
+			Name: name, Description: name,
 			InputSchema: map[string]any{"type": "object"},
 			Visibility:  tool.VisibleModel, Capability: tool.CapabilityProcess,
 			AccessMode: tool.AccessRead, ParallelPolicy: tool.ParallelConcurrent,
@@ -241,8 +241,10 @@ func TestReviewChildAllowsOnlyReadOnlyProcessEffects(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	register(parent)
-	register(child)
+	for _, registry := range []*tool.Registry{parent, child} {
+		register(registry, "exec_command")
+		register(registry, "process_read")
+	}
 
 	role, err := subagent.DefaultRoleCatalog().Resolve(subagent.RoleReview)
 	if err != nil {
@@ -262,30 +264,26 @@ func TestReviewChildAllowsOnlyReadOnlyProcessEffects(t *testing.T) {
 	)
 	restrictChildTools(options.Security, spec, parent, child)
 
-	readOnly := policy.Invocation{
-		CallID: "read-only", Tool: "exec_command",
-		Arguments:  json.RawMessage(`{"command":"rg needle ."}`),
+	inspect := policy.Invocation{
+		CallID: "inspect", Tool: "process_read",
+		Arguments:  json.RawMessage(`{}`),
 		Capability: tool.CapabilityProcess, Access: tool.AccessRead,
 		Sandbox: tool.SandboxStrong, Validated: true,
 		Resources: []tool.Resource{
 			{Kind: "process", ID: "workspace", Access: tool.AccessRead},
 		},
 	}
-	if decision := options.Security.Evaluate(readOnly); decision.Action != policy.ActionAllow {
+	if decision := options.Security.Evaluate(inspect); decision.Action != policy.ActionAllow {
 		t.Fatalf("read-only process decision = %+v, want allow", decision)
 	}
 
-	mutating := readOnly
-	mutating.CallID = "mutating"
-	mutating.Arguments = json.RawMessage(
-		`{"command":"printf changed > file","write_paths":["file"]}`,
-	)
-	mutating.Resources = append(mutating.Resources, tool.Resource{
-		Kind: "file", Path: "file", Access: tool.AccessWrite,
-	})
-	decision := options.Security.Evaluate(mutating)
-	if decision.Action != policy.ActionDeny || decision.Code != "mode_denied" {
-		t.Fatalf("mutating process decision = %+v, want mode_denied", decision)
+	exec := inspect
+	exec.CallID = "exec"
+	exec.Tool = "exec_command"
+	exec.Arguments = json.RawMessage(`{"command":"rg needle ."}`)
+	decision := options.Security.Evaluate(exec)
+	if decision.Action != policy.ActionDeny {
+		t.Fatalf("exec_command decision = %+v, want deny", decision)
 	}
 }
 
@@ -390,14 +388,17 @@ func TestPersistentSessionPublishesAgentSpawnLive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(
-		child.Worktree,
-		filepath.Join(resolvedWorkspace, ".qcode")+string(filepath.Separator),
-	) || strings.HasPrefix(child.Worktree, store.Root()+string(filepath.Separator)) {
+	if child.Worktree != resolvedWorkspace && child.Worktree != workspace {
 		t.Fatalf(
-			"persistent child worktree = %q, workspace = %q, state root = %q",
+			"read-only child worktree = %q, want host workspace %q",
 			child.Worktree,
 			resolvedWorkspace,
+		)
+	}
+	if strings.HasPrefix(child.Worktree, store.Root()+string(filepath.Separator)) {
+		t.Fatalf(
+			"persistent child worktree = %q leaked into state root %q",
+			child.Worktree,
 			store.Root(),
 		)
 	}

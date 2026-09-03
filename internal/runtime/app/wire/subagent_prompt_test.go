@@ -92,7 +92,7 @@ func TestAgentToolPrefixReflectsDelegationPolicy(t *testing.T) {
 		notWant string
 	}{
 		{subagent.DelegationExplicit, "explicit-only", "parallel benefit"},
-		{subagent.DelegationAdaptive, "parallel benefit", "explicit-only"},
+		{subagent.DelegationAdaptive, "Investigate in the parent first", "explicit-only"},
 		{subagent.DelegationDisabled, "", "spawn_agent"},
 	} {
 		manager, err := subagent.Open(subagent.Options{

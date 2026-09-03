@@ -673,14 +673,17 @@ implement_no_progress_samples = 4
 
 func TestRateLimitRecoveryBudgetHasProvenanceAndValidation(t *testing.T) {
 	if Defaults().Execution.RateLimitRetryLimit != 0 ||
-		Defaults().Execution.RateLimitWait != 0 ||
-		Defaults().Execution.RateLimitWaitBudget() != 2*time.Minute {
+		Defaults().Execution.RateLimitWait != 10*time.Minute ||
+		Defaults().Execution.RateLimitWaitBudget() != 10*time.Minute {
 		t.Fatalf(
 			"default rate limit budget = retries=%d wait=%s derived=%s",
 			Defaults().Execution.RateLimitRetryLimit,
 			Defaults().Execution.RateLimitWait,
 			Defaults().Execution.RateLimitWaitBudget(),
 		)
+	}
+	if (Execution{Timeout: 2 * time.Minute}).RateLimitWaitBudget() != 2*time.Minute {
+		t.Fatal("zero rate_limit_wait must inherit timeout")
 	}
 	path := writeConfig(t, `
 [execution]

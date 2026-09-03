@@ -274,7 +274,7 @@ func compactChatMergePlanFile(file tool.EditPlanFile) tool.EditPlanFile {
 func (c *Service) Snapshot(ctx context.Context, worktree string) error {
 	diff, err := c.git(
 		ctx, c.repository, "diff", "--binary", "--no-ext-diff", "HEAD",
-		"--", ".", ":(exclude).qcode", ":(exclude).codehelper",
+		"--", ".", ":(exclude).qcode",
 	)
 	if err != nil {
 		return err
@@ -301,7 +301,7 @@ func (c *Service) Snapshot(ctx context.Context, worktree string) error {
 	}
 	untracked, err := c.git(
 		ctx, c.repository, "ls-files", "--others", "--exclude-standard", "-z",
-		"--", ".", ":(exclude).qcode", ":(exclude).codehelper",
+		"--", ".", ":(exclude).qcode",
 	)
 	if err != nil {
 		return err
@@ -326,14 +326,14 @@ func (c *Service) changedPaths(
 ) ([]string, error) {
 	tracked, err := c.git(
 		ctx, worktree, "diff", "--name-only", "-z", "HEAD",
-		"--", ".", ":(exclude).qcode", ":(exclude).codehelper",
+		"--", ".", ":(exclude).qcode",
 	)
 	if err != nil {
 		return nil, err
 	}
 	untracked, err := c.git(
 		ctx, worktree, "ls-files", "--others", "--exclude-standard", "-z",
-		"--", ".", ":(exclude).qcode", ":(exclude).codehelper",
+		"--", ".", ":(exclude).qcode",
 	)
 	if err != nil {
 		return nil, err
@@ -342,8 +342,7 @@ func (c *Service) changedPaths(
 	for _, path := range append(splitNUL(tracked), splitNUL(untracked)...) {
 		path = filepath.ToSlash(filepath.Clean(path))
 		if path == "." ||
-			path == ".qcode" || strings.HasPrefix(path, ".qcode/") ||
-			path == ".codehelper" || strings.HasPrefix(path, ".codehelper/") {
+			path == ".qcode" || strings.HasPrefix(path, ".qcode/") {
 			continue
 		}
 		unique[path] = struct{}{}
@@ -533,7 +532,7 @@ func (c *Service) commitBaseline(
 ) error {
 	var pathsToAdd []string
 	if len(paths) == 0 {
-		pathsToAdd = []string{".", ":(exclude).qcode", ":(exclude).codehelper"}
+		pathsToAdd = []string{".", ":(exclude).qcode"}
 	} else {
 		pathsToAdd = append(pathsToAdd, paths...)
 	}

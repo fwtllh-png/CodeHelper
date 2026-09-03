@@ -70,7 +70,7 @@ func TestCompileProducesDeterministicEffectiveProfile(t *testing.T) {
 		t.Fatalf("profile = %+v", first)
 	}
 	for _, rootName := range []string{
-		".qcode", ".qcode-worktree", ".codehelper", ".codehelper-worktree", ".git", ".agents",
+		".qcode", ".qcode-worktree", ".git", ".agents",
 	} {
 		if !slices.Contains(
 			first.Filesystem.DeniedWriteRoots,

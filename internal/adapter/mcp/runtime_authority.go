@@ -262,7 +262,7 @@ func mcpNetworkTargets(profile *PermissionProfile) []string {
 func mcpHiddenPaths(workspace string) []string {
 	var paths []string
 	for _, name := range []string{
-		".agents", ".qcode", ".qcode-worktree", ".codehelper", ".codehelper-worktree", ".codex", ".git",
+		".agents", ".qcode", ".qcode-worktree", ".codex", ".git",
 	} {
 		path := filepath.Join(workspace, name)
 		if _, err := os.Lstat(path); err == nil {

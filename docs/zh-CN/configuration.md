@@ -67,7 +67,7 @@ max_concurrent = 8
 rate_limit = 0                    # 0 = 仅根据 Provider 反馈动态限流
 provider_retry_limit = 3          # 每次 Model Sample 的瞬时故障重试预算
 rate_limit_retry_limit = 0        # 0 = 不限制 429 次数；仍受累计等待预算约束
-rate_limit_wait = "0s"            # 0 = 继承 timeout，作为单次 Sample 累计 429 等待上限
+rate_limit_wait = "10m"           # 累计 429 等待上限；0 = 继承 timeout
 tokens_per_minute = 0             # 0 = TPM 未知，不按模型名称发明默认值；只做请求冷却
 budget_tokens = 0            # 0 表示不设置累计 Session Token 上限
 turn_budget_tokens = 0       # 0 表示不设置累计 Turn Token 上限
@@ -375,15 +375,20 @@ Session State 与 write-once Checkpoint，不改写业务 Turn。
 Rate Limit Recovery Budget 约束：
 
 - `execution.rate_limit_retry_limit` 是单次 Sample 允许的 429 恢复次数。默认 `0`
-  表示不按次数封顶。
-- `execution.rate_limit_wait` 是单次 Sample 的累计 429 等待上限。默认 `0` 继承
-  公开字段 `execution.timeout`（默认 `2m`），不是隐藏经验常量。
+  表示不按次数封顶。同一 Session 内 Parent 与 Child 的并发 Sample 共用这份次数
+  观察值来计算退避，但 Turn Kernel 的 Retry 序号仍按 Sample 单调递增。
+- `execution.rate_limit_wait` 是 Session 内并发 Sample 共用的累计 429 等待上限。
+  默认 `10m`，与连接阶段的 `execution.timeout`（默认 `2m`）分开：后者约束建连、
+  TLS 和响应头，前者覆盖 `Retry-After` 冷却和 Parent/Child 串行排队。`0` 仍继承
+  `execution.timeout`。一次成功 Sample 或用户发起的新 Parent Turn 会刷新该预算；
+  未结束的 `Retry-After` 仍然生效。
 - 达到任一边界时，Runtime 返回可恢复的 `provider rate limit retry budget exhausted`，
   不把 429 伪装成模型截断，也不丢失已完成 Tool Side Effect。用户可从 Durable
   Checkpoint 继续或取消。
 - 已知 `Retry-After`、Reset 或 Route Cooldown 时，下一次 Attempt 必须等满剩余窗口，
-  不会被瞬时故障的单次 Delay Cap 截短后立即重探同一请求。等待可取消，且不占用
-  Provider 并发槽。
+  不会被瞬时故障的单次 Delay Cap 截短后立即重探同一请求。等待可取消。
+  Session 内同一时刻只发送一个 Provider Sample，避免 Parent 与多个 Child 同时
+  打热限流的模型。
 
 上述字段可通过 `QCODE_PROVIDER_RETRY_LIMIT`、
 `QCODE_RATE_LIMIT_RETRY_LIMIT`、`QCODE_RATE_LIMIT_WAIT` 和

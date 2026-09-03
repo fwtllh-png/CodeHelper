@@ -184,8 +184,13 @@ Runtime 连接中断时，页面立即停止当前 Turn 的运行计时和操作
 模型未委派的自然语言理由。
 
 Chat 会把每个 Child 的状态、推理摘要、Tool 调用和最终结果聚合为可展开的 Subagent
-执行块；运行中的执行块默认展开，完成后可折叠。刷新或重连时，这些内容从同一组
-Runtime Event 恢复。Trajectory 继续提供完整时序和 Tool Record 检查入口。
+执行块；运行中或失败的执行块默认展开，完成后可折叠。失败卡展示稳定原因
+（如 `budget exhausted`、`provider rate limited`）以及输入/输出 token 用量，避免只
+留下 `2 unresolved` 这类摘要。刷新或重连时，这些内容从同一组 Runtime Event 恢复。
+限流较频繁的模型上，Parent 与 Child 的采样会排队而不是并行打同一 Provider；若
+Child 因 `provider rate limited` 失败且标为 `retryable`，应 `wait_agent` 后再
+`followup_task`，不要同时再开一批审查。
+Trajectory 继续提供完整时序和 Tool Record 检查入口。
 
 ## Session 与恢复
 

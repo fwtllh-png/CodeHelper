@@ -45,7 +45,7 @@ func (e *Engine) providerRetry(
 	contextChanged bool,
 	budget rateLimitBudget,
 ) (ProviderRetry, bool) {
-	return providerwire.RetryPolicy{
+	policy := providerwire.RetryPolicy{
 		MaxRetries:          e.options.MaxRetries,
 		MaxDelay:            e.options.MaxRetryDelay,
 		RateLimitMaxRetries: e.options.RateLimitMaxRetries,
@@ -54,7 +54,11 @@ func (e *Engine) providerRetry(
 		RateLimitWaited:     budget.waited,
 		RouteCooldown:       budget.cooldown,
 		Now:                 e.options.Observability.Now,
-	}.Decide(err, meaningful, retries, contextChanged)
+	}
+	if shared := e.options.SharedRateLimit; shared != nil {
+		policy.SharedRateLimitRetries, policy.SharedRateLimitWaited = shared.Load()
+	}
+	return policy.Decide(err, meaningful, retries, contextChanged)
 }
 
 func exhaustedProviderRetry(err error) error {

@@ -605,17 +605,30 @@ Control Plane 扩展，但不建立第二套执行生命周期：
 
 ```text
 Parent Turn
-  -> Agent Graph + Admission/Budget
+  -> DelegationIntent
+  -> Supervisor Admit / Bind / Schedule / Settle
   -> Child Runtime Turn
   -> Guarded Tool + Worktree
-  -> Result + Journaled Integration
+  -> Typed Result + Mailbox + Journaled Integration
 ```
 
+- **Supervisor**：编排入口。Tool 只提交 Intent；Admit 在 Takeover 前用与 Child
+  Engine 相同的首包窗口投影预算，不足则拒绝 spawn，不创建 running agent。
+- **Session Parent**：顶层 Child 的 `ParentID` 固定为 `parent`，completion 与
+  context 投递同一收件人；Mailbox Drain 失败不得丢消息。
+- **Typed Settlement**：`completed` / `retryable`（预算、rate-limit） / `failed` /
+  `interrupted`，并带稳定 `reason_code`。
+- **共享 Provider 限额**：Session 级 limiter 对 Parent 与 Children 的 Provider
+  Sample 单飞排队，共用一份 Retry-After 冷却和 429 等待预算；冷却未解除时
+  Supervisor 不再并行启动第二个 Child。用户发起的新 Parent Turn 会刷新等待预算，
+  但仍遵守未结束的冷却。
 - **Agent Graph**：持久化 Spawn、Transition、Result、Mailbox 与 Integration 事实。
 - **Admission/Budget**：约束 Depth、Concurrency、Token、Cost 和 Resident Agent。
 - **Child Runtime**：执行普通 Runtime Turn，共享 Operation/Event、Guard、Journal
   与恢复语义。
-- **Worktree/Chat Merge**：隔离并集成写入，不允许 Child 扩大 Parent Authority。
+- **Worktree/Chat Merge**：只读 stance 不 provision git worktree；写入隔离并集成，
+  不允许 Child 扩大 Parent Authority。
+- **Role 工具面**：`process.read_only` 只放行只读 process，不得放行 `exec_command`。
 
 外部定时或流水线系统可以调用受支持的 Web 入口，但不进入 Runtime 内部建立后台
 Scheduler。

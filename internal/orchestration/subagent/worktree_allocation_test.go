@@ -31,13 +31,13 @@ func TestWorktreeAllocationSurvivesSpawnCommitFailure(t *testing.T) {
 	)); err != nil {
 		t.Fatal(err)
 	}
-	spec, err := manager.roles.Resolve(RoleExplore)
+	spec, err := manager.roles.Resolve(RoleGeneral)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = manager.spawn(DelegationIntent{
 		SessionID: "session-owner", TaskName: "inspect",
-		Role: RoleExplore, Objective: "inspect",
+		Role: RoleGeneral, Objective: "inspect",
 		ExpectedOutput: "evidence", Trigger: TriggerUser,
 	}, spec)
 	if err == nil ||
@@ -102,13 +102,13 @@ func TestWorktreeAllocationClearsCleanProvisionFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec, err := manager.roles.Resolve(RoleExplore)
+	spec, err := manager.roles.Resolve(RoleGeneral)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, err = manager.spawn(DelegationIntent{
 		SessionID: "session-owner", TaskName: "inspect",
-		Role: RoleExplore, Objective: "inspect",
+		Role: RoleGeneral, Objective: "inspect",
 		ExpectedOutput: "evidence", Trigger: TriggerUser,
 	}, spec)
 	if !errors.Is(err, provider.failBefore) {

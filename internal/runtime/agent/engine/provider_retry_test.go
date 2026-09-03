@@ -306,6 +306,85 @@ func TestEngineExhaustsRateLimitAttemptBudget(t *testing.T) {
 	}
 }
 
+func TestSharedRateLimitIsConsumedOnceAcrossEngines(t *testing.T) {
+	shared := &SharedRateLimit{}
+	rateLimited := func() provider.Stream {
+		return &errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"rate limited",
+			true,
+			&provider.Failure{
+				Code: provider.FailureRateLimit, Message: "rate limited",
+				RetryAfterMS: 1,
+			},
+		)}
+	}
+	firstRuntime := &scriptedProvider{streams: []provider.Stream{
+		rateLimited(), rateLimited(), textStream("should not run"),
+	}}
+	first := newEngine(t, firstRuntime, tool.NewRegistry(nil, nil))
+	first.options.RateLimitMaxRetries = 1
+	first.options.SharedRateLimit = shared
+	if _, err := first.Run(t.Context(), "parent rate limit", nil); err == nil {
+		t.Fatal("expected first engine to exhaust the shared pot")
+	}
+	retries, _ := shared.Load()
+	if retries == 0 {
+		t.Fatal("shared limiter recorded no retries")
+	}
+	secondRuntime := &scriptedProvider{streams: []provider.Stream{
+		rateLimited(), textStream("parent must not get a private retry budget"),
+	}}
+	second := newEngine(t, secondRuntime, tool.NewRegistry(nil, nil))
+	second.options.RateLimitMaxRetries = 1
+	second.options.SharedRateLimit = shared
+	_, err := second.Run(t.Context(), "child rate limit", nil)
+	problem := protocol.ProblemOf(err)
+	if problem == nil ||
+		problem.Message != "provider rate limit retry budget exhausted" {
+		t.Fatalf("second engine = %#v", err)
+	}
+	if len(secondRuntime.requests) != 1 {
+		t.Fatalf("second engine requests = %d, want 1 shared exhaustion",
+			len(secondRuntime.requests))
+	}
+}
+
+func TestSharedRateLimitDoesNotReuseRetryNumbersAcrossSamples(t *testing.T) {
+	shared := &SharedRateLimit{}
+	shared.Record(time.Millisecond)
+	shared.Record(time.Millisecond)
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		&errorStream{err: protocol.NewProblem(
+			protocol.CodeUnavailable,
+			"rate limited",
+			true,
+			&provider.Failure{
+				Code: provider.FailureRateLimit, Message: "rate limited",
+				RetryAfterMS: 1,
+			},
+		)},
+		textStream("recovered after a later sample"),
+	}}
+	engine := newEngine(t, runtime, tool.NewRegistry(nil, nil))
+	engine.options.RateLimitMaxRetries = 5
+	engine.options.SharedRateLimit = shared
+	var retries []*ProviderRetry
+	result, err := engine.Run(t.Context(), "later sample rate limit", func(event Event) error {
+		if event.ProviderRetry != nil {
+			retries = append(retries, event.ProviderRetry)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("shared pot leaked into sample retry sequence: %v", err)
+	}
+	if result.Text != "recovered after a later sample" || len(retries) != 1 ||
+		retries[0].Retry != 1 {
+		t.Fatalf("result=%+v retries=%+v", result, retries)
+	}
+}
+
 func TestExhaustedProviderRetryBecomesUserRecoverable(t *testing.T) {
 	original := protocol.NewProblem(
 		protocol.CodeUnavailable,

@@ -326,7 +326,7 @@ func TestAgentTerminalCommitIsAtomicAndCASGuarded(t *testing.T) {
 		t.Fatalf("durable result = %+v, ok=%v, err=%v", result, ok, err)
 	}
 	messages, err := store.ListAgentMessages(
-		t.Context(), "/workspace/atomic", "root",
+		t.Context(), "/workspace/atomic", subagent.SessionParentID,
 	)
 	if err != nil || len(messages) != 1 ||
 		messages[0].Kind != subagent.MessageCompletion {
@@ -800,11 +800,11 @@ func TestAgentRestartReconcilesMissingAndActiveTurns(t *testing.T) {
 		waitingNode.TurnID != "turn-waiting" {
 		t.Fatalf("waiting-turn reconciliation = %+v, ok=%v", waitingNode, ok)
 	}
-	completions := fresh.Mailbox().Receive("root")
+	completions := fresh.Mailbox().Receive("parent")
 	if len(completions) != 1 || completions[0].From != missing.ID {
 		t.Fatalf("recovery completions = %+v", completions)
 	}
-	if repeated := fresh.Mailbox().Receive("root"); len(repeated) != 1 ||
+	if repeated := fresh.Mailbox().Receive("parent"); len(repeated) != 1 ||
 		repeated[0].ID != completions[0].ID {
 		t.Fatalf("unacknowledged completion was not redelivered = %+v", repeated)
 	}
@@ -814,7 +814,7 @@ func TestAgentRestartReconcilesMissingAndActiveTurns(t *testing.T) {
 	if err := fresh.Mailbox().Ack(completions); err != nil {
 		t.Fatalf("duplicate completion ack: %v", err)
 	}
-	if again := fresh.Mailbox().Receive("root"); len(again) != 0 {
+	if again := fresh.Mailbox().Receive("parent"); len(again) != 0 {
 		t.Fatalf("acknowledged completion remained pending = %+v", again)
 	}
 	if err := reopened.CloseAll(ctx); err != nil {
@@ -836,11 +836,11 @@ func TestAgentRestartReconcilesMissingAndActiveTurns(t *testing.T) {
 	)); err != nil {
 		t.Fatal(err)
 	}
-	if replayed := afterDelivery.Mailbox().Drain("root"); len(replayed) != 0 {
+	if replayed := afterDelivery.Mailbox().Drain("parent"); len(replayed) != 0 {
 		t.Fatalf("acknowledged completion replayed after restart = %+v", replayed)
 	}
 	next, err := afterDelivery.Mailbox().Deliver(
-		"test", "root", json.RawMessage(`{"after":"restart"}`),
+		"test", subagent.SessionParentID, json.RawMessage(`{"after":"restart"}`),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -968,9 +968,9 @@ func TestOrphanedWorktreeRecoversOwningSession(t *testing.T) {
 	if len(sessions) != 1 || sessions[0] != "session-owner" {
 		t.Fatalf("recovered sessions = %v, want [session-owner]", sessions)
 	}
-	completions := manager.Mailbox().PendingSession("session-owner", "root")
+	completions := manager.Mailbox().PendingSession("session-owner", "parent")
 	if len(completions) != 1 ||
-		len(manager.Mailbox().PendingSession("process-restarted", "root")) != 0 {
+		len(manager.Mailbox().PendingSession("process-restarted", "parent")) != 0 {
 		t.Fatalf("recovered completions = %+v", completions)
 	}
 	if _, err := os.Stat(worktree); err != nil {
@@ -1112,7 +1112,7 @@ func TestCompletionOutboxReplaysAfterPublishCrash(t *testing.T) {
 	); err != nil || len(pending) != 0 {
 		t.Fatalf("completion outbox was not published: %+v, err=%v", pending, err)
 	}
-	completions := restarted.Mailbox().Receive("root")
+	completions := restarted.Mailbox().Receive("parent")
 	if len(completions) != 1 || completions[0].Kind != subagent.MessageCompletion {
 		t.Fatalf("replayed completion mailbox = %+v", completions)
 	}

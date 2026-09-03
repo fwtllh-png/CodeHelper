@@ -90,7 +90,7 @@ func TestListSkipsVendorDirectoriesEvenWhenTracked(t *testing.T) {
 	git(t, root, "init", "-q")
 	for _, name := range []string{
 		"main.go", "vendor/dep/dep.go", "node_modules/pkg/index.js", "bin/tool",
-		".qcode/state.db", ".codehelper/legacy-state.db",
+		".qcode/state.db",
 	} {
 		write(t, filepath.Join(root, name), "body\n")
 	}

@@ -78,10 +78,25 @@ func ActiveTurnGoal(history []provider.Message) string {
 		if message.Turn == activeTurn &&
 			message.Role == provider.RoleUser &&
 			message.Text() != "" {
-			return message.Text()
+			return unwrapRecoveryGoal(message.Text())
 		}
 	}
 	return ""
+}
+
+func unwrapRecoveryGoal(text string) string {
+	_, body, ok := strings.Cut(text, "<source_request>")
+	if !ok {
+		return text
+	}
+	body, _, ok = strings.Cut(body, "</source_request>")
+	if !ok {
+		return text
+	}
+	if goal := strings.TrimSpace(body); goal != "" {
+		return goal
+	}
+	return text
 }
 
 func RemoveGoalDigest(digest []string, goal string) []string {
