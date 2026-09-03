@@ -81,15 +81,6 @@ func (c Capabilities) set(capability Capability) Capabilities {
 	return c
 }
 
-// ForceCapabilities turns the named bits on so a probe request can leave the
-// catalog and still pass ModelRequest.Validate long enough to learn the truth.
-func ForceCapabilities(base Capabilities, capabilities ...Capability) Capabilities {
-	for _, capability := range capabilities {
-		base = base.set(capability)
-	}
-	return base
-}
-
 // WithEndpoint returns a copy pointed at a different URL (fixture / probe override).
 func (r ReadyRoute) WithEndpoint(endpoint string) ReadyRoute {
 	out := r

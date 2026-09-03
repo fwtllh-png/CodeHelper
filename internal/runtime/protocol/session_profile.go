@@ -10,13 +10,10 @@ import (
 const SessionProfileVersion = 1
 
 type SessionProfile struct {
-	Version        int    `json:"version"`
-	Revision       uint64 `json:"revision"`
-	Mode           string `json:"mode"`
-	PlanningPolicy string `json:"planning_policy,omitempty"`
-	// PlanApproval is retained only to decode persisted pre-release profiles.
-	// New clients cannot mutate it and runtime planning is always automatic.
-	PlanApproval        string   `json:"plan_approval,omitempty"`
+	Version             int      `json:"version"`
+	Revision            uint64   `json:"revision"`
+	Mode                string   `json:"mode"`
+	PlanningPolicy      string   `json:"planning_policy,omitempty"`
 	Provider            string   `json:"provider"`
 	Model               string   `json:"model"`
 	ReasoningEffort     string   `json:"reasoning_effort,omitempty"`
@@ -127,9 +124,6 @@ func (p SessionProfile) Validate() error {
 	}
 	if !slices.Contains([]string{"", "off", "adaptive", "required"}, p.PlanningPolicy) {
 		return errors.New("session profile planning_policy is invalid")
-	}
-	if p.PlanApproval != "" && p.PlanApproval != "auto" {
-		return errors.New("session profile plan_approval must be auto")
 	}
 	if !validProfileIdentifier(p.Provider) || !validProfileIdentifier(p.Model) || strings.ContainsAny(p.Model, "\t ") {
 		return errors.New("session profile provider and model are invalid")

@@ -656,8 +656,7 @@ go test -run 'TestChildAgent' ./internal/runtime/app/wire
 
 - `internal/host/runtimeapi/web/contract.go`；
 - `docs/protocol/web-host.contract.json`；
-- `internal/host/runtimeapi/web/web-operation-exposure.json`；
-- `testdata/contracts/web-feature-parity.json`。
+- `internal/host/runtimeapi/web/web-operation-exposure.json`。
 
 ### 12.2 Browser Runtime
 
@@ -695,7 +694,6 @@ Runtime Authority。
 go test ./internal/host/runtimeapi/web ./internal/runtime/eventview
 npm --prefix web run check
 npm --prefix web test
-make web-parity-check
 ```
 
 读完应能回答：浏览器刷新后如何避免重复提交 Prompt，又如何避免 Snapshot 覆盖刚到达

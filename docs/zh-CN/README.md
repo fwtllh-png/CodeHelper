@@ -27,17 +27,15 @@ QCode 同时维护一本可执行的 Agent 工程知识书籍：把背景概念�
 2. [快速开始](./getting-started.md)
 3. [配置说明](./configuration.md)
 4. [Web 使用与工作流](./usage.md)
-5. [本机 DeepSeek 一键配置与运行](./deepseek-local.md)
-6. [安全模型](./security.md)
-7. [排障指南](./troubleshooting.md)
-8. [Provider TPM 限流与错误“消息截断”问题分析](./provider-tpm-rate-limit-and-false-truncation-analysis.md)
+5. [安全模型](./security.md)
+6. [排障指南](./troubleshooting.md)
+7. [Provider TPM 限流与错误“消息截断”问题分析](./provider-tpm-rate-limit-and-false-truncation-analysis.md)
 
 ### 我要使用 Web 工作区
 
 1. [快速开始](./getting-started.md)
-2. [本机 DeepSeek 一键配置与运行](./deepseek-local.md)
-3. [配置说明](./configuration.md)
-4. [排障指南](./troubleshooting.md)
+2. [配置说明](./configuration.md)
+3. [排障指南](./troubleshooting.md)
 
 ### 我要参与开发
 
@@ -46,13 +44,12 @@ QCode 同时维护一本可执行的 Agent 工程知识书籍：把背景概念�
 3. [安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)
 4. [Runtime 可靠性契约](./reliability-hardening.md)
 5. [Web 主入口架构](./web-primary-entry-plan.md)
-6. [Web 体验对齐 DeepSeek Harness 实施方案](./deepseek-harness-web-parity-plan.md)
-7. [Session Context、Memory 与持久化](./session-context-optimization.md)
-8. [固定阈值审计与动态容量治理](./fixed-threshold-audit.md)
-9. [长会话 Token 与调用开销优化方案](./token-cost-optimization-plan.md)
-10. [Provider TPM 限流与错误“消息截断”问题分析](./provider-tpm-rate-limit-and-false-truncation-analysis.md)
-11. [安全模型](./security.md)
-12. [本地开发与脚本](./development.md)
+6. [Session Context、Memory 与持久化](./session-context-optimization.md)
+7. [固定阈值审计与动态容量治理](./fixed-threshold-audit.md)
+8. [长会话 Token 与调用开销优化方案](./token-cost-optimization-plan.md)
+9. [Provider TPM 限流与错误“消息截断”问题分析](./provider-tpm-rate-limit-and-false-truncation-analysis.md)
+10. [安全模型](./security.md)
+11. [本地开发与脚本](./development.md)
 13. [源码阅读路线指南](./reading-guide.md)
 14. [Agent 指南](./agent-guide.md)
 15. [CONTRIBUTING.md](../../CONTRIBUTING.md)
@@ -68,7 +65,6 @@ QCode 同时维护一本可执行的 Agent 工程知识书籍：把背景概念�
 | Runtime 协议 | `docs/protocol/runtime-protocol.schema.json` |
 | 架构边界 | Import 图和 Architecture Test |
 | 构建测试命令 | `Makefile` 与 `web/package.json` |
-| Web 能力迁移范围 | `testdata/contracts/web-feature-parity.json` |
 | Web 体验语义 | `testdata/contracts/web-experience-contract.json` |
 | 知识书籍信息架构 | `knowledge-base-plan.md` |
 | 书籍目录与章节状态 | `docs/book/catalog.json` |

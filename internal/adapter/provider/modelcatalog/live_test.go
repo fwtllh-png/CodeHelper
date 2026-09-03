@@ -1,6 +1,7 @@
 package modelcatalog
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -90,6 +91,13 @@ func TestProbeCapabilitiesObservesStreamToolAndReasoning(t *testing.T) {
 		if request.URL.Path != "/chat/completions" {
 			http.NotFound(response, request)
 			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if _, exists := body["max_tokens"]; exists {
+			t.Fatal("capability probe imposed a fixed output token limit")
 		}
 		response.Header().Set("Content-Type", "text/event-stream")
 		for _, data := range []string{

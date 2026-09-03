@@ -104,21 +104,6 @@ func decodeDomainFactSequence(
 		if err := json.Unmarshal(encoded, &version); err != nil {
 			return nil, err
 		}
-		if version.StorageVersion == 0 {
-			legacy, err := decodeLegacyDomainFact(
-				encoded,
-				expectedSequence,
-				previousDigest,
-			)
-			if err != nil {
-				return nil, err
-			}
-			facts = append(facts, legacy)
-			state := legacy.State
-			previous = &state
-			previousDigest = legacy.StateDigest
-			continue
-		}
 		if version.StorageVersion != domainFactStorageVersion {
 			return nil, fmt.Errorf(
 				"unsupported domain fact storage version %d",
@@ -170,33 +155,12 @@ func decodeDomainFactSequence(
 	return facts, nil
 }
 
-func decodeLegacyDomainFact(
-	encoded []byte,
-	expectedSequence uint64,
-	previousDigest string,
-) (turnkernel.DomainFact, error) {
-	var legacy turnkernel.DomainFact
-	if err := json.Unmarshal(encoded, &legacy); err != nil {
-		return legacy, err
-	}
-	if err := validateDecodedFact(
-		legacy,
-		expectedSequence,
-		previousDigest,
-		"",
-	); err != nil {
-		return legacy, err
-	}
-	return legacy, nil
-}
-
 func decodeStoredFactDigest(encoded []byte) (string, error) {
 	var stored storedDomainFact
 	if err := json.Unmarshal(encoded, &stored); err != nil {
 		return "", err
 	}
-	if stored.StorageVersion != 0 &&
-		stored.StorageVersion != domainFactStorageVersion {
+	if stored.StorageVersion != domainFactStorageVersion {
 		return "", fmt.Errorf(
 			"unsupported domain fact storage version %d",
 			stored.StorageVersion,

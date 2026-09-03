@@ -121,12 +121,6 @@ func (r *Recorder) SetOutcome(outcome protocol.TurnOutcome) {
 	}
 }
 
-func (r *Recorder) BuildWithMeasurement(
-	measurement *turnkernel.TerminalMeasurementSnapshot,
-) *protocol.ExecutionReceiptData {
-	return r.Build(Observations{measurement: measurement})
-}
-
 // observe folds one engine event into the receipt.
 func (r *Recorder) Observe(event agentengine.Event) {
 	if r == nil {

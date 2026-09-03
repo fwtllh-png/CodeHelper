@@ -1,5 +1,3 @@
-import {useId} from "react";
-
 export function CapybaraMark({
   className,
   size = "compact"
@@ -7,32 +5,47 @@ export function CapybaraMark({
   className?: string;
   size?: "small" | "compact" | "hero";
 }) {
-  const maskID = `capybara-${useId().replaceAll(":", "")}`;
   const dimensions = size === "hero"
-    ? {width: 34, height: 26}
+    ? {width: 48, height: 48}
     : size === "small"
-      ? {width: 16, height: 12}
-      : {width: 24, height: 18};
+      ? {width: 18, height: 18}
+      : {width: 26, height: 26};
   return (
     <svg
       aria-hidden="true"
       className={className}
-      viewBox="0 0 32 24"
+      viewBox="0 0 64 64"
       width={dimensions.width}
       height={dimensions.height}
       fill="none"
     >
-      <defs>
-        <mask id={maskID}>
-          <rect width="32" height="24" fill="white" />
-          <circle cx="25.1" cy="9.2" r="1.15" fill="black" />
-        </mask>
-      </defs>
+      <circle cx="13" cy="13" r="3" fill="#FF7C88" />
+      <circle cx="7.5" cy="18" r="2.5" fill="#5CCBC2" />
+      <circle cx="15.5" cy="21" r="2" fill="#FFD166" />
       <path
-        fill="currentColor"
-        mask={`url(#${maskID})`}
-        d="M3.2 10.2c0-3.7 2.9-6.7 6.6-6.7h8.8c1.1-1.7 3.4-2.3 5.1-1.1.7.5 1.1 1.2 1.3 2 2.4.4 4.1 2.4 4.1 4.9v4.2c0 1.5-1.2 2.7-2.7 2.7h-2.1v3.1c0 1-.8 1.7-1.7 1.7h-1.1c-.7 0-1.3-.4-1.6-1l-1.3-2.7H10l-1.2 2.6c-.3.7-1 1.1-1.7 1.1H6c-1 0-1.7-.8-1.7-1.7v-3.8c-.7-1.1-1.1-2.4-1.1-3.8v-1.5Zm21.4-4.7c-.6-.8-1.6-1.1-2.5-.8l1.6 1.5.9-.7Zm3.1 5.7h2c.6 0 1.1.5 1.1 1.1v.5c0 1.1-.9 2-2 2h-1.1v-3.6Z"
+        d="M19 42c.4-8.2 1.2-15.9 8-21-.9-4.6.2-7.7 3.2-8.6 3.1-1 5.8 1.4 6.5 5.4 3.5-1.5 7.5-1.6 10.9-.4.9-4 3.2-6 6.2-5 3.5 1.2 4.3 5.2 2.5 10.5 4.2 4.4 5.8 10.6 5.1 18-.9 9.7-7.4 15.1-18.3 15.1H31.7C23 56 18.2 49.8 19 42Z"
+        fill="#D8AB7F"
+        stroke="#332B28"
+        strokeWidth="2.7"
+        strokeLinejoin="round"
       />
+      <path d="M29.5 20c-.6-3-.1-4.7 1.3-5.1 1.3-.4 2.4 1.1 2.8 4.1M49.2 19c.5-3 1.7-4.4 3.1-3.9 1.4.6 1.5 2.6.4 5.5" stroke="#9A6849" strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="33" cy="30.5" r="2.2" fill="#332B28" />
+      <circle cx="49" cy="29.5" r="2.2" fill="#332B28" />
+      <circle cx="33.7" cy="29.8" r=".65" fill="#FFFFFF" />
+      <circle cx="49.7" cy="28.8" r=".65" fill="#FFFFFF" />
+      <rect x="31" y="34" width="18" height="15" rx="7" fill="#BC8258" />
+      <path d="M37 38.2c0-1.5 1.5-2.6 3.4-2.6 1.8 0 3.3 1.1 3.3 2.6 0 1.4-1.5 2.5-3.3 2.5-1.9 0-3.4-1.1-3.4-2.5Z" fill="#332B28" />
+      <path d="M40.4 40.5v2.2m0 0c-1.7 2-3.4 2.1-4.8.5m4.8-.5c1.8 2 3.5 2.1 5 .4" stroke="#332B28" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M41.8 53c4.1-5 8-7.1 11.8-8.1 2.4-.7 4.4.5 4.8 2.7.5 3-2.7 6.6-7 8-3.9 1.2-7.2.3-9.6-2.6Z" fill="#CC9567" stroke="#332B28" strokeWidth="2.7" strokeLinejoin="round" />
+      <path d="M3 31h26l5 25H7.5L3 31Z" fill="#B8C3D9" stroke="#332B28" strokeWidth="2.7" strokeLinejoin="round" />
+      <path d="M8 56h29v5H4.5C2.6 61 1 59.4 1 57.5V56h7Z" fill="#7A8BB7" stroke="#332B28" strokeWidth="2.7" strokeLinejoin="round" />
+      <path d="M13 43c0-3 2.4-5.2 5.5-5.2S24 40 24 43v3.8H13V43Z" fill="#E3B589" stroke="#7B5138" strokeWidth="1.5" />
+      <circle cx="16.2" cy="37.8" r="1.8" fill="#E3B589" stroke="#7B5138" strokeWidth="1.2" />
+      <circle cx="21.2" cy="37.8" r="1.8" fill="#E3B589" stroke="#7B5138" strokeWidth="1.2" />
+      <circle cx="17" cy="42" r=".75" fill="#332B28" />
+      <circle cx="21" cy="42" r=".75" fill="#332B28" />
+      <path d="M18 44h2" stroke="#332B28" strokeWidth="1.2" strokeLinecap="round" />
     </svg>
   );
 }

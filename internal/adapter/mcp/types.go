@@ -202,31 +202,3 @@ func DecodeStrict(raw json.RawMessage, target any) error {
 	}
 	return nil
 }
-
-func ValidateRequest(request Request) error {
-	if request.JSONRPC != JSONRPCVersion {
-		return errors.New("jsonrpc must be 2.0")
-	}
-	if request.Method == "" {
-		return errors.New("method is required")
-	}
-	if len(request.ID) != 0 && !validID(request.ID) {
-		return errors.New("id must be a string, number, or null")
-	}
-	return nil
-}
-
-func validID(raw json.RawMessage) bool {
-	var value any
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if decoder.Decode(&value) != nil {
-		return false
-	}
-	switch value.(type) {
-	case nil, string, json.Number:
-		return true
-	default:
-		return false
-	}
-}

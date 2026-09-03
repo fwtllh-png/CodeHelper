@@ -135,30 +135,6 @@ func Probe() Capability {
 	return probedCapability
 }
 
-func DeclaredCapability() Capability {
-	switch runtime.GOOS {
-	case "darwin":
-		return Capability{
-			Platform: "darwin", Backend: "seatbelt", Available: true,
-			Effective: platformControls("darwin"),
-		}
-	case "linux":
-		return Capability{
-			Platform: "linux", Backend: "bwrap+landlock", Available: true,
-			Reason:    "runtime strength requires the bwrap and Landlock ABI v3 attack probe",
-			Effective: platformControls("linux"),
-		}
-	case "windows":
-		return Capability{
-			Platform: "windows", Backend: "restricted-token",
-			Reason:    "strong restricted-token controls are unavailable",
-			Effective: platformControls("windows"),
-		}
-	default:
-		return Capability{Platform: runtime.GOOS, Backend: "none"}
-	}
-}
-
 func platformControls(platform string) controlmatrix.Matrix {
 	controls := controlmatrix.Matrix{
 		FilesystemRead:  controlmatrix.FilesystemReadUnrestricted,

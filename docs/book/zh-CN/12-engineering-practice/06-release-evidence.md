@@ -16,7 +16,6 @@ test_paths:
 source_of_truth:
   - scripts/package-release.sh
   - Makefile
-  - testdata/contracts/web-feature-parity.json
 status: draft
 last_verified: null
 ---
@@ -37,11 +36,8 @@ Checksum、CycloneDX SBOM 和 Release Manifest。
 
 Web 不是独立部署物。发布时必须证明页面资源来自同一 Binary，且：
 
-- `make web-parity-check` 证明旧 Host 能力均已实现、保留或明确删除；
 - `make web-check web-test web-build web-e2e` 证明 TypeScript、Unit、生产 Bundle
   与真实 Chromium 主流程；
-- `make web-parity-report` 执行 Ledger 声明的资格测试，并记录 Commit、输入摘要、
-  测试命令和嵌入资源摘要；
 - `make web-streaming-soak` 连续运行一小时真实 WebSocket Streaming，并约束 Event
   完整性、Heap、Goroutine 和文件描述符增长；
 - `make cross-build smoke` 证明目标平台 Binary 与命令面；

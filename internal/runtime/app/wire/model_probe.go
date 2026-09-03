@@ -56,10 +56,48 @@ func ProbeModelConnection(
 	if probeErr != nil {
 		return ModelProbeResult{}, probeErr
 	}
+	capabilities = withDefaultReasoningEfforts(modelID, capabilities)
 	result := ModelProbeResult{Capabilities: capabilities}
 	result.Models, _ = listed["model_metadata"].([]modelcatalog.DiscoveredModel)
 	if listErr != nil {
 		result.Warning = listErr.Error()
 	}
 	return result, nil
+}
+
+func withDefaultReasoningEfforts(
+	modelID string,
+	capabilities model.Capabilities,
+) model.Capabilities {
+	if !capabilities.Reasoning || len(capabilities.ReasoningEfforts) != 0 {
+		return capabilities
+	}
+	var matched *model.Model
+	for _, provider := range model.DefaultCatalog().Providers() {
+		candidate, exists := provider.Models[modelID]
+		if !exists || !candidate.Capabilities.Reasoning ||
+			len(candidate.Capabilities.ReasoningEfforts) == 0 {
+			continue
+		}
+		if matched != nil {
+			matched = nil
+			break
+		}
+		value := candidate
+		matched = &value
+	}
+	if matched != nil {
+		capabilities.ReasoningEfforts = append(
+			[]string(nil),
+			matched.Capabilities.ReasoningEfforts...,
+		)
+		capabilities.DefaultReasoningEffort =
+			matched.Capabilities.DefaultReasoningEffort
+		capabilities.ThinkingToggle =
+			matched.Capabilities.ThinkingToggle
+		return capabilities
+	}
+	capabilities.ReasoningEfforts = []string{"low", "medium", "high"}
+	capabilities.DefaultReasoningEffort = "medium"
+	return capabilities
 }

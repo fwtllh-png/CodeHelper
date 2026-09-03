@@ -321,6 +321,9 @@ func resolveSetupModelMetadata(
 	if !capabilities.Streaming {
 		return nil, invalidSetup("custom model must declare streaming capability")
 	}
+	if !capabilities.ToolCalls {
+		return nil, invalidSetup("custom model must support tool calls")
+	}
 	if !capabilities.Reasoning &&
 		(len(capabilities.ReasoningEfforts) != 0 ||
 			capabilities.DefaultReasoningEffort != "" ||

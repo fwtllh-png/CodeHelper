@@ -353,24 +353,3 @@ func cloneProvider(provider Provider) Provider {
 	provider.Models = models
 	return provider
 }
-
-// CredentialHelpEntry is a non-secret credential reference hint for auth slots.
-type CredentialHelpEntry struct {
-	ProviderID string        `json:"provider_id"`
-	Credential CredentialRef `json:"credential"`
-}
-
-// CredentialHelp returns bundled env credential slots for providers that need auth.
-func (c *Catalog) CredentialHelp() []CredentialHelpEntry {
-	providers := c.Providers()
-	result := make([]CredentialHelpEntry, 0, len(providers))
-	for _, provider := range providers {
-		if provider.Credential.Kind == "" || provider.Credential.Name == "" {
-			continue
-		}
-		result = append(result, CredentialHelpEntry{
-			ProviderID: provider.ID, Credential: provider.Credential,
-		})
-	}
-	return result
-}

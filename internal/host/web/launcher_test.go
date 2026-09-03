@@ -78,6 +78,10 @@ func TestRunContextExposesOnlyWebStartupFlags(t *testing.T) {
 		!strings.Contains(stdout.String(), `(default "auto")`) {
 		t.Fatalf("--help defaults = %q", stdout.String())
 	}
+	if !strings.Contains(stdout.String(), `-port int`) ||
+		!strings.Contains(stdout.String(), `(default 6732)`) {
+		t.Fatalf("--help port default = %q", stdout.String())
+	}
 }
 
 func TestLoadWebConfigLeavesProviderAndModelForGuidedSetup(t *testing.T) {

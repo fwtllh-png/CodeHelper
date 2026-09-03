@@ -430,47 +430,6 @@ func TestSessionControlPreservesExplicitTitle(t *testing.T) {
 	}
 }
 
-func TestActivateSessionBackfillsLegacyDefaultTitle(t *testing.T) {
-	now := time.Now().UTC()
-	store := &memorySessionLifecycleStore{summary: protocol.SessionSummary{
-		Version: protocol.SessionLifecycleVersion, Revision: 1,
-		SessionID: "session-legacy", ThreadID: "thread-legacy",
-		Title: defaultSessionTitle, Status: protocol.SessionStatusCompleted,
-		Isolation: "shared", WorkspaceRoot: "/workspace",
-		WorkspaceLabel: "workspace", ExecutionTarget: "local",
-		LatestSequence: 1, CreatedAt: now, UpdatedAt: now,
-	}}
-	events := NewMemoryEventStore(8)
-	started, err := protocol.NewEvent(protocol.EventMeta{
-		Sequence: 1, OperationID: "op-legacy", ThreadID: "thread-legacy",
-		TurnID: "turn-legacy", ItemID: "item-legacy",
-	}, &protocol.TurnStartedData{
-		Provider: "fixture", Model: "fixture",
-		DisplayPrompt: "请分析当前工作区的核心模块与技术栈。",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := events.Append(t.Context(), started); err != nil {
-		t.Fatal(err)
-	}
-	runtime := NewRuntime(Options{
-		WorkspaceRoot: "/workspace", EventStore: events,
-		SessionLifecycle: store, Engine: NewThreadManager(nil),
-	})
-	t.Cleanup(func() { closeRuntime(t, runtime) })
-
-	if _, err := runtime.ActivateSession(t.Context(), ActivateSessionRequest{
-		SessionID: "session-legacy", WorkspaceRoot: "/workspace",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if store.summary.Title != "分析当前工作区的核心模块与技术栈" ||
-		store.summary.Revision != 3 {
-		t.Fatalf("backfilled legacy summary = %+v", store.summary)
-	}
-}
-
 func TestSessionControlRejectsForeignWorkspaceAndArchivedOperations(t *testing.T) {
 	now := time.Now().UTC()
 	store := &memorySessionLifecycleStore{summary: protocol.SessionSummary{

@@ -2,14 +2,6 @@ package agentcontext
 
 import "strings"
 
-// OpenWorkNarrativeKinds are continuation items that become Plan todos when
-// they cite durable source messages. They are not guessed from prose.
-func OpenWorkNarrativeKinds() []string {
-	return []string{
-		NarrativeUnresolved, NarrativePendingJob, NarrativeNextStep,
-	}
-}
-
 func IsOpenWorkNarrativeKind(kind string) bool {
 	switch kind {
 	case NarrativeUnresolved, NarrativePendingJob, NarrativeNextStep:

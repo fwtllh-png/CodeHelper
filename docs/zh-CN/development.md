@@ -36,7 +36,6 @@ make web-e2e
 ```bash
 make docs-check
 make book-check
-make web-parity-check
 git diff --check
 ```
 
@@ -54,8 +53,6 @@ git diff --check
 | `make web-test` | Web Unit Test |
 | `make web-build` | 构建无 Source Map 的生产资源 |
 | `make web-e2e` | 启动真实 Binary，以 Playwright 验证 Web 主流程与响应式约束 |
-| `make web-parity-check` | 校验旧 Host 能力清单与迁移账本 |
-| `make web-parity-report` | 执行声明的资格测试并生成带输入和产物摘要的报告 |
 | `make protocol-schema` | 生成 Runtime Protocol Schema |
 | `make web-experience-check` | 校验 Web 体验契约 |
 | `make host-journey-contract` | 校验 Runtime 与 Web 主旅程 |
@@ -84,9 +81,9 @@ Binary。普通 Go Test 不依赖该目录，因而干净 Checkout 可以直接�
 Web 入口发布还会运行 `make web-release-drill`。该门禁用当前 Binary 创建真实
 Session 和已完成 Turn，在进程停止后复制 Data Dir 并逐文件校验 SHA-256，再让
 `PREVIOUS_RELEASE_REF` 构建出的上一正式发布 Binary 完成 Session List、Load、History
-和 Turn Recovery。该参数没有分支或上一提交回退值：CI 必须通过仓库变量
-`QCODE_PREVIOUS_RELEASE_REF` 配置不可变的上一正式发布 Tag 或 Commit，手工发布
-必须显式传入；也可通过 `PREVIOUS_BINARY` 指向保留的上一发布产物。报告写入
+和 Turn Recovery。该参数没有分支或上一提交回退值：运行者必须通过
+`PREVIOUS_RELEASE_REF` 配置不可变的上一正式发布 Tag 或 Commit，或通过
+`PREVIOUS_BINARY` 指向保留的上一发布产物。报告写入
 `.tmp/release/web-downgrade-drill.json`。
 
 Release Lane 还会执行 `make web-streaming-soak`，持续一小时验证 WebSocket Event

@@ -43,11 +43,6 @@ func NewItemID() (ItemID, error) {
 	return ItemID(value), err
 }
 
-func NewEffectID() (EffectID, error) {
-	value, err := newID("effect")
-	return EffectID(value), err
-}
-
 func NewWindowID() (string, error) {
 	return newID("window")
 }

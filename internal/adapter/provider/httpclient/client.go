@@ -280,15 +280,5 @@ func requestKey(body []byte) string {
 	digest := sha256.Sum256(body)
 	return fmt.Sprintf("qcode-%x-%d", digest[:8], requestSequence.Add(1))
 }
-func wait(ctx context.Context, duration time.Duration) error {
-	timer := time.NewTimer(duration)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
 
 var _ providerwire.Transport = (*Client)(nil)

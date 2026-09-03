@@ -33,7 +33,7 @@ Browser。
 | Binary Integration | Web Transport Framing/Process | `go test ./internal/host/runtimeapi/web` |
 | Web Static/Runtime | TS/Real Runtime | `make web-check`、`make web-test` |
 | Browser E2E | 真实 Binary、HTTP/WebSocket、Chromium | `make web-e2e` |
-| Release Matrix | Journey/Artifact 完整性 | `make web-parity-report` |
+| Release Matrix | Journey/Artifact 完整性 | `make test-release` |
 
 Unit Test 只在 Ownership Boundary 使用 Fake。Web Transport Contract 验证共享 Runtime Scenario；
 Binary Test 启动 Build Artifact。Playwright 使用 `--port 0` 启动同一发布 Binary，

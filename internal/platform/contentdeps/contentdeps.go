@@ -4,7 +4,6 @@ package contentdeps
 import (
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 )
 
@@ -23,25 +22,6 @@ func Probe() map[string]bool {
 		available[name] = err == nil
 	}
 	return available
-}
-
-// CodeExecutionReady reports platforms that declare a strong sandbox path.
-// Live seatbelt/bwrap probing stays in the sandbox package (hosts must not import it).
-func CodeExecutionReady() bool {
-	switch runtime.GOOS {
-	case "darwin", "linux":
-		return true
-	default:
-		return false
-	}
-}
-
-// FeatureStatus maps a readiness bool to doctor feature vocabulary.
-func FeatureStatus(ready bool) string {
-	if ready {
-		return "ready"
-	}
-	return "unavailable"
 }
 
 func dependencyName(environment, fallback string) string {

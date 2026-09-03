@@ -68,23 +68,6 @@ type TerminalUpdate struct {
 	Convergence     *protocol.TurnConvergence
 }
 
-// WorkspaceEvent reports child-agent updates that remain relevant while a
-// host projects a parent thread.
-func WorkspaceEvent(update Update) bool {
-	switch data := update.(type) {
-	case AgentUpdate:
-		return true
-	case InteractionUpdate:
-		source := data.Source
-		if data.ApprovalRequired != nil {
-			source = data.ApprovalRequired.Source
-		}
-		return source != nil && source.Kind == "agent"
-	default:
-		return false
-	}
-}
-
 type IgnoredUpdate struct{ Base }
 type UnknownUpdate struct {
 	Base

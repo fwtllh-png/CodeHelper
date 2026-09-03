@@ -258,6 +258,11 @@ func TestWebSetupRejectsMissingOrInvalidCustomMetadata(t *testing.T) {
 		t.Fatal("custom setup with zero context was accepted")
 	}
 	base.ModelMetadata = testSetupMetadata(base.Model)
+	base.ModelMetadata.Capabilities.ToolCalls = boolPointer(false)
+	if _, _, err := resolveWebSetup(base); err == nil {
+		t.Fatal("custom setup without tool calls was accepted")
+	}
+	base.ModelMetadata = testSetupMetadata(base.Model)
 	base.ModelMetadata.MaxOutputTokens = base.ModelMetadata.ContextTokens + 1
 	if _, _, err := resolveWebSetup(base); err == nil {
 		t.Fatal("custom setup with output above context was accepted")

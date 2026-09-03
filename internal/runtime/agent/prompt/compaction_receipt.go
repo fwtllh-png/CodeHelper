@@ -73,32 +73,6 @@ func NewPruningReceipt(
 	}
 }
 
-func NewSurfaceBudgetReceipt(
-	originalMessages int,
-	originalBytes int,
-	retainedBytes int,
-	originalTokens uint64,
-	retainedTokens uint64,
-	prunedResults int,
-	prunedBytes int,
-	authorityDigest string,
-	contextReceipts []Receipt,
-) *CompactionReceipt {
-	return &CompactionReceipt{
-		OriginalMessages:    originalMessages,
-		OriginalBytes:       originalBytes,
-		RetainedBytes:       retainedBytes,
-		OriginalTokens:      originalTokens,
-		RetainedTokens:      retainedTokens,
-		TruncationReason:    "tool_result_surface_budget",
-		PrunedToolResults:   prunedResults,
-		PrunedBytes:         prunedBytes,
-		AuthorityDigest:     authorityDigest,
-		AuthorityEquivalent: true,
-		ContextReceipts:     append([]Receipt(nil), contextReceipts...),
-	}
-}
-
 func NewCompactionReceipt(
 	selection agentcontext.CompactionSelection,
 	summaryLineBytes int,

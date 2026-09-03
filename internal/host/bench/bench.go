@@ -422,19 +422,6 @@ func RunSuite(ctx context.Context, root string) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	// QCODE_BENCH_TASK filters to a single task for adversarial testing.
-	if name := os.Getenv("QCODE_BENCH_TASK"); name != "" {
-		filtered := make([]Task, 0, 1)
-		for _, t := range tasks {
-			if t.Name == name || filepath.Base(t.Dir) == name {
-				filtered = append(filtered, t)
-			}
-		}
-		if len(filtered) == 0 {
-			return Report{}, fmt.Errorf("benchmark task %q not found", name)
-		}
-		tasks = filtered
-	}
 	report := Report{
 		SchemaVersion: 1,
 		Platform:      runtime.GOOS + "/" + runtime.GOARCH,

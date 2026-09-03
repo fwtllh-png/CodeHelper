@@ -292,7 +292,6 @@ func (r *SessionService) ActivateSession(
 			nil,
 		)
 	}
-	summary = r.restoreDefaultSessionTitle(ctx, summary)
 	threadID := request.ThreadID
 	if threadID == "" {
 		threadID = summary.ThreadID
@@ -345,67 +344,6 @@ func (r *SessionService) ActivateSession(
 		}
 	}
 	return bindingFromSummary(summary), nil
-}
-
-func (r *SessionService) restoreDefaultSessionTitle(
-	ctx context.Context,
-	summary protocol.SessionSummary,
-) protocol.SessionSummary {
-	if summary.Title != defaultSessionTitle ||
-		summary.LatestSequence == 0 ||
-		r.HistoryService == nil {
-		return summary
-	}
-	snapshot, err := r.HistoryService.Snapshot(ctx, summary.SessionID)
-	if err != nil {
-		return summary
-	}
-	var title string
-	for _, event := range snapshot.Events {
-		started, ok := event.Data.(*protocol.TurnStartedData)
-		if !ok {
-			continue
-		}
-		prompt := started.DisplayPrompt
-		if prompt == "" {
-			prompt = started.Prompt
-		}
-		title = promptSessionTitle(prompt)
-		if title != "" {
-			break
-		}
-	}
-	if title == "" {
-		return summary
-	}
-	r.mutationMu.Lock()
-	defer r.mutationMu.Unlock()
-	current, err := r.sessionLifecycle.GetLifecycle(ctx, summary.SessionID)
-	if err != nil || current.Title != defaultSessionTitle {
-		if err == nil {
-			return current
-		}
-		return summary
-	}
-	updated, err := r.sessionLifecycle.UpdateLifecycle(
-		ctx,
-		summary.SessionID,
-		current.Revision,
-		protocol.SessionLifecyclePatch{Title: &title},
-	)
-	if err != nil {
-		if r.logger != nil {
-			r.logger.Warn(
-				"legacy session title backfill failed",
-				"session_id",
-				summary.SessionID,
-				"error",
-				err,
-			)
-		}
-		return summary
-	}
-	return updated
 }
 
 func (r *SessionService) SessionForThread(

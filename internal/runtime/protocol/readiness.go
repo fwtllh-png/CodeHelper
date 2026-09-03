@@ -68,15 +68,6 @@ func NewReadiness(checks ...ReadinessCheck) (Readiness, error) {
 	return result, nil
 }
 
-// MustReadiness is for statically named checks assembled inside the runtime.
-func MustReadiness(checks ...ReadinessCheck) Readiness {
-	result, err := NewReadiness(checks...)
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
-
 // ExitCode maps operational state to the shared command contract.
 func (r Readiness) ExitCode() int {
 	switch r.Status {

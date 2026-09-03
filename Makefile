@@ -32,13 +32,9 @@ WEB_BUILD_TAG := webbundle
 	doc-external-links release-fact-check brand-check \
 	security-test sandbox-attack-test secret-leak-test \
 	stress stress-nightly \
-	canary canary-nightly \
-		canary-adversarial canary-adversarial-quick \
 	web-host-smoke protocol-contract protocol-schema \
-	web-install web-check web-test web-compile web-measure web-build web-brand-assets web-assets-check web-e2e web-parity-check web-parity-report \
-		web-harness-parity-check \
+	web-install web-check web-test web-compile web-measure web-build web-brand-assets web-assets-check web-e2e \
 		web-release-drill web-streaming-soak web-performance web-supply-chain-check web-vulnerability-check \
-	deepseek-init deepseek-web \
 	bench catalog-bench package clean
 
 # Stress tests run concurrent pressure tests to catch deadlocks,
@@ -50,38 +46,12 @@ stress:
 		./internal/adapter/mcp/... \
 		./internal/runtime/app/eventhub/...
 
-# stress-nightly runs extended stress tests for nightly CI.
+# stress-nightly runs extended stress tests for manual overnight validation.
 stress-nightly:
 	$(GO) test -tags=stress -race -count=3 -timeout 15m -run '^TestStress' \
 		./internal/runtime/agent/engine/... \
 		./internal/adapter/mcp/... \
 		./internal/runtime/app/eventhub/...
-
-# canary runs behavioral replay and performance regression checks against
-# the hermetic benchmark suite. Fails on any regression.
-# Run after: make build
-# Baseline: scripts/canary-replay.py record && scripts/canary-perf.py baseline
-canary:
-	python3 scripts/canary-replay.py check --report .tmp/canary-shared-report.json
-	python3 scripts/canary-perf.py check --report .tmp/canary-shared-report.json --reuse-report
-
-# canary-nightly runs extended canary checks with tighter thresholds for
-# nightly CI. Uses a lower performance regression threshold (20% vs 30%).
-canary-nightly:
-	python3 scripts/canary-replay.py check --report .tmp/canary-shared-report.json
-	CANARY_PERF_THRESHOLD=0.20 python3 scripts/canary-perf.py check \
-		--report .tmp/canary-shared-report.json --reuse-report
-
-# canary-adversarial runs active bug-finding tests: fault injection,
-# differential config, and fixture mutation. Use this to discover
-# real bugs, not just regressions.
-canary-adversarial:
-	python3 scripts/canary-adversarial.py full
-
-# canary-adversarial-quick runs a faster subset of adversarial tests
-# suitable for pre-commit or PR checks.
-canary-adversarial-quick:
-	python3 scripts/canary-adversarial.py fault-inject --timeout 60
 
 PROTOCOL_SCHEMA := docs/protocol/runtime-protocol.schema.json
 WEB_HOST_CONTRACT := docs/protocol/web-host.contract.json
@@ -120,7 +90,7 @@ fmt:
 capacity-policy-check:
 	$(GO) test ./scripts -run '^TestCapacityPathsDoNotReintroduceLegacyTiers$$'
 
-verify: docs-check book-check brand-check web-protocol-check web-parity-check \
+verify: docs-check book-check brand-check web-protocol-check \
 	web-check web-test web-assets-check web-supply-chain-check \
 	reliability-gate
 	@unformatted="$$(git ls-files --cached --others --exclude-standard '*.go' | \
@@ -172,7 +142,7 @@ test-hermetic:
 			-p '$(TEST_PACKAGE_PARALLELISM)' ./...
 
 # Capability tests are compiled only in this lane. Missing host prerequisites
-# produce an explicit unavailable report; CI sets CAPABILITY_REQUIRED.
+# produce an explicit unavailable report; callers may set CAPABILITY_REQUIRED.
 test-platform-capability:
 	QCODE_SANDBOX_STAGE=1 python3 scripts/run-test-lane.py platform-capability \
 		--report '$(TEST_LANE_REPORT_DIR)/platform-capability.json' \
@@ -214,7 +184,7 @@ release-baseline-check:
 	fi
 
 release-gate: cross-build smoke race secret-leak-test reliability-gate benchmark-v2 web-performance \
-	web-streaming-soak web-parity-report web-release-drill web-supply-chain-check web-vulnerability-check
+	web-streaming-soak web-release-drill web-supply-chain-check web-vulnerability-check
 	@dirty="$$(git status --porcelain --untracked-files=all)"; \
 		test -z "$$dirty" || { \
 			echo "release gate requires a clean worktree:"; \
@@ -303,15 +273,6 @@ web-assets-check: web-brand-assets web-build
 
 web-e2e: web-assets-check build
 	$(NPM) --prefix web run test:e2e
-
-web-parity-check: web-harness-parity-check
-	$(GO) run ./scripts/webparitycheck -root . -mode check
-
-web-harness-parity-check:
-	$(GO) run ./scripts/webharnessparity
-
-web-parity-report:
-	$(GO) run ./scripts/webparitycheck -root . -mode report
 
 web-release-drill: build
 	@tmp="$$(mktemp -d)"; \
@@ -459,12 +420,6 @@ web-protocol:
 web-protocol-check:
 	$(GO) run ./scripts/webprotocolgen -output $(WEB_HOST_CONTRACT) \
 		-typescript $(WEB_HOST_TYPES) -go-output $(WEB_HOST_ROUTES_GO) -check
-
-deepseek-init:
-	./scripts/deepseek-local.sh init
-
-deepseek-web:
-	./scripts/deepseek-local.sh web
 
 # bench runs the hermetic coding benchmark (fixture provider, no network/model).
 # Set BENCH_REPORT to write the JSON report for tracking across runs.

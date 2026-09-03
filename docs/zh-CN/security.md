@@ -58,7 +58,7 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - 拒绝 Traversal、不安全 Symlink 和 Archive Escape。
 - Durable Workspace Journal、Process Job Journal 和 Job Log 位于
   `<data-dir>/workspaces/<workspace-id>/control`，不再从 Workspace 内的旧
-  `.qcode/journal` 恢复。旧目录只产生诊断提示。
+  Runtime 外部状态目录中的 Journal 恢复。
 - Workspace State 分为互不重叠的 `control`、`sandbox-home` 和 `artifacts`；
   在这三个状态域中，Sandbox 只获得 `sandbox-home` 写权限。
 - Tool Contract 要求时先读后写。

@@ -223,8 +223,6 @@ Trust 时：
 - 区分已交付能力与 Roadmap；
 - 示例命令必须存在于 `--help`；
 - 受 Git 跟踪的文档不嵌入真实凭证；
-- 操作仓库所有者的本机 DeepSeek 环境时，调用 `make deepseek-init` 或
-  `make deepseek-web`，不检查被忽略的 Runbook；
 - 保持本地链接有效；
 - 更新 `docs/zh-CN`，不创建英文镜像；
 - 删除过时材料，不保留互相矛盾的副本。

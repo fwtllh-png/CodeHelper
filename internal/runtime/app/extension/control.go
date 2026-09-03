@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -396,18 +395,4 @@ func projectionHealth(enabled bool) string {
 		return "active"
 	}
 	return "inactive"
-}
-
-func sortedUniqueControl(values []string) []string {
-	sort.Strings(values)
-	write := 0
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" || write > 0 && values[write-1] == value {
-			continue
-		}
-		values[write] = value
-		write++
-	}
-	return values[:write]
 }

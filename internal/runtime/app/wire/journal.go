@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/fwtllh-png/QCode/internal/config"
@@ -32,17 +31,6 @@ func openWorkspaceJournal(
 		return nil, errors.New(
 			"durable workspace journal requires an external Runtime state store",
 		)
-	}
-	legacyPath := filepath.Join(workspace, ".qcode", "journal")
-	if _, err := os.Lstat(legacyPath); err == nil {
-		if session.logger != nil {
-			session.logger.Warn(
-				"legacy workspace journal ignored",
-				"path", legacyPath,
-			)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("inspect legacy workspace journal: %w", err)
 	}
 	journal, err := workspacejournal.Open(
 		workspace,

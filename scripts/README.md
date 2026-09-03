@@ -19,7 +19,6 @@ Root 运行。
 | `webprotocolgen` | 无 | 从 Web Route Registry 生成或校验 Web Host 传输契约 |
 | `package-release.sh` | 无 | `dist/release` Binary、Checksum、SBOM、Manifest |
 | `web-release-drill.py` | 无 | Web RC Data Dir 备份恢复与上一 Binary 降级证据 |
-| `deepseek-local.sh` | 配置时可能联网 | 本机 DeepSeek 编译、配置与 Web 启动 |
 
 ## 约定
 
@@ -29,7 +28,6 @@ Root 运行。
 - 使用严格错误处理并保留失败退出码；
 - 通过环境变量暴露机器相关路径；
 - 不打印 Secret，也不从受 Git 跟踪的仓库文档读取 Secret；
-- Git 忽略的本机 DeepSeek Runbook 只能作为 Secret Input；
 - 只向约定的 Build Directory 写生成产物；
 - 使用 Trap 清理临时文件；
 - 接受参数时提供 `--help`。
@@ -57,8 +55,6 @@ make web-release-drill PREVIOUS_RELEASE_REF=<上一发布提交>
 make web-supply-chain-check
 make web-vulnerability-check
 VERSION=0.1.0 make package
-make deepseek-init
-make deepseek-web
 ```
 
 完整开发与发布背景见

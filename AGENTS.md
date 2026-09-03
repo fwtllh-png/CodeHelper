@@ -25,8 +25,7 @@ Web and shared by the main agent and subagents.
 - Consequential tools pass through `internal/adapter/tool/guard`.
 - Do not bypass policy, approval, constitution, journal, or sandbox.
 - Do not store raw secrets in tracked code, config, fixtures, logs, or docs.
-- Never read, print, patch, or force-add `docs/DEEPSEEK-LIVE.zh-CN.md`; use the
-  `deepseek-*` Make targets when operating the owner's local environment.
+- Never read, print, patch, or force-add `docs/DEEPSEEK-LIVE.zh-CN.md`.
 - Do not overwrite unrelated worktree changes.
 - Do not add pre-release compatibility migrations without an explicit need.
 - Do not introduce undocumented fixed thresholds, model tiers, or heuristic

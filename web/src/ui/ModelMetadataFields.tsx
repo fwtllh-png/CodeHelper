@@ -113,6 +113,9 @@ export function modelMetadataProblem(
   if (maxOutputTokens > contextTokens) {
     return "Output exceeds context.";
   }
+  if (!capabilities.tool_calls) {
+    return "QCode requires tool calling.";
+  }
   if (!capabilities.reasoning &&
       (declaredEfforts.length > 0 || defaultEffort ||
        capabilities.thinking_toggle) ||

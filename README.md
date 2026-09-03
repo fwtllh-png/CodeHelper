@@ -1,6 +1,5 @@
 # QCode
 
-[![CI](https://github.com/fwtllh-png/QCode/actions/workflows/ci.yml/badge.svg)](https://github.com/fwtllh-png/QCode/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](./LICENSE)
 [![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](./go.mod)
 [![Release](https://img.shields.io/github/v/release/fwtllh-png/QCode?display_name=tag&sort=semver)](https://github.com/fwtllh-png/QCode/releases)
@@ -80,7 +79,8 @@ OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible 服务，并填写 
 无配置运行 `qcode` 时默认启用受 Guard 管理的内置工具，并使用 `auto`
 审批姿态。
 
-Web 只监听 `127.0.0.1`，默认选择可用端口。终端会分别输出页面开始监听和
+Web 只监听 `127.0.0.1:6732`。同一用户后续启动会复用已有 Supervisor，
+终端会分别输出页面开始监听和
 Runtime 完成恢复的 URL。
 
 安装、初始配置、凭证、持久化和 Web 使用方式见
@@ -140,7 +140,6 @@ testdata/                Hermetic Provider 与 Benchmark Fixture
 | Runtime 所有权与可维护性 | [核心流程与边界](./docs/zh-CN/runtime-maintainability-refactoring-plan.md) |
 | 安全 | [安全指南](./docs/zh-CN/security.md) |
 | 本地开发 | [本地开发](./docs/zh-CN/development.md) |
-| 本机 DeepSeek | [一键配置运行](./docs/zh-CN/deepseek-local.md) |
 | Agent 上下文 | [Agent 指南](./docs/zh-CN/agent-guide.md) |
 | Agent 工程知识书籍 | [书籍与导航](./docs/book/zh-CN/README.md) |
 | 知识体系方案 | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) |

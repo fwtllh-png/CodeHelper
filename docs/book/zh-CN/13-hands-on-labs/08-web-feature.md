@@ -15,7 +15,6 @@ test_paths:
 source_of_truth:
   - web/src/runtime/client.ts
   - web/src/ui/App.tsx
-  - testdata/contracts/web-feature-parity.json
 status: draft
 last_verified: null
 ---
@@ -29,7 +28,7 @@ last_verified: null
 
 ## 步骤
 
-1. 在 Feature Ledger 中声明能力、Runtime Owner、Endpoint、页面位置和验证证据。
+1. 在 Runtime Contract 中声明能力、Owner、Endpoint 和验证证据。
 2. 优先在 `internal/runtime/app` 或所属子系统实现业务语义。
 3. 在 Web Server 增加严格请求 DTO、鉴权和错误映射。
 4. 在 React-free `RuntimeClient` 增加调用与状态投影。
@@ -42,7 +41,6 @@ go test ./internal/host/runtimeapi/web ./internal/runtime/app
 npm --prefix web run check
 npm --prefix web test
 make web-build
-make web-parity-check
 ```
 
 ## 证据链

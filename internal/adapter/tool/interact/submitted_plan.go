@@ -122,28 +122,3 @@ func (p SubmittedPlan) ContextPlan() agentcontext.Plan {
 		HandoffPacket:       p.HandoffPacket,
 	}
 }
-
-func RenderSubmittedPlan(plan SubmittedPlan) string {
-	var body strings.Builder
-	if plan.Title != "" {
-		fmt.Fprintf(&body, "# %s\n\n", plan.Title)
-	}
-	if plan.Objective != "" {
-		fmt.Fprintf(&body, "%s\n\n", plan.Objective)
-	}
-	body.WriteString("## Steps\n")
-	for index, step := range plan.Steps {
-		fmt.Fprintf(&body, "%d. %s", index+1, step.Title)
-		if step.ExpectedEvidence != "" {
-			fmt.Fprintf(&body, "\n   Evidence: %s", step.ExpectedEvidence)
-		}
-		body.WriteByte('\n')
-	}
-	if plan.VerificationPlan != "" {
-		fmt.Fprintf(&body, "\n## Verification\n%s\n", plan.VerificationPlan)
-	}
-	if plan.RisksAndUnknowns != "" {
-		fmt.Fprintf(&body, "\n## Risks and unknowns\n%s\n", plan.RisksAndUnknowns)
-	}
-	return strings.TrimSpace(body.String())
-}

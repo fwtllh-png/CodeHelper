@@ -57,8 +57,7 @@ func ProbeCapabilities(
 			"role":    "user",
 			"content": "Call capability_probe once with an empty object.",
 		}},
-		"max_tokens": 32,
-		"stream":     true,
+		"stream": true,
 		"tools": []map[string]any{{
 			"type": "function",
 			"function": map[string]any{

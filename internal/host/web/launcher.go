@@ -53,6 +53,8 @@ type webCommandOptions struct {
 	providerFixture string
 }
 
+const defaultWebPort = 6732
+
 var loadWebAssets = webassets.Assets
 
 // RunContext parses process startup flags and runs the local Web workspace.
@@ -80,7 +82,12 @@ func RunContext(
 	flags.StringVar(&options.configPath, "config", "", "TOML configuration file")
 	flags.StringVar(&options.dataDir, "data-dir", "", "persistent state directory")
 	flags.StringVar(&options.host, "host", "127.0.0.1", "loopback listen host")
-	flags.IntVar(&options.port, "port", 0, "listen port (0 selects an available port)")
+	flags.IntVar(
+		&options.port,
+		"port",
+		defaultWebPort,
+		"listen port (0 selects an available port)",
+	)
 	flags.BoolVar(&options.open, "open", false, "open the Web workspace in a browser")
 	flags.BoolVar(&options.noOpen, "no-open", false, "do not open a browser")
 	flags.BoolVar(

@@ -60,9 +60,6 @@
                 "model": {
                   "type": "string"
                 },
-                "plan_approval": {
-                  "type": "string"
-                },
                 "planning_policy": {
                   "type": "string"
                 },
@@ -2450,9 +2447,6 @@
             "model": {
               "type": "string"
             },
-            "plan_approval": {
-              "type": "string"
-            },
             "planning_policy": {
               "type": "string"
             },
@@ -2517,9 +2511,6 @@
               "type": "string"
             },
             "model": {
-              "type": "string"
-            },
-            "plan_approval": {
               "type": "string"
             },
             "planning_policy": {

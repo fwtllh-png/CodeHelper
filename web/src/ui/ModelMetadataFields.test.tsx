@@ -14,6 +14,7 @@ function validDraft() {
   draft.contextTokens = "65536";
   draft.maxOutputTokens = "8192";
   draft.capabilities.streaming = true;
+  draft.capabilities.tool_calls = true;
   return draft;
 }
 
@@ -62,6 +63,11 @@ describe("modelMetadataProblem", () => {
 
   it("validates capability dependencies and protocol", () => {
     const draft = validDraft();
+    draft.capabilities.tool_calls = false;
+    expect(modelMetadataProblem(draft, "openai_chat")).toBe(
+      "QCode requires tool calling."
+    );
+    draft.capabilities.tool_calls = true;
     draft.capabilities.thinking_toggle = true;
     expect(modelMetadataProblem(draft, "openai_chat")).toContain(
       "invalid"

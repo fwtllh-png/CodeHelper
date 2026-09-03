@@ -45,12 +45,6 @@ func TestSessionProfilePatchNoopDoesNotAdvanceRevision(t *testing.T) {
 
 func TestSessionProfileValidationRejectsUnsafeOrUnsupportedValues(t *testing.T) {
 	current := testSessionProfile()
-	manual := "manual"
-	current.PlanApproval = manual
-	if err := current.Validate(); err == nil {
-		t.Fatal("manual Plan approval was accepted")
-	}
-	current.PlanApproval = ""
 	invalid := "turbo"
 	if _, err := ApplySessionProfilePatch(
 		current,

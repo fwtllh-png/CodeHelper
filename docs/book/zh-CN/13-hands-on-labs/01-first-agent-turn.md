@@ -135,8 +135,8 @@ go test ./internal/runtime/app -run TestRuntimeConcurrentSubmitHasStrictSequence
 
 ## 从 Fixture 到 Live Provider
 
-Fixture 路径通过后再执行 `make deepseek-web` 或配置其他 Credential Reference。Live
-Call 验证 Network/Provider Compatibility，不能替代确定性 Runtime Test。
+Fixture 路径通过后，可在 Web 中配置真实 Provider 和 Credential Reference。Live Call
+验证 Network/Provider Compatibility，不能替代确定性 Runtime Test。
 
 ## 复习问题
 

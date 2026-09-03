@@ -13,8 +13,8 @@ cd /path/to/project
 qcode
 ```
 
-当前目录自动成为 Workspace，并自动打开浏览器。服务只监听 `127.0.0.1`，默认选择
-可用端口。若 Web Supervisor 已运行，再次从其他目录执行 `qcode` 会把当前目录
+当前目录自动成为 Workspace，并自动打开浏览器。服务默认监听 `127.0.0.1:6732`。
+若 Web Supervisor 已运行，再次从其他目录执行 `qcode` 会把当前目录
 注册到已有进程，并直接打开对应 Workspace。`make start` 仅作为源码开发入口保留。
 它会使用 `--replace-owner` 比较构建身份并重启旧的开发 Supervisor；直接执行已安装的
 `qcode` 仍复用现有 Supervisor。
@@ -28,7 +28,7 @@ qcode
 | `--config PATH` | TOML 配置文件 |
 | `--data-dir PATH` | 持久状态目录 |
 | `--host 127.0.0.1` | 监听地址；只接受 Loopback |
-| `--port PORT` | 监听端口；`0` 自动选择 |
+| `--port PORT` | 监听端口；默认 `6732`，`0` 仅用于测试或临时隔离 |
 | `--open` | 启动后打开系统浏览器 |
 | `--no-open` | 禁止自动打开浏览器 |
 | `--enable-tools` | 启用内置 Workspace Tool |

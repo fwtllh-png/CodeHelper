@@ -199,13 +199,6 @@
       ]
     },
     {
-      "id": "web-feature-parity",
-      "command": [
-        "make",
-        "web-parity-check"
-      ]
-    },
-    {
       "id": "repository-test-topology",
       "command": [
         "go",
@@ -246,7 +239,6 @@
   ],
   "screenshots": [],
   "external_link_exclusions": [
-    "https://github.com/fwtllh-png/QCode/actions/workflows/ci.yml/badge.svg",
     "https://github.com/fwtllh-png/QCode/security/advisories/new"
   ]
 }
