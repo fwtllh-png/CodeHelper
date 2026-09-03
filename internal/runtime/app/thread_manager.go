@@ -65,17 +65,18 @@ func (m *ThreadManager) ActivitySnapshot() agentengine.ActivitySnapshot {
 // host template: its own workspace root, step quota and spend budget. The host
 // template cannot express these because every host thread shares one seed.
 type ChildSpec struct {
-	AgentID       string
-	AgentPath     string
-	ParentPath    string
-	Role          string
-	Stance        string
-	Workspace     string // isolation root; empty means the host workspace
-	HostWorkspace string
-	SessionID     string
-	ReadOnly      bool // no journal, writes denied by policy
-	AllowedTools  []string
-	CanDelegate   bool
+	AgentID        string
+	ParentThreadID protocol.ThreadID
+	AgentPath      string
+	ParentPath     string
+	Role           string
+	Stance         string
+	Workspace      string // isolation root; empty means the host workspace
+	HostWorkspace  string
+	SessionID      string
+	ReadOnly       bool // no journal, writes denied by policy
+	AllowedTools   []string
+	CanDelegate    bool
 	// Serialized means this child deliberately shares the host workspace and
 	// inherits its gate; HostSeeded leaves durable creation to the Host protocol.
 	Serialized, HostSeeded bool

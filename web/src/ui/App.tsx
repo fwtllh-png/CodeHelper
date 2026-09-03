@@ -87,6 +87,7 @@ import {ReasoningMenu} from "./ReasoningMenu";
 import type {SettingsSection, ThemeMode} from "./SettingsDialog";
 import type {BackgroundActivityTarget} from "./backgroundActivity";
 import {
+  AgentDisclosure,
   EditPlanPreview,
   ReasoningDisclosure,
   ToolDisclosure
@@ -2590,6 +2591,9 @@ const TranscriptItem = memo(function TranscriptItem({
   }
   if (entry.kind === "reasoning") {
     return <ReasoningDisclosure entry={entry} />;
+  }
+  if (entry.kind === "agent") {
+    return <AgentDisclosure entry={entry} onInspect={onInspect} />;
   }
   return <ToolDisclosure
     entry={entry}

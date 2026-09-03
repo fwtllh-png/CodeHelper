@@ -925,10 +925,16 @@ describe("RuntimeClient", () => {
   });
 
   it("queries trace timing against the hydrated event watermark", async () => {
-    snapshotSequence = 2;
+    snapshotSequence = 3;
     snapshotEvents = [
       runtimeEvent(1, "turn.started"),
-      runtimeEvent(2, "turn.completed")
+      runtimeEvent(2, "turn.completed"),
+      {
+        ...runtimeEvent(3, "agent.status"),
+        thread_id: "thread_external",
+        turn_id: "turn_external",
+        data: {agent_id: "agent-1", status: "running"}
+      }
     ];
     const client = new RuntimeClient();
     await startClient(client);
@@ -937,7 +943,7 @@ describe("RuntimeClient", () => {
       .toEqual({
         session_id: "session",
         turn_ids: ["turn"],
-        through_sequence: 2
+        through_sequence: 3
       });
     expect(client.getSnapshot().tracePhase).toBe("ready");
     client.stop();

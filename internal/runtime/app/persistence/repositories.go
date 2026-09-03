@@ -110,3 +110,57 @@ func EnsureThread(
 	})
 	return err
 }
+
+// EnsureChildThread binds a child thread to an existing user session. It must
+// never synthesize a session because child agents are not top-level sessions.
+func EnsureChildThread(
+	ctx context.Context,
+	store *state.Store,
+	threadID protocol.ThreadID,
+	sessionID string,
+	parentThreadID protocol.ThreadID,
+) error {
+	if store == nil || threadID == "" || strings.TrimSpace(sessionID) == "" ||
+		parentThreadID == "" {
+		return errors.New("child thread, parent thread, session, and store are required")
+	}
+	repositories, err := NewPersistentRepositories(store)
+	if err != nil {
+		return err
+	}
+	if existing, getErr := repositories.Threads.Get(ctx, threadID); getErr == nil {
+		if existing.SessionID != sessionID {
+			return fmt.Errorf(
+				"child thread %s belongs to session %s, not %s",
+				threadID,
+				existing.SessionID,
+				sessionID,
+			)
+		}
+		return nil
+	} else if !errors.Is(getErr, threadstate.ErrNotFound) {
+		return getErr
+	}
+	if _, err := repositories.Sessions.Get(ctx, sessionID); err != nil {
+		return fmt.Errorf("load child parent session %s: %w", sessionID, err)
+	}
+	parent, err := repositories.Threads.Get(ctx, parentThreadID)
+	if err != nil {
+		return fmt.Errorf("load child parent thread %s: %w", parentThreadID, err)
+	}
+	if parent.SessionID != sessionID {
+		return fmt.Errorf(
+			"child parent thread %s belongs to session %s, not %s",
+			parentThreadID,
+			parent.SessionID,
+			sessionID,
+		)
+	}
+	_, err = repositories.Threads.Create(ctx, threadstate.Thread{
+		ID:             threadID,
+		SessionID:      sessionID,
+		ParentThreadID: parentThreadID,
+		Title:          "subagent",
+	})
+	return err
+}

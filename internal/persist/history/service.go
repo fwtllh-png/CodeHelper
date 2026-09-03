@@ -115,7 +115,7 @@ func (s *Service) History(
 	}
 	for _, event := range page {
 		result.Next = event.Sequence
-		if _, ok := threadIDs[event.ThreadID]; ok {
+		if eventBelongsToSession(event, query.SessionID, threadIDs) {
 			result.Events = append(result.Events, event)
 		}
 	}
@@ -147,7 +147,7 @@ func (s *Service) historyBefore(
 				reachedBoundary = true
 				break
 			}
-			if _, ok := threadIDs[event.ThreadID]; !ok {
+			if !eventBelongsToSession(event, query.SessionID, threadIDs) {
 				continue
 			}
 			if len(result.Events) == query.Limit {
@@ -217,7 +217,7 @@ func (s *Service) buildSnapshot(
 			if event.Sequence > highWatermark {
 				break
 			}
-			if _, ok := threadIDs[event.ThreadID]; !ok {
+			if !eventBelongsToSession(event, sessionID, threadIDs) {
 				continue
 			}
 			encoded, marshalErr := json.Marshal(event)
@@ -305,6 +305,18 @@ func (s *Service) sessionThreadSet(
 		result[threadID] = struct{}{}
 	}
 	return result, nil
+}
+
+func eventBelongsToSession(
+	event protocol.Event,
+	sessionID string,
+	threadIDs map[protocol.ThreadID]struct{},
+) bool {
+	if declared := protocol.EventSessionID(event.Data); declared != "" {
+		return declared == sessionID
+	}
+	_, ok := threadIDs[event.ThreadID]
+	return ok
 }
 
 func problem(code protocol.ErrorCode, message string) *protocol.Problem {

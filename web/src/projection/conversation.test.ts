@@ -745,6 +745,96 @@ describe("ConversationProjection", () => {
     expect(write.editPlan).toBeUndefined();
     expect(move.editPlan).toBeUndefined();
   });
+
+  it("groups child turn execution under its subagent", () => {
+    const child = (sequence: number, kind: string, data: Record<string, unknown>) => ({
+      ...event(sequence, kind, data),
+      thread_id: "thread-agent-1",
+      turn_id: "child-turn"
+    });
+    const snapshot = projectConversation([
+      {
+        ...event(1, "agent.spawned", {
+          agent_id: "agent-1",
+          role: "review",
+          detail: {
+            thread_id: "thread-agent-1",
+            task_name: "Review persistence"
+          }
+        }),
+        thread_id: "thread_external",
+        turn_id: "turn_external"
+      },
+      {
+        ...event(2, "agent.status", {
+          agent_id: "agent-1",
+          status: "running",
+          message: "Reviewing persistence"
+        }),
+        thread_id: "thread_external",
+        turn_id: "turn_external"
+      },
+      child(3, "turn.started", {display_prompt: "Inspect the event store"}),
+      child(4, "reasoning.delta", {
+        sample_id: "sample-1",
+        text: "Checking replay ownership"
+      }),
+      child(5, "tool.start", {
+        call_id: "child-call",
+        tool: "file_read",
+        arguments: {path: "internal/persist/history/service.go"}
+      }),
+      child(6, "tool.result", {
+        call_id: "child-call",
+        tool: "file_read",
+        output: "package history"
+      }),
+      child(7, "turn.completed", {text: "The replay filter needs session ownership."}),
+      {
+        ...event(8, "agent.status", {
+          agent_id: "agent-1",
+          status: "completed",
+          message: "The replay filter needs session ownership."
+        }),
+        thread_id: "thread_external",
+        turn_id: "turn_external"
+      },
+      {
+        ...event(9, "agent.message", {
+          body: {
+            from: "agent-1",
+            to: "root",
+            kind: "completion",
+            body: {status: "completed"}
+          }
+        }),
+        thread_id: "thread_external",
+        turn_id: "turn_external"
+      }
+    ]);
+
+    expect(snapshot.order).toEqual(["agent-agent-1"]);
+    const agent = snapshot.nodes.get("agent-agent-1");
+    expect(agent?.kind).toBe("agent");
+    if (agent?.kind !== "agent") throw new Error("agent was not projected");
+    expect(agent).toMatchObject({
+      role: "review",
+      taskName: "Review persistence",
+      status: "completed",
+      state: "completed",
+      summary: "The replay filter needs session ownership."
+    });
+    expect(agent.activities.map(({title, state}) => ({title, state}))).toEqual([
+      {title: "Queued", state: "running"},
+      {title: "Running", state: "running"},
+      {title: "Started", state: "running"},
+      {title: "Thinking", state: "running"},
+      {title: "Read", state: "completed"},
+      {title: "Result", state: "completed"},
+      {title: "Completed", state: "completed"},
+      {title: "Result", state: "completed"}
+    ]);
+  });
 });
 
 function serializable(snapshot: ReturnType<typeof projectConversation>) {

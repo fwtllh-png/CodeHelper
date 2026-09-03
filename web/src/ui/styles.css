@@ -1504,6 +1504,95 @@ textarea:disabled {
   pointer-events: none;
 }
 
+.agentDisclosure[data-state="running"] > button {
+  color: var(--ch-text);
+}
+
+.agentState {
+  flex: 0 0 auto;
+  margin-left: 10px;
+  color: var(--ch-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.agentState[data-state="running"] {
+  color: var(--ch-business);
+}
+
+.agentState[data-state="failed"] {
+  color: var(--ch-danger);
+}
+
+.agentActivity {
+  display: grid;
+  gap: 0;
+  margin: 6px 0 4px 22px;
+  padding: 0;
+  list-style: none;
+  border-left: 1px solid var(--ch-border);
+  animation: disclosure-open var(--ch-motion-disclosure) var(--ch-ease-in-out);
+}
+
+.agentActivity li {
+  display: grid;
+  min-height: 30px;
+  grid-template-columns: 22px minmax(0, 1fr) 26px;
+  align-items: center;
+  padding: 3px 0 3px 8px;
+  color: var(--ch-text-muted);
+}
+
+.agentActivity li[data-state="failed"] {
+  color: var(--ch-danger);
+}
+
+.agentActivityIcon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.agentActivityText {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.agentActivityText strong {
+  flex: 0 0 auto;
+  color: var(--ch-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.agentActivityText small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ch-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agentInspect {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  color: var(--ch-text-muted);
+  background: transparent;
+  border-radius: var(--ch-radius);
+  opacity: 0;
+}
+
+.agentActivity li:hover .agentInspect,
+.agentInspect:focus-visible {
+  opacity: 1;
+}
+
 .reasoningDisclosure small[data-follow-end] {
   text-overflow: clip;
 }

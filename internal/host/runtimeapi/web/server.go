@@ -2433,10 +2433,17 @@ func authorizedEventSession(
 	runtime *app.Runtime,
 	event protocol.Event,
 ) (string, bool) {
-	if runtime == nil || event.ThreadID == "" {
+	if runtime == nil {
 		return "", false
 	}
-	sessionID, err := runtime.SessionForThread(ctx, event.ThreadID)
+	sessionID := protocol.EventSessionID(event.Data)
+	var err error
+	if sessionID == "" {
+		if event.ThreadID == "" {
+			return "", false
+		}
+		sessionID, err = runtime.SessionForThread(ctx, event.ThreadID)
+	}
 	if err != nil || strings.TrimSpace(sessionID) == "" {
 		return "", false
 	}

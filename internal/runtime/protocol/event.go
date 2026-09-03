@@ -64,6 +64,23 @@ type EventData interface {
 	validate() error
 }
 
+// EventSessionID returns the session identity declared by event payloads that
+// are not emitted on a session-owned thread.
+func EventSessionID(data EventData) string {
+	switch value := data.(type) {
+	case *AgentSpawnedData:
+		return value.SessionID
+	case *AgentStatusData:
+		return value.SessionID
+	case *AgentMessageData:
+		return value.SessionID
+	case *AgentIntegrationData:
+		return value.SessionID
+	default:
+		return ""
+	}
+}
+
 // UnknownEventData preserves one same-version Event kind that this build does
 // not understand. Hosts may display it as read-only protocol data, but Runtime
 // semantics never infer lifecycle or terminal state from it.

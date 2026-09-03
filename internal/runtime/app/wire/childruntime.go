@@ -465,8 +465,16 @@ func (c *childRuntime) specFor(agent subagent.Agent) (app.ChildSpec, error) {
 	if err != nil {
 		return app.ChildSpec{}, err
 	}
+	var parentThreadID protocol.ThreadID
+	if agent.Context != nil {
+		parentThreadID = protocol.ThreadID(agent.Context.SourceThread)
+	}
+	if parentThreadID == "" && agent.Parent != "" {
+		parentThreadID = protocol.ThreadID(subagent.ThreadIDFor(agent.Parent))
+	}
 	spec := app.ChildSpec{
-		AgentID: agent.ID, AgentPath: agent.Path, ParentPath: agent.ParentPath,
+		AgentID: agent.ID, ParentThreadID: parentThreadID,
+		AgentPath: agent.Path, ParentPath: agent.ParentPath,
 		Role: string(agent.Role), Stance: string(agent.Stance),
 		Workspace: c.root, HostWorkspace: agent.Workspace, SessionID: agent.SessionID,
 		ReadOnly:     true,

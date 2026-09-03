@@ -42,6 +42,16 @@ export interface ProjectedUserImage {
   readonly content: string;
 }
 
+export interface ProjectedAgentActivity {
+  readonly id: string;
+  readonly sequence: number;
+  readonly kind: "status" | "reasoning" | "tool" | "message";
+  readonly title: string;
+  readonly summary: string;
+  readonly state: "running" | "completed" | "failed";
+  readonly callID?: string;
+}
+
 export type ConversationNode =
   | {
       readonly id: string;
@@ -138,6 +148,19 @@ export type ConversationNode =
       readonly title: string;
       readonly summary: string;
       readonly data: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly id: string;
+      readonly kind: "agent";
+      readonly turnID: string;
+      readonly sequence: number;
+      readonly agentID: string;
+      readonly role: string;
+      readonly taskName: string;
+      readonly status: string;
+      readonly summary: string;
+      readonly state: "running" | "completed" | "failed";
+      readonly activities: readonly ProjectedAgentActivity[];
     };
 
 export interface ConversationSnapshot {
@@ -179,6 +202,7 @@ export class ConversationProjection {
   private readonly inputs = new Map<string, RuntimeEvent>();
   private readonly receipts = new Map<string, Readonly<Record<string, unknown>>>();
   private readonly deliverablesByPath = new Map<string, Set<string>>();
+  private readonly agentByThread = new Map<string, string>();
   private revision = 0;
   private dirty = false;
   private current: ConversationSnapshot = emptyConversation;
@@ -189,6 +213,11 @@ export class ConversationProjection {
 
   apply(event: RuntimeEvent): void {
     const data = event.data;
+    const childAgentID = this.agentByThread.get(event.thread_id);
+    if (childAgentID && !event.kind.startsWith("agent.")) {
+      this.applyAgentExecution(event, childAgentID);
+      return;
+    }
     switch (event.kind) {
       case "turn.started":
         this.ids.set(event.turn_id, event.operation_id);
@@ -353,6 +382,18 @@ export class ConversationProjection {
           summary: stringValue(data.summary ?? data.reason ?? "Context window updated"),
           data: Object.freeze({...data})
         });
+        break;
+      case "agent.spawned":
+        this.spawnAgent(event);
+        break;
+      case "agent.status":
+        this.updateAgentStatus(event);
+        break;
+      case "agent.message":
+        this.applyAgentMessage(event);
+        break;
+      case "agent.integration":
+        this.applyAgentIntegration(event);
         break;
     }
   }
@@ -532,6 +573,223 @@ export class ConversationProjection {
         ...(durationMS === undefined ? {} : {durationMS})
       }
     });
+  }
+
+  private spawnAgent(event: RuntimeEvent): void {
+    const agentID = stringValue(event.data.agent_id);
+    if (!agentID) return;
+    const detail = recordValue(event.data.detail);
+    const threadID = stringValue(detail?.thread_id);
+    if (threadID) this.agentByThread.set(threadID, agentID);
+    const taskName = stringValue(detail?.task_name);
+    this.put({
+      id: agentNodeID(agentID),
+      kind: "agent",
+      turnID: event.turn_id,
+      sequence: event.sequence,
+      agentID,
+      role: stringValue(event.data.role) || "agent",
+      taskName,
+      status: "requested",
+      summary: taskName || "Waiting to start",
+      state: "running",
+      activities: Object.freeze([agentActivity(
+        event,
+        "status",
+        "Queued",
+        taskName || "Agent accepted the delegated task.",
+        "running"
+      )])
+    });
+  }
+
+  private updateAgentStatus(event: RuntimeEvent): void {
+    const agentID = stringValue(event.data.agent_id);
+    const node = this.agentNode(agentID);
+    if (!node) return;
+    const status = stringValue(event.data.status) || node.status;
+    const message = stringValue(event.data.message);
+    const state = agentState(status);
+    this.put({
+      ...node,
+      status,
+      state,
+      summary: message || agentStatusLabel(status),
+      activities: appendAgentActivity(node.activities, agentActivity(
+        event,
+        "status",
+        agentStatusLabel(status),
+        message,
+        state
+      ))
+    });
+  }
+
+  private applyAgentMessage(event: RuntimeEvent): void {
+    const message = recordValue(event.data.body);
+    const agentID = stringValue(message?.from);
+    const node = this.agentNode(agentID);
+    if (!node) return;
+    const body = recordValue(message?.body);
+    const kind = stringValue(message?.kind);
+    const resultSummary = stringValue(body?.summary);
+    const activitySummary = resultSummary ||
+      (kind === "completion" ? "Completion delivered" : "Message delivered");
+    this.put({
+      ...node,
+      summary: resultSummary || node.summary,
+      activities: appendAgentActivity(node.activities, agentActivity(
+        event,
+        "message",
+        kind === "completion" ? "Result" : "Message",
+        activitySummary,
+        node.state
+      ))
+    });
+  }
+
+  private applyAgentIntegration(event: RuntimeEvent): void {
+    const agentID = stringValue(event.data.agent_id);
+    const node = this.agentNode(agentID);
+    if (!node) return;
+    const status = stringValue(event.data.status);
+    const message = stringValue(event.data.message);
+    this.put({
+      ...node,
+      summary: message || `Integration ${status || "updated"}`,
+      activities: appendAgentActivity(node.activities, agentActivity(
+        event,
+        "status",
+        "Integration",
+        message || status,
+        status === "failed" || status === "conflicted" ? "failed" : "completed"
+      ))
+    });
+  }
+
+  private applyAgentExecution(event: RuntimeEvent, agentID: string): void {
+    const node = this.agentNode(agentID);
+    if (!node) return;
+    const data = event.data;
+    switch (event.kind) {
+      case "turn.started":
+        this.updateAgent(node, agentActivity(
+          event,
+          "status",
+          "Started",
+          stringValue(data.display_prompt ?? data.prompt),
+          "running"
+        ), "running");
+        break;
+      case "reasoning.delta":
+      case "reasoning.completed": {
+        const id = `agent-reasoning-${event.turn_id}-${
+          stringValue(data.sample_id) || "active"
+        }`;
+        const previous = node.activities.find((item) => item.id === id);
+        const text = stringValue(data.text);
+        const activity: ProjectedAgentActivity = Object.freeze({
+          id,
+          sequence: previous?.sequence ?? event.sequence,
+          kind: "reasoning",
+          title: "Thinking",
+          summary: lastNonEmptyLine(text) || previous?.summary || "Thinking",
+          state: event.kind === "reasoning.completed" ? "completed" : "running",
+        });
+        this.updateAgent(node, activity, "running");
+        break;
+      }
+      case "tool.start": {
+        const tool = stringValue(data.tool) || "Tool";
+        const callID = stringValue(data.call_id) || event.id;
+        this.updateAgent(node, Object.freeze({
+          id: `agent-tool-${callID}`,
+          sequence: event.sequence,
+          kind: "tool",
+          title: toolTitle(tool),
+          summary: toolSummary(tool, data.arguments),
+          state: "running",
+          callID
+        }), "running");
+        break;
+      }
+      case "tool.result": {
+        const callID = stringValue(data.call_id);
+        const id = `agent-tool-${callID}`;
+        const previous = node.activities.find((item) => item.id === id);
+        if (!previous) break;
+        const output = stringValue(data.output);
+        const failed = Boolean(data.is_error);
+        this.updateAgent(node, Object.freeze({
+          ...previous,
+          summary: failed
+            ? firstNonEmptyLine(output) || "Tool failed"
+            : previous.summary,
+          state: failed ? "failed" : "completed",
+          callID
+        }), "running");
+        break;
+      }
+      case "output.delta": {
+        const id = `agent-output-${event.turn_id}`;
+        const previous = node.activities.find((item) => item.id === id);
+        const text = stringValue(data.text);
+        this.updateAgent(node, Object.freeze({
+          id,
+          sequence: previous?.sequence ?? event.sequence,
+          kind: "message",
+          title: "Response",
+          summary: lastNonEmptyLine(text) || previous?.summary || "Responding",
+          state: "running"
+        }), "running");
+        break;
+      }
+      case "turn.completed": {
+        const text = stringValue(data.text ?? data.summary);
+        const id = `agent-output-${event.turn_id}`;
+        const previous = node.activities.find((item) => item.id === id);
+        this.updateAgent(node, Object.freeze({
+          id,
+          sequence: previous?.sequence ?? event.sequence,
+          kind: "message",
+          title: "Result",
+          summary: firstNonEmptyLine(text) || "Completed",
+          state: "completed"
+        }), "completed");
+        break;
+      }
+      case "turn.failed":
+      case "turn.canceled": {
+        const summary = stringValue(data.message ?? data.reason) ||
+          (event.kind === "turn.canceled" ? "Canceled" : "Failed");
+        this.updateAgent(node, agentActivity(
+          event,
+          "status",
+          event.kind === "turn.canceled" ? "Canceled" : "Failed",
+          summary,
+          "failed"
+        ), "failed");
+        break;
+      }
+    }
+  }
+
+  private updateAgent(
+    node: Extract<ConversationNode, {kind: "agent"}>,
+    activity: ProjectedAgentActivity,
+    state: "running" | "completed" | "failed"
+  ): void {
+    this.put({
+      ...node,
+      state,
+      summary: activity.summary || node.summary,
+      activities: appendAgentActivity(node.activities, activity)
+    });
+  }
+
+  private agentNode(agentID: string) {
+    const node = this.nodes.get(agentNodeID(agentID));
+    return node?.kind === "agent" ? node : undefined;
   }
 
   private applyProviderAttempt(event: RuntimeEvent): void {
@@ -803,6 +1061,70 @@ function deliverablePathKey(threadID: string, path: string): string {
 
 function stringValue(value: unknown): string {
   return value === undefined || value === null ? "" : String(value);
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  if (isRecord(value)) return value;
+  if (typeof value !== "string") return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function agentNodeID(agentID: string): string {
+  return `agent-${agentID}`;
+}
+
+function agentState(status: string): "running" | "completed" | "failed" {
+  switch (status) {
+    case "completed":
+    case "closed":
+      return "completed";
+    case "failed":
+    case "errored":
+    case "interrupted":
+    case "shutdown":
+      return "failed";
+    default:
+      return "running";
+  }
+}
+
+function agentStatusLabel(status: string): string {
+  return status
+    ? status.replaceAll("_", " ").replace(/\b\w/g, (value) => value.toUpperCase())
+    : "Updated";
+}
+
+function agentActivity(
+  event: RuntimeEvent,
+  kind: ProjectedAgentActivity["kind"],
+  title: string,
+  summary: string,
+  state: ProjectedAgentActivity["state"]
+): ProjectedAgentActivity {
+  return Object.freeze({
+    id: `agent-activity-${event.id}`,
+    sequence: event.sequence,
+    kind,
+    title,
+    summary,
+    state
+  });
+}
+
+function appendAgentActivity(
+  activities: readonly ProjectedAgentActivity[],
+  activity: ProjectedAgentActivity
+): readonly ProjectedAgentActivity[] {
+  const index = activities.findIndex((item) => item.id === activity.id);
+  if (index < 0) return Object.freeze([...activities, activity]);
+  const next = [...activities];
+  next[index] = activity;
+  return Object.freeze(next);
 }
 
 function isPlanGateRetry(value: unknown): boolean {

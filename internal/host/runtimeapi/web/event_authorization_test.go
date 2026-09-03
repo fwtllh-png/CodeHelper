@@ -55,6 +55,18 @@ func TestAuthorizedEventSessionRejectsForeignWorkspace(t *testing.T) {
 	if !authorized || sessionID != "session-foreign" {
 		t.Fatalf("local event authorization = %q, %t", sessionID, authorized)
 	}
+
+	sessionID, authorized = authorizedEventSession(t.Context(), runtime, protocol.Event{
+		ThreadID: "thread_external",
+		Sequence: 9,
+		Data: &protocol.AgentStatusData{
+			AgentID: "agent-1", WorkspaceRoot: "/workspace/current",
+			SessionID: "session-foreign", Status: "running",
+		},
+	})
+	if !authorized || sessionID != "session-foreign" {
+		t.Fatalf("agent event authorization = %q, %t", sessionID, authorized)
+	}
 }
 
 func TestValidateWebEditorContextRequiresEnumeratedResource(t *testing.T) {

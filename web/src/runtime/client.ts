@@ -2070,7 +2070,10 @@ function fulfilled<T>(result: PromiseSettledResult<T>): T | undefined {
 }
 
 function turnIDs(events: readonly RuntimeEvent[]): string[] {
-  return [...new Set(events.map((event) => event.turn_id).filter(Boolean))];
+  return [...new Set(events
+    .filter((event) => event.kind === "turn.started")
+    .map((event) => event.turn_id)
+    .filter(Boolean))];
 }
 
 function errorMessage(error: unknown): string {

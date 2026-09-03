@@ -4,6 +4,7 @@ package wire
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
 
@@ -89,8 +90,30 @@ func ConfigurePersistentSubagents(
 		if spec.HostSeeded {
 			return nil
 		}
-		return apppersistence.EnsureThread(
-			context.Background(), store, threadID, sessionID, spec.Workspace,
+		targetSessionID := strings.TrimSpace(spec.SessionID)
+		if targetSessionID == "" {
+			return fmt.Errorf("child thread %s has no owning session", threadID)
+		}
+		parentThreadID := spec.ParentThreadID
+		if parentThreadID == "" {
+			if runtime == nil {
+				return fmt.Errorf("child thread %s has no parent thread", threadID)
+			}
+			summary, err := runtime.SessionStatus(
+				context.Background(),
+				targetSessionID,
+			)
+			if err != nil {
+				return fmt.Errorf("resolve child parent session: %w", err)
+			}
+			parentThreadID = summary.ThreadID
+		}
+		return apppersistence.EnsureChildThread(
+			context.Background(),
+			store,
+			threadID,
+			targetSessionID,
+			parentThreadID,
 		)
 	})
 	return attach(state.NewAgentGraph(

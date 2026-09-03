@@ -1,5 +1,7 @@
 import {
+  AlertTriangle,
   Atom,
+  Bot,
   Check,
   ChevronDown,
   ChevronRight,
@@ -7,9 +9,12 @@ import {
   FilePenLine,
   FileText,
   FolderSearch,
+  LoaderCircle,
+  MessageSquareText,
   Plus,
   ScanSearch,
-  TerminalSquare
+  TerminalSquare,
+  Wrench
 } from "lucide-react";
 import {
   useEffect,
@@ -26,6 +31,7 @@ import type {
 
 type ReasoningNode = Extract<ConversationNode, {kind: "reasoning"}>;
 type ToolNode = Extract<ConversationNode, {kind: "tool"}>;
+type AgentNode = Extract<ConversationNode, {kind: "agent"}>;
 
 const previewLineLimit = 16;
 const terminalEscapeSequence = /(?:\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-_])/g;
@@ -65,6 +71,88 @@ export function ReasoningDisclosure({entry}: {entry: ReasoningNode}) {
       {open && <div className="thinkBody">{entry.text}</div>}
     </div>
   );
+}
+
+export function AgentDisclosure({
+  entry,
+  onInspect
+}: {
+  entry: AgentNode;
+  onInspect: (callID: string) => void;
+}) {
+  const [open, setOpen] = useState(entry.state === "running");
+
+  useEffect(() => {
+    if (entry.state === "running") setOpen(true);
+  }, [entry.state]);
+
+  return (
+    <div
+      className="disclosure agentDisclosure"
+      data-state={entry.state}
+      data-agent-id={entry.agentID}
+    >
+      <button onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+        <DisclosureLeading open={open} icon={<Bot size={14} />} />
+        <span className="disclosureTitle">
+          {agentRoleLabel(entry.role)} · {entry.agentID}
+        </span>
+        <span className="disclosureSeparator" aria-hidden="true" />
+        <small>{entry.summary}</small>
+        <span className="agentState" data-state={entry.state}>
+          {entry.status.replaceAll("_", " ")}
+        </span>
+      </button>
+      {open && (
+        <ol className="agentActivity">
+          {entry.activities.map((activity) => (
+            <li
+              key={activity.id}
+              data-kind={activity.kind}
+              data-state={activity.state}
+            >
+              <span className="agentActivityIcon" aria-hidden="true">
+                {agentActivityIcon(activity.kind, activity.state)}
+              </span>
+              <span className="agentActivityText">
+                <strong>{activity.title}</strong>
+                {activity.summary && <small>{activity.summary}</small>}
+              </span>
+              {activity.callID && (
+                <button
+                  type="button"
+                  className="agentInspect"
+                  aria-label={`Inspect ${activity.title}`}
+                  title={`Inspect ${activity.title}`}
+                  onClick={() => onInspect(activity.callID ?? "")}
+                >
+                  <ScanSearch size={13} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function agentRoleLabel(role: string): string {
+  const normalized = role.trim().replaceAll("_", " ");
+  if (!normalized) return "Agent";
+  return normalized.replace(/\b\w/g, (value) => value.toUpperCase());
+}
+
+function agentActivityIcon(
+  kind: AgentNode["activities"][number]["kind"],
+  state: AgentNode["activities"][number]["state"]
+) {
+  if (state === "failed") return <AlertTriangle size={13} />;
+  if (state === "running") return <LoaderCircle className="spin" size={13} />;
+  if (kind === "reasoning") return <Atom size={13} />;
+  if (kind === "tool") return <Wrench size={13} />;
+  if (kind === "message") return <MessageSquareText size={13} />;
+  return <Check size={13} />;
 }
 
 export function ToolDisclosure({
