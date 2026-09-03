@@ -38,10 +38,18 @@ func unaryRouteHandler(path string) (unaryHandler, bool) {
 		return (*Server).extensionList, true
 	case "mcp/health":
 		return (*Server).mcpHealth, true
+	case "model/add":
+		return (*Server).modelAdd, true
 	case "model/list":
 		return (*Server).modelList, true
+	case "model/probe":
+		return (*Server).modelProbe, true
+	case "model/remove":
+		return (*Server).modelRemove, true
 	case "model/test":
 		return (*Server).modelTest, true
+	case "model/update":
+		return (*Server).modelUpdate, true
 	case "operation/submit":
 		return (*Server).operationSubmit, true
 	case "plan/get":

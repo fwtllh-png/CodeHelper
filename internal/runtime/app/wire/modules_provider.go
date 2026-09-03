@@ -48,12 +48,17 @@ func (providerModule) Build(ctx context.Context, state *buildState) error {
 	}
 	capabilities := selectedModelCapabilities(routes.Act())
 	allowCatalogSelection := options.BaseURL == "" && session.fixture == nil
-	if !allowCatalogSelection {
+	allowModelSelection := allowCatalogSelection ||
+		len(options.ModelMetadata.AdditionalDescriptors) != 0
+	if allowModelSelection {
+		capabilities.SelectionMode = "hot"
+	} else {
 		capabilities.SelectionMode = "fixed"
 	}
 	selectableRoutes, err := runtimeSelectableRoutes(
 		routes.Act(),
 		allowCatalogSelection,
+		options.ModelMetadata.AdditionalDescriptors,
 	)
 	if err != nil {
 		return fmt.Errorf("selectable model routes: %w", err)

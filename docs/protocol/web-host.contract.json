@@ -215,6 +215,16 @@
       "requires_capability": true
     },
     {
+      "path": "/api/v1/model/add",
+      "method": "POST",
+      "request": "model_mutation",
+      "response": "model_catalog",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
       "path": "/api/v1/model/list",
       "method": "POST",
       "request": "empty",
@@ -225,12 +235,42 @@
       "requires_capability": true
     },
     {
+      "path": "/api/v1/model/probe",
+      "method": "POST",
+      "request": "model_probe",
+      "response": "setup_probe_result",
+      "mutation": false,
+      "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/model/remove",
+      "method": "POST",
+      "request": "model_remove",
+      "response": "model_catalog",
+      "mutation": true,
+      "idempotency_key": true,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
       "path": "/api/v1/model/test",
       "method": "POST",
       "request": "model_test",
       "response": "model_test_result",
       "mutation": false,
       "idempotency_key": false,
+      "requires_runtime": true,
+      "requires_capability": true
+    },
+    {
+      "path": "/api/v1/model/update",
+      "method": "POST",
+      "request": "model_mutation",
+      "response": "model_catalog",
+      "mutation": true,
+      "idempotency_key": true,
       "requires_runtime": true,
       "requires_capability": true
     },

@@ -56,7 +56,8 @@ Keyring 加密保存，不写入仓库、浏览器存储或 Setup Record；非�
 管理。Setup 完成后，页面依次引导选择 Workspace、创建 Session，再进入 Composer，
 不会代替用户自动创建 Session。Runtime 不从 Model ID 或 `/models` 列表猜测容量与
 布尔能力。对于探测到 Reasoning 但未声明 Effort 档位的模型，精确命中内置目录时使用
-目录档位，否则提供 `low`、`medium`、`high`，默认 `medium`，用户可在提交前修改。
+目录档位，否则提供 `low`、`medium`、`high`、`xhigh`、`max`，默认 `medium`，
+用户可在提交前修改。
 每个 Session 可从 Composer 快速切换当前 Provider Catalog 已验证的 Model；
 自定义 Endpoint 和未知 Model 是固定 Connection，新增或替换时必须在 Settings 的
 Connection 页面重新提交显式元数据并重启 Runtime。Web 默认监听

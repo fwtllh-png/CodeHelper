@@ -44,8 +44,39 @@ type webSetupSelection struct {
 	BaseURL            string                      `json:"base_url,omitempty"`
 	Protocol           string                      `json:"protocol,omitempty"`
 	Metadata           *webhost.SetupModelMetadata `json:"model_metadata,omitempty"`
+	Models             []webSetupModel             `json:"models,omitempty"`
 	MetadataProvenance model.Provenance            `json:"metadata_provenance"`
 	Credential         *credential.Reference       `json:"credential,omitempty"`
+}
+
+type webSetupModel struct {
+	ID       string                     `json:"id"`
+	Metadata webhost.SetupModelMetadata `json:"metadata"`
+}
+
+func cloneWebSetupSelection(input webSetupSelection) webSetupSelection {
+	out := input
+	if input.Metadata != nil {
+		value := *input.Metadata
+		value.Capabilities.ReasoningEfforts = append(
+			[]string(nil),
+			input.Metadata.Capabilities.ReasoningEfforts...,
+		)
+		out.Metadata = &value
+	}
+	out.Models = make([]webSetupModel, len(input.Models))
+	for index, entry := range input.Models {
+		out.Models[index] = entry
+		out.Models[index].Metadata.Capabilities.ReasoningEfforts = append(
+			[]string(nil),
+			entry.Metadata.Capabilities.ReasoningEfforts...,
+		)
+	}
+	if input.Credential != nil {
+		value := *input.Credential
+		out.Credential = &value
+	}
+	return out
 }
 
 type webSetupAttempt struct {
@@ -257,30 +288,50 @@ func validateSetupBaseURL(value string) (string, error) {
 }
 
 func setupModelMetadata(selection webSetupSelection) wire.ModelMetadataOptions {
-	if selection.BaseURL == "" {
-		return wire.ModelMetadataOptions{}
+	result := wire.ModelMetadataOptions{}
+	if selection.BaseURL != "" && selection.Metadata != nil {
+		result.Descriptor = setupModelDescriptor(
+			selection.Model,
+			*selection.Metadata,
+			selection.MetadataProvenance,
+		)
 	}
-	if selection.Metadata == nil {
-		return wire.ModelMetadataOptions{}
+	if len(selection.Models) != 0 {
+		result.AdditionalDescriptors = make(map[string]model.Model, len(selection.Models))
+		for _, registered := range selection.Models {
+			result.AdditionalDescriptors[registered.ID] = *setupModelDescriptor(
+				registered.ID,
+				registered.Metadata,
+				model.ProvenanceOperatorConfig,
+			)
+		}
 	}
-	metadata := selection.Metadata
+	return result
+}
+
+func setupModelDescriptor(
+	id string,
+	metadata webhost.SetupModelMetadata,
+	provenance model.Provenance,
+) *model.Model {
 	capabilities, _ := setupCapabilities(metadata.Capabilities)
-	return wire.ModelMetadataOptions{Descriptor: &model.Model{
-		ID: selection.Model, CanonicalID: metadata.CanonicalID, WireID: metadata.WireID,
+	capabilities = wire.WithDefaultReasoningEfforts(id, capabilities)
+	return &model.Model{
+		ID: id, CanonicalID: metadata.CanonicalID, WireID: metadata.WireID,
 		Limits: model.Limits{
 			ContextTokens: metadata.ContextTokens, MaxOutputTokens: metadata.MaxOutputTokens,
 		},
 		Capabilities: capabilities,
-		Pricing:      model.Pricing{Provenance: selection.MetadataProvenance},
+		Pricing:      model.Pricing{Provenance: provenance},
 		MetadataProvenance: model.MetadataProvenance{
-			CanonicalID:  selection.MetadataProvenance,
-			WireID:       selection.MetadataProvenance,
-			Limits:       selection.MetadataProvenance,
-			Capabilities: selection.MetadataProvenance,
-			Pricing:      selection.MetadataProvenance,
+			CanonicalID:  provenance,
+			WireID:       provenance,
+			Limits:       provenance,
+			Capabilities: provenance,
+			Pricing:      provenance,
 		},
-		Provenance: selection.MetadataProvenance,
-	}}
+		Provenance: provenance,
+	}
 }
 
 func resolveSetupModelMetadata(
@@ -504,6 +555,14 @@ func loadWebSetupSelection(dataDir, workspaceID string) (webSetupSelection, bool
 		}
 		return webSetupSelection{}, false, err
 	}
+	resolved.Models, err = resolveRegisteredModels(
+		resolved.Protocol,
+		resolved.Model,
+		selection.Models,
+	)
+	if err != nil {
+		return webSetupSelection{}, false, err
+	}
 	if selection.Credential != nil {
 		if selection.Credential.Kind != "keyring" ||
 			!strings.HasPrefix(selection.Credential.Name, "web/") {
@@ -519,6 +578,34 @@ func loadWebSetupSelection(dataDir, workspaceID string) (webSetupSelection, bool
 		return webSetupSelection{}, false, errors.New("Web setup selection is not canonical")
 	}
 	return resolved, true, nil
+}
+
+func resolveRegisteredModels(
+	protocolName, baseline string,
+	input []webSetupModel,
+) ([]webSetupModel, error) {
+	result := make([]webSetupModel, 0, len(input))
+	seen := map[string]bool{baseline: true}
+	for _, entry := range input {
+		entry.ID = strings.TrimSpace(entry.ID)
+		if !setupModelIDPattern.MatchString(entry.ID) {
+			return nil, invalidSetup("registered model id is invalid")
+		}
+		if seen[entry.ID] {
+			return nil, invalidSetup("registered model id must be unique")
+		}
+		metadata, err := resolveSetupModelMetadata(protocolName, &entry.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		entry.Metadata = *metadata
+		seen[entry.ID] = true
+		result = append(result, entry)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
+	return result, nil
 }
 
 func canUpgradeSetupSelection(previous, resolved webSetupSelection) bool {

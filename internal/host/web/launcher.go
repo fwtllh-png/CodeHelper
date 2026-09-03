@@ -480,7 +480,7 @@ func runWeb(
 	server, err := webhost.New(webhost.Options{
 		Assets: bundle, ExpectedHost: hostPort, Origin: "http://" + hostPort,
 		Build: info.Version + "+" + info.Commit, Setup: setupOptions,
-		Workspaces: workspaceManager,
+		Workspaces: workspaceManager, Models: workspaceManager,
 	})
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "qcode: server: %v\n", err)

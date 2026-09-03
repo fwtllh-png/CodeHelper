@@ -13,8 +13,9 @@ import (
 )
 
 type ModelMetadataOptions struct {
-	Descriptor *model.Model
-	Path       string
+	Descriptor            *model.Model
+	AdditionalDescriptors map[string]model.Model
+	Path                  string
 }
 
 type modelMetadataFile struct {

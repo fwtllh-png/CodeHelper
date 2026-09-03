@@ -229,6 +229,7 @@ export function App({client}: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
+  const [settingsAddModel, setSettingsAddModel] = useState(false);
   const [profilePending, setProfilePending] = useState("");
   const [cancelingTurnID, setCancelingTurnID] = useState("");
   const [themeMode, setThemeMode] = useState<ThemeMode>(readThemeMode);
@@ -537,7 +538,10 @@ export function App({client}: Props) {
     [client, reportLocalError]
   );
   const closeContext = useCallback(() => setContextOpen(false), []);
-  const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    setSettingsAddModel(false);
+  }, []);
   const inspectTool = useCallback((callID: string) => {
     setInspectCallID(callID);
     switchConversationView("trajectory");
@@ -2016,11 +2020,8 @@ export function App({client}: Props) {
                       disabled={Boolean(profilePending)}
                       onChange={(model) => {
                         if (model === "__configure__") {
-                          setSettingsSection(
-                            profileMutable(snapshot, "model")
-                              ? "models"
-                              : "connection"
-                          );
+                          setSettingsSection("models");
+                          setSettingsAddModel(true);
                           setSettingsOpen(true);
                           return;
                         }
@@ -2114,6 +2115,7 @@ export function App({client}: Props) {
             newIsolation={newIsolation}
             theme={themeMode}
             initialSection={settingsSection}
+            initialAddModel={settingsAddModel}
             onIsolationChange={setNewIsolation}
             onThemeChange={setThemeMode}
             onClose={closeSettings}

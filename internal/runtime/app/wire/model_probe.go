@@ -56,7 +56,7 @@ func ProbeModelConnection(
 	if probeErr != nil {
 		return ModelProbeResult{}, probeErr
 	}
-	capabilities = withDefaultReasoningEfforts(modelID, capabilities)
+	capabilities = WithDefaultReasoningEfforts(modelID, capabilities)
 	result := ModelProbeResult{Capabilities: capabilities}
 	result.Models, _ = listed["model_metadata"].([]modelcatalog.DiscoveredModel)
 	if listErr != nil {
@@ -65,7 +65,7 @@ func ProbeModelConnection(
 	return result, nil
 }
 
-func withDefaultReasoningEfforts(
+func WithDefaultReasoningEfforts(
 	modelID string,
 	capabilities model.Capabilities,
 ) model.Capabilities {
@@ -97,7 +97,13 @@ func withDefaultReasoningEfforts(
 			matched.Capabilities.ThinkingToggle
 		return capabilities
 	}
-	capabilities.ReasoningEfforts = []string{"low", "medium", "high"}
+	capabilities.ReasoningEfforts = []string{
+		"low",
+		"medium",
+		"high",
+		"xhigh",
+		"max",
+	}
 	capabilities.DefaultReasoningEffort = "medium"
 	return capabilities
 }

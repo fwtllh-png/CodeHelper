@@ -4,6 +4,7 @@ import {describe, expect, it, vi} from "vitest";
 import {
   emptyModelMetadataDraft,
   ModelMetadataFields,
+  modelMetadataFromProbe,
   modelMetadataProblem
 } from "./ModelMetadataFields";
 
@@ -19,6 +20,24 @@ function validDraft() {
 }
 
 describe("modelMetadataProblem", () => {
+  it("preserves reasoning effort metadata returned by probing", () => {
+    const draft = modelMetadataFromProbe("reasoner", {
+      capabilities: {
+        streaming: true,
+        reasoning: true,
+        reasoning_efforts: ["low", "medium", "high"],
+        default_reasoning_effort: "medium",
+        tool_calls: true,
+        native_search: false,
+        vision: false,
+        image_input: false,
+        prompt_cache: false
+      }
+    });
+    expect(draft.reasoningEfforts).toBe("low, medium, high");
+    expect(draft.defaultReasoningEffort).toBe("medium");
+  });
+
   it("shows explicit effort metadata for reasoning models", () => {
     const draft = validDraft();
     draft.capabilities.reasoning = true;

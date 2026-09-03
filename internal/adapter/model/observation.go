@@ -105,6 +105,18 @@ func (r ReadyRoute) WithCapabilitiesFrom(
 	return out
 }
 
+// WithModel returns the same connection route targeting another validated
+// model descriptor.
+func (r ReadyRoute) WithModel(descriptor Model) ReadyRoute {
+	out := r
+	descriptor.Capabilities.ReasoningEfforts = append(
+		[]string(nil),
+		descriptor.Capabilities.ReasoningEfforts...,
+	)
+	out.model = descriptor
+	return out
+}
+
 // ParseCapability maps a startup or SQLite capability name onto the closed set.
 func ParseCapability(raw string) (Capability, error) {
 	capability := Capability(raw)

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"strings"
@@ -9,6 +10,36 @@ import (
 	"github.com/fwtllh-png/QCode/internal/adapter/model"
 	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
+
+type ModelMutationRequest struct {
+	Model         string             `json:"model"`
+	ModelMetadata SetupModelMetadata `json:"model_metadata"`
+}
+
+type ModelRemoveRequest struct {
+	Model string `json:"model"`
+}
+
+type ModelController interface {
+	ProbeModel(context.Context, string) (SetupProbeResult, error)
+	AddModel(context.Context, ModelMutationRequest) (protocol.ModelCatalog, error)
+	UpdateModel(context.Context, ModelMutationRequest) (protocol.ModelCatalog, error)
+	RemoveModel(context.Context, string) (protocol.ModelCatalog, error)
+}
+
+func (s *Server) modelProbe(
+	r *http.Request,
+	_ Dependencies,
+) (any, error) {
+	if s.modelControl == nil {
+		return nil, unavailable("model management is unavailable")
+	}
+	var request ModelRemoveRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return s.modelControl.ProbeModel(r.Context(), request.Model)
+}
 
 type ModelTestResult struct {
 	Provider string    `json:"provider"`
@@ -131,6 +162,48 @@ func (s *Server) modelTest(
 		result.Detail = "Connection succeeded and the provider listed this model"
 	}
 	return result, nil
+}
+
+func (s *Server) modelAdd(
+	r *http.Request,
+	_ Dependencies,
+) (any, error) {
+	if s.modelControl == nil {
+		return nil, unavailable("model management is unavailable")
+	}
+	var request ModelMutationRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return s.modelControl.AddModel(r.Context(), request)
+}
+
+func (s *Server) modelUpdate(
+	r *http.Request,
+	_ Dependencies,
+) (any, error) {
+	if s.modelControl == nil {
+		return nil, unavailable("model management is unavailable")
+	}
+	var request ModelMutationRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return s.modelControl.UpdateModel(r.Context(), request)
+}
+
+func (s *Server) modelRemove(
+	r *http.Request,
+	_ Dependencies,
+) (any, error) {
+	if s.modelControl == nil {
+		return nil, unavailable("model management is unavailable")
+	}
+	var request ModelRemoveRequest
+	if err := s.decodeRequest(r, &request); err != nil {
+		return nil, err
+	}
+	return s.modelControl.RemoveModel(r.Context(), request.Model)
 }
 
 func (s *Server) connectionStatus(

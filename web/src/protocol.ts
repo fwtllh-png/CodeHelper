@@ -390,7 +390,7 @@ export interface ModelMetadataProvenance {
 export interface ModelCatalogEntry {
   provider: string;
   id: string;
-  source?: "catalog" | "connection_baseline";
+  source?: "catalog" | "connection_baseline" | "registered";
   selected: boolean;
   capabilities: ModelCapabilities;
 }
@@ -406,6 +406,11 @@ export interface ModelTestResult {
   status: "available" | "not_listed";
   detail: string;
   tested_at: string;
+}
+
+export interface ModelMutationRequest {
+  model: string;
+  model_metadata: SetupModelMetadata;
 }
 
 export interface WorkspaceConnection {

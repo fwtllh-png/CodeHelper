@@ -38,6 +38,7 @@ import type {
   ModelTestResult,
   SessionProfile,
   SessionProfileUpdateResult,
+  SetupModelMetadata,
   SetupRequest,
   WorkspaceConnection
 } from "../protocol";
@@ -49,6 +50,7 @@ import {
 } from "./browserNotifications";
 import {
   emptyModelMetadataDraft,
+  type ModelMetadataDraft,
   ModelMetadataFields,
   modelMetadataDraft,
   modelMetadataFromProbe,
@@ -89,6 +91,7 @@ interface Props {
   newIsolation: "shared" | "worktree";
   theme: ThemeMode;
   initialSection?: SettingsSection;
+  initialAddModel?: boolean;
   onIsolationChange: (value: "shared" | "worktree") => void;
   onThemeChange: (value: ThemeMode) => void;
   onClose: () => void;
@@ -114,6 +117,7 @@ export function SettingsDialog({
   newIsolation,
   theme,
   initialSection = "general",
+  initialAddModel = false,
   onIsolationChange,
   onThemeChange,
   onClose,
@@ -299,6 +303,7 @@ export function SettingsDialog({
                 draft={profileDraft}
                 onDraftChange={changeProfileDraft}
                 client={client}
+                initialAddModel={initialAddModel}
                 onError={reportError}
               />
             )}
@@ -501,12 +506,14 @@ function ModelSettings({
   draft,
   onDraftChange,
   client,
+  initialAddModel,
   onError
 }: {
   snapshot: RuntimeSnapshot;
   draft: ProfileDraft;
   onDraftChange: (patch: Partial<ProfileDraft>) => void;
   client: RuntimeClient;
+  initialAddModel: boolean;
   onError: (error: unknown) => void;
 }) {
   const catalogModel = snapshot.models.find(
@@ -533,16 +540,9 @@ function ModelSettings({
         }
       : undefined
   );
-  const [configuringModel, setConfiguringModel] = useState(!catalogModel);
+  const [addingModel, setAddingModel] = useState(initialAddModel);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<ModelTestResult>();
-  const modelInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    setConfiguringModel(!catalogModel);
-  }, [snapshot.selectedSessionID]);
-  useEffect(() => {
-    if (configuringModel) modelInputRef.current?.focus();
-  }, [configuringModel]);
   const advertisedReasoningValues =
     selectedModel?.capabilities.reasoning_efforts ?? [];
   const reasoningValues = selectedModel?.capabilities.default_reasoning_effort
@@ -559,16 +559,6 @@ function ModelSettings({
         ? model.capabilities.default_reasoning_effort ?? ""
         : draft.reasoningEffort
     });
-  };
-  const showExistingModels = () => {
-    if (!catalogModel && availableModels[0]) {
-      changeModel(availableModels[0].id);
-    }
-    setConfiguringModel(false);
-  };
-  const showNewModel = () => {
-    changeModel("");
-    setConfiguringModel(true);
   };
   const testModel = async () => {
     if (testing || modelIDProblem(draft.model)) return;
@@ -591,47 +581,22 @@ function ModelSettings({
         <div className="settingsBlockTitle">Session model</div>
         <p>Select a configured model, or add another model.</p>
           <div className="settingsButtonRow modelSelectionPrimary">
-            {configuringModel ? (
-              <input
-                ref={modelInputRef}
-                className="settingsSelect"
-                aria-label="Settings model"
-                value={draft.model}
-                maxLength={256}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={!mutable(snapshot, "model")}
-                aria-invalid={Boolean(modelIDProblem(draft.model)) || undefined}
-                onChange={(event) => changeModel(event.target.value)}
-              />
-            ) : (
-              <SelectControl
-                label="Settings model"
-                value={draft.model}
-                values={availableModels.map((model) => model.id)}
-                disabled={!mutable(snapshot, "model")}
-                format={(value) => value}
-                onChange={changeModel}
-              />
-            )}
+            <SelectControl
+              label="Settings model"
+              value={draft.model}
+              values={availableModels.map((model) => model.id)}
+              disabled={!mutable(snapshot, "model")}
+              format={(value) => value}
+              onChange={changeModel}
+            />
             <button
               type="button"
-              disabled={
-                !mutable(snapshot, "model") ||
-                (configuringModel && availableModels.length === 0)
-              }
-              onClick={() => configuringModel
-                ? showExistingModels()
-                : showNewModel()}
+              disabled={Boolean(snapshot.conversation.activeTurnID)}
+              onClick={() => setAddingModel(true)}
             >
-              {configuringModel
-                ? <><Database size={13} /> Existing models</>
-                : <><Plus size={13} /> New model</>}
+              <Plus size={13} /> Add model
             </button>
           </div>
-          {configuringModel && modelIDProblem(draft.model) && (
-            <small role="alert">{modelIDProblem(draft.model)}</small>
-          )}
           <div className="settingsButtonRow">
             <button
               type="button"
@@ -679,7 +644,163 @@ function ModelSettings({
       {selectedModel && (
         <ModelCapabilityPanel model={selectedModel} />
       )}
+      {addingModel && (
+        <ModelEditorDialog
+          client={client}
+          onClose={() => setAddingModel(false)}
+          onAdded={(model, metadata) => {
+            onDraftChange({
+              model,
+              reasoningEffort:
+                metadata.capabilities.default_reasoning_effort ?? ""
+            });
+            setAddingModel(false);
+          }}
+          onError={onError}
+        />
+      )}
     </SettingsSectionView>
+  );
+}
+
+function ModelEditorDialog({
+  client,
+  onClose,
+  onAdded,
+  onError
+}: {
+  client: RuntimeClient;
+  onClose: () => void;
+  onAdded: (model: string, metadata: SetupModelMetadata) => void;
+  onError: (error: unknown) => void;
+}) {
+  const [modelID, setModelID] = useState("");
+  const [metadata, setMetadata] = useState<ModelMetadataDraft>(
+    emptyModelMetadataDraft()
+  );
+  const [probed, setProbed] = useState(false);
+  const [probing, setProbing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [protocol, setProtocol] = useState("openai_chat");
+  useEffect(() => {
+    void client.connectionStatus().then(
+      (connection) => setProtocol(connection.protocol || "openai_chat"),
+      onError
+    );
+  }, [client, onError]);
+  const metadataError = probed
+    ? modelMetadataProblem(metadata, protocol)
+    : "";
+  const probe = async () => {
+    if (modelIDProblem(modelID) || probing) return;
+    setProbing(true);
+    setProblem("");
+    try {
+      const result = await client.probeModel(modelID.trim());
+      setMetadata(modelMetadataFromProbe(modelID.trim(), result));
+      setProbed(true);
+      setProblem(result.warning ?? "");
+    } catch (error) {
+      setProbed(false);
+      setProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      setProbing(false);
+    }
+  };
+  const add = async () => {
+    if (!probed || metadataError || saving) return;
+    const model = modelID.trim();
+    const resolved = setupModelMetadata(metadata);
+    setSaving(true);
+    setProblem("");
+    try {
+      await client.addModel({model, model_metadata: resolved});
+      onAdded(model, resolved);
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error));
+      onError(error);
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="modelEditorOverlay" role="presentation">
+      <section
+        className="modelEditorDialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="model-editor-title"
+      >
+        <header>
+          <h3 id="model-editor-title">Add model</h3>
+          <button
+            type="button"
+            className="settingsClose"
+            aria-label="Close model editor"
+            onClick={onClose}
+          >
+            <X size={15} />
+          </button>
+        </header>
+        <div className="modelEditorBody">
+          <label className="selectField">
+            <span>Model ID</span>
+            <input
+              className="settingsSelect"
+              value={modelID}
+              autoFocus
+              disabled={probing || saving}
+              aria-label="New model ID"
+              onChange={(event) => {
+                const model = event.target.value;
+                setModelID(model);
+                setMetadata(emptyModelMetadataDraft(model.trim()));
+                setProbed(false);
+                setProblem("");
+              }}
+            />
+          </label>
+          {probed && (
+            <ModelMetadataFields
+              value={metadata}
+              disabled={saving}
+              onChange={setMetadata}
+            />
+          )}
+          {(modelIDProblem(modelID) || metadataError || problem) && (
+            <small className="settingsError" role="alert">
+              {modelIDProblem(modelID) || metadataError || problem}
+            </small>
+          )}
+        </div>
+        <footer>
+          <button type="button" disabled={saving} onClick={onClose}>
+            Cancel
+          </button>
+          {!probed ? (
+            <button
+              type="button"
+              disabled={probing || Boolean(modelIDProblem(modelID))}
+              onClick={() => void probe()}
+            >
+              {probing
+                ? <><RefreshCw className="spin" size={13} /> Detecting...</>
+                : <><Activity size={13} /> Detect model</>}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={saving || Boolean(metadataError)}
+              onClick={() => void add()}
+            >
+              {saving
+                ? <><RefreshCw className="spin" size={13} /> Adding...</>
+                : <><Plus size={13} /> Add model</>}
+            </button>
+          )}
+        </footer>
+      </section>
+    </div>
   );
 }
 

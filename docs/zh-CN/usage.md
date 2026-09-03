@@ -218,8 +218,10 @@ Approval、执行目标和 Tool allowlist 属于当前 Session。Session 配置�
 点击 Apply 后才通过 Runtime `profile/update` 原子生效，并显示具体变更摘要。
 
 每个 Session 独立持久化准确的 Model ID，并可在 Composer 中切换当前连接已验证的
-Catalog Model。自定义 Endpoint 或未知 Model 的 Route 固定；更换 Model 时必须通过
-Connection 设置提交新模型自己的 metadata 并重启 Runtime，不能继承旧模型能力。
+Catalog Model。Composer 的 `New model...` 打开独立模型配置弹窗；探测并确认元数据后，
+新模型追加到当前 Connection 的模型注册表，不替换默认模型，也不迁移其他 Session。
+同一 Provider、Endpoint、Protocol 和 Credential 下的注册模型可在 Turn 之间热切换；
+更换连接仍由 Connection 设置负责。
 模型变化会重置该 Session 的 Prompt Cache，Active Turn 期间拒绝修改。Settings 明确
 显示 Limits 与 Capabilities 的来源；`Test connection` 检查 Endpoint、Credential 和
 启动模型，`Test model` 只检查 Provider 模型目录是否包含 Model ID，不把该结果视为

@@ -158,7 +158,7 @@ func TestWebSetupResolvesKnownModelToOwningProviderPreset(t *testing.T) {
 		t.Fatal(err)
 	}
 	loaded, found, err := loadWebSetupSelection(dataDir, "workspace")
-	if err != nil || !found || loaded != selection {
+	if err != nil || !found || !reflect.DeepEqual(loaded, selection) {
 		t.Fatalf("loaded selection = %+v found=%v err=%v", loaded, found, err)
 	}
 
@@ -172,7 +172,7 @@ func TestWebSetupResolvesKnownModelToOwningProviderPreset(t *testing.T) {
 		t.Fatal(err)
 	}
 	loaded, found, err = loadWebSetupSelection(legacyDataDir, "workspace")
-	if err != nil || !found || loaded != selection {
+	if err != nil || !found || !reflect.DeepEqual(loaded, selection) {
 		t.Fatalf("upgraded selection = %+v found=%v err=%v", loaded, found, err)
 	}
 }
@@ -211,6 +211,10 @@ func TestWebSetupPersistsOnlyNonSecretSelection(t *testing.T) {
 		Kind: "keyring",
 		Name: "web/setup/00000000000000000000000000000000",
 	}
+	selection.Models = []webSetupModel{{
+		ID:       "vendor/model-v2",
+		Metadata: *testSetupMetadata("vendor/model-v2"),
+	}}
 	dataDir := t.TempDir()
 	if err := saveWebSetupSelection(dataDir, "workspace", selection); err != nil {
 		t.Fatal(err)
@@ -236,6 +240,11 @@ func TestWebSetupPersistsOnlyNonSecretSelection(t *testing.T) {
 		!reflect.DeepEqual(restored.Capabilities, metadata.Capabilities) ||
 		restored.MetadataProvenance != metadata.MetadataProvenance {
 		t.Fatalf("restored custom metadata = %+v", restored)
+	}
+	additional := setupModelMetadata(loaded).AdditionalDescriptors
+	if descriptor, ok := additional["vendor/model-v2"]; !ok ||
+		descriptor.ID != "vendor/model-v2" {
+		t.Fatalf("restored additional models = %+v", additional)
 	}
 }
 

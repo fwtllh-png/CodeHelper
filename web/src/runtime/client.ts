@@ -20,6 +20,7 @@ import type {
   ExtensionProjection,
   ModelCatalog,
   ModelCatalogEntry,
+  ModelMutationRequest,
   ModelTestResult,
   OperationReceipt,
   PresentationSnapshot,
@@ -1494,6 +1495,50 @@ export class RuntimeClient {
 
   async testModel(model: string): Promise<ModelTestResult> {
     return this.call<ModelTestResult>("model/test", {model});
+  }
+
+  async probeModel(model: string): Promise<SetupProbeResult> {
+    return this.call<SetupProbeResult>("model/probe", {model});
+  }
+
+  async addModel(request: ModelMutationRequest): Promise<ModelCatalog> {
+    const result = await this.call<ModelCatalog>(
+      "model/add",
+      request,
+      {idempotencyKey: crypto.randomUUID(), retryNetwork: true}
+    );
+    await this.acceptModelCatalog(result);
+    return result;
+  }
+
+  async updateModel(request: ModelMutationRequest): Promise<ModelCatalog> {
+    const result = await this.call<ModelCatalog>(
+      "model/update",
+      request,
+      {idempotencyKey: crypto.randomUUID(), retryNetwork: true}
+    );
+    await this.acceptModelCatalog(result);
+    return result;
+  }
+
+  async removeModel(model: string): Promise<ModelCatalog> {
+    const result = await this.call<ModelCatalog>(
+      "model/remove",
+      {model},
+      {idempotencyKey: crypto.randomUUID(), retryNetwork: true}
+    );
+    await this.acceptModelCatalog(result);
+    return result;
+  }
+
+  private async acceptModelCatalog(result: ModelCatalog): Promise<void> {
+    const sessionID = this.state.selectedSessionID;
+    const profile = sessionID
+      ? await this.call<SessionProfileSnapshot>("profile/get", {
+          session_id: sessionID
+        })
+      : undefined;
+    this.update({models: result.models ?? [], ...(profile ? {profile} : {})});
   }
 
   private async fetchBootstrap(): Promise<Bootstrap> {

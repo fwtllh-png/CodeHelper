@@ -52,6 +52,7 @@ type Options struct {
 	PickDirectory func(context.Context, string) (string, bool, error)
 	Setup         *SetupOptions
 	Workspaces    WorkspaceController
+	Models        ModelController
 }
 
 type UsageQuery interface {
@@ -120,6 +121,7 @@ type Server struct {
 	dependencies      Dependencies
 	setup             *SetupOptions
 	workspaceControl  WorkspaceController
+	modelControl      ModelController
 	workspaces        map[string]Dependencies
 	bootProblem       *protocol.Problem
 	ready             atomic.Bool
@@ -190,7 +192,8 @@ func New(options Options) (*Server, error) {
 		capacity: options.Capacity.normalized(), openPath: options.OpenPath,
 		pickDirectory: options.PickDirectory,
 		setup:         options.Setup, workspaceControl: options.Workspaces,
-		workspaces: make(map[string]Dependencies),
+		modelControl: options.Models,
+		workspaces:   make(map[string]Dependencies),
 	}
 	if server.setup != nil {
 		if err := server.setup.validate(); err != nil {

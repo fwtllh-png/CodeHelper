@@ -15,10 +15,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fwtllh-png/QCode/internal/adapter/model"
 	webhost "github.com/fwtllh-png/QCode/internal/host/runtimeapi/web"
 	"github.com/fwtllh-png/QCode/internal/persist/atomicfile"
 	"github.com/fwtllh-png/QCode/internal/persist/state"
 	apppersistence "github.com/fwtllh-png/QCode/internal/runtime/app/persistence"
+	"github.com/fwtllh-png/QCode/internal/runtime/app/wire"
 	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 	"github.com/fwtllh-png/QCode/internal/security/credential"
 )
@@ -116,23 +118,203 @@ func (m *workspaceRuntimeManager) Reconfigure(
 	if err != nil {
 		return err
 	}
+	_, err = m.replaceSelection(ctx, selection, reference, request.APIKey, true)
+	return err
+}
+
+func (m *workspaceRuntimeManager) AddModel(
+	ctx context.Context,
+	request webhost.ModelMutationRequest,
+) (protocol.ModelCatalog, error) {
+	return m.mutateModel(ctx, request, false)
+}
+
+func (m *workspaceRuntimeManager) ProbeModel(
+	ctx context.Context,
+	modelID string,
+) (webhost.SetupProbeResult, error) {
+	modelID = strings.TrimSpace(modelID)
+	if !setupModelIDPattern.MatchString(modelID) {
+		return webhost.SetupProbeResult{}, invalidSetup("model id is invalid")
+	}
+	m.mu.Lock()
+	selection := cloneWebSetupSelection(m.selection)
+	reference := m.reference
+	m.mu.Unlock()
+	baseURL := selection.BaseURL
+	providerID := setupRuntimeProviderID(selection)
+	if baseURL == "" {
+		if provider, exists := model.DefaultCatalog().Provider(providerID); exists {
+			baseURL = provider.Endpoint
+		}
+	}
+	probed, err := wire.ProbeModelConnection(
+		ctx,
+		providerID,
+		baseURL,
+		modelID,
+		"",
+		model.CredentialRef{Kind: reference.Kind, Name: reference.Name},
+	)
+	if err != nil {
+		return webhost.SetupProbeResult{}, err
+	}
+	result := webhost.SetupProbeResult{
+		Capabilities: setupCapabilitiesDTO(probed.Capabilities),
+		Warning:      probed.Warning,
+	}
+	for _, value := range probed.Models {
+		result.Models = append(result.Models, webhost.SetupDiscoveredModel{
+			ID: value.ID, Name: value.Name,
+			ContextTokens:   value.ContextTokens,
+			MaxOutputTokens: value.MaxOutputTokens,
+		})
+	}
+	return result, nil
+}
+
+func (m *workspaceRuntimeManager) UpdateModel(
+	ctx context.Context,
+	request webhost.ModelMutationRequest,
+) (protocol.ModelCatalog, error) {
+	return m.mutateModel(ctx, request, true)
+}
+
+func (m *workspaceRuntimeManager) RemoveModel(
+	ctx context.Context,
+	modelID string,
+) (protocol.ModelCatalog, error) {
+	modelID = strings.TrimSpace(modelID)
+	m.mu.Lock()
+	selection := cloneWebSetupSelection(m.selection)
+	reference := m.reference
+	active := maps.Clone(m.active)
+	m.mu.Unlock()
+	if modelID == "" {
+		return protocol.ModelCatalog{}, invalidSetup("model id is required")
+	}
+	if modelID == selection.Model {
+		return protocol.ModelCatalog{}, invalidSetup(
+			"the connection default model cannot be removed",
+		)
+	}
+	found := false
+	next := selection
+	next.Models = make([]webSetupModel, 0, len(selection.Models))
+	for _, entry := range selection.Models {
+		if entry.ID == modelID {
+			found = true
+			continue
+		}
+		next.Models = append(next.Models, entry)
+	}
+	if !found {
+		return protocol.ModelCatalog{}, invalidSetup("model is not registered")
+	}
+	for _, runtime := range active {
+		sessions, err := runtime.application.Runtime.ListSessions(
+			ctx,
+			protocol.SessionListQuery{
+				WorkspaceRoot:   runtime.dependencies.WorkspaceRoot,
+				IncludeArchived: true,
+				Limit:           1000,
+			},
+		)
+		if err != nil {
+			return protocol.ModelCatalog{}, err
+		}
+		for _, session := range sessions.Sessions {
+			profile, err := runtime.application.Runtime.SessionProfile(
+				ctx,
+				session.SessionID,
+			)
+			if err == nil && profile.Profile.Model == modelID {
+				return protocol.ModelCatalog{}, protocol.NewProblem(
+					protocol.CodeConflict,
+					"model is still used by a Session",
+					false,
+					nil,
+				)
+			}
+		}
+	}
+	return m.replaceSelection(ctx, next, reference, "", false)
+}
+
+func (m *workspaceRuntimeManager) mutateModel(
+	ctx context.Context,
+	request webhost.ModelMutationRequest,
+	update bool,
+) (protocol.ModelCatalog, error) {
+	modelID := strings.TrimSpace(request.Model)
+	if !setupModelIDPattern.MatchString(modelID) {
+		return protocol.ModelCatalog{}, invalidSetup("model id is invalid")
+	}
+	m.mu.Lock()
+	selection := m.selection
+	reference := m.reference
+	m.mu.Unlock()
+	metadata, err := resolveSetupModelMetadata(
+		selection.Protocol,
+		&request.ModelMetadata,
+	)
+	if err != nil {
+		return protocol.ModelCatalog{}, err
+	}
+	if modelID == selection.Model {
+		return protocol.ModelCatalog{}, invalidSetup(
+			"the connection default model is managed in Connection settings",
+		)
+	}
+	index := -1
+	for candidate := range selection.Models {
+		if selection.Models[candidate].ID == modelID {
+			index = candidate
+			break
+		}
+	}
+	if update && index < 0 {
+		return protocol.ModelCatalog{}, invalidSetup("model is not registered")
+	}
+	if !update && index >= 0 {
+		return protocol.ModelCatalog{}, invalidSetup("model is already registered")
+	}
+	entry := webSetupModel{ID: modelID, Metadata: *metadata}
+	if index >= 0 {
+		selection.Models[index] = entry
+	} else {
+		selection.Models = append(selection.Models, entry)
+	}
+	sort.Slice(selection.Models, func(i, j int) bool {
+		return selection.Models[i].ID < selection.Models[j].ID
+	})
+	return m.replaceSelection(ctx, selection, reference, "", false)
+}
+
+func (m *workspaceRuntimeManager) replaceSelection(
+	ctx context.Context,
+	selection webSetupSelection,
+	reference credential.Reference,
+	secret string,
+	rebindProfiles bool,
+) (protocol.ModelCatalog, error) {
 
 	m.mu.Lock()
 	switch {
 	case m.closing:
 		m.mu.Unlock()
-		return errors.New("Web Host is shutting down")
+		return protocol.ModelCatalog{}, errors.New("Web Host is shutting down")
 	case m.reconfiguring:
 		m.mu.Unlock()
-		return protocol.NewProblem(
+		return protocol.ModelCatalog{}, protocol.NewProblem(
 			protocol.CodeConflict,
-			"Provider connection is already restarting",
+			"Runtime configuration is already restarting",
 			true,
 			nil,
 		)
 	case len(m.loading) != 0:
 		m.mu.Unlock()
-		return protocol.NewProblem(
+		return protocol.ModelCatalog{}, protocol.NewProblem(
 			protocol.CodeConflict,
 			"Workspace Runtime is still starting",
 			true,
@@ -140,20 +322,20 @@ func (m *workspaceRuntimeManager) Reconfigure(
 		)
 	case len(m.active) == 0 || m.server == nil || m.store == nil:
 		m.mu.Unlock()
-		return errors.New("Workspace Runtime is unavailable")
+		return protocol.ModelCatalog{}, errors.New("Workspace Runtime is unavailable")
 	}
 	if !m.server.BeginRuntimeReconfiguration() {
 		m.mu.Unlock()
-		return protocol.NewProblem(
+		return protocol.ModelCatalog{}, protocol.NewProblem(
 			protocol.CodeConflict,
-			"Provider connection is already restarting",
+			"Runtime configuration is already restarting",
 			true,
 			nil,
 		)
 	}
 	m.reconfiguring = true
 	active := maps.Clone(m.active)
-	previousSelection := m.selection
+	previousSelection := cloneWebSetupSelection(m.selection)
 	options := m.options
 	store := m.store
 	repositories := m.repositories
@@ -168,7 +350,7 @@ func (m *workspaceRuntimeManager) Reconfigure(
 	}()
 
 	if err := idleWorkspaceRuntimes(ctx, active); err != nil {
-		return err
+		return protocol.ModelCatalog{}, err
 	}
 	ids := make([]string, 0, len(active))
 	for id := range active {
@@ -193,11 +375,11 @@ func (m *workspaceRuntimeManager) Reconfigure(
 		options.workspace = root
 		candidate, loadErr := loadWebSetupConfig(options, selection, reference)
 		if loadErr != nil {
-			return errors.Join(loadErr, closePrepared())
+			return protocol.ModelCatalog{}, errors.Join(loadErr, closePrepared())
 		}
-		secret := ""
+		runtimeSecret := ""
 		if index == 0 {
-			secret = request.APIKey
+			runtimeSecret = secret
 		}
 		replacement, prepareErr := prepareWebRuntime(
 			ctx,
@@ -209,12 +391,12 @@ func (m *workspaceRuntimeManager) Reconfigure(
 			store,
 			repositories,
 			stderr,
-			secret,
+			runtimeSecret,
 			stagedControl,
 			stagedReference,
 		)
 		if prepareErr != nil {
-			return errors.Join(prepareErr, closePrepared())
+			return protocol.ModelCatalog{}, errors.Join(prepareErr, closePrepared())
 		}
 		prepared[id] = replacement
 		if replacement.credentialActivate != nil {
@@ -228,37 +410,42 @@ func (m *workspaceRuntimeManager) Reconfigure(
 		reference = value
 	}
 	if err := idleWorkspaceRuntimes(ctx, active); err != nil {
-		return errors.Join(err, closePrepared())
+		return protocol.ModelCatalog{}, errors.Join(err, closePrepared())
 	}
 	roots := make([]string, 0, len(ids))
 	for _, id := range ids {
 		roots = append(roots, active[id].dependencies.WorkspaceRoot)
 	}
 	if err := saveWebSetupSelection(m.dataDir, "", selection); err != nil {
-		return errors.Join(err, closePrepared())
+		return protocol.ModelCatalog{}, errors.Join(err, closePrepared())
 	}
 	previousProfile := active[ids[0]].application.DefaultProfile()
 	nextProfile := prepared[ids[0]].application.DefaultProfile()
-	if err := repositories.Sessions.RebindWorkspaceProfiles(
-		ctx,
-		roots,
-		nextProfile,
-	); err != nil {
-		_ = saveWebSetupSelection(m.dataDir, "", previousSelection)
-		return errors.Join(err, closePrepared())
+	if rebindProfiles {
+		if err := repositories.Sessions.RebindWorkspaceProfiles(
+			ctx,
+			roots,
+			nextProfile,
+		); err != nil {
+			_ = saveWebSetupSelection(m.dataDir, "", previousSelection)
+			return protocol.ModelCatalog{}, errors.Join(err, closePrepared())
+		}
 	}
 	for _, runtime := range prepared {
 		if err := runtime.activateCredential(); err != nil {
-			rollbackErr := repositories.Sessions.RebindWorkspaceProfiles(
-				ctx,
-				roots,
-				previousProfile,
-			)
+			var rollbackErr error
+			if rebindProfiles {
+				rollbackErr = repositories.Sessions.RebindWorkspaceProfiles(
+					ctx,
+					roots,
+					previousProfile,
+				)
+			}
 			rollbackErr = errors.Join(
 				rollbackErr,
 				saveWebSetupSelection(m.dataDir, "", previousSelection),
 			)
-			return errors.Join(err, rollbackErr, closePrepared())
+			return protocol.ModelCatalog{}, errors.Join(err, rollbackErr, closePrepared())
 		}
 	}
 	replaced := make([]string, 0, len(ids))
@@ -271,16 +458,19 @@ func (m *workspaceRuntimeManager) Reconfigure(
 					active[replacedID].dependenciesWithDiagnostics(stderr),
 				)
 			}
-			rollbackErr := repositories.Sessions.RebindWorkspaceProfiles(
-				ctx,
-				roots,
-				previousProfile,
-			)
+			var rollbackErr error
+			if rebindProfiles {
+				rollbackErr = repositories.Sessions.RebindWorkspaceProfiles(
+					ctx,
+					roots,
+					previousProfile,
+				)
+			}
 			rollbackErr = errors.Join(
 				rollbackErr,
 				saveWebSetupSelection(m.dataDir, "", previousSelection),
 			)
-			return errors.Join(err, rollbackErr, closePrepared())
+			return protocol.ModelCatalog{}, errors.Join(err, rollbackErr, closePrepared())
 		}
 		replaced = append(replaced, id)
 	}
@@ -302,7 +492,7 @@ func (m *workspaceRuntimeManager) Reconfigure(
 	for _, runtime := range active {
 		runtime.close()
 	}
-	return nil
+	return prepared[ids[0]].application.ModelCatalog(), nil
 }
 
 func idleWorkspaceRuntimes(

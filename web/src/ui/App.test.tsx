@@ -310,42 +310,52 @@ describe("projectTranscript", () => {
     });
     expect((screen.getByLabelText("Settings model") as HTMLSelectElement).value)
       .toBe("reasoner");
-    fireEvent.click(screen.getByRole("button", {name: "New model"}));
-    expect((screen.getByLabelText("Settings model") as HTMLInputElement).value)
+    fireEvent.click(screen.getByRole("button", {name: "Add model"}));
+    const modelDialog = screen.getByRole("dialog", {name: "Add model"});
+    expect((within(modelDialog).getByLabelText("New model ID") as HTMLInputElement).value)
       .toBe("");
-    expect(document.activeElement).toBe(screen.getByLabelText("Settings model"));
-    expect(screen.getByRole("alert").textContent).toContain(
+    expect(document.activeElement).toBe(
+      within(modelDialog).getByLabelText("New model ID")
+    );
+    expect(within(modelDialog).getByRole("alert").textContent).toContain(
       "Model ID is required"
     );
-    fireEvent.change(screen.getByLabelText("Settings model"), {
+    fireEvent.change(within(modelDialog).getByLabelText("New model ID"), {
       target: {value: "invalid model"}
     });
-    expect(screen.getByRole("alert").textContent).toContain(
+    expect(within(modelDialog).getByRole("alert").textContent).toContain(
       "Model ID cannot contain whitespace"
     );
-    expect((screen.getByRole(
-      "button",
-      {name: "Apply changes"}
-    ) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Settings model"), {
+    fireEvent.change(within(modelDialog).getByLabelText("New model ID"), {
       target: {value: "model-released-today"}
     });
-    expect(screen.getByRole("button", {name: "Existing models"})).toBeTruthy();
-    expect(screen.getByText(/"limits":"fixture"/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", {name: "Test model"}));
-    expect(await screen.findByText(
-      "Connection succeeded and the provider listed this model"
-    )).toBeTruthy();
+    fireEvent.click(within(modelDialog).getByRole(
+      "button",
+      {name: "Detect model"}
+    ));
+    expect(await within(modelDialog).findByLabelText("Context tokens"))
+      .toBeTruthy();
+    fireEvent.click(within(modelDialog).getByRole(
+      "button",
+      {name: "Add model"}
+    ));
+    await waitFor(() => {
+      expect(client.addModel).toHaveBeenCalledWith(expect.objectContaining({
+        model: "model-released-today"
+      }));
+    });
     expect(client.updateProfile).not.toHaveBeenCalled();
     expect(screen.getByText("Unsaved changes")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Apply changes"}));
     await waitFor(() => {
       expect(client.updateProfile).toHaveBeenCalledWith({
-        model: "model-released-today"
+        model: "model-released-today",
+        reasoning_effort: "medium"
       });
     });
     expect(screen.getByText(
-      "Applied: Model fixture → model-released-today · Prompt cache reset"
+      "Applied: Model fixture → model-released-today; " +
+      "Reasoning default → medium · Prompt cache reset"
     )).toBeTruthy();
     fireEvent.click(screen.getByRole("button", {name: "Connection"}));
     expect(screen.getByRole("button", {name: "Test connection"})).toBeTruthy();
@@ -583,7 +593,7 @@ describe("projectTranscript", () => {
     });
   });
 
-  it("keeps fixed model selector available for connection reconfiguration", async () => {
+  it("opens the model editor for a fixed custom connection", async () => {
     const value = snapshot();
     value.profile!.capabilities.mutable_fields =
       value.profile!.capabilities.mutable_fields.filter(
@@ -598,7 +608,7 @@ describe("projectTranscript", () => {
     fireEvent.change(selector, {target: {value: "__configure__"}});
 
     expect(await screen.findByRole("dialog", {name: "Settings"})).toBeTruthy();
-    expect(screen.getByRole("heading", {name: "Connection"})).toBeTruthy();
+    expect(screen.getByRole("dialog", {name: "Add model"})).toBeTruthy();
     expect(client.updateProfile).not.toHaveBeenCalled();
   });
 
@@ -2867,6 +2877,30 @@ function mockClient(value: RuntimeSnapshot): RuntimeClient {
       detail: "Connection succeeded and the provider listed this model",
       tested_at: "2026-01-01T00:00:00Z"
     })),
+    probeModel: vi.fn(async () => ({
+      models: [{
+        id: "model-released-today",
+        context_tokens: 200000,
+        max_output_tokens: 24000
+      }],
+      capabilities: {
+        streaming: true,
+        reasoning: true,
+        reasoning_efforts: ["low", "medium", "high"],
+        default_reasoning_effort: "medium",
+        tool_calls: true,
+        native_search: false,
+        incremental_responses: false,
+        vision: false,
+        image_input: false,
+        prompt_cache: false,
+        automatic_prompt_cache: false,
+        thinking_toggle: false
+      }
+    })),
+    addModel: vi.fn(async () => ({version: 1, models: []})),
+    updateModel: vi.fn(async () => ({version: 1, models: []})),
+    removeModel: vi.fn(async () => ({version: 1, models: []})),
     clearKeyringCredential: vi.fn(async () => ({})),
     browseWorkspace: vi.fn(async () => ({
       path: ".",

@@ -842,6 +842,69 @@
   background: var(--ch-panel-subtle);
 }
 
+.modelEditorOverlay {
+  position: absolute;
+  z-index: calc(var(--ch-layer-popover) + 20);
+  inset: 0;
+  display: grid;
+  padding: 24px;
+  place-items: center;
+  background: var(--ch-modal-mask);
+}
+
+.modelEditorDialog {
+  display: flex;
+  width: min(560px, 100%);
+  max-height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ch-panel-raised);
+  border: 1px solid var(--ch-border-strong);
+  border-radius: var(--ch-radius-modal);
+  box-shadow: var(--ch-modal-shadow);
+}
+
+.modelEditorDialog > header,
+.modelEditorDialog > footer {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+}
+
+.modelEditorDialog > header {
+  justify-content: space-between;
+  border-bottom: 1px solid var(--ch-border);
+}
+
+.modelEditorDialog > header h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.modelEditorDialog > footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--ch-border);
+}
+
+.modelEditorDialog > footer button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--ch-border);
+  border-radius: 8px;
+}
+
+.modelEditorBody {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
 @media (max-width: 760px) {
   .settingsOverlay {
     padding: 8px;
@@ -852,6 +915,10 @@
     height: calc(100vh - 16px);
     grid-template-columns: 54px minmax(0, 1fr);
     border-radius: var(--ch-radius-panel);
+  }
+
+  .modelEditorOverlay {
+    padding: 8px;
   }
 
   .settingsNav {

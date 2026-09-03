@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/fwtllh-png/QCode/internal/adapter/model"
@@ -19,6 +20,7 @@ func runtimeModelCatalog(
 	selectedProvider := selectedRoute.ProviderID()
 	selectedModel := selectedRoute.Model().ID
 	selectedSeen := false
+	seenModels := make(map[string]bool)
 	for _, catalogProvider := range providers {
 		providerEntry := protocol.ProviderCatalogEntry{
 			ID: catalogProvider.ID, DisplayName: catalogProvider.ID,
@@ -65,6 +67,7 @@ func runtimeModelCatalog(
 				Provider: catalogProvider.ID, ID: id, Source: "catalog",
 				Selected: selected, Capabilities: capabilities,
 			})
+			seenModels[model.RouteKey(catalogProvider.ID, id)] = true
 		}
 	}
 	if _, ok := catalog.Provider(selectedProvider); !ok {
@@ -74,11 +77,30 @@ func runtimeModelCatalog(
 		})
 	}
 	if !selectedSeen {
-		selectedCapabilities.SelectionMode = "fixed"
+		if _, ok := selectable[model.RouteKey(selectedProvider, selectedModel)]; ok {
+			selectedCapabilities.SelectionMode = "hot"
+		} else {
+			selectedCapabilities.SelectionMode = "fixed"
+		}
 		modelEntries = append(modelEntries, protocol.ModelCatalogEntry{
 			Provider: selectedProvider, ID: selectedModel,
 			Source:   "connection_baseline",
 			Selected: true, Capabilities: selectedCapabilities,
+		})
+		seenModels[model.RouteKey(selectedProvider, selectedModel)] = true
+	}
+	for key, route := range selectable {
+		if seenModels[key] {
+			continue
+		}
+		capabilities := catalogModelCapabilities(route.Model())
+		capabilities.SelectionMode = "hot"
+		modelEntries = append(modelEntries, protocol.ModelCatalogEntry{
+			Provider:     selectedProvider,
+			ID:           route.Model().ID,
+			Source:       "registered",
+			Selected:     route.Model().ID == selectedModel,
+			Capabilities: capabilities,
 		})
 	}
 	sort.Slice(providerEntries, func(left, right int) bool {
@@ -129,31 +151,44 @@ func catalogModelCapabilities(descriptor model.Model) protocol.ModelCapabilities
 func runtimeSelectableRoutes(
 	selected model.ReadyRoute,
 	allowCatalogSelection bool,
+	additional map[string]model.Model,
 ) (map[string]model.ReadyRoute, error) {
 	result := make(map[string]model.ReadyRoute)
-	if !allowCatalogSelection {
-		return result, nil
-	}
-	catalog := model.DefaultCatalog()
-	provider, ok := catalog.Provider(selected.ProviderID())
-	if !ok {
-		return result, nil
-	}
-	resolver, err := model.NewResolver(catalog)
-	if err != nil {
-		return nil, err
-	}
-	for modelID := range provider.Models {
-		route, err := resolver.Resolve(model.RouteRequest{
-			ProviderID: selected.ProviderID(),
-			ModelID:    modelID,
-			Provenance: model.ProvenanceConfig,
-		})
+	if allowCatalogSelection {
+		catalog := model.DefaultCatalog()
+		provider, ok := catalog.Provider(selected.ProviderID())
+		if !ok {
+			return result, nil
+		}
+		resolver, err := model.NewResolver(catalog)
 		if err != nil {
 			return nil, err
 		}
-		route = route.WithCredential(selected.Credential())
-		result[model.RouteKey(selected.ProviderID(), modelID)] = route
+		for modelID := range provider.Models {
+			route, err := resolver.Resolve(model.RouteRequest{
+				ProviderID: selected.ProviderID(),
+				ModelID:    modelID,
+				Provenance: model.ProvenanceConfig,
+			})
+			if err != nil {
+				return nil, err
+			}
+			route = route.WithCredential(selected.Credential())
+			result[model.RouteKey(selected.ProviderID(), modelID)] = route
+		}
+	}
+	if len(additional) != 0 {
+		result[model.RouteKey(selected.ProviderID(), selected.Model().ID)] = selected
+	}
+	for id, descriptor := range additional {
+		if err := validateResolvedModelMetadata(descriptor); err != nil {
+			return nil, fmt.Errorf("additional model %q: %w", id, err)
+		}
+		if descriptor.ID != id {
+			return nil, fmt.Errorf("additional model %q has mismatched id %q", id, descriptor.ID)
+		}
+		result[model.RouteKey(selected.ProviderID(), id)] =
+			selected.WithModel(descriptor)
 	}
 	return result, nil
 }

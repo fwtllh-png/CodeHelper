@@ -72,6 +72,9 @@ export function modelMetadataFromProbe(
     capabilities: {
       streaming: result.capabilities.streaming,
       reasoning: result.capabilities.reasoning,
+      reasoning_efforts: result.capabilities.reasoning_efforts,
+      default_reasoning_effort:
+        result.capabilities.default_reasoning_effort,
       tool_calls: result.capabilities.tool_calls,
       native_search: false,
       incremental_responses: false,
@@ -81,8 +84,9 @@ export function modelMetadataFromProbe(
       automatic_prompt_cache: false,
       thinking_toggle: false
     },
-    reasoningEfforts: "",
-    defaultReasoningEffort: ""
+    reasoningEfforts: result.capabilities.reasoning_efforts?.join(", ") ?? "",
+    defaultReasoningEffort:
+      result.capabilities.default_reasoning_effort ?? ""
   };
 }
 
