@@ -22,17 +22,18 @@ func (e *Engine) projectWorldState(
 		return nil, nil, nil, agentcontext.WorldProjection{}, errors.New("turn scope is not active")
 	}
 	e.ensureClosedTurnCheckpoints()
+	evidence := e.evidenceSet().Snapshot(e.options.EvidenceLimit)
 	scope.mu.Lock()
 	baseline := scope.state.context.World()
 	if scope.state.contextLedger != nil &&
 		agentcontext.WorldBaselineValid(history, baseline) &&
+		evidence.Empty() &&
 		!e.sessionStateHintMissing(history) {
 		receipts := append([]promptcontext.Receipt(nil), scope.state.contextSeen...)
 		scope.mu.Unlock()
 		return promptcontext.FrozenWorld(e.promptMessages(), receipts, baseline)
 	}
 	scope.mu.Unlock()
-	evidence := e.evidenceSet().Snapshot(e.options.EvidenceLimit)
 	if e.options.RepoContext != nil {
 		e.options.Metrics.Evidence(
 			len(evidence.Risks),

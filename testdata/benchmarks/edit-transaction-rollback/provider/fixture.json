@@ -9,7 +9,7 @@
     ["\"role\":\"tool\"", "\"tool_call_id\":\"call_read_first\""],
     ["\"role\":\"tool\"", "\"tool_call_id\":\"call_read_second\""],
     ["\"tool_call_id\":\"call_apply\"", "want exactly once"],
-    ["reread_exact_range"],
+    ["required_action=file_read", "retry_original=false", "failed_change=2"],
     ["\"tool_call_id\":\"call_reread\""],
     []
   ]

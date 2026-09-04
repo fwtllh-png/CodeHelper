@@ -5,10 +5,12 @@ import (
 
 	"github.com/fwtllh-png/QCode/internal/adapter/model"
 	"github.com/fwtllh-png/QCode/internal/adapter/provider"
+	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
 func TestReasoningEffortStaysFixedAcrossRepairAttempts(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
+	engine.options.ReasoningEffort = "medium"
 
 	if got := engine.reasoningEffort(); got != "medium" {
 		t.Fatalf("initial effort = %q", got)
@@ -20,6 +22,7 @@ func TestReasoningEffortStaysFixedAcrossRepairAttempts(t *testing.T) {
 
 func TestReasoningEffortDoesNotChangeForComplexPrompts(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
+	engine.options.ReasoningEffort = "medium"
 	if got := engine.reasoningEffort(); got != "medium" {
 		t.Fatalf("complex effort = %q", got)
 	}
@@ -92,6 +95,7 @@ func TestEngineUsesModelOutputCapacityWithAdaptiveMedium(t *testing.T) {
 	engine.options.MaxOutputTokens = 0
 	engine.options.Route = reasoningRoute(t)
 	engine.options.Routes, _ = model.NewRouteSet(engine.options.Route, nil, false)
+	engine.options.ReasoningEffort = "medium"
 	if _, err := engine.Run(t.Context(), "answer the question", nil); err != nil {
 		t.Fatal(err)
 	}

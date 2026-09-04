@@ -94,6 +94,36 @@ func TestWorldStateFreezesWithinTurnAndRefreshesAtNextTurn(t *testing.T) {
 	}
 }
 
+func TestWorldStateRefreshesWhenEvidenceChangesWithinTurn(t *testing.T) {
+	runtime := &scriptedProvider{streams: []provider.Stream{
+		toolCallStream("echo-1", "echo", `{"text":"same"}`),
+		toolCallStream("echo-2", "echo", `{"text":"same"}`),
+		textStream("done"),
+	}}
+	registry := tool.NewRegistry(nil, nil)
+	if err := registry.Register(&echoTool{}); err != nil {
+		t.Fatal(err)
+	}
+	engine := newEngine(t, runtime, registry)
+	repository := &stubRepoContext{}
+	engine.options.RepoContext = repository
+
+	if _, err := engine.Run(t.Context(), "repeat one call", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtime.requests) != 3 {
+		t.Fatalf("requests = %d, want 3", len(runtime.requests))
+	}
+	if len(repository.evidence) != 2 ||
+		len(repository.evidence[1].Reminders) != 1 ||
+		!strings.Contains(
+			repository.evidence[1].Reminders[0].Detail,
+			"echo ran 2 times this turn with identical arguments",
+		) {
+		t.Fatalf("projected evidence = %+v", repository.evidence)
+	}
+}
+
 func TestWorldBaselineSurvivesSessionDeltaRestart(t *testing.T) {
 	sourceRuntime := &scriptedProvider{streams: []provider.Stream{textStream("one")}}
 	source := newEngine(t, sourceRuntime, tool.NewRegistry(nil, nil))

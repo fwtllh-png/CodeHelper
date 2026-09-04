@@ -646,18 +646,15 @@ func executeTask(ctx context.Context, task Task) (observation, error) {
 	if err != nil {
 		return observation{}, err
 	}
-	var persistentStore *state.Store
-	if task.Subagent != nil {
-		persistentStore, err = state.Open(ctx, state.Options{DataDir: dataDir})
-		if err != nil {
-			return observation{}, fmt.Errorf("open benchmark state: %w", err)
-		}
-		defer func() { _ = persistentStore.CloseAll(context.Background()) }()
-		if err := apppersistence.EnsureThread(
-			ctx, persistentStore, threadID, "session-benchmark", workspace,
-		); err != nil {
-			return observation{}, fmt.Errorf("ensure benchmark thread: %w", err)
-		}
+	persistentStore, err := state.Open(ctx, state.Options{DataDir: dataDir})
+	if err != nil {
+		return observation{}, fmt.Errorf("open benchmark state: %w", err)
+	}
+	defer func() { _ = persistentStore.CloseAll(context.Background()) }()
+	if err := apppersistence.EnsureThread(
+		ctx, persistentStore, threadID, "session-benchmark", workspace,
+	); err != nil {
+		return observation{}, fmt.Errorf("ensure benchmark thread: %w", err)
 	}
 	session, err := wire.NewExec(ctx, wire.ExecOptions{
 		FixturePath: fixturePath, ConfigOverrides: overrides,

@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "report_schema_version": 1,
+  "suite": "testdata/benchmarks",
+  "fixture_only": true,
+  "network_required": false,
+  "task_inventory": {
+    "total": 22,
+    "categories": {
+      "budget": 1,
+      "context_assembly": 6,
+      "edit_guardrail": 1,
+      "edit_transaction": 3,
+      "single_file_fix": 1,
+      "symbol_locate": 4,
+      "token_efficiency": 1,
+      "verify_gate": 5
+    },
+    "expected_terminals": {
+      "completed": 18,
+      "failed": 4
+    },
+    "tasks_with_assertions": {
+      "files": 10,
+      "unchanged": 11,
+      "absent": 2,
+      "tools_used": 19,
+      "tools_failed": 3,
+      "output_contains": 17,
+      "receipt_changes": 7,
+      "verification": 10,
+      "context": 7,
+      "approval": 1,
+      "compaction": 0
+    }
+  },
+  "observed_stable_summary": {
+    "runs_compared": 2,
+    "available": 22,
+    "unavailable": 0,
+    "passed": 22,
+    "failed": 0,
+    "failed_tasks": [],
+    "input_tokens": 124213,
+    "uncached_input_tokens": 93333,
+    "output_tokens": 1013,
+    "reasoning_tokens": 0,
+    "cached_tokens": 30880,
+    "cost_microunits": 0,
+    "usage_calls": 18,
+    "unpriced_calls": 0,
+    "retry_attempts": 3,
+    "verification_applicable_tasks": 11,
+    "verification_covered_tasks": 11,
+    "stable_projection_sha256": "0e9673091788d2cef14bdc007590959433d0a406c08bc5eb8afc61bd4ee8521e"
+  },
+  "field_availability": {
+    "success_conditions": {
+      "status": "available",
+      "source": "task.json expect"
+    },
+    "turn_count": {
+      "status": "unavailable",
+      "reason": "report v1 does not expose an observed turn count"
+    },
+    "tool_calls": {
+      "status": "partial",
+      "reason": "report v1 exposes unique succeeded and failed tool names, not invocation counts"
+    },
+    "token_usage": {
+      "status": "available",
+      "reason": "suite and task totals are present when usage events are emitted"
+    },
+    "cost": {
+      "status": "available",
+      "reason": "cost_microunits and unpriced_calls distinguish zero cost from unknown pricing"
+    },
+    "wall_time": {
+      "status": "volatile",
+      "reason": "duration and latency percentiles vary by host and are excluded from the stable projection"
+    }
+  }
+}

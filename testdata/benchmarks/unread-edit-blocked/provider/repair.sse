@@ -1,4 +1,3 @@
-data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_edit","function":{"name":"file_edit","arguments":"{\"path\":\"settings.py\",\"old\":\"TIMEOUT = 30\",\"new\":\"REQUEST_TIMEOUT = 30\"}"}}]},"finish_reason":"tool_calls"}]}
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_write","function":{"name":"file_write","arguments":"{\"path\":\"settings.py\",\"content\":\"REQUEST_TIMEOUT = 30\\nRETRIES = 3\\n\"}"}}]},"finish_reason":"tool_calls"}]}
 
 data: [DONE]
-

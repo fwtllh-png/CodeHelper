@@ -18,7 +18,8 @@
     "files": {
       "settings.py": "REQUEST_TIMEOUT = 30\nRETRIES = 3\n"
     },
-    "tools_used": ["file_edit", "file_read"],
+    "tools_used": ["file_write", "file_read"],
+    "tools_failed": ["file_write"],
     "receipt_changes": ["settings.py"],
     "verify_status": "passed",
     "verify_action": "passed",

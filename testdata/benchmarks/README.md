@@ -15,6 +15,37 @@
 
 `workspace/` 会被复制到临时目录，执行完即删除；仓库内的种子文件不会被修改。
 
+## 基线样本
+
+`baseline-v1.json` 是 Report V1 的脱敏基线摘要。它保留任务清单、成功条件覆盖、任务结果、
+Token/成本与验证覆盖等可比较字段，不保存完整 Prompt、Tool 参数、工作区路径或模型输出。
+
+生成原始报告：
+
+```bash
+make bench BENCH_REPORT=/tmp/qcode-benchmark-report.json
+```
+
+Fixture Provider 会监听本机临时回环端口；受限执行环境需要允许 loopback listen。报告文件权限
+由 Harness 设为 `0600`。刷新基线时至少运行两次，并仅在以下字段一致后更新摘要：
+
+- 任务名、Category、Status、Terminal；
+- 成功/失败工具名集合、Receipt Changes 和 Verification 结论；
+- Usage Calls、输出/推理 Token、Cost、Unpriced Calls 与 Retry Attempts；
+- 去掉 Latency 后的 Baseline Metrics。
+
+输入、未缓存输入和缓存 Token 仍记录在摘要中，但不进入稳定投影哈希。Fixture 会把真实工具输出
+回灌给模型，其中命令耗时等运行期文本可能造成极小的字节计数抖动；刷新时应比较并解释差异，
+不能把它用作精确相等门禁。Context 的估算 Token 应在两次运行间保持一致。
+
+`platform`、`generated_at`、任务 `duration_ms`、Latency Percentile、Window ID 及运行期
+Route/Context Digest 不属于跨运行稳定字段，不得据此设置发布阈值。当前 Report V1 还不提供
+实际 Turn 数和每种工具的调用次数；基线将其分别标记为 `unavailable` 和 `partial`，避免把
+缺失数据当成零。
+
+该样本记录的是当前行为而不是目标值。已知失败必须保留为失败，后续修复应在独立变更中更新
+对应 Fixture/断言和基线，不能为了得到绿色报告而在生成阶段过滤。
+
 ## task.json 字段
 
 | 字段 | 说明 |

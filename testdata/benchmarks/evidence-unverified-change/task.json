@@ -13,8 +13,6 @@
     },
     "tools_used": ["file_read", "file_edit"],
     "receipt_changes": ["server.py"],
-    "verify_status": "unavailable",
-    "verify_action": "repair",
     "context_sections": ["evidence"],
     "receipt_evidence_risks": ["changed_without_verification"],
     "receipt_not_collected_excludes": ["evidence"]
