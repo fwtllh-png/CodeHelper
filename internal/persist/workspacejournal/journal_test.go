@@ -151,6 +151,9 @@ func TestJournalDraftResumeCommitsOriginalBaseline(t *testing.T) {
 	if !manager.HasDraft("source") {
 		t.Fatal("suspended Turn did not retain a draft")
 	}
+	if ids := manager.DraftTurnIDs(); len(ids) != 1 || ids[0] != "source" {
+		t.Fatalf("draft turn ids = %v", ids)
+	}
 	if err := manager.Begin("unrelated"); err == nil {
 		t.Fatal("unrelated Turn began on top of a retained draft")
 	}

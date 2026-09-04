@@ -162,11 +162,14 @@ func NewCommand(ctx context.Context, options Options) (*exec.Cmd, error) {
 	options.AdditionalReadPaths = readPaths
 	executionAuthority, authorityBound := sandbox.ExecutionAuthorityFromContext(ctx)
 	if authorityBound {
-		if err := validateExecutionAuthority(options, executionAuthority); err != nil {
-			return nil, err
-		}
+		// A caller may deliberately request a stricter, network-denied command
+		// than its enclosing authority. Apply that reduction before comparing
+		// managed-proxy bindings: this command cannot use the proxy.
 		if !executionAuthority.AllowNetwork {
 			options.DenyNetwork = true
+		}
+		if err := validateExecutionAuthority(options, executionAuthority); err != nil {
+			return nil, err
 		}
 	}
 	environment, err := SanitizedEnvironment(options.Env)
@@ -418,11 +421,14 @@ func validateExecutionAuthority(
 		}
 	}
 	if policyValue, ok := sandbox.BackendPolicy(options.Sandbox); ok {
-		expectedProxyPort := policyValue.ManagedProxyPort
-		if !authority.AllowNetwork {
-			expectedProxyPort = 0
-		}
-		if authority.ManagedProxyPort != expectedProxyPort {
+		// When this command is network-denied, the sandbox cannot reach the
+		// managed proxy. A stale enclosing proxy port is therefore irrelevant to
+		// this execution and must not block a local command.
+		// Loopback-only authority likewise does not claim that proxy: localhost
+		// bind/connect is a seatbelt grant, not a proxy-routed destination.
+		if !options.DenyNetwork &&
+			authority.ManagedProxyPort != policyValue.ManagedProxyPort &&
+			!authority.LoopbackOnly() {
 			return sandbox.Denied(sandbox.Denial{
 				Operation: sandbox.DenialNetwork, Resource: "managed_proxy",
 				ReasonCode: sandbox.ReasonAuthorityUnverified,

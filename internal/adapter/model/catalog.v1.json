@@ -286,7 +286,7 @@
           "wire_id": "deepseek-v4-flash",
           "limits": {
             "context_tokens": 1048576,
-            "max_output_tokens": 393216
+            "max_output_tokens": 384000
           },
           "capabilities": {
             "streaming": true,
@@ -323,7 +323,7 @@
           "wire_id": "deepseek-v4-flash-vision-exp",
           "limits": {
             "context_tokens": 1048576,
-            "max_output_tokens": 393216
+            "max_output_tokens": 384000
           },
           "capabilities": {
             "streaming": true,

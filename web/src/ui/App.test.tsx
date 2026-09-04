@@ -333,8 +333,11 @@ describe("projectTranscript", () => {
       "button",
       {name: "Detect model"}
     ));
-    expect(await within(modelDialog).findByLabelText("Context tokens"))
-      .toBeTruthy();
+    expect(
+      (await within(modelDialog).findByLabelText("Detected model limits"))
+        .textContent
+    ).toContain("Context 200,000");
+    expect(within(modelDialog).queryByLabelText("Context tokens")).toBeNull();
     fireEvent.click(within(modelDialog).getByRole(
       "button",
       {name: "Add model"}
@@ -1025,6 +1028,19 @@ describe("projectTranscript", () => {
     expect(client.deleteSession).toHaveBeenCalledWith("session", 1, true);
   });
 
+  it("warns that deleting an idle session discards a leftover workspace draft", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const client = mockClient(snapshot());
+    render(<App client={client} />);
+    fireEvent.click(screen.getByRole("button", {name: "Session actions for Chat"}));
+    fireEvent.click(screen.getByRole("menuitem", {name: "Delete"}));
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      'Delete "Chat" and permanently discard its unfinished workspace draft if one exists?'
+    );
+    expect(client.deleteSession).toHaveBeenCalledWith("session", 1, true);
+  });
+
   it("shows session lifecycle failures next to the affected row", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const client = mockClient(snapshot());
@@ -1628,8 +1644,7 @@ describe("projectTranscript", () => {
       })
     ]));
     render(<App client={inputClient} />);
-    fireEvent.click(screen.getByRole("button", {name: "Input options"}));
-    fireEvent.click(screen.getByRole("option", {name: "two"}));
+    fireEvent.click(screen.getByRole("button", {name: "two"}));
     fireEvent.click(screen.getByRole("button", {name: "Submit"}));
     expect(inputClient.replyInput).toHaveBeenCalledWith(
       "input",
@@ -1741,7 +1756,7 @@ describe("projectTranscript", () => {
       () => new Promise(() => {})
     );
     const view = render(<App client={firstClient} />);
-    const firstInput = screen.getByLabelText("Input answer");
+    const firstInput = screen.getByLabelText("Custom input answer");
     fireEvent.change(firstInput, {target: {value: "first"}});
     fireEvent.click(screen.getByRole("button", {name: "Submit"}));
     expect(screen.getByRole("button", {name: "Submit"}))
@@ -1756,11 +1771,12 @@ describe("projectTranscript", () => {
     view.rerender(<App client={secondClient} />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Input answer")).toHaveProperty("value", "");
+      expect(screen.getByLabelText("Custom input answer"))
+        .toHaveProperty("value", "");
       expect(screen.getByRole("button", {name: "Submit"}))
         .toHaveProperty("disabled", true);
     });
-    fireEvent.change(screen.getByLabelText("Input answer"), {
+    fireEvent.change(screen.getByLabelText("Custom input answer"), {
       target: {value: "second"}
     });
     expect(screen.getByRole("button", {name: "Submit"}))
@@ -2001,6 +2017,41 @@ describe("projectTranscript", () => {
     expect(screen.getByText("first line")).toBeTruthy();
     fireEvent.click(screen.getAllByRole("button", {name: "README.md"})[0]!);
     expect(client.openWorkspacePath).toHaveBeenCalledWith("README.md");
+  });
+
+  it("collapses completed turn execution while keeping its final conclusion visible", () => {
+    const value = snapshot([
+      event(1, "turn.started", {display_prompt: "Inspect"}),
+      event(2, "reasoning.completed", {
+        sample_id: "sample-1",
+        text: "Checking the repository"
+      }),
+      event(3, "tool.start", {
+        call_id: "call",
+        tool: "file_read",
+        arguments: {path: "README.md"}
+      }),
+      event(4, "tool.result", {
+        call_id: "call",
+        tool: "file_read",
+        output: "# QCode",
+        is_error: false
+      }),
+      event(5, "turn.completed", {text: "Repository inspected"})
+    ]);
+    render(<App client={mockClient(value)} />);
+
+    expect(screen.getByText("Repository inspected")).toBeTruthy();
+    expect(screen.queryByText("Checking the repository")).toBeNull();
+    expect(screen.queryByRole("button", {name: /Read README\.md/})).toBeNull();
+
+    const toggle = screen.getByRole("button", {name: /Execution details/});
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Checking the repository")).toBeTruthy();
+    expect(screen.getByRole("button", {name: /Read README\.md/})).toBeTruthy();
   });
 
   it("renders Bash output and grouped Grep results as dedicated cards", () => {
@@ -2516,6 +2567,7 @@ describe("projectTranscript", () => {
     const client = mockClient(value);
     const {container} = render(<App client={client} />);
 
+    fireEvent.click(screen.getByRole("button", {name: /Execution details/}));
     fireEvent.click(screen.getByRole("button", {name: /Read README\.md/}));
     fireEvent.click(screen.getByRole("button", {name: "Inspect"}));
 

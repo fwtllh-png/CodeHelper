@@ -112,7 +112,11 @@ Workspace 写入生成文件。`format_code` 只格式化显式路径且进入 b
 
 安装 Chromium/Chrome 后，`web_run` 使用隔离临时 Profile 和 CDP 提供真实
 navigate、DOM snapshot、click 与 fill；`QCODE_BROWSER_BINARY` 可覆盖自动探测。
-本地开发地址必须显式传入 `allow_loopback`。`http_request` 支持结构化
+本地开发地址必须显式传入 `allow_loopback`，不要把 `localhost` 或端口 `0` 写进
+`network_targets`。`quality_process_smoke` 只表示宿主进程活过声明时长，不能代替
+`quality_test` / `quality_verify`。`exec_command` 第一次只等到 `yield_time_ms`；
+进程还在跑时会返回 `session_id`，用 `write_stdin` 继续收输出或关闭，并可用
+`timeout_ms` 杀掉进程组。`http_request` 支持结构化
 GET/POST/PUT/PATCH/DELETE/HEAD、响应状态断言和有界 Body；它拒绝
 Authorization、Cookie、API Key 等会被持久化进 Tool Call 的敏感 Header。
 
@@ -142,9 +146,12 @@ Act 内规划保持 Turn 已冻结的 Act 路由，不在一次回答中途切�
 Profile Revision 判断是否过期；模型、工具集、审批姿态或执行目标等执行配置变化仍会
 要求重新规划。
 
-活动 Plan 的状态变化通过 `update_plan` 立即生成新的 `plan.delta`。Runtime 不根据文件
-写入猜测业务步骤是否完成，但会拒绝在仍有未完成 Plan 步骤时提交普通完成声明，并要求
-先同步 Plan；只有收敛 Finalization 可以保留未完成步骤并形成可恢复结果。
+活动 Plan 的状态变化通过 `update_plan` 立即生成新的 `plan.delta`。步骤签名未变的
+重写会被拒绝，不产生新的 delta。Runtime 不根据文件写入猜测业务步骤是否完成。
+Plan 正文进入 Session State，下一 Turn 仍可 `update_plan` 或按步骤继续实现。仅交付
+计划、没有 Workspace Mutation 的 Turn 可以在步骤仍为 pending 时结束；已经开始改
+仓库时，未完成步骤仍会拒绝普通 `turn_complete`，此时应继续做完剩余步骤或声明
+`incomplete`，而不是反复改同一份计划。
 
 创建新 Session 时，Web 会继承当前 Session 的 Approval Posture；因此用户选择 `auto`
 后，新建 Session 不会重新回到 `suggest`。显式的新建参数仍优先于继承值。
@@ -161,6 +168,10 @@ Sample 完成后持久化完整推理，因此重载页面或切换 Session 后�
 文件名与搜索结果路径可通过仅接受当前 Workspace 普通文件的 Host 接口在本机编辑器中
 打开。macOS 默认优先使用 Visual Studio Code；未安装或无法启动 VS Code 时回退到
 系统文本编辑器。Windows 和 Linux 继续使用各自的系统文件打开机制。
+
+Turn 完成后，Chat 默认只保留用户问题和最终结论；推理、Tool、验证和交付记录收进
+可展开的 `Execution details`。运行中的 Turn 保持完整展开。通过会话搜索或 Trajectory
+定位某个 Tool 或文件时，所属 Turn 的执行过程会自动展开。
 
 最终回答支持 GFM 表格、CJK 相邻强调、行内与块级数学公式、引用、嵌套列表、图片和
 带语言标识的代码块。宽表格与长代码只在各自区域滚动；Markdown 文件链接通过
@@ -191,6 +202,9 @@ Chat 会把每个 Child 的状态、推理摘要、Tool 调用和最终结果聚
 Child 因 `provider rate limited` 失败且标为 `retryable`，应 `wait_agent` 后再
 `followup_task`，不要同时再开一批审查。
 Trajectory 继续提供完整时序和 Tool Record 检查入口。
+Review 子代理只能使用读文件、搜索和 `shell_read` 这类只读 process；`exec_command`
+不会出现在它的工具目录里。需要编译或跑测试时应另开 Verifier，而不是让 Review
+去调 Bash。
 
 ## Session 与恢复
 
@@ -199,16 +213,21 @@ WebSocket，再获取带 `through_sequence` 的 Session Snapshot，并合并水�
 Event。每个 Workspace 使用独立 Cursor；刷新、重连或切换 Workspace 不会重新提交
 Prompt。
 
-删除 Session 时会要求显式确认。对于已失去执行者的未完成 Turn 或隔离 Worktree，
-确认删除表示同时丢弃其未完成状态和隔离改动；仍有内存执行者或恢复中 Operation 的
-Session 会拒绝删除，必须先停止执行。
+删除 Session 时会要求显式确认。对于已失去执行者的未完成 Turn、Workspace Journal
+草稿或隔离 Worktree，确认删除表示同时丢弃其未完成状态并回滚该 Session 留下的
+Journal 草稿；仍有内存执行者或恢复中 Operation 的 Session 会拒绝删除，必须先停止
+执行。若旧 Session 已被删除但工作区仍锁着孤儿草稿，任意剩余 Session 的
+`Continue` 会接管该草稿，`Retry` 会先回滚再开新 Turn。Journal 准入失败的
+Turn 即使没有 `turn.started`，这两类恢复仍然有效。
 
 Agent 明确声明任务尚未完成并提供后续动作时，Session 显示为黄色 `Blocked`，保留
 Workspace 变更并允许 `Continue`。该状态不同于红色 `Failed`，也不同于用户主动暂停
 产生的 `Paused`。Blocked Session 没有活动 Turn 时，Composer 的发送动作显示为
-`Continue`，输入内容作为新 Turn 的真实 User Prompt，并通过 Source Turn 关系绑定到
-最新可恢复 Turn；它不会递归拼接旧输入，也不会在 retained draft 之上错误创建无关
-Turn。恢复请求提交后按钮保持 Pending，直到 Runtime 发布新 Turn 或明确拒绝请求。
+`Continue`，输入内容作为新 Turn 的真实 User Prompt 与 Work Item Goal，并通过
+Source Turn 关系绑定到最新可恢复 Turn；模型上下文只注入短胶囊（源 Turn、
+terminal、Known/Open、工具结论），不会递归拼接旧输入或把源请求整封当作本轮
+Goal。源 Turn 已读路径在开局写入 KnownReads，整文件重读与 git 巡视会被拒绝。
+恢复请求提交后按钮保持 Pending，直到 Runtime 发布新 Turn 或明确拒绝请求。
 
 ## 配置与凭证
 

@@ -343,6 +343,10 @@ func (t *Tools) updatePlan(input operationInput, submitted bool) (tool.Result, e
 	if err := plan.NormalizeAndValidate(); err != nil {
 		return tool.Result{}, err
 	}
+	next := plan.ContextPlan()
+	if !submitted && t.samePlanProgress(next) {
+		return unchangedPlanResult(), nil
+	}
 	var err error
 	if submitted {
 		plan.FileBaseline, err = t.capturePlanBaseline(plan)
@@ -350,7 +354,7 @@ func (t *Tools) updatePlan(input operationInput, submitted bool) (tool.Result, e
 			return tool.Result{}, err
 		}
 	}
-	if err := t.applyPlan(plan.ContextPlan()); err != nil {
+	if err := t.applyPlan(next); err != nil {
 		return tool.Result{}, err
 	}
 	content, err := json.Marshal(plan)
@@ -375,6 +379,31 @@ func (t *Tools) applyPlan(plan Plan) error {
 		}
 	}
 	return nil
+}
+
+func (t *Tools) samePlanProgress(plan Plan) bool {
+	t.planMu.Lock()
+	current := t.plan
+	t.planMu.Unlock()
+	return len(current.Steps) > 0 &&
+		current.ProgressSignature() == plan.ProgressSignature()
+}
+
+const requiredActionFinishOrDeclareIncomplete =
+	"finish_open_plan_steps_or_declare_incomplete"
+
+func unchangedPlanResult() tool.Result {
+	return tool.Result{
+		Content: `{"accepted":false,"reason":"plan_progress_unchanged",` +
+			`"required_action":"` + requiredActionFinishOrDeclareIncomplete + `"}`,
+		IsError: true,
+		Metadata: map[string]any{
+			"reason":          "plan_progress_unchanged",
+			"required_action": requiredActionFinishOrDeclareIncomplete,
+			"retry_original":  false,
+			"plan_delta":      false,
+		},
+	}
 }
 
 func (t *Tools) capturePlanBaseline(plan SubmittedPlan) ([]PlanFileBaseline, error) {

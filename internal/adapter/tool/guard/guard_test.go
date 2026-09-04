@@ -1699,6 +1699,54 @@ func TestUntypedSandboxFailureFailsClosedWithoutApproval(t *testing.T) {
 	}
 }
 
+func TestManagedProxyAuthorityMismatchRefreshesOnce(t *testing.T) {
+	executor := &proxyRefreshExecutor{
+		descriptor: sandboxedDescriptor("proxy_refresh"),
+	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
+	guard := newTestGuard(
+		t,
+		registry,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		nil,
+	)
+	result, err := guard.Execute(
+		t.Context(), "proxy-refresh", "proxy_refresh", json.RawMessage(`{}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "refreshed" || executor.calls.Load() != 2 {
+		t.Fatalf("result = %+v calls=%d", result, executor.calls.Load())
+	}
+}
+
+func TestManagedProxyAuthorityMismatchFailsClosedAfterRefresh(t *testing.T) {
+	executor := &proxyRefreshExecutor{
+		descriptor:     sandboxedDescriptor("proxy_refresh_fail"),
+		alwaysMismatch: true,
+	}
+	registry := newTestRegistry(t, strongBackend{}, executor)
+	guard := newTestGuard(
+		t,
+		registry,
+		policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass),
+		nil,
+	)
+	_, err := guard.Execute(
+		t.Context(), "proxy-refresh-fail", "proxy_refresh_fail", json.RawMessage(`{}`),
+	)
+	if err == nil || executor.calls.Load() != 2 {
+		t.Fatalf("error = %v calls=%d", err, executor.calls.Load())
+	}
+	hint, ok := tool.RecoveryHintFromError(err)
+	if !ok || hint.ErrorCategory != managedProxyMismatchCategory ||
+		hint.RequiredAction != managedProxyMismatchAction ||
+		hint.RetryOriginal {
+		t.Fatalf("recovery hint = %+v ok=%t", hint, ok)
+	}
+}
+
 func TestProcessSandboxHonorsAttempt(t *testing.T) {
 	backend := strongBackend{}
 	got, requireStrong := ProcessSandbox(context.Background(), backend)
@@ -1715,6 +1763,24 @@ func TestProcessSandboxHonorsAttempt(t *testing.T) {
 type errorExecutor struct {
 	descriptor tool.Descriptor
 	err        error
+}
+
+type proxyRefreshExecutor struct {
+	descriptor     tool.Descriptor
+	alwaysMismatch bool
+	calls          atomic.Int32
+}
+
+func (e *proxyRefreshExecutor) Descriptor() tool.Descriptor { return e.descriptor }
+func (e *proxyRefreshExecutor) Execute(context.Context, json.RawMessage) (tool.Result, error) {
+	if e.calls.Add(1) == 1 || e.alwaysMismatch {
+		return tool.Result{}, sandbox.Denied(sandbox.Denial{
+			Operation:  sandbox.DenialNetwork,
+			Resource:   "managed_proxy",
+			ReasonCode: sandbox.ReasonAuthorityUnverified,
+		}, errors.New("managed proxy does not match the effective permission profile"))
+	}
+	return tool.Result{Content: "refreshed"}, nil
 }
 
 func (e *errorExecutor) Descriptor() tool.Descriptor { return e.descriptor }

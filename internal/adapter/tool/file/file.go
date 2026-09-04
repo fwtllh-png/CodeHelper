@@ -437,6 +437,7 @@ func (o *operation) PrepareAuthorizedFile(
 	return authority.FileBinding{
 		MutationDigest: prepared.plan.Digest,
 		Value:          prepared,
+		Noop:           len(prepared.changes) == 0,
 	}, nil
 }
 
@@ -534,6 +535,14 @@ func (o *operation) prepareMutation(
 }
 
 func (o *operation) mutationResult(prepared preparedFileMutation) tool.Result {
+	if len(prepared.changes) == 0 {
+		return tool.Result{
+			Content: "no changes",
+			Metadata: map[string]any{
+				"observed_changes": 0,
+			},
+		}
+	}
 	switch prepared.kind {
 	case "file_write":
 		bytes := 0

@@ -184,6 +184,21 @@ func TestGenericVerifyCannotSupersedeFailedProcessSmoke(t *testing.T) {
 	}
 }
 
+func TestProcessSmokePassedDoesNotCoverChangedPaths(t *testing.T) {
+	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
+	passedSmoke := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})
+	passedSmoke.Outcome.Facts.Verification.Kind = "process_smoke"
+	engine.bindVerificationEvidence(provider.ToolCall{
+		ID: "smoke-passed", Name: "quality_process_smoke",
+	}, &passedSmoke, false, 1)
+
+	receipt, uncovered := engine.qualityVerificationReceipt([]string{"a.go"}, 1)
+	if receipt.Status != verify.StatusUnavailable ||
+		len(uncovered) != 1 || uncovered[0] != "a.go" {
+		t.Fatalf("process smoke covered quality paths: %+v, %v", receipt, uncovered)
+	}
+}
+
 func TestQualityEvidenceRejectsSameBatchMutationAndGenericShell(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
 	result := qualityEvidenceResult(verify.StatusPassed, []string{"a.go"})

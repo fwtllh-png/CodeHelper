@@ -69,6 +69,16 @@ func (p Plan) Clone() Plan {
 	return clone
 }
 
+// ProgressSignature names the executable Plan step vector. Title and status
+// changes count; prose fields such as notes do not.
+func (p Plan) ProgressSignature() string {
+	parts := make([]string, 0, len(p.Steps))
+	for _, step := range p.Steps {
+		parts = append(parts, step.Title+"\x00"+step.Status)
+	}
+	return strings.Join(parts, "\n")
+}
+
 func (p Plan) OutstandingSteps() ([]PlanStep, int) {
 	var open []PlanStep
 	done := 0

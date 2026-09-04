@@ -139,9 +139,13 @@ func RestoreTurnCoordinator(
 	if len(facts) == 0 {
 		return nil, errors.New("turn coordinator restore has no domain facts")
 	}
+	start := facts[0].Sequence
+	if start == 0 {
+		return nil, errors.New("domain fact sequence is invalid")
+	}
 	var restored State
 	for index, fact := range facts {
-		if fact.TurnID != turnID || fact.Sequence != uint64(index+1) {
+		if fact.TurnID != turnID || fact.Sequence != start+uint64(index) {
 			return nil, fmt.Errorf("domain fact sequence is invalid at index %d", index)
 		}
 		if err := Validate(fact.State); err != nil {
@@ -155,7 +159,7 @@ func RestoreTurnCoordinator(
 	}
 	coordinator := &TurnCoordinator{
 		turnID: turnID, state: restored, store: store,
-		dispatcher: dispatcher, nextFact: uint64(len(facts) + 1),
+		dispatcher: dispatcher, nextFact: facts[len(facts)-1].Sequence + 1,
 	}
 	for _, id := range sortedEffectIDs(restored.PendingEffects) {
 		if restored.PendingEffects[id].Status != EffectRunning {

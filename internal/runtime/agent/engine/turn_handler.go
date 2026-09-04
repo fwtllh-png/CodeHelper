@@ -175,6 +175,9 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		case e.journal.HasDraft(turnID):
 			// A restarted recovery Turn owns the same draft under its new ID.
 			draftTurnID = turnID
+		default:
+			// The owning Session was deleted; Continue adopts the leftover draft.
+			draftTurnID = e.orphanedDraftTurnID(ctx)
 		}
 	}
 	draftResumed := draftTurnID != ""
@@ -202,6 +205,8 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		turnkernel.KernelIdentity{
 			TurnID:          turnID,
 			ProfileRevision: spec.Identity.ProfileRevision,
+			Goal:            e.workItemGoal(spec),
+			WorkItem:        e.continueWorkItemSeed(spec),
 		},
 		intent,
 		string(spec.Mode),
@@ -269,30 +274,46 @@ func (s *Scope) Run(ctx context.Context) (result Result, resultErr error) {
 		switch {
 		case draftResumed:
 			journalErr = e.journal.ResumeDraft(draftTurnID, turnID)
-		case spec.Request.Recovery != nil &&
-			spec.Request.Recovery.Action == protocol.TurnRecoveryRetry &&
-			e.journal.HasDraft(string(spec.Request.Recovery.SourceTurnID)):
-			_, journalErr = e.journal.Revert(
-				context.Background(),
-				string(spec.Request.Recovery.SourceTurnID),
-			)
-			if journalErr == nil {
+		default:
+			if retryDraftID := e.retryDraftTurnID(ctx, spec); retryDraftID != "" {
+				_, journalErr = e.journal.Revert(
+					context.Background(),
+					retryDraftID,
+				)
+				if journalErr == nil {
+					journalErr = e.journal.Begin(turnID)
+				}
+			} else {
 				journalErr = e.journal.Begin(turnID)
 			}
-		default:
-			journalErr = e.journal.Begin(turnID)
 		}
 		if journalErr != nil {
+			// TurnStarted must exist before journal admission fails, otherwise
+			// Retry/Continue cannot recover this Turn.
+			_ = emit(Event{
+				State:              Preparing,
+				Provider:           spec.Provider,
+				Model:              spec.Model,
+				ModelMetadata:      spec.ModelMetadata,
+				Purpose:            string(spec.Purpose),
+				ProfileRevision:    spec.Identity.ProfileRevision,
+				Mode:               string(spec.Mode),
+				Posture:            string(spec.Posture),
+				Workspace:          spec.Workspace,
+				WorkspaceIsolation: e.options.WorkspaceIsolation,
+				Sandbox:            spec.Sandbox,
+			})
+			problem := e.journalAdmissionProblem(ctx, journalErr)
 			if terminalErr := kernel.FailBeforeJournal(
 				context.Background(),
-				protocol.ProblemOf(journalErr),
+				problem,
 			); terminalErr != nil {
 				return result, errors.Join(journalErr, terminalErr)
 			}
 			kernelTerminalStarted = true
 			kernelTerminalFinalized = true
 			result.State = Failed
-			return result, journalErr
+			return result, problem
 		}
 		for _, change := range draftChanges {
 			s.state.diff.Record(turnkernel.TurnDiffEntry{

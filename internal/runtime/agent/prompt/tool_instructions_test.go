@@ -16,6 +16,8 @@ func TestToolInstructionsRequireOneStepStructuredTerminalState(
 		"exact user-facing final response in summary",
 		"without another model sample",
 		"status=incomplete",
+		"leave remaining steps pending",
+		"do not rewrite an unchanged plan just to retry complete",
 		"Batch independent read-only calls",
 		"do not reread unchanged files",
 		"normal sample boundary, not a truncated response",

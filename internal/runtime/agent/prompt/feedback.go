@@ -120,11 +120,12 @@ func NoProgressFeedback(
 			"stage=%s\n"+
 			"required_action=converge\n"+
 			"Stop broad exploration and repeated inventory. Execute the smallest "+
-			"coherent batch now, verify it, and update the plan. "+
+			"coherent batch now and verify it. "+
 			"A workspace-change turn advances only through observed mutations, "+
-			"completed plan steps, verification, or completion. If the remaining "+
-			"work cannot be completed, call turn_complete with status=incomplete "+
-			"and concrete pending_actions.",
+			"completed plan steps, verification, or an accepted completion. "+
+			"Rewriting the same plan or retrying a rejected complete is not "+
+			"progress. If the remaining work cannot be completed, call "+
+			"turn_complete with status=incomplete and concrete pending_actions.",
 		samples,
 		stage,
 	))

@@ -633,6 +633,39 @@ func TestEngineDoesNotExecuteUnadvertisedCatalogTool(t *testing.T) {
 	}
 }
 
+func TestToolDefinitionsOmitBlanketDeniedManagedTools(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	for _, name := range []string{"shell_read", "exec_command", "turn_complete"} {
+		if err := registry.Register(catalogFixtureTool(name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	engine := newEngine(t, &scriptedProvider{}, registry)
+	security := policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest)
+	if _, err := security.AppendManagedRule(policy.Rule{
+		Tool: "exec_command", Resource: "*", Action: policy.ActionDeny,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	engine.options.Security = security
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, advertised, err := engine.toolDefinitionsFromSnapshot(snapshot, TurnRequest{
+		Prompt: "review the change",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if advertised["exec_command"] {
+		t.Fatalf("denied exec_command was advertised: %v", advertised)
+	}
+	if !advertised["shell_read"] || !advertised["turn_complete"] {
+		t.Fatalf("allowed tools omitted: %v", advertised)
+	}
+}
+
 func TestCatalogWithoutToolSearchDoesNotTruncateEagerTools(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	const count = 30

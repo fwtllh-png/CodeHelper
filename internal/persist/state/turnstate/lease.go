@@ -81,6 +81,45 @@ func (s *Store) ClaimActiveTurns(
 	return claimed, err
 }
 
+// QuarantineActiveTurn releases an unrestorable active Turn so recovery can
+// continue. The thread is then free to accept a new Turn.
+func (s *Store) QuarantineActiveTurn(
+	ctx context.Context,
+	turnID string,
+) error {
+	if s == nil || s.database == nil || strings.TrimSpace(turnID) == "" {
+		return errors.New("quarantine active turn is incomplete")
+	}
+	now := formatLeaseTime(s.now())
+	return s.database.Transaction(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(
+			ctx,
+			`UPDATE turns
+			 SET status = 'failed', updated_at = ?, completed_at = ?
+			 WHERE id = ? AND status = 'active'`,
+			now,
+			now,
+			turnID,
+		)
+		if err != nil {
+			return err
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected != 1 {
+			return fmt.Errorf("active turn %q was not quarantined", turnID)
+		}
+		_, err = tx.ExecContext(
+			ctx,
+			`DELETE FROM turn_coordinator_leases WHERE turn_id = ?`,
+			turnID,
+		)
+		return err
+	})
+}
+
 func (s *Store) ClaimTurn(
 	ctx context.Context,
 	turnID string,

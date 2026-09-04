@@ -91,8 +91,9 @@ type Engine struct {
 	approvalRecovery turnkernel.RecoveredInteraction[toolguard.ApprovalDecision]
 	inputRecovery    turnkernel.RecoveredInteraction[interact.Reply]
 
-	activeScope *Scope
-	lastScope   *Scope
+	activeScope     *Scope
+	lastScope       *Scope
+	admissionKernel *turnkernel.RuntimeKernel
 }
 
 var testTurnCoordinatorRuntimeFactory func() turnkernel.CoordinatorRuntime
@@ -350,6 +351,9 @@ func (e *Engine) toolEnabled(entry tool.CatalogEntrySnapshot) bool {
 	if e.options.RequireCompletionDeclaration && entry.Name == "turn_complete" {
 		return true
 	}
+	if !e.securityAdvertises(entry.Name) {
+		return false
+	}
 	if len(e.enabledTools) == 0 {
 		return true
 	}
@@ -365,6 +369,9 @@ func (e *Engine) toolCallEnabled(
 	if e.options.RequireCompletionDeclaration && name == "turn_complete" {
 		return true
 	}
+	if !e.securityAdvertises(name) {
+		return false
+	}
 	if len(e.enabledTools) == 0 {
 		return true
 	}
@@ -375,6 +382,13 @@ func (e *Engine) toolCallEnabled(
 	}
 	_, enabled := e.enabledTools[id]
 	return enabled
+}
+
+func (e *Engine) securityAdvertises(name string) bool {
+	if e.options.Security == nil {
+		return true
+	}
+	return e.options.Security.AdvertisesTool(name)
 }
 
 func effectiveProfilePermission(

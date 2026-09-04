@@ -21,6 +21,7 @@ const (
 	retryNone       retryKind = ""
 	retryPermission retryKind = "additional_permission"
 	retryEgress     retryKind = "egress_approval"
+	retryAuthority  retryKind = "authority_refresh"
 )
 
 type attemptRun struct {
@@ -48,6 +49,7 @@ func (g *Guard) executePipeline(
 	mode := SandboxModeStrong
 	egressRetried := false
 	permissionRetried := false
+	authorityRetried := false
 	var retryPrepared *preparedExecution
 	var retryProfile *authority.EffectivePermissionProfile
 	var receipt tool.ExecutionReceipt
@@ -60,6 +62,23 @@ func (g *Guard) executePipeline(
 			authorized, err := g.authorize(ctx, callID, name, raw, binding)
 			receipt.ApprovalWait += authorized.waited
 			if err != nil {
+				if errors.Is(err, errWorkspaceUnchanged) {
+					result := workspaceUnchangedResult()
+					if authorized.invocation.Ref.Name != "" {
+						receipt.Tool = authorized.invocation.Ref
+						receipt.Source = authorized.invocation.Source
+						receipt.Disposition = authorized.invocation.Disposition
+						setExecutionTerminal(
+							&receipt,
+							tool.OutcomeSucceeded,
+							tool.TerminalOwnerGuard,
+							tool.TeardownReport{},
+						)
+						attachExecutionReceipt(&result, receipt)
+					}
+					g.afterAttempt(ctx, authorized.invocation, result, nil)
+					return result, nil
+				}
 				result := tool.Result{IsError: true}
 				if authorized.invocation.Ref.Name != "" {
 					receipt.Tool = authorized.invocation.Ref
@@ -97,6 +116,7 @@ func (g *Guard) executePipeline(
 			uint32(len(receipt.Attempts)+1),
 			egressRetried,
 			permissionRetried,
+			authorityRetried,
 			retryProfile,
 		)
 		retryProfile = nil
@@ -211,6 +231,9 @@ func (g *Guard) executePipeline(
 			attachExecutionReceipt(&attempt.result, receipt)
 			g.afterAttempt(ctx, prepared.invocation, attempt.result, approvalErr)
 			return attempt.result, approvalErr
+		case retryAuthority:
+			authorityRetried = true
+			continue
 		}
 		setExecutionTerminal(
 			&receipt,
@@ -234,6 +257,7 @@ func (g *Guard) runAttempt(
 	sequence uint32,
 	egressRetried bool,
 	permissionRetried bool,
+	authorityRetried bool,
 	profileOverride *authority.EffectivePermissionProfile,
 ) (run attemptRun) {
 	invocation := prepared.invocation
@@ -302,6 +326,16 @@ func (g *Guard) runAttempt(
 				sequence, mode, started, g.now(), tool.OutcomeRejected,
 				"file_plan", run.profile,
 			)
+			return run
+		}
+		if fileBinding.Noop {
+			run.result = workspaceUnchangedResult()
+			run.outcome = tool.OutcomeFromResult(run.result)
+			run.receipt = attemptReceipt(
+				sequence, mode, started, g.now(), tool.OutcomeSucceeded,
+				"workspace_unchanged", run.profile,
+			)
+			run.receipt.TerminalOwner = tool.TerminalOwnerGuard
 			return run
 		}
 	}
@@ -556,7 +590,13 @@ func (g *Guard) runAttempt(
 	}
 	reason := ""
 	denial, denied := SandboxDenial(run.err, run.outcome)
-	if denied &&
+	if isManagedProxyAuthorityMismatch(denial) && !authorityRetried {
+		run.retry = retryAuthority
+		reason = string(retryAuthority)
+	} else if isManagedProxyAuthorityMismatch(denial) {
+		run.err = annotateManagedProxyMismatch(run.err)
+		reason = "sandbox_denied_fail_closed"
+	} else if denied &&
 		mode == SandboxModeStrong &&
 		!permissionRetried &&
 		g.canEscalate(invocation) {
@@ -605,6 +645,40 @@ func (g *Guard) runAttempt(
 	run.receipt.TeardownMS = run.teardown.Duration.Milliseconds()
 	run.receipt.TeardownTimedOut = run.teardown.TimedOut
 	return run
+}
+
+func workspaceUnchangedResult() tool.Result {
+	return tool.Result{
+		Content: "no changes",
+		Metadata: map[string]any{
+			"observed_changes": 0,
+		},
+	}
+}
+
+func isManagedProxyAuthorityMismatch(denial sandbox.Denial) bool {
+	return denial.Operation == sandbox.DenialNetwork &&
+		denial.Resource == "managed_proxy" &&
+		denial.ReasonCode == sandbox.ReasonAuthorityUnverified
+}
+
+const (
+	managedProxyMismatchCategory = "managed_proxy_mismatch"
+	managedProxyMismatchAction   = "keep_allow_loopback_omit_network_targets"
+)
+
+func annotateManagedProxyMismatch(err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := tool.RecoveryHintFromError(err); ok {
+		return err
+	}
+	return tool.WithRecoveryHint(err, tool.RecoveryHint{
+		ErrorCategory:  managedProxyMismatchCategory,
+		RequiredAction: managedProxyMismatchAction,
+		RetryOriginal:  false,
+	})
 }
 
 func additionalPermissionAllowed(

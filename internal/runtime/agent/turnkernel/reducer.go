@@ -162,6 +162,11 @@ func (Reducer) Apply(current State, command Command) (Transition, error) {
 			return Transition{}, err
 		}
 
+	case BindWorkItem:
+		if err := applyBindWorkItem(&transition, current, value); err != nil {
+			return Transition{}, err
+		}
+
 	case ConvergenceRequested:
 		if err := applyConvergenceRequested(
 			&transition,

@@ -511,9 +511,13 @@ func validateTerminalEnvelope(envelope TerminalEnvelope) (string, error) {
 	if len(envelope.DomainFacts) == 0 {
 		return "", errors.New("terminal envelope has no domain facts")
 	}
+	start := envelope.DomainFacts[0].Sequence
+	if start == 0 {
+		return "", errors.New("domain fact sequence is invalid")
+	}
 	for index, fact := range envelope.DomainFacts {
 		if fact.TurnID != envelope.TurnID ||
-			fact.Sequence != uint64(index+1) ||
+			fact.Sequence != start+uint64(index) ||
 			fact.Command == "" ||
 			fact.StateDigest == "" {
 			return "", fmt.Errorf("invalid domain fact at index %d", index)

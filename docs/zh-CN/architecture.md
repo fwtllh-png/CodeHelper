@@ -276,8 +276,14 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
     只读 Answer/Plan，可以由带非空正文的 Provider `end_turn` 完成，避免纯文本直答仅为形式化声明再次
     采样；执行过工具的 Turn 必须显式 `turn_complete`，防止中间叙述被误判为答案。其他 Turn
     仍只有被接受的 `turn_complete` 才能结束，Provider `message_stop` 只结束一次 Sample，
-    普通模型正文保持 Provisional。对于 `status=complete`，声明中的 `summary` 是精确的用户可见 Final Output，
-    Runtime 无需额外 Model Sample 即可发布。Convergence Finalization 也可以使用
+    普通模型正文保持 Provisional。    对于 `status=complete`，声明中的 `summary` 是精确的用户可见 Final Output，
+    Runtime 无需额外 Model Sample 即可发布。仅交付计划、未产生 Workspace Mutation
+    的 Answer/Plan Turn 可以在 Plan 步骤仍为 pending 时完成，把后续实现留给用户；
+    已开始执行计划或发生 Mutation 时，未完成步骤仍拒绝 `status=complete`，
+    `required_action` 是完成剩余步骤或 `status=incomplete`，而不是再次 `update_plan`。
+    步骤签名未变的 `update_plan` 会被拒绝，不写 `plan.delta`，也不续期进展 Lease。
+    被拒绝的 `turn_complete` 调用身份不算结构化进展；同类拒绝耗尽 Declaration Repair
+    后进入 Convergence Finalization。Convergence Finalization 也可以使用
     `output_mode=preserve_provisional` 保留已捕获正文并追加简短收尾。Runtime 不根据
     正文措辞推断必需输入。Child Executor 没有 Input Host，不能等待用户
     输入，但仍必须通过 Tool Call 继续或通过 `turn_complete` 完成。
@@ -285,11 +291,17 @@ Control State。Cancel、Steer、Approval、Input 统一进入 `ControlPort`；�
     Complete。Repair 与连续 No-progress 只会请求类型化 Kernel Convergence，不会由
     Engine 或 Provider 局部循环直接决定终态错误。Provider 输出不完整时没有默认累计
     Sample 上限，只要 Context 与显式 Token/Cost Budget 允许且持续产生结构化进展就继续。
-    非零 `MaxSteps` 是连续无进展的 Progress Lease：Plan Step 完成、新 Evidence、
-    验证覆盖推进、Completion 接受或 Blocker 解除等单调进展会续期；单纯
-    Mutation Revision 增长、重复 Plan 更新和同类失败不会续期。约三分之一时提示收敛，约三分之二时
-    收窄为完成相关能力，完整 Lease 耗尽后进入一次受限 Finalization。该策略完全由调用方
-    显式预算按比例派生，不使用模型档位或绝对经验阈值。
+    非零 `MaxSteps` 是连续无进展的 Progress Lease：进展签名来自 Kernel Work Item
+    的路径集合（Goal、已读路径、已改路径、验证覆盖、Plan 完成步、接受的
+    Completion、未关闭 Process Session）。同一路径再次 `file_edit`、成功调用次数
+    或单纯 Mutation Revision 增长不会续期。Answer/Plan 首次纳入新已读路径仍算研究
+    进展；Open Implement（Plan 已有完成步骤且仍有 outstanding）时新 `file_read`
+    不续期。已知路径的整文件 `file_read` 与 Continue 上的 `git_status` /
+    `git_diff` 由准入拒绝，且不改变签名。约三分之一时提示收敛，约三分之二时
+    收窄为完成相关能力，完整 Lease 耗尽后进入一次受限 Finalization。Turn 一旦
+    具有 Known 或 Open Work Item，改用 `execution.implement_no_progress_samples`
+    （默认 6）进入 Finish-only；`0` 仍继承 `max_steps` 的 2/3。该策略完全由调用方
+    显式预算与公开合同字段派生，不使用模型档位或绝对经验阈值。
     Tool Result 明确声明 `retry_original=false` 时，同一 Turn、同一 Workspace Revision
     下的完全相同调用会直接回放该失败事实；Workspace 发生变更后缓存失效，允许根据新状态重试。
     Kernel 允许一次只保留 Terminal/Input 能力的 Finalization Sample。Complete 进入
@@ -363,8 +375,10 @@ Result 不被改写。
 
 OpenAI-compatible Adapter 的回归测试在最终 JSON 序列化后逐消息进行字节比较；
 Trace 与 Receipt 保留逻辑公共前缀指标和最终 Transport Payload Digest，不记录消息
-内容。非 TTY Process 在首次 yield 后由 Runtime 订阅 Session 通知直到终态；TTY
-仍通过 `write_stdin` 支持交互，Cancel 会终止等待并回收进程组。
+内容。`exec_command` 的首次 Sample 只等待到 `yield_time_ms`（默认 10s，上限
+30s）。进程仍在运行时返回 `session_id`，由 `write_stdin` 继续收输出或关闭；TTY
+与非 TTY 相同，Runtime 不再把非 TTY 命令挂到进程自行退出。`timeout_ms` 只杀进程
+组，不延长第一次等待。Cancel 会终止等待并回收进程组。
 
 Verification Runner 将节点结果绑定到声明输入的内容摘要、Workspace Revision 与
 Mutation Revision。只复用输入摘要未变的通过节点；失败或 unavailable 节点必须重跑，
@@ -396,8 +410,10 @@ SQLite 当前是初始 Schema。未来公开版本变更必须使用显式 Migra
 迁移历史已经有意压缩。
 
 Persistent Runtime Wiring 在创建 Engine 前注入 SQLite Turn Coordinator Store。每个
-已接受 Transition 都在 State Commit 或 Effect Dispatch 前追加 Domain Fact。启动恢复
-使用可续租的 Active Turn Lease；无效或重复恢复 Fail Closed。
+已接受 Transition 都在 State Commit 或 Effect Dispatch 前追加 Domain Fact。热路径恢复
+只从最近一份 Snapshot 加重放后续 Delta，不把整条 Fact 历史读进内存。启动恢复
+使用可续租的 Active Turn Lease；无法还原的 Active Turn 被隔离为 failed，不阻断
+Runtime 启动。重复恢复同一已跟踪 Coordinator 仍 Fail Closed。
 
 Session Checkpoint 与 Plan Artifact 复用 Snapshot Index 和 CAS。Checkpoint 只保存
 经过校验的 Context Manifest 与 Profile Snapshot；Manifest 将 History 拆为 Base/Tail，
@@ -456,13 +472,14 @@ Dynamic（History 之后）追加一块 write-once Checkpoint。旧 Turn 原文�
 Plan 已有完成步骤或已读路径时，`session_state` 另带 Resume Fact，避免
 Continue / Retry / 新 prompt 把已读文件再读一遍；有行号命中时列出
 `Located sites`。搜索命中后对该路径的 `file_read` 必须带 `start_line`。
-Plan 已有完成步骤且仍有 outstanding 工作时，读取新文件不再续期
-No-progress Lease，并改用 `execution.implement_no_progress_samples` 进入
-Finish-only；该阶段不允许 `git_status` / `git_diff` 或整文件读取。脏的
-`git_status` / `git_diff` 或可见 Tail 没有那次读取都不是重读理由，应走
-`turn_history` / `result_get`。取消 Checkpoint 保留下一项 Plan 与已读路径
-指针，失败仍不带半开 Tool 链。Continue 不得先用 git 或 `file_read` 巡视
-工作区。
+Turn 的 Work Item 一旦有 Known 或 Open，无签名变化的 Sample 达到
+`execution.implement_no_progress_samples`（默认 6）即进入 Finish-only；该阶段
+不允许 `git_status` / `git_diff` 或整文件读取。已知路径整文件 `file_read` 与
+Continue 巡视 git 在工具执行前被拒绝，不续租。脏的 `git_status` /
+`git_diff` 或可见 Tail 没有那次读取都不是重读理由，应走 `turn_history` /
+`result_get`。取消 Checkpoint 保留下一项 Plan 与已读路径指针，失败仍不带半开
+Tool 链。Continue 恢复短 Work Item 胶囊（源 Turn、terminal、Known/Open、工具
+结论），Goal 是当前用户句，并在开局写入源 Turn 的 KnownReads。
 
 ## 可观测性架构
 
@@ -540,6 +557,9 @@ Tool Identity、Risk、Approval、Repository Policy 与 Edit Evidence 的统一�
 授权写入后提供可恢复性和正确性证据。
 Durable Workspace Journal、Process Job Journal 与 Job Log 位于
 `<data-dir>/workspaces/<workspace-id>/control`，不读取 Workspace 内的旧 Journal。
+Journal 按 Workspace 加锁，不按 Session 隔离；删除 Session 必须先回滚该 Session
+拥有的 retained draft，否则其他 Session 无法 `Begin`。已删除 Session 留下的孤儿
+草稿可由任意剩余 Session 的 Continue 接管或 Retry 回滚。
 同一 Workspace Identity 下的 `control`、`sandbox-home` 和 `artifacts` 是互不重叠的
 状态域；只有 `sandbox-home` 可以作为 Sandbox 写目录。
 Execution Receipt 会保留每次 Verification Attempt、命令推导原因、失败分类、Repair
@@ -629,6 +649,8 @@ Parent Turn
 - **Worktree/Chat Merge**：只读 stance 不 provision git worktree；写入隔离并集成，
   不允许 Child 扩大 Parent Authority。
 - **Role 工具面**：`process.read_only` 只放行只读 process，不得放行 `exec_command`。
+  被 Role 整工具拒绝的条目不得进入该 Child 的模型目录，避免模型反复调用再被
+  Guard 拒绝。
 
 外部定时或流水线系统可以调用受支持的 Web 入口，但不进入 Runtime 内部建立后台
 Scheduler。

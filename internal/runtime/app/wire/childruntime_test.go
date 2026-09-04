@@ -285,6 +285,12 @@ func TestReviewChildAllowsOnlyReadOnlyProcessEffects(t *testing.T) {
 	if decision.Action != policy.ActionDeny {
 		t.Fatalf("exec_command decision = %+v, want deny", decision)
 	}
+	if options.Security.AdvertisesTool("exec_command") {
+		t.Fatal("review child advertised exec_command after denying it")
+	}
+	if !options.Security.AdvertisesTool("process_read") {
+		t.Fatal("review child hid the allowed read-only process tool")
+	}
 }
 
 func TestDelegatingReadOnlyRoleRetainsOnlyAgentLifecycleWrites(t *testing.T) {

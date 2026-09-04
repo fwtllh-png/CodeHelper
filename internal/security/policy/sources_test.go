@@ -118,6 +118,31 @@ func TestValidateRulesRejectsUnsafePersistentPrefix(t *testing.T) {
 	}
 }
 
+func TestAdvertisesToolHidesBlanketDenyAndKeepsPrefixDeny(t *testing.T) {
+	runtime := DefaultRuntime(ModeAct, PermissionSuggest)
+	if !runtime.AdvertisesTool("exec_command") {
+		t.Fatal("default grant hid exec_command")
+	}
+	if _, err := runtime.AppendManagedRule(Rule{
+		Tool: "exec_command", Resource: "*", Action: ActionDeny,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.AdvertisesTool("exec_command") {
+		t.Fatal("blanket deny still advertised exec_command")
+	}
+
+	prefixed := DefaultRuntime(ModeAct, PermissionSuggest)
+	if _, err := prefixed.AppendManagedRule(Rule{
+		Tool: "exec_command", CommandPrefix: "rm", Action: ActionDeny,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !prefixed.AdvertisesTool("exec_command") {
+		t.Fatal("command-prefix deny hid the whole exec_command catalog entry")
+	}
+}
+
 func processInvocation(command string) Invocation {
 	arguments, _ := json.Marshal(map[string]string{"command": command})
 	return Invocation{

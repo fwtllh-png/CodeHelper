@@ -314,16 +314,23 @@ func TestRetainedDraftConflictTerminalizesNewTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var states []State
 	result, err := fixture.engine.RunForTurnWithIntentAndAttachments(
 		t.Context(),
 		"turn-journal-conflict",
 		"unrelated request",
 		protocol.TurnIntentAnswer,
 		nil,
-		func(Event) error { return nil },
+		func(event Event) error {
+			states = append(states, event.State)
+			return nil
+		},
 	)
 	if err == nil || !strings.Contains(err.Error(), "retained draft") {
 		t.Fatalf("result = %+v, error = %v", result, err)
+	}
+	if len(states) == 0 || states[0] != Preparing {
+		t.Fatalf("journal admission states = %v, want Preparing first", states)
 	}
 	handle, err := fixture.engine.options.TurnCoordinatorRuntime.Restore(
 		t.Context(),
@@ -347,6 +354,148 @@ func TestRetainedDraftConflictTerminalizesNewTurn(t *testing.T) {
 		state.Journal != turnkernel.JournalSuspended ||
 		!fixture.journal.HasDraft("turn-source-draft") {
 		t.Fatalf("terminal state = %+v", state)
+	}
+}
+
+func TestOrphanedDraftContinueAdoptsDeletedSessionDraft(t *testing.T) {
+	fixture := newVerifyGateFixture(
+		t,
+		VerifyOptions{},
+		&scriptedVerifier{receipts: []verify.Receipt{passedReceipt()}},
+		0,
+		4,
+	)
+	fixture.engine.options.SessionForTurn = func(
+		context.Context,
+		string,
+	) (string, bool) {
+		return "", false
+	}
+	if err := fixture.journal.Begin("turn-deleted-session"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.journal.Before(t.Context(), fixture.path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fixture.path, []byte("draft\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.journal.After(fixture.path); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.journal.Suspend("turn-deleted-session"); err != nil {
+		t.Fatal(err)
+	}
+
+	blocked, err := fixture.engine.RunForTurnWithIntentAndAttachments(
+		t.Context(),
+		"turn-new-session",
+		"unrelated request",
+		protocol.TurnIntentAnswer,
+		nil,
+		func(Event) error { return nil },
+	)
+	if err == nil ||
+		protocol.DispositionOf(err) != protocol.FaultRetryTurn ||
+		!fixture.journal.HasDraft("turn-deleted-session") {
+		t.Fatalf("orphan block = %+v error = %v", blocked, err)
+	}
+
+	fixture.provider.streams = []provider.Stream{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "done"},
+			{Type: provider.EventMessageStop},
+		}},
+	}
+	recovery := protocol.TurnRecoveryContext{
+		Action: protocol.TurnRecoveryContinue, SourceTurnID: "turn-new-session",
+	}
+	continued, err := fixture.engine.RunForTurnWithRequest(
+		t.Context(),
+		"turn-adopted",
+		TurnRequest{
+			Prompt: "continue orphaned draft", Intent: protocol.TurnIntentAnswer,
+			Recovery: &recovery,
+		},
+		func(Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if continued.State != Completed ||
+		fixture.contents(t) != "draft\n" ||
+		fixture.journal.HasDraft("turn-deleted-session") ||
+		fixture.journal.HasDraft("turn-new-session") {
+		t.Fatalf(
+			"adopted = %+v contents=%q deleted_draft=%v new_draft=%v",
+			continued,
+			fixture.contents(t),
+			fixture.journal.HasDraft("turn-deleted-session"),
+			fixture.journal.HasDraft("turn-new-session"),
+		)
+	}
+}
+
+func TestOrphanedDraftRetryRevertsDeletedSessionDraft(t *testing.T) {
+	fixture := newVerifyGateFixture(
+		t,
+		VerifyOptions{},
+		&scriptedVerifier{receipts: []verify.Receipt{passedReceipt()}},
+		0,
+		4,
+	)
+	fixture.engine.options.SessionForTurn = func(
+		context.Context,
+		string,
+	) (string, bool) {
+		return "", false
+	}
+	if err := fixture.journal.Begin("turn-deleted-session"); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.journal.Before(t.Context(), fixture.path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fixture.path, []byte("draft\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.journal.After(fixture.path); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.journal.Suspend("turn-deleted-session"); err != nil {
+		t.Fatal(err)
+	}
+
+	fixture.provider.streams = []provider.Stream{
+		&providerfixture.SliceStream{Events: []provider.StreamEvent{
+			{Type: provider.EventTextDelta, Text: "done"},
+			{Type: provider.EventMessageStop},
+		}},
+	}
+	recovery := protocol.TurnRecoveryContext{
+		Action: protocol.TurnRecoveryRetry, SourceTurnID: "turn-unrelated",
+	}
+	retried, err := fixture.engine.RunForTurnWithRequest(
+		t.Context(),
+		"turn-reverted",
+		TurnRequest{
+			Prompt: "retry after delete", Intent: protocol.TurnIntentAnswer,
+			Recovery: &recovery,
+		},
+		func(Event) error { return nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.State != Completed ||
+		fixture.contents(t) != "before\n" ||
+		fixture.journal.HasDraft("turn-deleted-session") {
+		t.Fatalf(
+			"reverted = %+v contents=%q draft=%v",
+			retried,
+			fixture.contents(t),
+			fixture.journal.HasDraft("turn-deleted-session"),
+		)
 	}
 }
 

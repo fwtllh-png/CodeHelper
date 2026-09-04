@@ -424,6 +424,22 @@
   gap: 2px;
 }
 
+.settingsFacts > .detectedModelLimits {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  color: var(--ch-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detectedModelLimits > span {
+  padding: 8px 10px;
+  background: var(--ch-panel-subtle);
+  border: 1px solid var(--ch-border);
+  border-radius: var(--ch-radius);
+}
+
 .settingsFacts dt,
 .settingsFacts dd {
   margin: 0;

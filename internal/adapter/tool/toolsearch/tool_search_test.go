@@ -56,6 +56,50 @@ func TestToolSearchRanksMultilingualDiscoveryTerms(t *testing.T) {
 	}
 }
 
+func TestToolSearchPreservesSampledEagerToolBinding(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := toolsearch.Register(registry); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Register(stubExec{
+		name: "file_read", desc: "read source file",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, ok := snapshot.Binding("file_read")
+	if !ok {
+		t.Fatal("file_read binding is missing")
+	}
+	if _, err := tooltest.Execute(t.Context(), registry, tool.Call{
+		Name:      toolsearch.ToolName,
+		Arguments: json.RawMessage(`{"query":"read source file"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := registry.ResolveBound("file_read", binding); err != nil {
+		t.Fatalf("sampled eager tool binding became stale: %v", err)
+	}
+	after, err := registry.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := after.Lookup("file_read")
+	if !ok || entry.State != tool.CatalogEntryMaterialized ||
+		entry.Revision != binding.Revision ||
+		after.Generation <= snapshot.Generation {
+		t.Fatalf(
+			"materialized eager entry = %+v generation=%d, want revision=%d and newer generation",
+			entry,
+			after.Generation,
+			binding.Revision,
+		)
+	}
+}
+
 func (stubExec) Execute(context.Context, json.RawMessage) (tool.Result, error) {
 	return tool.Result{Content: "ok"}, nil
 }

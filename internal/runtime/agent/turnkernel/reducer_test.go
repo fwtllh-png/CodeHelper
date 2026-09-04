@@ -464,7 +464,19 @@ func TestReducerOwnsCompletionAcceptanceAndRuntimeBindings(t *testing.T) {
 				return value
 			}(),
 			reason: "plan_progress_incomplete",
-			action: "update_plan",
+			action: RequiredActionFinishOrDeclareIncomplete,
+		},
+		{
+			name:  "answer planning may complete with open plan steps",
+			state: startSampling(t, protocol.TurnIntentAnswer),
+			candidate: func() CompletionCandidate {
+				value := base
+				value.PlanOpenSteps = 3
+				value.Summary = "plan delivered for the user to implement"
+				return value
+			}(),
+			accepted: true,
+			action:   "final_answer",
 		},
 		{
 			name:      "workspace change without mutation",
@@ -1378,6 +1390,87 @@ func pendingEffectID(
 		}
 	}
 	return ""
+}
+
+func TestRejectedCompletionDoesNotRenewProgressOrRepairKeys(t *testing.T) {
+	state := startSampling(t, protocol.TurnIntentWorkspaceChange)
+	state = apply(t, state, ToolCallsProposed{
+		Calls: []ToolCallState{{ID: "write-1", Name: "file_write"}},
+	}).State
+	state = apply(t, state, ToolResultReceived{
+		CallID:  "write-1",
+		Changes: []ObservedChange{{Path: "a.go", Kind: "modified"}},
+	}).State
+	first := apply(t, state, CompletionEvaluated{
+		Candidate: CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "complete",
+			Summary:          "done",
+			CompletionCall:   "complete-1",
+			BatchSize:        1,
+			PlanOpenSteps:    2,
+		},
+	}).State
+	second := apply(t, state, CompletionEvaluated{
+		Candidate: CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "complete",
+			Summary:          "done again",
+			CompletionCall:   "complete-2",
+			BatchSize:        1,
+			PlanOpenSteps:    2,
+		},
+	}).State
+	if first.Completion == nil || first.Completion.Accepted ||
+		FormatProgressSignature(state, 1, false) !=
+			FormatProgressSignature(first, 1, false) ||
+		FormatProgressSignature(first, 1, false) !=
+			FormatProgressSignature(second, 1, false) {
+		t.Fatalf(
+			"rejected completion renewed progress: before=%q first=%q second=%q",
+			FormatProgressSignature(state, 1, false),
+			FormatProgressSignature(first, 1, false),
+			FormatProgressSignature(second, 1, false),
+		)
+	}
+	if FormatRepairProgressKey(first) != FormatRepairProgressKey(second) {
+		t.Fatalf(
+			"rejected completion renewed repair key: %q vs %q",
+			FormatRepairProgressKey(first),
+			FormatRepairProgressKey(second),
+		)
+	}
+	state.ProvisionalOutput = []string{"working"}
+	state.LastModelContinued = false
+	state.UnresolvedToolFailure = false
+	state.Policy.DeclarationRepairLimit = 1
+	state = apply(t, state, CompletionEvaluated{
+		Candidate: CompletionCandidate{
+			DeclarationValid: true,
+			Status:           "complete",
+			Summary:          "done",
+			CompletionCall:   "complete-3",
+			BatchSize:        1,
+			PlanOpenSteps:    2,
+		},
+	}).State
+	key := FormatRepairProgressKey(state)
+	firstStep := apply(t, state, EvaluateTurnStep{ProgressKey: key})
+	if firstStep.State.NextAction != StepActionRepairDeclaration {
+		t.Fatalf("first repair action = %q", firstStep.State.NextAction)
+	}
+	secondStep, err := (Reducer{}).Apply(
+		firstStep.State,
+		EvaluateTurnStep{ProgressKey: key},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondStep.State.NextAction != StepActionFinalize ||
+		secondStep.State.Convergence == nil ||
+		secondStep.State.Convergence.Cause != ConvergenceRepairBudget {
+		t.Fatalf("same-reason rejection did not converge: %+v", secondStep.State)
+	}
 }
 
 func startPendingEffect(t *testing.T, state State, effectID string) State {

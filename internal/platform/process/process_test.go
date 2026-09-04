@@ -730,6 +730,64 @@ func TestRunRejectsNetworkAuthorityWithoutManagedProxyBinding(t *testing.T) {
 	}
 }
 
+func TestRunAllowsNetworkDeniedCommandWithStaleManagedProxyAuthority(t *testing.T) {
+	root := t.TempDir()
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("e", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: true, AllowProcess: true,
+		ReadPaths: []string{root}, ManagedProxyPort: 43129,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &recordingBackend{root: root, proxyPort: 43128}
+	if _, err := Run(ctx, Options{
+		Command: "true", Dir: root, DirFile: directoryFile,
+		Sandbox: backend, RequireSandbox: true,
+		WorkspaceReadOnly: true, DenyNetwork: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !backend.command.DenyNetwork || backend.command.PreparedProxyPort != 0 {
+		t.Fatalf("network-denied command = %+v", backend.command)
+	}
+}
+
+func TestRunAllowsLoopbackOnlyAuthorityOnManagedProxyBackend(t *testing.T) {
+	root := t.TempDir()
+	directoryFile, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directoryFile.Close()
+	ctx, err := sandbox.WithExecutionAuthority(t.Context(), sandbox.ExecutionAuthority{
+		Digest: strings.Repeat("f", 64), Enforcement: "strong",
+		WorkspaceRoot: root, AllowNetwork: true, AllowProcess: true,
+		ReadPaths: []string{root}, AllowLoopback: true,
+		NetworkTargets: []string{"loopback://localhost:0"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &recordingBackend{root: root, proxyPort: 43128}
+	_, err = Run(ctx, Options{
+		Command: "true", Dir: root, DirFile: directoryFile,
+		Sandbox: backend, RequireSandbox: true,
+		WorkspaceReadOnly: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !backend.command.AllowLoopback {
+		t.Fatal("loopback-only authority was not bound to the sandbox command")
+	}
+}
+
 func TestRunBindsApprovedLoopbackToSandboxCommand(t *testing.T) {
 	root := t.TempDir()
 	directoryFile, err := os.Open(root)

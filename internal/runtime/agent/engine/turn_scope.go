@@ -51,7 +51,6 @@ type scopeState struct {
 	verification         []verify.Evidence
 	rollback             []string
 	budgetStage          uint8
-	reasoningEscalation  uint8
 	toolSurfaceMaxBytes  int
 	toolSurfaceItemBytes int
 	mailbox              *turnkernel.Mailbox[PendingInput]

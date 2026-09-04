@@ -75,6 +75,21 @@ func (a ExecutionAuthority) DeniedWritePath(paths []string) (string, bool) {
 	return deniedPath(paths, a.WorkspaceWritePaths)
 }
 
+// LoopbackOnly reports a localhost bind/connect grant that does not claim the
+// managed egress proxy. Outbound HTTP(S) targets still require a matching
+// proxy port on the effective profile.
+func (a ExecutionAuthority) LoopbackOnly() bool {
+	if !a.AllowLoopback || a.ManagedProxyPort != 0 {
+		return false
+	}
+	for _, target := range a.NetworkTargets {
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(target)), "loopback://") {
+			return false
+		}
+	}
+	return true
+}
+
 func deniedPath(requested, allowed []string) (string, bool) {
 	canonical := append([]string(nil), allowed...)
 	for index := range canonical {

@@ -6,7 +6,7 @@ import {InputOptionMenu} from "./InputOptionMenu";
 afterEach(cleanup);
 
 describe("InputOptionMenu", () => {
-  it("renders a controlled listbox and selects long options", () => {
+  it("renders visible suggestions and selects a long option", () => {
     const onChange = vi.fn();
     render(
       <InputOptionMenu
@@ -19,10 +19,8 @@ describe("InputOptionMenu", () => {
       />
     );
 
-    expect(screen.queryByRole("combobox")).toBeNull();
-    fireEvent.click(screen.getByRole("button", {name: "Input options"}));
-    expect(screen.getByRole("listbox", {name: "Input options"})).toBeTruthy();
-    fireEvent.click(screen.getByRole("option", {
+    expect(screen.getByRole("region", {name: "Suggested answers"})).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {
       name: "Implement the complete deterministic core with validation"
     }));
     expect(onChange).toHaveBeenCalledWith(
@@ -30,8 +28,8 @@ describe("InputOptionMenu", () => {
     );
   });
 
-  it("supports keyboard navigation and escape", () => {
-    render(
+  it("exposes the controlled selection to assistive technology", () => {
+    const {rerender} = render(
       <InputOptionMenu
         value=""
         options={["First", "Second"]}
@@ -39,13 +37,35 @@ describe("InputOptionMenu", () => {
       />
     );
 
-    const trigger = screen.getByRole("button", {name: "Input options"});
-    fireEvent.keyDown(trigger, {key: "ArrowDown"});
-    fireEvent.keyDown(screen.getByRole("listbox"), {key: "End"});
-    expect(screen.getByRole("option", {name: "Second"}))
-      .toBe(document.activeElement);
-    fireEvent.keyDown(screen.getByRole("listbox"), {key: "Escape"});
-    expect(screen.queryByRole("listbox")).toBeNull();
-    expect(trigger).toBe(document.activeElement);
+    expect(screen.getByRole("button", {name: "First"}))
+      .toHaveProperty("ariaPressed", "false");
+
+    rerender(
+      <InputOptionMenu
+        value="Second"
+        options={["First", "Second"]}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", {name: "Second"}))
+      .toHaveProperty("ariaPressed", "true");
+  });
+
+  it("uses native focusable buttons", () => {
+    const onChange = vi.fn();
+    render(
+      <InputOptionMenu
+        value=""
+        options={["First", "Second"]}
+        onChange={onChange}
+      />
+    );
+
+    const option = screen.getByRole("button", {name: "Second"});
+    option.focus();
+    expect(option).toBe(document.activeElement);
+    fireEvent.click(option);
+    expect(onChange).toHaveBeenCalledWith("Second");
   });
 });

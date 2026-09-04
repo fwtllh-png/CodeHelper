@@ -516,6 +516,51 @@ func TestImageAnalyzeRejectsEscapingPath(t *testing.T) {
 	}
 }
 
+func TestUpdatePlanRejectsUnchangedStepSignature(t *testing.T) {
+	registry := tool.NewRegistry(nil, nil)
+	if err := interact.Register(registry, interact.Options{
+		Host: interact.NewHost(0), Workspace: t.TempDir(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	input := map[string]any{
+		"title": "P",
+		"steps": []any{
+			map[string]any{"title": "one", "status": "done"},
+			map[string]any{"title": "two", "status": "pending"},
+		},
+	}
+	first := execute(t, registry, "update_plan", input)
+	if first.IsError || first.Metadata["plan_delta"] != true {
+		t.Fatalf("first update = %+v", first)
+	}
+	second := execute(t, registry, "update_plan", map[string]any{
+		"title":           "P",
+		"context_summary": "rewritten prose",
+		"steps": []any{
+			map[string]any{"title": "one", "status": "done"},
+			map[string]any{"title": "two", "status": "pending"},
+		},
+	})
+	if !second.IsError ||
+		second.Metadata["reason"] != "plan_progress_unchanged" ||
+		second.Metadata["required_action"] !=
+			"finish_open_plan_steps_or_declare_incomplete" ||
+		second.Metadata["retry_original"] != false ||
+		second.Metadata["plan_delta"] != false {
+		t.Fatalf("unchanged plan = %+v", second)
+	}
+	progressed := execute(t, registry, "update_plan", map[string]any{
+		"steps": []any{
+			map[string]any{"title": "one", "status": "done"},
+			map[string]any{"title": "two", "status": "done"},
+		},
+	})
+	if progressed.IsError || progressed.Metadata["plan_delta"] != true {
+		t.Fatalf("progressed plan = %+v", progressed)
+	}
+}
+
 func execute(t *testing.T, registry *tool.Registry, name string, input map[string]any) tool.Result {
 	t.Helper()
 	result, err := tooltest.Execute(t.Context(), registry, tool.Call{

@@ -332,9 +332,6 @@ func (t *Tools) plan(
 			AfterDigest:  digestContent(planned.after, planned.exists),
 		})
 	}
-	if len(plan.Files) == 0 {
-		return tool.EditPlan{}, tool.Precondition(errors.New("edit plan has no changes"))
-	}
 	encoded, err := json.Marshal(plan.Files)
 	if err != nil {
 		return tool.EditPlan{}, err

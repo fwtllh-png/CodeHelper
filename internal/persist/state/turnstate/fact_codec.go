@@ -22,6 +22,7 @@ type factQueryer interface {
 		string,
 		...any,
 	) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 type storedDomainFact struct {
@@ -71,7 +72,24 @@ func encodeDomainFact(
 func decodeDomainFacts(
 	encodedFacts [][]byte,
 ) ([]turnkernel.DomainFact, error) {
-	return decodeDomainFactSequence(encodedFacts, 1, "")
+	if len(encodedFacts) == 0 {
+		return nil, nil
+	}
+	var first storedDomainFact
+	if err := json.Unmarshal(encodedFacts[0], &first); err != nil {
+		return nil, err
+	}
+	if first.Sequence == 0 {
+		return nil, errors.New("domain fact sequence is invalid")
+	}
+	if len(first.Snapshot) == 0 && first.Sequence != 1 {
+		return nil, errors.New("domain fact suffix must begin at a snapshot")
+	}
+	return decodeDomainFactSequence(
+		encodedFacts,
+		first.Sequence,
+		first.PreviousStateDigest,
+	)
 }
 
 func decodeDomainFactSuffix(
@@ -348,12 +366,56 @@ func validateDecodedFact(
 	return nil
 }
 
+func snapshotSequence(sequence uint64) uint64 {
+	if sequence == 0 {
+		return 1
+	}
+	return sequence - (sequence-1)%domainFactSnapshotEvery
+}
+
+func lastSnapshotSequence(
+	ctx context.Context,
+	queryer factQueryer,
+	turnID string,
+) (uint64, error) {
+	var last uint64
+	if err := queryer.QueryRowContext(
+		ctx,
+		`SELECT COALESCE(MAX(sequence), 0) FROM turn_domain_facts WHERE turn_id = ?`,
+		turnID,
+	).Scan(&last); err != nil {
+		return 0, err
+	}
+	if last == 0 {
+		return 1, nil
+	}
+	return snapshotSequence(last), nil
+}
+
 func loadEncodedFacts(
 	ctx context.Context,
 	queryer factQueryer,
 	turnID string,
 ) ([][]byte, error) {
-	return loadEncodedFactsFrom(ctx, queryer, turnID, 1)
+	start, err := lastSnapshotSequence(ctx, queryer, turnID)
+	if err != nil {
+		return nil, err
+	}
+	return loadEncodedFactsFrom(ctx, queryer, turnID, start)
+}
+
+func loadEncodedFactsForReplay(
+	ctx context.Context,
+	queryer factQueryer,
+	turnID string,
+	expectedNext uint64,
+) ([][]byte, error) {
+	return loadEncodedFactsFrom(
+		ctx,
+		queryer,
+		turnID,
+		snapshotSequence(expectedNext),
+	)
 }
 
 func loadEncodedFactsFrom(

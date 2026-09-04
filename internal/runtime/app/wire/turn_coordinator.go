@@ -83,37 +83,23 @@ func (r *durableCoordinatorRuntime) RecoverActiveTurns(
 		r.track(turn.TurnID)
 		if _, err := r.kernel.Restore(ctx, turn.TurnID); err != nil {
 			r.untrack(turn.TurnID)
-			cleanupErr := r.store.ReleaseTurns(
+			releaseErr := r.store.ReleaseTurns(
 				context.WithoutCancel(ctx),
 				r.owner,
 				[]string{turn.TurnID},
 			)
-			for _, active := range restored {
-				cleanupErr = errors.Join(
-					cleanupErr,
-					r.kernel.Release(
-						context.WithoutCancel(ctx),
-						active.TurnID,
-					),
-				)
-				r.untrack(active.TurnID)
-			}
-			cleanupErr = errors.Join(
-				cleanupErr,
-				r.store.ReleaseTurns(
-					context.WithoutCancel(ctx),
-					r.owner,
-					activeTurnIDs(restored),
-				),
+			quarantineErr := r.store.QuarantineActiveTurn(
+				context.WithoutCancel(ctx),
+				turn.TurnID,
 			)
-			return nil, errors.Join(
-				fmt.Errorf(
-					"restore active turn %q: %w",
+			if qerr := errors.Join(releaseErr, quarantineErr); qerr != nil {
+				return restored, fmt.Errorf(
+					"quarantine unrestorable turn %q: %w",
 					turn.TurnID,
-					err,
-				),
-				cleanupErr,
-			)
+					errors.Join(err, qerr),
+				)
+			}
+			continue
 		}
 		restored = append(restored, turn)
 	}

@@ -152,6 +152,16 @@ type ObserveProgress struct {
 
 func (ObserveProgress) commandName() string { return "observe_progress" }
 
+type BindWorkItem struct {
+	Goal       string
+	GoalDigest string
+	KnownReads map[string]WorkItemRead
+	KnownEdits map[string]WorkItemEdit
+	Open       WorkItemOpen
+}
+
+func (BindWorkItem) commandName() string { return "bind_work_item" }
+
 type ConvergenceRequested struct {
 	Cause      ConvergenceCause
 	Used       uint32
@@ -222,10 +232,11 @@ type InputResultReceived struct {
 func (InputResultReceived) commandName() string { return "input_result_received" }
 
 type ToolResultReceived struct {
-	EffectID string
-	CallID   string
-	IsError  bool
-	Changes  []ObservedChange
+	EffectID    string
+	CallID      string
+	IsError     bool
+	Changes     []ObservedChange
+	Observation WorkItemObservation
 }
 
 func (ToolResultReceived) commandName() string { return "tool_result_received" }

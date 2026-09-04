@@ -156,8 +156,12 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   该能力默认关闭；Strong Sandbox 内仅包含精确 Localhost Grant 且没有 Workspace
   写入的调用按有界 Network Read 评估，`suggest` 要求审批，`auto` 自动 Review。
   macOS Profile 只增加 Localhost Inbound/Outbound Seatbelt Rule；非 Loopback
-  流量仍必须声明精确 Proxy Target。Effective Profile 与 Attempt Receipt 都会记录
-  该 Loopback Grant。
+  流量仍必须声明精确 Proxy Target。Loopback-only Effective Profile 不绑定托管
+  代理端口；执行器不得因为 enclosing sandbox 仍持有 Runtime Proxy 而拒绝已批准的
+  Localhost Grant。若代理端口仍与 Profile 错位，工具结果必须带
+  `required_action=keep_allow_loopback_omit_network_targets`，不能把临时端口
+  写进 `network_targets`。Effective Profile 与 Attempt Receipt 都会记录该
+  Loopback Grant。
 - `quality_test`、`quality_diagnostics`、`quality_review` 和 `quality_verify`
   使用 POSIX `set -e` 的 Fail-fast 语义，不能由尾部日志命令覆盖前序检查的非零
   退出码。需要有意接受失败时必须在 Command 中显式表达。
@@ -177,7 +181,10 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
 - `quality_process_smoke` 仅在持久化 Workspace State 可提供 Artifact Staging 和
   Process Broker 时开放。原始 Workspace 或 Sandbox Home 路径只作为 Snapshot 输入，
   实际进程只能从 Broker-owned Snapshot 启动；Guard 强制 `ApprovalOnce`，且不提供
-  Session/Always Grant。
+  Session/Always Grant。该工具只观察进程是否活过声明时长，再终止回收；
+  `exit_code=-1` 与 `status=survived` 不是单测或 `quality_verify` 通过，也不能覆盖
+  变更路径。本地 Fixture / Socket 测试必须使用 `quality_test` 或 `quality_verify`
+  并声明 `allow_loopback`。
 - Linux Strong Sandbox 将 Landlock、`no_new_privs`、seccomp 与 `execve` 固定在
   同一个 OS Thread。Seccomp 拒绝 Tracing、跨进程内存访问、Namespace 创建、
   `clone3` 与 `io_uring`；Restricted Network Mode 只保留 AF_UNIX 进程内 IPC。
@@ -191,8 +198,9 @@ Web Markdown 不执行原始 HTML 或危险 URL。同源图片可以直接显示
   `tool.result.execution` 将这条证据链持久投影到 Runtime Event；对话历史重建只消费
   Tool Output，不把该审计字段送回 Model Context。
 - `exec_command` 与 `write_stdin` 保留 Process Capability 和原有 Approval
-  行为。`exec_command` 是唯一通用 Command Start 路径；`write_stdin` 在每次
-  Session 交互前校验当前 Thread Lease。
+  行为。`exec_command` 是唯一通用 Command Start 路径；首次 Sample 只等到
+  `yield_time_ms`，进程未退出则返回 `session_id`。`write_stdin` 在每次
+  Session 交互前校验当前 Thread Lease；`timeout_ms` 只杀进程组。
 - Process Tool 通过有界 Fair Budget 与精确 Resource Claim Admission。不同 Session
   与无关 Path 可并发，冲突 Claim 保持顺序。
 - Cancellation Terminal Ownership 遵循声明的 Execution Disposition；Process

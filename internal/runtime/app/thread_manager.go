@@ -31,6 +31,7 @@ type ThreadManager struct {
 	deltas    SessionDeltaRestorer
 	register  func(protocol.ThreadID, ChildSpec) error
 	session   func(context.Context, protocol.ThreadID) (string, error)
+	journal   *workspacejournal.Manager
 
 	mu        sync.Mutex
 	threads   map[protocol.ThreadID]*EngineAdapter
@@ -156,6 +157,49 @@ func (m *ThreadManager) SetSessionResolver(
 	m.mu.Lock()
 	m.session = resolver
 	m.mu.Unlock()
+}
+
+// SetHostJournal installs the shared workspace journal so Session delete can
+// revert drafts that outlive their owning Turn rows.
+func (m *ThreadManager) SetHostJournal(journal *workspacejournal.Manager) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.journal = journal
+}
+
+func (m *ThreadManager) DraftTurnIDs() []string {
+	m.mu.Lock()
+	journal := m.journal
+	m.mu.Unlock()
+	if journal == nil {
+		return nil
+	}
+	return journal.DraftTurnIDs()
+}
+
+func (m *ThreadManager) RevertWorkspaceDraft(
+	ctx context.Context,
+	turnID string,
+) error {
+	m.mu.Lock()
+	journal := m.journal
+	m.mu.Unlock()
+	if journal == nil {
+		return errors.New("workspace journal is not configured")
+	}
+	receipt, err := journal.Revert(ctx, turnID)
+	if err != nil {
+		return err
+	}
+	if len(receipt.Conflicts) != 0 {
+		return protocol.NewProblem(
+			protocol.CodeConflict,
+			"cannot revert workspace draft while files have changed after the recorded write",
+			false,
+			nil,
+		)
+	}
+	return nil
 }
 
 // RegisterChild binds a child spec to a thread before its first turn is

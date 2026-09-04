@@ -94,11 +94,12 @@
   已记在 Checkpoint 里，不要用 `git_diff` 再确认。
   脏的 `git_status` / `git_diff` 不是重读理由。可见 Tail 没有那次读取
   不是重读理由，应走 `turn_history` / `result_get`；截断后先 `result_get`。
-  取消 Checkpoint 保留下一项 Plan 与已读路径指针。Paused Continue 不得先用
-  `git_status`、`git_diff` 或 `file_read` 巡视工作区，也不得把 `read_paths`
-  不在 tail 里当成重读许可。Plan 已有完成步骤且仍有 outstanding 工作时，
-  新的 `file_read` 不再续期，并改用 `execution.implement_no_progress_samples`
-  （默认 6）进入 Finish-only。
+  取消 Checkpoint 保留下一项 Plan 与已读路径指针。Paused Continue 恢复 Work
+  Item（当前用户句为 Goal，源 Turn KnownReads 开局写入），不得先用
+  `git_status`、`git_diff` 或整文件 `file_read` 巡视工作区。已知路径整文件重读
+  与 Continue git 巡视会被拒绝且不续租。Turn 一旦有 Known 或 Open，无签名变化
+  的 Sample 达到 `execution.implement_no_progress_samples`（默认 6）进入
+  Finish-only。同一路径再 edit 不续租。
 - 模型窗口、经济预算和 Provider Throughput 是三个独立容量平面。Operator 通过
   `execution.tokens_per_minute` 声明 TPM；`0` 表示未知，不发明按模型名称的默认值。
   合法工作集超过已知 Burst 或等待将超过预算时，先做一次 Visible Tail Fold 再

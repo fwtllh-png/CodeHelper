@@ -5,51 +5,22 @@ import (
 
 	"github.com/fwtllh-png/QCode/internal/adapter/model"
 	"github.com/fwtllh-png/QCode/internal/adapter/provider"
-	promptcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/prompt"
-	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
-func TestAdaptiveReasoningStartsFromIntentAndEscalatesAfterFailure(t *testing.T) {
+func TestReasoningEffortStaysFixedAcrossRepairAttempts(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
-	scope := &Scope{
-		engine: engine,
-		spec: TurnSpec{
-			Route: reasoningRoute(t),
-			Request: TurnRequest{
-				Prompt: "Fix the local parser",
-				Intent: protocol.TurnIntentAnswer,
-			},
-		},
-		state: newScopeState(engine),
-	}
-	engine.publishScope(scope)
-	t.Cleanup(scope.Close)
 
-	if got := engine.reasoningEffort(scope, promptcontext.SampleNormal); got != "medium" {
+	if got := engine.reasoningEffort(); got != "medium" {
 		t.Fatalf("initial effort = %q", got)
 	}
-	if got := engine.reasoningEffort(scope, promptcontext.SampleToolFailureRepair); got != "high" {
+	if got := engine.reasoningEffort(); got != "medium" {
 		t.Fatalf("repair effort = %q", got)
-	}
-	if got := engine.reasoningEffort(scope, promptcontext.SampleVerificationRepair); got != "xhigh" {
-		t.Fatalf("second repair effort = %q", got)
 	}
 }
 
-func TestAdaptiveReasoningUsesHighForComplexArchitecture(t *testing.T) {
+func TestReasoningEffortDoesNotChangeForComplexPrompts(t *testing.T) {
 	engine := newEngine(t, &scriptedProvider{}, nil)
-	scope := &Scope{
-		engine: engine,
-		spec: TurnSpec{
-			Route: reasoningRoute(t),
-			Request: TurnRequest{
-				Prompt: "Find the root cause of a cross-module race condition",
-				Intent: protocol.TurnIntentAnswer,
-			},
-		},
-		state: newScopeState(engine),
-	}
-	if got := engine.reasoningEffort(scope, promptcontext.SampleNormal); got != "high" {
+	if got := engine.reasoningEffort(); got != "medium" {
 		t.Fatalf("complex effort = %q", got)
 	}
 }

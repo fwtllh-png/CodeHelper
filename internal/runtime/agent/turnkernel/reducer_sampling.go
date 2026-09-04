@@ -446,6 +446,13 @@ func applyObserveProgress(
 		finishOnlyAt = policy.ResearchFinishOnly
 		limit = policy.ResearchLimit
 	}
+	if current.WorkItem.HasKnownOrOpen() &&
+		current.Policy.ImplementNoProgressSamples > 0 {
+		lease := current.Policy.ImplementNoProgressSamples
+		convergeAt = max(uint32(1), lease/2)
+		finishOnlyAt = lease
+		limit = max(lease+1, limit)
+	}
 	switch {
 	case limit == 0:
 		progress.Stage = ProgressStageNone

@@ -293,7 +293,7 @@ func TestDurableCoordinatorRetriesReleaseWithoutRenewingLease(t *testing.T) {
 	}
 }
 
-func TestC1DurableCoordinatorRuntimeFailsClosedOnIncompleteFacts(
+func TestC1DurableCoordinatorRuntimeQuarantinesIncompleteFacts(
 	t *testing.T,
 ) {
 	store := seedPersistentState(t, t.TempDir())
@@ -328,8 +328,12 @@ func TestC1DurableCoordinatorRuntimeFailsClosedOnIncompleteFacts(
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
-	if _, err := runtime.RecoverActiveTurns(t.Context()); err == nil {
-		t.Fatal("active turn without Domain Facts restored")
+	restored, err := runtime.RecoverActiveTurns(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored) != 0 {
+		t.Fatalf("unrestorable turn was restored: %+v", restored)
 	}
 }
 

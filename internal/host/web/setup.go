@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -575,6 +576,45 @@ func loadWebSetupSelection(dataDir, workspaceID string) (webSetupSelection, bool
 	}
 	if !reflect.DeepEqual(resolved, selection) &&
 		!canUpgradeSetupSelection(selection, resolved) {
+		// #region debug-point A:selection-mismatch
+		go func() {
+			body, _ := json.Marshal(map[string]any{
+				"sessionId":    "web-setup-canonical",
+				"runId":        "pre-fix",
+				"hypothesisId": "A",
+				"location":     "internal/host/web/setup.go:578",
+				"msg":          "[DEBUG] persisted Web setup selection mismatch",
+				"data": map[string]any{
+					"saved": map[string]any{
+						"version": selection.Version, "provider": selection.Provider,
+						"model": selection.Model, "base_url": selection.BaseURL,
+						"protocol":            selection.Protocol,
+						"metadata_provenance": selection.MetadataProvenance,
+						"has_metadata":        selection.Metadata != nil,
+						"registered_models":   len(selection.Models),
+						"has_credential":      selection.Credential != nil,
+					},
+					"resolved": map[string]any{
+						"version": resolved.Version, "provider": resolved.Provider,
+						"model": resolved.Model, "base_url": resolved.BaseURL,
+						"protocol":            resolved.Protocol,
+						"metadata_provenance": resolved.MetadataProvenance,
+						"has_metadata":        resolved.Metadata != nil,
+						"registered_models":   len(resolved.Models),
+						"has_credential":      resolved.Credential != nil,
+					},
+				},
+			})
+			request, _ := http.NewRequest(
+				http.MethodPost, "http://127.0.0.1:7777/event",
+				bytes.NewReader(body),
+			)
+			if request != nil {
+				request.Header.Set("Content-Type", "application/json")
+				_, _ = http.DefaultClient.Do(request)
+			}
+		}()
+		// #endregion
 		return webSetupSelection{}, false, errors.New("Web setup selection is not canonical")
 	}
 	return resolved, true, nil
@@ -584,6 +624,9 @@ func resolveRegisteredModels(
 	protocolName, baseline string,
 	input []webSetupModel,
 ) ([]webSetupModel, error) {
+	if input == nil {
+		return nil, nil
+	}
 	result := make([]webSetupModel, 0, len(input))
 	seen := map[string]bool{baseline: true}
 	for _, entry := range input {

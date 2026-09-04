@@ -33,7 +33,12 @@ func ToolInstructions(enabled bool, domain string) string {
 		"cannot terminate the Turn. For status=complete, put the exact user-facing final " +
 		"response in summary; the runtime publishes it without another model sample. " +
 		"Call complete only after the last requested action, mutation, and required " +
-		"quality check. Use status=incomplete with concrete pending_actions when work remains."
+		"quality check. If the user only asked for a plan they will execute themselves, " +
+		"call turn_complete after submit_plan and leave remaining steps pending; do not " +
+		"mark those steps done. After a workspace mutation, finish remaining plan steps " +
+		"or call turn_complete with status=incomplete and concrete pending_actions; do " +
+		"not rewrite an unchanged plan just to retry complete. Use status=incomplete " +
+		"with concrete pending_actions when agent-side work remains."
 	if domain = strings.TrimSpace(domain); domain != "" {
 		return base + " " + domain
 	}

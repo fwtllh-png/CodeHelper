@@ -44,6 +44,7 @@ type AuthorizedProcessGrant struct {
 type FileBinding struct {
 	MutationDigest string
 	Value          any
+	Noop           bool
 }
 
 type AuthorizedFileGrant struct {

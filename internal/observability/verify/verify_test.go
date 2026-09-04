@@ -301,3 +301,19 @@ func TestUnavailableRunnerNeverFails(t *testing.T) {
 		t.Fatalf("Verify() = %+v", receipt)
 	}
 }
+
+func TestQualityEvidenceReceiptIgnoresProcessSmokeCoverage(t *testing.T) {
+	receipt, uncovered := QualityEvidenceReceipt(
+		[]string{"a.go"},
+		1,
+		[]Evidence{{
+			SchemaVersion: 1, Kind: "process_smoke", Status: StatusPassed,
+			CoveredPaths: []string{"a.go"}, CommandDigest: "sha256:smoke",
+			MutationRevision: 1,
+		}},
+	)
+	if receipt.Status != StatusUnavailable || len(uncovered) != 1 ||
+		uncovered[0] != "a.go" {
+		t.Fatalf("receipt = %+v uncovered = %v", receipt, uncovered)
+	}
+}

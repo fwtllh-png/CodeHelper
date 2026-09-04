@@ -111,6 +111,33 @@ func (s *Store) SessionForThread(
 	return sessionID, nil
 }
 
+// SessionForTurn resolves the living session that owns a turn. An empty id
+// means the turn row is gone, typically because its session was deleted.
+func (s *Store) SessionForTurn(
+	ctx context.Context,
+	turnID string,
+) (string, error) {
+	if s == nil || s.sqlite == nil || turnID == "" {
+		return "", nil
+	}
+	var sessionID string
+	err := s.sqlite.DB().QueryRowContext(
+		ctx,
+		`SELECT th.session_id
+		FROM turns tr
+		JOIN threads th ON th.id = tr.thread_id
+		WHERE tr.id = ?`,
+		turnID,
+	).Scan(&sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return sessionID, nil
+}
+
 func (s *Store) threadAncestorChain(ctx context.Context, threadID protocol.ThreadID) ([]protocol.ThreadID, error) {
 	if s == nil || s.sqlite == nil || threadID == "" {
 		return nil, nil

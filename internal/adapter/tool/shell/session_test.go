@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 	"github.com/fwtllh-png/QCode/internal/platform/process"
@@ -149,7 +150,7 @@ func TestExecCommandWaitsForNonTTYProcessTerminalWithoutModelPolling(t *testing.
 		processTestThread,
 		"exec_command",
 		map[string]any{
-			"command": "sleep 0.05; printf done", "yield_time_ms": 1,
+			"command": "sleep 0.05; printf done", "yield_time_ms": 2000,
 		},
 	)
 	if result.Content != "done" || result.IsError {
@@ -160,6 +161,102 @@ func TestExecCommandWaitsForNonTTYProcessTerminalWithoutModelPolling(t *testing.
 	}
 	if manager.Count() != 0 {
 		t.Fatalf("terminal session count = %d", manager.Count())
+	}
+}
+
+func TestExecCommandYieldsNonTTYSessionInsteadOfBlockingUntilExit(t *testing.T) {
+	manager := process.NewSessionManager(4096)
+	t.Cleanup(manager.CloseAll)
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithManagerAndBackend(
+		registry,
+		t.TempDir(),
+		manager,
+		passthroughBackend{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	result := executeProcessTool(
+		t,
+		registry,
+		processTestThread,
+		"exec_command",
+		map[string]any{
+			"command": "sleep 5; printf done", "yield_time_ms": 80,
+		},
+	)
+	if elapsed := time.Since(started); elapsed > 1500*time.Millisecond {
+		t.Fatalf("non-TTY exec blocked %s waiting for exit", elapsed)
+	}
+	id, _ := result.Metadata["session_id"].(string)
+	if id == "" || result.Metadata["running"] != true ||
+		result.Metadata["required_action"] != "write_stdin" ||
+		result.Metadata["error_category"] != "process_still_running" {
+		t.Fatalf("still-running non-TTY result = %+v", result)
+	}
+	closed := executeProcessTool(
+		t,
+		registry,
+		processTestThread,
+		"write_stdin",
+		map[string]any{
+			"session_id": id, "close": true, "yield_time_ms": 2000,
+		},
+	)
+	if closed.Metadata["running"] == true {
+		t.Fatalf("closed session still running: %+v", closed)
+	}
+	if manager.Count() != 0 {
+		t.Fatalf("closed session count = %d", manager.Count())
+	}
+}
+
+func TestExecCommandTimeoutKillsNonTTYWithoutBlockingFirstSample(t *testing.T) {
+	manager := process.NewSessionManager(4096)
+	t.Cleanup(manager.CloseAll)
+	registry := tool.NewRegistry(nil, nil)
+	if err := RegisterWithManagerAndBackend(
+		registry,
+		t.TempDir(),
+		manager,
+		passthroughBackend{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	result := executeProcessTool(
+		t,
+		registry,
+		processTestThread,
+		"exec_command",
+		map[string]any{
+			"command": "sleep 5", "yield_time_ms": 40, "timeout_ms": 80,
+		},
+	)
+	if elapsed := time.Since(started); elapsed > 1500*time.Millisecond {
+		t.Fatalf("timeout exec blocked %s on the first sample", elapsed)
+	}
+	id, _ := result.Metadata["session_id"].(string)
+	if result.Metadata["running"] == true && id == "" {
+		t.Fatalf("running timeout result missing session: %+v", result)
+	}
+	for range 8 {
+		if result.Metadata["running"] != true {
+			break
+		}
+		result = executeProcessTool(
+			t,
+			registry,
+			processTestThread,
+			"write_stdin",
+			map[string]any{
+				"session_id": id, "yield_time_ms": 200,
+			},
+		)
+	}
+	if result.Metadata["running"] == true {
+		t.Fatalf("process survived timeout_ms: %+v", result)
 	}
 }
 

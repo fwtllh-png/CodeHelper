@@ -1,12 +1,14 @@
 package tool
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
 	"reflect"
 	"sort"
 	"strings"
@@ -104,6 +106,14 @@ func (r *Registry) Materialize(name string, expectedRevision uint64) (CatalogCha
 		}
 		return CatalogChange{}, fmt.Errorf("%w %q", ErrUnknownTool, name)
 	}
+	// #region debug-point A:materialize-entry
+	if name == "file_read" {
+		body, _ := json.Marshal(map[string]any{"sessionId": "tool-catalog-stale", "runId": "post-fix", "hypothesisId": "A", "location": "internal/adapter/tool/catalog.go:Materialize", "msg": "[DEBUG] materialize entered", "data": map[string]any{"name": name, "expected_revision": expectedRevision, "current_revision": item.revision, "generation": r.generation, "state": item.state}})
+		if response, reportErr := http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewReader(body)); reportErr == nil {
+			_ = response.Body.Close()
+		}
+	}
+	// #endregion
 	if expectedRevision != 0 && item.revision != expectedRevision {
 		r.mu.Unlock()
 		return CatalogChange{}, fmt.Errorf(
@@ -122,8 +132,15 @@ func (r *Registry) Materialize(name string, expectedRevision uint64) (CatalogCha
 			return CatalogChange{}, err
 		}
 		item.state = CatalogEntryMaterialized
-		item.revision++
 		r.generation++
+		// #region debug-point A:materialize-transition
+		if name == "file_read" {
+			body, _ := json.Marshal(map[string]any{"sessionId": "tool-catalog-stale", "runId": "post-fix", "hypothesisId": "A", "location": "internal/adapter/tool/catalog.go:Materialize", "msg": "[DEBUG] eager tool materialized", "data": map[string]any{"name": name, "revision": item.revision, "generation": r.generation, "state": item.state}})
+			if response, reportErr := http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewReader(body)); reportErr == nil {
+				_ = response.Body.Close()
+			}
+		}
+		// #endregion
 		change := CatalogChange{Name: name, Source: item.source, Revision: item.revision}
 		r.mu.Unlock()
 		return change, nil

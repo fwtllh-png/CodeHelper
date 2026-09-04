@@ -135,7 +135,7 @@ func completionRejectionAction(reason string) string {
 	case "quality_verification_required":
 		return "run_quality_verification"
 	case "plan_progress_incomplete":
-		return "update_plan"
+		return RequiredActionFinishOrDeclareIncomplete
 	case "pending_actions":
 		return "continue_work"
 	case "convergence_blocked":

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -540,7 +541,28 @@ func (m *workspaceRuntimeManager) ActivateRegistered(ctx context.Context) {
 	roots := append([]string(nil), m.roots...)
 	m.mu.Unlock()
 	for _, root := range roots {
-		_, _ = m.Add(ctx, root)
+		if _, err := m.Add(ctx, root); err != nil {
+			// #region debug-point B:restore-registered-workspace
+			go func(root string, err error) {
+				debugURL := os.Getenv("DEBUG_SERVER_URL")
+				if debugURL == "" {
+					return
+				}
+				event, marshalErr := json.Marshal(map[string]any{
+					"sessionId": os.Getenv("DEBUG_SESSION_ID"),
+					"runId":     "pre-fix", "hypothesisId": "B",
+					"location": "workspace_manager.go:ActivateRegistered",
+					"msg":      "[DEBUG] Workspace Runtime restoration failed",
+					"data":     map[string]string{"root": root, "error": err.Error()},
+				})
+				if marshalErr == nil {
+					_, _ = http.Post(
+						debugURL, "application/json", bytes.NewReader(event),
+					)
+				}
+			}(root, err)
+			// #endregion
+		}
 	}
 }
 

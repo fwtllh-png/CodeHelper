@@ -55,7 +55,7 @@ workspace = "."
 tools = true
 max_output_tokens = 0           # 0 = 使用当前模型声明的 MaxOutputTokens
 max_steps = 64                  # 连续无结构化进展的 Step Lease；0 = 不设置
-implement_no_progress_samples = 6  # Plan 已有完成步骤且仍有 outstanding 时的无进展 finish-only 租约；0 = 继承 max_steps 派生值
+implement_no_progress_samples = 6  # Work Item 已有 Known/Open 时的无进展 finish-only 租约；0 = 继承 max_steps 派生的 2/3
 timeout = "2m"                  # 连接、TLS 和响应头阶段
 lease_timeout = "2m"            # Guard 授权到 Executor 接管前的 Lease 有效期
 approval_timeout = "0s"         # 0 = 审批随 Turn/Session 生命周期，不独立过期
@@ -78,10 +78,10 @@ native_search = false
 
 `turn_budget_tokens` 统计一个 Turn 内所有模型调用的累计输入与输出。它不是模型的
 Context Window：后者只约束单次请求。默认值 `0` 不设置累计上限，单次请求仍受模型
-能力约束；连续无结构化进展时仍受 `max_steps` 约束。Plan 已有完成步骤且仍有
-outstanding 工作时，读取新文件不再算进展，并改用
+能力约束；连续无结构化进展时仍受 `max_steps` 约束。Turn 的 Work Item 一旦有
+Known 或 Open，无路径集合签名变化即改用
 `implement_no_progress_samples`（默认 6）进入 finish-only；`0` 表示继承
-`max_steps` 派生的 2/3 租约。需要控制成本时应显式设置
+`max_steps` 派生的 2/3 租约。同一路径再编辑不续租。需要控制成本时应显式设置
 `turn_budget_tokens`、`budget_tokens` 或 `budget_usd`。
 [execution.verify]
 mode = "soft"                # off | soft | hard
@@ -220,9 +220,9 @@ Working Set 已有已读路径时，`session_state` 还给出 Resume Fact：不�
 `located_site_window_required`。脏的 `git_status` / `git_diff` 不是重读理由。
 可见 Tail 没有那次读取不是重读理由，应走 `turn_history` / `result_get`；
 截断后先 `result_get`。取消 Checkpoint 保留下一项 Plan 与已读路径指针，失败
-仍不带半开 Tool 链。Paused Continue 不得先用 `git_status`、`git_diff` 或
-`file_read` 巡视工作区，并写明 `recovery_evidence.read_paths` 不在 tail 里也
-不重读。
+仍不带半开 Tool 链。Paused Continue 恢复短 Work Item 胶囊，不得先用
+`git_status`、`git_diff` 或整文件 `file_read` 巡视工作区；源 Turn 已读路径在
+开局写入 KnownReads，整文件重读会被拒绝。
 
 [route]
 lock = false
@@ -304,9 +304,9 @@ Incremental Transport 固定使用 `store=false`。Response State 只保留在�
 下降只属于传输证据，不会被报告为 Token 降幅。
 
 `execution.max_steps` 是连续无结构化进展的显式执行 Lease，默认值为 `64`；
-显式配置为 `0` 表示不设置 Sample 数量上限。Mutation、Plan 推进、Verification、
-Completion 和按 Intent 定义的新 Evidence 会续期 Lease，因此正常产出的长任务不会
-因为累计 Sample 数达到 64 而中断。Lease 耗尽后，Kernel 会在预算之外保留一次
+显式配置为 `0` 表示不设置 Sample 数量上限。Work Item 路径集合签名变化（新已读或
+已改路径、验证覆盖、Plan 完成步、接受的 Completion、Open Session）会续期 Lease，
+因此跨文件的正常长任务不会因为累计 Sample 数达到 64 而中断。Lease 耗尽后，Kernel 会在预算之外保留一次
 Finalization Sample；它只能请求必需输入，或声明 Complete/Incomplete 状态，不能继续
 探索或修改。Kernel 授权的 Repair Steps 拥有独立预算。
 
@@ -318,12 +318,13 @@ Completion；`git_status` / `git_diff` 与整文件 `file_read` 不在 Finish-on
 Allowlist。直到完整 Lease 耗尽才进入结构化 Finalization。Provider 投影与 Tool
 Executor 共享同一 Allowlist，因此当前批次已广告的 Tool 不会再被误判为
 Terminal-only 而拒绝。Complete 声明照常提交；Incomplete 声明记录可恢复的摘要与
-具体 Pending Actions。任何 Mutation、任意 Plan 状态变化、Verification 或
-Completion 推进都会立即清零计数。Answer 和 Plan Turn 还会把首次读取的新路径与新
-Evidence 计为进展，但 Plan 已有完成步骤且仍有 outstanding 工作时，新的
-`file_read` / Evidence 不再续期，并改用 `execution.implement_no_progress_samples`
-（默认 6，公开合同字段）进入 Finish-only；该值为 `0` 时继承 `max_steps` 派生的
-2/3 租约。Operation Turn 会把成功的业务 Tool 结果计为进展。Progress 与
+具体 Pending Actions。Work Item 签名变化（新已读/已改路径、验证覆盖、Plan 完成
+步、接受的 Completion、Open Session）会立即清零计数。同一路径再 `file_edit`、
+被拒绝的 `turn_complete` 与步骤签名未变的 `update_plan` 不续期。Answer 和 Plan
+Turn 还会把首次读取的新路径计为进展，但 Open Implement 或已有 Known/Open 时，
+无签名变化的 Sample 达到 `execution.implement_no_progress_samples`（默认 6，
+公开合同字段）进入 Finish-only；该值为 `0` 时继承 `max_steps` 派生的 2/3 租约。
+已知路径整文件重读与 Continue 上的 git 巡视在执行前拒绝，不续租。Progress 与
 Convergence 状态都会持久化并在 Runtime 恢复后延续。`execution.max_steps=0` 且
 `implement_no_progress_samples=0` 时不启用基于 Sample 数量的 No-progress 上限，
 持续工作仍受模型 Context Window 和显式 Token/Cost Budget 约束。

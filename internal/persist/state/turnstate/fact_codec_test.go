@@ -36,10 +36,14 @@ func TestSnapshotDeltaReplayMatchesFullStateAndCutsStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	left, _ := json.Marshal(facts)
-	right, _ := json.Marshal(restored)
+	if len(restored) == 0 ||
+		restored[0].Sequence != snapshotSequence(uint64(len(facts))) {
+		t.Fatalf("loaded suffix = %+v", restored)
+	}
+	left, _ := json.Marshal(facts[len(facts)-1].State)
+	right, _ := json.Marshal(restored[len(restored)-1].State)
 	if string(left) != string(right) {
-		t.Fatal("snapshot/delta replay differs from full-state golden")
+		t.Fatal("snapshot/delta suffix does not match the latest state")
 	}
 	var storedBytes int64
 	if err := database.DB().QueryRowContext(
@@ -102,10 +106,14 @@ func TestSampleLedgerUsesMemberDeltas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	left, _ := json.Marshal(facts)
-	right, _ := json.Marshal(restored)
+	if len(restored) == 0 ||
+		restored[0].Sequence != snapshotSequence(uint64(len(facts))) {
+		t.Fatalf("loaded suffix = %+v", restored)
+	}
+	left, _ := json.Marshal(facts[len(facts)-1].State)
+	right, _ := json.Marshal(restored[len(restored)-1].State)
 	if string(left) != string(right) {
-		t.Fatal("sample ledger member-delta replay differs from full state")
+		t.Fatal("sample ledger suffix does not match the latest state")
 	}
 	var second []byte
 	if err := database.DB().QueryRowContext(
@@ -147,6 +155,44 @@ func TestSampleLedgerUsesMemberDeltas(t *testing.T) {
 			storedBytes,
 			fullBytes,
 		)
+	}
+}
+
+func TestLoadDomainFactsStartsAtLastSnapshot(t *testing.T) {
+	database, err := sqlitestate.Open(
+		t.Context(),
+		filepath.Join(t.TempDir(), "state.db"),
+		sqlitestate.Options{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	store := NewSQLiteRepository(database)
+	facts := largeDomainFacts(t, 20)
+	if err := store.AppendDomainFacts(
+		t.Context(),
+		"turn-delta",
+		1,
+		facts,
+	); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := store.LoadDomainFacts(t.Context(), "turn-delta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored[0].Sequence != 17 || len(restored) != 4 {
+		t.Fatalf(
+			"suffix start=%d count=%d, want sequence 17 and 4 facts",
+			restored[0].Sequence,
+			len(restored),
+		)
+	}
+	left, _ := json.Marshal(facts[19].State)
+	right, _ := json.Marshal(restored[3].State)
+	if string(left) != string(right) {
+		t.Fatal("last snapshot suffix does not restore the latest state")
 	}
 }
 

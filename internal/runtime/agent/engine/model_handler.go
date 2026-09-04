@@ -23,20 +23,11 @@ import (
 	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
-func (e *Engine) reasoningEffort(scope *Scope, reason string) string {
-	scope.mu.Lock()
-	if reason != promptcontext.SampleNormal {
-		scope.state.reasoningEscalation = min(scope.state.reasoningEscalation+1, 3)
-	}
-	level := scope.state.reasoningEscalation
-	scope.mu.Unlock()
-	return promptcontext.ReasoningEffort(
-		scope.spec.Request.Prompt,
-		string(scope.spec.Request.Intent),
-		level,
-		scope.spec.Route.Model().Capabilities.ReasoningEffortLevels(),
-		e.options.ReasoningEffort,
-	)
+func (e *Engine) reasoningEffort() string {
+	// Keep reasoning effort stable for every sample in a turn. Provider support
+	// is negotiated when the route is built; dynamically escalating an effort
+	// from prompt keywords or repair attempts can exceed that provider contract.
+	return e.options.ReasoningEffort
 }
 
 func finishOnlyReasoningEffort(
@@ -178,7 +169,7 @@ func (e *Engine) modelStep(
 			*continued = true
 		}
 	}
-	baseReasoningEffort := e.reasoningEffort(scope, reason)
+	baseReasoningEffort := e.reasoningEffort()
 	for attempt := 0; ; attempt++ {
 		var turnContext []provider.Message
 		turnReceipts := append([]promptcontext.Receipt(nil), worldReceipts...)

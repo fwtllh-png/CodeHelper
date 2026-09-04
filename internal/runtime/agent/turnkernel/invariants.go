@@ -541,6 +541,7 @@ func cloneState(state State) State {
 		value.QualityCalls = append([]string(nil), state.Completion.QualityCalls...)
 		cloned.Completion = &value
 	}
+	cloned.WorkItem = cloneWorkItem(state.WorkItem)
 	cloned.Convergence = cloneConvergence(state.Convergence)
 	if state.PendingTerminal != nil {
 		value := *state.PendingTerminal

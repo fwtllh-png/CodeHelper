@@ -90,7 +90,7 @@ func (s *Store) appendDomainFactsTx(
 	}
 	if allowReplay && expectedNext > 0 &&
 		count >= expectedNext+uint64(len(facts))-1 {
-		encoded, err := loadEncodedFacts(ctx, tx, turnID)
+		encoded, err := loadEncodedFactsForReplay(ctx, tx, turnID, expectedNext)
 		if err != nil {
 			return err
 		}
@@ -98,12 +98,16 @@ func (s *Store) appendDomainFactsTx(
 		if err != nil {
 			return err
 		}
-		start := int(expectedNext - 1)
-		if len(existing) < start+len(facts) {
-			return errors.New("domain fact replay is incomplete")
+		bySequence := make(map[uint64]turnkernel.DomainFact, len(existing))
+		for _, fact := range existing {
+			bySequence[fact.Sequence] = fact
 		}
 		for index, fact := range facts {
-			left, marshalErr := json.Marshal(existing[start+index])
+			stored, ok := bySequence[expectedNext+uint64(index)]
+			if !ok {
+				return errors.New("domain fact replay is incomplete")
+			}
+			left, marshalErr := json.Marshal(stored)
 			if marshalErr != nil {
 				return marshalErr
 			}

@@ -196,8 +196,11 @@ func execCommandDescriptor() tool.Descriptor {
 	return tool.Descriptor{
 		Name: "exec_command",
 		Description: "Run a local POSIX sh command. Returns output when it exits " +
-			"within yield-time, otherwise a session_id for write_stdin. " +
-			"yield-time_ms defaults to 10000 and must not exceed 30000. " +
+			"within yield-time, otherwise a session_id for write_stdin. This " +
+			"applies to TTY and non-TTY commands; the first sample never waits " +
+			"for a process that outlives yield-time. yield-time_ms defaults to " +
+			"10000 and must not exceed 30000. timeout_ms, when set, kills the " +
+			"process group; it does not keep the first sample blocked. " +
 			"The workspace is read-only by default. write_paths permits only exact " +
 			"regular files whose parent directories already exist; it does not permit " +
 			"mkdir. To create files in missing directories, use file_write or " +
@@ -211,7 +214,9 @@ func execCommandDescriptor() tool.Descriptor {
 			"Commands that access the network must declare every destination in " +
 			"network_targets; use method CONNECT for HTTPS targets. Undeclared " +
 			"egress is denied by the local managed proxy. Set allow_loopback only " +
-			"when the command binds or connects to a local development server.",
+			"when the command binds or connects to a local development server; do " +
+			"not put localhost or port 0 in network_targets for an ephemeral local " +
+			"listener.",
 		DiscoveryTerms: []string{
 			"run command", "terminal", "build", "执行命令", "终端", "编译", "运行测试",
 		},
@@ -238,8 +243,14 @@ func execCommandDescriptor() tool.Descriptor {
 				"command":       map[string]any{"type": "string"},
 				"cwd":           map[string]any{"type": "string"},
 				"tty":           map[string]any{"type": "boolean"},
-				"yield_time_ms": map[string]any{"type": "integer"},
-				"timeout_ms":    map[string]any{"type": "integer"},
+				"yield_time_ms": map[string]any{
+					"type":        "integer",
+					"description": "Maximum time the first sample waits for exit. Still-running commands return session_id for write_stdin.",
+				},
+				"timeout_ms": map[string]any{
+					"type":        "integer",
+					"description": "Hard deadline that kills the process group. Omit only when write_stdin will poll or close a still-running session.",
+				},
 				"output_tokens": map[string]any{"type": "integer"},
 				"rows":          map[string]any{"type": "integer"},
 				"cols":          map[string]any{"type": "integer"},
@@ -434,6 +445,7 @@ func (p *commandProtocol) execCommand(
 			RequireSandbox:      requireStrong,
 			WorkspaceReadOnly:   true,
 			WorkspaceWritePaths: writePaths,
+			DenyNetwork:         len(input.NetworkTargets) == 0 && !input.AllowLoopback,
 			DetachFromCaller:    true,
 		},
 	)
@@ -455,17 +467,6 @@ func (p *commandProtocol) execCommand(
 		})
 		return tool.Result{}, errors.Join(err, closeErr)
 	}
-	if wait.Running && !input.TTY {
-		wait, err = p.waitTerminal(ctx, id, threadID, wait, output)
-		if err != nil {
-			teardownStarted := time.Now()
-			closeErr := p.manager.Close(id, threadID)
-			tool.ReportTeardown(ctx, tool.TeardownReport{
-				Duration: time.Since(teardownStarted),
-			})
-			return tool.Result{}, errors.Join(err, closeErr)
-		}
-	}
 	wait.Data = output.String()
 	result := sessionResult(id, wait, outputTokens)
 	status := "running"
@@ -474,6 +475,10 @@ func (p *commandProtocol) execCommand(
 		if wait.ExitCode != 0 {
 			status = "failed"
 		}
+	} else {
+		result.Metadata["error_category"] = "process_still_running"
+		result.Metadata["required_action"] = "write_stdin"
+		result.Metadata["retry_original"] = false
 	}
 	result.Metadata["command_execution"] = map[string]any{
 		"command": input.Command, "status": status,
@@ -557,24 +562,6 @@ func (p *commandProtocol) waitInitial(
 			return aggregate, combined, nil
 		}
 	}
-}
-
-func (p *commandProtocol) waitTerminal(
-	ctx context.Context,
-	id string,
-	threadID string,
-	wait process.SessionWait,
-	output *processOutputAccumulator,
-) (process.SessionWait, error) {
-	for wait.Running {
-		next, err := p.manager.WaitNextEvent(ctx, id, threadID)
-		if err != nil {
-			return process.SessionWait{}, err
-		}
-		output.WriteString(next.Data)
-		wait = next
-	}
-	return wait, nil
 }
 
 type processOutputAccumulator struct {

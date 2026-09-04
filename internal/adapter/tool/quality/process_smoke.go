@@ -28,6 +28,11 @@ type processSmokeInput struct {
 
 const ProcessSmokeUnavailableReason = "host process smoke is disabled until immutable artifact and desktop broker enforcement is available"
 
+// ProcessSmokeStatusSurvived is a liveness observation, not a unit-test pass.
+const ProcessSmokeStatusSurvived = "survived"
+
+const processSmokeSurvivedMessage = "process stayed alive for the declared interval and was then terminated; this is not a unit-test or quality_verify result. Use quality_test or quality_verify with allow_loopback for local fixture servers; do not put localhost or port 0 in network_targets"
+
 type processSmokeTool struct {
 	root      string
 	resolver  *sandbox.TrustedHostPathResolver
@@ -93,9 +98,11 @@ func (t *processSmokeTool) Descriptor() tool.Descriptor {
 		Name: "quality_process_smoke",
 		Description: "Launch an exact executable from the Workspace or its private " +
 			"home outside the OS sandbox, verify that it remains alive for the " +
-			"caller-declared interval, then terminate and reap it. This is for " +
-			"desktop or host-integration smoke tests and always requires governed " +
-			"host-process authorization",
+			"caller-declared interval, then terminate and reap it. This is only " +
+			"for desktop or host-integration liveness, not unit tests or socket " +
+			"test pass/fail. A reaped process with exit_code=-1 is not a test " +
+			"pass; use quality_test or quality_verify with allow_loopback for " +
+			"local fixtures. Always requires governed host-process authorization",
 		Visibility: tool.VisibleModel,
 		Capability: tool.CapabilityProcess,
 		AccessMode: tool.AccessRead,
@@ -148,7 +155,6 @@ func (t *processSmokeTool) TrustedBinding() tool.TrustedBinding {
 		WorkspaceTransaction: tool.TransactionNone,
 		Approval:             tool.ApprovalPolicyOnce,
 	}
-	binding.ProducesVerificationEvidence = true
 	return binding
 }
 
@@ -282,10 +288,13 @@ func (e *processSmokeExecutor) ExecuteAuthorizedProcess(
 		input.Path,
 		input.Args,
 		coveredPaths,
-		map[bool]string{true: verify.StatusPassed, false: verify.StatusFailed}[brokerResult.Survived],
+		map[bool]string{
+			true:  ProcessSmokeStatusSurvived,
+			false: verify.StatusFailed,
+		}[brokerResult.Survived],
 		brokerResult.Process,
 		map[bool]string{
-			true: "",
+			true: processSmokeSurvivedMessage,
 			false: fmt.Sprintf(
 				"%s exited before the declared minimum runtime",
 				filepath.ToSlash(input.Path),
@@ -303,7 +312,7 @@ func (t *processSmokeTool) encodeProcessSmokeResult(
 	processResult process.Result,
 	message string,
 ) (tool.Result, error) {
-	passed := status == verify.StatusPassed
+	survived := status == ProcessSmokeStatusSurvived
 	payload := map[string]any{
 		"schema_version": 1,
 		"kind":           "process_smoke",
@@ -312,8 +321,8 @@ func (t *processSmokeTool) encodeProcessSmokeResult(
 		"stdout":         processResult.Stdout,
 		"stderr":         processResult.Stderr,
 		"summary": map[string]any{
-			"passed": passed,
-			"path":   filepath.ToSlash(path),
+			"survived": survived,
+			"path":     filepath.ToSlash(path),
 		},
 	}
 	if message != "" {
@@ -336,7 +345,7 @@ func (t *processSmokeTool) encodeProcessSmokeResult(
 	}
 	result := tool.Result{
 		Content: string(encoded),
-		IsError: !passed,
+		IsError: !survived && status != verify.StatusPassed,
 		Metadata: map[string]any{
 			verify.EvidenceMetadataKey: verify.Evidence{
 				SchemaVersion: 1,

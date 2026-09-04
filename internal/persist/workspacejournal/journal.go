@@ -669,6 +669,18 @@ func (m *Manager) HasDraft(turnID string) bool {
 	return m.drafts[turnID] != nil
 }
 
+// DraftTurnIDs lists terminal Turns that still retain a workspace draft.
+func (m *Manager) DraftTurnIDs() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ids := make([]string, 0, len(m.drafts))
+	for turnID := range m.drafts {
+		ids = append(ids, turnID)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
 // DraftChanges returns the retained net changes for a terminal draft.
 func (m *Manager) DraftChanges(turnID string) []Change {
 	m.mu.Lock()

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net/http"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -716,6 +717,14 @@ func (r *Registry) validateBindingLocked(
 		return fmt.Errorf("%w for tool %q: execution authority changed", ErrCatalogStale, name)
 	}
 	if item.revision != binding.Revision {
+		// #region debug-point C:stale-binding
+		if name == "file_read" {
+			body, _ := json.Marshal(map[string]any{"sessionId": "tool-catalog-stale", "runId": "post-fix", "hypothesisId": "C", "location": "internal/adapter/tool/tool.go:validateBindingLocked", "msg": "[DEBUG] stale file_read binding rejected", "data": map[string]any{"sampled_revision": binding.Revision, "current_revision": item.revision, "sampled_generation": binding.Generation, "current_generation": r.generation, "source": item.source}})
+			if response, reportErr := http.Post("http://127.0.0.1:7777/event", "application/json", bytes.NewReader(body)); reportErr == nil {
+				_ = response.Body.Close()
+			}
+		}
+		// #endregion
 		return fmt.Errorf(
 			"%w for tool %q: sampled revision=%d current=%d",
 			ErrCatalogStale, name, binding.Revision, item.revision,

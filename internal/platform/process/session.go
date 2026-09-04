@@ -68,6 +68,7 @@ type SessionOptions struct {
 	RequireSandbox       bool
 	WorkspaceReadOnly    bool
 	WorkspaceWritePaths  []string
+	DenyNetwork          bool
 	TrustedRuntimeHelper bool
 	// DetachFromCaller keeps the process alive after Create's ctx ends (background/PTY).
 	DetachFromCaller bool
@@ -184,6 +185,7 @@ func (m *SessionManager) Create(
 		TrustedRuntimeHelper: options.TrustedRuntimeHelper,
 		RequireSandbox:       options.RequireSandbox,
 		WorkspaceReadOnly:    options.WorkspaceReadOnly,
+		DenyNetwork:          options.DenyNetwork,
 		WorkspaceWritePaths: append(
 			[]string(nil), options.WorkspaceWritePaths...,
 		),

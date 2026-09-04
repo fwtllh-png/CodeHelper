@@ -38,6 +38,63 @@ describe("modelMetadataProblem", () => {
     expect(draft.defaultReasoningEffort).toBe("medium");
   });
 
+  it("uses detected limits without exposing editable token fields", () => {
+    const draft = modelMetadataFromProbe("reasoner", {
+      models: [{
+        id: "reasoner",
+        context_tokens: 1_048_576,
+        max_output_tokens: 393_216
+      }],
+      capabilities: {
+        streaming: true,
+        reasoning: false,
+        tool_calls: true,
+        native_search: false,
+        vision: false,
+        image_input: false,
+        prompt_cache: false
+      }
+    });
+    render(
+      <ModelMetadataFields
+        value={draft}
+        disabled={false}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Detected model limits").textContent)
+      .toContain("Context 1,048,576");
+    expect(screen.getByLabelText("Detected model limits").textContent)
+      .toContain("Max output 393,216");
+    expect(screen.queryByLabelText("Context tokens")).toBeNull();
+    expect(screen.queryByLabelText("Max output tokens")).toBeNull();
+  });
+
+  it("keeps token inputs only when discovery omits limits", () => {
+    const draft = modelMetadataFromProbe("reasoner", {
+      capabilities: {
+        streaming: true,
+        reasoning: false,
+        tool_calls: true,
+        native_search: false,
+        vision: false,
+        image_input: false,
+        prompt_cache: false
+      }
+    });
+    render(
+      <ModelMetadataFields
+        value={draft}
+        disabled={false}
+        onChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("Context tokens")).toBeTruthy();
+    expect(screen.getByLabelText("Max output tokens")).toBeTruthy();
+  });
+
   it("shows explicit effort metadata for reasoning models", () => {
     const draft = validDraft();
     draft.capabilities.reasoning = true;

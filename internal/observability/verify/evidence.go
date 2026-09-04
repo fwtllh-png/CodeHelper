@@ -72,8 +72,10 @@ func QualityEvidenceReceipt(
 		reason := "structured quality evidence covers exact changed paths"
 		switch evidence.Status {
 		case StatusPassed:
-			for _, path := range evidence.CoveredPaths {
-				covered[path] = struct{}{}
+			if evidence.Kind != "process_smoke" {
+				for _, path := range evidence.CoveredPaths {
+					covered[path] = struct{}{}
+				}
 			}
 		case StatusFailed:
 			if failedEvidenceSuperseded(evidence, index, latest, inputs) {

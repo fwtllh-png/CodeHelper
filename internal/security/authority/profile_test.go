@@ -96,6 +96,7 @@ func TestCompileRejectsUnauthorizedAndDeniedInvocation(t *testing.T) {
 
 func TestCompileCarriesExplicitLoopbackAuthority(t *testing.T) {
 	input := fixtureCompileInput(t)
+	input.SandboxPolicy.ManagedProxyPort = 43128
 	input.Invocation.Resources = append(input.Invocation.Resources, tool.Resource{
 		Kind: "host", ID: "localhost", Access: tool.AccessWrite,
 		Protocol: "loopback", Methods: []string{"BIND", "CONNECT"},
@@ -106,7 +107,9 @@ func TestCompileCarriesExplicitLoopbackAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	execution := profile.executionAuthority(RequiredControls{})
-	if !profile.Network.Loopback || !execution.AllowLoopback ||
+	if !profile.Network.Loopback || profile.Network.Mode != "loopback" ||
+		profile.Network.ProxyPort != 0 || !execution.AllowLoopback ||
+		execution.ManagedProxyPort != 0 || !execution.LoopbackOnly() ||
 		!slices.Contains(profile.Network.Targets, "loopback://localhost:0") {
 		t.Fatalf("loopback profile = %+v execution = %+v", profile.Network, execution)
 	}

@@ -526,12 +526,17 @@ func TestOnlyExecCommandAdvertisesExactWritePaths(t *testing.T) {
 		len(required) != 5 ||
 		loopback["type"] != "boolean" ||
 		!strings.Contains(run.Description, "use method CONNECT for HTTPS") ||
-		!strings.Contains(run.Description, "Undeclared egress is denied") {
+		!strings.Contains(run.Description, "Undeclared egress is denied") ||
+		!strings.Contains(run.Description, "do not put localhost or port 0") ||
+		!strings.Contains(network["description"].(string), "allow_loopback") {
 		t.Fatalf("exec_command network target schema = %#v", network)
 	}
 	methods, _ := targetProperties["methods"].(map[string]any)
+	port, _ := targetProperties["port"].(map[string]any)
 	if methods["minItems"] != 1 ||
-		!strings.Contains(methods["description"].(string), "exactly CONNECT") {
+		!strings.Contains(methods["description"].(string), "exactly CONNECT") ||
+		port["minimum"] != 1 ||
+		!strings.Contains(port["description"].(string), "Port 0") {
 		t.Fatalf("exec_command method schema = %#v", methods)
 	}
 	for _, descriptor := range []tool.Descriptor{

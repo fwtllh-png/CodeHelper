@@ -282,6 +282,20 @@ func (r *Runtime) ManagedGrant(invocation Invocation) (Rule, bool) {
 	return strongestMatch(snapshot.Grants, invocation)
 }
 
+// AdvertisesTool reports whether a tool should appear in the model catalog.
+// Prefix or resource-scoped denies do not hide the whole tool; only a matching
+// blanket managed deny/hold does.
+func (r *Runtime) AdvertisesTool(name string) bool {
+	if r == nil || name == "" {
+		return true
+	}
+	grant, ok := r.ManagedGrant(Invocation{Tool: name, Validated: true})
+	if !ok {
+		return true
+	}
+	return grant.Action != ActionDeny && grant.Action != ActionHold
+}
+
 func (r *Runtime) evaluate(invocation Invocation) Decision {
 	if invocation.CallID == "" || invocation.Tool == "" {
 		return deny("policy_invalid_invocation", "call id and tool are required")

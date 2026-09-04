@@ -896,6 +896,46 @@ textarea:disabled {
   padding: 20px 0 72px;
 }
 
+.turnTranscript,
+.turnExecutionItems {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.turnExecution {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.turnExecutionToggle {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  color: var(--ch-text-muted);
+  background: transparent;
+  border-radius: var(--ch-radius);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.turnExecutionToggle:hover,
+.turnExecutionToggle:focus-visible {
+  color: var(--ch-text-secondary);
+  background: var(--ch-panel-subtle);
+}
+
+.turnExecutionToggle small {
+  color: var(--ch-text-caption);
+  font-size: 11px;
+}
+
 .transcriptEntryAnchor {
   display: contents;
 }
@@ -3379,13 +3419,110 @@ textarea:disabled {
 }
 
 .inputResponse {
-  position: relative;
-  flex-wrap: nowrap;
+  align-items: flex-end;
 }
 
 .inputOptionRoot {
-  min-width: 180px;
-  flex: 0 1 420px;
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+  flex: 1 0 100%;
+  padding: 10px;
+  background: var(--ch-panel);
+  border: 1px solid var(--ch-border);
+  border-radius: calc(var(--ch-radius) + 2px);
+}
+
+.inputOptionHeading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ch-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.inputOptionHeading small {
+  overflow: hidden;
+  color: var(--ch-text-caption);
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inputOptionList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 6px;
+}
+
+.inputOptionRoot .inputOptionCard {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  color: var(--ch-text-secondary);
+  background: var(--ch-panel-subtle);
+  border: 1px solid transparent;
+  border-radius: var(--ch-radius);
+  text-align: left;
+  transition: background var(--ch-motion-disclosure) var(--ch-ease-in-out),
+    border-color var(--ch-motion-disclosure) var(--ch-ease-in-out),
+    color var(--ch-motion-disclosure) var(--ch-ease-in-out);
+}
+
+.inputOptionRoot .inputOptionCard:hover:not(:disabled),
+.inputOptionRoot .inputOptionCard:focus-visible {
+  color: var(--ch-text);
+  background: color-mix(in srgb, var(--ch-accent-soft) 62%, var(--ch-panel-subtle));
+  border-color: color-mix(in srgb, var(--ch-accent) 44%, var(--ch-border));
+  outline: 0;
+}
+
+.inputOptionRoot .inputOptionCard[data-selected] {
+  color: var(--ch-text);
+  background: var(--ch-accent-soft);
+  border-color: color-mix(in srgb, var(--ch-accent) 58%, var(--ch-border));
+}
+
+.inputOptionText {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.inputOptionIndex {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--ch-text-caption);
+  background: var(--ch-panel-raised);
+  border-radius: 50%;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.inputOptionCard[data-selected] .inputOptionIndex {
+  color: var(--ch-on-accent);
+  background: var(--ch-accent);
+}
+
+.inputOptionCheck {
+  flex: 0 0 auto;
+  color: var(--ch-accent);
 }
 
 .inputResponse input {
@@ -3792,9 +3929,17 @@ textarea:disabled {
   }
 
   .inputOptionRoot {
-    min-width: 0;
-    max-width: none;
-    flex-basis: 100%;
+    padding: 9px;
+  }
+
+  .inputOptionHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .inputOptionHeading small {
+    white-space: normal;
   }
 
   .pendingComposer:not(.inputComposer) {

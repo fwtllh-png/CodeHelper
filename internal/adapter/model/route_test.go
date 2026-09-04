@@ -161,7 +161,7 @@ func TestDeepSeekV4FlashDefaultsToChatCompletions(t *testing.T) {
 		t.Fatal("DeepSeek Chat must keep complete HTTP/SSE transport")
 	}
 	if route.Model().Limits.ContextTokens != 1_048_576 ||
-		route.Model().Limits.MaxOutputTokens != 393_216 ||
+		route.Model().Limits.MaxOutputTokens != 384_000 ||
 		!route.Model().Capabilities.PromptCache {
 		t.Fatalf("DeepSeek V4 Flash metadata = %+v", route.Model())
 	}

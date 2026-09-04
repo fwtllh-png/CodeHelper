@@ -808,6 +808,57 @@ func TestPlanExecutionAllowsTrailingSourceOperationCommit(t *testing.T) {
 	}
 }
 
+func TestPrepareTurnRecoveryAcceptsJournalAdmissionFailureWithoutStarted(t *testing.T) {
+	events := NewMemoryEventStore(4)
+	meta := protocol.EventMeta{
+		Sequence: 1, OperationID: "operation-draft",
+		ThreadID: "thread-profile", TurnID: "turn-draft-block",
+		ItemID: "item-draft",
+	}
+	failed, err := protocol.NewEvent(meta, &protocol.TurnFailedData{
+		Code:    protocol.CodeConflict,
+		Message: "workspace journal has a retained draft; continue, retry, or revert it first",
+		Fault: &protocol.FaultMetadata{
+			Disposition: protocol.FaultRetryTurn,
+			SideEffects: protocol.SideEffectDraft,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), failed); err != nil {
+		t.Fatal(err)
+	}
+	profile := runtimeTestProfile()
+	lifecycle := artifactLifecycle()
+	lifecycle.summary.LatestTurnID = "turn-draft-block"
+	runtime := NewRuntime(Options{
+		EventStore:          events,
+		SessionLifecycle:    lifecycle,
+		Engine:              &profileTestEngine{},
+		SessionProfiles:     &memoryProfileStore{profile: profile},
+		DefaultProfile:      profile,
+		ProfileCapabilities: runtimeTestCapabilities(profile),
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	prepared, err := runtime.PrepareTurnRecovery(
+		t.Context(),
+		protocol.TurnRecoveryRequest{
+			Version: protocol.WorkflowIntentVersion, Action: protocol.TurnRecoveryRetry,
+			SessionID: "session-profile", SourceTurnID: "turn-draft-block",
+			IdempotencyKey: "retry-draft-block",
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.Recovery.Action != protocol.TurnRecoveryRetry ||
+		prepared.Recovery.SourceTurnID != "turn-draft-block" ||
+		!strings.Contains(prepared.Prompt, "retained workspace journal draft") {
+		t.Fatalf("journal admission recovery = %+v", prepared)
+	}
+}
+
 func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	events := NewMemoryEventStore(16)
 	meta := protocol.EventMeta{
@@ -942,45 +993,39 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(continued.Prompt, "Do not repeat completed Tool") ||
+	if strings.Contains(continued.Prompt, "Do not restate") ||
+		strings.Contains(continued.Prompt, "Do not file_read recovery_evidence") ||
+		strings.Contains(continued.Prompt, "Do not repeat this Continue envelope") ||
+		strings.Contains(continued.Prompt, "Do not repeat completed Tool") ||
 		strings.Contains(continued.Prompt, "Inspect current workspace state before every") ||
-		!strings.Contains(continued.Prompt, "Do not call git_status or git_diff on Continue") ||
-		!strings.Contains(continued.Prompt, "file_read only a window you are about to edit") ||
-		!strings.Contains(continued.Prompt, "After search_text returns line hits, edit") ||
-		!strings.Contains(continued.Prompt, "A dirty git status is not a reason to file_read") ||
-		!strings.Contains(continued.Prompt, "absent from the visible tail") ||
-		!strings.Contains(continued.Prompt, "turn_history or result_get") ||
-		strings.Contains(continued.Prompt, "or a visible prior") ||
 		continued.Intent != protocol.TurnIntentWorkspaceChange ||
 		continued.Recovery.Action != protocol.TurnRecoveryContinue ||
 		continued.Recovery.SourceTurnID != "turn-source" ||
 		continued.Recovery.PlanID != "plan-source" ||
 		continued.Recovery.PlanTransition != protocol.PlanTransitionImplement ||
 		continued.Recovery.ProfileRevision != profile.Revision ||
-		!strings.Contains(continued.Prompt, "Source Turn ID: turn-source") ||
-		!strings.Contains(continued.Prompt, "<source_request>\nFix the parser") ||
-		!strings.Contains(continued.Prompt, "failed (conflict): validation failed") ||
-		!strings.Contains(continued.Prompt, "I inspected the parser") ||
+		!strings.HasPrefix(continued.Prompt, "Run focused tests") ||
+		!strings.Contains(continued.Prompt, `<source_request turn="turn-source"/>`) ||
 		!strings.Contains(continued.Prompt, "<recovery_evidence>") ||
+		!strings.Contains(continued.Prompt, `"version":2`) ||
 		!strings.Contains(continued.Prompt, `"intent":"workspace_change"`) ||
+		!strings.Contains(continued.Prompt, `"known_reads":["parser.go"]`) ||
+		!strings.Contains(continued.Prompt, `"outcomes"`) ||
 		!strings.Contains(continued.Prompt, `"tool":"file_read"`) ||
-		!strings.Contains(continued.Prompt, `"read_paths":["parser.go"]`) ||
 		strings.Contains(continued.Prompt, `"outcome":"changed"`) ||
 		strings.Contains(continued.Prompt, "Additional guidance:") ||
-		!strings.Contains(continued.Prompt, "active instruction") ||
 		!strings.Contains(continued.Prompt, "Run focused tests") {
 		t.Fatalf("Continue preparation = %+v", continued)
 	}
 	if continued.DisplayPrompt != "Run focused tests" {
 		t.Fatalf("Continue display prompt = %q", continued.DisplayPrompt)
 	}
-	requestAt := strings.Index(continued.Prompt, "<source_request>")
-	failedAt := strings.Index(continued.Prompt, "failed (conflict): validation failed")
-	if requestAt < 0 || failedAt < 0 || requestAt > failedAt {
-		t.Fatal("Continue prompt must lead with the original request")
+	if artifact.RecoveryWorkItemGoal(continued.Prompt) != "Run focused tests" {
+		t.Fatalf("Continue goal = %q", artifact.RecoveryWorkItemGoal(continued.Prompt))
 	}
-	if !strings.Contains(continued.Prompt, "Do not repeat this Continue envelope") {
-		t.Fatal("Continue prompt must tell the model not to narrate recovery")
+	reads, _ := artifact.ParseRecoveryWorkItem(continued.Prompt)
+	if len(reads) == 0 || reads[0] != "parser.go" {
+		t.Fatalf("Continue known reads = %v", reads)
 	}
 	recoveredMeta := protocol.EventMeta{
 		Sequence:    7,
@@ -1065,9 +1110,10 @@ func TestTurnRecoveryCreatesANewPromptWithoutReplayingOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	if continuedAgain.DisplayPrompt != "Continue: Run focused tests" ||
+		!strings.HasPrefix(continuedAgain.Prompt, "Run focused tests") ||
 		!strings.Contains(
 			continuedAgain.Prompt,
-			"<source_request>\nRun focused tests\n</source_request>",
+			`<source_request turn="turn-continued"/>`,
 		) {
 		t.Fatalf("Continue unwrapped to stale request: %+v", continuedAgain)
 	}
@@ -1419,10 +1465,14 @@ func TestRecoveryEvidenceIsCanonicalAndBounded(t *testing.T) {
 	if err := json.Unmarshal([]byte(rendered), &capsule); err != nil {
 		t.Fatal(err)
 	}
-	if capsule.Intent != protocol.TurnIntentWorkspaceChange ||
+	if capsule.Version != 2 ||
+		capsule.Intent != protocol.TurnIntentWorkspaceChange ||
 		capsule.SourceTurnID != "turn-source" ||
 		capsule.OmittedTools == 0 ||
 		len(capsule.Tools)+capsule.OmittedTools != len(tools) ||
+		capsule.WorkItem == nil ||
+		len(capsule.WorkItem.KnownReads) != 2 ||
+		len(capsule.Outcomes) == 0 ||
 		capsule.Receipt == nil ||
 		len(capsule.Receipt.ReadPaths) != 2 {
 		t.Fatalf("recovery evidence = %+v", capsule)

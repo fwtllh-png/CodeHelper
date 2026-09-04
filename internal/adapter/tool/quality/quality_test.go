@@ -84,6 +84,46 @@ func TestProcessSmokeIsUnavailableUntilDesktopBrokerExists(t *testing.T) {
 	}
 }
 
+func TestProcessSmokeBindingOmitsVerificationEvidence(t *testing.T) {
+	binding := (&processSmokeTool{}).TrustedBinding()
+	if binding.ProducesVerificationEvidence {
+		t.Fatal("process smoke must not produce unit-test verification evidence")
+	}
+}
+
+func TestProcessSmokeReapedProcessIsNotATestPass(t *testing.T) {
+	result, err := (&processSmokeTool{}).encodeProcessSmokeResult(
+		"target/fixture-app",
+		nil,
+		[]string{"src/main.go"},
+		ProcessSmokeStatusSurvived,
+		process.Result{ExitCode: -1},
+		processSmokeSurvivedMessage,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("survived smoke marked error: %+v", result)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
+		t.Fatal(err)
+	}
+	summary, _ := payload["summary"].(map[string]any)
+	if payload["status"] != ProcessSmokeStatusSurvived ||
+		payload["exit_code"] != float64(-1) ||
+		summary["survived"] != true ||
+		summary["passed"] != nil ||
+		!strings.Contains(payload["message"].(string), "not a unit-test") {
+		t.Fatalf("payload = %+v", payload)
+	}
+	evidence, _ := result.Metadata[verify.EvidenceMetadataKey].(verify.Evidence)
+	if evidence.Status != ProcessSmokeStatusSurvived || evidence.ExitCode != -1 {
+		t.Fatalf("evidence = %+v", evidence)
+	}
+}
+
 func TestQualityDiagnosticsAndReviewParseCommandOutput(t *testing.T) {
 	registry := tool.NewRegistry(nil, nil)
 	if err := RegisterWithBackend(registry, t.TempDir(), qualityTestBackend{}); err != nil {

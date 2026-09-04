@@ -153,8 +153,8 @@ type Execution struct {
 	MaxOutputTokens uint64 `json:"max_output_tokens" toml:"max_output_tokens"`
 	MaxSteps        int    `json:"max_steps" toml:"max_steps"`
 	// ImplementNoProgressSamples is the no-progress finish-only lease used
-	// when a Plan already has completed steps and outstanding work remains.
-	// Zero inherits the MaxSteps-derived finish-only lease.
+	// once a Turn Work Item has Known or Open facts. Zero inherits the
+	// MaxSteps-derived 2/3 finish-only lease.
 	ImplementNoProgressSamples int `json:"implement_no_progress_samples" toml:"implement_no_progress_samples"`
 	// Timeout covers connection establishment, TLS negotiation, and response
 	// headers. Streaming body lifetime is governed by the caller Context and

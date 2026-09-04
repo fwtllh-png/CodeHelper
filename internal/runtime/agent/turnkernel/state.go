@@ -179,6 +179,10 @@ type Policy struct {
 	ExecutionStepLimit uint32            `json:"execution_step_limit,omitempty"`
 	JournalRequired    bool              `json:"journal_required"`
 	Convergence        ConvergencePolicy `json:"convergence"`
+	// ImplementNoProgressSamples is the public no-progress finish-only lease
+	// used once a Work Item has Known or Open facts. Zero inherits the
+	// MaxSteps-derived 2/3 finish-only lease.
+	ImplementNoProgressSamples uint32 `json:"implement_no_progress_samples,omitempty"`
 }
 
 func ConvergencePolicyForStepLimit(limit uint32) ConvergencePolicy {
@@ -193,6 +197,11 @@ func ConvergencePolicyForStepLimit(limit uint32) ConvergencePolicy {
 		ResearchFinishOnly: finishOnly, ResearchLimit: limit,
 	}
 }
+
+// RequiredActionFinishOrDeclareIncomplete is the only legal next step after
+// a mutated Turn is refused for open Plan steps. Rewriting the same Plan
+// does not satisfy the contract.
+const RequiredActionFinishOrDeclareIncomplete = "finish_open_plan_steps_or_declare_incomplete"
 
 func DefaultPolicy() Policy {
 	return Policy{
@@ -350,6 +359,7 @@ type State struct {
 	OutputEligibility     bool                        `json:"output_eligibility"`
 	RepairBudgets         map[RepairKind]RepairBudget `json:"repair_budgets"`
 	Progress              ProgressState               `json:"progress"`
+	WorkItem              WorkItem                    `json:"work_item"`
 	Convergence           *ConvergenceState           `json:"convergence,omitempty"`
 	NextAction            StepAction                  `json:"next_action,omitempty"`
 	LastModelContinued    bool                        `json:"last_model_continued,omitempty"`

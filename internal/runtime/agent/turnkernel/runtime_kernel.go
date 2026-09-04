@@ -31,6 +31,8 @@ type RuntimeKernel struct {
 type KernelIdentity struct {
 	TurnID          string
 	ProfileRevision uint64
+	Goal            string
+	WorkItem        WorkItem
 }
 
 type RuntimeKernelMetrics interface {
@@ -107,6 +109,16 @@ func NewRuntimeKernel(
 			Action:                 string(recovery.Action),
 			DraftResumed:           draftResumed,
 			Changes:                append([]ObservedChange(nil), draftChanges...),
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if identity.Goal != "" || identity.WorkItem.HasKnownOrOpen() {
+		if err := kernel.applyAuthoritative(BindWorkItem{
+			Goal:       identity.Goal,
+			KnownReads: identity.WorkItem.KnownReads,
+			KnownEdits: identity.WorkItem.KnownEdits,
+			Open:       identity.WorkItem.Open,
 		}); err != nil {
 			return nil, err
 		}
@@ -351,12 +363,17 @@ func (s *RuntimeKernel) CloseTool(
 	if effect.ID == "" {
 		return fmt.Errorf("tool effect for call %q is not routed", call.ID)
 	}
+	if len(fileChanges) == 0 {
+		fileChanges = ObservedFileChanges(result)
+	}
 	changes := ObservedChanges(fileChanges)
+	open, _ := s.state.OpenCalls[call.ID]
 	command := ToolResultReceived{
-		EffectID: effect.ID,
-		CallID:   call.ID,
-		IsError:  result.IsError,
-		Changes:  changes,
+		EffectID:    effect.ID,
+		CallID:      call.ID,
+		IsError:     result.IsError,
+		Changes:     changes,
+		Observation: ObserveWorkItemResult(open, result),
 	}
 	from := s.state.Phase
 	if err := s.dispatcher.Resolve(command); err != nil {
@@ -819,17 +836,7 @@ func (s *RuntimeKernel) ValidateFinalReadiness() error {
 func (s *RuntimeKernel) RepairProgressKey() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	completionCall := ""
-	if s.state.Completion != nil {
-		completionCall = s.state.Completion.CompletionCall
-	}
-	return fmt.Sprintf(
-		"mutation=%d;closed=%d;completion=%s;verification=%s",
-		s.state.MutationRevision,
-		len(s.state.ClosedCalls),
-		completionCall,
-		s.state.Verification.Status,
-	)
+	return FormatRepairProgressKey(s.state)
 }
 
 func (s *RuntimeKernel) Intent() protocol.TurnIntent {
@@ -840,43 +847,83 @@ func (s *RuntimeKernel) Intent() protocol.TurnIntent {
 
 func (s *RuntimeKernel) ProgressSignature(
 	completedPlanSteps int,
-	evidenceDigest string,
+	openImplement bool,
 ) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	completionCall := ""
-	completionAccepted := false
-	operationCalls := 0
-	lifecycleCalls := 0
-	if s.state.Completion != nil {
-		completionCall = s.state.Completion.CompletionCall
-		completionAccepted = s.state.Completion.Accepted
+	return FormatProgressSignature(s.state, completedPlanSteps, openImplement)
+}
+
+func (s *RuntimeKernel) WorkItem() WorkItem {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return cloneWorkItem(s.state.WorkItem)
+}
+
+func (s *RuntimeKernel) BindWorkItem(bind BindWorkItem) error {
+	if s == nil {
+		return nil
 	}
-	for _, result := range s.state.ClosedCalls {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.applyAuthoritativeLocked(bind)
+}
+
+func (s *RuntimeKernel) RecoveryContinue() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state.RecoveryRelation != nil &&
+		s.state.RecoveryRelation.Action == string(protocol.TurnRecoveryContinue)
+}
+
+// FormatRepairProgressKey names the current declaration-repair world. Rejected
+// completion call identities and extra closed tools are not progress.
+func FormatRepairProgressKey(state State) string {
+	accepted := false
+	reason := ""
+	if state.Completion != nil {
+		accepted = state.Completion.Accepted
+		if !accepted {
+			reason = state.Completion.Reason
+		}
+	}
+	operationCalls, lifecycleCalls := progressToolCounts(state)
+	return fmt.Sprintf(
+		"mutation=%d;completion_accepted=%t;completion_reason=%s;"+
+			"verification=%s;operation_calls=%d;lifecycle_calls=%d",
+		state.MutationRevision,
+		accepted,
+		reason,
+		state.Verification.Status,
+		operationCalls,
+		lifecycleCalls,
+	)
+}
+
+// FormatProgressSignature names durable Turn progress from the Work Item
+// path sets. Same-path edits, rejected declarations, and call counts do not
+// renew the lease.
+func FormatProgressSignature(
+	state State,
+	completedPlanSteps int,
+	openImplement bool,
+) string {
+	return FormatWorkItemSignature(state, completedPlanSteps, openImplement)
+}
+
+func progressToolCounts(state State) (operationCalls int, lifecycleCalls int) {
+	for _, result := range state.ClosedCalls {
 		if result.IsError {
 			continue
 		}
-		if s.state.Intent == protocol.TurnIntentOperation {
+		if state.Intent == protocol.TurnIntentOperation {
 			operationCalls++
 		}
 		if agentLifecycleProgressTool(result.Name) {
 			lifecycleCalls++
 		}
 	}
-	return fmt.Sprintf(
-		"intent=%s;plan_done=%d;verification=%s/%s/%d;"+
-			"completion=%t/%s;operation_calls=%d;lifecycle_calls=%d;evidence=%s",
-		s.state.Intent,
-		completedPlanSteps,
-		s.state.Verification.Status,
-		s.state.Verification.Action,
-		s.state.Verification.Mutation,
-		completionAccepted,
-		completionCall,
-		operationCalls,
-		lifecycleCalls,
-		evidenceDigest,
-	)
+	return operationCalls, lifecycleCalls
 }
 
 func agentLifecycleProgressTool(name string) bool {
@@ -1037,10 +1084,12 @@ func (s *RuntimeKernel) applyAuthoritativeLocked(
 }
 
 func (s *RuntimeKernel) recordLocked(record TransitionRecord) {
-	s.metrics.TurnKernelObserver(
-		record.Drift != "",
-		record.StateDigest == "" && record.Drift != "",
-	)
+	if s.metrics != nil {
+		s.metrics.TurnKernelObserver(
+			record.Drift != "",
+			record.StateDigest == "" && record.Drift != "",
+		)
+	}
 	if s.observe != nil {
 		s.observe(record)
 	}

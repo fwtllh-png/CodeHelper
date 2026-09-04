@@ -118,6 +118,11 @@ func TestPathsObservedAtReportsOneTurnOfOneSource(t *testing.T) {
 	if paths := ledger.PathsObservedAt(SourceEdited, 2); len(paths) != 1 {
 		t.Fatalf("edited paths = %v", paths)
 	}
+	allReads := ledger.PathsWithSource(SourceRead)
+	if len(allReads) != 2 || allReads[0] != "read-earlier.go" ||
+		allReads[1] != "read-now.go" {
+		t.Fatalf("paths with source = %v", allReads)
+	}
 }
 
 func TestCloneDoesNotShareFutureObservations(t *testing.T) {

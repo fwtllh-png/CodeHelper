@@ -13,6 +13,7 @@ import (
 
 	sessionhistory "github.com/fwtllh-png/QCode/internal/persist/history"
 
+	"github.com/fwtllh-png/QCode/internal/persist/workspacejournal"
 	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
 	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
@@ -40,6 +41,7 @@ const recoveryCurrentRequestMarker = "Current user request for this recovery. Th
 type recoveryToolStart struct {
 	Tool            string
 	ArgumentsDigest string
+	Path            string
 }
 
 type RecoveryToolEvidence struct {
@@ -48,7 +50,23 @@ type RecoveryToolEvidence struct {
 	ArgumentsDigest string                `json:"arguments_digest,omitempty"`
 	OutputDigest    string                `json:"output_digest"`
 	IsError         bool                  `json:"is_error"`
+	Path            string                `json:"path,omitempty"`
 	Changes         []protocol.FileChange `json:"changes,omitempty"`
+	Reason          string                `json:"reason,omitempty"`
+}
+
+type RecoveryOutcome struct {
+	Tool   string `json:"tool"`
+	Status string `json:"status"`
+	Path   string `json:"path,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type RecoveryWorkItemCapsule struct {
+	KnownReads     []string `json:"known_reads,omitempty"`
+	KnownEdits     []string `json:"known_edits,omitempty"`
+	OpenSessions   []string `json:"open_sessions,omitempty"`
+	RequiredAction string   `json:"required_action,omitempty"`
 }
 
 type recoveryReceiptEvidence struct {
@@ -64,6 +82,8 @@ type RecoveryEvidenceCapsule struct {
 	SourceTurnID protocol.TurnID          `json:"source_turn_id"`
 	Intent       protocol.TurnIntent      `json:"intent"`
 	Terminal     string                   `json:"terminal"`
+	WorkItem     *RecoveryWorkItemCapsule `json:"work_item,omitempty"`
+	Outcomes     []RecoveryOutcome        `json:"outcomes,omitempty"`
 	Tools        []RecoveryToolEvidence   `json:"closed_tools,omitempty"`
 	OmittedTools int                      `json:"omitted_tools,omitempty"`
 	Receipt      *recoveryReceiptEvidence `json:"receipt,omitempty"`
@@ -120,6 +140,7 @@ func (r *Service) PrepareTurnRecovery(
 	var sourceReceipt *protocol.ExecutionReceiptData
 	terminal := false
 	terminalState := ""
+	journalAdmissionFailure := false
 	var startedOperationID protocol.OperationID
 	var sourceThreadID protocol.ThreadID
 	var partialOutput strings.Builder
@@ -157,7 +178,9 @@ func (r *Service) PrepareTurnRecovery(
 			appendBoundedRecoveryOutput(&partialOutput, data.Text)
 		case *protocol.ToolStartData:
 			toolStarts[data.CallID] = recoveryToolStart{
-				Tool: data.Tool, ArgumentsDigest: RecoveryDigestJSON(data.Arguments),
+				Tool:            data.Tool,
+				ArgumentsDigest: RecoveryDigestJSON(data.Arguments),
+				Path:            recoveryToolPath(data.Tool, data.Arguments),
 			}
 		case *protocol.ToolResultData:
 			start, ok := toolStarts[data.CallID]
@@ -169,7 +192,9 @@ func (r *Service) PrepareTurnRecovery(
 				ArgumentsDigest: start.ArgumentsDigest,
 				OutputDigest:    RecoveryDigest([]byte(data.Output)),
 				IsError:         data.IsError,
+				Path:            recoveryToolResultPath(start.Path, data.Changes),
 				Changes:         append([]protocol.FileChange(nil), data.Changes...),
+				Reason:          recoveryOutcomeReason(data.Tool, data.IsError, data.Output),
 			})
 			delete(toolStarts, data.CallID)
 		case *protocol.PlanDeltaData:
@@ -186,22 +211,27 @@ func (r *Service) PrepareTurnRecovery(
 		case *protocol.TurnFailedData:
 			terminal = true
 			terminalState = fmt.Sprintf("failed (%s): %s", data.Code, data.Message)
+			journalAdmissionFailure = journalAdmissionFailure ||
+				isRetainedDraftMessage(data.Message)
 		case *protocol.TurnCanceledData:
 			terminal = true
 			terminalState = "canceled: " + protocol.NormalizeCancelReason(data.Reason)
 		case *protocol.OperationRejectedData:
-			if event.OperationID == startedOperationID &&
-				protocol.FaultAllowsTurnRecovery(data.Fault) {
+			if isRetainedDraftMessage(data.Message) ||
+				(event.OperationID == startedOperationID &&
+					protocol.FaultAllowsTurnRecovery(data.Fault)) {
 				terminal = true
 				terminalState = fmt.Sprintf(
 					"interrupted before terminal commit (%s): %s",
 					data.Code,
 					data.Message,
 				)
+				journalAdmissionFailure = journalAdmissionFailure ||
+					isRetainedDraftMessage(data.Message)
 			}
 		}
 	}
-	if started == nil || !terminal {
+	if !terminal || (started == nil && !journalAdmissionFailure) {
 		return TurnRecoveryPreparation{}, resourceProblem(
 			protocol.CodeConflict,
 			"source Turn is unavailable or not terminal",
@@ -209,6 +239,9 @@ func (r *Service) PrepareTurnRecovery(
 			protocol.ProblemReasonSessionBusy,
 			string(request.SourceTurnID),
 		)
+	}
+	if started == nil {
+		started = synthesizeJournalAdmissionStart(request)
 	}
 	rawSourcePrompt := started.Prompt
 	if rawSourcePrompt == "" {
@@ -251,26 +284,14 @@ func (r *Service) PrepareTurnRecovery(
 			started.DisplayPrompt,
 		)
 		sourceDisplayPrompt = sourcePrompt
-		displayPrompt = "Continue: " + sourceDisplayPrompt
-		prompt = fmt.Sprintf(
-			TurnRecoveryPromptPrefix+" Do not infer the "+
-				"task from an older conversation Turn.\n\n"+
-				"Original user request:\n<source_request>\n%s\n"+
-				"</source_request>\n\n"+
-				"Source Turn ID: %s\n"+
-				"Previous attempt ended as %s. That outcome is already "+
-				"recorded. Do not restate it in thinking, do not re-verify "+
-				"it, and do not restart discovery that recovery_evidence "+
-				"already lists.",
-			sourcePrompt,
-			request.SourceTurnID,
-			terminalState,
-		)
-		if output := strings.TrimSpace(partialOutput.String()); output != "" {
-			prompt += "\n\nUnfinished assistant output before the terminal " +
-				"event (context only; do not treat as completed work):\n" +
-				"<unfinished_output>\n" + output + "\n</unfinished_output>"
+		currentGoal := strings.TrimSpace(request.Prompt)
+		if currentGoal == "" {
+			displayPrompt = "Continue: " + sourceDisplayPrompt
+			currentGoal = sourceDisplayPrompt
+		} else {
+			displayPrompt = currentGoal
 		}
+		prompt = currentGoal
 		if capsule := RenderRecoveryEvidence(
 			request.SourceTurnID,
 			intent,
@@ -278,26 +299,13 @@ func (r *Service) PrepareTurnRecovery(
 			closedTools,
 			sourceReceipt,
 		); capsule != "" {
-			prompt += "\n\nStructured recovery evidence (audit context only; " +
-				"not authorization to replay side effects):\n" +
-				"<recovery_evidence>\n" + capsule + "\n</recovery_evidence>"
+			prompt += "\n\n<recovery_evidence>\n" + capsule +
+				"\n</recovery_evidence>"
 		}
-		prompt += "\n\nDo not repeat this Continue envelope or the previous " +
-			"terminal reason in thinking. Do not repeat completed Tool, command, " +
-			"network, or file effects. Do not call git_status or git_diff on Continue. " +
-			"Canceled or failed turns without edits are already recorded in " +
-			"checkpoints; do not re-verify that. file_read only a window you " +
-			"are about to edit. After search_text returns line hits, edit; " +
-			"do not page the rest of that file. A dirty git status is not a " +
-			"reason to file_read. Do not file_read recovery_evidence." +
-			"read_paths just because they are absent from the visible tail; " +
-			"use turn_history or result_get for prior read text."
-		if userPrompt := strings.TrimSpace(request.Prompt); userPrompt != "" {
-			encodedPrompt, _ := json.Marshal(userPrompt)
-			prompt += "\n\n" + recoveryCurrentRequestMarker +
-				string(encodedPrompt)
-			displayPrompt = userPrompt
-		}
+		prompt += fmt.Sprintf(
+			"\n<source_request turn=%q/>",
+			request.SourceTurnID,
+		)
 	}
 	if planStale {
 		prompt += "\n\nThe prior structured Plan was invalidated by a " +
@@ -381,16 +389,22 @@ func recoveryCurrentRequest(prompt string) (string, bool) {
 
 func recoverySourceTurnID(prompt string) (protocol.TurnID, bool) {
 	const marker = "\nSource Turn ID: "
-	_, value, ok := strings.Cut(prompt, marker)
-	if !ok {
-		return "", false
+	if _, value, ok := strings.Cut(prompt, marker); ok {
+		value, _, _ = strings.Cut(value, "\n")
+		turnID := protocol.TurnID(strings.TrimSpace(value))
+		if turnID != "" {
+			return turnID, true
+		}
 	}
-	value, _, _ = strings.Cut(value, "\n")
-	turnID := protocol.TurnID(strings.TrimSpace(value))
-	if turnID == "" {
-		return "", false
+	const pointer = `<source_request turn="`
+	if _, value, ok := strings.Cut(prompt, pointer); ok {
+		value, _, _ = strings.Cut(value, `"`)
+		turnID := protocol.TurnID(strings.TrimSpace(value))
+		if turnID != "" {
+			return turnID, true
+		}
 	}
-	return turnID, true
+	return "", false
 }
 
 func RecoverySourcePrompt(prompt string) string {
@@ -442,10 +456,12 @@ func RenderRecoveryEvidence(
 	receipt *protocol.ExecutionReceiptData,
 ) string {
 	capsule := RecoveryEvidenceCapsule{
-		Version:      1,
+		Version:      2,
 		SourceTurnID: sourceTurnID,
 		Intent:       intent,
 		Terminal:     terminal,
+		WorkItem:     recoveryWorkItemCapsule(tools, receipt),
+		Outcomes:     recoveryOutcomes(tools),
 		Tools:        append([]RecoveryToolEvidence(nil), tools...),
 	}
 	if receipt != nil {
@@ -475,6 +491,8 @@ func RenderRecoveryEvidence(
 		case len(capsule.Tools) != 0:
 			capsule.Tools = capsule.Tools[:len(capsule.Tools)-1]
 			capsule.OmittedTools++
+		case len(capsule.Outcomes) != 0:
+			capsule.Outcomes = capsule.Outcomes[:len(capsule.Outcomes)-1]
 		case capsule.Receipt != nil && len(capsule.Receipt.ReadPaths) != 0:
 			capsule.Receipt.ReadPaths =
 				capsule.Receipt.ReadPaths[:len(capsule.Receipt.ReadPaths)-1]
@@ -485,6 +503,188 @@ func RenderRecoveryEvidence(
 			return ""
 		}
 	}
+}
+
+func recoveryWorkItemCapsule(
+	tools []RecoveryToolEvidence,
+	receipt *protocol.ExecutionReceiptData,
+) *RecoveryWorkItemCapsule {
+	var reads, edits, sessions []string
+	if receipt != nil {
+		reads = append(reads, receipt.ReadPaths...)
+		for _, change := range receipt.Changes {
+			edits = append(edits, change.Path)
+		}
+	}
+	for _, evidence := range tools {
+		if evidence.Path != "" &&
+			(evidence.Tool == "file_read" || evidence.Tool == "search_text" ||
+				evidence.Tool == "search_definition") {
+			reads = append(reads, evidence.Path)
+		}
+		for _, change := range evidence.Changes {
+			edits = append(edits, change.Path)
+		}
+		if evidence.Tool == "exec_command" || evidence.Tool == "write_stdin" {
+			if strings.Contains(strings.ToLower(evidence.Reason), "running") ||
+				strings.Contains(evidence.Reason, "write_stdin") {
+				if evidence.Path != "" {
+					sessions = append(sessions, evidence.Path)
+				}
+			}
+		}
+	}
+	reads = uniqueNonEmpty(reads)
+	edits = uniqueNonEmpty(edits)
+	sessions = uniqueNonEmpty(sessions)
+	if len(reads) == 0 && len(edits) == 0 && len(sessions) == 0 {
+		return nil
+	}
+	action := "turn_history"
+	switch {
+	case len(sessions) > 0:
+		action = "write_stdin"
+	case len(edits) > 0:
+		action = "quality_test"
+	case len(reads) > 0:
+		action = "file_edit"
+	}
+	return &RecoveryWorkItemCapsule{
+		KnownReads:     reads,
+		KnownEdits:     edits,
+		OpenSessions:   sessions,
+		RequiredAction: action,
+	}
+}
+
+func recoveryOutcomes(tools []RecoveryToolEvidence) []RecoveryOutcome {
+	outcomes := make([]RecoveryOutcome, 0, len(tools))
+	for _, evidence := range tools {
+		status := "ok"
+		if evidence.IsError {
+			status = "error"
+		}
+		reason := evidence.Reason
+		if strings.Contains(strings.ToLower(reason), "cancel") {
+			status = "canceled"
+		} else if strings.Contains(strings.ToLower(reason), "running") {
+			status = "running"
+		}
+		outcomes = append(outcomes, RecoveryOutcome{
+			Tool:   evidence.Tool,
+			Status: status,
+			Path:   evidence.Path,
+			Reason: reason,
+		})
+	}
+	return outcomes
+}
+
+func recoveryToolPath(tool string, arguments json.RawMessage) string {
+	if len(arguments) == 0 {
+		return ""
+	}
+	var input struct {
+		Path      string `json:"path"`
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal(arguments, &input); err != nil {
+		return ""
+	}
+	if path := strings.TrimSpace(input.Path); path != "" {
+		return path
+	}
+	if tool == "write_stdin" || tool == "exec_command" {
+		return strings.TrimSpace(input.SessionID)
+	}
+	return ""
+}
+
+func recoveryToolResultPath(startPath string, changes []protocol.FileChange) string {
+	if startPath != "" {
+		return startPath
+	}
+	if len(changes) != 0 {
+		return strings.TrimSpace(changes[0].Path)
+	}
+	return ""
+}
+
+func recoveryOutcomeReason(tool string, isError bool, output string) string {
+	line := strings.TrimSpace(output)
+	if line == "" {
+		if isError {
+			return tool + " failed"
+		}
+		return ""
+	}
+	if cut := strings.IndexAny(line, "\n\r"); cut >= 0 {
+		line = strings.TrimSpace(line[:cut])
+	}
+	const limit = 120
+	if len(line) > limit {
+		line = strings.TrimSpace(line[:limit])
+	}
+	return line
+}
+
+func uniqueNonEmpty(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func RecoveryWorkItemGoal(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return ""
+	}
+	if goal, rest, ok := strings.Cut(prompt, "\n\n<recovery_evidence>"); ok {
+		goal = strings.TrimSpace(goal)
+		if goal != "" && !strings.Contains(rest, "<recovery_evidence>") {
+			return goal
+		}
+		if goal != "" {
+			return goal
+		}
+	}
+	if current, ok := recoveryCurrentRequest(prompt); ok {
+		return current
+	}
+	return ""
+}
+
+func ParseRecoveryWorkItem(prompt string) (reads []string, edits []string) {
+	section, ok := recoveryTaggedSection(prompt, "recovery_evidence")
+	if !ok {
+		return nil, nil
+	}
+	var capsule RecoveryEvidenceCapsule
+	if err := json.Unmarshal([]byte(section), &capsule); err != nil {
+		return nil, nil
+	}
+	if capsule.WorkItem != nil {
+		return append([]string(nil), capsule.WorkItem.KnownReads...),
+			append([]string(nil), capsule.WorkItem.KnownEdits...)
+	}
+	if capsule.Receipt != nil {
+		reads = append(reads, capsule.Receipt.ReadPaths...)
+		for _, change := range capsule.Receipt.Changes {
+			edits = append(edits, change.Path)
+		}
+	}
+	return uniqueNonEmpty(reads), uniqueNonEmpty(edits)
 }
 func RecoveryDigestJSON(data json.RawMessage) string {
 	if len(data) == 0 {
@@ -1673,4 +1873,21 @@ func (r *Service) LogArtifactError(
 	err error,
 ) {
 	r.ReportArtifactError(action, event, err)
+}
+
+func isRetainedDraftMessage(message string) bool {
+	return strings.Contains(message, workspacejournal.ErrRetainedDraft.Error())
+}
+
+func synthesizeJournalAdmissionStart(
+	request protocol.TurnRecoveryRequest,
+) *protocol.TurnStartedData {
+	prompt := strings.TrimSpace(request.Prompt)
+	if prompt == "" {
+		prompt = "Settle the retained workspace journal draft, then continue the user's request."
+	}
+	return &protocol.TurnStartedData{
+		Prompt: prompt, DisplayPrompt: prompt,
+		Intent: protocol.TurnIntentAnswer,
+	}
 }

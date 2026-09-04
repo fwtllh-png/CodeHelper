@@ -304,6 +304,10 @@ export function App({client}: Props) {
     () => projectedEntries.filter((entry) => entry.kind !== "receipt"),
     [projectedEntries]
   );
+  const terminalTurns = useMemo(
+    () => terminalTurnKinds(snapshot.events),
+    [snapshot.events]
+  );
   const resumableTurnID = selected?.status === "blocked" ||
       selected?.status === "interrupted"
     ? selected.latest_turn_id
@@ -1133,7 +1137,7 @@ export function App({client}: Props) {
       sessionIsBusy(session) || session.isolation === "worktree";
     const prompt = hasUnfinishedWork
       ? `Delete "${session.title}" and permanently discard its unfinished work?`
-      : `Delete "${session.title}"?`;
+      : `Delete "${session.title}" and permanently discard its unfinished workspace draft if one exists?`;
     if (!window.confirm(prompt)) return;
     void runSessionAction(session, () => client.deleteSession(
       session.session_id,
@@ -1651,38 +1655,23 @@ export function App({client}: Props) {
                 <p>{snapshot.workspaceRoot}</p>
               </div>
             ) : (
-              visibleEntries.map((entry) => (
-                <div
-                  className="transcriptEntryAnchor"
-                  data-entry-id={entry.id}
-                  data-entry-kind={entry.kind}
-                  data-turn-id={entry.turnID || undefined}
-                  data-navigation-current={
-                    navigationHighlightID === entry.id || undefined
-                  }
-                  key={entry.id}
-                >
-                  <TranscriptItem
-                    entry={entry}
-                    client={client}
-                    onError={reportLocalError}
-                    onInspect={inspectTool}
-                    canOpenPath={snapshot.canOpenPath}
-                    checkpoint={checkpointForTurn(
-                      snapshot.checkpoints,
-                      entry.turnID
-                    )}
-                    recoveryTurnID={resumableTurnID}
-                    chrome={turnChrome.get(entry.turnID)}
-                    feedback={snapshot.messageFeedback[
-                      `${snapshot.selectedSessionID}:${entry.id}`
-                    ]}
-                    onFeedback={(rating) => client.toggleMessageFeedback(
-                      entry.id,
-                      rating
-                    )}
-                  />
-                </div>
+              groupTranscriptTurns(visibleEntries).map((turn) => (
+                <TurnTranscript
+                  key={turn.id}
+                  entries={turn.entries}
+                  terminalKind={terminalTurns.get(turn.turnID)}
+                  revealEntryID={navigationTarget?.entryID}
+                  client={client}
+                  onError={reportLocalError}
+                  onInspect={inspectTool}
+                  canOpenPath={snapshot.canOpenPath}
+                  checkpoints={snapshot.checkpoints}
+                  recoveryTurnID={resumableTurnID}
+                  chrome={turnChrome.get(turn.turnID)}
+                  messageFeedback={snapshot.messageFeedback}
+                  selectedSessionID={snapshot.selectedSessionID}
+                  navigationHighlightID={navigationHighlightID}
+                />
               ))
             )}
             {activeTurn && <TurnStatus events={snapshot.events} turnID={activeTurn} />}
@@ -2401,6 +2390,208 @@ function DisclosureLeading({
   );
 }
 
+type TerminalTurnKind = "completed" | "failed";
+
+interface TranscriptTurn {
+  readonly id: string;
+  readonly turnID: string;
+  readonly entries: readonly ConversationNode[];
+}
+
+function groupTranscriptTurns(
+  entries: readonly ConversationNode[]
+): readonly TranscriptTurn[] {
+  const turns: TranscriptTurn[] = [];
+  for (const entry of entries) {
+    const previous = turns.at(-1);
+    if (previous?.turnID === entry.turnID) {
+      turns[turns.length - 1] = {
+        ...previous,
+        entries: [...previous.entries, entry]
+      };
+      continue;
+    }
+    turns.push({
+      id: `${entry.turnID}:${entry.id}`,
+      turnID: entry.turnID,
+      entries: [entry]
+    });
+  }
+  return turns;
+}
+
+function terminalTurnKinds(
+  events: readonly RuntimeEvent[]
+): ReadonlyMap<string, TerminalTurnKind> {
+  const result = new Map<string, TerminalTurnKind>();
+  for (const event of events) {
+    if (event.kind === "turn.completed") {
+      result.set(event.turn_id, "completed");
+    } else if (event.kind === "turn.failed" || event.kind === "turn.canceled") {
+      result.set(event.turn_id, "failed");
+    }
+  }
+  return result;
+}
+
+function terminalConclusion(
+  entries: readonly ConversationNode[],
+  terminalKind: TerminalTurnKind
+): ConversationNode | undefined {
+  if (terminalKind === "completed") {
+    return [...entries].reverse().find(
+      (entry): entry is Extract<ConversationNode, {kind: "assistant"}> =>
+        entry.kind === "assistant" && !entry.superseded
+    );
+  }
+  return [...entries].reverse().find(
+    (entry): entry is Extract<ConversationNode, {kind: "status"}> =>
+      entry.kind === "status"
+  );
+}
+
+function TurnTranscript({
+  entries,
+  terminalKind,
+  revealEntryID,
+  client,
+  onError,
+  onInspect,
+  canOpenPath,
+  checkpoints,
+  recoveryTurnID,
+  chrome,
+  messageFeedback,
+  selectedSessionID,
+  navigationHighlightID
+}: {
+  entries: readonly ConversationNode[];
+  terminalKind?: TerminalTurnKind;
+  revealEntryID?: string;
+  client: RuntimeClient;
+  onError: (error: unknown) => void;
+  onInspect: (callID: string) => void;
+  canOpenPath: boolean;
+  checkpoints: readonly SessionCheckpoint[];
+  recoveryTurnID?: string;
+  chrome?: MessageChrome;
+  messageFeedback: RuntimeSnapshot["messageFeedback"];
+  selectedSessionID: string;
+  navigationHighlightID: string;
+}) {
+  const conclusion = terminalKind
+    ? terminalConclusion(entries, terminalKind)
+    : undefined;
+  const executionEntries = terminalKind
+    ? entries.filter((entry) => entry.kind !== "user" && entry.id !== conclusion?.id)
+    : [];
+  const visibleEntries = terminalKind
+    ? entries.filter((entry) => entry.kind === "user" || entry.id === conclusion?.id)
+    : entries;
+  const revealExecution = Boolean(
+    revealEntryID && executionEntries.some((entry) => entry.id === revealEntryID)
+  );
+  const [executionOpen, setExecutionOpen] = useState(false);
+
+  useEffect(() => {
+    if (revealExecution) setExecutionOpen(true);
+  }, [revealExecution]);
+
+  const renderEntry = (entry: ConversationNode) => (
+    <TranscriptEntry
+      key={entry.id}
+      entry={entry}
+      client={client}
+      onError={onError}
+      onInspect={onInspect}
+      canOpenPath={canOpenPath}
+      checkpoint={checkpointForTurn(checkpoints, entry.turnID)}
+      recoveryTurnID={recoveryTurnID}
+      chrome={chrome}
+      feedback={messageFeedback[`${selectedSessionID}:${entry.id}`]}
+      onFeedback={(rating) => client.toggleMessageFeedback(entry.id, rating)}
+      navigationHighlightID={navigationHighlightID}
+    />
+  );
+
+  return (
+    <section className="turnTranscript" data-turn-id={entries[0]?.turnID}>
+      {visibleEntries.map(renderEntry)}
+      {executionEntries.length > 0 && (
+        <div
+          className="turnExecution"
+          data-expanded={executionOpen || undefined}
+        >
+          <button
+            type="button"
+            className="turnExecutionToggle"
+            aria-expanded={executionOpen}
+            onClick={() => setExecutionOpen((value) => !value)}
+          >
+            {executionOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <span>Execution details</span>
+            <small>{executionEntries.length} steps</small>
+          </button>
+          {executionOpen && (
+            <div className="turnExecutionItems">
+              {executionEntries.map(renderEntry)}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TranscriptEntry({
+  entry,
+  client,
+  onError,
+  onInspect,
+  canOpenPath,
+  checkpoint,
+  recoveryTurnID,
+  chrome,
+  feedback,
+  onFeedback,
+  navigationHighlightID
+}: {
+  entry: ConversationNode;
+  client: RuntimeClient;
+  onError: (error: unknown) => void;
+  onInspect: (callID: string) => void;
+  canOpenPath: boolean;
+  checkpoint?: SessionCheckpoint;
+  recoveryTurnID?: string;
+  chrome?: MessageChrome;
+  feedback?: MessageFeedbackRating;
+  onFeedback: (rating: MessageFeedbackRating) => void;
+  navigationHighlightID: string;
+}) {
+  return (
+    <div
+      className="transcriptEntryAnchor"
+      data-entry-id={entry.id}
+      data-entry-kind={entry.kind}
+      data-turn-id={entry.turnID || undefined}
+      data-navigation-current={navigationHighlightID === entry.id || undefined}
+    >
+      <TranscriptItem
+        entry={entry}
+        client={client}
+        onError={onError}
+        onInspect={onInspect}
+        canOpenPath={canOpenPath}
+        checkpoint={checkpoint}
+        recoveryTurnID={recoveryTurnID}
+        chrome={chrome}
+        feedback={feedback}
+        onFeedback={onFeedback}
+      />
+    </div>
+  );
+}
+
 const TranscriptItem = memo(function TranscriptItem({
   entry,
   client,
@@ -2860,7 +3051,8 @@ function InputComposer({
           />
         )}
         <input
-          aria-label="Input answer"
+          aria-label="Custom input answer"
+          placeholder="Or enter a custom answer"
           value={answer}
           autoFocus
           disabled={submitting}

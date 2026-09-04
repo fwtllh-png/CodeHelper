@@ -96,6 +96,9 @@ type LifecycleConfig struct {
 	DelegationMode         string
 	InputHost              *interact.Host
 	ProfileRevision        uint64
+	// SessionForTurn reports the living session that owns a turn. The
+	// boolean is false when the turn or its session no longer exists.
+	SessionForTurn func(context.Context, string) (string, bool)
 }
 
 type Options struct {

@@ -10,6 +10,7 @@ export interface ModelMetadataDraft {
   wireID: string;
   contextTokens: string;
   maxOutputTokens: string;
+  limitsDetected: boolean;
   capabilities: SetupModelCapabilities;
   reasoningEfforts: string;
   defaultReasoningEffort: string;
@@ -21,6 +22,7 @@ export function emptyModelMetadataDraft(modelID = ""): ModelMetadataDraft {
     wireID: modelID,
     contextTokens: "",
     maxOutputTokens: "",
+    limitsDetected: false,
     capabilities: {
       streaming: true,
       reasoning: false,
@@ -48,6 +50,7 @@ export function modelMetadataDraft(
     wireID: metadata.wire_id,
     contextTokens: String(metadata.context_tokens),
     maxOutputTokens: String(metadata.max_output_tokens),
+    limitsDetected: false,
     capabilities: {...metadata.capabilities, streaming: true},
     reasoningEfforts: metadata.capabilities.reasoning_efforts?.join(", ") ?? "",
     defaultReasoningEffort:
@@ -60,6 +63,9 @@ export function modelMetadataFromProbe(
   result: SetupProbeResult
 ): ModelMetadataDraft {
   const discovered = result.models?.find((model) => model.id === modelID);
+  const limitsDetected = Boolean(
+    discovered?.context_tokens && discovered.max_output_tokens
+  );
   return {
     canonicalID: modelID,
     wireID: modelID,
@@ -69,6 +75,7 @@ export function modelMetadataFromProbe(
     maxOutputTokens: discovered?.max_output_tokens
       ? String(discovered.max_output_tokens)
       : "",
+    limitsDetected,
     capabilities: {
       streaming: result.capabilities.streaming,
       reasoning: result.capabilities.reasoning,
@@ -206,10 +213,12 @@ export function ModelMetadataFields({
   return (
     <>
       <div className="settingsFacts">
-        {[
-          ...limitFields,
-          ...(value.capabilities.reasoning ? reasoningFields : [])
-        ].map(({key, label, type, placeholder}) => (
+        {value.limitsDetected ? (
+          <div className="detectedModelLimits" aria-label="Detected model limits">
+            <span>Context {Number(value.contextTokens).toLocaleString()}</span>
+            <span>Max output {Number(value.maxOutputTokens).toLocaleString()}</span>
+          </div>
+        ) : limitFields.map(({key, label, type, placeholder}) => (
           <label className="selectField" key={key}>
             <span>{label}</span>
             <input
@@ -225,6 +234,24 @@ export function ModelMetadataFields({
             />
           </label>
         ))}
+        {value.capabilities.reasoning && reasoningFields.map(
+          ({key, label, type, placeholder}) => (
+            <label className="selectField" key={key}>
+              <span>{label}</span>
+              <input
+                className="settingsSelect"
+                type={type}
+                min="1"
+                step="1"
+                aria-label={label}
+                placeholder={placeholder}
+                value={value[key]}
+                disabled={disabled}
+                onChange={(event) => updateText(key, event.target.value)}
+              />
+            </label>
+          )
+        )}
       </div>
     </>
   );

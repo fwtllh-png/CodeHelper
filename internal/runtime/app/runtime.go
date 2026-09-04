@@ -666,6 +666,9 @@ func (r *SessionService) deleteSession(
 	} else if err := ensureSessionQuiescent(current, "delete"); err != nil {
 		return protocol.SessionDeleteResult{}, err
 	}
+	if err := r.reclaimSessionWorkspaceDrafts(ctx, threadIDs); err != nil {
+		return protocol.SessionDeleteResult{}, err
+	}
 	if current.Isolation == SessionIsolationWorktree {
 		if r.sessionWorkspaces == nil {
 			return protocol.SessionDeleteResult{}, runtimeProblem(protocol.CodeUnavailable, "isolated Chat workspaces are unavailable", nil)
@@ -1845,7 +1848,8 @@ func (r *RecoveryService) recoverPendingTurns(ctx context.Context) error {
 				string(turnID),
 			)
 			if err != nil {
-				return err
+				// A single unrestorable Turn must not block Runtime boot.
+				continue
 			}
 			start, _ := operation.Payload.(*protocol.StartTurnPayload)
 			if len(facts) == 0 && (start == nil || start.QueueID == "") {

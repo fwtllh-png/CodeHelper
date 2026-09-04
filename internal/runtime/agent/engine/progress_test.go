@@ -10,7 +10,6 @@ import (
 	"github.com/fwtllh-png/QCode/internal/adapter/tool"
 	completiontool "github.com/fwtllh-png/QCode/internal/adapter/tool/completion"
 	"github.com/fwtllh-png/QCode/internal/adapter/tool/interact"
-	agentcontext "github.com/fwtllh-png/QCode/internal/runtime/agent/context"
 	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
@@ -33,7 +32,11 @@ func TestProgressSignatureDoesNotCountReadsWhenImplementWorkIsOpen(
 		nil,
 	)
 	before := engine.progressSignature(answer)
-	engine.context.WorkingSet().Observe(agentcontext.SourceRead, engine.turn, "a.go")
+	if err := answer.BindWorkItem(turnkernel.BindWorkItem{
+		KnownReads: map[string]turnkernel.WorkItemRead{"a.go": {Window: "full"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if after := engine.progressSignature(answer); after != before {
 		t.Fatal("new file_read path renewed implement-work progress")
 	}
@@ -52,25 +55,25 @@ func TestApplyImplementProgressLeaseTightensFinishOnly(t *testing.T) {
 		},
 	}
 	engine.applyImplementProgressLease(&spec)
-	if spec.Kernel.Convergence.ProgressFinishOnly != 6 ||
-		spec.Kernel.Convergence.ResearchFinishOnly != 6 ||
-		spec.Kernel.Convergence.ProgressConverge != 3 ||
-		spec.Kernel.Convergence.ProgressLimit < 7 {
-		t.Fatalf("implement lease = %+v", spec.Kernel.Convergence)
+	if spec.Kernel.ImplementNoProgressSamples != 6 {
+		t.Fatalf("implement lease samples = %d", spec.Kernel.ImplementNoProgressSamples)
+	}
+	if spec.Kernel.Convergence != turnkernel.ConvergencePolicyForStepLimit(64) {
+		t.Fatalf("prepare-time lease mutated convergence: %+v", spec.Kernel.Convergence)
 	}
 	idle := newEngine(t, &scriptedProvider{}, tool.NewRegistry(nil, nil))
-	idle.options.ImplementNoProgressSamples = 6
+	idle.options.ImplementNoProgressSamples = 0
 	unchanged := TurnSpec{
 		Kernel: turnkernel.Policy{
 			Convergence: turnkernel.ConvergencePolicyForStepLimit(64),
 		},
 	}
-	want := unchanged.Kernel.Convergence
+	want := unchanged.Kernel
 	idle.applyImplementProgressLease(&unchanged)
-	if unchanged.Kernel.Convergence != want {
+	if unchanged.Kernel != want {
 		t.Fatalf(
-			"idle implement lease changed %+v, want %+v",
-			unchanged.Kernel.Convergence,
+			"zero implement lease changed %+v, want %+v",
+			unchanged.Kernel,
 			want,
 		)
 	}
@@ -100,7 +103,15 @@ func TestProgressSignatureCountsResearchReadsOnlyForResearchTurns(
 	answerBefore := engine.progressSignature(answer)
 	workspaceBefore := engine.progressSignature(workspace)
 
-	engine.context.WorkingSet().Observe(agentcontext.SourceRead, engine.turn, "a.go")
+	bind := turnkernel.BindWorkItem{
+		KnownReads: map[string]turnkernel.WorkItemRead{"a.go": {Window: "full"}},
+	}
+	if err := answer.BindWorkItem(bind); err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.BindWorkItem(bind); err != nil {
+		t.Fatal(err)
+	}
 
 	if answerAfter := engine.progressSignature(answer); answerAfter == answerBefore {
 		t.Fatal("new research path did not advance answer progress")
@@ -121,6 +132,7 @@ func TestProgressSignatureDoesNotRenewForMutationRevisionAlone(t *testing.T) {
 		nil,
 	)
 	before := engine.progressSignature(kernel)
+	var afterFirst string
 	for index := range 2 {
 		call := provider.ToolCall{
 			ID:   fmt.Sprintf("write-%d", index),
@@ -141,9 +153,17 @@ func TestProgressSignatureDoesNotRenewForMutationRevisionAlone(t *testing.T) {
 		}, nil); err != nil {
 			t.Fatal(err)
 		}
-		if after := engine.progressSignature(kernel); after != before {
-			t.Fatalf("mutation %d renewed progress: before=%q after=%q",
-				index+1, before, after)
+		after := engine.progressSignature(kernel)
+		if index == 0 {
+			if after == before {
+				t.Fatal("first edited path did not enter the Work Item signature")
+			}
+			afterFirst = after
+			continue
+		}
+		if after != afterFirst {
+			t.Fatalf("same-path edit renewed progress: first=%q after=%q",
+				afterFirst, after)
 		}
 	}
 }
@@ -169,8 +189,8 @@ func TestProgressSignatureCountsSuccessfulAgentLifecycleCalls(t *testing.T) {
 	if err := kernel.CloseTool(call, tool.Result{}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if after := engine.progressSignature(kernel); after == before {
-		t.Fatal("successful Agent lifecycle transition did not advance progress")
+	if after := engine.progressSignature(kernel); after != before {
+		t.Fatal("agent lifecycle call renewed Work Item path-set progress")
 	}
 }
 

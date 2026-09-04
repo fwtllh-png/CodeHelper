@@ -18,6 +18,9 @@ type DeclaredNetworkTarget struct {
 func NetworkTargetsInputSchema() map[string]any {
 	return map[string]any{
 		"type": "array",
+		"description": "Exact outbound HTTP(S) destinations only. Do not add " +
+			"localhost or port 0 for a local listener; omit this field and use " +
+			"allow_loopback instead.",
 		"items": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -31,6 +34,8 @@ func NetworkTargetsInputSchema() map[string]any {
 				},
 				"port": map[string]any{
 					"type": "integer", "minimum": 1, "maximum": 65535,
+					"description": "Exact outbound port. Port 0 is an ephemeral local " +
+						"listener, not a network destination; use allow_loopback instead.",
 				},
 				"methods": map[string]any{
 					"type":        "array",

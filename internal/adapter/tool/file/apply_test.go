@@ -174,6 +174,59 @@ func TestFileApplyEditsTheSameFileTwiceInOneCall(t *testing.T) {
 	}
 }
 
+func TestFileApplyNoopSucceedsWithoutAWorkspaceMutation(t *testing.T) {
+	root, registry := applyTools(t, map[string]string{
+		"sample.txt": "already current\n",
+	})
+	result, err := applyChanges(t, root, registry, []map[string]any{
+		{"op": "write", "path": "sample.txt", "content": "already current\n"},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Content != "no changes" || result.Metadata["observed_changes"] != 0 {
+		t.Fatalf("noop result = %+v", result)
+	}
+	if got := read(t, root, "sample.txt"); got != "already current\n" {
+		t.Fatalf("sample.txt = %q", got)
+	}
+}
+
+func TestFileApplyNoopDoesNotRequestApproval(t *testing.T) {
+	root, registry := applyTools(t, map[string]string{
+		"sample.txt": "already current\n",
+	})
+	requestedApproval := false
+	guarded, err := toolguard.New(toolguard.Options{
+		Registry:  registry,
+		Policy:    policy.DefaultRuntime(policy.ModeAct, policy.PermissionSuggest),
+		Workspace: root,
+		Approvals: func(context.Context, toolguard.ApprovalRequest) error {
+			requestedApproval = true
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := guarded.Execute(
+		t.Context(), "read", "file_read", json.RawMessage(`{"path":"sample.txt"}`),
+	); err != nil {
+		t.Fatal(err)
+	}
+	result, err := guarded.Execute(
+		t.Context(), "noop", "file_apply", json.RawMessage(`{
+		"changes":[{"op":"write","path":"sample.txt","content":"already current\n"}]
+	}`),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requestedApproval || result.Content != "no changes" {
+		t.Fatalf("requested approval=%v result=%+v", requestedApproval, result)
+	}
+}
+
 // Composition happens in memory, so a precondition that fails on the last
 // operation must leave the files named by the earlier ones untouched.
 func TestFileApplyValidationFailureWritesNothing(t *testing.T) {

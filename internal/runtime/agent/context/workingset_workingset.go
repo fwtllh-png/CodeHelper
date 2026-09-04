@@ -223,6 +223,23 @@ func (l *WorkingSetLedger) PathsObservedAt(source WorkingSetSource, turn uint64)
 	return paths
 }
 
+// PathsWithSource returns every path source has ever named, sorted.
+func (l *WorkingSetLedger) PathsWithSource(source WorkingSetSource) []string {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var paths []string
+	for path, stored := range l.records {
+		if _, found := stored.sources[source]; found {
+			paths = append(paths, path)
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
 // HasSource reports whether source ever named path. The evidence ledger asks it
 // to tell an edit that rested on a read from one made blind.
 func (l *WorkingSetLedger) HasSource(source WorkingSetSource, path string) bool {

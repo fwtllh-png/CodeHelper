@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -548,6 +550,84 @@ func TestDeleteSessionProtectsAndDiscardsWorktree(t *testing.T) {
 	}
 	if !store.deleted || !workspaces.discarded {
 		t.Fatal("clean deleted worktree was not discarded")
+	}
+}
+
+func TestDiscardSessionRevertsOwnedWorkspaceDraft(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "value.txt")
+	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journal := newTestWorkspaceJournal(t, root)
+	if err := journal.Begin("turn-draft"); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Before(t.Context(), path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("draft\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.After(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Suspend("turn-draft"); err != nil {
+		t.Fatal(err)
+	}
+	events := NewMemoryEventStore(4)
+	started, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 1, OperationID: "operation-draft",
+		ThreadID: "thread-draft", TurnID: "turn-draft", ItemID: "item-draft",
+	}, &protocol.TurnStartedData{Provider: "test", Model: "test", Prompt: "edit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), started); err != nil {
+		t.Fatal(err)
+	}
+	canceled, err := protocol.NewEvent(protocol.EventMeta{
+		Sequence: 2, OperationID: "operation-draft",
+		ThreadID: "thread-draft", TurnID: "turn-draft", ItemID: "item-draft",
+	}, &protocol.TurnCanceledData{Reason: "user_interrupted"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := events.Append(t.Context(), canceled); err != nil {
+		t.Fatal(err)
+	}
+	threads := NewThreadManager(nil)
+	threads.SetHostJournal(journal)
+	store := &memorySessionLifecycleStore{summary: protocol.SessionSummary{
+		Version: protocol.SessionLifecycleVersion, Revision: 1,
+		SessionID: "session-draft", ThreadID: "thread-draft",
+		Title: "Draft", Status: protocol.SessionStatusCompleted,
+		Isolation: "shared", WorkspaceRoot: root,
+		WorkspaceLabel: "workspace",
+		CreatedAt:      time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}}
+	runtime := NewRuntime(Options{
+		Engine:           threads,
+		EventStore:       events,
+		SessionLifecycle: store,
+	})
+	t.Cleanup(func() { closeRuntime(t, runtime) })
+	if _, err := runtime.DiscardSession(
+		t.Context(),
+		store.summary.SessionID,
+		store.summary.Revision,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if journal.HasDraft("turn-draft") {
+		t.Fatal("deleted session left a workspace draft")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "before\n" {
+		t.Fatalf("reverted draft = %q", data)
 	}
 }
 

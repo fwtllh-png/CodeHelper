@@ -189,6 +189,15 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		SessionID: state.config.runtimeSessionID,
 		InputHost: session.inputHost},
 	}
+	if store := state.options.PersistentStore; store != nil {
+		seedOptions.SessionForTurn = func(
+			ctx context.Context,
+			turnID string,
+		) (string, bool) {
+			sessionID, err := store.SessionForTurn(ctx, turnID)
+			return sessionID, err == nil && sessionID != ""
+		}
+	}
 	defaultProfile := protocol.SessionProfile{
 		Version: protocol.SessionProfileVersion, Revision: 1,
 		Mode:                execution.Mode,
@@ -227,6 +236,9 @@ func (agentModule) Build(ctx context.Context, state *buildState) error {
 		turnProcessReleaser: session.turnProcessReleaser,
 	}
 	threadManager := app.NewThreadManager(coreBuilder.BuildMain)
+	if state.security.journal != nil {
+		threadManager.SetHostJournal(state.security.journal)
+	}
 	session.threads = threadManager
 	subagent.BindRuntimeContext(state.orchestration.subagents, threadManager)
 	threadManager.SetChildFactory(coreBuilder.BuildChild)

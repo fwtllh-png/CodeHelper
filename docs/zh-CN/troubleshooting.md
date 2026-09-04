@@ -83,6 +83,17 @@ Web Settings 会显示 Provider、Model、Credential 状态与校验结果。确
 
 批准只绑定当前 Request/Turn/Item/Edit Plan Identity，旧批准不能复用到新请求。
 
+本地 Fixture 或 Socket 测试被拒绝且原因为
+`managed_proxy` / `authority_unverified` 时：保持 `allow_loopback=true`，省略
+`network_targets`，不要改用 `quality_process_smoke` 冒充单测通过。该错误在审批
+已生效后仍出现，表示执行权与托管代理未对齐；按工具结果里的 `required_action`
+处理，而不是改端口 `0`。
+
+Bash 卡片长时间停在「执行中」且没有 `tool.result` 时：旧 Runtime 会把非 TTY
+`exec_command` 挂到进程自己退出。重启带修复的 Binary 后，第一次 Sample 最多等到
+`yield_time_ms` 就返回；仍在运行则跟 `write_stdin`，或设 `timeout_ms`。当前 Turn
+仍卡住时先 Cancel，避免残留已死锁的测试进程。
+
 ## Session 无法恢复或删除
 
 Browser State 不是事实来源。刷新后 Web 会重新获取 Session Snapshot，并从
@@ -91,7 +102,12 @@ Browser State 不是事实来源。刷新后 Web 会重新获取 Session Snapsho
 删除 Session 时：
 
 - 活跃内存执行者或恢复中的 Operation 会阻止删除；
-- 已失去执行者的未完成 Turn 可在明确确认后连同隔离 Worktree 一并丢弃；
+- 已失去执行者的未完成 Turn 可在明确确认后连同隔离 Worktree 和该 Session 的
+  Workspace Journal 草稿一并丢弃（草稿对应的文件会按 Journal 回滚）；
+- 若删除后新 Session 仍报 `workspace journal has a retained draft`，说明旧草稿已成
+  孤儿：在黄卡上 `Continue` 保留这些文件，`Retry` 回滚后才能重新执行；
+- `source Turn is unavailable or not terminal` 出现在 Journal 准入失败、尚未写出
+  `turn.started` 时；重启带修复的 Runtime 后再点黄卡 `Retry` 或 `Continue`；
 - 归档 Session 需要先在侧栏显示归档项，再执行恢复或删除。
 
 不要手工改写 SQLite、Event Log、CAS 或 Journal 来伪造终态。

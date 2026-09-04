@@ -147,7 +147,7 @@ func TestWebSetupResolvesKnownModelToOwningProviderPreset(t *testing.T) {
 		t.Fatal(err)
 	}
 	if route.Model().Limits.ContextTokens != 1_048_576 ||
-		route.Model().Limits.MaxOutputTokens != 393_216 ||
+		route.Model().Limits.MaxOutputTokens != 384_000 ||
 		!route.Model().Capabilities.Reasoning ||
 		!route.Model().Capabilities.PromptCache {
 		t.Fatalf("resolved model capabilities = %+v", route.Model())
@@ -207,6 +207,16 @@ func TestWebSetupPersistsOnlyNonSecretSelection(t *testing.T) {
 	if wireID := setupWireModelID(selection, selection.Model); wireID != "wire-model-v1" {
 		t.Fatalf("wire model id = %q", wireID)
 	}
+	t.Run("no registered models", func(t *testing.T) {
+		dataDir := t.TempDir()
+		if err := saveWebSetupSelection(dataDir, "workspace", selection); err != nil {
+			t.Fatal(err)
+		}
+		loaded, found, err := loadWebSetupSelection(dataDir, "workspace")
+		if err != nil || !found || !reflect.DeepEqual(loaded, selection) {
+			t.Fatalf("loaded setup = %+v found=%v err=%v", loaded, found, err)
+		}
+	})
 	selection.Credential = &credential.Reference{
 		Kind: "keyring",
 		Name: "web/setup/00000000000000000000000000000000",

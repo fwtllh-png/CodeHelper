@@ -11,6 +11,8 @@ import (
 	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
+var errWorkspaceUnchanged = errors.New("workspace edit produces no changes")
+
 type preparedExecution struct {
 	invocation Invocation
 	executor   tool.Executor
@@ -247,6 +249,9 @@ func (g *Guard) planApprovalEdit(
 	plan, err := planner.PlanEdit(ctx, invocation.Arguments)
 	if err != nil {
 		return nil, fmt.Errorf("plan workspace edit: %w", err)
+	}
+	if len(plan.Files) == 0 {
+		return nil, errWorkspaceUnchanged
 	}
 	return &plan, nil
 }

@@ -161,6 +161,13 @@ func applyToolResult(
 			Mutation: transition.State.MutationRevision,
 		})
 	}
+	applyWorkItemObservation(
+		&transition.State,
+		call,
+		command.Changes,
+		command.Observation,
+		command.IsError,
+	)
 	switch {
 	case len(transition.State.PendingApprovals) != 0:
 		move(transition, PhaseAwaitingApproval)
