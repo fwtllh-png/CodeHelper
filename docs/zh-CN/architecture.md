@@ -346,9 +346,9 @@ Reset、Retry、Compaction、Resume 或任意不确定状态都会回退完整�
 Logical/Transport Digest 与序列化 Request Bytes，传输收益不会被报告为 Token 收益。
 
 每条 Route 都携带显式 `AdapterID`，不可变 Provider Router 是生产环境唯一采样路径。
-Composition Root 安装专用 OpenAI、DeepSeek、Anthropic Adapter，以及一个参数化的
-OpenAI-compatible Adapter。DeepSeek 不广告 Incremental Responses，因此其 Chat 与
-Responses Route 始终使用完整 HTTP/SSE 请求，不发送 `previous_response_id`。
+Composition Root 安装 OpenAI、Anthropic Adapter，以及一个参数化的 OpenAI-compatible
+Adapter。DeepSeek 与 GLM 通过后者接入；它们不广告 Incremental Responses，因此
+Chat Route 始终使用完整 HTTP/SSE 请求，不发送 `previous_response_id`。
 
 Turn 开始时冻结 `ContextCapacity`：模型 Context Window 扣除模型能力、Operator
 Ceiling 和 Turn/Session Budget 共同确定的 Output Reserve 后，得到硬输入容量。

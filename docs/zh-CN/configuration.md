@@ -456,6 +456,10 @@ Memory 使用带稳定 ID 和 Generation 的记录存储。`user`、`workspace` 
 - `openai_responses`
 - `anthropic`
 
+首次 Setup 的一级 Provider 包括 OpenAI、Anthropic、DeepSeek、GLM 和自定义
+OpenAI-Compatible。GLM 内置 `glm-5.3`、`glm-5.3-flash`，固定使用
+`https://open.bigmodel.cn/api/coding/paas/v4` 与 `openai_chat`。
+
 不要猜测标识符。Web Settings 展示 Runtime 发布的 Provider/Model Catalog；即使
 Model ID 相同，Provider ID 也可能不同，存在歧义时必须在 TOML 中显式指定 Provider。
 

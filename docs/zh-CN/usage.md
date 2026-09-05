@@ -232,7 +232,7 @@ Goal。源 Turn 已读路径在开局写入 KnownReads，整文件重读与 git 
 ## 配置与凭证
 
 首次进入且尚未完成 Runtime Setup 时，Web 不提供默认 Provider 或 Model。用户必须
-选择 OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible 服务，并输入准确的
+选择 OpenAI、Anthropic、DeepSeek、GLM 或自定义 OpenAI-Compatible 服务，并输入准确的
 Model ID。自定义 Endpoint 或未进入内置目录的 Model 还必须填写 Base URL（自定义
 Provider）、`openai_chat` / `openai_responses` 协议，以及 Canonical ID、Wire ID、
 Context、Max Output 和完整 Capability 声明。字段为空或不一致时 Runtime 拒绝构造
@@ -256,7 +256,9 @@ Catalog Model。Composer 的 `New model...` 打开独立模型配置弹窗；探
 容量或能力证明。
 
 Composer 内的 Reasoning 菜单直接采用当前模型目录声明的档位。DeepSeek 显示
-Off、Low、High、Max，默认 High；其他模型保留各自完整档位，不做跨档位折算。
+Off、Low、High、Max，默认 High；GLM-5.3 和 GLM-5.3-Flash 显示 Low、High、Max，
+默认 Max；其他模型保留各自完整档位，不做跨档位折算。GLM 使用
+`https://open.bigmodel.cn/api/coding/paas/v4` 的 OpenAI Chat Completions 兼容接口。
 
 Credential 支持创建或轮换、在线校验和二次确认删除。Settings 还可查看 Tool 的
 Policy、Constitution 和 Sandbox 信息，以及 Skill 的来源、健康、信任、权限

@@ -14,10 +14,12 @@ import (
 
 func TestWebSetupCatalogRequiresExplicitProviderAndModel(t *testing.T) {
 	catalog := webSetupCatalog()
-	if catalog.Version != webhost.SetupCatalogVersion || len(catalog.Providers) != 4 {
+	if catalog.Version != webhost.SetupCatalogVersion || len(catalog.Providers) != 5 {
 		t.Fatalf("setup catalog = %+v", catalog)
 	}
-	for _, id := range []string{"openai", "anthropic", "deepseek", customProviderID} {
+	for _, id := range []string{
+		"openai", "anthropic", "deepseek", "glm", customProviderID,
+	} {
 		found := false
 		for _, provider := range catalog.Providers {
 			if provider.ID == id {
@@ -81,6 +83,67 @@ func TestWebSetupCatalogRequiresExplicitProviderAndModel(t *testing.T) {
 		ModelMetadata: testSetupMetadata("deepseek-chat"),
 	}); err == nil {
 		t.Fatal("catalog model accepted operator metadata")
+	}
+}
+
+func TestWebSetupResolvesGLMProvider(t *testing.T) {
+	catalog := webSetupCatalog()
+	var advertised webhost.SetupProvider
+	for _, provider := range catalog.Providers {
+		if provider.ID == "glm" {
+			advertised = provider
+			break
+		}
+	}
+	if advertised.DisplayName != "GLM" ||
+		advertised.Protocol != string(model.ProtocolOpenAIChat) ||
+		!advertised.RequiresAPIKey ||
+		!reflect.DeepEqual(advertised.Models, []string{"glm-5.3", "glm-5.3-flash"}) {
+		t.Fatalf("advertised GLM provider = %+v", advertised)
+	}
+
+	selection, reference, err := resolveWebSetup(webhost.SetupRequest{
+		Provider: "glm", Model: "glm-5.3-flash", APIKey: "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Provider != "glm" ||
+		selection.Model != "glm-5.3-flash" ||
+		selection.BaseURL != "" ||
+		selection.Protocol != string(model.ProtocolOpenAIChat) ||
+		selection.Metadata != nil ||
+		selection.MetadataProvenance != model.ProvenanceBundled {
+		t.Fatalf("resolved GLM selection = %+v", selection)
+	}
+	if reference.Kind != "env" || reference.Name != "ZAI_API_KEY" {
+		t.Fatalf("resolved GLM credential = %+v", reference)
+	}
+
+	resolver, err := model.NewResolver(model.DefaultCatalog())
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, err := resolver.Resolve(model.RouteRequest{
+		ProviderID: "glm", ModelID: "glm-5.3-flash",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	capabilities := route.Model().Capabilities
+	if route.Endpoint() != "https://open.bigmodel.cn/api/coding/paas/v4" ||
+		route.Protocol() != model.ProtocolOpenAIChat ||
+		route.Adapter() != model.AdapterOpenAICompatible ||
+		route.Model().Limits.ContextTokens != 1_000_000 ||
+		route.Model().Limits.MaxOutputTokens != 131_072 ||
+		!capabilities.Reasoning ||
+		!reflect.DeepEqual(capabilities.ReasoningEfforts, []string{"low", "high", "max"}) ||
+		capabilities.DefaultReasoningEffort != "max" ||
+		!capabilities.ToolCalls ||
+		!capabilities.ImageInput ||
+		!capabilities.AutomaticPromptCache ||
+		capabilities.ThinkingToggle {
+		t.Fatalf("resolved GLM route = %+v", route.Model())
 	}
 }
 

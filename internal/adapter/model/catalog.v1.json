@@ -357,6 +357,93 @@
       }
     },
     {
+      "id": "glm",
+      "adapter": "openai_compatible",
+      "endpoint": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "protocol": "openai_chat",
+      "credential": {
+        "kind": "env",
+        "name": "ZAI_API_KEY"
+      },
+      "provenance": "bundled",
+      "models": {
+        "glm-5.3": {
+          "id": "glm-5.3",
+          "canonical_id": "glm-5.3",
+          "wire_id": "glm-5.3",
+          "limits": {
+            "context_tokens": 1000000,
+            "max_output_tokens": 131072
+          },
+          "capabilities": {
+            "streaming": true,
+            "reasoning": true,
+            "reasoning_efforts": ["low", "high", "max"],
+            "default_reasoning_effort": "max",
+            "tool_calls": true,
+            "native_search": false,
+            "vision": false,
+            "image_input": false,
+            "prompt_cache": true,
+            "automatic_prompt_cache": true,
+            "thinking_toggle": false
+          },
+          "pricing": {
+            "input_per_million": 0,
+            "output_per_million": 0,
+            "currency": "",
+            "known": false,
+            "provenance": "bundled"
+          },
+          "metadata_provenance": {
+            "canonical_id": "bundled",
+            "wire_id": "bundled",
+            "limits": "bundled",
+            "capabilities": "bundled",
+            "pricing": "bundled"
+          },
+          "provenance": "bundled"
+        },
+        "glm-5.3-flash": {
+          "id": "glm-5.3-flash",
+          "canonical_id": "glm-5.3-flash",
+          "wire_id": "glm-5.3-flash",
+          "limits": {
+            "context_tokens": 1000000,
+            "max_output_tokens": 131072
+          },
+          "capabilities": {
+            "streaming": true,
+            "reasoning": true,
+            "reasoning_efforts": ["low", "high", "max"],
+            "default_reasoning_effort": "max",
+            "tool_calls": true,
+            "native_search": false,
+            "vision": true,
+            "image_input": true,
+            "prompt_cache": true,
+            "automatic_prompt_cache": true,
+            "thinking_toggle": false
+          },
+          "pricing": {
+            "input_per_million": 0,
+            "output_per_million": 0,
+            "currency": "",
+            "known": false,
+            "provenance": "bundled"
+          },
+          "metadata_provenance": {
+            "canonical_id": "bundled",
+            "wire_id": "bundled",
+            "limits": "bundled",
+            "capabilities": "bundled",
+            "pricing": "bundled"
+          },
+          "provenance": "bundled"
+        }
+      }
+    },
+    {
       "id": "openrouter",
       "adapter": "openai_compatible",
       "endpoint": "https://openrouter.ai/api/v1",

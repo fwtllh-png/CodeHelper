@@ -91,9 +91,10 @@ func webSetupCatalog() webhost.SetupCatalog {
 		"openai":    "OpenAI",
 		"anthropic": "Anthropic",
 		"deepseek":  "DeepSeek",
+		"glm":       "GLM",
 	}
 	providers := make([]webhost.SetupProvider, 0, len(displayNames)+1)
-	for _, id := range []string{"openai", "anthropic", "deepseek"} {
+	for _, id := range []string{"openai", "anthropic", "deepseek", "glm"} {
 		provider, exists := catalog.Provider(id)
 		if !exists {
 			continue
@@ -181,13 +182,15 @@ func resolveWebSetup(request webhost.SetupRequest) (
 			"model id is invalid",
 		)
 	}
-	allowed := map[string]bool{"openai": true, "anthropic": true, "deepseek": true}
+	allowed := map[string]bool{
+		"openai": true, "anthropic": true, "deepseek": true, "glm": true,
+	}
 	catalog := model.DefaultCatalog()
 	provider, exists := catalog.Provider(providerID)
 	_, directlyKnown := provider.Models[modelID]
 	if !exists || !allowed[providerID] && !directlyKnown {
 		return webSetupSelection{}, credential.Reference{}, invalidSetup(
-			"provider must be OpenAI, Anthropic, DeepSeek, or OpenAI-compatible",
+			"provider must be OpenAI, Anthropic, DeepSeek, GLM, or OpenAI-compatible",
 		)
 	}
 	routeProvider := provider

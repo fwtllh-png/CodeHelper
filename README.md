@@ -68,7 +68,7 @@ qcode
 任意目录运行 `qcode`，当前目录自动成为 Workspace 并打开本机页面。已有 Web
 Supervisor 运行时，新目录会注册为另一个独立 Workspace Runtime，并在同一侧栏中展示，
 无需再启动一个 Web 服务。首次进入时不会预选 Provider 或 Model，用户必须在页面中选择
-OpenAI、Anthropic、DeepSeek 或自定义 OpenAI-Compatible 服务，并填写 Model ID。
+OpenAI、Anthropic、DeepSeek、GLM 或自定义 OpenAI-Compatible 服务，并填写 Model ID。
 自定义 Endpoint 或未进入内置目录的模型还必须显式填写 Context、Output 和 Capability
 元数据；Runtime 不猜测模型限制。API Key 由操作系统 Keyring 加密保存，非敏感选择与
 元数据由 Runtime 管理；无需创建或编辑配置文件。Session 只可在当前连接已验证的模型间
