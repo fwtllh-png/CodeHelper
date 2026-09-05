@@ -68,8 +68,7 @@ Web Settings 会显示 Provider、Model、Credential 状态与校验结果。确
   Provider，也不会改写 Durable History。
 
 若请求达到数十万 Token 且 Provider Projection 为 `complete_http_sse`，每次工具调用后的
-新 Sample 和每次 429 Attempt 都可能重新发送完整 Context。详细证据、只读排查字段和优化方案见
-[Provider TPM 限流与错误“消息截断”问题分析](./provider-tpm-rate-limit-and-false-truncation-analysis.md)。
+新 Sample 和每次 429 Attempt 都可能重新发送完整 Context。
 
 ## Tool 被拒绝
 

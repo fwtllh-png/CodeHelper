@@ -318,8 +318,8 @@ Workspace Integrity 不确定时，应停止执行，保留 State 与 Journal，
 公开报告中不能包含 Secret 或私有源码。应提供 Version、Platform、Command Shape、
 Sanitized Config Provenance、预期/实际 Security Decision，以及可行时的可复现 Fixture。
 
-[安全执行边界重构方案](./security-execution-boundary-refactoring-plan.md)的阶段 0-6
-已交付 State Domain、Operation/Lease、Artifact/Process/File/VCS Broker、Process
-Smoke、stdio MCP Lifecycle、Workspace Write、Git Metadata Mutation 收口，以及
+当前已交付的执行边界包括 State Domain、Operation/Lease、
+Artifact/Process/File/VCS Broker、Process Smoke、stdio MCP Lifecycle、
+Workspace Write、Git Metadata Mutation 收口，以及
 External Descriptor/Trusted Binding 分离和 Required/Effective Controls 能力矩阵。
 后续演进必须继续通过同一 Operation、Lease、Broker 和矩阵契约扩展，不能恢复旁路。

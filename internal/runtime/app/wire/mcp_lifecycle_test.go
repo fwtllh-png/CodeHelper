@@ -42,7 +42,7 @@ func TestMCPContributorDefersAdapterUntilBackgroundRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtimeAuthority, err := mcpruntime.NewRuntimeAuthority(
-		t.TempDir(), "", 1, nil, nil,
+		t.TempDir(), "", 1, nil, newLeaseAuthority(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestMCPContributorRequiresConfigInsideTrustedStateRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtimeAuthority, err := mcpruntime.NewRuntimeAuthority(
-		t.TempDir(), "", 1, nil, nil,
+		t.TempDir(), "", 1, nil, newLeaseAuthority(),
 	)
 	if err != nil {
 		t.Fatal(err)

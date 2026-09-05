@@ -76,7 +76,7 @@ func streamingTurn(t *testing.T, executor tool.Executor, options func(*Options))
 	if options != nil {
 		options(&opts)
 	}
-	engine, err := New(opts)
+	engine, err := newTestEngine(opts)
 	if err != nil {
 		t.Fatal(err)
 	}

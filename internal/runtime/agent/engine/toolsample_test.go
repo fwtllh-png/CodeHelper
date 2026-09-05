@@ -94,7 +94,7 @@ func TestAToolsModelCallLandsOnTheTurnsBooks(t *testing.T) {
 	if err := registry.Register(samplingTool{sampler: sampler, route: visionRoute}); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: scripted, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: scripted, Route: testRoute(t),
 		MaxOutputTokens: 128, MaxSteps: 3}, ToolConfig: ToolConfig{Tools: registry}, SecurityConfig: SecurityConfig{Workspace: t.TempDir()},
 	})
 	if err != nil {
@@ -205,7 +205,7 @@ func TestASampleOutsideATurnIsStillServed(t *testing.T) {
 }
 
 func TestToolSampleUsageEmitFailureStopsTheStream(t *testing.T) {
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{streams: []provider.Stream{textStream("unused")}},
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{streams: []provider.Stream{textStream("unused")}},
 		Route: testRoute(t), MaxOutputTokens: 128}, SecurityConfig: SecurityConfig{Workspace: t.TempDir()},
 	})
 	if err != nil {
@@ -254,7 +254,7 @@ func TestToolSampleUsageProjectionFailureIsSecondary(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{streams: []provider.Stream{
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{streams: []provider.Stream{
 		&providerfixture.SliceStream{Events: []provider.StreamEvent{
 			{Type: provider.EventToolCallDelta, ToolCall: &provider.ToolCallFragment{
 				ID: "call-usage-failure", Name: "look", Arguments: `{}`,

@@ -52,7 +52,7 @@ func textStream(text string) provider.Stream {
 
 func TestATurnWithoutARouteTableSamplesOnTheOnlyRouteItHas(t *testing.T) {
 	scripted := &scriptedProvider{streams: []provider.Stream{textStream("done")}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: scripted, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: scripted, Route: testRoute(t),
 		MaxOutputTokens: 128, MaxSteps: 2}, SecurityConfig: SecurityConfig{Workspace: t.TempDir()},
 	})
 	if err != nil {
@@ -84,7 +84,7 @@ func TestPlanModeSamplesOnThePlanRouteAndSaysSo(t *testing.T) {
 		t.Fatal(err)
 	}
 	scripted := &scriptedProvider{streams: []provider.Stream{textStream("a plan")}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: scripted, Routes: routes,
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: scripted, Routes: routes,
 
 		// Above the plan model's own ceiling, so the clamp is observable.
 		MaxOutputTokens: 512, MaxSteps: 2}, SecurityConfig: SecurityConfig{Workspace: t.TempDir(),
@@ -125,7 +125,7 @@ func TestActModeIgnoresThePlanSlot(t *testing.T) {
 		t.Fatal(err)
 	}
 	scripted := &scriptedProvider{streams: []provider.Stream{textStream("done")}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: scripted, Routes: routes,
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: scripted, Routes: routes,
 
 		MaxOutputTokens: 128, MaxSteps: 2}, SecurityConfig: SecurityConfig{Workspace: t.TempDir(),
 		Security: policy.DefaultRuntime(policy.ModeAct, policy.PermissionBypass)},
@@ -149,7 +149,7 @@ func TestALockedTurnWithoutItsSlotFailsBeforeReachingTheProvider(t *testing.T) {
 		t.Fatal(err)
 	}
 	scripted := &scriptedProvider{streams: []provider.Stream{textStream("done")}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: scripted, Routes: routes,
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: scripted, Routes: routes,
 
 		MaxOutputTokens: 128, MaxSteps: 2}, SecurityConfig: SecurityConfig{Workspace: t.TempDir(),
 		Security: policy.DefaultRuntime(policy.ModePlan, policy.PermissionBypass)},
@@ -195,7 +195,7 @@ func TestCostFollowsTheRouteTheTurnActuallyUsed(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: scripted, Routes: routes,
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: scripted, Routes: routes,
 
 		MaxOutputTokens: 128, MaxSteps: 2}, SecurityConfig: SecurityConfig{Workspace: t.TempDir(),
 		Security: policy.DefaultRuntime(policy.ModePlan, policy.PermissionBypass)},

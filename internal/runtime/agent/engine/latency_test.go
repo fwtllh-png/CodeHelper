@@ -384,7 +384,7 @@ func newLatencyEngine(t *testing.T, options latencyEngineOptions) *Engine {
 			Scope: verify.ScopeDiagnostics, Runner: options.verifier,
 		}
 	}
-	engine, err := New(engineOptions)
+	engine, err := newTestEngine(engineOptions)
 	if err != nil {
 		t.Fatal(err)
 	}

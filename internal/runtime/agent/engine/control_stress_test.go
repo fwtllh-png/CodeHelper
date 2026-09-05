@@ -23,7 +23,7 @@ func TestStressConcurrentScopeCloseAndRun(t *testing.T) {
 	var runCount atomic.Int64
 	var closeCount atomic.Int64
 
-	scope, err := NewScope(
+	scope, err := turnkernel.NewLifecycle[string, string, string, ControlPort](
 		"stress-spec",
 		func(ctx context.Context) (string, error) {
 			runCount.Add(1)

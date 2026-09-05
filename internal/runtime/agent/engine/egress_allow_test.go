@@ -27,7 +27,7 @@ func TestAllocatedGuardGrantsEgressAfterApproval(t *testing.T) {
 	var grantedMu sync.Mutex
 	var granted []string
 
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: registry,
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: registry,
 
 		OnNetworkAllow: func(target egress.Target) {
 			grantedMu.Lock()

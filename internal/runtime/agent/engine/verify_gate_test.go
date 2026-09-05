@@ -109,7 +109,7 @@ func newVerifyGateFixture(
 	}
 	runtime := &scriptedProvider{streams: streams}
 	options.Runner = verifier
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
 		MaxOutputTokens: 128, MaxSteps: maxSteps}, ToolConfig: ToolConfig{Tools: registry,
 
 		Diagnostics: fakeDiagnosticRunner{}, Verify: options}, SecurityConfig: SecurityConfig{Workspace: root,
@@ -663,7 +663,7 @@ func TestVerifyGateSkipsTurnsWithoutFileChanges(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
 		MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil),
 
 		Verify: VerifyOptions{
@@ -746,7 +746,7 @@ func TestVerifyGateCoversToolsWhoseArgumentsCarryNoPath(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
 
 		MaxOutputTokens: 128, MaxSteps: 8}, ToolConfig: ToolConfig{Tools: registry,
 
@@ -812,7 +812,7 @@ func TestVerifyGateSkipsWritesThatChangeNoBytes(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
 
 		MaxOutputTokens: 128, MaxSteps: 8}, ToolConfig: ToolConfig{Tools: registry,
 

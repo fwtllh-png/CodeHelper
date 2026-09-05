@@ -53,7 +53,7 @@ func NewRuntimeAuthority(
 		workspaceGeneration = 1
 	}
 	if leases == nil {
-		leases = authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{})
+		return nil, errors.New("lease authority is required")
 	}
 	broker, err := processbroker.New(leases)
 	if err != nil {

@@ -54,11 +54,11 @@
 - 扩大 Pending Turn、Terminal Outbox 与 Journal Recovery 的故障注入覆盖；
 - 改进 Turn Cancel、Resume、Blocked/Waiting 和 Effect 恢复的可见性；
 - 更清晰的 Subagent Merge/Conflict 语义；
-- 持续评估[有界 Session Context](./session-context-optimization.md)的事实保留质量、
-  重复工作率和持久化写放大；
+- 持续评估有界 Session Context 的事实保留质量、重复工作率和持久化写放大；
 - 并发 Provider、Tool 与 Subagent 的资源隔离。
 
-当前可靠性边界和验证入口见 [Runtime 可靠性契约](./reliability-hardening.md)。
+当前可靠性边界和验证入口见 `testdata/contracts/reliability-matrix.json` 与
+`make reliability-gate`。
 
 ## 中期：安全与治理
 

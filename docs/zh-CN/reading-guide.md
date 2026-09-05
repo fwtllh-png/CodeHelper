@@ -8,9 +8,8 @@ Turn 中的问题。
 
 1. 根目录 `README.md`；
 2. [架构与安全设计](./architecture.md)；
-3. [Runtime 可维护性与所有权边界](./runtime-maintainability-refactoring-plan.md)；
-4. `AGENTS.md` 与 [AI Coding Agent 指南](./agent-guide.md)；
-5. `git status --short`，避免把工作区已有修改当成基线。
+3. `AGENTS.md` 与 [AI Coding Agent 指南](./agent-guide.md)；
+4. `git status --short`，避免把工作区已有修改当成基线。
 
 ## 一、先建立正确的阅读模型
 

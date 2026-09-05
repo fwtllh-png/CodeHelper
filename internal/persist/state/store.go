@@ -145,6 +145,21 @@ func (s *Store) appendOne(ctx context.Context, event protocol.Event) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.appendWithSelfHealLocked(ctx, event)
+}
+
+// appendWithSelfHealLocked appends one validated event while the caller owns
+// s.mu. A reservation conflict or projection failure caused by an earlier
+// crash or failed commit is repaired once from the durable log before the
+// same event is retried; a genuine sequence conflict fails again.
+func (s *Store) appendWithSelfHealLocked(ctx context.Context, event protocol.Event) error {
+	err := s.appendOneLocked(ctx, event)
+	if err == nil || !(errors.Is(err, ErrSequenceReserved) || errors.Is(err, ErrProjection)) {
+		return err
+	}
+	if repairErr := s.reconcile(ctx); repairErr != nil {
+		return errors.Join(err, repairErr)
+	}
 	return s.appendOneLocked(ctx, event)
 }
 
@@ -161,19 +176,24 @@ func (s *Store) appendOneLocked(ctx context.Context, event protocol.Event) error
 	if status == "committed" && eventID == string(event.ID) {
 		return nil
 	}
+	persist := eventlog.ShouldPersist(event.Kind)
 	if status == "abandoned" && eventID == string(event.ID) {
-		return nil
-	}
-	if status != "" {
+		// Streaming noise keeps its reserved slot without a log record. A
+		// durable event whose previous append failed cleanly is retried
+		// honestly below instead of reporting success without a record.
+		if !persist {
+			return nil
+		}
+	} else if status != "" {
 		return fmt.Errorf(
 			"%w: sequence=%d status=%s event_id=%s",
 			ErrSequenceReserved, event.Sequence, status, eventID,
 		)
-	}
-	if err := s.reserve(ctx, event); err != nil {
+	} else if err := s.reserve(ctx, event); err != nil {
 		return err
 	}
-	if !eventlog.ShouldPersist(event.Kind) {
+
+	if !persist {
 		if err := s.markReservation(ctx, event.Sequence, "abandoned"); err != nil {
 			return err
 		}
@@ -182,7 +202,13 @@ func (s *Store) appendOneLocked(ctx context.Context, event protocol.Event) error
 
 	evidence, err := s.events.AppendWithEvidence(ctx, event)
 	if err != nil {
-		_ = s.markReservation(context.Background(), event.Sequence, "abandoned")
+		if !errors.Is(err, eventlog.ErrIndeterminate) {
+			// A clean failure proves the log does not hold the event. An
+			// indeterminate append keeps the reservation so the next
+			// attempt reconciles from the log of record instead of
+			// risking a duplicate record.
+			_ = s.markReservation(context.Background(), event.Sequence, "abandoned")
+		}
 		return err
 	}
 	if err := s.commitProjection(ctx, event, evidence); err != nil {

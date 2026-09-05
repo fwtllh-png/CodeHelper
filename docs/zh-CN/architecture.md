@@ -406,8 +406,15 @@ Durable State 由多个明确组件组合：
 | Workspace Journal | Before Image 与编辑恢复 |
 | Snapshot | 显式 Thread 状态检查点 |
 
-SQLite 当前是初始 Schema。未来公开版本变更必须使用显式 Migration；首次基线前的开发
-迁移历史已经有意压缩。
+SQLite Schema 版本记录在 `PRAGMA user_version`，当前为版本 4。打开时只接受空库
+初始化与已知的显式迁移（v3 → v4）；更高版本拒绝打开，更低的未知版本不做自动迁移。
+首次稳定基线前的开发迁移历史已有意压缩；公开版本后的 Schema 变更必须继续使用
+显式 Migration。
+
+Event Log 与 SQLite 投影之间的一致性以事件日志为准：启动时执行 reconcile；运行期
+追加遇到预留冲突或投影失败时，也会先按日志修复一次再重试同一事件。不确定的落盘
+结果保留预留状态，交由下一次对账裁决，不会写入重复记录；此前的干净失败则允许
+重试诚实地补写日志。
 
 Persistent Runtime Wiring 在创建 Engine 前注入 SQLite Turn Coordinator Store。每个
 已接受 Transition 都在 State Commit 或 Effect Dispatch 前追加 Domain Fact。热路径恢复

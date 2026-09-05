@@ -215,7 +215,7 @@ func (s *Store) AppendAgentEvent(ctx context.Context, data protocol.EventData) e
 	if err := event.Validate(); err != nil {
 		return fmt.Errorf("validate durable agent event: %w", err)
 	}
-	return s.appendOneLocked(ctx, event)
+	return s.appendWithSelfHealLocked(ctx, event)
 }
 
 func projectAgentGraphTx(ctx context.Context, tx *sql.Tx, event protocol.Event) error {

@@ -314,3 +314,88 @@ func TestAppendEventsElidesNoiseAndKeepsAudit(t *testing.T) {
 		t.Fatalf("abandoned reservations = %d, want 2", abandoned)
 	}
 }
+
+func TestAppendSelfHealsCrashBetweenLogWriteAndProjection(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, Options{DataDir: t.TempDir(), BusyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+
+	event := testEvent(t, 1)
+	// Crash window: the sequence was reserved and the durable record was
+	// written, but the projection commit never ran.
+	if err := store.reserve(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.events.AppendWithEvidence(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without a restart, appending the same event repairs the projection.
+	if err := store.Append(ctx, event); err != nil {
+		t.Fatalf("self-healing append: %v", err)
+	}
+	if _, found, err := store.EventByID(ctx, event.ID); err != nil || !found {
+		t.Fatalf("event by id after self-heal: found=%v err=%v", found, err)
+	}
+}
+
+func TestAppendSelfHealsReservationWithoutLogRecord(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, Options{DataDir: t.TempDir(), BusyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+
+	event := testEvent(t, 1)
+	// Crash window: the sequence was reserved but the durable append never
+	// ran, leaving a stale 'reserved' row without a log record.
+	if err := store.reserve(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.Append(ctx, event); err != nil {
+		t.Fatalf("self-healing append: %v", err)
+	}
+	events, err := store.Replay(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].ID != event.ID {
+		t.Fatalf("replayed events = %+v, want the retried event", events)
+	}
+}
+
+func TestAppendRetriesAbandonedDurableEvent(t *testing.T) {
+	ctx := context.Background()
+	store, err := Open(ctx, Options{DataDir: t.TempDir(), BusyTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.CloseAll(context.Background()) })
+
+	event := testEvent(t, 1)
+	// A previous clean append failure abandoned the reservation without a
+	// log record; retrying the same durable event must write the record
+	// instead of silently reporting success.
+	if err := store.reserve(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.markReservation(ctx, event.Sequence, "abandoned"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.Append(ctx, event); err != nil {
+		t.Fatal(err)
+	}
+	events, err := store.Replay(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].ID != event.ID {
+		t.Fatalf("replayed events = %+v, want the retried durable event", events)
+	}
+}

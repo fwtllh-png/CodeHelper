@@ -34,7 +34,7 @@ func TestDeepSeekEngineCrossTurnAppendOnlyCache(t *testing.T) {
 		time.Now().UnixNano(),
 		strings.Repeat("Stable repository context preserved across turns. ", 12_000),
 	)
-	engine, err := New(Options{
+	engine, err := newTestEngine(Options{
 		ProviderConfig: ProviderConfig{
 			Provider: runtime, Route: route, MaxOutputTokens: 128,
 			ReasoningEffort: "off",

@@ -9,7 +9,6 @@
 
 - [完整导航与章节状态](./NAVIGATION.md)
 - [术语表](./glossary.md)
-- [知识文档体系建设方案](../../zh-CN/knowledge-base-plan.md)
 - [中文章节模板](./_templates/chapter.md)
 - 机器可读目录：[`docs/book/catalog.json`](../catalog.json)
 - Front Matter 契约：
@@ -62,7 +61,7 @@
    make docs-check
    ```
 
-8. 只有满足[建设方案](../../zh-CN/knowledge-base-plan.md)中的全部单章完成标准，才把
+8. 只有满足仓库章节门禁的全部完成标准，才把
    状态修改为 `verified`。
 
 ## 事实与规划

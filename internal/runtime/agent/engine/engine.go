@@ -96,8 +96,6 @@ type Engine struct {
 	admissionKernel *turnkernel.RuntimeKernel
 }
 
-var testTurnCoordinatorRuntimeFactory func() turnkernel.CoordinatorRuntime
-
 // activeRoute is the single source for sampling, limits, and pricing.
 func (e *Engine) activeRoute() model.ReadyRoute {
 	if scope := e.runningScope(); scope != nil {
@@ -185,11 +183,7 @@ func New(options Options) (*Engine, error) {
 		options.ProfileRevision = 1
 	}
 	if options.TurnCoordinatorRuntime == nil {
-		if testTurnCoordinatorRuntimeFactory == nil {
-			return nil, errors.New("turn coordinator runtime is required")
-		}
-		options.TurnCoordinatorRuntime =
-			testTurnCoordinatorRuntimeFactory()
+		return nil, errors.New("turn coordinator runtime is required")
 	}
 	if options.Verify.Mode == "" {
 		options.Verify.Mode = VerifyModeSoft

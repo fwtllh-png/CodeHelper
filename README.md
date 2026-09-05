@@ -22,8 +22,8 @@ QCode 将仓库理解、模型调用、受治理工具、审批、验证、持�
 
 `docs/zh-CN` 下的中文产品手册描述已交付行为。
 [Agent 工程知识书籍](./docs/book/zh-CN/README.md)把设计推理与 QCode 实现和
-动手实验关联起来。建设边界、全书目录、章节规范和阶段计划见
-[知识文档体系建设方案](./docs/zh-CN/knowledge-base-plan.md)。
+动手实验关联起来；全书目录与章节状态以
+[`docs/book/catalog.json`](./docs/book/catalog.json) 为准。
 
 ## 为什么建设 QCode
 
@@ -137,14 +137,10 @@ testdata/                Hermetic Provider 与 Benchmark Fixture
 | 配置 | [配置说明](./docs/zh-CN/configuration.md) |
 | Web 与工作流 | [使用指南](./docs/zh-CN/usage.md) |
 | 架构 | [架构设计](./docs/zh-CN/architecture.md) |
-| Runtime 所有权与可维护性 | [核心流程与边界](./docs/zh-CN/runtime-maintainability-refactoring-plan.md) |
 | 安全 | [安全指南](./docs/zh-CN/security.md) |
 | 本地开发 | [本地开发](./docs/zh-CN/development.md) |
 | Agent 上下文 | [Agent 指南](./docs/zh-CN/agent-guide.md) |
 | Agent 工程知识书籍 | [书籍与导航](./docs/book/zh-CN/README.md) |
-| 知识体系方案 | [文档建设方案](./docs/zh-CN/knowledge-base-plan.md) |
-| 文档治理 | [Ownership 与门禁](./docs/zh-CN/documentation-governance.md) |
-| 运行时可靠性 | [可靠性契约](./docs/zh-CN/reliability-hardening.md) |
 | 产品方向 | [后续规划](./docs/zh-CN/roadmap.md) |
 
 ## 开发

@@ -290,7 +290,7 @@ func TestContextPartitionPurityKeepsWorldSectionsAfterStablePrefix(t *testing.T)
 	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{
+	engine, err := newTestEngine(Options{
 		ProviderConfig: ProviderConfig{
 			Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128,
 		},

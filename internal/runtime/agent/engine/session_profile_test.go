@@ -153,7 +153,7 @@ func TestSessionProfileSelectsAvailableModelBetweenTurns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{
+	engine, err := newTestEngine(Options{
 		ProviderConfig: ProviderConfig{
 			Provider: &scriptedProvider{},
 			Route:    chat,
@@ -224,7 +224,7 @@ func TestSessionProfileModelChangeRotatesTokenWindowAndPreparedCompaction(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{
+	engine, err := newTestEngine(Options{
 		ProviderConfig: ProviderConfig{
 			Provider: &scriptedProvider{},
 			Route:    chat,
@@ -342,7 +342,7 @@ func TestSessionProfileToolAllowlistDoesNotBypassGuard(t *testing.T) {
 	if err := registry.Register(executor); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t),
 		MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
 
 		Authorize: func(provider.ToolCall) bool { return false }},

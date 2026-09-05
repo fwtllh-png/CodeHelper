@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,7 +12,9 @@ import (
 
 func testRuntimeAuthority(t *testing.T, workspace string) *RuntimeAuthority {
 	t.Helper()
-	runtimeAuthority, err := NewRuntimeAuthority(workspace, "", 1, nil, nil)
+	runtimeAuthority, err := NewRuntimeAuthority(
+		workspace, "", 1, nil, authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,11 +22,20 @@ func testRuntimeAuthority(t *testing.T, workspace string) *RuntimeAuthority {
 	return runtimeAuthority
 }
 
+func TestRuntimeAuthorityRequiresLeaseAuthority(t *testing.T) {
+	if _, err := NewRuntimeAuthority(t.TempDir(), "", 1, nil, nil); err == nil ||
+		!strings.Contains(err.Error(), "lease authority is required") {
+		t.Fatalf("nil lease authority error = %v, want lease authority is required", err)
+	}
+}
+
 func TestStdioLifecycleBindsConfigGenerationAndTerminates(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses POSIX shell")
 	}
-	runtimeAuthority, err := NewRuntimeAuthority(t.TempDir(), "", 1, nil, nil)
+	runtimeAuthority, err := NewRuntimeAuthority(
+		t.TempDir(), "", 1, nil, authority.NewLeaseAuthority(authority.LeaseAuthorityOptions{}),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -469,7 +469,7 @@ func TestIncompleteDeclarationStopsWithResumableBlockedOutcome(t *testing.T) {
 }
 
 func TestEngineRejectsRequiredCompletionToolMissing(t *testing.T) {
-	_, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil),
+	_, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t)}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil),
 		RequireCompletionDeclaration: true},
 	})
 	if err == nil || !strings.Contains(err.Error(), "turn_complete") {
@@ -741,7 +741,7 @@ func declarationEngine(
 ) *Engine {
 	t.Helper()
 	root := t.TempDir()
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
 		MaxOutputTokens: 256, MaxSteps: 12}, ToolConfig: ToolConfig{Tools: registry,
 
 		Authorize:                    func(provider.ToolCall) bool { return true },

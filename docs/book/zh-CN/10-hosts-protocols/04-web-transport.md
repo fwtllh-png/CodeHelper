@@ -14,7 +14,6 @@ test_paths:
   - internal/runtime/app/session_lifecycle_test.go
 source_of_truth:
   - internal/host/runtimeapi/web/server.go
-  - docs/zh-CN/web-primary-entry-plan.md
 status: verified
 last_verified: 2026-08-22
 ---

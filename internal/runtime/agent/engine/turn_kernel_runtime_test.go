@@ -7,10 +7,11 @@ import (
 	"github.com/fwtllh-png/QCode/internal/runtime/protocol"
 )
 
-func init() {
-	testTurnCoordinatorRuntimeFactory = func() turnkernel.CoordinatorRuntime {
-		return turnkernel.NewEphemeralCoordinatorRuntime()
+func newTestEngine(options Options) (*Engine, error) {
+	if options.TurnCoordinatorRuntime == nil {
+		options.TurnCoordinatorRuntime = turnkernel.NewEphemeralCoordinatorRuntime()
 	}
+	return New(options)
 }
 
 func newEngineTurnKernel(

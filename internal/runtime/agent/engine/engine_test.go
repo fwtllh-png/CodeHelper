@@ -350,7 +350,7 @@ func TestCompletionRepairHasIndependentStepBudget(t *testing.T) {
 	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
 		MaxOutputTokens: 128, MaxSteps: 2}, ToolConfig: ToolConfig{Tools: registry,
 
 		Authorize: func(provider.ToolCall) bool { return true }},
@@ -1495,7 +1495,7 @@ func TestEngineToolRoundTripAcrossProviderProtocols(t *testing.T) {
 				t.Fatal(err)
 			}
 			route := testRouteProtocol(t, server.URL, test.protocol)
-			runtime, err := New(Options{ProviderConfig: ProviderConfig{Provider: testHTTPProvider(t, route), Route: route,
+			runtime, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: testHTTPProvider(t, route), Route: route,
 				MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
 				Authorize: func(provider.ToolCall) bool { return true }},
 			})
@@ -1877,7 +1877,7 @@ func TestEngineToolsOffAndOnUseSameImplementation(t *testing.T) {
 					{Type: provider.EventMessageStop},
 				}},
 			}}
-			engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+			engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
 				MaxOutputTokens: 128, MaxSteps: 2}, ToolConfig: ToolConfig{Tools: registry},
 			})
 			if err != nil {
@@ -1907,7 +1907,7 @@ func TestEngineBindsVersionedReplayToAssistantProvenance(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), NativeSearch: true,
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), NativeSearch: true,
 		MaxOutputTokens: 128},
 	})
 	if err != nil {
@@ -1943,7 +1943,7 @@ func TestEngineBindsVersionedReplayToAssistantProvenance(t *testing.T) {
 
 func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 	runtime := &scriptedProvider{}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ContextConfig: ContextConfig{Budget: Budget{MaxTokens: 1}}})
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ContextConfig: ContextConfig{Budget: Budget{MaxTokens: 1}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1974,7 +1974,7 @@ func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 		t.Fatalf("failed turn capsule = %+v", history)
 	}
 
-	costEngine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t), MaxOutputTokens: 128}, ContextConfig: ContextConfig{Budget: Budget{MaxCostUSD: 0.000001}}})
+	costEngine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: &scriptedProvider{}, Route: testRoute(t), MaxOutputTokens: 128}, ContextConfig: ContextConfig{Budget: Budget{MaxCostUSD: 0.000001}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2015,7 +2015,7 @@ func TestEngineBudgetAndFailedHistoryRollback(t *testing.T) {
 
 	canceled, cancel := context.WithCancel(t.Context())
 	cancel()
-	cancelEngine, err := New(Options{ProviderConfig: ProviderConfig{Provider: cancelProvider{}, Route: testRoute(t), MaxOutputTokens: 128}})
+	cancelEngine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: cancelProvider{}, Route: testRoute(t), MaxOutputTokens: 128}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2040,7 +2040,7 @@ func TestEngineUnauthorizedToolHasSingleFailedTerminal(t *testing.T) {
 	if err := registry.Register(&echoTool{}); err != nil {
 		t.Fatal(err)
 	}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry}})
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2056,7 +2056,7 @@ func TestEngineUnauthorizedToolHasSingleFailedTerminal(t *testing.T) {
 
 func TestRequestCancelHasSingleCanceledTerminalAndNoCommittedHistory(t *testing.T) {
 	started := make(chan struct{})
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: &steerProvider{started: started},
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: &steerProvider{started: started},
 		Route: testRoute(t), MaxOutputTokens: 128},
 	})
 	if err != nil {
@@ -2101,7 +2101,7 @@ func TestRequestCancelHasSingleCanceledTerminalAndNoCommittedHistory(t *testing.
 func TestCanceledTurnContinuationRetainsTaskContext(t *testing.T) {
 	started := make(chan struct{})
 	runtime := &steerProvider{started: started}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}})
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3184,7 +3184,7 @@ func runWorkspaceEditTurn(
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t),
 		MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
 		Diagnostics: fakeDiagnosticRunner{}}, SecurityConfig: SecurityConfig{Workspace: root,
 		Journal: journal},
@@ -3212,7 +3212,7 @@ func (fakeDiagnosticRunner) Run(_ context.Context, path string) (diagnostics.Rec
 
 func newEngine(t *testing.T, runtime provider.Provider, registry *tool.Registry) *Engine {
 	t.Helper()
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: runtime, Route: testRoute(t), MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
 		Authorize: func(provider.ToolCall) bool { return true }},
 	})
 	if err != nil {

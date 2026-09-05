@@ -14,7 +14,7 @@ func TestEngineRejectsUnadvertisedFixedReasoningEffort(t *testing.T) {
 
 		ReasoningEffort: "unsupported"}, ToolConfig: ToolConfig{Tools: tool.NewRegistry(nil, nil)},
 	}
-	if _, err := New(options); err == nil ||
+	if _, err := newTestEngine(options); err == nil ||
 		!strings.Contains(err.Error(), "does not support reasoning effort") {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -30,7 +30,7 @@ func TestEngineRejectsUnadvertisedFixedReasoningEffort(t *testing.T) {
 		t.Fatal(err)
 	}
 	options.ReasoningEffort = "off"
-	engine, err := New(options)
+	engine, err := newTestEngine(options)
 	if err != nil {
 		t.Fatal(err)
 	}

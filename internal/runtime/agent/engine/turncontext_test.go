@@ -237,7 +237,7 @@ func TestRunForTurnIgnoresMidTurnPolicyMutation(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: providerRuntime, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: providerRuntime, Route: testRoute(t),
 		MaxOutputTokens: 128, MaxSteps: 8}, ToolConfig: ToolConfig{Tools: registry,
 
 		Authorize: func(provider.ToolCall) bool { return true }}, SecurityConfig: SecurityConfig{Security: security, Workspace: t.TempDir()},
@@ -332,7 +332,7 @@ func TestRunForTurnNextTurnSeesUpdatedPolicy(t *testing.T) {
 			{Type: provider.EventMessageStop},
 		}},
 	}}
-	engine, err := New(Options{ProviderConfig: ProviderConfig{Provider: providerRuntime, Route: testRoute(t),
+	engine, err := newTestEngine(Options{ProviderConfig: ProviderConfig{Provider: providerRuntime, Route: testRoute(t),
 		MaxOutputTokens: 128}, ToolConfig: ToolConfig{Tools: registry,
 
 		Authorize: func(provider.ToolCall) bool { return true }}, SecurityConfig: SecurityConfig{Security: security, Workspace: t.TempDir()},

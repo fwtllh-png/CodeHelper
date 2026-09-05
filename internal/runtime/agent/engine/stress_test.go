@@ -11,6 +11,7 @@ import (
 
 	"github.com/fwtllh-png/QCode/internal/adapter/provider"
 	"github.com/fwtllh-png/QCode/internal/adapter/tool"
+	"github.com/fwtllh-png/QCode/internal/runtime/agent/turnkernel"
 	"github.com/fwtllh-png/QCode/internal/security/policy"
 )
 
@@ -212,15 +213,12 @@ func TestStressConcurrentHistoryAndCompaction(t *testing.T) {
 	}
 }
 
-// TestStressCoordinatorRuntimeFactoryIsSet verifies the test infrastructure
-// is available for stress tests.
-func TestStressCoordinatorRuntimeFactoryIsSet(t *testing.T) {
-	if testTurnCoordinatorRuntimeFactory == nil {
-		t.Fatal("testTurnCoordinatorRuntimeFactory is nil — stress tests cannot run")
-	}
-	runtime := testTurnCoordinatorRuntimeFactory()
+// TestStressEphemeralCoordinatorRuntime verifies the ephemeral coordinator
+// runtime used by engine tests is safe for concurrent stress use.
+func TestStressEphemeralCoordinatorRuntime(t *testing.T) {
+	runtime := turnkernel.NewEphemeralCoordinatorRuntime()
 	if runtime == nil {
-		t.Fatal("testTurnCoordinatorRuntimeFactory returned nil")
+		t.Fatal("ephemeral coordinator runtime is nil")
 	}
 
 	// Exercise the runtime concurrently to verify thread safety.
